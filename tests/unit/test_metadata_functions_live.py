@@ -23,6 +23,7 @@ from provisa.core import schema_org
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.transpiler.metadata_facts import catalog_facts
 from provisa.transpiler.metadata_functions import VALUE_FORMS, expand
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, table_oid
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
 from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
@@ -182,6 +183,8 @@ def live(embedded_postgres, control_plane_template):
             if statement.strip():
                 conn.exec_driver_sql(statement)
         conn.exec_driver_sql("CREATE SCHEMA meta")
+        # As startup_seed gives the control plane: how a form answers PostgreSQL's own error.
+        conn.exec_driver_sql(RAISE_FUNCTION_SQL)
         _register(conn)
         for ddl in _META_TABLE_VIEWS.values():
             conn.exec_driver_sql(ddl.replace("%", "%%"))
@@ -382,7 +385,9 @@ def test_a_table_it_cannot_read_is_false_and_one_it_cannot_list_is_unknown(live)
     with live.begin() as conn:
         assert _form(conn, "has_table_privilege('sales.regions', 'SELECT')") is False
         assert _form(conn, "has_table_privilege(99999999, 'SELECT')") is None
-        assert _form(conn, f"has_table_privilege('someone', {table_oid(3)}, 'SELECT')") is None
+    # REQ-2167 (amended 2026-11-03): a role name no role has is PostgreSQL's refusal, not NULL.
+    with live.begin() as conn, pytest.raises(Exception, match='role "someone" does not exist'):
+        _form(conn, f"has_table_privilege('someone', {table_oid(3)}, 'SELECT')")
 
 
 def test_visibility_of_a_relation_is_what_the_catalog_lists(live):
@@ -391,7 +396,8 @@ def test_visibility_of_a_relation_is_what_the_catalog_lists(live):
         assert _form(conn, "pg_table_is_visible(1259)") is _real(conn, "pg_table_is_visible(1259)")
         assert _form(conn, "pg_table_is_visible(99999999)") is None
         assert _real(conn, "pg_table_is_visible(99999999)") is None
-        assert _form(conn, f"pg_relation_is_publishable({table_oid(1)})") is True
+        # REQ-2167 (amended 2026-11-04): Provisa publishes no relation.
+        assert _form(conn, f"pg_relation_is_publishable({table_oid(1)})") is False
         assert _form(conn, "pg_relation_is_publishable(99999999)") is False
 
 

@@ -29,6 +29,7 @@ from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
+from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID, PUBLIC_OID
 from provisa.pgwire.catalog_pg17_tables import (
     create_relation,
     populate_client_relations,
@@ -176,7 +177,11 @@ class CatalogIndex:  # REQ-532
         self.toid_to_table: dict[int, tuple] = {}
         self.col_attnum: dict[tuple[int, str], int] = {}
         self.attnum_to_col: dict[tuple[int, int], str] = {}
-        self.ns_map: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
+        self.ns_map: dict[str, int] = {
+            "pg_catalog": PG_CATALOG_OID,
+            "information_schema": INFORMATION_SCHEMA_OID,
+            "public": PUBLIC_OID,
+        }
         # REQ-1319: metric name -> relation OID for the reserved `metrics` namespace.
         self.metric_oids: dict[str, int] = {}
 
@@ -445,7 +450,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
             (
                 oid,
                 vname,
-                12,
+                INFORMATION_SCHEMA_OID,
                 oid + 100000,
                 0,
                 10,

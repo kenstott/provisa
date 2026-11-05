@@ -29,6 +29,8 @@ export interface RoleEffective {
   /** Every capability the role holds, with the roles it enters at: more than one when it enters
    *  in several branches. */
   capabilities: { right: string; from: string[] }[];
+  /** With data_residency, the regions it covers: that capability's value. */
+  regions: string[];
   /** Per table it reaches, its access to each column the caller may read. */
   data: RoleTableAccess[];
 }

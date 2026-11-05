@@ -15,7 +15,8 @@ JSON:API, SQL over HTTP, Cypher over HTTP). This is that transport's boundary: t
 response passes before it leaves. A response that reaches it after the deadline has passed is
 not sent — the client is told the request timed out, naming the transport and the setting,
 whatever the route had produced (a result, or an error of its own shaped from the same expiry).
-A response already streaming when the deadline passes ends there.
+A response already streaming when the deadline passes ends there, a subscription's excepted
+(:func:`outlive_deadline`).
 
 The timeout reply is not interrupted by the deadline it reports. The watchdog raises into the
 request thread again every period until the deadline's scope ends (``request_deadline``), so a
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from provisa.api.errors import timeout_error
@@ -38,6 +40,23 @@ from provisa.core import request_deadline
 from provisa.core.request_deadline import Deadline
 
 log = logging.getLogger(__name__)
+
+
+def outlive_deadline() -> None:
+    """The request being served is a subscription (REQ-258, REQ-1882): it runs until its subscriber
+    leaves, under the stream bound. It has no answer for a deadline to bound, and a query it runs
+    keeps the engine's own limit. Stopped inside the shield, as for the timeout's reply; and it
+    never passes, since a deadline's checks read the clock, and left bound, each query after it
+    would be refused."""
+    deadline = request_deadline.current()
+    if deadline is None:
+        return
+    shield = request_deadline.shielded()
+    with shield.lock:
+        shield.settle()
+        deadline.stop()
+        deadline.expires = math.inf
+    request_deadline.unbind()
 
 
 async def _send_timeout(send: Any, deadline: Deadline) -> None:

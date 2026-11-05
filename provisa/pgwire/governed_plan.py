@@ -53,6 +53,7 @@ deployment) is that stage's own rule, applied before it calls :meth:`PlanSlot.ke
 
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import hashlib
 import json
@@ -207,9 +208,14 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
     role = effective_domain_access_role(role_id, state.roles)
     relationships = getattr(state, "relationships", None)
     source_types = state.source_types
+    source_hints = getattr(state, "source_federation_hints", {})
     engine = getattr(state, "federation_engine", None)
 
-    def read() -> Any:
+    # The plan store is per org and a later read may come on the audit writer's thread, where no
+    # org is bound: it reads in this thread's org and environment, or the row is never written.
+    bound = contextvars.copy_context()
+
+    def build() -> Any:
         governance = slot.cached()
         if governance is None:
             governance = _shared(
@@ -223,10 +229,14 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
                     relationships=relationships,
                     source_types=source_types,
                     engine=engine,
+                    source_hints=source_hints,
                 )
             )
             slot.keep(governance)
         return dataclasses.replace(governance)
+
+    def read() -> Any:
+        return bound.run(build)
 
     return read
 

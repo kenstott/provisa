@@ -1,6 +1,6 @@
 # Code Resolvers
 
-Business logic in Python or Node.
+Business logic in Python, Node or Go.
 
 If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type. Over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
 
@@ -372,7 +372,7 @@ When two commands fit one operation, tag the one it is with `@insert <table>`, `
 
 ### Where the code comes from {: #where-the-code-comes-from }
 
-- **A package.** An npm package for Node or a PyPI package for Python, at an exact version.
+- **A package.** An npm package for Node, a PyPI package for Python, or a Go module for Go, at an exact version (a Go module's is `v1.2.0`).
 - **A Git repository.** A full 40-character commit, with a subdirectory if the code isn't at the top.
 - **An upload.** A `.zip`, `.tgz` or `.tar.gz` of the code.
 - **A folder on your machine.** **Choose folder** zips the folder in your browser, leaving out `node_modules`, `.venv`, `__pycache__` and `.git`, and uploads it as the source's archive. In a browser that can keep the folder (Chrome, Edge), **Save** zips and sends it again; another browser asks you for the folder again.
@@ -381,6 +381,7 @@ When two commands fit one operation, tag the one it is with `@insert <table>`, `
 Every origin but the server directory is pinned, so the source runs exactly what was saved.
 
 - **Entry module.** When Python code has more than one top-level module, name the one to enter by.
+- **Package.** Go code is a module; its functions are those of one package, the module's root package unless you name another by its directory (`feeds`).
 - **Open in VS Code.** A server directory opens in your installed VS Code; a Git origin opens at its commit on vscode.dev. A package or an upload has no such link.
 
 ### Installing dependencies {: #installing-dependencies }
@@ -393,12 +394,13 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 | Bun | `bun.lock` or `bun.lockb` |
 | Deno | `deno.lock` |
 | Python | `uv.lock` (with its `pyproject.toml`), `pylock.toml`, or a `requirements.txt` with `--hash` on every line |
+| Go | `go.sum` |
 
 - **Carried or given.** Code that carries its own lockfile installs from it: a Git repository, upload or folder with one, or an npm package whose author published `npm-shrinkwrap.json` (npm never publishes `package-lock.json`). Most npm packages, and Python packages from PyPI, carry none, so give a lockfile beside them.
 - **Why it matters.** Without one, two installs of the same code can differ, and a test that passes today can fail tomorrow on a new dependency version.
 - **A built image is fixed already.** Once you [build the source's image](#running-on-a-remote-host), its dependencies are inside it. A lockfile matters for dev mode and for each new build.
-- **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution.
-- **Your registries.** Packages come from your organization's own npm registries, PyPI indexes and Git hosts, entered once under **Admin → Package registries**. The public npm registry and PyPI need no entry. See [Package Registries](package-registries.md).
+- **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution. Go runs no code while it fetches modules, and every module is checked against the code's `go.sum`; one it does not cover is refused by name.
+- **Your registries.** Packages come from your organization's own npm registries, PyPI indexes, Go module proxies and Git hosts, entered once under **Admin → Package registries**. The public npm registry, PyPI and Go module proxy need no entry. See [Package Registries](package-registries.md).
 - **Cached.** An install is cached by the code's content hash, so the same code installs once.
 
 ### Node {: #node }
@@ -457,6 +459,40 @@ export async function churnScore(
     rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
   );
   return context.keys ? out : out[""]; // a loader call returns the hash of key to rows
+}
+```
+
+### Go {: #go }
+
+- Go code runs as one program: Provisa compiles your package into its host once per version of the code, with the pinned Go toolchain (1.27.3). A `go.mod` that asks for a newer Go is refused.
+- Tags go in the doc comment, each on a line of its own, and types come from the function's signature. An exported function is offered; a method or an unexported function is not.
+- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs. A pointer field is an optional input; any other field is required.
+- A field is named as `encoding/json` names it: its `json` tag, else its Go name.
+- A `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`. A `@stream` returns `iter.Seq2[T, error]`; a row it yields with an error ends the stream with that error.
+- A `string` type with constants of its own is an enum of them; `time.Time` is a timestamp.
+- `@loader` and the read context are not yet offered for Go.
+
+The scored account in Go:
+
+```go
+package scoring
+
+import "context"
+
+type Risk struct {
+	Score   float64  `json:"score"`
+	Reasons []string `json:"reasons"`
+}
+
+type RiskInputs struct {
+	AccountID string `json:"account_id"`
+}
+
+// ChurnRisk is the churn risk of one account.
+//
+// @table
+func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
 }
 ```
 

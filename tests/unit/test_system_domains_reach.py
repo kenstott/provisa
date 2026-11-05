@@ -41,12 +41,17 @@ from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import build_governance_context
 from provisa.compiler.write_admission import admit_write
 from provisa.core import domain_policy
-from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+from provisa.core.db import STANDARD_ROLE_RIGHTS, STANDARD_ROLES, standard_role_dicts
 from provisa.core.env_authority import domains_within
 from provisa.gql.label_map import CypherLabelMap
 from provisa.security import domain_tree
 from provisa.security.default_grant import VIEWER_ROLE
-from provisa.security.inheritance import expand_column_grants, flatten_role_dicts, role_chains
+from provisa.security.inheritance import (
+    expand_column_grants,
+    expand_meta_grants,
+    flatten_role_dicts,
+    role_chains,
+)
 from provisa.security.meta_role import _role as meta_role_of
 from provisa.security.mutation_authz import command_reachable
 from provisa.security.rights import (
@@ -65,29 +70,44 @@ from provisa.security.rights import (
 from provisa.security.visibility import visible_tables
 
 ROLE, LONER, WILD, NO_GLOSSARY = "pet_analyst", "loner", "wild", "no_glossary"
-PETS, CATALOG, TERMS, QUERIES = 1, 2, 3, 4
-PETS_NAME, CATALOG_NAME, TERMS_NAME, QUERIES_NAME = (
+PETS, CATALOG, TERMS, QUERIES, PRODUCTS = 1, 2, 3, 4, 5
+PETS_NAME, CATALOG_NAME, TERMS_NAME, QUERIES_NAME, PRODUCTS_NAME = (
     "pets",
     "registered_tables_meta",
     "_terms_ontology",
     "queries",
+    "data_products_meta",
 )
 DOMAIN_OF = {
     PETS: "pet-store",
     CATALOG: META_DOMAIN_ID,
     TERMS: ONTOLOGY_DOMAIN_ID,
     QUERIES: OPS_DOMAIN_ID,
+    PRODUCTS: META_DOMAIN_ID,
 }
-NAME_OF = {PETS: PETS_NAME, CATALOG: CATALOG_NAME, TERMS: TERMS_NAME, QUERIES: QUERIES_NAME}
+NAME_OF = {
+    PETS: PETS_NAME,
+    CATALOG: CATALOG_NAME,
+    TERMS: TERMS_NAME,
+    QUERIES: QUERIES_NAME,
+    PRODUCTS: PRODUCTS_NAME,
+}
 COLUMNS = {
     PETS: ("id",),
     CATALOG: ("id", "table_name", "visible_to"),
     TERMS: ("name", "term_domains"),
     QUERIES: ("id",),
+    PRODUCTS: ("id", "table_name", "visible_to"),
 }
 LISTED = ["pet-store", "shelter"]
 OWN = [
-    {"id": ROLE, "capabilities": [], "parents": ["analyst"], "domain_access": LISTED},
+    {
+        "id": ROLE,
+        # REQ-1132: viewer holds no catalog_read, so it names it, under a parent that holds it.
+        "capabilities": sorted({*STANDARD_ROLE_RIGHTS["analyst"], "catalog_read"}),
+        "parents": ["developer"],
+        "domain_access": LISTED,
+    },
     # No viewer ancestor: it holds a data right and reaches a data domain.
     {"id": LONER, "capabilities": ["usage"], "parents": [], "domain_access": ["pet-store"]},
     # "*" and no capability opening a system domain.
@@ -110,9 +130,12 @@ def _standard() -> list[dict]:
 
 
 def _flat(role_id: str = ROLE, *capabilities: str) -> dict:
-    """``role_id`` as the build holds it, its stored ``capabilities`` added to."""
+    """``role_id`` as the build holds it, its stored ``capabilities`` added to: with none of its
+    parents' to narrow them, as it were a role holding what it is given (REQ-2155)."""
     rows = [
-        {**r, "capabilities": [*r["capabilities"], *capabilities]} if r["id"] == role_id else r
+        {**r, "capabilities": [*r["capabilities"], *capabilities], "parents": []}
+        if r["id"] == role_id and capabilities
+        else r
         for r in [*_standard(), *OWN]
     ]
     return {**next(r for r in flatten_role_dicts(rows) if r["id"] == role_id), "description": "d"}
@@ -140,7 +163,7 @@ def _tables() -> list[dict]:
                     "column_name": name,
                     "visible_to": (
                         [VIEWER_ROLE]
-                        if tid in (CATALOG, TERMS)
+                        if tid in (CATALOG, TERMS, PRODUCTS)
                         else [ROLE, LONER, WILD, NO_GLOSSARY, "analyst", "org_admin"]
                     ),
                     "native_filter_type": None,
@@ -159,6 +182,7 @@ def _tables() -> list[dict]:
         for tid in DOMAIN_OF
     ]
     expand_column_grants(tables, _chains())
+    expand_meta_grants(tables, flatten_role_dicts([*_standard(), *OWN]))
     return tables
 
 
@@ -251,8 +275,9 @@ def test_every_other_module_derives_from_it():
     "role_id,reach",
     [
         pytest.param(ROLE, ["meta", "ontology", "pet-store", "shelter"], id="pet_analyst"),
-        pytest.param("viewer", ["*", "meta", "ontology"], id="viewer"),
-        pytest.param("analyst", ["*", "meta", "ontology"], id="analyst-has-no-ops"),
+        pytest.param("viewer", ["*", "ontology"], id="viewer-holds-no-meta"),
+        pytest.param("analyst", ["*", "ontology"], id="analyst-has-no-meta-or-ops"),
+        pytest.param("developer", ["*", "meta", "ontology"], id="developer-has-no-ops"),
         pytest.param("org_operator", ["*", "meta", "ontology", "ops"], id="org_operator"),
         pytest.param("org_admin", ["*", "meta", "ontology", "ops"], id="org_admin"),
         pytest.param("platform_admin", [], id="platform_admin-reaches-none"),
@@ -269,16 +294,16 @@ def test_a_system_domain_comes_with_an_inherited_capability():
     assert _flat(LONER, "observability")["domain_access"] == ["ops", "pet-store"]
 
 
-def test_data_domains_are_not_inherited():
+def test_data_domains_narrow_as_capabilities_do():
     rows = [
-        {"id": "p", "capabilities": ["catalog_read"], "parents": [], "domain_access": ["a"]},
-        {"id": "c", "capabilities": [], "parents": ["p"], "domain_access": ["b"]},
+        {"id": "p", "capabilities": ["catalog_read"], "parents": [], "domain_access": ["a", "b"]},
+        {"id": "c", "capabilities": ["catalog_read"], "parents": ["p"], "domain_access": ["b"]},
     ]
     assert flatten_role_dicts(rows)[1]["domain_access"] == ["b", "meta"]
 
 
 def test_a_stored_system_domain_is_no_access_and_the_input_is_not_changed():
-    stored = {"id": "x", "capabilities": [], "parents": [], "domain_access": ["ops", "a"]}
+    stored = {"id": "x", "capabilities": ["usage"], "parents": [], "domain_access": ["ops", "a"]}
     assert flatten_role_dicts([stored])[0]["domain_access"] == ["a"]
     assert stored["domain_access"] == ["ops", "a"]
 
@@ -286,7 +311,9 @@ def test_a_stored_system_domain_is_no_access_and_the_input_is_not_changed():
 def test_the_domain_tree_and_a_meta_role_keep_the_system_domains():
     assert domain_tree.expand(["*", "meta"], {}) == ["*", "meta"]
     members = [_flat("analyst"), {**_flat("org_operator"), "domain_access": ["ops", "sales"]}]
-    assert meta_role_of(members, "meta:x")["domain_access"] == ["*", "meta", "ontology", "ops"]
+    # REQ-2153: a built role carries its own domain access beside its reach.
+    members = [{**m, "own_domain_access": m["domain_access"]} for m in members]
+    assert meta_role_of(members, "meta:x")["domain_access"] == ["*", "ontology", "ops"]
 
 
 @pytest.mark.parametrize("listed", [["meta"], ["sales", "ops"], ["ontology", "*"]])
@@ -474,7 +501,7 @@ def test_sql_governance_columns_follow_view_governance():
 def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
     _, gov = _gov(_flat())
     # meta: REQ-1132's default tier: the tables it reads, not the whole catalog. Ops is not read.
-    assert gov.rls_rules[CATALOG] == f"id IN ({PETS},{CATALOG},{TERMS})"
+    assert gov.rls_rules[CATALOG] == f"id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})"
     # ontology: the glossary's own rule, scoped to the role's data domains.
     assert "pet-store" in gov.rls_rules[TERMS] and "shelter" in gov.rls_rules[TERMS]
     assert "'meta'" not in gov.rls_rules[TERMS]
@@ -484,7 +511,7 @@ def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
 
 
 def test_the_catalog_describes_what_the_role_reads():
-    assert compute_meta_row_scope(_flat(), _tables(), []) == {PETS, CATALOG, TERMS}
+    assert compute_meta_row_scope(_flat(), _tables(), []) == {PETS, CATALOG, TERMS, PRODUCTS}
     assert compute_meta_row_scope(_flat("org_admin"), _tables(), []) is None
 
 
@@ -499,9 +526,7 @@ def _built(role: dict):
 @pytest.mark.parametrize(
     "query,domain,capability",
     [
-        pytest.param(
-            "{ registeredTablesMeta { id } }", "meta", "catalog_read", id="a-catalog-root"
-        ),
+        pytest.param("{ dataProductsMeta { id } }", "meta", "catalog_read", id="a-catalog-root"),
         pytest.param("{ pets { id _meta { id } } }", "meta", "catalog_read", id="the-meta-field"),
         pytest.param("{ op_queries { id } }", "ops", "observability", id="an-ops-root"),
     ],
@@ -524,7 +549,7 @@ def test_sql_refuses_the_catalog_naming_the_missing_capability():
     role = _flat(LONER)
     _, ctx = _built(role)
     gov = build_governance_context(role["id"], RLSContext.empty(), {}, ctx, _tables(), role)
-    violations = validate_sql(f"SELECT id FROM {CATALOG_NAME}", ctx, gov, role, _tables())
+    violations = validate_sql(f"SELECT id FROM {PRODUCTS_NAME}", ctx, gov, role, _tables())
     assert [v.code for v in violations] == ["V001"]
     assert "catalog_read" in violations[0].message
 
@@ -533,7 +558,7 @@ class _Routed(Exception):
     """Raised by the routing stand-in: the statement cleared governance."""
 
 
-async def _govern_catalog_statement(monkeypatch, role: dict) -> None:
+async def _govern_catalog_statement(monkeypatch, role: dict, table: str = CATALOG_NAME) -> None:
     """A client's catalog statement through the pipeline's top, as ``govern_catalog_plan`` runs it."""
     import provisa.api.app as app_mod
     from provisa.pgwire import _pipeline
@@ -551,7 +576,7 @@ async def _govern_catalog_statement(monkeypatch, role: dict) -> None:
     token = current_request.set(types.SimpleNamespace())
     try:
         with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_Routed)):
-            await _pipeline._govern_and_route(f"SELECT id FROM {CATALOG_NAME}", role["id"])
+            await _pipeline._govern_and_route(f"SELECT id FROM {table}", role["id"])
     finally:
         current_request.reset(token)
 
@@ -561,11 +586,16 @@ async def test_a_catalog_statement_reads_meta_by_the_capability(monkeypatch):
         await _govern_catalog_statement(monkeypatch, _flat())
 
 
-async def test_a_catalog_statement_without_the_capability_is_refused_naming_it(monkeypatch):
+async def test_a_catalog_statement_reads_the_default_tier_with_no_meta_grant(monkeypatch):
+    with pytest.raises(_Routed):
+        await _govern_catalog_statement(monkeypatch, _flat(LONER))
+
+
+async def test_meta_beyond_the_default_tier_is_refused_naming_the_capability(monkeypatch):
     from provisa.compiler.sql_validator import GovernanceRefused
 
     with pytest.raises(GovernanceRefused, match="catalog_read"):
-        await _govern_catalog_statement(monkeypatch, _flat(LONER))
+        await _govern_catalog_statement(monkeypatch, _flat(LONER), PRODUCTS_NAME)
 
 
 # --- the rest of the one rule ---------------------------------------------------------------------
@@ -588,7 +618,7 @@ def test_effective_rights_say_what_is_read_and_no_write_comes_with_it():
         tables=_tables(),
         reach=_flat()["domain_access"],
         chain=_chains()[ROLE],
-        parents={ROLE: ["analyst"]},
+        parents={ROLE: ["developer"]},
         stored={},
         masks={},
         row_rule=lambda _tid, _domain: None,
@@ -610,7 +640,8 @@ def test_a_cypher_match_may_root_where_the_capability_is_held():
     assert held[META_DOMAIN_ID] is False and held[ONTOLOGY_DOMAIN_ID] is False
     assert held[OPS_DOMAIN_ID] is True
     lone = nodes(_flat(LONER))
-    assert lone[META_DOMAIN_ID] is True and lone[ONTOLOGY_DOMAIN_ID] is True
+    # REQ-1132: meta's default tier is read on SQL, and is no label of its graph.
+    assert META_DOMAIN_ID not in lone and lone[ONTOLOGY_DOMAIN_ID] is True
 
 
 # --- the HTTP surface the UI reads ----------------------------------------------------------------
@@ -636,7 +667,7 @@ def _domains_response(monkeypatch, role: dict) -> list[str]:
     "role_id,shown",
     [
         pytest.param(ROLE, ["meta", "ontology", "pet-store"], id="pet_analyst"),
-        pytest.param("analyst", ["hr", "meta", "ontology", "pet-store"], id="wildcard-no-ops"),
+        pytest.param("analyst", ["hr", "ontology", "pet-store"], id="wildcard-no-ops"),
         pytest.param(
             "org_admin", ["hr", "meta", "ontology", "ops", "pet-store"], id="wildcard-with-ops"
         ),

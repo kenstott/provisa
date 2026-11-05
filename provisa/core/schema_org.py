@@ -36,6 +36,8 @@ the two models may live in separate schemas/engines and FKs cannot span them.
 
 from __future__ import annotations
 
+import functools
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -58,6 +60,8 @@ from sqlalchemy import (
     func,
     true,
 )
+
+from provisa.core.pgvector import Vector
 
 metadata = MetaData()
 
@@ -132,6 +136,9 @@ sources = Table(
     # Connection extras the typed columns cannot carry (warehouse account/http_path, remote-schema
     # override, Exasol server-certificate fingerprint) — Source.federation_hints.
     Column("federation_hints", JSON, nullable=False, default=dict, server_default="{}"),
+    # REQ-1923: the values a branded source's setup was given (Shopify: store, api_version) --
+    # Source.brand_setup.
+    Column("brand_setup", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON(none_as_null=True)),
     Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
     # REQ-1491: whether this environment has supplied this source's connection values. A copy
@@ -1027,7 +1034,7 @@ api_sources = Table(
     ),  # REQ-1942: own | copied | unbound
     CheckConstraint("binding IN ('own', 'copied', 'unbound')", name="api_sources_binding_check"),
     CheckConstraint(
-        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')",
+        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks')",
         name="api_sources_type_check",
     ),
 )
@@ -1362,6 +1369,86 @@ profiler_classifications = Table(
     Column("decided_by", Text),
     Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("table_id", "physical_column", "kind"),
+)
+
+# REQ-2147 (CONTAINED VALUES ARE HINTS): a scan of a table's text columns for sensitive kinds held
+# inside their values, asked for by a person and run in the background -- running, then succeeded
+# or failed with why.
+profiler_sensitive_scans = Table(
+    "profiler_sensitive_scans",
+    metadata,
+    Column("scan_id", Text, primary_key=True),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("status", Text, nullable=False),  # running | succeeded | failed
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("sampled_rows", Integer),  # the rows the scan read
+    Column("scanned_columns", Integer),  # the text columns it scanned
+    Column("requested_by", Text),
+    Column("error", Text),
+)
+
+# REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind -- the share of its sampled
+# values a kind was found inside. Only the counts: the matched text is never stored.
+profiler_sensitive_hints = Table(
+    "profiler_sensitive_hints",
+    metadata,
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("physical_column", Text, nullable=False),  # the column's registered name
+    Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
+    Column("scan_id", Text, nullable=False),
+    Column("values_tested", Integer, nullable=False),
+    Column("values_matched", Integer, nullable=False),
+    Column("share", Float, nullable=False),
+    Column("evidence", Text, nullable=False),  # the hint in words
+    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
+)
+
+# REQ-2189: a saved, named arrangement of the ERD -- the bar's options, and per domain and table
+# what is selected, collapsed and where it stands. Only the arrangement: columns and relationships
+# are read from the live model, and a table or domain goes from every layout when it goes.
+erd_layouts = Table(
+    "erd_layouts",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("options", JSON, nullable=False),  # columnDetail, edgeRouting, gridSnap, showOrphans
+    Column("updated_by", Text),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# A domain the layout shows: whether the focus names it, whether it is collapsed, and its box (the
+# centre and size) as it was saved.
+erd_layout_domains = Table(
+    "erd_layout_domains",
+    metadata,
+    Column("layout_name", Text, ForeignKey("erd_layouts.name", ondelete="CASCADE"), nullable=False),
+    Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
+    Column("selected", Boolean, nullable=False, server_default=false()),
+    Column("collapsed", Boolean, nullable=False, server_default=false()),
+    Column("x", Float),
+    Column("y", Float),
+    Column("w", Float),
+    Column("h", Float),
+    PrimaryKeyConstraint("layout_name", "domain_id"),
+)
+
+# A table the layout holds, by id so that a rename keeps its place: whether the focus names it,
+# and its position; none for a table in a domain that was collapsed when it was saved.
+erd_layout_tables = Table(
+    "erd_layout_tables",
+    metadata,
+    Column("layout_name", Text, ForeignKey("erd_layouts.name", ondelete="CASCADE"), nullable=False),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("selected", Boolean, nullable=False, server_default=false()),
+    Column("x", Float),
+    Column("y", Float),
+    PrimaryKeyConstraint("layout_name", "table_id"),
 )
 
 # REQ-1939: how close a generated dataset came to the profiles it was drawn from.
@@ -1988,7 +2075,8 @@ code_source_vectors = Table(
 # REQ-2185: the org's reference library -- documents its assistants draw on, each with a status
 # (proposed or kept) and domains (a list, or "*" for the whole org, as a glossary term's). A
 # document's content is held as its passages, each embedded by the org's vector model;
-# ``vector`` is the embedding as a JSON array of floats (the code_source_vectors pattern).
+# ``vector`` is the embedding, a pgvector column of any dimension (provisa.core.pgvector), under one
+# partial HNSW index per dimension in use (provisa.reference_library.store).
 reference_documents = Table(
     "reference_documents",
     metadata,
@@ -2041,7 +2129,7 @@ reference_passages = Table(
     Column("section", Text, nullable=True),
     Column("page", Integer, nullable=True),
     Column("text", Text, nullable=False),
-    Column("vector", Text, nullable=False),
+    Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
 )
@@ -2080,6 +2168,9 @@ glossary_term_scans = Table(
     Column("budget_limit", Integer, nullable=True),
     Column("launch", Text, nullable=True),
     Column("progress_at", DateTime(timezone=True), nullable=True),
+    # REQ-2202: a scan of a registered table, not a library document -- a JSON object naming its
+    # domain, table, id column and text column; null for a document's scan.
+    Column("source_table", Text, nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "status IN ('running', 'done', 'failed')", name="glossary_term_scans_status_check"
@@ -2150,3 +2241,76 @@ admin_audit_log = Table(
     Column("detail", JSON, nullable=False, default=dict, server_default="{}"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+
+# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code, by its
+# path in this package: its tables (beside this metadata, which ddl_fingerprint compiles), views,
+# functions and triggers. A demo template kept across a cloud patch is trusted only when the code
+# that built it had the same text here (no migrations: one built by older code lacks what is new,
+# e.g. relation "config_stamp" does not exist). A module that runs DDL is in this list or in the
+# guard's list of DDL that never lands in an org's schema
+# (tests/unit/test_demo_template_warm_start.py), so a new source cannot be missed.
+ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
+    "core/schema.sql",
+    "core/db.py",
+    "core/config_stamp.py",
+    "core/env_changes.py",
+    "core/env_copy.py",
+    "audit/query_log.py",
+    "mv/schema.sql",
+    "api/_meta_views.py",
+    "api/_ontology_views.py",
+    "api/_ontology_quality_views.py",
+    "api/_pg_catalog_views.py",
+    "api/startup_seed.py",
+    "grpc/field_numbering.py",
+    "live/watermark.py",
+    "profiler/schema.py",
+    "profiler/carry.py",
+    "dq/scan.py",
+    "ingest/ddl.py",
+    "federation/materialize_exec.py",
+    "federation/query_residency.py",
+    "federation/row_filter.py",
+    "fakes/pg_functions.py",
+    "transpiler/metadata_server_forms.py",
+)
+
+
+def ddl_sources() -> dict[str, bytes]:
+    """The text of each of :data:`ORG_SCHEMA_DDL_SOURCES`, by its path."""
+    from pathlib import Path
+
+    package = Path(__file__).resolve().parents[1]
+    return {path: (package / path).read_bytes() for path in ORG_SCHEMA_DDL_SOURCES}
+
+
+def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
+    """The first 16 hex of SHA-256 over an org schema's DDL: each of ``tables``' CREATE TABLE and
+    CREATE INDEX, compiled for PostgreSQL in name order, and the text of each of ``sources`` (the
+    modules and scripts that run the rest of it), in path order."""
+    import hashlib
+
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    dialect = postgresql.dialect()
+    digest = hashlib.sha256()
+    for name in sorted(tables.tables):
+        table = tables.tables[name]
+        digest.update(str(CreateTable(table).compile(dialect=dialect)).encode())
+        for index in sorted(table.indexes, key=lambda i: str(i.name)):
+            digest.update(str(CreateIndex(index).compile(dialect=dialect)).encode())
+    for path in sorted(sources):
+        digest.update(path.encode() + b"\0" + sources[path])
+    return digest.hexdigest()[:16]
+
+
+@functools.cache
+def ddl_fingerprint() -> str:
+    """REQ-2006: the shape of what this code creates in an org's schema (this metadata and
+    :data:`ORG_SCHEMA_DDL_SOURCES`). There are no migrations: a demo template built by code of
+    another shape keeps that code's tables, so its readiness record names this
+    (demo_templates.readiness_version), and a cloud patch keeps only the templates recorded under
+    the pushed code's (deploy-cloud.sh's reset_sandbox_state reads it from that code)."""
+    return fingerprint_of(metadata, ddl_sources())

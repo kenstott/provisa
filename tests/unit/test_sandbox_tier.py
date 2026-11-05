@@ -27,6 +27,7 @@ from provisa.api.sandbox_tier import (
     template_org_id,
 )
 from provisa.core.org_ids import is_org_id
+from provisa.core.regions import DEFAULT_REGION
 
 
 def test_a_sandbox_and_a_template_are_org_ids_of_the_sandbox_tier_and_never_each_other():
@@ -511,3 +512,37 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     arms = re.findall(r"^  (api|cfg|all|patch)\)\n(?:\s*#.*\n)*\s*(.*);;$", deploy, re.M)
     for arm, steps in arms:
         assert steps.strip().split("; ")[-1] == "deploy_sandbox_vm", arm
+
+
+def _on_the_tier(monkeypatch, region: str | None) -> None:
+    from provisa.core import process_region
+
+    monkeypatch.setenv("PROVISA_SANDBOX_TIER", "true")
+    monkeypatch.setattr(process_region, "region", lambda: region or DEFAULT_REGION)
+
+
+def test_a_regions_sandbox_is_refused_by_name_on_the_ordinary_tier(monkeypatch):
+    """REQ-2006, REQ-2068: a retail sandbox's token at cloud.provisa.dev with no org named reached
+    the ordinary tier, which holds no bundle of retail: building its runtime answered GET
+    /sandboxes/limits 500 "No published demo named 'retail'". It is misdirected, and said so."""
+    _on_the_tier(monkeypatch, None)
+    with pytest.raises(ApiError) as refused:
+        require_this_tier("sbxrus2bb95f6779fa")
+    assert (refused.value.status_code, refused.value.code) == (421, "sandbox.wrong_tier")
+
+
+def test_a_sandbox_of_another_region_is_refused_on_a_regions_node(monkeypatch):
+    _on_the_tier(monkeypatch, "us")
+    with pytest.raises(ApiError) as refused:
+        require_this_tier("sbxrwarehouse2bb95f6779fa")
+    assert refused.value.code == "sandbox.wrong_tier"
+
+
+def test_each_node_serves_its_own_sandboxes_its_templates_and_its_deployment_org(monkeypatch):
+    """A regions node's own org (sbxrtier) begins as a regions sandbox does and is none."""
+    _on_the_tier(monkeypatch, "us")
+    for org in ("sbxrus2bb95f6779fa", "sbxtplretail", "sbxrtier"):
+        require_this_tier(org)
+    _on_the_tier(monkeypatch, None)
+    for org in ("sbx0aef6d8dbe7d", "sbxtplweblogs", "sbxtier"):
+        require_this_tier(org)

@@ -495,8 +495,7 @@ relationships:
   via_target_column: product_id
   via_label_source: fixed
 roles:
-- capabilities:
-  - query_development
+- capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   - shelter
@@ -504,34 +503,9 @@ roles:
   parents: [analyst]
   description: "Queries the pet store's and the shelter's data, as the benchmark's reader."
 - id: org_admin_unguarded
-  parents: [viewer]
+  parents: [org_admin, modeler]
   description: "The organization administrator's rights without the relationship guard, for the benchmark's unguarded joins."
-  capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - create_view
-  - approve_view
-  - approve_relationship
-  - access_config
-  - user_management
-  - masking_config
-  - column_grant
-  - view_governance
-  - query_development
-  - full_results
-  - write
-  - usage
-  - org_settings
-  - observability
-  - environment_management
-  - environment_switch
-  - glossary_read
-  - glossary_rw
-  - org_glossary_rw
-  - data_product_read
-  - data_product_rw
-  - ignore_relationships
+  capabilities: [access_config, approve_relationship, approve_view, catalog_read, column_grant, create_relationship, create_view, data_product_read, data_product_rw, environment_management, environment_switch, full_results, glossary_read, glossary_rw, ignore_relationships, masking_config, observability, org_glossary_rw, org_settings, query_development, source_registration, table_registration, usage, user_management, view_governance, write]
   domain_access:
   - '*'
 server:

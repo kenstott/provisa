@@ -17,7 +17,6 @@ import {
   Badge,
   Button,
   Group,
-  Modal,
   Select,
   Table,
   Text,
@@ -231,16 +230,15 @@ export function MetricsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
   const { t } = useTranslation();
-  const { metrics, loading, error } = useMetrics();
+  const { metrics, loading, error, refetch: refetchMetrics } = useMetrics();
   const { tables } = useTables();
   const { upsertMetric, loading: saving } = useUpsertMetric();
-  const { deleteMetric, loading: deleting } = useDeleteMetric();
+  const { deleteMetric } = useDeleteMetric();
   const [creating, setCreating] = useState(false);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [form, setForm] = useState<MetricForm>({ ...EMPTY_FORM });
   const [builder, setBuilder] = useState<BuilderState>({ ...EMPTY_BUILDER });
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
 
   // REQ-1320: facts are the metric sources — the builder's source picker.
@@ -326,13 +324,13 @@ export function MetricsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const result = await deleteMetric(deleteTarget);
-    setDeleteTarget(null);
-    if (refusal.refused(result, deleteTarget)) return;
-    if (expanded === deleteTarget) setExpanded(null);
-    if (!result.success) setMsg(result.message || t("metricsPage.deleteFailed"));
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the metric.
+  const handleDelete = async (name: string) => {
+    const result = await deleteMetric(name);
+    if (refusal.refused(result, name)) return false;
+    if (!result.success) throw new Error(result.message || t("metricsPage.deleteFailed"));
+    await refetchMetrics();
   };
 
   const formCard = (
@@ -400,7 +398,7 @@ export function MetricsPage() {
         m={selectedMetric}
         dependentViews={dependentViews(selectedMetric.name)}
         onEdit={() => openEdit(selectedMetric)}
-        onDelete={() => setDeleteTarget(selectedMetric.name)}
+        onDelete={() => handleDelete(selectedMetric.name)}
       />
     )
   ) : null;
@@ -544,33 +542,6 @@ export function MetricsPage() {
         </SplitPane>
       )}
 
-      {/* Delete confirm */}
-      <Modal
-        opened={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        title={t("metricsPage.deleteTitle")}
-        centered
-        data-testid="metric-delete-modal"
-      >
-        <Text mb="lg" size="sm">
-          {t("metricsPage.deleteConfirm", { name: deleteTarget ?? "" })}
-        </Text>
-        {/* The action first, then the shared Cancel, at the start of the row like every form. */}
-        <FormFooter
-          onCancel={() => setDeleteTarget(null)}
-          cancelProps={{ disabled: deleting }}
-          action={
-            <Button
-              color="red"
-              onClick={handleDelete}
-              loading={deleting}
-              data-testid="metric-delete-confirm"
-            >
-              {t("metricsPage.delete")}
-            </Button>
-          }
-        />
-      </Modal>
       {refusal.dialog}
     </div>
   );

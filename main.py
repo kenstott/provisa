@@ -36,6 +36,8 @@ if _env_file.exists():
 
 # Imported after the .env load above, not before: create_app() reads configuration at import time,
 # so hoisting this to the top would build the app from an environment the loop had not filled yet.
+# Importing provisa also points zoneinfo at the pinned tzdata package, not the host's zoneinfo
+# (PYTHONTZPATH empty; provisa/__init__.py), so every zone comes from the encoders' IANA release.
 from provisa.api.app import create_app  # noqa: E402
 
 # SIGUSR1 dumps every thread's Python stack to stderr. A server whose event loop is parked on a lock

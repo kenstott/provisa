@@ -79,16 +79,16 @@
       },
       "step2": {
         "title": "Registra un origen",
-        "description": "➕ Las conexiones nuevas empiezan con este botón: PostgreSQL, Snowflake, MongoDB, una API REST, un CSV y el resto de los 73 conectores."
+        "description": "➕ Las conexiones nuevas empiezan con este botón: PostgreSQL, Snowflake, MongoDB, una API REST, un CSV y el resto de los 77 conectores."
       },
       "step3": {
-        "title": "73 tipos de fuente, 14 categorías",
+        "title": "77 tipos de fuente, 14 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Suscripciones, RDBMS, Almacén de datos en la nube, Analítica, Data lake, NoSQL, Resolvers de código, Grafos, Archivos, API, Streaming, Empresa, Calidad de datos, Otros</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
       "stepBuildSource": {
-        "title": "Un origen, añadido en vivo",
-        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
-        "acting": "Añadiendo un origen"
+        "title": "Un origen, rellenado",
+        "description": "El selector se abrió con su lista completa, se eligió <strong>Parquet File</strong> y el formulario se rellenó con la dirección del archivo (<code>supplies.parquet</code>). Eso es todo lo que necesita un origen de archivo. Esto es solo un vistazo al formulario: Siguiente pulsa <strong>Cancelar</strong> y no se guarda nada.",
+        "acting": "Rellenando un origen"
       },
       "step4": {
         "title": "Todo se convierte en una tabla",
@@ -872,13 +872,9 @@
         "title": "De dónde viene una columna del mart",
         "description": "El linaje de las columnas del mart: cada una rastreada a través de la vista point-in-time y los satélites hasta el campo de origen del que procede."
       },
-      "datavaultAnalyst": {
-        "title": "La vista de un analista",
-        "description": "A continuación, el explorador SQL se ejecuta como el analista europeo. Los datos personales están en los satélites, así que es ahí donde se gobiernan."
-      },
       "datavaultMasked": {
         "title": "Enmascarado donde están los datos personales",
-        "description": "Como analista, el satélite del CRM muestra solo clientes europeos. Sus contactos se ocultan, y los nombres de sus correos y los dígitos de sus teléfonos quedan ocultos. Los hubs y links siguen siendo legibles, así que el analista aún puede unir por ellos."
+        "description": "El explorador SQL se ejecuta ahora como el analista europeo. Los datos personales están en los satélites, así que es ahí donde se gobiernan. Como analista, el satélite del CRM muestra solo clientes europeos. Sus contactos se ocultan, y los nombres de sus correos y los dígitos de sus teléfonos quedan ocultos. Los hubs y links siguen siendo legibles, así que el analista aún puede unir por ellos."
       },
       "datavaultRecap": {
         "title": "Lo que ha visto",
@@ -937,16 +933,32 @@
         "description": "Ha visto los datos propios de la aseguradora cruzados por condado y año de cosecha con pérdidas, clima y rendimientos públicos, todo en un modelo gobernado. Una vista responde si el clima explica las pérdidas, en SQL, GraphQL y REST. El notebook lo mide: el clima explica el 54 % de la variación de la siniestralidad y, en la cartera actual, una temporada como la de 2012 tiene una siniestralidad esperada de 1,75."
       },
       "retailScenario": {
-        "title": "Un grupo, dos regiones",
+        "title": "Historia de dos regiones",
         "description": "Un grupo minorista gestiona una filial de la EU y otra de US como un solo negocio. ¿Puede hacerlo sin incumplir el GDPR? Cada filial mantiene su propia base de datos: esta es la de la EU, con sus clientes del programa de fidelización, su consentimiento de marketing, los pedidos, el personal y el correo que el personal envía fuera del grupo."
       },
+      "retailPlatformRegions": {
+        "title": "Las regiones empiezan en una configuración",
+        "description": "La configuración de la plataforma declara las regiones, aquí la EU y US, y las concede a la organización. Cada región tiene su propio procesamiento de datos: su propio motor y sus propios almacenes. El propósito de la EU es la residencia, para los datos de clientes que deben permanecer en la Unión Europea. En este sandbox puede leer esta página, pero no cambiarla."
+      },
+      "retailPurposes": {
+        "title": "Qué dice un propósito",
+        "description": "La leyenda explica cada propósito. Un propósito dice por qué existe una región. No mueve datos ni decide quién los lee. Eso lo hacen dos capas, y el recorrido muestra cada una: el alojamiento, las reglas del motor sobre dónde viven los datos, y la seguridad, las reglas del steward de datos sobre quién lee qué."
+      },
+      "retailOrgRegions": {
+        "title": "Las regiones y los almacenes de la organización",
+        "description": "La organización tiene ambas regiones. Cada fila nombra los almacenes que se usan allí: el motor de la región y dónde se guardan sus réplicas, vistas, caché, estado de construcción y registro. Los datos de la EU se procesan con los propios almacenes de la EU."
+      },
+      "retailEngines": {
+        "title": "Un motor por región",
+        "description": "Federación tiene una pestaña por región, y cada región ejecuta su propio motor. Así, una configuración da dos entornos de procesamiento de datos. Usted está en el nodo de US. Lee los datos de la EU solo a través del almacén de la EU, nunca de una copia propia."
+      },
       "retailRegions": {
-        "title": "Una sola definición de cada región",
-        "description": "La base de datos de la filial de US, alojada en US. El modelo declara ambas regiones e indica, una sola vez, dónde reside cada tabla y qué vistas se construyen en cada lugar. Un segundo nodo de Provisa se ejecuta en la EU: copia las tablas de la EU en el almacén propio de la EU y construye allí las vistas de la EU. Usted está en el nodo de US, que lee datos de la EU solo desde ese almacén de la EU, así que cada regla transfronteriza se aplica en un solo lugar."
+        "title": "Alojamiento: cada fuente nombra su región de origen",
+        "description": "La base de datos de la filial de US está alojada en US, y la de la filial de la EU en la EU. El alojamiento es la regla del motor sobre dónde viven los datos. Las réplicas y la caché de una tabla alojada se quedan en su región de origen, y las demás regiones solo llegan a ella a través de esa región."
       },
       "retailEuCustomers": {
         "title": "Una tabla de la EU, alojada en la EU",
-        "description": "Los clientes de la EU. La tabla indica la EU como su región: sus filas se copian solo en el almacén de la EU y se calculan solo allí. Los lectores de otros lugares las obtienen a través de las vistas de la EU o no las obtienen."
+        "description": "Los clientes de la EU. La región de la tabla es la EU, así que sus réplicas y su caché viven solo en el almacén de la EU. El alojamiento decide dónde viven las filas. No decide quién puede leerlas. Esa es la siguiente capa."
       },
       "retailRequests": {
         "title": "Solicitudes de los interesados",
@@ -957,12 +969,12 @@
         "description": "Una solicitud se une con los clientes de cada filial por la dirección de correo electrónico. Así una solicitud encuentra a la misma persona en ambas."
       },
       "retailAsAnalyst": {
-        "title": "Como analista del grupo",
-        "description": "A continuación, el selector de roles pasa a <strong>group_analyst</strong>, que trabaja en los informes del grupo en US, para que el SQL y el GraphQL que siguen se ejecuten como group_analyst."
+        "title": "Las reglas del steward de datos, como analista del grupo",
+        "description": "La segunda capa es la seguridad: las reglas del steward de datos deciden qué recibe cada lector, según su rol y según la región del lector. Se aplican en la región de origen, antes de que nada salga de ella. A continuación, el selector de roles cambia a <strong>group_analyst</strong>, que trabaja en los informes del grupo en US, así que el SQL y el GraphQL siguientes se ejecutan como group_analyst."
       },
       "retailGroupView": {
         "title": "Informes del grupo, clientes de la EU seudonimizados",
-        "description": "Cada cliente del programa de fidelización del grupo. Los clientes de US aparecen tal cual; los clientes de la EU aparecen con un seudónimo que calculó la EU, sin nombre ni dirección. La parte de la EU se leyó del almacén de la EU, y el registro de esta consulta indica la EU como la región que respondió."
+        "description": "Todos los clientes de fidelización del grupo. Los clientes de US aparecen tal como son. Los clientes de la EU aparecen con un seudónimo, porque la regla del steward dice que un lector fuera de la EU no recibe nombre ni dirección. La EU aplicó esa regla antes de que sus filas salieran, y el registro de esta consulta nombra a la EU como la región que respondió."
       },
       "retailGroupGraphql": {
         "title": "Lo mismo, en GraphQL",
@@ -972,13 +984,9 @@
         "title": "De vuelta a todos los roles",
         "description": "A continuación, el selector de roles vuelve a <strong>All</strong>."
       },
-      "retailAsMarketing": {
-        "title": "Como marketing de la EU",
-        "description": "A continuación, el explorador SQL se ejecuta como marketing_eu."
-      },
       "retailAudience": {
         "title": "Solo los clientes que aceptaron",
-        "description": "El marketing de la EU lee los clientes de la EU que aceptaron recibir marketing, y solo a ellos. La vista se construye en la EU a partir de filas de la EU."
+        "description": "El explorador SQL ahora se ejecuta como <strong>marketing_eu</strong>. La regla del steward permite que el marketing de la EU lea a los clientes de la EU que aceptaron el marketing, y solo a ellos. La vista se construye en la EU a partir de filas de la EU."
       },
       "retailAsDpo": {
         "title": "Como delegado de protección de datos",
@@ -1006,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "El remitente, revelado en la EU",
-        "description": "La misma cola. La lista de enmascaramiento de la columna del remitente revela el remitente solo a un revisor que además tiene region__eu; todos los demás lo leen retenido. Es una sola concesión, reviewer y region__eu, sin ningún rol creado para la combinación."
+        "description": "La misma cola. La máscara del steward en la columna del remitente revela el remitente solo a un revisor cuya región asignada es la EU (region__eu). Todos los demás lo leen retenido. Lo que recibe un lector depende de su región además de su rol, y no se creó ningún rol para la combinación."
       },
       "retailAsAdmin": {
         "title": "De vuelta a todos los roles",
@@ -1022,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Lo que ha visto",
-        "description": "Un modelo definió ambas regiones: dónde reside cada tabla, qué vistas se construyen en cada lugar y quién lee qué. Los informes del grupo leyeron a los clientes de la EU seudonimizados, el marketing de la EU leyó solo a los clientes que dieron su consentimiento, y una solicitud de acceso y una supresión fueron cada una una sola consulta. La revisión de información privilegiada reveló a un remitente solo en la EU, y cada lectura está en un único registro."
+        "description": "Una configuración concedió dos regiones, cada una con su propio motor y sus propios almacenes: dos entornos de procesamiento de datos. El alojamiento mantuvo las tablas de la EU, sus réplicas y su caché en la EU. Las reglas del steward de datos decidieron qué recibía cada lector, según su rol y la región del lector, y la EU las aplicó antes de que nada saliera de ella. Los informes del grupo leyeron a los clientes de la EU seudonimizados, el marketing de la EU leyó solo a los clientes que aceptaron, el acceso y la supresión fueron una consulta cada uno, el remitente se reveló solo a un revisor en la EU, y cada lectura está en un único registro."
       },
       "provisioningScenario": {
         "title": "Qué es esta demo",
@@ -1140,13 +1148,9 @@
         "title": "Relaciones, declaradas una vez",
         "description": "<strong>OF_PRODUCT</strong> une una línea de pedido en PostgreSQL con su producto en MongoDB. Con PLACED_BY, HAS_ITEM y SHIPPED_AS, estas cuatro relaciones se declaran una vez, y tanto la app como la herramienta de BI leen a través de ellas."
       },
-      "storefrontAsCustomer": {
-        "title": "Con sesión de cliente",
-        "description": "La aplicación envía sus consultas con el rol <strong>customer</strong>, cuyos filtros de filas limitan cada respuesta a los pedidos del propio cliente que ha iniciado sesión. A continuación, el selector de roles pasa a <strong>customer</strong>, para que la consulta de abajo se ejecute exactamente como la ejecuta la aplicación."
-      },
       "storefrontScreen": {
         "title": "La única consulta de la app",
-        "description": "La pantalla de historial de pedidos envía esta única consulta GraphQL anidada: cada pedido con sus líneas, el producto de cada línea desde el catálogo y el envío del pedido desde el servicio de envíos. Ejecutada como <strong>customer</strong>, devuelve siete pedidos, todos del cliente con sesión iniciada."
+        "description": "La aplicación envía sus consultas con el rol <strong>customer</strong>, cuyos filtros de filas limitan cada respuesta a los pedidos del propio cliente que ha iniciado sesión. El selector de roles está ahora en <strong>customer</strong>. La pantalla de historial de pedidos envía esta única consulta GraphQL anidada: cada pedido con sus líneas, el producto de cada línea desde el catálogo y el envío del pedido desde el servicio de envíos. Ejecutada como <strong>customer</strong>, devuelve siete pedidos, todos del cliente con sesión iniciada."
       },
       "storefrontApp": {
         "title": "La pantalla que alimenta",
@@ -1156,13 +1160,9 @@
         "title": "Los mismos pedidos por JSON:API",
         "description": "Un cliente que prefiere JSON:API pide los mismos pedidos, todavía como el cliente, con sus líneas y envíos incluidos. Cada pedido enlaza las líneas y el envío que incluye, y el id de una línea es su clave compuesta."
       },
-      "storefrontAnalyst": {
-        "title": "Ahora como analista",
-        "description": "La parte de BI lee como <strong>analyst</strong>: ve todos los pedidos, pero ningún correo de cliente. A continuación, el selector de ejecutar como pasa a <strong>analyst</strong>."
-      },
       "storefrontAnalystSql": {
         "title": "El SQL del analista",
-        "description": "Envíos con retraso por región y transportista, sobre las mismas tablas y relaciones. <strong>a_customer</strong> muestra un correo tal como lo lee el analista: enmascarado."
+        "description": "La parte de BI lee como <strong>analyst</strong>: ve todos los pedidos, pero ningún correo de cliente. El explorador SQL se ejecuta ahora como <strong>analyst</strong>. Envíos con retraso por región y transportista, sobre las mismas tablas y relaciones. <strong>a_customer</strong> muestra un correo tal como lo lee el analista: enmascarado."
       },
       "storefrontBi": {
         "title": "El panel de BI",
@@ -1188,13 +1188,9 @@
         "title": "Las tablas, como las conocía la aplicación",
         "description": "Las cuatro tablas llegaron con los nombres que usa la aplicación. <strong>customers</strong> conserva los nombres personalizados de Hasura <strong>givenName</strong> y <strong>familyName</strong>, la tabla de productos conserva su nombre raíz <strong>catalog</strong>, y cada columna lleva los roles que pueden leerla, según los permisos de select."
       },
-      "hasuramigrationAsAna": {
-        "title": "Sesión iniciada como Ana",
-        "description": "Ana es clienta. Su token llevaba <strong>x-hasura-user-id: 1</strong>, y Provisa lee ese claim como el valor de sesión <strong>hasura_user_id</strong>, con el que comparan las reglas de filas importadas. A continuación, el selector de roles pasa a <strong>ana</strong>, para que las consultas de abajo se ejecuten exactamente como la tienda las ejecuta para ella."
-      },
       "hasuramigrationMyOrders": {
         "title": "El historial de pedidos, remodelado",
-        "description": "La consulta de historial de pedidos de la tienda, remodelada una vez para Provisa: el campo raíz lleva su dominio, los nombres de columna siguen la convención de Provisa y order_by es una lista. Las relaciones <strong>items</strong> y <strong>product</strong> conservaron sus nombres de Hasura. Ejecutada como Ana, responde con sus cuatro pedidos y los de nadie más."
+        "description": "Ana es clienta. Su token llevaba <strong>x-hasura-user-id: 1</strong>, y Provisa lee ese claim como el valor de sesión <strong>hasura_user_id</strong>, con el que comparan las reglas de filas importadas. El selector de roles está ahora en <strong>ana</strong>. La consulta de historial de pedidos de la tienda, remodelada una vez para Provisa: el campo raíz lleva su dominio, los nombres de columna siguen la convención de Provisa y order_by es una lista. Las relaciones <strong>items</strong> y <strong>product</strong> conservaron sus nombres de Hasura. Ejecutada como Ana, responde con sus cuatro pedidos y los de nadie más."
       },
       "hasuramigrationProfile": {
         "title": "Una lectura por clave",
@@ -1208,21 +1204,13 @@
         "title": "Una relación más",
         "description": "<strong>BUYS_FOR</strong> une un cliente con su cuenta de Salesforce, aprobada como las relaciones que trajo la importación. A partir de aquí la cuenta está a un campo de cada cliente, en cada interfaz, bajo las reglas de cada rol."
       },
-      "hasuramigrationAsSupport": {
-        "title": "El servicio de soporte",
-        "description": "El personal de soporte puede leer todos los pedidos y todos los clientes, como permitían sus permisos de Hasura. A continuación, el selector de roles pasa a <strong>support</strong>, y la pantalla de pedidos del soporte se ejecuta como la ejecutan ellos."
-      },
       "hasuramigrationSupportScreen": {
         "title": "Pedidos con sus cuentas",
-        "description": "La pantalla de pedidos del soporte, remodelada, con algo nuevo: junto al cliente de cada pedido, la cuenta de Salesforce, su sector y ciudad, en la misma solicitud. Los clientes sin cuenta no muestran ninguna."
-      },
-      "hasuramigrationAnalyst": {
-        "title": "El analista",
-        "description": "Los analistas pueden leer totales de pedidos y vínculos de cuentas, pero no nombres ni correos, y nunca pedidos cancelados. Esa es la regla de filas y las listas de columnas que trajo la importación. A continuación, el selector de roles pasa a <strong>analyst</strong>."
+        "description": "El personal de soporte puede leer todos los pedidos y todos los clientes, como permitían sus permisos de Hasura. El selector de roles está ahora en <strong>support</strong>. La pantalla de pedidos del soporte, remodelada, con algo nuevo: junto al cliente de cada pedido, la cuenta de Salesforce, su sector y ciudad, en la misma solicitud. Los clientes sin cuenta no muestran ninguna."
       },
       "hasuramigrationByIndustry": {
         "title": "Ingresos por sector",
-        "description": "Una sentencia SQL sobre la tienda y Salesforce: ingresos por el sector de la cuenta detrás de cada pedido. Las reglas del analista se aplican igual que en GraphQL: los pedidos cancelados quedan fuera y no se lee ningún nombre ni correo."
+        "description": "Los analistas pueden leer totales de pedidos y vínculos de cuentas, pero no nombres ni correos, y nunca pedidos cancelados. Esa es la regla de filas y las listas de columnas que trajo la importación. El explorador SQL se ejecuta ahora como <strong>analyst</strong>. Una sentencia SQL sobre la tienda y Salesforce: ingresos por el sector de la cuenta detrás de cada pedido. Las reglas del analista se aplican igual que en GraphQL: los pedidos cancelados quedan fuera y no se lee ningún nombre ni correo."
       },
       "hasuramigrationRecap": {
         "title": "Lo que viste",
@@ -1332,13 +1320,9 @@
         "title": "Lo que ve un analista",
         "description": "Con la sesión iniciada, un analista del postor A ve lo que se concede a bidder_a: las vistas agregadas, los perfiles, la muestra enmascarada y los registros del vendedor sin una sola identidad de cliente. No hay ningún nombre de cliente, ni nombre de empresa o de operación del CRM, que leer."
       },
-      "dataroomBidder": {
-        "title": "Ahora como postor A",
-        "description": "Las siguientes sentencias se ejecutan como <strong>bidder_a</strong>, exactamente igual que las de los analistas."
-      },
       "dataroomProfile": {
         "title": "El perfil de las facturas",
-        "description": "Cada columna de la tabla de facturas tal como la encontró el perfilador: filas, nulos, valores distintos y rango. Un postor averigua lo completos que están los registros sin leer ninguno. Aquí, algunas facturas nunca se han pagado."
+        "description": "Estas sentencias se ejecutan como <strong>bidder_a</strong>, exactamente igual que las de los analistas. Cada columna de la tabla de facturas tal como la encontró el perfilador: filas, nulos, valores distintos y rango. Un postor averigua lo completos que están los registros sin leer ninguno. Aquí, algunas facturas nunca se han pagado."
       },
       "dataroomCounts": {
         "title": "Recuentos de clientes",
@@ -1406,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Toda columna sensible está cubierta",
-        "description": "La misma comprobación, leída ahora desde el modelo: cada columna sensible, sus etiquetas y si un valor ficticio la cubre. Todas están cubiertas, así que preproducción se abre y responde."
+        "description": "La cobertura sensible es un informe estándar de la página Informes: cada columna sensible, sus etiquetas y si un valor ficticio la cubre, leído ahora desde el modelo. Todas están cubiertas, así que preproducción se abre y responde."
+      },
+      "testdataPollyProposes": {
+        "title": "Un valor ficticio propuesto a partir del perfil",
+        "description": "Se le pregunta a Polly qué valor ficticio propondría para customers.email. Lee la última ejecución del perfil de la columna, ve que los valores son direcciones de correo y propone el valor ficticio de correo. El modelo ya declara uno, así que la propuesta contrasta esa elección con los datos. No se guarda nada hasta que alguien lo elija."
       },
       "testdataProd": {
         "title": "Producción: las filas reales",
@@ -1676,21 +1664,13 @@
         "title": "Generado en cada cierre",
         "description": "Los totales de cierre son una vista materializada en el almacén según el calendario del banco, que cierra a las 18:00 hora de Londres. La vista es un GROUP BY sobre la única tabla del libro mayor, así que su construcción se ejecuta entera en el libro mayor y solo vuelven las filas agrupadas. Hereda las versiones del libro mayor y no necesita ajustes de historial propios. Cada día se registró en su propio cierre. El 1 y el 2 de octubre se volvieron a registrar más tarde, cuando llegaron sus correcciones."
       },
-      "bankingAsOps": {
-        "title": "Como operaciones",
-        "description": "La siguiente consulta se ejecuta como operaciones, que entra en los asientos bajo las propias reglas del libro mayor. No ve ningún asiento en una cuenta de empleado, y toda contraparte queda oculta."
-      },
       "bankingDashboard": {
         "title": "El panel, por GraphQL",
-        "description": "Los totales de Londres del 1 de octubre, cada uno con sus asientos anidados dentro. Una sola petición lee los totales del almacén y los asientos del libro mayor, unidos por la relación que acaba de ver."
-      },
-      "bankingAsAnalyst": {
-        "title": "Como analista de informes",
-        "description": "El SQL que sigue se ejecuta como los analistas de informes del banco. Leen los totales de cierre del día y las cinco columnas del libro mayor con las que se calculan: fecha contable, sucursal, producto, divisa e importe. Nunca ven una cuenta, una contraparte ni un titular."
+        "description": "Esta consulta se ejecuta como operaciones, que entra en los asientos bajo las propias reglas del libro mayor. No ve ningún asiento en una cuenta de empleado, y toda contraparte queda oculta. Los totales de Londres del 1 de octubre, cada uno con sus asientos anidados dentro. Una sola petición lee los totales del almacén y los asientos del libro mayor, unidos por la relación que acaba de ver."
       },
       "bankingDay": {
         "title": "Los totales de un día",
-        "description": "El 1 de octubre tal como está ahora. Para cada sucursal, producto y moneda ve lo que entró, lo que salió y el neto. Una herramienta de BI conectada por pgwire ejecuta este mismo SQL."
+        "description": "Este SQL se ejecuta como los analistas de informes del banco. Leen los totales de cierre del día y las cinco columnas del libro mayor con las que se calculan: fecha contable, sucursal, producto, divisa e importe. Nunca ven una cuenta, una contraparte ni un titular. El 1 de octubre tal como está ahora. Para cada sucursal, producto y moneda ve lo que entró, lo que salió y el neto. Una herramienta de BI conectada por pgwire ejecuta este mismo SQL."
       },
       "bankingReported": {
         "title": "Lo que se informó",
@@ -1772,13 +1752,9 @@
         "title": "Quién puede ver a qué clientes",
         "description": "La tabla de clientes lleva las reglas: un agente de soporte del Oeste lee solo los clientes del Oeste y sus pedidos, con las direcciones de correo enmascaradas y sin precios. El analista de BI lee todas las regiones y el importe de los pedidos, pero ninguna dirección de correo."
       },
-      "agentdataSupportRole": {
-        "title": "Actuar como agente de soporte del Oeste",
-        "description": "El agente actúa con el rol del encabezado. Siguiente elige al agente de soporte del Oeste, así que cada llamada a herramienta del agente se ejecuta con ese rol."
-      },
       "agentdataSupportAsks": {
         "title": "La pregunta del agente de soporte",
-        "description": "El agente encuentra las tablas, escribe SQL y lo ejecuta con herramientas MCP, que se muestran mientras se ejecutan. Solo vuelven los clientes del Oeste, y sus direcciones de correo llegan enmascaradas: es todo lo que se sirve al rol."
+        "description": "El agente actúa con el rol del encabezado, ahora el agente de soporte del Oeste, así que cada llamada a herramienta que hace se ejecuta con ese rol. El agente encuentra las tablas, escribe SQL y lo ejecuta con herramientas MCP, que se muestran mientras se ejecutan. Solo vuelven los clientes del Oeste, y sus direcciones de correo llegan enmascaradas: es todo lo que se sirve al rol."
       },
       "agentdataExplain": {
         "title": "Lo que realmente se ejecutó",
@@ -1799,6 +1775,159 @@
       "agentdataConnect": {
         "title": "Tu propio agente, el mismo servidor",
         "description": "Este es el servidor que usó el agente del explorador. Pega esta configuración en Claude Desktop, o apunta cualquier cliente MCP a la URL, y tu propio agente obtiene las mismas herramientas gobernadas, sujetas a las mismas reglas."
+      },
+      "auditScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Una firma de auditoría audita nueve organizaciones sin fines de lucro que gastan subvenciones federales. Antes del trabajo de campo, el socio pregunta si las subvenciones federales registradas por cada cliente coinciden con lo que los registros del gobierno muestran haberle pagado. Las relaciones y los registros de subvenciones de los clientes están en la base de datos propia de la firma; las presentaciones del Single Audit y las obligaciones federales son públicas. Los clientes y sus cifras son inventados; los programas, los condados y los datos públicos son reales."
+      },
+      "auditAnswer": {
+        "title": "Los puntos abiertos de cada cliente",
+        "description": "La vista readiness responde la misma pregunta para todos los clientes a la vez y se mantiene almacenada. Pone cada línea de la relación junto a sus registros de subvención y los datos públicos del programa, y enumera los puntos que necesita cada memorando de preparación."
+      },
+      "auditExample": {
+        "title": "Puntos abiertos en GraphQL",
+        "description": "Los puntos del memorando de preparación como una consulta GraphQL, para las herramientas de encargo de la firma."
+      },
+      "auditRecap": {
+        "title": "Lo que ha visto",
+        "description": "Los registros de clientes de la firma y las presentaciones y obligaciones públicas del gobierno, unidos en un solo modelo gobernado. Una vista almacenada responde la pregunta del socio para cada cliente. Cada equipo lee solo sus propios clientes, y cada consulta queda registrada."
+      },
+      "auditGovdata": {
+        "title": "Los datos públicos",
+        "description": "Los datos del gobierno vienen de AskAmerica: cada línea de subvención de los Single Audits de 2023 presentados ante el Federal Audit Clearinghouse en Vermont, New Hampshire y Maine, cada una junto a lo que USAspending obligó al mismo receptor bajo el mismo programa, y las obligaciones de USAspending por condado y programa."
+      },
+      "auditSchedule": {
+        "title": "La relación del cliente",
+        "description": "El borrador de la relación de gastos de subvenciones federales (Schedule of Expenditures of Federal Awards) de cada cliente para 2023: una línea por subvención, con su Assistance Listing, si vino directamente de una agencia federal o a través de una agencia estatal, y lo que el cliente dice haber gastado."
+      },
+      "auditNotices": {
+        "title": "Los registros de subvenciones",
+        "description": "Los registros federales de subvenciones que cada cliente tiene para sus subvenciones directas: una fila por obligación, el año fiscal federal en que se hizo y su importe. Una subvención plurianual puede haberse obligado antes del año en que se gastó."
+      },
+      "auditFiled": {
+        "title": "La misma conciliación, en presentaciones públicas",
+        "description": "Cada línea de subvención que las entidades auditadas de los tres estados presentaron para 2023, junto a lo que USAspending registró como obligado para ellas bajo el mismo programa ese año. Una línea sin coincidencia no es por sí sola una carencia. Una línea recibida a través de un intermediario llegó por una agencia estatal, así que ninguna subvención federal nombra a la entidad y no se espera que coincida; y una subvención obligada en un año anterior no muestra obligación en el año auditado. Las líneas sin coincidencia se conservan, no se ocultan."
+      },
+      "auditCounty": {
+        "title": "Dinero federal por condado",
+        "description": "Lo que USAspending registró como obligado en el condado de cada cliente en el año fiscal federal 2023, por programa, contado donde se realiza el trabajo. Muestra si un programa que el cliente incluye en su relación paga algo en su condado."
+      },
+      "auditRecordedAs": {
+        "title": "De la relación a los registros",
+        "description": "Esta relación une cada línea de la relación con sus registros de subvención mediante la referencia de subvención de la firma. Una línea sin registro detrás, y un registro sin línea, son lo que busca el auditor."
+      },
+      "auditCountyJoin": {
+        "title": "Clientes y sus condados",
+        "description": "El código de condado de cada cliente lo une a las obligaciones por condado de USAspending, y sus Assistance Listings unen su relación con las presentaciones públicas del mismo programa en su estado."
+      },
+      "auditTerms": {
+        "title": "En palabras de un auditor",
+        "description": "La ontología explica los términos de un Single Audit: la relación, el Assistance Listing, la entidad intermediaria, la obligación, una diferencia temporal, una subvención faltante y el memorando de preparación."
+      },
+      "auditRequest": {
+        "title": "El encargo del socio",
+        "description": "El socio pide al analista que prepare a Brindlewood Community Health para el trabajo de campo. Este es su borrador de relación: cinco programas federales, tres de ellos subvenciones directas. A continuación, el analista resuelve el encargo con Polly."
+      },
+      "auditPollySchedule": {
+        "title": "Qué subvenciones registra",
+        "description": "El analista empieza por lo que registra el cliente. Polly enumera las subvenciones de su relación de 2023 y muestra el SQL que ejecutó. Su respuesta se generó al construir la demo y se guarda con ella."
+      },
+      "auditPollyRecords": {
+        "title": "Qué muestran los registros que se le pagó",
+        "description": "Después, el lado del gobierno: lo que los registros federales de subvención del cliente muestran como obligado para él en el año fiscal federal 2023. Una de las obligaciones es de un programa que la relación no incluye."
+      },
+      "auditPollyDiffer": {
+        "title": "Dónde difieren",
+        "description": "Polly pone la relación junto a los registros de subvención y enumera cada subvención en la que no coinciden, con la consulta que respalda su respuesta."
+      },
+      "auditPollyKinds": {
+        "title": "Temporal o faltante",
+        "description": "Una diferencia temporal es una subvención obligada en un año anterior y gastada este año, que solo necesita una explicación. Una subvención faltante es una línea directa sin registro federal detrás, que necesita una corrección. Polly clasifica las diferencias en los dos tipos."
+      },
+      "auditPollyMemo": {
+        "title": "El memorando de preparación",
+        "description": "Por último, el memorando: cada punto que el cliente debe explicar o corregir antes de que empiece el trabajo de campo, desde las diferencias temporales hasta la subvención que su relación omite."
+      },
+      "auditPublic": {
+        "title": "El patrón en las presentaciones públicas",
+        "description": "La misma conciliación, ejecutada sobre las presentaciones públicas de los tres estados. Estos son los programas cuyas líneas de subvención directa con más frecuencia no tienen obligación de USAspending en el año auditado. Se muestran tal como son, y muestran por qué una línea sin coincidencia es una pregunta para el auditor y no un error."
+      },
+      "auditAsTeam": {
+        "title": "Como el equipo de Maine",
+        "description": "Ejecutada como el equipo del encargo de Maine, la misma vista devuelve solo los tres clientes de ese equipo. Las reglas de fila en cada tabla y en la vista limitan a cada equipo a sus propios encargos. El socio los ve todos."
+      },
+      "auditLineage": {
+        "title": "De dónde sale cada cifra",
+        "description": "El linaje rastrea cada columna de la respuesta a través de la vista hasta las tablas de la firma y los datos públicos, para que un revisor vea de dónde sale cada cifra del memorando."
+      },
+      "auditRest": {
+        "title": "La misma respuesta por REST",
+        "description": "La vista también es un endpoint REST, agrupada por hallazgo y sumada en el servidor, para que una hoja de cálculo de papeles de trabajo la lea por HTTP."
+      },
+      "banksecrecyScenario": {
+        "title": "Un banco lee una ley de EE. UU.",
+        "description": "Un banco comunitario debe reportar el efectivo de más de 10.000 $ según la Bank Secrecy Act. Esta demo lee la norma misma desde su dirección pública, encuentra los términos que usa, los ancla en los datos del banco y luego pregunta por concepto: ¿qué efectivo requiere un Currency Transaction Report y quién fracciona? Empieza con el sistema central del banco, leído en vivo donde está."
+      },
+      "banksecrecyCash": {
+        "title": "Efectivo en ventanilla",
+        "description": "Cada depósito y retiro de efectivo en ventanilla: la cuenta, la sucursal, el cajero, la hora y el día hábil en que se contabilizó. El efectivo recibido después de las 17:00 se contabiliza el siguiente día hábil."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "En nombre de quién",
+        "description": "Cada transacción indica quién estaba en la ventanilla y de quién es el efectivo. Cuando un empleado o un familiar lleva efectivo, cuenta para el total del titular de la cuenta, como lo cuenta la ley."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Leer la ley desde su dirección pública",
+        "description": "Buscar términos lee un documento desde su dirección, aquí 31 CFR 1010.311 en la API oficial de eCFR. Un análisis consulta al modelo de IA sobre cada pasaje y tarda minutos, así que el recorrido detuvo este. El mismo análisis se hizo al construir la demo.",
+        "acting": "Escribiendo la dirección de la norma e iniciando un análisis"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Los términos de la norma",
+        "description": "El análisis hecho de antemano: cada término candidato con el pasaje del que proviene. Una institución financiera reporta cada transacción en efectivo de más de 10.000 $. Los términos que el glosario ya tiene se ofrecen para fusionar."
+      },
+      "banksecrecyAggregation": {
+        "title": "La regla de agregación",
+        "description": "De 31 CFR 1010.313 vienen transacciones múltiples y en nombre de: el efectivo por o en nombre de una persona, más de 10.000 $ en un día hábil, se trata como una sola transacción, y todas las sucursales son una institución. Los depósitos nocturnos cuentan el siguiente día hábil."
+      },
+      "banksecrecyDefinitions": {
+        "title": "Las definiciones que usa",
+        "description": "Las palabras de la norma están definidas en 31 CFR 1010.100: persona, día hábil, institución financiera, fraccionamiento. Cada definición es un pasaje propio, así que cada término se ofrece con el párrafo que lo define."
+      },
+      "banksecrecyLibrary": {
+        "title": "Guardado en la biblioteca de referencia",
+        "description": "La compilación de la demo conservó cada documento analizado en la biblioteca de referencia, así que la normativa queda con el modelo como referencia gobernada: Polly y los agentes de la organización citan sus pasajes al responder."
+      },
+      "banksecrecyGrounded": {
+        "title": "Las palabras de la ley, ancladas",
+        "description": "Transaction in currency es el término de la normativa. La transacción en efectivo del banco es un tipo de ella, así que el término llega a la tabla cash_transactions. Persona llega así a los clientes, e institución financiera llega a las sucursales del banco."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Día hábil, en su columna",
+        "description": "El día hábil de la normativa es el día en que un banco contabiliza una transacción en la cuenta del cliente. La columna business_day del banco contiene exactamente eso, así que el término contiene la columna misma."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "¿Qué efectivo requiere un reporte? Como cajero",
+        "description": "Preguntado por concepto: entrada o salida de efectivo de más de 10.000 $ por o en nombre de una persona en un día hábil, las transacciones múltiples contadas como una entre cuentas y sucursales. Un cajero ve los reportes pendientes, con números de cuenta e identificadores fiscales enmascarados."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "La misma pregunta, como cumplimiento",
+        "description": "El oficial de cumplimiento hace la misma pregunta y ve los números de cuenta e identificadores fiscales completos, como el reporte los necesita. El total de Dana Whitmore incluye efectivo llevado en su nombre por otra persona."
+      },
+      "banksecrecyStructuring": {
+        "title": "¿Quién fracciona?",
+        "description": "Depósitos justo por debajo de 10.000 $, tres veces o más, entre sucursales y días. Ninguno requería un reporte por sí solo. Victor Hale fue a tres sucursales en una semana, y los dos depósitos de Marcus Reed en un día requerían un reporte juntos. Solo cumplimiento ve esta vista."
+      },
+      "banksecrecyExample": {
+        "title": "La misma respuesta en GraphQL",
+        "description": "Los reportes pendientes, como llamada de API. Cada interfaz lee la misma vista gobernada, con las mismas máscaras para el mismo rol."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Preguntado en palabras sencillas",
+        "description": "Cumplimiento le pregunta a Polly en palabras sencillas: ¿qué efectivo requiere un Currency Transaction Report? Polly encuentra la vista gobernada a la que llega el concepto y responde desde ella, así que nombra a las mismas personas que devolvieron el SQL y el GraphQL. Nadie tuvo que saber el nombre de la vista."
+      },
+      "banksecrecyRecap": {
+        "title": "Lo que vio",
+        "description": "La ley se leyó desde su dirección pública, sus términos se encontraron y anclaron en las tablas del banco, y el banco preguntó por concepto. El Currency Transaction Report llega a los datos a través de sus transacciones múltiples, y cada rol vio lo que puede ver."
       }
     },
     "status": {
@@ -1869,7 +1998,7 @@
         "summary": "¿Explica el clima las pérdidas de la cartera de una aseguradora agrícola? Sus propias explotaciones, pólizas y siniestros, unidos por condado y año de cosecha a las pérdidas por causa del USDA, el clima de NOAA y los rendimientos de NASS, lo responden en SQL, GraphQL y REST."
       },
       "retail": {
-        "title": "Un grupo, dos regiones",
+        "title": "Historia de dos regiones",
         "summary": "Un grupo minorista con una filial de la EU y otra de US, gestionado como un solo negocio bajo el GDPR: los datos de la EU se quedan en la EU, los informes del grupo los leen seudonimizados, y el acceso, la supresión, la revisión de información privilegiada y la auditoría son cada uno una sola consulta."
       },
       "provisioning": {
@@ -1923,6 +2052,14 @@
       "agentdata": {
         "title": "Dale tus datos a un agente",
         "summary": "¿Se le pueden dar a un agente de IA los datos de pedidos de un minorista y limitarlo a lo que su usuario puede ver? El explorador MCP muestra al agente como agente de soporte y como analista: otras filas y columnas, correos enmascarados y el SQL gobernado detrás de cada respuesta."
+      },
+      "audit": {
+        "title": "Preparación para el Single Audit",
+        "summary": "¿Coinciden las subvenciones federales que registra un cliente sin fines de lucro con lo que los registros del gobierno muestran haberle pagado? Lo responden las relaciones de clientes de una firma de auditoría, unidas a las presentaciones del Single Audit y a las obligaciones de USAspending."
+      },
+      "banksecrecy": {
+        "title": "Reportes de efectivo leídos de la Bank Secrecy Act",
+        "summary": "Un banco lee la norma de reporte de efectivo de la Bank Secrecy Act desde su dirección pública oficial, encuentra sus términos y los ancla en sus propias tablas. Luego pregunta por concepto qué efectivo requiere un Currency Transaction Report y quién fracciona justo por debajo de 10.000 $. El banco y sus clientes son ficticios; la normativa es real."
       }
     }
   }

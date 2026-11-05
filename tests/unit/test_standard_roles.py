@@ -70,7 +70,7 @@ class TestTheSet:
 
 class TestWhatEachHolds:
     def test_viewer_reads_the_catalog_the_glossary_and_data_products(self):
-        assert _rights("viewer") == {"catalog_read", "glossary_read", "data_product_read"}
+        assert _rights("viewer") == {"glossary_read", "data_product_read"}
 
     def test_analyst_queries(self):
         assert _rights("analyst") == _rights("viewer") | {"usage", "query_development"}

@@ -28,6 +28,7 @@ import {
   API_AUTH_TYPES,
   BRAND_CARRIER,
   BRAND_AUTH,
+  BRAND_SETUP,
   FILE_TRANSPORTS,
 } from "./constants";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
@@ -39,7 +40,9 @@ import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { ServiceNowFields } from "./ServiceNowFields";
 import { JiraFields } from "./JiraFields";
+import { QuickBooksFields } from "./QuickBooksFields";
 import { CloudopsFields } from "./CloudopsFields";
+import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
@@ -47,6 +50,8 @@ import { CODE_SOURCE_TYPES } from "./codeSource";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
+import { JdbcSourceFields } from "./JdbcSourceFields";
+import { JDBC_SOURCE } from "./jdbcSource";
 import { ExcelHintsFields } from "./ExcelHintsFields";
 import { KafkaFields } from "./KafkaFields";
 import { QdrantFields } from "./QdrantFields";
@@ -126,6 +131,8 @@ export function SourceFormFieldsExtended({
   onOpenapiPreview,
   gqlNamespace,
   setGqlNamespace,
+  brandSetup,
+  setBrandSetup,
   gqlCacheTtl,
   setGqlCacheTtl,
   grpcProtoPath,
@@ -165,6 +172,8 @@ export function SourceFormFieldsExtended({
   // the sole Streaming member — websocket/rss/ingest now share the category and each needs its own
   // fields, so this must key on the type itself.
   const isKafka = form.type === "kafka";
+  // The props of a type's own fields that keep their settings beside the connection's.
+  const typed = { form, setForm, fields: authFields, setFields: setAuthFields };
   const simpleAuthData = [
     { value: "none", label: t("sourceFormFieldsExtended.authNone") },
     { value: "basic", label: t("sourceFormFieldsExtended.authBasic") },
@@ -214,27 +223,12 @@ export function SourceFormFieldsExtended({
         </>
       )}
       {form.type === "google_sheets" && (
-        <>
-          <FormField section="authentication" size="long">
-            <TextInput
-              required
-              label={t("sourceFormFieldsExtended.credentialsJsonPath")}
-              value={authFields.credentials_json ?? ""}
-              onChange={(e) => setAuthFields({ ...authFields, credentials_json: e.target.value })}
-              placeholder={t("sourceFormFieldsExtended.credentialsJsonPathPlaceholder")}
-              data-testid="google-sheets-credentials-input"
-            />
-          </FormField>
-          <FormField size="medium">
-            <TextInput
-              label={t("sourceFormFieldsExtended.metadataSheetId")}
-              value={form.database}
-              onChange={(e) => setForm({ ...form, database: e.target.value })}
-              placeholder={t("sourceFormFieldsExtended.metadataSheetIdPlaceholder")}
-              data-testid="google-sheets-sheet-id-input"
-            />
-          </FormField>
-        </>
+        <GoogleSheetsFields
+          form={form}
+          setForm={setForm}
+          fields={authFields}
+          setFields={setAuthFields}
+        />
       )}
       {form.type === "openapi" && (
         <OpenApiFormSection
@@ -264,6 +258,19 @@ export function SourceFormFieldsExtended({
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
       )}
+      {/* REQ-1923: a brand reached at a per-customer address asks where (BRAND_SETUP). */}
+      {(BRAND_SETUP[form.type] ?? []).map((field) => (
+        <FormField key={field.name} hint={t(field.hintKey)} size="medium">
+          <TextInput
+            required={field.required}
+            label={t(field.labelKey)}
+            value={brandSetup[field.name] ?? ""}
+            onChange={(e) => setBrandSetup({ ...brandSetup, [field.name]: e.target.value })}
+            placeholder={field.placeholder}
+            data-testid={`brand-setup-${field.name}-input`}
+          />
+        </FormField>
+      ))}
       {/* REQ-1923: a brand asks for the credential it states (BRAND_AUTH), never one by default. */}
       {BRAND_AUTH[form.type] === "token" && (
         <FormField
@@ -671,12 +678,13 @@ export function SourceFormFieldsExtended({
         />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
-      {form.type === COSMOSDB && ( // REQ-1982
-        <CosmosDbFields
+      {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
+      {form.type === JDBC_SOURCE && ( // REQ-2191
+        <JdbcSourceFields
           form={form}
           setForm={setForm}
-          fields={authFields}
-          setFields={setAuthFields}
+          authFields={authFields}
+          setAuthFields={setAuthFields}
         />
       )}
       {form.type === QDRANT && ( // REQ-1983
@@ -687,16 +695,10 @@ export function SourceFormFieldsExtended({
       )}
       {form.type === LOGS && <LogsFields fields={authFields} setFields={setAuthFields} />}
       {form.type === "cloudops" && <CloudopsFields fields={authFields} setFields={setAuthFields} />}
-      {form.type === "salesforce" && (
-        <SalesforceFields
-          form={form}
-          setForm={setForm}
-          fields={authFields}
-          setFields={setAuthFields}
-        />
-      )}
+      {form.type === "salesforce" && <SalesforceFields {...typed} />}
       {form.type === "servicenow" && <ServiceNowFields form={form} setForm={setForm} />}
       {form.type === "jira" && <JiraFields form={form} setForm={setForm} />}
+      {form.type === "quickbooks" && <QuickBooksFields {...typed} /> /* REQ-2197 */}
       {form.type === "sharepoint" && (
         <SharepointFields
           form={form}

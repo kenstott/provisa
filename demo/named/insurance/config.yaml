@@ -41,8 +41,7 @@ roles:
 - id: insurance_analyst
   parents: [analyst]
   description: "Queries the insurer's book and the public risk tables."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - insurance
 server:
@@ -67,8 +66,7 @@ sources:
   database: disasters,ref,geo
   cache_ttl: -1
   replicate: 0
-  description: Government data from AskAmerica -- FEMA, US Forest Service and NOAA county tables,
-    landed once when the demo is built
+  description: Government data from AskAmerica -- FEMA, US Forest Service and NOAA county tables
 tables:
 - source_id: book
   domain_id: insurance

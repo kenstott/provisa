@@ -74,6 +74,8 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # connector for either type (trino_connectors.py has no entry).
         "neo4j",
         "sparql",
+        # REQ-2197: a QuickBooks table's rows come from the company's query endpoint.
+        "quickbooks",
         # REQ-1982: Cosmos DB documents are read through its SDK (provisa/cosmosdb/loader.py); no
         # engine reaches it.
         "cosmosdb",
@@ -192,9 +194,10 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
 
     from provisa.core.operator_floor import floor_setting
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        if floor_setting(source) is None and engine_attaches(engine, _source_type(source)):
+        if floor_setting(source) is None and engine_attaches(engine, reach_type(source, engine)):
             return await engine_table_rows(engine, source, table)
         dialect = state.source_dialects[source.id] or None
         relation = direct_relation(table, dialect)
@@ -335,6 +338,7 @@ class SourceRowLoader:
             EngineTableSource,
         )
         from provisa.federation.strategy import engine_attaches
+        from provisa.jdbc_source.attach import reach_type
 
         stype = _source_type(source)
         pools = getattr(state, "source_pools", None)
@@ -413,7 +417,7 @@ class SourceRowLoader:
         return EngineTableSource(
             self._engine,
             ref,
-            in_place=engine_attaches(self._engine, stype),
+            in_place=engine_attaches(self._engine, reach_type(source, self._engine)),
             projection=projection,
             where=landing_where(table, lambda: self._engine.dialect),  # REQ-2062
         )
@@ -1963,6 +1967,8 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
                 {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
             ],
             rows_path=rows_path,
+            # A connection is read at the page size its registration priced.
+            limit=state.config.graphql_remote.max_list_items if rows_path else None,
             error_policy=request["error_policy"],
         )
         # A list of IDs answers null for an ID it does not know.
@@ -1971,7 +1977,9 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
     return _load
 
 
-def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> AdapterLoader:
+def make_graphql_remote_loader(
+    gql_sources: dict[str, Any], max_rows: int, page_size: int
+) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1980,7 +1988,8 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
     ``gql_sources`` maps source_id → a registration dict (``url``, ``auth``, ``tables``); each table
     carries its ``field_name``/``sql_name`` and ``columns`` (a column's ``gql_selection`` overrides
     its name for nested object fields). A table with no matching registration raises
-    :class:`UnsupportedSourceFetch`."""
+    :class:`UnsupportedSourceFetch`. ``page_size``: the rows a page of a connection table asks
+    for -- ``graphql_remote.max_list_items``, the size its registration priced its query at."""
 
     def _request(source: Any, table: Any) -> dict:
         return _graphql_remote_request(gql_sources, source, table)
@@ -2000,6 +2009,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
             request["columns"],
             request["rows_path"],
             table=f"{source.id}.{table.table_name}",
+            page_size=page_size,
             # REQ-318: the table's own bound where it set one (registry row), else the operator's.
             max_rows=connection_max_rows(table.pagination, max_rows),
             error_policy=request["error_policy"],

@@ -53,15 +53,16 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Run unit tests
-        # faulthandler_timeout: a test still running after five minutes has every thread's stack
-        # written to the log, so a run that stops making progress names the test it stopped in.
+        # --timeout: a test still running after five minutes fails by name and the shard goes on,
+        # instead of holding it to the job's limit and being cancelled with no test named.
+        # faulthandler_timeout: at the same moment every thread's stack is written to the log.
         env:
           PYTHONPATH: scripts/ci
           PROVISA_COLLECTED_IDS: ${{ github.workspace }}/ids.txt
           SHARD: ${{ matrix.shard }}/4
         run: |
           mapfile -t files < <(python3 scripts/ci/unit_shard.py files "$SHARD")
-          uv run pytest -p unit_shard "${files[@]}" --no-cov -q -n auto -o faulthandler_timeout=300 --junitxml=unit-junit.xml
+          uv run pytest -p unit_shard "${files[@]}" --no-cov -q -n auto --timeout=300 -o faulthandler_timeout=300 --junitxml=unit-junit.xml
 
       - uses: actions/upload-artifact@v4
         if: always()

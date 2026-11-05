@@ -33,6 +33,7 @@ _ROOT = Path(provisa.__file__).parent
 # (module, function) → why it reads a ``visible_to`` list.
 _NOT_COLUMN_VISIBILITY: dict[tuple[str, str], str] = {
     ("security/rights.py", "column_served"): "the rule itself",
+    ("security/inheritance.py", "expand_meta_grants"): "writes meta's grants at the build",
     ("api/admin/schema_query.py", "_sees_metric"): "a metric's grant",
     ("api/flight/catalog.py", "role_sees_metric"): "a metric's grant",
     ("api/mcp/tools.py", "_visible_metrics"): "a metric's grant",

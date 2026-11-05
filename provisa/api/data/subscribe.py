@@ -31,6 +31,7 @@ from fastapi.responses import StreamingResponse
 
 from provisa.api.data.stream_end import ending_by_name, new_subscription_id
 from provisa.api.errors import ApiError
+from provisa.api.request_timeout import outlive_deadline
 from provisa.kafka.avro_registry import RegistrySettings, SchemaRegistry, SchemaRegistryRefusal
 
 
@@ -518,6 +519,7 @@ async def subscribe(
             finally:
                 engine.unsubscribe(query_id, key, queue)
 
+        outlive_deadline()
         return StreamingResponse(
             _release_slot_when_done(_live_event_stream(), state, slot),
             media_type="text/event-stream",
@@ -582,6 +584,7 @@ async def subscribe(
             except asyncio.CancelledError:
                 pass
 
+    outlive_deadline()
     return StreamingResponse(
         _release_slot_when_done(wrapped_generator(), state, _sse_slot),
         media_type="text/event-stream",

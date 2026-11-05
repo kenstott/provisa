@@ -52,9 +52,9 @@ naming:
 roles:
 # Reads the vault: the satellites of European customers, their personal data masked.
 - id: analyst_eu
-  parents: [viewer]
+  parents: [analyst]
   description: "An analyst in the EU: queries orders, the CRM and the vault, and sees only European customers."
-  capabilities: [query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [orders, crm, vault]
 server:
   limits:

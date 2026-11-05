@@ -137,6 +137,7 @@ paths = [
     "provisa/reference_library/*",
 ]
 tests = [
+    "tests/integration/test_banksecrecy_demo.py",
     "tests/integration/test_cloudpolicy_demo.py",
     "tests/integration/test_data_product_edges_e2e.py",
     "tests/integration/test_data_profiler_e2e.py",
@@ -236,7 +237,7 @@ tests = ["tests/integration/test_grpc_*.py"]
 [surfaces.mcp]
 wider = "compiler"
 paths = ["provisa/api/mcp/*"]
-tests = ["tests/integration/test_mcp_*.py"]
+tests = ["tests/integration/test_agentdata_demo.py", "tests/integration/test_mcp_*.py"]
 
 [surfaces.rest]
 wider = "compiler"
@@ -319,6 +320,10 @@ tests = ["tests/integration/test_file_glob_*.py", "tests/integration/test_files_
 [sources.firebird]
 tests = ["tests/integration/test_firebird_source_e2e.py"]
 
+[sources.jdbc-source]
+paths = ["provisa/jdbc_source/*"]
+tests = ["tests/integration/test_jdbc_source_*.py"]
+
 [sources.google-sheets]
 paths = ["provisa/google_sheets/*"]
 tests = ["tests/integration/test_google_sheets_source_e2e.py"]
@@ -354,6 +359,7 @@ paths = ["provisa/kafka/*"]
 tests = [
     "tests/integration/test_change_events_kafka_e2e.py",
     "tests/integration/test_kafka_*.py",
+    "tests/integration/test_push_listener_survives_broker.py",
 ]
 
 [sources.mariadb]

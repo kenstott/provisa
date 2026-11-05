@@ -156,6 +156,18 @@ def test_two_tables_combined_outside_a_relationship_are_refused(shape):
     assert said, shape
 
 
+def test_a_trail_check_a_client_writes_is_held_to_the_rule():
+    """Only a walk's trail check the graph compiler wrote is exempt (provisa.compiler.walk_checks):
+    the same shape written by a client relates its rows by a non-equality and is refused."""
+    said = _v002(
+        "WITH RECURSIVE w AS (SELECT c.id, '|' || CAST(c.id AS TEXT) || '|' AS trail "
+        "FROM customers c UNION ALL SELECT v.id, w.trail || CAST(v.id AS TEXT) || '|' "
+        "FROM w JOIN visits v ON v.customer_id = w.id "
+        "WHERE POSITION('|' || CAST(v.id AS TEXT) || '|' IN w.trail) = 0) SELECT * FROM w"
+    )
+    assert said
+
+
 @pytest.mark.parametrize("shape", list(_OUTSIDE))
 def test_a_role_that_may_ignore_relationships_is_not_held_to_them(shape):
     assert _v002(_OUTSIDE[shape], bypass_relationship_guard=True) == []

@@ -154,9 +154,9 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
     from graphql import FieldNode, OperationDefinitionNode, visit
     from graphql.language import Visitor
 
-    from provisa.security.rights import MissingDomainCapability
+    from provisa.security.rights import ListedOnly, MissingDomainCapability
 
-    if not ctx.missing_capability:
+    if not ctx.missing_capability and not ctx.listed_only:
         return
 
     class _Names(Visitor):
@@ -165,6 +165,9 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
                 domain = ctx.missing_capability.get(candidate)
                 if domain is not None:
                     raise MissingDomainCapability(ctx.role_id or "", domain)
+                listed = ctx.listed_only.get(candidate)
+                if listed is not None:
+                    raise ListedOnly(ctx.role_id or "", listed)
 
     for definition in document.definitions:
         if isinstance(definition, OperationDefinitionNode):

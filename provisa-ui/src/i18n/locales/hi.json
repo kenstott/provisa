@@ -9,7 +9,9 @@
     "identity": "पहचान",
     "discardTitle": "अपने बदलाव छोड़ दें?",
     "discardBody": "{{what}} में किए गए बदलाव सहेजे नहीं गए हैं।",
-    "discard": "छोड़ें"
+    "discard": "छोड़ें",
+    "deleting": "हटाया जा रहा है…",
+    "deleteFailed": "नहीं हटाया गया: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Provisa API तक नहीं पहुँच सके।",

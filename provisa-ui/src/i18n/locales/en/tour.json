@@ -79,16 +79,16 @@
       },
       "step2": {
         "title": "Register a source",
-        "description": "➕ New connections start with this button: PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and the rest of the 73 connectors."
+        "description": "➕ New connections start with this button: PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and the rest of the 77 connectors."
       },
       "step3": {
-        "title": "73 source types, 14 categories",
+        "title": "77 source types, 14 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code Resolvers, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "stepBuildSource": {
-        "title": "A source, added live",
-        "description": "The picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created the source. The new <strong>supplies</strong> source reads that file in place.",
-        "acting": "Adding a source"
+        "title": "A source, filled in",
+        "description": "The picker opened with its whole list, <strong>Parquet File</strong> was chosen and the form was filled in with the file's address (<code>supplies.parquet</code>). That is all a file source needs. This is only a look at the form: Next presses <strong>Cancel</strong>, and nothing is saved.",
+        "acting": "Filling in a source"
       },
       "step4": {
         "title": "Everything becomes a table",
@@ -872,13 +872,9 @@
         "title": "Where a mart column comes from",
         "description": "The lineage of the mart's columns traces each one back through the point-in-time view and the satellites to the source field it came from."
       },
-      "datavaultAnalyst": {
-        "title": "An analyst's view",
-        "description": "Next, the SQL explorer runs as the European analyst. Personal data lives in the satellites, so that's where it's governed."
-      },
       "datavaultMasked": {
         "title": "Masked where the personal data is",
-        "description": "As the analyst, the CRM satellite shows only European customers. Their contacts are withheld, and the names in their emails and the digits of their phone numbers are hidden. The hubs and links stay readable, so the analyst can still join on them."
+        "description": "The SQL explorer now runs as the European analyst. Personal data lives in the satellites, so that's where it's governed. As the analyst, the CRM satellite shows only European customers. Their contacts are withheld, and the names in their emails and the digits of their phone numbers are hidden. The hubs and links stay readable, so the analyst can still join on them."
       },
       "datavaultRecap": {
         "title": "What you saw",
@@ -937,16 +933,32 @@
         "description": "You saw the insurer's own data matched by county and crop year to public losses, weather and yields, all in one governed model. One view answers whether the weather explains the losses, in SQL, GraphQL and REST. The notebook measures it. The weather explains 54% of the variation in loss ratio, and across today's book a 2012-like season has an expected loss ratio of 1.75."
       },
       "retailScenario": {
-        "title": "One group, two regions",
+        "title": "A Tale of Two Regions",
         "description": "A retail group runs an EU and a US subsidiary as one business. The tour asks whether it can do that without breaking GDPR. Each subsidiary keeps its own database. This is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
       },
+      "retailPlatformRegions": {
+        "title": "Regions start in one config",
+        "description": "The platform's config declares the regions, here the EU and the US, and grants them to the organization. Each region has its own data processing: its own engine and its own stores. The EU's purpose is residency, for customer data that must stay in the European Union. In this sandbox you can read this page but not change it."
+      },
+      "retailPurposes": {
+        "title": "What a purpose says",
+        "description": "The legend explains each purpose. A purpose says why a region exists. It does not move data or decide who reads it. Two layers do that, and the tour shows each: homing, the engine's rules about where data lives, and security, the data steward's rules about who reads what."
+      },
+      "retailOrgRegions": {
+        "title": "The organization's regions and stores",
+        "description": "The organization holds both regions. Each row names the stores used there: the region's engine, and where its replicas, views, cache, build state and record are kept. EU data is processed with the EU's own stores."
+      },
+      "retailEngines": {
+        "title": "One engine per region",
+        "description": "Federation has a tab for each region, and each region runs its own engine. So one config gives two data processing environments. You are on the US node. It reads EU data only through the EU's store, never from a copy of its own."
+      },
       "retailRegions": {
-        "title": "One definition of every region",
-        "description": "The US subsidiary's database, homed in the US. The model declares both regions and says, once, where every table lives and which views are built where. A second Provisa node runs in the EU: it copies the EU tables into the EU's own store and builds the EU views there. You are on the US node, which reads EU data only from that EU store, so every cross-border rule is applied in one place."
+        "title": "Homing: each source names its home",
+        "description": "The US subsidiary's database is homed in the US, and the EU subsidiary's in the EU. Homing is the engine's rule about where data lives. A homed table's replicas and cache stay in its home region, and other regions reach it only through that region."
       },
       "retailEuCustomers": {
         "title": "An EU table, homed in the EU",
-        "description": "The EU customers. The table names the EU as its region, so its rows are copied only into the EU's store and computed only there. Readers elsewhere get them through the EU's views or not at all."
+        "description": "The EU customers. The table's region is the EU, so its replicas and cache live only in the EU's store. Homing decides where the rows live. It does not decide who may read them. That is the next layer."
       },
       "retailRequests": {
         "title": "Data subject requests",
@@ -957,12 +969,12 @@
         "description": "A request joins to each subsidiary's customers by email address. That is how one request finds the same person in both."
       },
       "retailAsAnalyst": {
-        "title": "As a group analyst",
-        "description": "Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst."
+        "title": "The data steward's rules, as a group analyst",
+        "description": "The second layer is security: the data steward's rules decide what each reader gets, by role and by the reader's region. They are applied in the home region, before anything leaves it. Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst."
       },
       "retailGroupView": {
         "title": "Group reporting, EU customers pseudonymised",
-        "description": "Every loyalty customer of the group. US customers appear as they are; EU customers appear by a pseudonym the EU computed, with no name or address. The EU part was read from the EU's store, and the record of this query names the EU as the region that answered."
+        "description": "Every loyalty customer of the group. US customers appear as they are. EU customers appear by a pseudonym, because the steward's rule says a reader outside the EU gets no name or address. The EU applied that rule before its rows left, and the record of this query names the EU as the region that answered."
       },
       "retailGroupGraphql": {
         "title": "The same, in GraphQL",
@@ -972,13 +984,9 @@
         "title": "Back to every role",
         "description": "Next, the role picker switches back to <strong>All</strong>."
       },
-      "retailAsMarketing": {
-        "title": "As EU marketing",
-        "description": "Next, the SQL explorer runs as marketing_eu."
-      },
       "retailAudience": {
         "title": "Only customers who agreed",
-        "description": "EU marketing reads the EU customers who agreed to marketing, and only them. The view is built in the EU from EU rows."
+        "description": "The SQL explorer now runs as <strong>marketing_eu</strong>. The steward's rule lets EU marketing read the EU customers who agreed to marketing, and only them. The view is built in the EU from EU rows."
       },
       "retailAsDpo": {
         "title": "As the data protection officer",
@@ -1006,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "The sender, revealed in the EU",
-        "description": "The same queue. The sender column's mask list reveals the sender only to a reviewer who also holds region__eu; everyone else reads it withheld. It is one grant, reviewer and region__eu, with no role made for the combination."
+        "description": "The same queue. The steward's mask on the sender column reveals the sender only to a reviewer whose assigned region is the EU (region__eu). Everyone else reads it withheld. What a reader gets depends on their region as well as their role, and no role was made for the combination."
       },
       "retailAsAdmin": {
         "title": "Back to every role",
@@ -1022,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "What you saw",
-        "description": "One model defined both regions: where each table lives, which views are built where, and who reads what. Group reporting read EU customers pseudonymised, EU marketing read only consenting customers, and a request for access and an erasure were each one query. The insider review revealed a sender only in the EU, and every read is in one record."
+        "description": "One config granted two regions, each with its own engine and stores: two data processing environments. Homing kept the EU tables, their replicas and their cache in the EU. The data steward's rules decided what each reader got, by role and by the reader's region, and the EU applied them before anything left it. Group reporting read EU customers pseudonymised, EU marketing read only consenting customers, access and erasure were each one query, the sender was revealed only to a reviewer in the EU, and every read is in one record."
       },
       "provisioningScenario": {
         "title": "What this demo is",
@@ -1140,13 +1148,9 @@
         "title": "Relationships, declared once",
         "description": "<strong>OF_PRODUCT</strong> joins an order line in PostgreSQL to its product in MongoDB. With PLACED_BY, HAS_ITEM and SHIPPED_AS, these four relationships are declared once, and both the app and the BI tool read through them."
       },
-      "storefrontAsCustomer": {
-        "title": "Signed in as the customer",
-        "description": "The app sends its queries as the <strong>customer</strong> role, whose row filters limit every answer to the signed-in customer's own orders. Next, the role picker switches to <strong>customer</strong>, so the query below runs just as the app runs it."
-      },
       "storefrontScreen": {
         "title": "The app's one query",
-        "description": "The order-history screen sends this one nested GraphQL query for each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
+        "description": "The app sends its queries as the <strong>customer</strong> role, whose row filters limit every answer to the signed-in customer's own orders. The role picker is now on <strong>customer</strong>. The order-history screen sends this one nested GraphQL query for each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
       },
       "storefrontApp": {
         "title": "The screen it feeds",
@@ -1156,13 +1160,9 @@
         "title": "The same orders over JSON:API",
         "description": "A client that prefers JSON:API asks for the same orders, still as the customer, with their lines and shipments included. Each order links the lines and the shipment it includes, and a line's id is its composite key."
       },
-      "storefrontAnalyst": {
-        "title": "Now as the analyst",
-        "description": "The BI side reads as <strong>analyst</strong>: it sees every order, but no customer's email. Next, the run-as picker switches to <strong>analyst</strong>."
-      },
       "storefrontAnalystSql": {
         "title": "The analyst's SQL",
-        "description": "Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email masked, as the analyst reads it."
+        "description": "The BI side reads as <strong>analyst</strong>: it sees every order, but no customer's email. The SQL explorer now runs as <strong>analyst</strong>. Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email masked, as the analyst reads it."
       },
       "storefrontBi": {
         "title": "The BI dashboard",
@@ -1188,13 +1188,9 @@
         "title": "The tables, as the app knew them",
         "description": "The four tables came over with the names the app uses. <strong>customers</strong> keeps Hasura's custom names <strong>givenName</strong> and <strong>familyName</strong>, the products table keeps its root name <strong>catalog</strong>, and each column carries the roles that may read it, from the select permissions."
       },
-      "hasuramigrationAsAna": {
-        "title": "Signed in as Ana",
-        "description": "Ana is a customer. Her token carried <strong>x-hasura-user-id: 1</strong>, and Provisa reads that claim as the session value <strong>hasura_user_id</strong>, which the imported row rules compare against. Next, the role picker switches to <strong>ana</strong>, so the queries below run just as the storefront runs them for her."
-      },
       "hasuramigrationMyOrders": {
         "title": "The order history, reshaped",
-        "description": "The storefront's order-history query, reshaped once for Provisa. The root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
+        "description": "Ana is a customer. Her token carried <strong>x-hasura-user-id: 1</strong>, and Provisa reads that claim as the session value <strong>hasura_user_id</strong>, which the imported row rules compare against. The role picker is now on <strong>ana</strong>. The storefront's order-history query, reshaped once for Provisa. The root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
       },
       "hasuramigrationProfile": {
         "title": "A read by key",
@@ -1208,21 +1204,13 @@
         "title": "One more relationship",
         "description": "<strong>BUYS_FOR</strong> joins a customer to their Salesforce account, approved like the relationships the import carried. From here the account is one field away from every customer, in every interface, under every role's rules."
       },
-      "hasuramigrationAsSupport": {
-        "title": "The support desk",
-        "description": "Support staff can read every order and every customer, as their Hasura permissions allowed. Next, the role picker switches to <strong>support</strong>, and the support desk's order screen runs as they run it."
-      },
       "hasuramigrationSupportScreen": {
         "title": "Orders with their accounts",
-        "description": "The support desk's order screen, reshaped, now shows the Salesforce account beside each order's customer, with its industry and city, in the same request. Customers without an account show none."
-      },
-      "hasuramigrationAnalyst": {
-        "title": "The analyst",
-        "description": "Analysts can read order totals and account links, but no names or emails, and never cancelled orders. Those are the row rule and column lists the import carried over. Next, the role picker switches to <strong>analyst</strong>."
+        "description": "Support staff can read every order and every customer, as their Hasura permissions allowed. The role picker is now on <strong>support</strong>. The support desk's order screen, reshaped, now shows the Salesforce account beside each order's customer, with its industry and city, in the same request. Customers without an account show none."
       },
       "hasuramigrationByIndustry": {
         "title": "Revenue by industry",
-        "description": "One SQL statement over the store and Salesforce gives revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
+        "description": "Analysts can read order totals and account links, but no names or emails, and never cancelled orders. Those are the row rule and column lists the import carried over. The SQL explorer now runs as <strong>analyst</strong>. One SQL statement over the store and Salesforce gives revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
       },
       "hasuramigrationRecap": {
         "title": "What you saw",
@@ -1332,13 +1320,9 @@
         "title": "What an analyst sees",
         "description": "Signed in, an analyst of bidder A sees what bidder_a is granted: the aggregate views, the profiles, the masked sample and the seller's records without a single customer identity. No customer's name, and no business or deal name from the CRM, is there to read."
       },
-      "dataroomBidder": {
-        "title": "Now as bidder A",
-        "description": "The next statements run as <strong>bidder_a</strong>, exactly as the analysts' do."
-      },
       "dataroomProfile": {
         "title": "The profile of the invoices",
-        "description": "Each column of the invoices table as the profiler found it, with its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
+        "description": "These statements run as <strong>bidder_a</strong>, exactly as the analysts' do. Each column of the invoices table as the profiler found it, with its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
       },
       "dataroomCounts": {
         "title": "Customer counts",
@@ -1406,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Every sensitive column is covered",
-        "description": "The same check, read now from the model, lists each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers."
+        "description": "Sensitive coverage is a standard report on the Reports page: each sensitive column, its tags, and whether a fake covers it, read now from the model. Every one is covered, so pre-prod opens and answers."
+      },
+      "testdataPollyProposes": {
+        "title": "A fake proposed from the profile",
+        "description": "Polly is asked which fake it would propose for customers.email. It reads the column's latest profile run, sees that the values are email addresses, and proposes the email fake. The model already declares one, so the proposal checks that choice against the data. Nothing is saved until someone chooses to."
       },
       "testdataProd": {
         "title": "Production: the real rows",
@@ -1676,21 +1664,13 @@
         "title": "Built at each close",
         "description": "The end-of-day totals are a view materialized in the warehouse on the bank's calendar, which closes at 18:00 London time. The view is one GROUP BY over the ledger's one table, so its build runs whole at the ledger and only the grouped rows come back. It inherits the ledger's versions and needs no history settings of its own. Each day was recorded at its own close. 1 and 2 October were recorded again later, when their restatements arrived."
       },
-      "bankingAsOps": {
-        "title": "As operations",
-        "description": "The next query runs as operations, who drill into postings under the ledger's own rules. They see no posting to a staff account, and every counterparty is withheld."
-      },
       "bankingDashboard": {
         "title": "The dashboard, over GraphQL",
-        "description": "London's totals for 1 October, each with the postings behind it nested inside. One request reads the totals from the warehouse and the postings from the ledger, joined along the relationship you just saw."
-      },
-      "bankingAsAnalyst": {
-        "title": "As a reporting analyst",
-        "description": "The SQL that follows runs as the bank's reporting analysts. They read the end-of-day totals and the five ledger columns the totals are built from: business date, branch, product, currency and amount. They never see an account, a counterparty or a holder."
+        "description": "This query runs as operations, who drill into postings under the ledger's own rules. They see no posting to a staff account, and every counterparty is withheld. London's totals for 1 October, each with the postings behind it nested inside. One request reads the totals from the warehouse and the postings from the ledger, joined along the relationship you just saw."
       },
       "bankingDay": {
         "title": "One day's totals",
-        "description": "1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
+        "description": "This SQL runs as the bank's reporting analysts. They read the end-of-day totals and the five ledger columns the totals are built from: business date, branch, product, currency and amount. They never see an account, a counterparty or a holder. 1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
       },
       "bankingReported": {
         "title": "What was reported",
@@ -1772,13 +1752,9 @@
         "title": "Who may see which customers",
         "description": "The customers table carries the rules. A West support agent reads only the West's customers and their orders, with email addresses masked and no prices. The BI analyst reads every region and what the orders came to, but no email address at all."
       },
-      "agentdataSupportRole": {
-        "title": "Act as a West support agent",
-        "description": "The agent acts as the role in the header. Next picks the West support agent, so every tool call the agent makes runs as that role."
-      },
       "agentdataSupportAsks": {
         "title": "The support agent's question",
-        "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked, which is all the role is served."
+        "description": "The agent acts as the role in the header, now the West support agent, so every tool call it makes runs as that role. The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked, which is all the role is served."
       },
       "agentdataExplain": {
         "title": "What ran",
@@ -1799,6 +1775,159 @@
       "agentdataConnect": {
         "title": "Your own agent, the same server",
         "description": "This is the server the explorer's agent used. Paste this config into Claude Desktop, or point any MCP client at the URL, and your own agent gets the same governed tools, held to the same rules."
+      },
+      "auditScenario": {
+        "title": "What this demo is",
+        "description": "An audit firm audits nine nonprofits that spend federal grants. Before fieldwork, the partner asks whether each client's recorded federal awards match what the government's records show paying it. The clients' schedules and award records are in the firm's own database; the Single Audit filings and federal obligations are public. The clients and their figures are made up; the programs, counties and public data are real."
+      },
+      "auditAnswer": {
+        "title": "Every client's open items",
+        "description": "The view readiness answers the same question for every client at once, and is kept stored. It sets each schedule line beside its award records and the public record of the program, and lists the items each readiness memo needs."
+      },
+      "auditExample": {
+        "title": "Open items in GraphQL",
+        "description": "The readiness memo's items as a GraphQL query, for the firm's own engagement tools."
+      },
+      "auditRecap": {
+        "title": "What you saw",
+        "description": "The firm's own client records and the government's public filings and obligations, joined in one governed model. One stored view answers the partner's question for every client. Each team reads only its own clients, and every query is recorded."
+      },
+      "auditGovdata": {
+        "title": "The public data",
+        "description": "The government data comes from AskAmerica: every award line of the 2023 Single Audits filed with the Federal Audit Clearinghouse in Vermont, New Hampshire and Maine, each set beside what USAspending obligated to the same recipient under the same program, and USAspending's obligations by county and program."
+      },
+      "auditSchedule": {
+        "title": "The client's schedule",
+        "description": "Each client's draft Schedule of Expenditures of Federal Awards for 2023: one line for each award, with its Assistance Listing, whether it came direct from a federal agency or through a state agency, and what the client says it spent."
+      },
+      "auditNotices": {
+        "title": "The award records",
+        "description": "The federal award records each client holds for its direct awards: one row for each obligation, the federal fiscal year it was made in and the amount. A multi-year award may have been obligated before the year it was spent."
+      },
+      "auditFiled": {
+        "title": "The same match, on public filings",
+        "description": "Every award line the three states' auditees filed for 2023, beside what USAspending recorded obligating to them under the same program that year. An unmatched line is not by itself a gap. A passed-through line reached the auditee through a state agency, so no federal award names it and none is expected to match; and an award obligated in an earlier year shows no obligation in the audit year. The unmatched lines are kept, not hidden."
+      },
+      "auditCounty": {
+        "title": "Federal money by county",
+        "description": "What USAspending recorded obligating in each client's county in federal fiscal 2023, by program, counted where the work is done. It shows whether a program the client schedules is paying out in its county at all."
+      },
+      "auditRecordedAs": {
+        "title": "Schedule to award records",
+        "description": "This relationship joins each schedule line to its award records by the firm's award reference. A line with no record behind it, and a record with no line, are what the auditor looks for."
+      },
+      "auditCountyJoin": {
+        "title": "Clients to their counties",
+        "description": "Each client's county code joins it to USAspending's county obligations, and its Assistance Listings join its schedule to the public filings of the same program in its state."
+      },
+      "auditTerms": {
+        "title": "In an auditor's words",
+        "description": "The ontology explains the terms of a Single Audit: the schedule, the Assistance Listing, the pass-through entity, the obligation, a timing difference, a missing award and the readiness memo."
+      },
+      "auditRequest": {
+        "title": "The partner's request",
+        "description": "The partner asks the analyst to get Brindlewood Community Health ready for fieldwork. This is its draft schedule: five federal programs, three of them direct awards. Next, the analyst works through the request with Polly."
+      },
+      "auditPollySchedule": {
+        "title": "Which awards it records",
+        "description": "The analyst starts with what the client records. Polly lists the awards on its 2023 schedule and shows the SQL it ran. Its answer was generated when the demo was built and is stored with it."
+      },
+      "auditPollyRecords": {
+        "title": "What the records show paying it",
+        "description": "Next, the government's side: what the client's federal award records show obligated to it in federal fiscal 2023. One of the obligations is for a program the schedule does not list."
+      },
+      "auditPollyDiffer": {
+        "title": "Where they differ",
+        "description": "Polly sets the schedule beside the award records and lists every award where the two do not agree, with the query behind its answer."
+      },
+      "auditPollyKinds": {
+        "title": "Timing or missing",
+        "description": "A timing difference is an award obligated in an earlier year and spent this year, which needs only an explanation. A missing award is a direct line with no federal record behind it, which needs a correction. Polly sorts the differences into the two kinds."
+      },
+      "auditPollyMemo": {
+        "title": "The readiness memo",
+        "description": "Last, the memo: each item the client has to explain or correct before fieldwork starts, from the timing differences to the award its schedule leaves out."
+      },
+      "auditPublic": {
+        "title": "The pattern on public filings",
+        "description": "The same match, run on the public filings of the three states. These are the programs whose direct award lines most often have no USAspending obligation in the audit year. They are shown as they are, and they show why an unmatched line is a question for the auditor rather than an error."
+      },
+      "auditAsTeam": {
+        "title": "As the Maine team",
+        "description": "Run as the Maine engagement team, the same view returns only the Maine team's three clients. Row rules on each table and on the view keep every team to its own engagements. The partner sees them all."
+      },
+      "auditLineage": {
+        "title": "Where each figure comes from",
+        "description": "The lineage traces each column of the answer back through the view to the firm's tables and the public data, so a reviewer can see where every figure in the memo came from."
+      },
+      "auditRest": {
+        "title": "The same answer over REST",
+        "description": "The view is also a REST endpoint, grouped by finding and summed on the server, so a workpaper spreadsheet can read it over HTTP."
+      },
+      "banksecrecyScenario": {
+        "title": "A bank reads a US law",
+        "description": "A community bank must report cash over $10,000 under the Bank Secrecy Act. This demo reads the rule itself from its public address, finds the terms it uses, grounds them on the bank's data, and then asks by concept: which cash needs a currency transaction report, and who is structuring? It starts with the bank's core system, read live where it is."
+      },
+      "banksecrecyCash": {
+        "title": "Cash at the windows",
+        "description": "Every cash deposit and withdrawal at a teller's window: the account, the branch, the teller, the time, and the business day it posted to. Cash taken after the 17:00 cutoff posts to the next business day."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "On whose behalf",
+        "description": "Each transaction names who stood at the window and whose cash it is. When an employee or a relative brings cash in, it counts toward the account holder's total, which is how the law counts it."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Read the law from its public address",
+        "description": "Find terms reads a document from its address. Here it is 31 CFR 1010.311 on eCFR's official API. A scan asks the AI model about every passage and takes minutes, so the tour stopped this one. The same scan ran when the demo was built.",
+        "acting": "Typing the regulation's address and starting a scan"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "The terms in the rule",
+        "description": "The scan done ahead: each candidate term with the passage it comes from. A financial institution reports each transaction in currency of more than $10,000. Terms the glossary already holds are offered as merges."
+      },
+      "banksecrecyAggregation": {
+        "title": "The aggregation rule",
+        "description": "31 CFR 1010.313 is where multiple transactions and on behalf of come from: cash by or on behalf of one person, over $10,000 in one business day, is treated as a single transaction, and every branch is one institution. Night deposits count on the next business day."
+      },
+      "banksecrecyDefinitions": {
+        "title": "The definitions it uses",
+        "description": "The rule's words are defined in 31 CFR 1010.100: person, business day, financial institution, structuring. Each definition is its own passage, so each term is offered with the paragraph that defines it."
+      },
+      "banksecrecyLibrary": {
+        "title": "Kept in the reference library",
+        "description": "The demo's build kept each scanned document in the reference library, so the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer."
+      },
+      "banksecrecyGrounded": {
+        "title": "The law's words, grounded",
+        "description": "Transaction in currency is the regulation's term. The bank's cash transaction is a kind of it, so the term reaches the cash_transactions table. Person reaches customers the same way, and a financial institution reaches the bank's branches."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Business day, on its column",
+        "description": "The regulation's business day is the day a bank posts a transaction to the customer's account. The bank's business_day column holds exactly that, so the term holds the column itself."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Which cash needs a report? As a teller",
+        "description": "Asked by concept: cash in, or cash out, of more than $10,000 by or on behalf of one person on one business day, the multiple transactions counted as one across accounts and branches. A teller sees the reports due, with account numbers and tax ids masked."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "The same question, as compliance",
+        "description": "The compliance officer runs the same question and sees account numbers and tax ids in full, as the report needs them. Dana Whitmore's total includes cash brought in on her behalf by someone else."
+      },
+      "banksecrecyStructuring": {
+        "title": "Who is structuring?",
+        "description": "Deposits just under $10,000, three or more times, across branches and days. None of them needed a report on its own. Victor Hale went to three branches in a week, and Marcus Reed's two deposits on one day needed a report together. Only compliance sees this view."
+      },
+      "banksecrecyExample": {
+        "title": "The same answer in GraphQL",
+        "description": "The reports due, as an API call. Each surface reads the same governed view, with the same masks for the same role."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Asked in plain words",
+        "description": "Compliance asks Polly in plain words: which cash needs a currency transaction report? Polly finds the governed view the concept reaches and answers from it, so it names the same people the SQL and the GraphQL returned. Nobody had to know the view's name."
+      },
+      "banksecrecyRecap": {
+        "title": "What you saw",
+        "description": "The law was read from its public address, its terms were found and grounded on the bank's tables, and the bank asked by concept. The currency transaction report reaches the data through its multiple transactions, and each role saw what it may see."
       }
     },
     "status": {
@@ -1869,7 +1998,7 @@
         "summary": "Does weather explain the losses in a crop insurer's portfolio? Its own farms, policies and claims, joined by county and crop year to the USDA's losses by cause, NOAA's weather and NASS's yields, answer it in SQL, GraphQL and REST."
       },
       "retail": {
-        "title": "One group, two regions",
+        "title": "A Tale of Two Regions",
         "summary": "A retail group with an EU and a US subsidiary run as one business under GDPR: EU data stays in the EU, group reporting reads it pseudonymised, and access, erasure, insider review and audit are each one query."
       },
       "provisioning": {
@@ -1923,6 +2052,14 @@
       "agentdata": {
         "title": "Give an agent your data",
         "summary": "Can an AI agent be given a retailer's order data and held to what its user may see? The MCP explorer shows the agent as a support agent and as an analyst: different rows and columns, emails masked, and the governed SQL behind each answer."
+      },
+      "audit": {
+        "title": "Single Audit readiness",
+        "summary": "Do a nonprofit client's recorded federal awards match what the government's records show paying it? An audit firm's client schedules, joined to Single Audit filings and USAspending obligations, answer it."
+      },
+      "banksecrecy": {
+        "title": "Cash reports read from the Bank Secrecy Act",
+        "summary": "A bank reads the Bank Secrecy Act's cash reporting rule from its official public address, finds its terms and grounds them on its own tables, then asks by concept which cash needs a currency transaction report and who is structuring just under $10,000. The bank and its customers are made up; the regulation is real."
       }
     }
   }

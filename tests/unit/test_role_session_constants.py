@@ -30,7 +30,7 @@ from provisa.core.request_context import (
     set_session_vars,
 )
 from provisa.pgwire._pipeline import _resolve_session_settings
-from provisa.security.inheritance import flatten_role_dicts
+from provisa.security.inheritance import flatten_role_dicts, with_own_domains
 
 
 def _role(**kw: Any) -> Role:
@@ -181,7 +181,8 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "session_vars": {},
         },
     ]
-    roles = {r["id"]: r for r in flatten_role_dicts(stored)}
+    # REQ-2153: the build keeps each role's own domain access beside its reach.
+    roles = {r["id"]: r for r in flatten_role_dicts(with_own_domains(stored))}
     tables = [{"id": 1, "source_id": "pg", "domain_id": "sales", "columns": []}]
     state = RoleState(
         roles=dict(roles),
@@ -366,12 +367,14 @@ def test_the_role_type_carries_its_constants_as_name_value_pairs():
             "parents": [],  # REQ-2155: a stored role always carries it
         },
         detail=True,
-        effective=[],
+        effective={"capabilities": [], "domains": [], "regions": []},
     )
     assert [(p.name, p.value) for p in out.session_vars] == [("tier", "gold"), ("zone", "a")]
     assert (
         _role_from_row(
-            {"id": "seller", "description": "Test role."}, detail=False, effective=[]
+            {"id": "seller", "description": "Test role."},
+            detail=False,
+            effective={"capabilities": [], "domains": [], "regions": []},
         ).session_vars
         is None
     )

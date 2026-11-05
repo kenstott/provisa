@@ -18,7 +18,7 @@
     "byFile": "Bestand",
     "byUrl": "URL",
     "file": "Bestand",
-    "fileHelp": "Een PDF-, Word- (.docx), HTML-, Markdown- of tekstbestand.",
+    "fileHelp": "Een PDF-, Word- (.docx), HTML-, Markdown-, eCFR-XML- (.xml) of tekstbestand.",
     "url": "URL",
     "urlHelp": "Een http(s)-adres. Het document wordt nu opgehaald en opnieuw bij elke vernieuwing.",
     "fieldTitle": "Titel",
@@ -54,6 +54,12 @@
     "needsReembeddingHelp": "Ingesloten met {{model}}, niet met het huidige vectormodel van de organisatie.",
     "reembedDone": "Opnieuw ingesloten documenten: {{n}}",
     "reembedFailedHeading": "Deze documenten konden niet opnieuw worden ingesloten en zijn ongewijzigd:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "Over de referentiebibliotheek",
+    "helpTitle": "Over de referentiebibliotheek",
+    "helpWhat": "Een kleine, gekozen set referentiedocumenten (beleid, regelgeving, contracten, processen), toegevoegd via bestand of URL. Geen documentopslag.",
+    "helpWho": "Polly antwoordt eruit en citeert de passages. AI-agents die via de MCP-server van Provisa zijn verbonden, doorzoeken haar (search_reference_library). 'Termen vinden' leest haar om glossariumtermen en definities voor te stellen.",
+    "helpSees": "Een assistent die voor een rol handelt, gebruikt alleen behouden documenten in domeinen die de rol leest, plus documenten voor de hele organisatie.",
+    "helpEmbedding": "De passages van een document worden bij het toevoegen ingesloten met het embeddingmodel van de organisatie; 'Opnieuw insluiten' is alleen nodig als dat model verandert."
   }
 }

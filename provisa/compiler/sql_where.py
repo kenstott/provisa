@@ -479,32 +479,48 @@ _DIRECTION_SQL = {
 }
 
 
+#: Each direction's reverse, NULLS placement included: a backward page reads its rows this way.
+_REVERSED_DIRECTION = {
+    "asc": "desc",
+    "desc": "asc",
+    "asc_nulls_first": "desc_nulls_last",
+    "asc_nulls_last": "desc_nulls_first",
+    "desc_nulls_first": "asc_nulls_last",
+    "desc_nulls_last": "asc_nulls_first",
+}
+
+
 def _compile_order_by(
     order_by_list: list[dict],
     alias: str | None,
     table_id: int | None = None,
     exposed_to_physical: dict | None = None,
+    reverse: bool = False,
 ) -> str:
     """Compile order_by input list to SQL ORDER BY clause.
 
     Hasura v2 format: each item is {column_name: direction} where direction
     is one of: asc, desc, asc_nulls_first, asc_nulls_last, desc_nulls_first,
-    desc_nulls_last.
+    desc_nulls_last. ``reverse`` writes each direction's reverse (REQ-218: a backward page).
     """
     parts: list[str] = []
     _e2p = exposed_to_physical or {}
+
+    def _dir(direction: str) -> str:
+        return _REVERSED_DIRECTION.get(direction, direction) if reverse else direction
+
     for item in order_by_list:
         for col_name, direction in item.items():
             if isinstance(direction, dict):
                 # Nested relationship order-by: { rel_field: { col: dir } }
                 # Flatten one level — qualify with the relationship field name as alias.
                 for nested_col, nested_dir in direction.items():
-                    sql_dir = _DIRECTION_SQL.get(nested_dir)
+                    sql_dir = _DIRECTION_SQL.get(_dir(nested_dir))
                     if sql_dir is None:
                         raise ValueError(f"Unknown order direction: {nested_dir!r}")
                     parts.append(f"{_q(col_name)}.{_q(nested_col)} {sql_dir}")
                 continue
-            sql_dir = _DIRECTION_SQL.get(direction)
+            sql_dir = _DIRECTION_SQL.get(_dir(direction))
             if sql_dir is None:
                 raise ValueError(f"Unknown order direction: {direction!r}")
             phys_col = (

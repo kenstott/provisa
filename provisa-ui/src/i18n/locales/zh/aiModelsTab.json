@@ -16,7 +16,7 @@
     "role_sql_generation": "SQL 生成",
     "role_table_selection": "表选择",
     "role_mcp_chat": "聊天助手",
-    "role_glossary_term_finding": "在文档中查找术语",
+    "role_glossary_term_finding": "查找术语",
     "vendorLabel": "供应商",
     "modelLabel": "模型",
     "nlHeading": "自然语言查询",

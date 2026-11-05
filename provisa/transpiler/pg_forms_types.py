@@ -51,18 +51,31 @@ def refused(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     return f"CAST(CAST({text} AS INTEGER) AS {sql_type})"
 
 
-def _fails(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
+def fails(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     """A refusal whose message is a constant."""
     return refused(sqlstate, _quoted(message), sql_type)
+
+
+_fails = fails
 
 
 #: Ends the refusal of a value a form cannot answer as PostgreSQL does.
 REFUSED = "does not read this value"
 
 
-def _not_served(function: str, sql_type: str) -> str:
+def not_served(function: str, sql_type: str) -> str:
     """A value this form cannot answer as PostgreSQL does: refused by name, not answered."""
     return _fails("0A000", f"{function} {REFUSED}", sql_type)
+
+
+_not_served = not_served
+
+
+def rint(value: str) -> str:
+    """float8's rint, half to even: ROUND is half away from zero on most dialects."""
+    x = f"CAST({value} AS DOUBLE PRECISION)"
+    half = f"{x} - FLOOR({x}) = 0.5"
+    return f"CASE WHEN {half} THEN 2 * ROUND({x} / 2) ELSE ROUND({x}) END"
 
 
 def _bound(value: str, answer: str, name: str) -> str:
@@ -303,6 +316,12 @@ def _in_range(value: str, sql_type: str, pg_name: str, bits: int) -> str:
         f"THEN {_fails('22003', f'{pg_name} out of range', sql_type)} "
         f"ELSE CAST({value} AS {sql_type}) END"
     )
+
+
+def integer_of(value: str, stem: str) -> str:
+    """``value`` as the integer type ``stem`` names, or PostgreSQL's refusal of one it does not fit."""
+    _, sql_type, pg_name, _, bits = next(row for row in _INTEGERS if row[0] == stem)
+    return _in_range(value, sql_type, pg_name, bits)
 
 
 def _shifted_left(own: str, sql_type: str, bits: int) -> str:
@@ -963,6 +982,8 @@ OPERATORS: tuple[Form, ...] = (
 
 
 #: PostgreSQL's array operators, in the dialect sqlglot writes them for: any other refuses them.
+FORMS_BY_NAME = {form.name: form for form in OPERATORS}
+
 ARRAY_OPERATORS: tuple[Form, ...] = (
     # A NULL element is equal to nothing, so an array holding one is contained in no other.
     Form("arraycontains", "a, b", "a @> b AND ARRAY_POSITION(b, NULL) IS NULL"),
@@ -981,7 +1002,9 @@ DUCKDB_TWEAKS = {
 }
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.
-HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar")))
+HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar"))) | {
+    "width_bucket_numeric"
+}
 #: The forms whose overflow only the engine's own arithmetic raises: they check no range themselves.
 #: date_subtract's AT TIME ZONE is also what sqlglot drops for MySQL.
 OVERFLOW_UNCHECKED = frozenset(form.name for form in (*_numeric_forms(), *_DATED_ARITHMETIC))

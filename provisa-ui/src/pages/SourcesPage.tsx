@@ -57,6 +57,7 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
   BRAND_CARRIER,
+  brandSetupDefaults,
   CATEGORIES,
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
@@ -77,12 +78,14 @@ import { schemaRegistryAuthPayload } from "./sources/schemaRegistryAuth";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceMappingJson } from "./sources/salesforce";
+import { quickbooksMappingJson } from "./sources/quickbooks";
 import { cloudopsMappingJson } from "./sources/cloudops";
 import { sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
 import { COSMOSDB, cosmosHints } from "./sources/cosmosdb";
+import { JDBC_SOURCE, jdbcSourceHints } from "./sources/jdbcSource";
 import { excelHintsOf, filesMappingJson, repeatedNames } from "./sources/excelHints";
 import { KAFKA, kafkaCredentials, kafkaHints } from "./sources/kafka";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
@@ -447,6 +450,7 @@ export function SourcesPage() {
     // for this type (SourceFormFields.tsx), so default straight to it instead of "none".
     setAuthType(type === "hive_s3" ? "aws" : "none");
     setAuthFields({});
+    setBrandSetup(brandSetupDefaults(type));
     resetSpFields();
   };
 
@@ -490,6 +494,7 @@ export function SourcesPage() {
     if (r.kind === "graphql") {
       setGqlNamespace(r.namespace);
       setGqlCacheTtl(r.cacheTtl);
+      setBrandSetup(r.setup);
     } else if (r.kind === "openapi") {
       setOpenapiSpecMode(r.specMode);
       setOpenapiSpecPath(r.specPath);
@@ -620,10 +625,12 @@ export function SourcesPage() {
       const federationHints: Record<string, unknown> =
         form.type === COSMOSDB
           ? cosmosHints(authFields) // REQ-1982: how the Cosmos DB source signs in
-          : form.type === QDRANT
-            ? qdrantHints(authFields) // REQ-1983: whether the Qdrant source reads over gRPC
-            : form.type === KAFKA
-              ? kafkaHints(authFields) // REQ-147: how the Kafka source reaches a secured cluster
+          : form.type === JDBC_SOURCE
+            ? jdbcSourceHints(authFields) // REQ-2191: its URL, dialect and capabilities
+            : form.type === QDRANT
+              ? qdrantHints(authFields) // REQ-1983: whether the Qdrant source reads over gRPC
+              : form.type === KAFKA
+                ? kafkaHints(authFields) // REQ-147: how the Kafka source reaches a secured cluster
               : form.type === WIKIPEDIA
                 ? wikipediaHints(authFields) // REQ-1960: the server makes these the files source's crawl
                 : form.type === "athena"
@@ -778,39 +785,41 @@ export function SourcesPage() {
                         ? JSON.stringify(logsMapping(authFields)) // REQ-1996
                         : form.type === "salesforce"
                           ? salesforceMappingJson(authFields) // REQ-1946
-                          : form.type === "sharepoint"
-                            ? JSON.stringify({
-                                auth_type: spAuthType,
-                                ...(spAuthType === "CERTIFICATE"
-                                  ? {
-                                      certificate_path: spCertPath,
-                                      certificate_password: spCertPassword,
-                                    }
-                                  : {}),
-                                ...(spAuthType === "USERNAME_PASSWORD"
-                                  ? { sp_username: spUsername, sp_password: spPassword }
-                                  : {}),
-                              })
-                            : form.type === "splunk"
+                          : form.type === "quickbooks"
+                            ? quickbooksMappingJson(authFields) // REQ-2197
+                            : form.type === "sharepoint"
                               ? JSON.stringify({
-                                  use_token: splunkAuthMode === "token",
-                                  ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                                  auth_type: spAuthType,
+                                  ...(spAuthType === "CERTIFICATE"
+                                    ? {
+                                        certificate_path: spCertPath,
+                                        certificate_password: spCertPassword,
+                                      }
+                                    : {}),
+                                  ...(spAuthType === "USERNAME_PASSWORD"
+                                    ? { sp_username: spUsername, sp_password: spPassword }
+                                    : {}),
                                 })
-                              : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                                // sheet id (which rides in `database`), so it travels in the mapping like the other
-                                // connectors' extra options.
-                                form.type === "google_sheets"
+                              : form.type === "splunk"
                                 ? JSON.stringify({
-                                    credentials_json: authFields.credentials_json ?? "",
+                                    use_token: splunkAuthMode === "token",
+                                    ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
                                   })
-                                : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                                  // region/endpoint) are a mapping-discriminated config choice read by
-                                  // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                                  // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                                  // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                                  form.type === "hive" || form.type === "hive_s3"
-                                  ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                                  : undefined;
+                                : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                                  // sheet id (which rides in `database`), so it travels in the mapping like the other
+                                  // connectors' extra options.
+                                  form.type === "google_sheets"
+                                  ? JSON.stringify({
+                                      credentials_json: authFields.credentials_json ?? "",
+                                    })
+                                  : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                                    // region/endpoint) are a mapping-discriminated config choice read by
+                                    // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                                    // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                                    // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                                    form.type === "hive" || form.type === "hive_s3"
+                                    ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                                    : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -921,6 +930,8 @@ export function SourcesPage() {
   };
 
   const [gqlNamespace, setGqlNamespace] = useState("");
+  // REQ-1923: what a brand reached at a per-customer address was set up with (BRAND_SETUP).
+  const [brandSetup, setBrandSetup] = useState<Record<string, string>>({});
   const [gqlCacheTtl, setGqlCacheTtl] = useState("300");
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -1120,6 +1131,7 @@ export function SourcesPage() {
                 // is the brand's, and no tables are registered by adding it.
                 source_id: form.id,
                 brand: form.type,
+                setup: brandSetup,
                 namespace: gqlNamespace,
                 domain_id: "",
                 auth: { type: "bearer", token: authFields.token ?? "" },
@@ -1224,6 +1236,8 @@ export function SourcesPage() {
     onOpenapiPreview: handleOpenapiPreview,
     gqlNamespace,
     setGqlNamespace,
+    brandSetup,
+    setBrandSetup,
     gqlCacheTtl,
     setGqlCacheTtl,
     grpcProtoPath,
@@ -1563,11 +1577,13 @@ export function SourcesPage() {
                 }
                 onEdit={() => handleEdit(s)}
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
+                // REQ-2198: resolves once the list is read again without the source; the
+                // panel's Delete closes the panel and says why a failed one did not go through.
                 onDelete={async () => {
                   const result = await deleteSource(s.id);
-                  if (refusal.refused(result, s.id)) return;
-                  if (expanded === s.id) updateExpanded(null);
-                  load();
+                  if (refusal.refused(result, s.id)) return false;
+                  if (!result.success) throw new Error(serverMessage(result, result.message));
+                  await refetchSources();
                 }}
               />
             )}
@@ -1703,6 +1719,7 @@ export function SourcesPage() {
                         return (
                           <React.Fragment key={s.id}>
                             <ListRow
+                              itemKey={s.id}
                               testId={`sources-row-${s.id}`}
                               // The row whose detail the right-hand panel is showing.
                               selected={isExpanded}

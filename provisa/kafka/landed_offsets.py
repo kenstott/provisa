@@ -38,11 +38,18 @@ def landed_group(source_id: str) -> str:
     """The group the bound org's (and environment's) landings of ``source_id``'s tables commit
     where they stopped under: each org lands a topic into its own table, at its own time. Named
     where the org is bound, and handed to what reads the topic onward."""
-    from provisa.core.environments import PROD
     from provisa.core.request_context import active_env, require_current_org
 
-    org, env = require_current_org(), active_env()
-    if env == PROD:
+    return landed_group_of(require_current_org(), active_env(), source_id)
+
+
+def landed_group_of(org: str, env: str | None, source_id: str) -> str:
+    """:func:`landed_group` of org ``org``'s environment ``env`` (None or prod: the org's own),
+    named where that org is not the one bound: a demo sandbox's, recorded as its open copies its
+    template's landed rows (REQ-2049)."""
+    from provisa.core.environments import PROD
+
+    if env is None or env == PROD:
         return f"{LANDED_GROUP_PREFIX}-{org}-{source_id}"
     return f"{LANDED_GROUP_PREFIX}-{org}-{env}-{source_id}"
 
@@ -126,6 +133,23 @@ async def recorded(
         return {tp.partition: o for tp, o in (await _committed(consumer, partitions)).items()}
     finally:
         await consumer.stop()
+
+
+async def carry(
+    bootstrap: str, read_by: str, landed: str, topic: str, *, security: KafkaSecurity = PLAINTEXT
+) -> None:
+    """Record, under the landing group ``landed``, that a landing stopped on ``topic`` where the
+    group ``read_by`` has read to: a copy of the table ``read_by``'s reader keeps, made after this,
+    continues from there (a demo sandbox's of its template's, REQ-2049)."""
+    from aiokafka import TopicPartition  # type: ignore[import-untyped]
+
+    read = await recorded(bootstrap, read_by, topic, security=security)
+    await record(
+        bootstrap,
+        landed,
+        {TopicPartition(topic, p): o for p, o in read.items()},
+        security=security,
+    )
 
 
 async def start_where_landed(

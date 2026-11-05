@@ -328,7 +328,8 @@ the stored one. The file travels in the demo's bundle with the rest of its direc
 demo's first start (a new model store). The bundle build runs it before dumping the stores, so
 the setup's effects are in the dumps from the start.
 
-The file is a list of steps, each one `command`, `refresh`, `profile`, `environment` or `client`:
+The file is a list of steps, each one `command`, `refresh`, `profile`, `scan`, `environment` or
+`client`:
 
 ```yaml
 # demo/named/sonnets/setup.yaml
@@ -366,6 +367,27 @@ steps:
 - client: setup_pulls.py
 ```
 
+A `scan:` step names a document's public `https://` address, or `{url, domains}` with the domains
+the scan's terms are curated in. A demo in domains names them: Find terms refuses a scan with no
+domains there. The step runs the glossary's Find terms on the document, as org_admin: the document joins the reference library, and the org's AI model reads it for
+candidate terms. The step waits until the scan ends; a scan that stops fails the step and says why.
+A scan asks the model call after call for minutes, so a demo scans ahead: at the bundle build,
+where the setup server runs Find terms through OpenRouter on the sandbox's model
+(`OPENROUTER_API_KEY` given to the build, as for a `polly` step). The build writes the scans out
+with the library documents they read (passages, embeddings, domains) as `seeded/term_scans.json`
+(`provisa/term_finding/carry.py`). The demo's template loads them when it is prepared and at every
+rebuild of its model; a draft names the glossary term it matched by name, since the rebuild makes
+each term again. A template that does not hold them is not served as built, and every sandbox is
+cloned with them. The demo's config declares a vector model for the library's passages. The
+banksecrecy demo scans three sections of 31 CFR from eCFR's XML API:
+
+```yaml
+# demo/named/banksecrecy/setup.yaml (excerpt)
+steps:
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311', domains: [banksecrecy]}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313', domains: [banksecrecy]}
+```
+
 The launcher passes the server's Flight address (`--flight grpc://localhost:${FLIGHT_PORT:-8815}`),
 and the bundle build gives its setup server a Flight port of its own.
 
@@ -378,7 +400,8 @@ plane.
 A bundled demo's `command`, `refresh` and `client` steps do not run again where it runs: what they wrote is
 already in the bundle's dumps. Its `environment` steps do run there (`--environments-only`),
 because an environment is a branch of the model in the model store, and every start builds the
-model store anew.
+model store anew. Its `profile` and `scan` steps do not run there either: the profile runs and
+scans the build made are loaded from the bundle in their place.
 
 ## docker-compose.run.yml: the run-time stores
 
@@ -553,6 +576,9 @@ Each step has:
 | `mcp` | a natural-language question | MCP explorer (`/explore`): its agent answers live, as the header's role, its tool calls shown as they run |
 | `mcp_explain` | `true` | MCP explorer: the explain of the agent's last `run_sql` call, the statement it sent beside the statement that ran for the role |
 | `mcp_connect` | `true` | MCP explorer: the Connect Claude Desktop panel, opened |
+| `find_terms` | a document's address, one the demo's `setup.yaml` scans, or `{url, domains}` with the demo's domains its scan is curated in | Glossary (`/admin/ontology`): Find terms opened, the address typed, a scan started and cancelled; the stopped scan explained |
+| `scan` | a document's address, one the demo's `setup.yaml` scans | Glossary: the scan of it done ahead, opened from Find terms' list, its candidate terms shown |
+| `library` | a document's address, one the demo's `setup.yaml` scans | Reference library (`/admin/reference-library`): the document's row |
 
 A `polly` step is answered once when the demo's bundle is built (Polly asked through OpenRouter on
 the sandbox's model, `OPENROUTER_API_KEY` given to the build; the answers are stored beside the
@@ -577,6 +603,16 @@ call that answer made: the statement the agent sent, and the statement the pipel
 role, with the row filters and masks governance added. Next closes it. The tour test refuses an
 `mcp_explain` step with no `mcp` step before it, and any of the three off `/explore`. The
 `agentdata` demo walks all three.
+
+A `find_terms` step shows a visitor how a scan starts without waiting for one: the tour opens Find
+terms from the glossary's menu, types the address, chooses the domains it names (a sandbox's
+Find terms proposes none, and a scan in none is refused in a demo in domains), presses Start, and
+cancels the scan at once,
+under the step's `acting` caption (its words carry one in every language). A `scan` step then opens
+the scan the bundle build made of the same document. Each step closes Find terms on leaving, so the
+next opens it afresh. The tour test refuses both off `/admin/ontology`, a `library` step off
+`/admin/reference-library`, and all three on a document the demo's `setup.yaml` does not scan.
+Starting a scan needs an AI model for Find terms in the visitor's org, as the `mcp` step does.
 
 An `as_recorded_from` step is for a time Provisa stamps, which the tour cannot know when it is
 written: a recording time, read from the answer of a `sql` step before it. The tour runner runs

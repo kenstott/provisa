@@ -616,7 +616,7 @@ Settings are **org-scoped**: each org's choices sit on top of the deployment con
 | `sql_generation` | NL → SQL generation |
 | `table_selection` | Choosing which tables to include in the NL prompt |
 | `mcp_chat` | The chat assistant panel's tool-use loop |
-| `glossary_term_finding` | Find terms in a document. It has no default: a scan is refused until one is chosen |
+| `glossary_term_finding` | Find terms. It has no default: a scan is refused until one is chosen |
 
 The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default.
 
@@ -728,7 +728,7 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 ## Inherited Roles
 
-A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities are the union over the ancestors; `domain_access` is the role's own and is not inherited. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) stands; otherwise the rules its parents resolve are combined with OR into one predicate, and a parent that resolves none adds nothing. With one parent this is the nearest rule in the chain. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
+A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. A role holds what it is given intersected with the union of what its parents hold, for capabilities, domains and regions, by one function (`effective_rights`); a standard role's capabilities add to its ancestors'. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) AND the rules its parents resolve combined with OR, a parent with no rule standing for every row, in one predicate. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
 
 The standard roles are defined in `core/standard_roles.yaml`, written into every model schema on each `init_schema` (`db.assert_standard_roles`) and refused by the admin surfaces and the config loader. The sandbox role a "Try it Out" visitor holds is a union of standard roles; the visitor reads a copied demo's columns through the grants that name `viewer` or `data_steward`, which the sandbox inherits.
 
@@ -828,7 +828,7 @@ For large analytical workloads, use either:
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
 | Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine: Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
 | Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino; not required for warehouse engines |
-| PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Config metadata + Iceberg catalog |
 | MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
 | MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |
 | Redis | `redis:7-alpine` | 6379 | Query result cache |

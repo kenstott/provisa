@@ -1558,10 +1558,7 @@ Précédence : variable d'environnement `PROVISA_ENGINE` → champ de configura
 | `singlestore` | SingleStore | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
 | `vertica` | Vertica | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
 | `exasol` | Exasol | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
-| `teradata` | Teradata Vantage | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
 | `saphana` | SAP HANA | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
-| `sapase` | SAP ASE (Sybase) | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
-| `sqlanywhere` | SAP SQL Anywhere | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
 | `monetdb` | MonetDB | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
 | `firebird` | Firebird | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
 | `sqlalchemy` | Autre base relationnelle (par URL de connexion) | Selon le dialecte | Non | Aucun (atterrissage seul) | Credentials selon le dialecte |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 Le magasin de matérialisation vaut par défaut `TENANT_DATABASE_URL`.
 
-#### Moteurs de base relationnelle (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) et `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### Moteurs de base relationnelle (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) et `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 Une clé par base relationnelle joignable sur le réseau, toutes sur le même runtime d'atterrissage seul (pas de fédération vers des sources externes) : chaque source atterrit dans le magasin et y est interrogée. La clé sélectionne la base ; `PROVISA_ENGINE_URL` porte le DSN attendu par son dialecte. `sqlalchemy` est le fourre-tout pour une base sans clé propre. Les magasins embarqués dans un fichier (SQLite, Access) ne sont pas proposés, car le serveur doit être joignable sur le réseau.
 

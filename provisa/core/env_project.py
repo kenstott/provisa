@@ -65,6 +65,7 @@ KIND_DIRS: dict[str, str] = {
     "stores": "stores",  # REQ-1922
     "org_regions": "regions",  # REQ-1921
     "data_products": "data-products",  # REQ-1526
+    "erd_layouts": "erd-layouts",  # REQ-2189
 }
 
 #: The two command registries share one directory, because REQ-1385 gives them one address space:
@@ -439,6 +440,28 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
     ):
         for row in await _rows(conn, table, schema):
             tree[kind_path(KIND_DIRS[table.name], row[key])] = entity(table.name, row)
+
+    # REQ-2189: a saved ERD layout, its tables written as their paths -- a table's serial means
+    # nothing in another environment.
+    layout_domains = await _rows(conn, org.erd_layout_domains, schema)
+    layout_tables = await _rows(conn, org.erd_layout_tables, schema)
+    for row in await _rows(conn, org.erd_layouts, schema):
+        placed = [
+            {**{k: v for k, v in t.items() if k != "table_id"}, "table": paths[t["table_id"]]}
+            for t in layout_tables
+            if t["layout_name"] == row["name"]
+        ]
+        tree[kind_path(KIND_DIRS["erd_layouts"], row["name"])] = entity(
+            "erd_layouts",
+            row,
+            domains=Child(
+                "domain_id",
+                "layout_name",
+                [d for d in layout_domains if d["layout_name"] == row["name"]],
+                table="erd_layout_domains",
+            ),
+            tables=Child("table", "layout_name", placed, table="erd_layout_tables"),
+        )
 
     for row in await _rows(conn, org.calendars, schema):
         tree[kind_path(KIND_DIRS["calendars"], row["name"], row["version"])] = entity(

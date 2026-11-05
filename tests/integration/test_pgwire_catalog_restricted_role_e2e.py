@@ -40,11 +40,18 @@ pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _ORG = "catalog_restricted_role"
 _REPO_ROOT = Path(__file__).parents[2]
-_CAPABILITIES = ["query_development", "full_results", "usage"]
+_CAPABILITIES = [
+    "catalog_read",
+    "data_product_read",
+    "glossary_read",
+    "query_development",
+    "usage",
+    "full_results",
+]
 _RESTRICTED = "catalog_restricted"
-_EVERYTHING = "catalog_everything"
 _NO_META = "catalog_no_meta"
-_CATALOG_READER = "viewer"  # REQ-2154: the catalog is read by every role built on Viewer
+_EVERYTHING = "catalog_everything"
+_CATALOG_READER = "developer"  # REQ-2155: a parent holding what the role is given
 _ITS_DOMAIN = "sales-analytics"
 _WITHHELD_COLUMN = ("customers", "email")
 
@@ -70,11 +77,11 @@ def _config(tmp_dir: Path) -> str:
             "domain_access": ["*"],
         },
         {
-            # REQ-1132: no parent, so no Viewer and nothing of meta: the catalog is still its.
+            # REQ-1132: no catalog_read: the catalog is still its.
             "id": _NO_META,
             "parents": [],
             "description": "Test role.",
-            "capabilities": list(_CAPABILITIES),
+            "capabilities": ["usage", "query_development"],
             "domain_access": [_ITS_DOMAIN],
         },
     ]
@@ -249,10 +256,10 @@ def test_a_statement_learns_nothing_of_the_control_plane(server, sql):
 
 
 def test_a_statement_with_no_table_runs_on_the_engine(server):
-    """PostgreSQL's current_query() is the statement as it reached it: POINT is a type the plane has
-    and the engine holds as text, so the engine's statement does not name it."""
-    answered = _answer_or_refusal(server, "SELECT current_query(), NULL::point")
-    assert "POINT" not in answered.upper(), answered
+    """current_query() is the statement the client wrote (pgwire.server._current_query_said,
+    REQ-2171), and the NULL of a type only the plane has comes back from the engine as a NULL."""
+    sql = "SELECT current_query(), NULL::point"
+    assert _answer_or_refusal(server, sql) == repr([(sql, None)])
 
 
 def test_a_function_only_the_plane_has_is_not_answered_for_a_statement_with_no_table(server):

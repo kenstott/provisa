@@ -225,7 +225,9 @@ def test_no_function_is_both_answered_and_refused():
 
 
 @pytest.mark.parametrize(
-    "call", ("pg_get_viewdef(1)", "pg_relation_size(1, 'main')", "pg_get_serial_sequence('a', 'b')")
+    # pg_get_viewdef is no longer here: a view PostgreSQL ships has its definition.
+    "call",
+    ("pg_get_triggerdef(1)", "pg_relation_size(1, 'main')", "pg_get_serial_sequence('a', 'b')"),
 )
 def test_what_a_catalog_keeps_nothing_of_is_null(call):
     tree = sqlglot.parse_one(_expanded(f"SELECT {call}"), read="postgres")

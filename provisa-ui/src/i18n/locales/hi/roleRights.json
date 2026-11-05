@@ -31,7 +31,8 @@
     "reach_public": "सार्वजनिक",
     "scope_domain": "डोमेन",
     "scope_public": "सार्वजनिक",
-    "scope_restricted": "प्रतिबंधित",
+    "scope_listed": "सूचीबद्ध",
+    "scope_own-domain": "स्वयं का डोमेन",
     "write_insert": "जोड़ना",
     "write_update": "अपडेट",
     "write_delete": "हटाना"

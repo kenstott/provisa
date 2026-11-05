@@ -108,8 +108,13 @@ export function addTableToFocus(focus: ErdFocus, table: FocusTable): ErdFocus {
   };
 }
 
-/** Highlight the tables the diagram holds and fit them into view; the ids it held. */
-export function highlightErdTables(cy: CyInstance, tableIds: number[]): number[] {
+/** Highlight the tables, and the relationships' lines, the diagram holds and fit them into view;
+ * the ids of the tables it held. A relationship drawn as two legs through its junction is both. */
+export function highlightErdTables(
+  cy: CyInstance,
+  tableIds: number[],
+  relationshipIds: string[] = [],
+): number[] {
   cy.$(`.${FOCUSED}`).removeClass(FOCUSED);
   const held = tableIds.filter((id) => {
     const node = cy.getElementById(`t:${id}`);
@@ -117,8 +122,14 @@ export function highlightErdTables(cy: CyInstance, tableIds: number[]): number[]
     node.addClass(FOCUSED);
     return true;
   });
-  if (held.length === 0) return held;
+  if (relationshipIds.length > 0) {
+    const named = new Set(relationshipIds);
+    cy.edges(".erd-rel")
+      .filter((e) => named.has(String(e.data("relationshipId"))))
+      .addClass(FOCUSED);
+  }
   const focused = cy.$(`.${FOCUSED}`);
+  if (focused.empty()) return held;
   cy.fit(focused, FIT_PADDING);
   if (cy.zoom() > MOST_ZOOM) {
     cy.zoom(MOST_ZOOM);

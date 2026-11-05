@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS sources (
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
+    brand_setup   JSONB NOT NULL DEFAULT '{}',  -- REQ-1923: the values a branded source's setup was given
     path          TEXT,  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- REQ-1919: the rest of a source's settings. After the seed the model store alone owns the
     -- model, so everything a configuration can say about a source is held here.
@@ -1033,7 +1034,7 @@ CREATE TABLE IF NOT EXISTS kafka_topics (
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
     id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')),
+    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
@@ -1084,12 +1085,12 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1668/REQ-1683: the query-API source kinds joined the type check after api_sources existed;
+-- REQ-1668/REQ-1683/REQ-2197: the query-API source kinds joined the type check after api_sources existed;
 -- an org schema created before them still carries the narrower constraint.
 DO $$ BEGIN
     ALTER TABLE api_sources DROP CONSTRAINT IF EXISTS api_sources_type_check;
     ALTER TABLE api_sources ADD CONSTRAINT api_sources_type_check
-        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql'));
+        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1307,6 +1308,64 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
     decided_by       TEXT,
     decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (table_id, physical_column, kind)
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
+-- kinds held inside their values.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_scans (
+    scan_id          TEXT PRIMARY KEY,
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    status           TEXT NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at      TIMESTAMPTZ,
+    sampled_rows     INTEGER,
+    scanned_columns  INTEGER,
+    requested_by     TEXT,
+    error            TEXT
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind; counts only, never the
+-- matched text.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_hints (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    scan_id          TEXT NOT NULL,
+    values_tested    INTEGER NOT NULL,
+    values_matched   INTEGER NOT NULL,
+    share            DOUBLE PRECISION NOT NULL,
+    evidence         TEXT NOT NULL,
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
+-- REQ-2189: a saved, named arrangement of the ERD. Only the arrangement: what is drawn in it comes
+-- from the live model, and a table or domain removed from the model goes from every layout with it.
+CREATE TABLE IF NOT EXISTS erd_layouts (
+    name        TEXT PRIMARY KEY,
+    options     JSONB NOT NULL,
+    updated_by  TEXT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_domains (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    domain_id    TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    collapsed    BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    w            DOUBLE PRECISION,
+    h            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_tables (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    table_id     INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, table_id)
 );
 
 CREATE TABLE IF NOT EXISTS synthetic_report (
@@ -1820,8 +1879,9 @@ CREATE TABLE IF NOT EXISTS code_source_vectors (
 
 -- REQ-2185: the org's reference library: documents its assistants draw on, each proposed or kept,
 -- with domains (a list, or '*' for the whole org, as a glossary term's). A document's content is
--- held as its passages, each embedded by the org's vector model; vector is the embedding as a JSON
--- array of floats (the code_source_vectors pattern). Mirrors schema_org.reference_documents,
+-- held as its passages, each embedded by the org's vector model; vector is the embedding, a pgvector
+-- column of any dimension (provisa.core.pgvector), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.store). Mirrors schema_org.reference_documents,
 -- reference_document_domains and reference_passages.
 CREATE TABLE IF NOT EXISTS reference_documents (
     id              SERIAL PRIMARY KEY,
@@ -1856,7 +1916,7 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     section     TEXT,
     page        INTEGER,
     text        TEXT NOT NULL,
-    vector      TEXT NOT NULL,
+    vector      public.vector NOT NULL,
     tenant_id   UUID,
     UNIQUE (document_id, ordinal)
 );
@@ -1885,6 +1945,7 @@ CREATE TABLE IF NOT EXISTS glossary_term_scans (
     budget_limit    INTEGER,
     launch          TEXT,
     progress_at     TIMESTAMPTZ,
+    source_table    TEXT,  -- REQ-2202: a table's scan: its domain, table, id and text columns
     tenant_id       UUID
 );
 

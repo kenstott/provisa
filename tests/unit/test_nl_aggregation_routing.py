@@ -58,9 +58,13 @@ def _group_by_compiled(root_field: str = "pets_group_by") -> CompiledQuery:
     return CompiledQuery(sql="", params=[], root_field=root_field, columns=columns, sources=set())
 
 
-class _FakeResult:
-    def __init__(self, rows):
-        self.rows = rows
+def _FakeResult(rows):  # noqa: N802 — read as the result class it stands for
+    """The engine's result of ``rows``: a row result, which hands the encoders its rows as Arrow
+    (``QueryResult.arrow_batches``, REQ-2194)."""
+    from provisa.executor.result import QueryResult
+
+    width = len(rows[0]) if rows else 0
+    return QueryResult(rows=list(rows), column_names=[f"c{i}" for i in range(width)])
 
 
 def _pets_meta() -> TableMeta:
@@ -608,6 +612,7 @@ class TestExecutorRouting:
                 nested_in=None,
                 cardinality="one-to-many",
                 is_agg=True,
+                json=True,
             ),
         ]
         cq.has_nodes = True
@@ -661,6 +666,7 @@ class TestExecutorRouting:
                 nested_in=None,
                 cardinality="one-to-many",
                 is_agg=True,
+                json=True,
             ),
         ]
         cq.has_nodes = True

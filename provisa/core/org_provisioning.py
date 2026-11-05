@@ -26,6 +26,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+async def schema_exists(control_plane: "Database", schema: str) -> bool:
+    from sqlalchemy import text
+
+    async with control_plane.acquire() as conn:
+        found = await conn.execute_core(
+            text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s").bindparams(
+                s=schema
+            )
+        )
+        return found.fetchone() is not None
+
+
 async def provision_redis_acl(redis_url: str, org_id: str, password: str) -> None:  # REQ-700
     """Create or replace a Redis ACL user scoped to this org's key prefixes."""
     import redis.asyncio as aioredis

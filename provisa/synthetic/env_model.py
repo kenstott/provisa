@@ -427,11 +427,14 @@ async def _generate(
 
         async def bind() -> None:
             # Its sources now point at the synthetic store, type and connection: the runtime
-            # is built again from them, before the report reads what was generated.
+            # is built again from them, before the report reads what was generated. Cloned
+            # (REQ-2006): the runtime this replaces was built in this process, and its build seeded
+            # the model (or found it cloned), so its built-in rows are this release's. Seeded whole
+            # again, it was 16.8 s of the profiling template's build on cloud.
             bound = await bind_generated(state, org_id, env)
             log.info("whole-model generation of %s/%s bound sources %s", org_id, env, bound)
             state.org_registry.invalidate(runtime_key(org_id, env))
-            await ensure_org_runtime(org_id, env)
+            await ensure_org_runtime(org_id, env, model_cloned=True)
 
         await generate(state, DATASET_ID, bind=bind)
         async with state.model_db.acquire() as conn:

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# REQ-2194: the cargo setuptools-rust runs (CARGO=this) when the Dockerfile's provisa-wheel-build
+# stage compiles provisa._encoders for a Linux wheel. cargo-zigbuild links with zig, so the build
+# machine compiles for either architecture without QEMU, and against glibc 2.28, which the wheel's
+# manylinux_2_28 tag promises. It takes that glibc version from the target's suffix
+# (aarch64-unknown-linux-gnu.2.28), which rustc itself does not accept, so setuptools-rust is given
+# the plain target and the suffix is added here.
+set -euo pipefail
+GLIBC="2.28"
+args=()
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--target" ]; then
+    arg="${arg}.${GLIBC}"
+  fi
+  args+=("$arg")
+  prev="$arg"
+done
+exec cargo-zigbuild "${args[@]}"

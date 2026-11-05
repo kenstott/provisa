@@ -136,7 +136,8 @@
       "graphql_body_not_json": "The request body is not JSON: {{error}}",
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
       "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
-      "graphql_mutation_over_get": "A mutation is sent with POST, never GET."
+      "graphql_mutation_over_get": "A mutation is sent with POST, never GET.",
+      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "Role not found",
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
-      "description_missing": "Role '{{role}}' needs a description of what it is for"
+      "description_missing": "Role '{{role}}' needs a description of what it is for",
+      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it"
     },
     "schema": {
       "allowed_domains_updated": "Allowed domains updated for source '{{source}}'",
@@ -403,6 +405,7 @@
       "source_region_set": "Region of source {{source}} set to {{region}}",
       "region_refused": "The region was not set: {{reason}}",
       "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+      "remote_throttled": "Table '{{table}}' was not registered: the source's rate limit did not let it be checked ({{reason}}). Try again later.",
       "table_updated": "Table '{{table}}' updated (id={{id}})",
       "task_deleted": "Task '{{task}}' deleted",
       "task_disabled": "Task '{{task}}' disabled",
@@ -475,7 +478,11 @@
       "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
       "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
       "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}",
-      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered."
+      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered.",
+      "jdbc_invalid": "Source {{source}}: {{error}}",
+      "jdbc_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
+      "jdbc_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}.",
+      "jdbc_driver_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows."
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -623,7 +630,10 @@
       "popup_blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
       "window_closed": "The sign-in window was closed before it finished.",
       "tenant_invalid": "The organization's Microsoft 365 setting does not name a directory (tenant). An administrator enters the directory's ID or domain.",
-      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
+      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is.",
+      "client_missing": "Enter the app's client ID and client secret, then sign in.",
+      "client_not_taken": "This kind of source signs in with your organization's client, not one entered on the form.",
+      "no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email.",
@@ -758,6 +768,12 @@
         "no_description": "This data product states neither its purpose nor its usage.",
         "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
       }
+    },
+    "erd": {
+      "database_unavailable": "The ERD layouts cannot be read: the database is unavailable",
+      "layout_not_found": "No layout named {{name}}",
+      "layout_name_required": "A layout needs a name",
+      "layout_place_unreadable": "The layout places a {{kind}} you cannot read"
     }
   }
 }

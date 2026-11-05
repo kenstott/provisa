@@ -31,7 +31,7 @@ def statement(fn: dict) -> str:
 
 
 async def run(fn: dict, args: dict, state: Any, role_id: str | None) -> list[dict]:
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
     if role_id is None:
@@ -39,7 +39,4 @@ async def run(fn: dict, args: dict, state: Any, role_id: str | None) -> list[dic
     params = [args[a["name"]] for a in fn["arguments"]]
     plan = await _govern_and_route(statement(fn), role_id, params=params or None)
     result = await _execute_plan(plan, state)
-    return [
-        {c: _convert_value(v) for c, v in zip(result.column_names, r, strict=True)}
-        for r in result.rows
-    ]
+    return result_records(result)

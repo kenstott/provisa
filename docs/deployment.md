@@ -152,6 +152,8 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 `otlp2sql` endpoint, and register the ops domain against the same
 `PROVISA_OPS_DB_URL` so it reads what the receiver wrote.
 
+To also send telemetry to Datadog, Honeycomb, Grafana Cloud or another provider without losing the trace tables, see [Sending Telemetry to Your Own Provider](configuration.md#sending-telemetry-to-your-own-provider).
+
 ---
 
 ## macOS Installer
@@ -505,7 +507,7 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
    | `trinodb/trino:480` | Federation engine coordinator + workers |
-   | `postgres:16` | In-cluster PostgreSQL (if `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | In-cluster PostgreSQL (if `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | In-cluster PgBouncer (if `pgbouncer.enabled`) |
    | `redis:7.2` | In-cluster Redis (if `redis.enabled` and no `redis.host`) |
    | `minio/minio:latest` | In-cluster MinIO (if `minio.enabled`) |

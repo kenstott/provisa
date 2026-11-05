@@ -22,8 +22,8 @@ from provisa.core.regions import DEFAULT_REGION
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 
@@ -51,7 +51,7 @@ def test_a_node_launched_without_a_region_is_refused_listing_the_platforms():
         process_region.bind_launch(_PLATFORM, requested=None)
     said = str(refused.value)
     assert "--region" in said
-    assert "eu (https://eu.example.com)" in said and "us (https://us.example.com)" in said
+    assert said.endswith(": eu, us"), said
 
 
 def test_a_region_the_platform_does_not_declare_is_refused():

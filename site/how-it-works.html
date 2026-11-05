@@ -134,22 +134,43 @@
           Languages are ways of expressing logic, and the logic of data is bounded: select,
           join, aggregate, traverse. Transports are bounded too: whatever the protocol, data
           leaves through a socket as rows, nested documents, graphs, columnar batches or
-          streams. Programming languages have shared one compiler infrastructure for twenty
+          streams. Encoding is bounded as well: fewer than ten are meaningful, from PostgreSQL's wire rows
+          and JSON to protobuf, Arrow, CSV, XML and Bolt's PackStream. Programming languages have
+          shared one compiler infrastructure for twenty
           years; Provisa does the same for data.
+        </p>
+        <p>
+          It also works because data must be expressed relationally before it enters, and that
+          simplifies every tool that reads it. Relational algebra has six primitive operations:
+          selection, projection, union, set difference, Cartesian product and rename; join and
+          the rest are built from them. Even deep traversals can be recursive CTEs, and a
+          property graph's nodes can be expressed as sparsely populated tables by label, and its
+          edges as junction tables, sparse again. Think
+          hard enough and every one of these languages can be expressed in an IR based on
+          extended relational algebra: those six operations plus aggregation, recursion and
+          nesting.
         </p>
         <p>
           Building a compiler front end has also become cheap: parser generators like ANTLR
           and mature open-source parsers for SQL, GraphQL and SPARQL do most of the work, so adding a language means writing a translation into the IR instead of a new system. Each request is
           compiled when it arrives into one IR, governed there, handed to your engine as
-          native SQL, and shaped on the way out for the transport that asked.
+          native SQL, and encoded on the way out for the transport that asked.
         </p>
         <p>
           Where languages or protocols differ at the edges, their public conformance suites settle it. Provisa runs them and publishes the results.
         </p>
         <p>
+          So data languages become more about the UX and less about the logic. Conceptually that
+          is a small overstatement: there are a few edge cases, but not a lot, and each
+          language's conformance suite pins them down. Practically, tooling and skill sets really
+          care, and that is why the tradeoff is worth accepting: every team keeps the language and
+          tools it knows, and all of them read one model with one set of rules.
+        </p>
+        <p>
           It also means the pace of change isn't a constraint. New query languages, protocols,
           engines and sources keep arriving; for most stacks each one is a migration. Here, a
-          new language or transport is a front end or a shaper, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change.
+          new language or transport is a front end or an encoder, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change. This compositional model of primitives
+          makes it all plug and play.
         </p>
 
         <h2 id="command-bindings">Command bindings</h2>
@@ -187,7 +208,6 @@
         </p>
         <p>
           <a href="/vs/starburst">Provisa and Starburst.</a>
-          <a href="/docs/competitive_analysis" style="margin-left:16px">Full comparison.</a>
         </p>
 
       </div>

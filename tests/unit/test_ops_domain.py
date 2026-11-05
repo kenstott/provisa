@@ -268,6 +268,8 @@ _REPORT_VIEW_NAMES = {
     "ontology_term_quality",
     "ontology_placeholders",
     "ontology_quality",
+    # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT)
+    "sensitive_column_coverage",
 }
 
 
@@ -401,6 +403,7 @@ async def test_report_views_functional(control_plane):
         query_audit_log,
         registered_tables,
         sources,
+        table_columns,
         tag_assignments,
         user_directory,
     )
@@ -451,6 +454,10 @@ async def test_report_views_functional(control_plane):
                     column_name="email",
                     object_key="column:2:email",
                 )
+            )
+            # The pii column declares no fake: sensitive coverage reports it, and why.
+            await conn.execute_core(
+                insert(table_columns).values(table_id=2, column_name="email", domain_id="shelter")
             )
             # REQ-1439: the tenant-local directory the report views resolve names through. bob is
             # deliberately absent, so the LEFT JOIN's null branch is exercised too.
@@ -568,6 +575,15 @@ async def test_report_views_functional(control_plane):
             assert tags["pii"] == (1, 1, 1, 2, 2)
             # A system tag nobody applied is still a row, with zeroes rather than absent.
             assert tags["technical"] == (0, 0, 0, 0, 0)
+
+            # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT)
+            coverage = await rows(
+                "SELECT id, table_name, column_name, tags, status, reason "
+                "FROM sensitive_column_coverage"
+            )
+            assert [tuple(r) for r in coverage] == [
+                ("2:email", "customers", "email", "pii", "no_fake", "no fake declared")
+            ]
     finally:
         await db.close()
 

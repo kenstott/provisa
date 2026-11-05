@@ -51,6 +51,7 @@ HTTP_SURFACES = {
     "Cypher over HTTP": "/data/cypher",
     "REST": "/data/rest",
     "JSON:API": "/data/jsonapi",
+    "OData": "/data/odata",  # REQ-2193
 }
 
 

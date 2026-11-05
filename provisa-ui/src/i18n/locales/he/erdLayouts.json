@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "פריסה: {{name}}",
+    "layouts": "פריסות",
+    "menuHint": "בחירה, שמירה או מחיקה של סידור שמור של תרשים זה",
+    "automatic": "אוטומטית",
+    "save": "שמירה",
+    "saveAs": "שמירה בשם…",
+    "delete": "מחיקה",
+    "unsaved": "לא נשמר",
+    "unsavedHint": "התרשים השתנה מאז שפריסה זו נשמרה",
+    "saveAsTitle": "שמירת הפריסה בשם",
+    "name": "שם",
+    "nameTaken": "כבר קיימת פריסה בשם {{name}}",
+    "deleteTitle": "למחוק את הפריסה {{name}}?",
+    "deleteConsequence": "הפריסה תוסר עבור כולם. הטבלאות והקשרים שהיא מציגה אינם משתנים.",
+    "newSinceSaved_one": "טבלה {{count}} חדשה מאז שהפריסה נשמרה",
+    "newSinceSaved_other": "{{count}} טבלאות חדשות מאז שהפריסה נשמרה",
+    "place": "מיקום",
+    "placeHint": "הוספת הטבלה לפריסה",
+    "notDrawn": "התרשים עדיין לא צויר"
+  }
+}

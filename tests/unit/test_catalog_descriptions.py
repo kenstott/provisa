@@ -112,9 +112,16 @@ class TestTheSeedCarriesTheDescriptions:
         async def _transaction():
             yield
 
+        @asynccontextmanager
+        async def _advisory_lock(key):
+            del key
+            yield
+
         conn = AsyncMock()
-        # Each view is created inside a transaction, a context on a real connection.
+        # Each view is created inside a transaction and the catalog client role inside an advisory
+        # lock, both contexts on a real connection.
         conn.transaction = _transaction
+        conn.advisory_lock = _advisory_lock
         conn.upsert_returning = AsyncMock(return_value=7)
         # Reflect the columns the relation actually exposes: a view-backed registration (derived_tags)
         # has no surrogate id, so a fixed one-column stand-in would demand a description for a column
@@ -128,7 +135,11 @@ class TestTheSeedCarriesTheDescriptions:
                 for c in exposed.get(name, ["id"])
             ]
 
+        async def _reflect_many(names, schema=None):
+            return {name: await _reflect(name, schema) for name in names}
+
         conn.reflect_columns = AsyncMock(side_effect=_reflect)
+        conn.reflect_columns_many = AsyncMock(side_effect=_reflect_many)
         asyncio.run(seeder(conn, **kw))
         return (
             [c.args[1] for c in conn.upsert_returning.await_args_list],

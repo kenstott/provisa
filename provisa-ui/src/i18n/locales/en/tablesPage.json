@@ -11,6 +11,10 @@
     "addViewTitle": "Create a new view in the SQL Explorer",
     "model": "+ Model",
     "modelTitle": "Model an entity or fact (star schema / Data Vault)",
+    "modelMenu": "Choose how to model",
+    "modelEntityFact": "Entity/Fact",
+    "modelStarSchema": "Star Schema",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Workbook",
     "reportXlsxTitle": "Download the model as a spreadsheet for review, with one sheet each for sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products, data contracts, data quality and data profiling",
     "viewErd": "View ERD",
@@ -84,6 +88,8 @@
     "panelRegisterTable": "Register table",
     "panelNewView": "New view",
     "panelNewModel": "New model",
+    "panelStarSchema": "New star schema",
+    "panelDataVault": "New Data Vault",
     "history": {
       "badge": "history",
       "title": "Keeps history: query it as of or as recorded (Time Travel)"

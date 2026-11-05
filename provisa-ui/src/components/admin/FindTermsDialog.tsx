@@ -8,13 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: the glossary's Find terms in a document. The steward picks a reference library
+// REQ-2179: the glossary's Find terms. The steward picks a reference library
 // document they may read, or gives a new one as a file or URL (it joins the library as proposed,
 // in the domains they are working in), and starts a scan. The scans made so far are listed below,
 // each opening its review queue, and any can be scanned again on demand (REQ-2185): nothing is
-// re-reviewed automatically.
+// re-reviewed automatically. REQ-2202: or the steward picks a registered table -- its domain, the
+// table, its id column and its text column -- and each row is scanned as one passage; a table scan
+// adds nothing to the library.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   type ComboboxData,
@@ -41,19 +43,135 @@ import {
   type Scan,
   type ScannableDocument,
   type ScanSource,
+  type TableScanSource,
 } from "../../api/termFinding";
 import type { GlossaryTermSummary } from "../../api/glossary";
+import { useTables } from "../../hooks/useAdminQueries";
+import { isUserTable } from "../../pages/tables/modeling/columns";
+import { ChoiceField } from "../../pages/tables/modeling/pickers";
+import { useColumnOptions } from "../../pages/tables/modeling/useModelTables";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { ScanStatusBadge, TermReviewQueue } from "./TermReviewQueue";
 import { useScanProgress } from "./useScanProgress";
+import { documentMark } from "../../lib/documentMark";
 
 /** The files the reference library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
 /** How often the list is read again while a scan in it is running, in milliseconds. */
 const POLL_MS = 2000;
 
+type Origin = "document" | "table";
 type Mode = "library" | "file" | "url";
+
+/** How a table is read: each row a term with its definition (no model), or text the model reads
+ * for the terms it defines. */
+type Reads = "terms" | "text";
+
+interface TablePick {
+  reads: Reads;
+  domain: string | null;
+  table: string | null;
+  /** The term column, or the id column. */
+  keyColumn: string | null;
+  /** The definition column, or the text column. */
+  textColumn: string | null;
+}
+
+const NO_TABLE: TablePick = {
+  reads: "terms",
+  domain: null,
+  table: null,
+  keyColumn: null,
+  textColumn: null,
+};
+
+/** The table a scan reads, for a source that holds definitions or documentation: how it is read,
+ * a domain, a registered table in it and its two columns, picked with the pickers the modeling
+ * forms use. Drafts are in no role's schema, so none is offered. */
+function TableFields({ value, onChange }: { value: TablePick; onChange: (v: TablePick) => void }) {
+  const { t } = useTranslation();
+  const { tables } = useTables();
+  const scannable = useMemo(() => tables.filter((tbl) => isUserTable(tbl) && !tbl.draft), [tables]);
+  const domains = useMemo(
+    () =>
+      [...new Set(scannable.map((tbl) => tbl.domainId))]
+        .sort()
+        .map((id) => ({ value: id, label: id })),
+    [scannable],
+  );
+  const inDomain = scannable.filter((tbl) => tbl.domainId === value.domain);
+  const picked = inDomain.find((tbl) => tbl.tableName === value.table);
+  const columns = useColumnOptions(picked?.columns ?? []);
+  const terms = value.reads === "terms";
+  return (
+    <>
+      <FormField size="full">
+        <SegmentedControl
+          data-testid="find-terms-table-reads"
+          value={value.reads}
+          onChange={(v) =>
+            onChange({ ...value, reads: v as Reads, keyColumn: null, textColumn: null })
+          }
+          data={[
+            { value: "terms", label: t("findTerms.tableTerms") },
+            { value: "text", label: t("findTerms.tableText") },
+          ]}
+        />
+      </FormField>
+      <ChoiceField
+        label={t("findTerms.tableDomain")}
+        help={t("findTerms.tableDomainHelp")}
+        required
+        testId="find-terms-table-domain"
+        data={domains}
+        value={value.domain}
+        onChange={(domain) => onChange({ ...NO_TABLE, reads: value.reads, domain })}
+      />
+      <ChoiceField
+        label={t("findTerms.table")}
+        help={t("findTerms.tableHelp")}
+        required
+        testId="find-terms-table"
+        data={inDomain.map((tbl) => ({ value: tbl.tableName, label: tbl.alias || tbl.tableName }))}
+        value={value.table}
+        onChange={(table) =>
+          onChange({ ...NO_TABLE, reads: value.reads, domain: value.domain, table })
+        }
+        placeholder={t("findTerms.tablePlaceholder")}
+        disabled={!value.domain}
+      />
+      <ChoiceField
+        label={t(terms ? "findTerms.termColumn" : "findTerms.idColumn")}
+        help={t(terms ? "findTerms.termColumnHelp" : "findTerms.idColumnHelp")}
+        required
+        testId={terms ? "find-terms-term-column" : "find-terms-id-column"}
+        data={terms ? columns.all : columns.keys}
+        value={value.keyColumn}
+        onChange={(keyColumn) => onChange({ ...value, keyColumn })}
+        disabled={!picked}
+      />
+      <ChoiceField
+        label={t(terms ? "findTerms.definitionColumn" : "findTerms.textColumn")}
+        help={t(terms ? "findTerms.definitionColumnHelp" : "findTerms.textColumnHelp")}
+        required
+        testId={terms ? "find-terms-definition-column" : "find-terms-text-column"}
+        data={columns.all}
+        value={value.textColumn}
+        onChange={(textColumn) => onChange({ ...value, textColumn })}
+        disabled={!picked}
+      />
+    </>
+  );
+}
+
+function tableSource(pick: TablePick): TableScanSource | null {
+  const { reads, domain, table, keyColumn, textColumn } = pick;
+  if (!domain || !table || !keyColumn || !textColumn) return null;
+  return reads === "terms"
+    ? { domain, table, term_column: keyColumn, definition_column: textColumn }
+    : { domain, table, id_column: keyColumn, text_column: textColumn };
+}
 
 /** The chooser: a library document, or a new file or URL, and the steward's domains. */
 function ScanForm({
@@ -70,6 +188,8 @@ function ScanForm({
   onStarted: (scan: Scan) => void;
 }) {
   const { t } = useTranslation();
+  const [origin, setOrigin] = useState<Origin>("document");
+  const [table, setTable] = useState<TablePick>(NO_TABLE);
   const [mode, setMode] = useState<Mode>(documents.length ? "library" : "file");
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -79,6 +199,10 @@ function ScanForm({
   const [starting, setStarting] = useState(false);
 
   const source = (): ScanSource | null => {
+    if (origin === "table") {
+      const picked = tableSource(table);
+      return picked ? { table: picked } : null;
+    }
     if (mode === "library") return documentId ? { document_id: Number(documentId) } : null;
     if (mode === "file") return file ? { file } : null;
     return url.trim() ? { url: url.trim() } : null;
@@ -88,7 +212,15 @@ function ScanForm({
     setProblem("");
     const chosen = source();
     if (chosen === null) {
-      setProblem(t("findTerms.chooseDocument"));
+      setProblem(
+        t(
+          origin === "document"
+            ? "findTerms.chooseDocument"
+            : table.reads === "terms"
+              ? "findTerms.chooseTerms"
+              : "findTerms.chooseTable",
+        ),
+      );
       return;
     }
     if (domainsEnabled && domains.length === 0) {
@@ -109,23 +241,53 @@ function ScanForm({
   return (
     <FormLayout>
       <FormField size="full">
-        <Text size="sm" c="dimmed">
+        <Text size="sm" c="dimmed" data-testid="find-terms-intro">
           {t("findTerms.intro")}
         </Text>
       </FormField>
       <FormField size="full">
         <SegmentedControl
-          data-testid="find-terms-mode"
-          value={mode}
-          onChange={(v) => setMode(v as Mode)}
+          data-testid="find-terms-origin"
+          value={origin}
+          onChange={(v) => {
+            setOrigin(v as Origin);
+            setProblem("");
+          }}
           data={[
-            { value: "library", label: t("findTerms.fromLibrary") },
-            { value: "file", label: t("findTerms.newFile") },
-            { value: "url", label: t("findTerms.newUrl") },
+            { value: "document", label: t("findTerms.fromDocument") },
+            { value: "table", label: t("findTerms.fromTable") },
           ]}
         />
       </FormField>
-      {mode === "library" && (
+      {origin === "table" && (
+        <>
+          <TableFields value={table} onChange={setTable} />
+          <FormField size="full">
+            <Text size="xs" c="dimmed" data-testid="find-terms-table-note">
+              {t("findTerms.tableNote")}
+            </Text>
+          </FormField>
+        </>
+      )}
+      {origin === "document" && (
+        <FormField size="full">
+          <SegmentedControl
+            data-testid="find-terms-mode"
+            value={mode}
+            onChange={(v) => setMode(v as Mode)}
+            data={[
+              { value: "library", label: t("findTerms.fromLibrary") },
+              { value: "file", label: t("findTerms.newFile") },
+              {
+                value: "url",
+                // REQ-2201: what a demo's tour presses to give the document by its address.
+                label: <span data-testid="find-terms-mode-url">{t("findTerms.newUrl")}</span>,
+              },
+            ]}
+          />
+        </FormField>
+      )}
+      {origin === "document" && mode === "library" && (
         <FormField size="long" help={t("findTerms.documentHelp")}>
           {documents.length ? (
             <Select
@@ -144,7 +306,7 @@ function ScanForm({
           )}
         </FormField>
       )}
-      {mode === "file" && (
+      {origin === "document" && mode === "file" && (
         <FormField size="long" help={t("findTerms.fileHelp")}>
           <FileInput
             label={t("findTerms.file")}
@@ -156,7 +318,7 @@ function ScanForm({
           />
         </FormField>
       )}
-      {mode === "url" && (
+      {origin === "document" && mode === "url" && (
         <FormField size="long" help={t("findTerms.urlHelp")}>
           <TextInput
             label={t("findTerms.url")}
@@ -167,7 +329,7 @@ function ScanForm({
           />
         </FormField>
       )}
-      {mode !== "library" && (
+      {origin === "document" && mode !== "library" && (
         <FormField size="full">
           <Text size="xs" c="dimmed" data-testid="find-terms-new-note">
             {t("findTerms.newDocumentNote")}
@@ -196,12 +358,16 @@ function ScanForm({
       <FormField size="full">
         <Group justify="space-between" wrap="nowrap">
           <Text size="xs" c="dimmed">
-            {t("findTerms.budgetNote")}
+            {origin === "table" && table.reads === "terms"
+              ? t("findTerms.termsNote")
+              : t("findTerms.budgetNote")}
           </Text>
           <Button
             leftSection={<ScanSearch size={14} />}
             onClick={() => void start()}
             loading={starting}
+            // REQ-2115: a scan runs and spends the model's budget; Polly asks the user first.
+            data-changes="true"
             data-testid="find-terms-start"
           >
             {t("findTerms.start")}
@@ -247,10 +413,35 @@ function ScanList({
           const decided =
             (s.counts.accepted ?? 0) + (s.counts.merged ?? 0) + (s.counts.rejected ?? 0);
           return (
-            <Table.Tr key={s.id} data-testid={`find-terms-scan-${s.id}`}>
+            <Table.Tr
+              key={s.id}
+              data-testid={`find-terms-scan-${s.id}`}
+              // REQ-2201: a demo's tour opens the scan of a document done ahead, by its address.
+              data-scan-source={documentMark(s.document_source)}
+              data-scan-status={s.status}
+            >
               <Table.Td>
                 <Group gap={6} wrap="nowrap">
                   <Text size="sm">{s.document_title}</Text>
+                  {s.source_table && (
+                    <Tip
+                      text={t(
+                        "term_column" in s.source_table
+                          ? "findTerms.tableTermsHint"
+                          : "findTerms.tableScanHint",
+                        { ...s.source_table },
+                      )}
+                    >
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color="blue"
+                        data-testid={`find-terms-table-scan-${s.id}`}
+                      >
+                        {t("findTerms.tableScan")}
+                      </Badge>
+                    </Tip>
+                  )}
                   {s.document_removed && (
                     <Tip text={t("findTerms.removedDocumentHint")}>
                       <Badge size="xs" variant="light" color="gray">
@@ -283,13 +474,18 @@ function ScanList({
               </Table.Td>
               <Table.Td>
                 <Group gap="xs" justify="flex-end" wrap="nowrap">
-                  {s.document_id !== null && (
-                    <Tip text={t("findTerms.rescanHint")}>
+                  {(s.document_id !== null || s.source_table) && (
+                    <Tip
+                      text={t(
+                        s.source_table ? "findTerms.rescanTableHint" : "findTerms.rescanHint",
+                      )}
+                    >
                       <Button
                         size="xs"
                         variant="subtle"
                         leftSection={<RotateCw size={12} />}
                         onClick={() => onRescan(s)}
+                        data-changes="true"
                         data-testid={`find-terms-rescan-${s.id}`}
                       >
                         {t("findTerms.rescan")}
@@ -301,6 +497,7 @@ function ScanList({
                     variant="light"
                     onClick={() => onOpen(s.id)}
                     data-testid={`find-terms-open-${s.id}`}
+                    data-find-terms-open
                   >
                     {t("findTerms.open")}
                   </Button>
@@ -331,7 +528,8 @@ export function FindTermsDialog({
 }) {
   const { t } = useTranslation();
   const [documents, setDocuments] = useState<ScannableDocument[] | null>(null);
-  const [scans, setScans] = useState<Scan[]>([]);
+  // Null until the first read returns, so the list never claims "nothing scanned" before it knows.
+  const [scans, setScans] = useState<Scan[] | null>(null);
   const [openScan, setOpenScan] = useState<number | null>(null);
   const [problem, setProblem] = useState("");
 
@@ -352,7 +550,7 @@ export function FindTermsDialog({
   }, [load]);
 
   // While the list shows a running scan it is read again, until each has ended.
-  const running = openScan === null && scans.some((s) => s.status === "running");
+  const running = openScan === null && !!scans?.some((s) => s.status === "running");
   useEffect(() => {
     if (!running) return;
     const timer = window.setTimeout(() => {
@@ -366,7 +564,10 @@ export function FindTermsDialog({
   const rescan = async (s: Scan) => {
     setProblem("");
     try {
-      const { scan } = await startScan({ document_id: s.document_id! }, s.domains);
+      const again: ScanSource = s.source_table
+        ? { table: s.source_table }
+        : { document_id: s.document_id! };
+      const { scan } = await startScan(again, s.domains);
       setOpenScan(scan.id);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));
@@ -409,7 +610,9 @@ export function FindTermsDialog({
           )}
           <Stack gap="xs">
             <Title order={5}>{t("findTerms.scansTitle")}</Title>
-            <ScanList scans={scans} onOpen={setOpenScan} onRescan={(s) => void rescan(s)} />
+            {scans !== null && (
+              <ScanList scans={scans} onOpen={setOpenScan} onRescan={(s) => void rescan(s)} />
+            )}
           </Stack>
         </Stack>
       )}

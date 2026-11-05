@@ -133,6 +133,10 @@ def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
     from provisa.mongodb.pipeline_table import is_pipeline_table
     from provisa.qdrant.table import is_search
 
+    from provisa.jdbc_source.table import is_floor_table
+
+    if is_floor_table(table, types, state):
+        return True  # REQ-2191: a JDBC table its replica does not serve, read at its floor
     if is_code_table(table, types):
         from provisa.codesource.attach import attached
 
@@ -363,6 +367,21 @@ async def _mat_pipeline_table(
             values_cte_entries,
             search_arguments(table, nf_args),
             lambda: QdrantContract().call(state, search),
+        )
+        return
+    if source_type == "jdbc":
+        # REQ-2191: the floor -- one SELECT in the source's dialect, its parameters' equalities.
+        from provisa.jdbc_source.table import cache_arguments as floor_arguments
+        from provisa.jdbc_source.table import read as floor_read
+
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            floor_arguments(table, nf_args),
+            lambda: floor_read(state, table, nf_args, statement),
         )
         return
     if source_type == "cosmosdb":
@@ -1650,6 +1669,7 @@ async def _materialize_api_to_engine_cache(
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
     from provisa.qdrant.table import is_search
+    from provisa.quickbooks import pushdown as quickbooks_pushdown
     from provisa.sparql import pushdown as sparql_pushdown
 
     cache_rewrites: dict = {}
@@ -1820,7 +1840,10 @@ async def _materialize_api_to_engine_cache(
             values_cte_entries,
             nf_args=nf_args,
             ctx=ctx,
-            pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
+            pushed=(
+                sparql_pushdown.pushed_arguments(ep, exec_sql, tn)
+                or quickbooks_pushdown.pushed_arguments(ep, exec_sql, tn)  # REQ-2197
+            ),
             registration=registrations[_sql_name(table)],
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:

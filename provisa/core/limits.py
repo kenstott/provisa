@@ -29,6 +29,7 @@ REQUEST_TRANSPORTS = (
     "graphql",
     "rest",
     "jsonapi",
+    "odata",  # REQ-2193
     "sql_http",
     "cypher_http",
     "pgwire",
@@ -85,6 +86,7 @@ _HTTP_ROUTE_TRANSPORT = (
     ("/data/cypher", "cypher_http"),
     ("/data/rest", "rest"),
     ("/data/jsonapi", "jsonapi"),
+    ("/data/odata", "odata"),  # REQ-2193
 )
 
 # The audit surface a statement arrives under -> its transport. "airport" is the DuckDB airport

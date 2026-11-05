@@ -148,6 +148,7 @@
       "graphql": "GraphQL",
       "rest": "REST",
       "jsonapi": "JSON:API",
+      "odata": "OData",
       "sql_http": "基於 HTTP 的 SQL",
       "cypher_http": "基於 HTTP 的 Cypher",
       "pgwire": "PostgreSQL wire",

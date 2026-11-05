@@ -11,6 +11,7 @@
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
 import re
+import zlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -125,10 +126,15 @@ SANDBOX_WITHHELD: frozenset[str] = (
 
 
 def standard_role_dicts() -> list[dict]:
-    """The standard roles as role rows (id, capabilities, parents), for resolving a role defined
+    """The standard roles as role rows (id, capabilities, parents, reach), for resolving a role defined
     outside a model store -- a demo's -- whose parents are standard roles."""
     return [
-        {"id": rid, "capabilities": list(spec.capabilities), "parents": list(spec.parents)}
+        {
+            "id": rid,
+            "capabilities": list(spec.capabilities),
+            "parents": list(spec.parents),
+            "domain_access": list(spec.domain_access),
+        }
         for rid, spec in STANDARD_ROLES.items()
     ]
 
@@ -137,18 +143,28 @@ def fold_config_grants(tables: list[dict], config_roles: list[dict]) -> None:
     """Fold the column grants of ``tables`` over each role's ancestors -- the standard roles and
     ``config_roles``, a configuration's own -- as the runtime build does
     (security.inheritance.expand_column_grants): a column granted to data_steward is org_admin's.
-    For a schema built from a configuration file, outside a model store (REQ-2155)."""
-    from provisa.security.inheritance import expand_column_grants, role_chains
+    For a schema built from a configuration file, outside a model store (REQ-2155). An own-domain
+    column's grant is then narrowed to the roles whose own domain access names its table's domain
+    (REQ-2153)."""
+    from provisa.security.inheritance import (
+        expand_column_grants,
+        narrow_own_domain_grants,
+        role_chains,
+        with_own_domains,
+    )
 
     own = [
         {
             "id": r["id"],
             "capabilities": r.get("capabilities") or [],
             "parents": r.get("parents") or [],
+            "domain_access": r["domain_access"],
         }
         for r in config_roles
     ]
-    expand_column_grants(tables, role_chains([*standard_role_dicts(), *own]))
+    every = [*standard_role_dicts(), *own]
+    expand_column_grants(tables, role_chains(every))
+    narrow_own_domain_grants(tables, with_own_domains(every))
 
 
 # REQ-1919: what the deployment seeds into every model store. A seeded role is a standard role and
@@ -164,6 +180,15 @@ _SCHEMA_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 # The advisory lock every creator of control-plane tables holds: schema.sql (init_schema), the
 # audit initializer, and the metadata reconcile (add_missing_columns).
 SCHEMA_LOCK_KEY = 7337
+
+
+def schema_lock_key(schema: str | None) -> int:
+    """REQ-2006: the lock of one schema's bootstrap. What it serializes is two callers creating the
+    same relations in the same schema (see :func:`add_missing_columns`); one key for every schema
+    queued every org's build behind every other's, on every process of the control plane."""
+    if schema is None:
+        return SCHEMA_LOCK_KEY
+    return (SCHEMA_LOCK_KEY << 32) | zlib.crc32(schema.encode())
 
 
 def _validate_schema_name(schema: str) -> None:
@@ -226,7 +251,7 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
         # both CREATE it — the second fails on the catalog's unique index. Taken before the
         # inspection below, held to this transaction's end, so the second sees what the first
         # created.
-        sync_conn.exec_driver_sql(f"SELECT pg_advisory_xact_lock({SCHEMA_LOCK_KEY})")
+        sync_conn.exec_driver_sql(f"SELECT pg_advisory_xact_lock({schema_lock_key(schema)})")
     if schema and postgres:
         _validate_schema_name(schema)
         # Transaction-scoped: nothing of it stays on the pooled connection.
@@ -318,9 +343,14 @@ async def init_schema(
     _validate_org_id(org_id)
     schema_name = org_schema(org_id, env, region=region)
     async with pool.acquire() as conn:
+        # REQ-2185: the reference library's passages are a pgvector column under a vector index,
+        # and schema.sql declares them so; a control plane without pgvector is refused here.
+        from provisa.core import pgvector
+
+        await pgvector.require(conn)
         # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
         # the abstraction so no PG-specific lock SQL appears here.
-        async with conn.advisory_lock(SCHEMA_LOCK_KEY):
+        async with conn.advisory_lock(schema_lock_key(schema_name)):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
             await conn.execute_core(
                 CreateSchema(

@@ -46,9 +46,20 @@ export function useErdView() {
         }
         next.delete("view");
         next.delete("collapsed");
+        next.delete("layout");
         writeErdFocus(next, { domains: [], objects: [] });
       }),
     setFocus: (changed: ErdFocus) => write((next) => writeErdFocus(next, changed)),
+    /** REQ-2189: the saved layout shown, by name; null for Automatic. */
+    layout: params.get("layout"),
+    setLayout: (name: string | null) =>
+      write((next) => {
+        if (name === null) next.delete("layout");
+        else next.set("layout", name);
+        next.delete("collapsed");
+      }),
+    /** REQ-2189: the focus a saved layout holds, taking the link's place as the layout loads. */
+    takeFocus: (held: ErdFocus) => write((next) => writeErdFocus(next, held), true),
     /** The item whose panel is open, in the link so that a copy of it opens the same. */
     setPanel: (key: "table" | "relationship", id: string | null) =>
       write((next) => {
