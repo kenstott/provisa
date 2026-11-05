@@ -160,7 +160,8 @@ def test_router_engine_agnostic_without_an_engine():
 
 
 def test_connector_pushdown_is_the_declared_capability_input():
-    cap = build_trino_engine().connector_pushdown("postgresql")
+    source = Source(id="pg", type=SourceType.postgresql, host="h", port=5432, database="d")
+    cap = build_trino_engine().connector_pushdown(source)
     assert isinstance(cap, Capability)
     assert cap.predicate_pushdown is True  # Trino pushes predicates to a postgres catalog
 

@@ -83,7 +83,7 @@ async def scan_table(state: Any, table_id: int) -> dict:
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import sources
     from provisa.core.secrets_store import bound_to_request_org
-    from provisa.dq.contract import contract_dataset, resolve_contract_target
+    from provisa.dq.contract import contract_dataset, model_contexts, resolve_contract_target
     from provisa.dq.runner import run_contract
 
     async with state.model_db.acquire() as conn:
@@ -100,24 +100,54 @@ async def scan_table(state: Any, table_id: int) -> dict:
     if checker not in CHECKERS or not contract:
         raise ValueError(f"table {table_name!r} is not a data-quality checker table")
     dataset = contract_dataset(contract, checker)
-    target = resolve_contract_target(dataset, state.contexts)
+    target = resolve_contract_target(dataset, model_contexts(state))
     async with bound_to_request_org():
         connection = checker_connection(mapping)
     scan_id = str(uuid.uuid4())
+    scan_time = datetime.now(UTC)
     rows = await run_contract(
         checker=checker,
         contract_text=contract,
         connection=connection,
         data_source_name=dataset.split("/")[0],
         scan_id=scan_id,
-        scan_time=datetime.now(UTC),
+        scan_time=scan_time,
         target_table=f"{target.schema_name}.{target.table_name}",
     )
     async with state.model_db.acquire() as conn:
         await ensure_relation(conn, table_name)
-        if rows:
-            await conn.execute_core_many(results_sa_table(table_name).insert(), rows)
+        # The scan's rows and its record as the table's latest run land together or not at all.
+        async with conn.transaction():
+            if rows:
+                await conn.execute_core_many(results_sa_table(table_name).insert(), rows)
+            await record_latest_run(conn, table_id, scan_id, scan_time, rows)
     return {"scan_id": scan_id, "rows": len(rows)}
+
+
+def scan_outcome(rows: list[dict]) -> str:
+    """A scan's outcome as REQ-2132 shows it: ``pass`` when every check passed, ``fail``
+    otherwise -- a warning, an error or a skipped check is not a pass."""
+    return "pass" if all(r["outcome"] == "pass" for r in rows) else "fail"
+
+
+async def record_latest_run(
+    conn: Any, table_id: int, scan_id: str, scan_time: datetime, rows: list[dict]
+) -> None:
+    """Record a scan as checker table ``table_id``'s latest run (checker_latest_runs), the one
+    answer the meta domain and the dq service read for it."""
+    from provisa.core.schema_org import checker_latest_runs
+
+    await conn.upsert(
+        checker_latest_runs,
+        {
+            "table_id": table_id,
+            "scan_id": scan_id,
+            "scan_time": scan_time,
+            "outcome": scan_outcome(rows),
+        },
+        index_elements=["table_id"],
+        update_columns=["scan_id", "scan_time", "outcome"],
+    )
 
 
 async def _scheduled_scan(table_id: int, org_id: str) -> None:

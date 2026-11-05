@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "Klassifizierungen von {{table}}",
+    "suggested": "Vom letzten Lauf vorgeschlagen",
+    "none": "Der letzte Lauf schlägt keine Klassifizierung vor.",
+    "column": "Spalte",
+    "kindHeader": "Wirkt wie",
+    "evidence": "Beleg",
+    "sensitive": "Sensibel",
+    "suggestion": "{{table}}.{{column}} wirkt wie {{kind}}: {{share}} der Stichprobenwerte bestehen die Prüfung.",
+    "accept": "Annehmen",
+    "reject": "Ablehnen",
+    "status_suggested": "Vorgeschlagen",
+    "status_accepted": "Angenommen",
+    "status_rejected": "Abgelehnt",
+    "decided": "Entscheidungen",
+    "noneDecided": "Noch kein Vorschlag wurde angenommen oder abgelehnt.",
+    "withdraw": "Zurückziehen",
+    "linked": "Die Spalte bedeutet jetzt {{term}}.",
+    "keyColumn": "Die Spalte behält ihren Klassen-Begriff: Die Bedeutung einer Schlüsselspalte ist ihr Klassen-Begriff.",
+    "markedPii": "Sie ist als PII markiert.",
+    "maskOffered": "Vorgeschlagene Maske: {{mask}}. Fügen Sie sie in den Masken der Spalte hinzu."
+  }
+}

@@ -35,6 +35,7 @@ class _State:
     rate_limiter = None
     flight_global_cap = 2
     security_high = False
+    settings_overrides: dict = {"derived_roles": []}  # the org declares no derived role
 
 
 @pytest.fixture(autouse=True)

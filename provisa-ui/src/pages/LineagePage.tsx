@@ -12,6 +12,7 @@
 // (command boundaries spliced continuous to source columns, transforms named), or load the
 // federation-wide provenance graph over every view/MV with cycles characterized.
 
+import { PageTitle } from "../components/PageTitle";
 import { LINEAGE_EDITOR_PANEL_STYLE, LINEAGE_CONTROLS_PANEL_STYLE } from "./lineageLayout";
 import { Trans, useTranslation } from "react-i18next";
 import { useEffect, useMemo, useState } from "react";
@@ -28,10 +29,9 @@ import {
   Paper,
   Stack,
   Text,
-  Title,
   useMantineColorScheme,
 } from "@mantine/core";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, GitBranch } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
@@ -48,7 +48,7 @@ import { useAuth } from "../context/AuthContext";
 import { CapabilityGate } from "../components/CapabilityGate";
 import { fetchOrgRoles } from "../api/admin";
 import { Tip } from "../components/Tip";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 
 const DEFAULT_SQL =
   "SELECT o.id, e.embedding, upper(e.geo) AS geo_u\nFROM orders o JOIN enrich_grpc_set('main.public.orders') e ON o.id = e.id";
@@ -60,21 +60,11 @@ const GRAPH_KEY = "provisa.lineage.graph";
 const COLLAPSED_KEY = "provisa.lineage.collapsed";
 
 function loadStoredGraph(): LineageGraphData | null {
-  try {
-    const raw = getStored(GRAPH_KEY, { session: true });
-    return raw ? (JSON.parse(raw) as LineageGraphData) : null;
-  } catch {
-    return null;
-  }
+  return getStoredJson<LineageGraphData>(GRAPH_KEY, { session: true });
 }
 
 function loadStoredCollapsed(): Set<string> {
-  try {
-    const raw = getStored(COLLAPSED_KEY, { session: true });
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set();
-  }
+  return new Set(getStoredJson<string[]>(COLLAPSED_KEY, { session: true }) ?? []);
 }
 
 export function LineagePage(): React.ReactElement {
@@ -217,7 +207,7 @@ export function LineagePage(): React.ReactElement {
     // The graph panel grows to the bottom of the page rather than ending at a fixed height, so the
     // canvas is as tall as the window allows and the DAG is not read through a letterbox.
     <Stack p="md" gap="md" style={{ flex: 1, minHeight: 0 }}>
-      <Title order={3}>{t("lineagePage.title")}</Title>
+      <PageTitle icon={GitBranch} order={3}>{t("lineagePage.title")}</PageTitle>
       <Text c="dimmed" size="sm">
         <Trans i18nKey="lineagePage.intro" components={{ b: <b /> }} />
       </Text>

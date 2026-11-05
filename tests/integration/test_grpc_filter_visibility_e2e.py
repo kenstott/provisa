@@ -36,7 +36,7 @@ _REPO = Path(__file__).resolve().parents[2]
 _ORG = "grpc_filter_vis_e2e"
 _SCHEMA = "grpc_filter_vis_e2e_src"
 _ADMIN = "org_admin"
-_NARROW = "analyst"  # cannot read ``amount``
+_NARROW = "sales_analytics_analyst"  # cannot read ``amount``
 _ROWS = [(1, 10.5, "east"), (2, 20.25, "west"), (3, 30.75, "east")]
 _PRESENT, _ABSENT = 10.5, 999.0  # an amount some row has, and one no row has
 

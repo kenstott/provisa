@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:churn/1-churn-features.graphql",
+  "root_field": "c__viewChurnFeatures"
+ }
+]

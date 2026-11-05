@@ -85,6 +85,7 @@ def _registered(source_id: str, schema_name: str, table_name: str) -> dict:
                 "data_type": "bigint",
                 "is_primary_key": True,
                 "native_filter_type": None,
+                "subtype": None,  # REQ-2171: fetch_tables carries each column's
             }
         ],
     }
@@ -103,7 +104,7 @@ def _state(
 ) -> SimpleNamespace:
     """An org's state as the routes are published from it: the registry holds ``registered``."""
 
-    async def _fetch_tables(_conn):
+    async def _fetch_tables(_conn, **_kw):
         return registered
 
     async def _source_rows(_conn):

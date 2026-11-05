@@ -59,6 +59,12 @@ def registered_providers() -> list[str]:
     return sorted(_PROVIDERS)
 
 
+def beta_providers() -> list[str]:
+    """The registered providers not yet proven against a live instance (``MetadataExport.beta``),
+    which the UI labels "(beta)"."""
+    return sorted(name for name, cls in _PROVIDERS.items() if cls.beta)
+
+
 def metadata_export(target: MetadataExportTarget) -> MetadataExport:
     """The adapter behind the port for one configured target (REQ-2118: an org may have several).
 

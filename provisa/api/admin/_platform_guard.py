@@ -24,6 +24,7 @@ from collections.abc import Iterable
 from fastapi import Request
 
 from provisa.api.errors import ApiError
+from provisa.security.inheritance import right_not_in_parents
 from provisa.security.rights import (
     DEPLOYMENT_GRANTER,
     Capability,
@@ -207,17 +208,16 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
     *,
     role_id: str,
     domain_access: Iterable[str] | None,
-    inherited_domain_access: Iterable[str] | None = None,
 ) -> ApiError | None:
     """Why a role may not be DEFINED this way, or None when it may.
 
     Three refusals, asked of every surface that writes a role's definition:
 
     * a ``domain_access`` that lists no domain — a role is always one or more domains, or
-      ``"*"`` (``rights.role_domain_problem``; the role's own list plus ``inherited_domain_access``
-      from its parent chain). The one exception is a role carrying only platform rights;
+      ``"*"`` (``rights.role_domain_problem``; the role's own list alone, as reach is never
+      inherited, REQ-2155). The one exception is a role carrying only platform rights;
     * a string naming no right — the vocabulary is closed (``rights.unknown_capabilities``);
-    * a platform right, held directly or through ``inherited`` (the parent chain's capabilities),
+    * a platform right, held directly or through ``inherited`` (its ancestors' capabilities),
       unless the caller is a platform administrator. Defining a role is ``user_management``'s act,
       and that right is over an org's people — it does not reach authority over the deployment.
 
@@ -231,11 +231,7 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
             "Unknown capability: " + ", ".join(repr(c) for c in unknown),
             capabilities=unknown,
         )
-    domain_problem = role_domain_problem(
-        role_id,
-        [*(capabilities or ()), *(inherited or ())],
-        [*(domain_access or ()), *(inherited_domain_access or ())],
-    )
+    domain_problem = role_domain_problem(role_id, capabilities, list(domain_access or ()))
     if domain_problem is not None:
         return ApiError(422, "roles.domain_required", domain_problem, role=role_id)
     platform = sorted(platform_rights_in(capabilities) | platform_rights_in(inherited))
@@ -247,3 +243,30 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
             rights=platform,
         )
     return None
+
+
+def role_narrowing_problem(  # REQ-2155
+    role_id: str,
+    parents: list[str],
+    capabilities: list[str],
+    domain_access: list[str],
+    residency_values: list[str],
+    roles: list[dict],
+    domain_parents: dict[str, str | None],
+) -> ApiError | None:
+    """A right given that no parent holds, refused by name, or None: a role is always a subset of
+    the union of its parents. ``roles`` are the stored rows, the standard roles among them."""
+    refused = right_not_in_parents(
+        role_id, parents, capabilities, domain_access, residency_values, roles, domain_parents
+    )
+    if refused is None:
+        return None
+    kind, right, why = refused
+    return ApiError(
+        422,
+        "roles.right_not_in_parents",
+        f"Role {role_id!r} cannot hold {kind} {right!r}: {why}",
+        role=role_id,
+        kind=kind,
+        right=right,
+    )

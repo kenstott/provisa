@@ -11,7 +11,7 @@
 
 """Non-deterministic evaluation of the LLM-assisted features (REQ-018/167/355/356/612).
 
-These call the REAL Anthropic model (no mocks) and judge inherently non-deterministic output:
+These call the REAL model (Haiku through OpenRouter) (no mocks) and judge inherently non-deterministic output:
 
 - DESCRIPTIONS (generate table / column description): scored by an LLM-AS-JUDGE against a rubric —
   a second model call returns a 0..1 relevance score; we assert it clears a lenient bar. Wording
@@ -20,7 +20,8 @@ These call the REAL Anthropic model (no mocks) and judge inherently non-determin
   KNOWN foreign-key answer set; we assert recall (found the obvious FKs) and precision (didn't
   hallucinate edges that don't correspond to a real column pair) over the inferred edges.
 
-Skipped without ANTHROPIC_API_KEY. Marked e2e (runs in the e2e lane). Thresholds are deliberately
+Every operation is routed to OpenRouter through the client's ``ai_endpoints``/``ai_models`` config
+(REQ-1790). Skipped without OPENROUTER_API_KEY. Marked e2e (runs in the e2e lane). Thresholds are deliberately
 lenient — the point is to catch the model/prompt REGRESSING to nonsense, not to pin exact phrasing.
 """
 
@@ -39,10 +40,36 @@ from provisa.discovery.prompt import build_prompt
 pytestmark = [
     pytest.mark.e2e,
     pytest.mark.skipif(
-        not os.environ.get("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set — LLM eval needs the live model",
+        not os.environ.get("OPENROUTER_API_KEY"),
+        reason="OPENROUTER_API_KEY not set — LLM eval needs the live model",
     ),
 ]
+
+
+_OPENROUTER_MODEL = "anthropic/claude-haiku-5.5"
+_OPERATIONS = ("table_description", "column_description", "relationship_inference")
+_OPENROUTER_CONFIG = {
+    "ai_endpoints": [
+        {
+            "id": "openrouter",
+            "style": "openai",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key_env": "OPENROUTER_API_KEY",
+            "enabled": True,
+        }
+    ],
+    "ai_models": {op: {"vendor": "openrouter", "model": _OPENROUTER_MODEL} for op in _OPERATIONS},
+}
+
+
+@pytest.fixture(autouse=True)
+def _openrouter_config(monkeypatch, bind_org):
+    """ProvisaLLMClient reads the deployment config; give it the OpenRouter endpoint and models.
+    _call_llm reads the acting org's keys, a tenant-data path, so the deployment org is bound."""
+    import provisa.api.app as app_mod
+
+    bind_org(app_mod.state.org_id)
+    monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: _OPENROUTER_CONFIG)
 
 
 async def _judge(rubric: str) -> float:
@@ -51,7 +78,7 @@ async def _judge(rubric: str) -> float:
     reply = await _call_llm(
         rubric + "\n\nRespond with ONLY a single number between 0 and 1.",
         "table_description",
-        max_tokens=16,
+        max_tokens=1024,
     )
     m = re.search(r"(0(?:\.\d+)?|1(?:\.0+)?)", reply or "")
     return float(m.group(1)) if m else 0.0
@@ -69,7 +96,7 @@ _ORDERS_PROMPT = (
 
 @pytest.mark.asyncio
 async def test_table_description_is_on_topic():
-    desc = await _call_llm(_ORDERS_PROMPT, "table_description", max_tokens=256)
+    desc = await _call_llm(_ORDERS_PROMPT, "table_description", max_tokens=2048)
     assert desc and 15 <= len(desc) <= 500, f"implausible description: {desc!r}"
     score = await _judge(
         "On a scale 0..1, how well does this description accurately and specifically describe a "
@@ -86,7 +113,7 @@ async def test_column_description_is_on_topic():
         "'customer_id' of a database table named 'orders' (columns: id, customer_id, total_amount, "
         "status, created_at). Respond with only the description text, no preamble."
     )
-    desc = await _call_llm(prompt, "column_description", max_tokens=128)
+    desc = await _call_llm(prompt, "column_description", max_tokens=2048)
     assert desc and 5 <= len(desc) <= 300, f"implausible column description: {desc!r}"
     score = await _judge(
         "On a scale 0..1, does this one-line description correctly explain that 'customer_id' is a "
@@ -121,7 +148,7 @@ def test_relationship_inference_finds_obvious_fks():
     )
 
     prompt = build_prompt(di)
-    cands = analyze(prompt, {"anthropic": os.environ["ANTHROPIC_API_KEY"]}, di, min_confidence=0.5)
+    cands = analyze(prompt, {}, di, min_confidence=0.5)
 
     edges = {
         (c.source_table_id, c.source_column, c.target_table_id, c.target_column) for c in cands
@@ -155,8 +182,6 @@ def test_relationship_inference_does_not_invent_edges_on_unrelated_tables():
     recipes = _tbl(11, "recipes", ["id", "title", "instructions", "servings"])
     di = DiscoveryInput(tables=[weather, recipes], existing_relationships=[], rejected_pairs=[])
 
-    cands = analyze(
-        build_prompt(di), {"anthropic": os.environ["ANTHROPIC_API_KEY"]}, di, min_confidence=0.7
-    )
+    cands = analyze(build_prompt(di), {}, di, min_confidence=0.7)
     # At a 0.7 confidence bar there is no real FK to find; allow at most one low-signal guess.
     assert len(cands) <= 1, f"hallucinated relationships between unrelated tables: {cands}"

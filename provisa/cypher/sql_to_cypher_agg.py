@@ -23,19 +23,12 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.cypher.sql_to_cypher_helpers import (
+    UntranslatableSubquery,
     _rel_type_from_on,
     _resolve_label,
     _src_alias_from_on,
     rel_pattern,
 )
-
-
-class UntranslatableSubquery(Exception):
-    """A correlated subquery references a table this pass could not bind to a graph pattern.
-
-    Raised instead of emitting the SQL alias into Cypher, where it would be an unbound variable.
-    semantic_sql_to_cypher catches it and returns None (the documented "cannot translate" result).
-    """
 
 
 def _extract_array_agg_col_and_from(

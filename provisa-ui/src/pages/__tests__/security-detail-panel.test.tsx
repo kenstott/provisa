@@ -28,7 +28,8 @@ const role = (id: string, detailsHidden = false) => ({
   capabilities: [],
   demonstrated: [],
   domain_access: ["sales"],
-  parentRoleId: null,
+  parents: [],
+  standard: false,
   detailsHidden,
 });
 const ROLES = [role("analyst"), role("steward"), role("locked", true)];
@@ -40,6 +41,7 @@ const RULES = [
     actionName: null,
     roleId: "analyst",
     filterExpr: "a",
+    rights: ["R"],
     description: "A",
   },
   {
@@ -49,6 +51,7 @@ const RULES = [
     actionName: null,
     roleId: "steward",
     filterExpr: "b",
+    rights: ["R"],
     description: "B",
   },
 ];

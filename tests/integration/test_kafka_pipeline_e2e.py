@@ -72,9 +72,13 @@ async def kafka_client(trino_conn):
     os.environ["PROVISA_ENGINE"] = "trino"
     os.environ["PROVISA_CONFIG"] = str(_CONFIG)
     os.environ.setdefault("PG_PASSWORD", "provisa")
-    prior_engine = app_mod.state.federation_engine
-    app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
-    app_mod.state.federation_engine.bind_terminal()
+    from tests.conftest import as_deployment_org
+
+    # The engine is the deployment org's, set as its boot sets it (REQ-1266).
+    with as_deployment_org():
+        prior_engine = app_mod.state.federation_engine
+        app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
+        app_mod.state.federation_engine.bind_terminal()
     try:
         app = app_mod.create_app()
         async with app.router.lifespan_context(app):
@@ -82,7 +86,8 @@ async def kafka_client(trino_conn):
             async with AsyncClient(transport=transport, base_url="http://test", timeout=180) as c:
                 yield c
     finally:
-        app_mod.state.federation_engine = prior_engine
+        with as_deployment_org():
+            app_mod.state.federation_engine = prior_engine
         for key, value in prior.items():
             if value is None:
                 os.environ.pop(key, None)

@@ -34,7 +34,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("runSql — what /data/sql answered", () => {
   it("returns the rows and their columns", async () => {
     answer({ data: { sql: [{ id: 1 }] }, columns: ["id"], column_types: ["integer"] });
-    const r = await runSql("SELECT 1");
+    const r = await runSql("SELECT 1", "analyst");
     expect(r.error).toBeUndefined();
     expect(r.redirect).toBeUndefined();
     expect(r.columns).toEqual(["id"]);
@@ -51,7 +51,7 @@ describe("runSql — what /data/sql answered", () => {
         content_type: "application/vnd.apache.parquet",
       },
     });
-    const r = await runSql("SELECT * FROM big");
+    const r = await runSql("SELECT * FROM big", "analyst");
     expect(r.error).toBeUndefined();
     expect(r.redirect).toEqual({
       url: "https://results.example/r/abc.parquet",
@@ -65,7 +65,7 @@ describe("runSql — what /data/sql answered", () => {
 
   it("fails loud when the answer carries no column list, never handing on an undefined one", async () => {
     answer({ data: { sql: [] }, detail: "the engine returned no description" });
-    const r = await runSql("SELECT 1");
+    const r = await runSql("SELECT 1", "analyst");
     expect(r.columns).toEqual([]);
     expect(r.error).toContain("the engine returned no description");
   });
@@ -87,7 +87,7 @@ describe("runSql — a statement the server refused", () => {
         params: { view: "view_close_by_category", opens_at: "2026-10-22T02:00+00:00" },
       }),
     );
-    const r = await runSql("SELECT 1");
+    const r = await runSql("SELECT 1", "analyst");
     expect(r.error).toBe(
       "The view view_close_by_category can be read only within its read window. It next opens at 2026-10-22T02:00+00:00.",
     );
@@ -95,7 +95,7 @@ describe("runSql — a statement the server refused", () => {
 
   it("says an uncoded refusal in the server's own words", async () => {
     refuse(400, JSON.stringify({ detail: "syntax error at or near FROM" }));
-    expect((await runSql("SELECT FROM")).error).toBe("syntax error at or near FROM");
+    expect((await runSql("SELECT FROM", "analyst")).error).toBe("syntax error at or near FROM");
   });
 
   it("refuses an explain in the same words, as the analyze and detach blocks show it", async () => {
@@ -130,6 +130,6 @@ describe("runSql — a statement the server refused", () => {
 
   it("says a body that is not JSON as it is", async () => {
     refuse(502, "Bad Gateway");
-    expect((await runSql("SELECT 1")).error).toBe("Bad Gateway");
+    expect((await runSql("SELECT 1", "analyst")).error).toBe("Bad Gateway");
   });
 });

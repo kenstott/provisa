@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from provisa.compiler.native_nested import NestedColumns
+    from provisa.compiler.native_subtype import SubtypeColumns
     from provisa.compiler.introspect import ColumnMetadata
 
 
@@ -90,6 +91,9 @@ class JunctionMeta:
     type_column: str | None = None
     type_value: str | None = None
     attributes: tuple[tuple[str, str], ...] = ()
+    #: The type column's exposed name: what a row's own type is read as (r.relType) where a hop
+    #: reads every row of the junction, whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — "column", "table" or "fixed".
     label_source: str = ""
     label_fixed: str = ""  # the cypher_alias, carried here so "fixed" can be resolved standalone
@@ -145,6 +149,10 @@ class CompilationContext:
     # REQ-1921: every name a statement could give a draft table this role would see (field name,
     # table name, alias, schema.table) → the table's name. In no schema; refused as draft.
     draft_names: dict[str, str] = field(default_factory=dict)
+    # REQ-1132: each name of a system domain's table the role holds no capability for -> the domain.
+    missing_capability: dict[str, str] = field(default_factory=dict)
+    # REQ-1132: each name of a table the role can only list -> the table.
+    listed_only: dict[str, str] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
     # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
@@ -155,6 +163,14 @@ class CompilationContext:
     # REQ-1965: (schema, physical table) lowercased → {column lowercased: its hidden attributes}
     # for every registered column that is natively an array, a struct or a map at its source.
     nested_columns: "NestedColumns" = field(default_factory=dict)
+    # REQ-2171: (schema, physical table) lowercased → {column lowercased: its subtype} for every
+    # registered column whose subtype has semantics of its own (an inet, a range, a geometry).
+    subtype_columns: "SubtypeColumns" = field(default_factory=dict)
+    # REQ-2171: the registered columns of a subtype held as text, read through its read form.
+    read_columns: "SubtypeColumns" = field(default_factory=dict)
+    # REQ-1915: the tables replicated row by row on the bound engine (flagged, and the engine
+    # cannot attach their source). A to-one relationship into one compiles to a JOIN.
+    row_level_tables: frozenset[int] = frozenset()
     # table_id → [(col_name, column_type)] for aggregate column metadata
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # table_id → user-designated PK column names (informational; empty = heuristic only)
@@ -178,6 +194,12 @@ class CompilationContext:
     row_virtual_columns: dict[int, dict[str, tuple[str, dict[int, str]]]] = field(
         default_factory=dict
     )
+    # REQ-1867: (table_id, physical column name lowercased) for every registered column typed json
+    # or jsonb: the only columns whose text is written as the JSON it holds.
+    json_columns: set[tuple[int, str]] = field(default_factory=set)
+    # REQ-1867: (table_id, physical column name lowercased) for every registered column typed an
+    # integer: written as a JSON number, by its type.
+    integer_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the GQL OBJECT type is itself a governed (registered) table —
@@ -197,6 +219,30 @@ class CompilationContext:
 # --- Compiled query result ---
 
 
+def is_json_type(data_type: str | None) -> bool:
+    """REQ-1867: a column type whose values are JSON -- PostgreSQL's json and jsonb, as a
+    registration or an engine names them."""
+    return data_type is not None and data_type.strip().lower() in ("json", "jsonb")
+
+
+#: REQ-1867: the integer types, as a registration or an engine (PostgreSQL, DuckDB, Trino) names
+#: them. A DECIMAL with no fraction is not one: it is written as a DECIMAL is.
+_INTEGER_TYPES = frozenset(
+    {
+        "int2", "int4", "int8", "int16", "int32", "int64", "int128",
+        "smallint", "integer", "int", "bigint", "tinyint", "hugeint",
+        "utinyint", "usmallint", "uinteger", "ubigint", "uhugeint",
+        "smallserial", "serial", "bigserial", "serial2", "serial4", "serial8",
+    }
+)  # fmt: skip
+
+
+def is_integer_type(data_type: str | None) -> bool:
+    """REQ-1867: a column type whose values are integers, written as JSON numbers by the type --
+    not by how a reader represented the value (a DuckDB HUGEINT read through Arrow is a Decimal)."""
+    return data_type is not None and data_type.strip().lower() in _INTEGER_TYPES
+
+
 @dataclass(frozen=True)
 class ColumnRef:
     """A column in the SELECT list with serialization metadata."""
@@ -207,6 +253,17 @@ class ColumnRef:
     nested_in: str | None  # relationship field name, or None for root
     cardinality: str | None = None  # "many-to-one", "one-to-many", "one-to-one", or None for root
     is_agg: bool = False  # True when emitted as ARRAY_AGG correlated subquery
+    # REQ-1867: the value is JSON -- a column typed json or jsonb, or a relationship the statement
+    # builds as one JSON value -- and is written as the object, array or scalar it holds. Any other
+    # text is written as the string it is, even when it reads as JSON.
+    json: bool = False
+    # REQ-1867: the key paths ("items", "items.product") inside a JSON value whose strings are
+    # JSON text the engine wrote: a nested relationship or declared object, which Trino's
+    # json_format turns into text. Every other string inside the value is a string.
+    json_text: frozenset[str] = frozenset()
+    # REQ-1867: the column is typed an integer and is written as a JSON number, whatever a reader
+    # represented its value as (a DuckDB HUGEINT read through Arrow is a Decimal).
+    integer: bool = False
 
 
 class StatementSources(set[str]):
@@ -252,10 +309,10 @@ class CompiledQuery:
     sort_columns: list[str] = field(default_factory=list)
     page_size: int | None = None
     has_cursor: bool = False
-    # Aggregate + nodes: plain SELECT for nodes field (issue #12)
-    nodes_sql: str | None = None
-    nodes_columns: list[ColumnRef] | None = None
-    nodes_params: list = field(default_factory=list)
+    # An aggregate or group-by root that selects its nodes (issue #12): one statement, whose row
+    # (each group's, under group-by) holds them as a column beside the aggregates
+    # (aggregates._nodes_column).
+    has_nodes: bool = False
     # Alias for the "aggregate" response key (e.g. "derived: aggregate" → "derived")
     agg_alias: str = "aggregate"
     # Native filter args for API-routed sources (path/query params extracted from GQL args)

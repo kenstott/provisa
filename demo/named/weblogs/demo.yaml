@@ -11,14 +11,14 @@
 # the demo.yaml files by scripts/gen-site-demos.mjs; a demo with published: false has no card.
 title: Web shop logs
 description: >-
-  A web shop's nginx access log and its database's statement log, read as tables and joined to
-  the shop's own data: the slowest pages and the SQL behind them, the requests that failed in the
+  A web shop's nginx access log and its database's statement log, read as tables and joined to the shop's own data. You see the slowest pages and the SQL behind them, the requests that failed in the
   database, the customers who were served an error, and the products viewed but never bought.
 screenshot: card.png
 published: true
+group: bi
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. A placeholder for the first release carrying the bundle code; set when that is cut.
-requires_provisa: 0.1.0a483
+requires_provisa: 0.1.0a497
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Logs Are Tables!"

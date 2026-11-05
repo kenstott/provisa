@@ -52,6 +52,7 @@
       "mailboxes_failed": "Postfächer, deren Lesen mittendrin fehlgeschlagen ist: {{total}}. Was von ihnen gelesen wurde, bleibt erhalten, und das Lesen wird bei der nächsten Aktualisierung fortgesetzt. Es sind: {{accounts}}",
       "place_not_kept": "Diese Kopie ist vollständig, aber es konnte nicht festgehalten werden, wie weit ihr Lesevorgang kam; die nächste Änderungsprüfung fordert den Lesevorgang daher erneut an: {{reason}}",
       "indexes_not_planned": "Diese Kopie ist vollständig und lesbar, aber ihre Indizes konnten nicht geplant werden; sie wird daher ohne sie gelesen, bis sie neu erstellt wird: {{reason}}",
+      "column_not_landed": "Die Spalte {{column}} ({{subtype}}) ist nicht in dieser Kopie: {{reader}} kann sie nicht als {{subtype}} lesen, daher wird sie ausgelassen, und ein Lesen dieser Spalte wird abgelehnt.",
       "andMore": "{{ids}} und {{more}} weitere",
       "other": "Der letzte Build hat vermerkt: {{code}}"
     },

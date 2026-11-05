@@ -581,7 +581,8 @@ def test_collect_nested_columns_scalar_with_alias():
         ParamCollector(),
         None,
     )
-    assert select_parts == ['"t0"."nm" AS "display"']
+    # Named by its response path, the nesting path's and its own key.
+    assert select_parts == ['"t0"."nm" AS "root__display"']
     assert columns[0].field_name == "display"
 
 
@@ -606,7 +607,7 @@ def test_collect_nested_columns_scalar_no_alias():
         ParamCollector(),
         None,
     )
-    assert select_parts == ['"t0"."nm"']
+    assert select_parts == ['"t0"."nm" AS "root__name"']
 
 
 def test_collect_nested_columns_virtual_column():
@@ -633,7 +634,7 @@ def test_collect_nested_columns_virtual_column():
         ParamCollector(),
         None,
     )
-    assert select_parts == ["VARCHAR 'widgets'"]
+    assert select_parts == ["VARCHAR 'widgets' AS \"root___name_\""]
 
 
 def test_collect_nested_columns_gql_json_blob_expansion():

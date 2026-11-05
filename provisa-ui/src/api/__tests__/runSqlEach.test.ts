@@ -25,7 +25,7 @@ describe("runSqlEach", () => {
             {
               statement: "SELECT id FROM orders",
               warnings: [],
-              data: [{ id: 1 }],
+              data: [[1]],
               columns: ["id"],
               column_types: ["integer"],
             },

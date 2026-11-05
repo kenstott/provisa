@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Excel tables",
+    "note": "How tables are found in this source's workbooks. Leave a hint on Auto-detect unless a workbook is read wrong.",
+    "auto": "Auto-detect",
+    "autoValue": "Auto-detect ({{value}})",
+    "hint": {
+      "header_rows": "Header rows",
+      "max_header_rows": "Most header rows",
+      "table_gap_rows": "Blank rows between tables",
+      "column_gap": "Blank columns between tables",
+      "min_columns": "Fewest columns",
+      "min_data_rows": "Fewest data rows",
+      "range": "Range"
+    },
+    "help": {
+      "header_rows": "The exact number of header rows. Set it when a data row is read as a header, or a header as data.",
+      "max_header_rows": "The most rows read as header rows. 1 means each table has a single header row.",
+      "table_gap_rows": "How many blank rows in a row end a table. Set 1 when tables are separated by one blank row.",
+      "column_gap": "How many blank columns in a row separate tables side by side. Set 1 when one blank column separates them.",
+      "min_columns": "The fewest columns a table has. Set 1 to read one-column tables.",
+      "min_data_rows": "The fewest data rows a table has. A table with fewer is not read.",
+      "range": "The cells this table is, read exactly, such as Sheet1!A3:F200. Quote a sheet name with spaces: 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "For one workbook or table",
+    "entriesNote": "A hint here wins over the same hint above. A table is named file__sheet, as it is listed.",
+    "scope": "For",
+    "scopeWorkbook": "Workbook",
+    "scopeTable": "Table",
+    "workbookName": "Workbook file",
+    "workbookNameHelp": "The workbook's file name, such as report.xlsx.",
+    "tableName": "Table",
+    "tableNameHelp": "The table's name as the source lists it, such as report__summary. With a range, this is the name the range's table takes.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Named twice; give each workbook or table one entry.",
+    "repeatedFix": "Excel tables: a workbook or table is named in two entries. Give each one entry.",
+    "add": "Add a workbook or table",
+    "remove": "Remove"
+  }
+}

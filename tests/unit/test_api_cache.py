@@ -12,32 +12,13 @@
 
 import pytest
 
-from provisa.api_source.cache import DEFAULT_TTL, resolve_ttl
 from provisa.api_source.engine_cache import (
     CacheLocation,
     cache_location,
     cache_table_name,
+    rewrite_all_from_cache,
     rewrite_from_cache,
 )
-
-
-# --- TTL resolution ---
-
-
-def test_ttl_endpoint_wins():
-    assert resolve_ttl(60, 120, 300) == 60
-
-
-def test_ttl_source_fallback():
-    assert resolve_ttl(None, 120, 300) == 120
-
-
-def test_ttl_global_fallback():
-    assert resolve_ttl(None, None, 300) == 300
-
-
-def test_ttl_default():
-    assert resolve_ttl(None, None, None) == DEFAULT_TTL
 
 
 # --- cache_location factory ---
@@ -112,6 +93,18 @@ def test_cache_table_name_format():
 # --- SQL FROM rewrite ---
 
 _LOC = CacheLocation("petstore_api", "api_cache", "postgresql")
+
+
+def test_a_statement_sqlglot_cannot_parse_is_never_rewritten_by_pattern():
+    """The rewrite parses the statement; one it cannot parse raises rather than being rewritten
+    by a pattern that could leave the read on the source's table or rewrite another one."""
+    import sqlglot.errors
+
+    broken = 'SELECT * FROM "pg"."public"."pets" WHERE ((('
+    with pytest.raises(sqlglot.errors.ParseError):
+        rewrite_from_cache(broken, _LOC, "r_abc123")
+    with pytest.raises(sqlglot.errors.ParseError):
+        rewrite_all_from_cache(broken, {"pets": (_LOC, "r_abc123")})
 
 
 def test_rewrite_from_cache_simple():

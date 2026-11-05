@@ -94,6 +94,15 @@ def _in_org(username: str, org_id: str) -> dict[str, str]:
     return {**_basic(username), "X-Org-Provisa": org_id}
 
 
+def _as_scheduler() -> dict[str, str]:
+    """alice's request acting as ``scheduler``, the role that carries org_settings and
+    table_registration (TestScheduledTriggerRunsAsAHeldRole). Rights come from the roles a
+    request acts as, the default role when it names none (REQ-2060), so a request using
+    scheduler's rights names it. Every role alice holds still counts as held: a trigger or test
+    call may run as analyst."""
+    return {**_in_org("alice", _ctx["org1"]), "X-Provisa-Role": "scheduler"}
+
+
 def _pg_conn():
     """Connect to the SAME Postgres the app's control planes use.
 
@@ -244,7 +253,7 @@ class TestOrgEmailRuleOnRedemption:
     async def _invite(self, client) -> str:
         resp = await client.post(
             "/admin/invites/",
-            json={"org_id": _ctx["org1"], "role_id": "analyst"},
+            json={"org_id": _ctx["org1"], "role_id": "sales_analytics_analyst"},
             # REQ-1235: /admin/invites is the org's own (tenant plane), so the request names it.
             headers=_in_org("founder", _ctx["org1"]),
         )
@@ -268,7 +277,7 @@ class TestOrgEmailRuleOnRedemption:
         assert resp.json() == {
             "user_id": _ctx["user_ids"]["alice"],
             "org_id": _ctx["org1"],
-            "role_id": "analyst",
+            "role_id": "sales_analytics_analyst",
         }
 
     async def test_the_rule_reads_back_for_the_admin_who_set_it(self, client):
@@ -298,7 +307,7 @@ class TestOrgEmailRuleOnRedemption:
         assert resp.json() == {
             "user_id": _ctx["user_ids"]["bob"],
             "org_id": _ctx["org1"],
-            "role_id": "analyst",
+            "role_id": "sales_analytics_analyst",
         }
         me = await client.get("/auth/me", headers=_basic("bob"))
         assert _ctx["org1"] in [m["org_id"] for m in me.json()["org_memberships"]]
@@ -340,7 +349,7 @@ class TestOnlyAssignedRoleRidesHeader:
         resp = await client.post(
             "/data/graphql",
             json={"query": "{ sa__customers { id name } }"},
-            headers={**_in_org("alice", _ctx["org1"]), "X-Provisa-Role": "analyst"},
+            headers={**_in_org("alice", _ctx["org1"]), "X-Provisa-Role": "sales_analytics_analyst"},
         )
         assert resp.status_code == 200, resp.text
         rows = resp.json()["data"]["sa__customers"]
@@ -359,7 +368,9 @@ class TestOnlyAssignedRoleRidesHeader:
     async def test_a_role_named_in_the_path_follows_the_same_rule(self, client):
         # REQ-273: a route that addresses a role by id in the URL is the same act as naming it in
         # the header. alice holds analyst and not org_admin.
-        own = await client.get("/data/proto/analyst", headers=_in_org("alice", _ctx["org1"]))
+        own = await client.get(
+            "/data/proto/sales_analytics_analyst", headers=_in_org("alice", _ctx["org1"])
+        )
         assert own.status_code == 200, own.text
         assert "proto3" in own.text
 
@@ -402,7 +413,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
         return await client.post(
             "/admin/graphql",
             json={"query": query, "variables": {"id": task_id, "sql": self._SQL, "role": role}},
-            headers=_in_org("alice", _ctx["org1"]),
+            headers=_as_scheduler(),
         )
 
     async def _task_ids(self, client) -> set[str]:
@@ -444,9 +455,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
             'cron: "0 2 * * *", kind: "webhook", webhookName: "no-such-webhook") '
             "{ success code } }"
         )
-        resp = await client.post(
-            "/admin/graphql", json={"query": query}, headers=_in_org("alice", _ctx["org1"])
-        )
+        resp = await client.post("/admin/graphql", json={"query": query}, headers=_as_scheduler())
         assert resp.status_code == 200, resp.text
         assert not resp.json().get("errors"), resp.text
         assert resp.json()["data"]["createScheduledTask"]["code"] == "schema.webhook_not_found"
@@ -459,7 +468,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
         assert "as-org-admin" not in await self._task_ids(client)
 
     async def test_a_trigger_runs_as_a_role_its_creator_holds(self, client):
-        resp = await self._create(client, "as-analyst", "analyst")
+        resp = await self._create(client, "as-analyst", "sales_analytics_analyst")
         assert resp.status_code == 200, resp.text
         assert not resp.json().get("errors"), resp.text
         assert resp.json()["data"]["createScheduledTask"]["success"] is True, resp.text
@@ -482,9 +491,7 @@ class TestActionTestCallIsGoverned:
     async def _test(self, client, monkeypatch, role_id):
         monkeypatch.setenv("PROVISA_ENABLE_TEST_ENDPOINTS", "true")
         body = {"actionType": "function", "name": "enrich_orders", "role_id": role_id}
-        return await client.post(
-            "/admin/actions/test", json=body, headers=_in_org("alice", _ctx["org1"])
-        )
+        return await client.post("/admin/actions/test", json=body, headers=_as_scheduler())
 
     async def test_a_test_call_names_its_role(self, client, monkeypatch):
         resp = await self._test(client, monkeypatch, None)
@@ -499,7 +506,7 @@ class TestActionTestCallIsGoverned:
     async def test_a_held_role_is_held_to_the_command_admission(self, client, monkeypatch):
         # analyst is alice's own role, and enrich_orders is not assigned to it: the same answer
         # as a command never registered, and nothing runs.
-        resp = await self._test(client, monkeypatch, "analyst")
+        resp = await self._test(client, monkeypatch, "sales_analytics_analyst")
         assert resp.status_code == 404, resp.text
         assert resp.json()["code"] == "functions.unknown_command", resp.text
 

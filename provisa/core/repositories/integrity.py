@@ -11,7 +11,9 @@
 """The model store's dependency guard: what refers to an object, and whether it may go (REQ-1918).
 
 An object has PARTS and DEPENDENTS. A part exists only as part of it and goes with it. A
-dependent is another object that refers to it, and blocks its deletion. A reference from an
+dependent is another object that refers to it, and blocks its deletion. A LINK is a column that
+only points at the object, on a row that lives on without it (a review record's source document):
+it never blocks, and :func:`remove_parts` empties it. A reference from an
 object to itself never blocks. Dependents are chosen so that something can always be deleted
 first — a relationship stands on its own and goes before the tables it joins — so no legitimate
 circle of objects blocking each other exists; views that read each other, the one way to make
@@ -62,6 +64,7 @@ if TYPE_CHECKING:
 class Standing(Enum):
     PART = "part"
     DEPENDENT = "dependent"
+    LINK = "link"  # the row outlives the object: its column is emptied, and nothing blocks
 
 
 class Match(Enum):
@@ -157,9 +160,12 @@ KINDS: dict[str, Kind] = {
     "store": Kind("stores", "id"),  # REQ-1922
     "region": Kind("org_regions", "id"),  # REQ-1921
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
+    "reference_document": Kind("reference_documents", "id"),  # REQ-2185
+    "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
+    "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
 }
 
-_P, _D = Standing.PART, Standing.DEPENDENT
+_P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
 _ENDS = ("source_table_id", "target_table_id", "via_table_id")
 
 
@@ -169,6 +175,10 @@ def _part(table: str, column: str, to: str, **kw: Any) -> Reference:
 
 def _dep(table: str, column: str, to: str, of: str, owner: str, **kw: Any) -> Reference:
     return Reference(table, column, to, _D, of=of, owner=owner, **kw)
+
+
+def _link(table: str, column: str, to: str) -> Reference:
+    return Reference(table, column, to, _L)
 
 
 REFERENCES: tuple[Reference, ...] = (
@@ -186,6 +196,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("user_role_assignments", "domain_id", "domain", "role_assignment", "id"),
     # REQ-1363: a domain's children block it -- they are moved or removed first.
     _dep("domains", "parent_domain_id", "domain", "domain", "id"),
+    # REQ-2189: a domain's place in a saved ERD layout goes with it.
+    _part("erd_layout_domains", "domain_id", "domain"),
     # --- to a source ---------------------------------------------------------------------------
     _dep("registered_tables", "source_id", "source", "table", "id"),
     # REQ-1934: a table's Data Profiler membership.
@@ -207,11 +219,20 @@ REFERENCES: tuple[Reference, ...] = (
     _part("synthetic_report", "dataset_id", "synthetic_dataset"),
     # REQ-1934: a decision on a table's constraint is part of the table, removed with it.
     _part("profiler_constraints", "table_id", "table"),
+    # REQ-2147: a steward's decision on a table's column classification is part of the table.
+    _part("profiler_classifications", "table_id", "table"),
+    # REQ-2189: a table's place in a saved ERD layout goes with it: it disappears from the layout.
+    _part("erd_layout_tables", "table_id", "table"),
+    # --- to a saved ERD layout (REQ-2189): its places go with it -------------------------------
+    _part("erd_layout_domains", "layout_name", "erd_layout"),
+    _part("erd_layout_tables", "layout_name", "erd_layout"),
     # REQ-2091: an adequacy check's result on a table's column is part of the table.
     _part("fake_adequacy_checks", "table_id", "table"),
+    # REQ-2147: a scan of a table for sensitive values in its text, and its hints, are the table's.
+    _part("profiler_sensitive_scans", "table_id", "table"),
+    _part("profiler_sensitive_hints", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
-    _part("glossary_term_table_refs", "table_id", "table"),  # REQ-2130
     _part("table_meta_links", "source_table_id", "table"),
     _part("table_meta_links", "target_table_id", "table"),
     _part("tag_assignments", "table_id", "table"),
@@ -252,8 +273,7 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to a relationship ---------------------------------------------------------------------
     _part("tag_assignments", "relationship_id", "relationship"),
     # --- to a role -----------------------------------------------------------------------------
-    _dep("roles", "parent_role_id", "role", "role", "id"),
-    _dep("roles", "defined_from", "role", "role", "id"),
+    _dep("roles", "parents", "role", "role", "id", match=Match.MEMBER),  # REQ-2155
     # Anyone who holds the role, and every grant or ownership that names it, blocks it: nothing
     # may be left naming a deleted role.
     _dep("user_role_assignments", "role_id", "role", "role_assignment", "id"),
@@ -302,15 +322,20 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("registered_tables", "product_id", "data_product", "table", "id"),
     _dep("tracked_functions", "product_id", "data_product", "command", "name"),
     _part("tag_assignments", "product_id", "data_product"),
+    # REQ-1634 STATUS: a retired product names the product its members moved to.
+    _dep("data_products", "successor_id", "data_product", "data_product", "id"),
     # --- to a glossary term --------------------------------------------------------------------
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.
     _dep("glossary_term_refs", "term_id", "glossary_term", "table", "table_id"),
-    # REQ-2130: a class term's table groundings go with it (the schema cascades them).
-    _part("glossary_term_table_refs", "term_id", "glossary_term"),
+    # REQ-2130: a table a class term grounds is real data the term names, so it blocks the term as
+    # a column ref does.
+    _dep("registered_tables", "class_term_id", "glossary_term", "table", "id"),
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),
+    # REQ-2185 (GRAPH RETRIEVAL): a term's embedding goes with the term.
+    _part("glossary_term_vectors", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_edges", "from_term_id", "glossary_term"),
@@ -326,6 +351,18 @@ REFERENCES: tuple[Reference, ...] = (
     _part("api_endpoints", "source_id", "api_source"),
     _part("kafka_topics", "source_id", "kafka_source"),
     _part("event_status", "event_id", "event"),
+    # --- to a reference-library document -------------------------------------------------------
+    # REQ-2185: a document's domains and its embedded passages go with the document.
+    _part("reference_document_domains", "document_id", "reference_document"),
+    _part("reference_passages", "document_id", "reference_document"),
+    # REQ-2179: a scan keeps the document's title and source, so it outlives the document.
+    _link("glossary_term_scans", "document_id", "reference_document"),
+    # --- to a term scan, and the terms its drafts touch ----------------------------------------
+    # REQ-2179: a scan's drafts go with it. A draft outlives a term it matched or became: an
+    # accepted draft is the history of how the term came about, and a review record never blocks.
+    _part("glossary_term_drafts", "scan_id", "term_scan"),
+    _link("glossary_term_drafts", "match_term_id", "glossary_term"),
+    _link("glossary_term_drafts", "term_id", "glossary_term"),
 )
 
 
@@ -367,7 +404,7 @@ def _matches(reference: Reference, value: Any, wanted: Any) -> bool:
         members = value[reference.path] if reference.path is not None else value
         return wanted in members
     if reference.match is Match.MASK_TO:
-        return any(wanted in entry["to"] for entry in value)
+        return any(wanted in (entry.get("to") or ()) for entry in value)
     relations, metric_names = names_in_sql(value)
     return wanted in (metric_names if reference.to == "metric" else relations)
 
@@ -622,6 +659,15 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
     """Delete the rows that go with ``ref``. The caller holds the transaction, has asked
     :func:`guard`, and deletes the object's own row after this."""
     attributes = await _attributes(conn, ref)
+    for reference in REFERENCES:
+        if reference.standing is Standing.LINK and reference.to == ref.kind:
+            # The database's ON DELETE SET NULL is not relied on: the link is emptied here.
+            table = metadata.tables[reference.table]
+            await conn.execute_core(
+                table.update()
+                .where(table.c[reference.column] == attributes[reference.by])
+                .values({reference.column: None})
+            )
     for reference, where in _part_statements(ref, attributes):
         table = metadata.tables[reference.table]
         if reference.standing is Standing.PART and reference.of is not None:

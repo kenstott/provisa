@@ -31,7 +31,7 @@ Everything the engine holds is **ephemeral** or **reconstructable**:
 | Control-plane registry | source of truth | shared store |
 
 A crashed instance restarts, rebuilds its catalog from config, re-points at the
-shared stores, and loses nothing — because it never owned durable data.
+shared stores, and loses nothing, because it never owned durable data.
 
 ### 2. Durable state is shared by connection, selected by config
 
@@ -42,13 +42,13 @@ Redis. There are no per-instance copies to diverge.
 
 Consistency per component:
 
-- **Materialization store** — one shared, snapshot-consistent copy (e.g. Iceberg);
+- **Materialization store.** One shared, snapshot-consistent copy (e.g. Iceberg);
   all instances read the same committed snapshot.
-- **Control-plane registry** — shared source of truth; per-instance in-memory catalogs
+- **Control-plane registry.** Shared source of truth; per-instance in-memory catalogs
   are eventually-consistent projections (reload/TTL on change). A **read-only** config
   at runtime is trivially consistent — you can then run arbitrarily many copies with no
   config coordination at all; mutable config converges via the shared registry.
-- **Hot cache** — sharing is an **optimization, not a requirement**: the hot cache has
+- **Hot cache.** Sharing is an **optimization, not a requirement**: the hot cache has
   a live fallback (REQ-231) and its rows are governed at query time (REQ-233), so a
   per-instance cache never yields a wrong result, only a lower hit rate and a wider
   invalidation window (bounded by TTL).
@@ -69,16 +69,16 @@ transaction open; a crash leaves a stuck lock).
 
 Two tiers, chosen per deployment:
 
-- **Shared materialization store** (default, most correct) — single coordinated copy →
+- **Shared materialization store** (default, most correct): single coordinated copy →
   monotonic reads and snapshot-consistent joins → the same query at the same instant
   returns the same answer on any instance, with single-refresh economics.
-- **Distributed / per-instance materialization** (eventually correct) — each instance
+- **Distributed / per-instance materialization** (eventually correct): each instance
   materializes locally, at N× compute, and the same query may return different answers on
   different instances until they converge. Convergence requires **two** conditions, not one:
-  1. **Deterministic `view_sql`** — else instances compute different content from identical
+  1. **Deterministic `view_sql`.** Else instances compute different content from identical
      source and never agree. Enforced at registration (reject `now()`/`random()`/`uuid`/
      unordered-`LIMIT`; `provisa/mv/determinism.py`).
-  2. **Source quiescence** — the source must stop changing long enough within a refresh
+  2. **Source quiescence.** The source must stop changing long enough within a refresh
      cycle for every instance to materialize the *same* source state. A never-settling,
      high-churn source **never converges** — each instance perpetually reflects a different
      snapshot, so it is permanently divergent, not eventually consistent. Determinism is
@@ -95,7 +95,7 @@ Two tiers, chosen per deployment:
   point (refresh scheduling).
 - The bottlenecks in the fleet model are the shared **sources** (need their own
   scale-out, e.g. read replicas) and the shared **stateful components** (materialization
-  store on S3/Iceberg scales; a single shared RDB store or Redis is a choke point) —
+  store on S3/Iceberg scales; a single shared RDB store or Redis is a choke point),
   not the engine.
 - Requires: the refresh-coordination catalog (REQ-879), the version stamps as the dedup
-  key (REQ-862), and — only for the distributed tier — an MV-definition determinism rule.
+  key (REQ-862), and (only for the distributed tier) an MV-definition determinism rule.

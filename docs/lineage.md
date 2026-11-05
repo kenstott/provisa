@@ -51,10 +51,10 @@ taint closure continuously from the source relation's declared columns to each o
 
 Additional rings on a node:
 
-- **Orange ring** — a final output column of the statement.
-- **Double border** — the column's relation is a materialized view (MV/CTAS snapshot).
-- **Red ring** — member of a cycle classified as an error.
-- **Yellow ring** — member of a cycle classified as a feedback loop.
+- **Orange ring.** A final output column of the statement.
+- **Double border.** The column's relation is a materialized view (MV/CTAS snapshot).
+- **Red ring.** Member of a cycle classified as an error.
+- **Yellow ring.** Member of a cycle classified as a feedback loop.
 
 ### Named transforms on edges
 
@@ -107,8 +107,8 @@ The lineage engine detects every directed cycle and **classifies** it. A cycle i
 
 | Classification | Border color | Meaning |
 | --- | --- | --- |
-| `feedback` | Yellow | The cycle crosses a materialized node — a legal, time-lagged feedback loop. The MV snapshot is the version boundary that makes it well-defined. |
-| `error` | Red | No materialization boundary on the loop — a circular definition with no stable evaluation order. Likely a design error. |
+| `feedback` | Yellow | The cycle crosses a materialized node, which makes it a legal, time-lagged feedback loop. The MV snapshot is the version boundary that makes it well-defined. |
+| `error` | Red | No materialization boundary on the loop, so it is a circular definition with no stable evaluation order. Likely a design error. |
 
 A `feedback` cycle is a valid pattern. An enrichment MV that feeds a derived column back into its own source relation works as long as one node on the loop is materialized, because the snapshot separates the two halves in time. An `error` cycle needs an operator's judgment. It usually means two views reference each other with no snapshot in between.
 
@@ -190,8 +190,7 @@ Query parameters:
 | `direction` | `upstream` \| `downstream` \| `both` | `both` | Which direction to traverse from `focus` |
 | `depth` | integer | unbounded | Maximum hop distance from `focus` |
 
-Response is the same shape as the statement graph, with a `cycles` field added
-:
+Response is the same shape as the statement graph, with a `cycles` field added:
 
 ```json
 {
@@ -233,12 +232,12 @@ The view reads the refresh records in `"ops"."traces"` and answers on every engi
 
 ## A view as it stood, and as it was recorded
 
-A view that maps its source's columns as `business_key`, `valid_time` and `recorded_time` keeps every version it has held: each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two request headers read its past:
+A view that maps its source's columns as `business_key`, `valid_time` and `recorded_time` keeps every version it has held. Each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two arguments of the view, written where the statement names it, read its past:
 
-- `X-Provisa-As-Of` reads the view as of a time, or over a range.
-- `X-Provisa-As-Recorded` reads it as Provisa had recorded it at a time. Versions recorded after that time are left out, so a correction recorded later does not change a replay of the past.
+- `as_of` reads the view as of a time, or over a range: `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` reads it as Provisa had recorded it at a time. Versions recorded after that time are left out, so a correction recorded later does not change a replay of the past.
 
-As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps both times (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers the three declarations, with examples, and every surface that takes the two values.
+As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps the times it read at (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers the three declarations, with examples, and every surface that takes the two values.
 
 ## What a column rename or drop would break
 

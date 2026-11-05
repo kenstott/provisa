@@ -35,6 +35,7 @@
     "classTerm": "השורות הן מופעים של",
     "classTermPlaceholder": "בחר מונח",
     "noClassTerm": "אין מונח",
-    "classTermUnreadable": "לא ניתן היה לקרוא את המונח שלה: {{error}}"
+    "classTermUnreadable": "לא ניתן היה לקרוא את המונח שלה: {{error}}",
+    "access": "גישה"
   }
 }

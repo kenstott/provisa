@@ -12,8 +12,8 @@
 the back end in this package lowers to semantic SQL.
 
 Today Cypher's front end (provisa.cypher.parser) is the one that produces it. A clause's
-expressions (WHERE, RETURN, WITH, UNWIND, ORDER BY) are still held as Cypher expression text, which
-the back end lowers through Cypher's expression grammar; they become expression trees next.
+expressions (WHERE, RETURN, WITH, UNWIND, ORDER BY) are expression trees (expr_ast), parsed by the
+front end; the back end walks the trees and reads no language's syntax.
 """
 
 # Requirements: REQ-2135, REQ-347, REQ-348, REQ-571
@@ -21,7 +21,39 @@ the back end lowers through Cypher's expression grammar; they become expression 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
+
+from provisa.gql.expr_ast import CypherExpr
+
+
+@dataclass(frozen=True)
+class LabelName:
+    """A label expression naming one label (GQL ``:A``)."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class LabelOr:
+    """A node with any of these labels (GQL ``:A|B``)."""
+
+    options: tuple[LabelName, ...]
+
+
+@dataclass(frozen=True)
+class LabelAnd:
+    """A node with every one of these labels (GQL ``:A&B``, Cypher ``:A:B``)."""
+
+    parts: tuple[LabelName, ...]
+
+
+@dataclass(frozen=True)
+class LabelAny:
+    """A node with any label at all (GQL ``%``, an unlabelled node)."""
+
+
+LabelExpr = LabelName | LabelOr | LabelAnd | LabelAny
 
 
 @dataclass
@@ -33,6 +65,88 @@ class NodePattern:
     #: Each inline property's value as the statement writes it (``'x'``, ``42``, ``$p``), which a
     #: read matches on as ``WHERE var.prop = <value>`` (:func:`with_inline_conditions`).
     property_text: dict[str, str] = field(default_factory=dict)
+    #: Whether the pattern writes a property map, an empty one (``{}``) included.
+    has_map: bool = False
+
+    @property
+    def label_expr(self) -> LabelExpr:
+        """The node's labels as a label expression. ``labels`` and ``label_alternation`` hold it:
+        the label expressions the back end lowers are one level deep (REQ-2135)."""
+        if not self.labels:
+            return LabelAny()
+        if len(self.labels) == 1:
+            return LabelName(self.labels[0])
+        names = tuple(LabelName(n) for n in self.labels)
+        return LabelOr(names) if self.label_alternation else LabelAnd(names)
+
+    @classmethod
+    def with_label_expr(
+        cls, variable: str | None, expr: LabelExpr, properties: dict[str, Any] | None = None
+    ) -> "NodePattern":
+        """A node pattern from a label expression; a front end builds one this way."""
+        props = properties or {}
+        if isinstance(expr, LabelAny):
+            return cls(variable, [], props)
+        if isinstance(expr, LabelName):
+            return cls(variable, [expr.name], props)
+        if isinstance(expr, LabelOr):
+            return cls(variable, [o.name for o in expr.options], props, label_alternation=True)
+        return cls(variable, [p.name for p in expr.parts], props)
+
+
+class PathMode(str, Enum):
+    """What a quantified path may repeat (GQL's path modes, REQ-2135). WALK repeats nodes and
+    edges; REACH is SPARQL's property-path meaning, each pair of ends once however many paths join
+    them. TRAIL, ACYCLIC and SIMPLE are GQL's and are refused until a front end needs them."""
+
+    WALK = "WALK"
+    TRAIL = "TRAIL"
+    ACYCLIC = "ACYCLIC"
+    SIMPLE = "SIMPLE"
+    REACH = "REACH"
+
+
+@dataclass(frozen=True)
+class EdgeStep:
+    """One edge of a relationship type; ``inverse`` walks it target to source (SPARQL ``^p``)."""
+
+    rel_type: str
+    inverse: bool = False
+
+
+@dataclass(frozen=True)
+class SeqPath:
+    """Each part after the one before (SPARQL ``p/q``)."""
+
+    parts: tuple["PathExpr", ...]
+
+
+@dataclass(frozen=True)
+class AltPath:
+    """Any one of the options (SPARQL ``p|q``)."""
+
+    options: tuple["PathExpr", ...]
+
+
+@dataclass(frozen=True)
+class RepeatPath:
+    """The body ``min`` to ``max`` times (GQL ``{m,n}``; SPARQL ``p*``, ``p+``, ``p?``). With no
+    ``max`` it repeats up to the operator's depth limit, and a result cut there says so."""
+
+    body: "PathExpr"
+    min: int
+    max: int | None
+
+
+@dataclass(frozen=True)
+class NegatedEdges:
+    """One edge of any relationship type but these (SPARQL ``!(p|q)``); ``inverse`` as EdgeStep."""
+
+    rel_types: tuple[str, ...]
+    inverse: bool = False
+
+
+PathExpr = EdgeStep | SeqPath | AltPath | RepeatPath | NegatedEdges
 
 
 @dataclass
@@ -46,6 +160,10 @@ class RelPattern:
     #: An inline property map on the relationship, as its node's is (``property_text``).
     properties: dict[str, Any] = field(default_factory=dict)
     property_text: dict[str, str] = field(default_factory=dict)
+    #: A path expression between the two nodes in place of ``types`` and the hop bounds (REQ-2135):
+    #: what a SPARQL property path or a GQL quantified path pattern parses into.
+    path: PathExpr | None = None
+    mode: PathMode = PathMode.WALK
 
 
 @dataclass
@@ -60,28 +178,75 @@ class PathFunction:
     pattern: PathPattern
 
 
+@dataclass(frozen=True)
+class Predicate:
+    """One mapped predicate a variable predicate may stand for (REQ-2135): ``iri`` names it in the
+    answer, and it reads a property of the subject's label (``property``, a literal of
+    ``datatype``), an edge of ``rel_type`` from it (its object the edge's target node), or holds
+    for every subject of the label with one object, the IRI ``constant`` (``rdf:type`` a class)."""
+
+    iri: str
+    property: str | None = None
+    rel_type: str | None = None
+    datatype: str | None = None
+    constant: str | None = None
+
+
+@dataclass
+class TriplePattern:
+    """``subject ?predicate ?object`` (SPARQL's ``?s ?p ?o``): a compile-time union over the
+    mapped predicates the front end found for the subject's label, bounded by graph.union_limit.
+    ``subject`` is a node variable a node pattern binds earlier in the statement; ``predicate`` and
+    ``object`` are the variables the triple binds, each an RDF term."""
+
+    subject: str
+    predicate: str
+    object: str
+    candidates: tuple[Predicate, ...]
+
+
+@dataclass
+class TripleTemplate:
+    """One triple of a CONSTRUCT's template: three expressions, each an RDF term of the answer."""
+
+    subject: CypherExpr
+    predicate: CypherExpr
+    object: CypherExpr
+
+
 @dataclass
 class MatchClause:
-    pattern: PathPattern | PathFunction
+    pattern: PathPattern | PathFunction | TriplePattern
     variable: str | None  # path variable (p = shortestPath(...))
     optional: bool = False
+    #: Written after a comma: a further pattern of the MATCH before it, whose relationships are
+    #: each matched once with its own (openCypher's relationship uniqueness).
+    continues: bool = False
 
 
 @dataclass
 class WhereClause:
-    expression: str  # raw expression text
+    expression: CypherExpr
 
 
 @dataclass
 class ReturnItem:
-    expression: str
+    expression: CypherExpr
     alias: str | None = None
+    #: The item as the statement writes it, which names an unaliased item.
+    name: str = ""
 
 
 @dataclass
 class ReturnClause:
     items: list[ReturnItem]
     distinct: bool = False
+    #: The grouping keys, when the statement names them (SPARQL's GROUP BY, REQ-2135); a key need
+    #: not be returned. None groups as Cypher does, by the items that aggregate nothing; an empty
+    #: list is one group of every row.
+    group_by: list[CypherExpr] | None = None
+    #: A condition on each group, over its aggregates (SPARQL's HAVING).
+    having: CypherExpr | None = None
 
 
 @dataclass
@@ -90,14 +255,109 @@ class WithClause:
     where: WhereClause | None = None
     # A WITH's own ORDER BY, SKIP and LIMIT pick the rows it carries on, not the statement's.
     order_by: list[OrderItem] = field(default_factory=list)
-    skip: int | None = None
-    limit: int | None = None
+    #: A count of rows as written, or the expression giving it ($n, toInteger(...)): one
+    #: reading no variable, its value a whole number of 0 or more (translator._row_count).
+    skip: int | CypherExpr | None = None
+    limit: int | CypherExpr | None = None
+    #: WITH DISTINCT: the rows it carries on are distinct.
+    distinct: bool = False
 
 
 @dataclass
 class UnwindClause:
-    expression: str  # raw expression text (list literal, param, or property)
+    expression: CypherExpr  # a list literal, a parameter, or a property
     variable: str  # AS variable name
+
+
+@dataclass
+class ProcedureCall:  # REQ-2168
+    """``CALL ns.name(args) YIELD col [AS var], … [WHERE …]`` composed in a statement: a command
+    called by its Cypher command binding, its rows a source as an UNWIND's are."""
+
+    name: str
+    args: list[CypherExpr]
+    yields: list[tuple[str, str]]  # (column the command returns, variable it is bound to)
+    where: "WhereClause | None" = None
+
+
+# --------------------------------------------------------------------------- writes (REQ-2176)
+#
+# A graph write is a step of the statement's pipeline, in the order written, after the clauses
+# that bind what it reaches back to. Every value it writes is an expression tree: a write
+# pattern's inline properties (NodePattern.properties, RelPattern.properties) hold a CypherExpr
+# per key, where a read pattern's hold the literal it matches on.
+
+
+@dataclass
+class CreateClause:
+    """``CREATE <pattern>, ...``: each node and relationship its patterns make, a variable it
+    reaches back to (bound before it) named by itself alone."""
+
+    patterns: list[PathPattern]
+    #: Where the clause begins in the statement as written: the text before it is the leading
+    #: clauses a write reads what it writes through.
+    start: int = -1
+
+
+@dataclass
+class SetItem:
+    """One item of a SET: ``v:A:B`` (``labels``), ``v.p = e`` (``property`` and ``value``),
+    ``v = {map}`` or ``v += {map}`` (``value`` alone, ``merge`` for ``+=``)."""
+
+    variable: str
+    labels: list[str] = field(default_factory=list)
+    property: str | None = None
+    value: CypherExpr | None = None
+    merge: bool = False
+    #: The value's expression as written (REQ-2176: the graph session reads it as written).
+    value_text: str | None = None
+
+
+@dataclass
+class SetClause:
+    items: list[SetItem]
+    start: int = -1  # as CreateClause.start
+
+
+@dataclass
+class RemoveItem:
+    """One item of a REMOVE: ``v:A:B`` (``labels``) or ``v.p`` (``property``)."""
+
+    variable: str
+    labels: list[str] = field(default_factory=list)
+    property: str | None = None
+
+
+@dataclass
+class RemoveClause:
+    items: list[RemoveItem]
+    start: int = -1  # as CreateClause.start
+
+
+@dataclass
+class DeleteClause:
+    """``[DETACH] DELETE e, ...``: each node or relationship the expressions name."""
+
+    expressions: list[CypherExpr]
+    detach: bool = False
+    start: int = -1  # as CreateClause.start
+    #: Each expression as written, which a session's DELETE reads its value by (REQ-2176).
+    texts: list[str] = field(default_factory=list)
+
+
+@dataclass
+class MergeClause:
+    """``MERGE <pattern> [ON CREATE SET ...] [ON MATCH SET ...]``."""
+
+    pattern: PathPattern
+    on_create: list[SetItem] = field(default_factory=list)
+    on_match: list[SetItem] = field(default_factory=list)
+    start: int = -1  # as CreateClause.start
+    #: ``MERGE p = <pattern>``: the path the pattern matched or made is bound to it.
+    path_variable: str | None = None
+
+
+WriteClause = CreateClause | SetClause | RemoveClause | DeleteClause | MergeClause
 
 
 @dataclass
@@ -116,7 +376,7 @@ class CallSubquery:
 
 @dataclass
 class OrderItem:
-    expression: str
+    expression: CypherExpr
     direction: str = "ASC"
 
 
@@ -125,14 +385,31 @@ class CypherAST:  # REQ-347, REQ-348, REQ-571
     pipeline: list["MatchStep | WithClause"]
     return_clause: ReturnClause | None
     order_by: list[OrderItem]
-    skip: int | None
-    limit: int | None
+    skip: int | CypherExpr | None
+    limit: int | CypherExpr | None
     call_subqueries: list[CallSubquery] = field(default_factory=list)
     # UNION / UNION ALL: list of (sub_ast, is_all)
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)
+    #: A CONSTRUCT's template (REQ-2135), in place of the RETURN: the answer is its triples.
+    construct: list[TripleTemplate] | None = None
+    #: The ORDER BY, SKIP and LIMIT apply to the whole UNION (SPARQL's solution modifiers), not to
+    #: its first part as a Cypher statement's own do (REQ-2135).
+    modifiers_of_whole: bool = False
+    #: The rows this statement reads, in place of a pattern: a statement whose every column is
+    #: named by a RETURN item (a UNION's parts, an aggregate reading them as one, REQ-2135).
+    parts: "CypherAST | None" = None
     comments: list[str] = field(
         default_factory=list
     )  # // comment text (without //) in source order
+
+    @property
+    def writes(self) -> list[WriteClause]:
+        """The statement's write clauses, in the order written (REQ-2176)."""
+        return [
+            s
+            for s in self.pipeline
+            if isinstance(s, (CreateClause, SetClause, RemoveClause, DeleteClause, MergeClause))
+        ]
 
     @property
     def match_clauses(self) -> list[MatchClause]:

@@ -23,35 +23,28 @@ const VERSIONS = 'SELECT desk, recorded_at FROM "reproduce"."view_exposure" AS e
 beforeEach(() => runSql.mockReset());
 
 describe("a recording time taken from the tour's own answer", () => {
-  it("carries the earlier statement as it ran: its role and time travel", () => {
+  it("binds it to the next statement's $1, carrying the earlier statement as it ran", () => {
     const steps = demoTourSteps(
       [
         { key: "who", route: "/sql", capability: "query_development", role: "regulator" },
-        { key: "range", as_of: "2026-09-01T00:00:00/2026-12-31T00:00:00" },
         { key: "versions", sql: VERSIONS },
         { key: "then", as_recorded_from: { step: "versions", row: 0, column: "recorded_at" } },
       ],
       [],
     );
-    expect(steps[3].openQuery).toEqual({
-      stateKey: "asRecorded",
+    expect(steps[2].openQuery).toEqual({
+      stateKey: "params",
       text: "",
-      from: {
-        sql: VERSIONS,
-        role: "regulator",
-        asOf: "2026-09-01T00:00:00/2026-12-31T00:00:00",
-        row: 0,
-        column: "recorded_at",
-      },
+      from: { sql: VERSIONS, role: "regulator", row: 0, column: "recorded_at" },
     });
-    expect(steps[3].element).toBe('[data-testid="sql-as-recorded"]');
+    expect(steps[2].element).toBe('[data-testid="sql-bound-params"]');
   });
 
   it("refuses a step whose earlier statement the tour does not run before it", () => {
     expect(() =>
       demoTourSteps(
         [
-          { key: "s", route: "/sql", capability: "query_development", as_of: "2026-09-30" },
+          { key: "s", route: "/sql", capability: "query_development", role: "regulator" },
           { key: "then", as_recorded_from: { step: "versions", row: 0, column: "recorded_at" } },
         ],
         [],
@@ -67,12 +60,9 @@ describe("a recording time taken from the tour's own answer", () => {
         { desk: "rates", recorded_at: "2026-10-18T09:00:05" },
       ],
     });
-    const from = { sql: VERSIONS, asOf: "2026-09-01/2026-12-31", row: 0, column: "recorded_at" };
+    const from = { sql: VERSIONS, row: 0, column: "recorded_at" };
     await expect(answerValue(from, "analyst")).resolves.toBe("2026-10-18T09:00:01");
-    expect(runSql).toHaveBeenCalledWith(VERSIONS, "analyst", false, {
-      asOf: "2026-09-01/2026-12-31",
-      asRecorded: null,
-    });
+    expect(runSql).toHaveBeenCalledWith(VERSIONS, "analyst", false);
   });
 
   it("fails the step by name when the answer has no such value", async () => {

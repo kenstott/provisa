@@ -264,13 +264,16 @@ Provisa peut agir comme un sous-graphe Federation v2, exposant son schéma publi
 
 ### Configuration {: #setup }
 
-Activez la fédération dans `config.yaml` :
+Activez la fédération dans `config.yaml`, ou par organisation dans **Admin → Domains → Paramètres** :
 
 ```yaml
 federation:
   enabled: true
   subgraph_name: provisa-data
+  role: partner
 ```
+
+Un supergraphe ne peut pas transmettre l'identité de son appelant à un sous-graphe ; le sous-graphe sert donc sous un seul rôle déclaré. `role` le nomme et est obligatoire lorsque `enabled` vaut true. Le routeur se connecte comme un client ordinaire agissant sous ce rôle, et `_service` et `_entities` ne sont proposés que sur le schéma de ce rôle. Chaque entité que le routeur récupère est lue par le même chemin gouverné que toute autre requête du rôle, de sorte que ses règles de ligne, son masquage et la visibilité de ses colonnes s'appliquent.
 
 Provisa génère automatiquement des directives `@key` sur les colonnes de clé primaire et `@external`/`@provides` sur les relations inter-sous-graphes.
 
@@ -286,11 +289,23 @@ subgraphs:
       subgraph_url: http://provisa:8001/data/graphql
 ```
 
+Les requêtes du routeur vers Provisa portent les identifiants du rôle déclaré. Lorsque l'authentification est désactivée, l'en-tête `X-Provisa-Role` le sélectionne ; dans le `router.yaml` du routeur :
+
+```yaml
+headers:
+  subgraphs:
+    provisa-data:
+      request:
+        - insert:
+            name: x-provisa-role
+            value: partner
+```
+
 Exécutez `rover supergraph compose --config supergraph.yaml` pour générer le schéma du supergraphe.
 
 ### Entités {: #entities }
 
-Provisa répond aux requêtes `_entities` pour les jointures inter-sous-graphes. Toute table avec une clé primaire est automatiquement résolvable comme une entité Federation.
+Provisa répond aux requêtes `_entities` pour les jointures inter-sous-graphes. Toute table dotée d'une clé primaire désignée dont le rôle déclaré peut voir les colonnes clés est résolvable comme une entité Federation. Une représentation dont le rôle ne peut pas lire la ligne est résolue en `null`.
 
 ---
 

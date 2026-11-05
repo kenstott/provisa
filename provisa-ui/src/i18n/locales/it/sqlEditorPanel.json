@@ -33,8 +33,9 @@
     "createView": "+ Vista",
     "requestView": "Richiedi vista",
     "asOfLabel": "Alla data",
-    "asOfHint": "Leggi le viste con storico come erano in quel momento",
+    "asOfHint": "Scrive as_of su ogni relazione che conserva versioni: leggerla com'era in questo momento",
     "asRecordedLabel": "Registrato al",
-    "asRecordedHint": "Leggi le viste con storico come Provisa le aveva registrate, prima di correzioni"
+    "asRecordedHint": "Scrive as_recorded su ogni relazione che conserva versioni: leggerla come Provisa l'aveva registrata allora, prima delle correzioni successive",
+    "boundParams": "Associato alla prossima esecuzione: {{values}}"
   }
 }

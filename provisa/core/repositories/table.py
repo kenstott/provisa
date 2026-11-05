@@ -21,7 +21,7 @@ from sqlalchemy import delete as _delete, select
 
 from provisa.core.paging import paging_row
 from provisa.core import domain_policy
-from provisa.core.models import Table
+from provisa.core.models import DataContract, Table
 from provisa.core.numeric_type import ReportedNumericMalformed, stored_type_of
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
@@ -40,10 +40,12 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.core.repositories.mask_lists import refuse_unreachable_masks
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
+    from provisa.discovery.declared_keys import DeclaredKeys
     from provisa.core.database import Connection
 
 
@@ -85,6 +87,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.native_filter_required,
     table_columns.c.required_by_steward,
     table_columns.c.is_primary_key,
+    table_columns.c.not_null,
     table_columns.c.is_foreign_key,
     table_columns.c.is_alternate_key,
     table_columns.c.object_fields,
@@ -97,6 +100,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.element_type,
     table_columns.c.native_type,
     table_columns.c.native_platform,
+    table_columns.c.subtype,  # REQ-2171
     table_columns.c.fake,
     table_columns.c.fake_stable,
     table_columns.c.fake_stable_version,
@@ -133,6 +137,48 @@ def _nested_attributes(
     return {"array_depth": 0, "element_type": None, "native_type": None, "native_platform": None}
 
 
+class _NotASubtype(ValueError):
+    """The declared subtype; named with its column where the column is written."""
+
+
+class SubtypeRefused(ValueError):
+    """A column declared with a subtype that is no subtype, or not of its data_type (REQ-2171)."""
+
+    def __init__(self, table_name: str, column: str, declared: str, data_type: str) -> None:
+        self.table_name, self.column, self.declared, self.data_type = (
+            table_name,
+            column,
+            declared,
+            data_type,
+        )
+        super().__init__(
+            f"Column {table_name}.{column} declares the subtype {declared!r}, which is no "
+            f"subtype of its type {data_type!r}."
+        )
+
+
+def _stored_subtype(
+    data_type: str, declared: str | None, existing: tuple[str, str] | None
+) -> tuple[str, str | None]:
+    """``(data_type, subtype)`` to store for a column registered as ``data_type`` (REQ-2171): a
+    subtype is stored as its base carrying the subtype; a declared subtype is kept with the base
+    it is a subtype of; the stored base restated keeps the stored subtype; any other type has
+    none."""
+    from provisa.core.ir_types import base_type, subtype_named, to_ir
+
+    named = subtype_named(data_type)
+    if named is not None:
+        return base_type(data_type), named
+    if declared:
+        named = subtype_named(declared)
+        if named is None or to_ir(base_type(named)) != to_ir(data_type):
+            raise _NotASubtype(declared)
+        return data_type, named
+    if existing is not None and existing[0] == data_type:
+        return data_type, existing[1]
+    return data_type, None
+
+
 async def stored_column_types(
     conn: "Connection", source_id: str, schema_name: str, table_name: str
 ) -> dict[str, str]:
@@ -153,6 +199,33 @@ async def stored_column_types(
         )
     )
     return {r.column_name: r.data_type for r in result.fetchall()}
+
+
+async def registered_columns(
+    conn: "Connection", source_id: str, schema_name: str, table_name: str
+) -> list[dict]:
+    """A registered table's columns in their stored order: each one's name, type, description and
+    whether it is a primary key; empty for a table not registered."""
+    result = await conn.execute_core(
+        select(
+            table_columns.c.column_name,
+            table_columns.c.data_type,
+            table_columns.c.description,
+            table_columns.c.is_primary_key,
+        )
+        .select_from(
+            table_columns.join(
+                registered_tables, table_columns.c.table_id == registered_tables.c.id
+            )
+        )
+        .where(
+            registered_tables.c.source_id == source_id,
+            registered_tables.c.schema_name == schema_name,
+            registered_tables.c.table_name == table_name,
+        )
+        .order_by(table_columns.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
@@ -190,6 +263,9 @@ class TableDeleteRefused(Exception):
         self.table_id = table_id
         self.name = name
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Table {name!r} is still referred to by"
         named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
         super().__init__(f"Table {name!r} is still referred to by: {named}")
 
@@ -230,7 +306,7 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table
+    conn: "Connection", table: Table, *, declared: "DeclaredKeys | None" = None
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
 
@@ -242,7 +318,13 @@ async def upsert(
     (:class:`ViewLoopRefused`) — it cannot be evaluated, and it is the one way objects could come
     to block each other's deletion in a circle. A registration that would drop a column other
     objects refer to is refused (:class:`ColumnDropRefused`). This is the write path the admin
-    mutations and the config loader share, so both refuse them."""
+    mutations and the config loader share, so both refuse them.
+
+    REQ-2170: ``declared`` is what the table's source declares of its keys, as this registration
+    read it; a column is a primary or alternate key when the source declares it one, when the
+    registration's input does, or (an alternate key) when a relationship is keyed on it. None:
+    this registration read no declaration (no driver for the source here), and the input's marks
+    are the table's."""
     model_change.name("upsert", "table", table.table_name)  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
@@ -250,7 +332,40 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table)
+        return await _upsert(conn, table, declared)
+
+
+async def naming_rules(conn: "Connection") -> list[dict]:
+    """The org's naming rules, as :mod:`provisa.compiler.naming` applies them."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import naming_rules as naming_rules_t
+
+    return [
+        {"pattern": r.pattern, "replacement": r.replacement}
+        for r in (
+            await conn.execute_core(select(naming_rules_t.c.pattern, naming_rules_t.c.replacement))
+        ).fetchall()
+    ]
+
+
+async def _require_label_not_a_domain(conn: "Connection", table: Table) -> None:
+    """REQ-572: refuse a table whose Cypher label is an org domain's, naming both
+    (:class:`provisa.compiler.naming.LabelClash`)."""
+    from sqlalchemy import select
+
+    from provisa.compiler.naming import refuse_label_clash
+    from provisa.core.schema_org import domains
+
+    domain_ids = [r.id for r in (await conn.execute_core(select(domains.c.id))).fetchall()]
+    candidate = {
+        "source_id": table.source_id,
+        "schema_name": table.schema_name,
+        "table_name": table.table_name,
+        "alias": table.alias,
+        "gql_naming_convention": table.gql_naming_convention,
+    }
+    refuse_label_clash([candidate], domain_ids, await naming_rules(conn))
 
 
 async def _require_free_sql_address(conn: "Connection", table: Table, domain_id: str) -> None:
@@ -260,14 +375,8 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     from sqlalchemy import select
 
     from provisa.compiler.naming import refuse_taken_sql_addresses
-    from provisa.core.schema_org import naming_rules as naming_rules_t
 
-    rules = [
-        {"pattern": r.pattern, "replacement": r.replacement}
-        for r in (
-            await conn.execute_core(select(naming_rules_t.c.pattern, naming_rules_t.c.replacement))
-        ).fetchall()
-    ]
+    rules = await naming_rules(conn)
     rt = registered_tables
     others = [
         dict(r._mapping)
@@ -297,9 +406,60 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     refuse_taken_sql_addresses([*others, candidate], rules)
 
 
-async def _upsert(conn: "Connection", table: Table) -> int | None:
+async def _contract_for_save(conn: "Connection", table: Table) -> DataContract | None:
+    """REQ-2158: the contract the table's save stores, checked against the stored one and the
+    columns it saves (provisa.core.data_contracts)."""
+    from provisa.core import data_contracts
+    from provisa.core.ir_types import base_type
+
+    stored = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.product_id,
+                registered_tables.c.contract,
+            ).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+            )
+        )
+    ).fetchone()
+    existing = await stored_column_types(conn, table.source_id, table.schema_name, table.table_name)
+    column_types: dict[str, str] = {}
+    for col in table.columns:
+        declared_type = getattr(col, "data_type", None) or existing.get(col.name)
+        if not declared_type:
+            continue  # refused by name where the columns are written (REQ-1426)
+        try:
+            # REQ-2171: a contract promises the stored type, a subtype's base.
+            column_types[col.name] = stored_type_of(base_type(declared_type))
+        except ReportedNumericMalformed as malformed:
+            raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
+    product_id = getattr(table, "product_id", None)
+    is_checker = getattr(table, "dq_contract", None) is not None
+    promised = (
+        await data_product_repo.promised_checks(conn, product_id, stored.id)
+        if stored is not None and product_id is not None and not is_checker
+        else []
+    )
+    return data_contracts.for_save(
+        product_id=product_id,
+        is_checker=is_checker,
+        schema_name=table.schema_name,
+        table_name=table.table_name,
+        declared=getattr(table, "contract", None),
+        stored=None if stored is None else stored.contract,
+        stored_product_id=None if stored is None else stored.product_id,
+        column_types=column_types,
+        checks=promised,
+    )
+
+
+async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | None") -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     await _require_free_sql_address(conn, table, domain_id)
+    await _require_label_not_a_domain(conn, table)
     from provisa.core.repositories.region import require_table_region
 
     await require_table_region(  # REQ-1921: a table names one of its org's regions, or none
@@ -335,6 +495,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 f"table {table.table_name} is in domain {domain_id!r} but data product "
                 f"{product_id!r} belongs to domain {product['domain_id']!r}"
             )
+    contract = await _contract_for_save(conn, table)  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -349,11 +510,13 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         ],  # REQ-1093
         "view_sql": getattr(table, "view_sql", None),
         "dq_contract": getattr(table, "dq_contract", None),  # REQ-1443
+        "dq_rules": getattr(table, "dq_rules", None),  # REQ-1443 clause 10
         "profiler_source_id": getattr(table, "profiler_source_id", None),  # REQ-1934
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
         "product_id": getattr(table, "product_id", None),  # REQ-1634
+        "contract": contract.model_dump(mode="json") if contract is not None else None,  # REQ-2158
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
         "mv_debounce_quiet": getattr(table, "mv_debounce_quiet", 0.0),  # REQ-963
@@ -362,6 +525,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay": getattr(table, "push_debounce_max_delay", 5.0),  # REQ-1733
         "mv_consistency": getattr(table, "mv_consistency", "shared"),  # REQ-879
         "mv_preprocess": getattr(table, "mv_preprocess", None),  # REQ-957
+        "mv_hold_on_failing_checks": getattr(table, "mv_hold_on_failing_checks", False),  # REQ-2133
         "business_key": getattr(table, "business_key", []),  # REQ-2109
         "valid_time": getattr(table, "valid_time", None),  # REQ-2109
         "recorded_time": getattr(table, "recorded_time", None),  # REQ-2109
@@ -422,9 +586,11 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "unique_constraints",  # REQ-1093
         "view_sql",
         "dq_contract",  # REQ-1443
+        "dq_rules",  # REQ-1443 clause 10
         "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
         "product_id",
+        "contract",  # REQ-2158
         "materialize",
         "mv_refresh_interval",
         "mv_debounce_quiet",
@@ -433,6 +599,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         "push_debounce_max_delay",
         "mv_consistency",
         "mv_preprocess",
+        "mv_hold_on_failing_checks",  # REQ-2133
         "business_key",  # REQ-2109
         "valid_time",  # REQ-2109
         "recorded_time",  # REQ-2109
@@ -494,14 +661,21 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 table_columns.c.data_type,
                 table_columns.c.is_foreign_key,
                 table_columns.c.is_alternate_key,
+                table_columns.c.not_null,
                 table_columns.c.array_depth,
                 table_columns.c.element_type,
                 table_columns.c.native_type,
                 table_columns.c.native_platform,
+                table_columns.c.subtype,
             ).where(table_columns.c.table_id == table_id)
         )
     ).fetchall()
     _existing_types = {r.column_name: r.data_type for r in _existing_rows}
+    # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that
+    # restates the stored base keeps it.
+    _existing_subtypes = {
+        r.column_name: (r.data_type, r.subtype) for r in _existing_rows if r.subtype
+    }
     # REQ-1965: the hidden attributes of a natively nested column are recorded from the source at
     # registration and persist with the type they describe: a re-registration that restates the
     # same type without them (a configuration apply, an admin's edit of another field) keeps them.
@@ -523,6 +697,9 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
     _derived_keys = {
         r.column_name: (bool(r.is_foreign_key), bool(r.is_alternate_key)) for r in _existing_rows
     }
+    # REQ-2190: NOT NULL is recorded from the source at registration and persists with the column:
+    # a re-registration that does not read the source keeps it.
+    _not_null = {r.column_name for r in _existing_rows if r.not_null}
     # REQ-1918: a column this registration no longer lists is dropped. While a relationship is
     # keyed on it, or a view, materialized view or metric names it, the registration is refused
     # naming them; the transaction around this call undoes the table row's update. A dropped
@@ -609,8 +786,19 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
             )
             _entries.append({**_bare, "why": _entry_why})
         _whys[col.name] = (_fake_why, _entries)
-    # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
+    # What each column's list is stored as: a control-plane role is no reader of it.
+    _stored_masks = {
+        name: [
+            e
+            if e.get("to") is None  # every other reader: names no role (REQ-2153)
+            else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
+            for e in entries
+        ]
+        for name, (_, entries) in _whys.items()
+    }
+    await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
         object_fields_raw = getattr(col, "object_fields", [])
@@ -631,6 +819,12 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
         # the registration and however they spelled it; a size no numeric can have is refused
         # here, the one place a column's type is written.
         try:
+            _data_type, _subtype = _stored_subtype(
+                _data_type, getattr(col, "subtype", None), _existing_subtypes.get(col.name)
+            )
+        except _NotASubtype as refused:
+            raise SubtypeRefused(table.table_name, col.name, str(refused), _data_type) from None
+        try:
             _data_type = stored_type_of(_data_type)
         except ReportedNumericMalformed as malformed:
             raise NumericSizeRefused(table.table_name, col.name, _data_type) from malformed
@@ -640,10 +834,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 domain_id=domain_id,
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
-                masks=[
-                    {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
-                    for e in _whys[col.name][1]
-                ],
+                masks=_stored_masks[col.name],
                 alias=getattr(col, "alias", None),
                 description=getattr(col, "description", None),
                 data_type=_data_type,
@@ -651,11 +842,21 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 native_filter_type=getattr(col, "native_filter_type", None),
                 native_filter_required=getattr(col, "native_filter_required", None),
                 required_by_steward=getattr(col, "required_by_steward", False),  # REQ-1986
-                is_primary_key=getattr(col, "is_primary_key", False),
+                is_primary_key=getattr(col, "is_primary_key", False)
+                # REQ-2170: the key its source declares
+                or (declared is not None and col.name in declared.primary_key),
+                not_null=getattr(col, "not_null", False)
+                or getattr(col, "is_primary_key", False)
+                or col.name in _not_null
+                or (
+                    declared is not None
+                    and (col.name in declared.primary_key or col.name in declared.not_null)
+                ),
                 is_foreign_key=getattr(col, "is_foreign_key", False)
                 or _derived_keys.get(col.name, (False, False))[0],
                 is_alternate_key=getattr(col, "is_alternate_key", False)
-                or _derived_keys.get(col.name, (False, False))[1],
+                or _derived_keys.get(col.name, (False, False))[1]
+                or (declared is not None and col.name in declared.alternate_columns),
                 object_fields=object_fields,
                 # REQ-1959: stored only when it is a scope; the last gate on every write path.
                 scope=require_column_scope(col.name, getattr(col, "scope", SCOPE_DOMAIN)),
@@ -664,6 +865,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 gql_is_list=getattr(col, "gql_is_list", False),
                 epoch_unit=getattr(col, "epoch_unit", None),
                 **_nested_attributes(col, _data_type, _existing_nested.get(col.name)),
+                subtype=_subtype,  # REQ-2171
                 fake=getattr(col, "fake", None),  # REQ-1494
                 fake_stable=getattr(col, "fake_stable", False),
                 fake_stable_version=pinned_version(
@@ -828,11 +1030,23 @@ async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
 
     result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
     rows = result.fetchall()
+    # Every table's columns in one read, each table's in registration order (as _load_columns
+    # reads one table's): a rebuild lists every table, and a query per table was a query for each.
+    columns: dict[int, list[dict]] = {}
+    for c in (
+        await conn.execute_core(
+            select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
+                table_columns.c.table_id, table_columns.c.id
+            )
+        )
+    ).fetchall():
+        column = dict(c._mapping)
+        columns.setdefault(column.pop("table_id"), []).append(column)
     grants = await write_grant_repo.by_table(conn)
     out = []
     for row in rows:
         r = dict(row._mapping)
-        r["columns"] = await _load_columns(conn, r["id"])
+        r["columns"] = columns.get(r["id"], [])
         r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
         out.append(r)
     return out
@@ -922,26 +1136,6 @@ async def retire_generated(  # REQ-1918
         except TableDeleteRefused as refused:
             kept.append(refused)
     return kept
-
-
-def kept_columns_report(refused: ColumnDropRefused, table_id: int | None) -> dict:
-    """A generated table whose re-registration would have dropped columns something refers to,
-    as a row of what the re-registration returns: the table was left as it was, and each such
-    column is listed with what refers to it."""
-    return {"id": table_id, "name": refused.table_name, "columns": refused.report()}
-
-
-def kept_report(kept: list[TableDeleteRefused]) -> list[dict]:
-    """:func:`retire_generated`'s refusals as the rows a re-registration returns: the table
-    kept, and what still refers to it."""
-    return [
-        {
-            "id": refused.table_id,
-            "name": refused.name,
-            "dependents": [d.as_dict() for d in refused.dependents],
-        }
-        for refused in kept
-    ]
 
 
 async def remove_registrations(conn: "Connection", *where) -> None:

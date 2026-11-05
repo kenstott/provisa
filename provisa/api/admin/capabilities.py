@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.auth.models import AuthIdentity
 from provisa.security.rights import (
@@ -42,6 +42,29 @@ def _identity_from_info(info: "strawberry.types.Info") -> object | None:
     if request is None:
         return None
     return getattr(request.state, "identity", None)
+
+
+def acting_role_of(info: "strawberry.types.Info") -> str:  # REQ-2154
+    """The role this admin request acts as: what the auth middleware bound on the request
+    (``request.state.role``), which a registration's default grant names."""
+    request = (
+        info.context.get("request")
+        if isinstance(info.context, dict)
+        else getattr(info.context, "request", None)
+    )
+    return acting_role_of_request(request)
+
+
+def acting_role_of_request(request: Any) -> str:  # REQ-2154
+    """The role an admin HTTP request acts as (``request.state.role``, bound by the auth
+    middleware): what a registration's default grant names."""
+    role = getattr(getattr(request, "state", None), "role", None)
+    if not role:
+        raise RuntimeError(
+            "this admin request carries no acting role; the auth middleware binds one on every "
+            "request (request.state.role)"
+        )
+    return str(role)
 
 
 def _resolved_capabilities(identity, state) -> set[str]:
@@ -123,7 +146,11 @@ def require_capability(  # REQ-042, REQ-060
         raise PermissionError(f"Missing capability: {capability!r}")
 
     if domain_id is not None:
-        require_domain(info, domain_id)
+        # The domain the RIGHT reaches, read per role (REQ-1944): a role carrying the right in
+        # one domain and another role reaching a second domain do not make the right reach both.
+        refusal = right_domain_refusal(identity, state, capability, (domain_id,))
+        if refusal is not None:
+            raise PermissionError(refusal)
 
 
 def require_residency_change(  # REQ-1921
@@ -283,6 +310,15 @@ def require_capability_request(request, capability: str) -> None:  # REQ-1531
     caps = _resolved_capabilities(identity, state)
     if capability not in caps:
         raise ApiError(403, "auth.missing_capability", f"Missing capability: {capability!r}")
+
+
+def require_dq_read_request(request) -> None:  # REQ-2155
+    """Reading data quality -- profile runs, check definitions and results -- needs dq_read, which
+    dq_rw implies: whoever manages checks reads what they are managed from. Refused naming
+    dq_read."""
+    if has_capability_request(request, "dq_rw"):
+        return
+    require_capability_request(request, "dq_read")
 
 
 def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591

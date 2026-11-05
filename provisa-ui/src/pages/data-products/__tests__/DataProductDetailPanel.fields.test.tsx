@@ -15,12 +15,13 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct } from "../../../types/admin";
+import { lifecycleProps } from "./lifecycleProps";
 
 // Who an owner role resolves to is its own fetch, held by its own tests.
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 // The panel's 3D graph is its own component, held by its own tests.
-vi.mock("../../../components/graph3d/KnowledgeGraphPanel", () => ({
-  KnowledgeGraphPanel: () => null,
+vi.mock("../../../components/graph3d/GraphPanel", () => ({
+  GraphPanel: () => null,
 }));
 
 const PRODUCT = {
@@ -28,14 +29,15 @@ const PRODUCT = {
   domainId: "pet-store",
   name: "Pet Health",
   version: "1.2.0",
-  status: "published",
+  status: "live",
   ownerRole: "vet_lead",
   teamRole: null,
   support: "#pet-health",
-  sla: "99.5%",
+  supportContact: "vets@petstore.example",
   purpose: "Health records of the pets in care",
   limitations: null,
   usage: "Join on pet_id",
+  createdAt: "2026-10-01T09:00:00+00:00",
 } as unknown as DataProduct;
 
 function fields(p: DataProduct): [string, string][] {
@@ -45,13 +47,16 @@ function fields(p: DataProduct): [string, string][] {
       core={{ product: p, queries: { graphql: "", sql: "", jsonapi: "" } }}
       coreError={null}
       reader={null}
-      sources={[]}
-      internalRelationships={[]}
       canEdit={false}
-      canSeeLineage={false}
-      inputPorts={[]}
+      canDelete={false}
+      owner
+      lineageLoading={false}
+      contractsVersion={0}
+      lineageError=""
+      lineageGraph={null}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
+      {...lifecycleProps()}
     />,
   );
   return within(screen.getByTestId(`data-product-read-${p.id}`))
@@ -66,14 +71,16 @@ describe("a data product's read view", () => {
       ["Name", "Pet Health"],
       ["Domain", "pet-store"],
       ["Version", "1.2.0"],
-      ["Status", "published"],
+      ["Status", "Live"],
       ["Owner", "vet_lead"],
       ["Team", "—"],
       ["Support", "#pet-health"],
-      ["SLA", "99.5%"],
+      ["Support contact", "vets@petstore.example"],
       ["Purpose", "Health records of the pets in care"],
       ["Limitations", "—"],
       ["Usage", "Join on pet_id"],
+      // When it was created, in the reader's language: read-only, it has no form field.
+      ["Created", new Date("2026-10-01T09:00:00+00:00").toLocaleString("en")],
     ]);
   });
 });

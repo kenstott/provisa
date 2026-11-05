@@ -146,6 +146,140 @@ Consultas GraphQL com múltiplos campos raiz (ex.: `{ orders { id } customers { 
 - Campos acima do limite são redirecionados, com entradas por campo em `redirects`
 - Formatos binários (Parquet, Arrow) são suportados apenas para consultas de raiz única
 
+## Pipeline de consulta {: #query-pipeline }
+
+Toda leitura passa por cinco etapas. GraphQL, Cypher, SPARQL, gRPC e SQL são pontos de entrada, não etapas — cada um compila ou traduz para SQL semântico antes de a pipeline começar.
+
+```mermaid
+flowchart TD
+    REST[REST and JSON:API] --> GQL[GraphQL]
+    GQL --> SEM[Semantic SQL]
+    GRPC[gRPC] --> GQL
+    CY[Cypher] --> GP[Graph pattern form]
+    SP[SPARQL] --> GP
+    GP --> SEM
+    SQL[SQL] --> SEM
+    SEM --> GOV[Governed SQL]
+    GOV --> OPT[Optimized SQL]
+    OPT --> ROUTE{Plan and route}
+    ROUTE -- "one source, direct driver" --> DIRECT[Native SQL in the source's dialect]
+    ROUTE -- "otherwise" --> ENGINE[Native SQL in the engine's dialect]
+```
+
+### Front-ends {: #front-ends }
+
+Um front-end analisa uma linguagem e nomeia o que ela lê nos termos do modelo. GraphQL é compilado diretamente para SQL semântico. Os endpoints REST descritos pelo documento OpenAPI, os endpoints JSON:API e o gRPC montam uma consulta GraphQL a partir de cada requisição e a compilam do mesmo jeito. A única exceção é o `page[total]` do JSON:API, o total de linhas, que o próprio transporte JSON:API compõe. Cypher e SPARQL são analisados numa mesma forma de padrão de grafo, compartilhada pelas duas linguagens de grafo, e essa forma é compilada para SQL semântico. O SQL que você escreve sobre as tabelas do modelo já é SQL semântico, então ele entra na etapa seguinte. Nenhum front-end decide quem pode ler o quê.
+
+### SQL semântico {: #semantic-sql }
+
+O SQL semântico lê o modelo. Suas tabelas são qualificadas pelo domínio (`sales.orders`), suas colunas são as que o modelo publica e seus joins são os relacionamentos declarados. Ele não diz nada sobre onde os dados estão.
+
+Uma leitura aninhada é compilada para um único pipeline canônico de CTEs, o mesmo para todos os motores e construído só a partir dos relacionamentos declarados. Uma CTE raiz lê a tabela raiz com seu filtro, sua ordenação, seu limite e seu deslocamento. Cada nível para-muitos é uma CTE própria. Ela junta sua tabela à CTE do pai pelas chaves do relacionamento, pega as primeiras linhas de cada pai com `ROW_NUMBER() OVER (PARTITION BY ...)` e as agrega numa lista JSON por pai. O `SELECT` final lê a CTE raiz e faz um left join de cada nível pela chave do pai. Leituras GraphQL, Cypher e SPARQL que fazem a mesma pergunta são compiladas para a mesma instrução.
+
+O tradutor de Cypher escreve uma CTE por etapa `WITH`; alinhar essas formas com a pipeline canónica é trabalho futuro. Até que esteja concluído, leituras equivalentes em Cypher e GraphQL nem sempre compilam para o mesmo SQL semântico. O compilador GraphQL escreve campos aninhados com argumentos como `LEFT JOIN LATERAL` por pai. Ambas as formas atuais aparecem no exemplo abaixo.
+
+### SQL governado {: #governed-sql }
+
+A governança trabalha sobre a instrução semântica inteira de uma vez. Cada `SELECT` nela recebe as regras de visibilidade, a segurança em nível de linha e as máscaras do papel que lê, de modo que cada nível aninhado é filtrado na sua própria profundidade. Uma regra de linha cuja condição é uma subconsulta lê outra tabela, então a governança pode acrescentar fontes a uma instrução.
+
+### SQL otimizado {: #optimized-sql }
+
+A etapa de otimização reescreve a instrução governada de maneiras que valem em qualquer motor. Ela recoloca as views materializadas onde respondem a parte da instrução, embute como `VALUES` as tabelas pequenas e muito lidas, e remove os ramos de cache de API e de união que a instrução não alcança. Nada aqui sabe qual motor vai executar a instrução. Essas reescritas podem remover fontes. Uma leitura federada cujas demais fontes foram todas embutidas fica com uma única fonte ao vivo.
+
+### Planejar e rotear {: #plan-and-route }
+
+Aterrar no motor de federação é o comportamento predefinido; o roteamento lê as fontes otimizadas, nunca as governadas. Uma instrução só corre diretamente na sua fonte quando passa todas as seis portas em ordem. A primeira que falha indica o motivo.
+
+| Porta | O que verifica |
+|---|---|
+| `one_source` | Lê uma fonte após a otimização, ou fontes que partilham uma base de dados física |
+| `dialect_supports` | O dialeto dessa fonte suporta cada construção da instrução |
+| `access_path` | Existe um driver direto, um chamador de API ou uma função de código para a fonte |
+| `colocated_login` | As fontes contadas como uma única base de dados partilham as mesmas credenciais de acesso |
+| `not_forced` | Nenhum piso de operador, coluna falsa ou condição que exija o motor se aplica |
+| `trusted_to_answer` | Uma fonte não SQL pode responder ao conjunto de dados completo sem mais filtragem em processo |
+
+Os casos de cache, réplica e steward estão em [Pipeline de Requisição](#request-pipeline).
+
+### SQL nativo {: #native-sql }
+
+A etapa nativa escreve a instrução roteada no dialeto da fonte para uma leitura direta e no do motor para uma federada. Ela escolhe a grafia das funções de agregação e de objeto JSON, escreve a lista vazia para um pai sem linhas, transforma `DISTINCT ON` em `ROW_NUMBER()` onde o dialeto não o tem, e escolhe formas próprias do motor, como um join `LATERAL` por pai ou uma dica de materialização de CTE.
+
+### Um exemplo completo {: #a-worked-example }
+
+Esta leitura GraphQL pede um cliente e os três maiores pedidos dele:
+
+```graphql
+{
+  customers(where: { name: { eq: "Acme" } }) {
+    id
+    name
+    orders(order_by: { amount: desc }, limit: 3) {
+      id
+      amount
+    }
+  }
+}
+```
+
+Na forma canônica, ela é compilada para este SQL semântico:
+
+```sql
+WITH customers AS (
+  SELECT c.id, c.name
+  FROM sales.customers AS c
+  WHERE c.name = 'Acme'
+),
+customers_orders AS (
+  SELECT ranked.customer_id,
+         JSON_AGG(JSON_OBJECT('id', ranked.id, 'amount', ranked.amount)
+                  ORDER BY ranked.amount DESC, ranked.id) AS orders
+  FROM (
+    SELECT o.customer_id, o.id, o.amount,
+           ROW_NUMBER() OVER (PARTITION BY o.customer_id
+                              ORDER BY o.amount DESC, o.id) AS rn
+    FROM sales.orders AS o
+    JOIN customers AS p ON o.customer_id = p.id
+  ) AS ranked
+  WHERE ranked.rn <= 3
+  GROUP BY ranked.customer_id
+)
+SELECT customers.id, customers.name, customers_orders.orders
+FROM customers
+LEFT JOIN customers_orders ON customers_orders.customer_id = customers.id
+```
+
+O id do pedido desempata a classificação, então dois pedidos de mesmo valor voltam sempre na mesma ordem. Um cliente sem pedidos não tem linha em `customers_orders`; a etapa nativa escreve a lista vazia para ele.
+
+A mesma leitura em Cypher encontra o cliente e lê os três maiores pedidos numa subconsulta:
+
+```cypher
+MATCH (a:Customers)
+WHERE a.name = 'Acme'
+CALL {
+  WITH a
+  OPTIONAL MATCH (a)-[:HAS_ORDERS]->(b:Orders)
+  RETURN b.id AS id, b.amount AS amount
+  ORDER BY b.amount DESC
+  LIMIT 3
+}
+RETURN a.id, a.name, id AS orders__id, amount AS orders__amount
+```
+
+Na forma canônica, esta leitura Cypher e a leitura GraphQL são compiladas para a instrução acima. É isso que permite ao Abrir como consulta passar uma leitura GraphQL para a página de Cypher e obter a mesma resposta.
+
+Hoje o compilador GraphQL escreve o nível aninhado como um lateral join por pai:
+
+```sql
+SELECT "t0"."id", "t0"."name", "t1"."id" AS "orders__id", "t1"."amount" AS "orders__amount"
+FROM (SELECT * FROM "sales"."customers" "t0" WHERE "t0"."name" = $2 LIMIT 100) "t0"
+LEFT JOIN LATERAL (
+  SELECT * FROM "sales"."orders" WHERE "customer_id" = "t0"."id" ORDER BY "amount" DESC LIMIT $1
+) "t1" ON TRUE
+```
+
+Você vê o SQL semântico de qualquer leitura GraphQL no painel Provisa da página GraphQL.
+
 ## Caminhos de Execução de Federação {: #federation-execution-paths }
 
 | Caminho | Transporte | Via | Quando usado |
@@ -436,7 +570,7 @@ O laço de atualização roda a cada 30 segundos, verifica `get_due_for_refresh(
 | `compiler/cursor.py` | Paginação por cursor estilo Relay — argumentos `first`/`after`/`last`/`before` e geração de `pageInfo` em todas as consultas de lista |
 | `compiler/aggregate_gen.py` | Tipos de consulta `{table}_aggregate` auto-gerados com subcampos `count`, `sum`, `avg`, `min`, `max` e acesso a `nodes` filtrado |
 | `compiler/enum_detect.py` | Auto-detecção de tipo enum — tipos enum nativos do PostgreSQL (`pg_enum`) expostos como tipos enum GraphQL em vez de scalars de string |
-| `compiler/hints.py` | Hints de desempenho de federação — diretivas de roteamento em nível de consulta embutidas como comentários SQL (`/* @provisa route=federated */`) que sobrepõem o roteamento automático |
+| `compiler/hints.py` | Hints de desempenho de federação — diretivas de roteamento em nível de consulta embutidas como comentários SQL (`-- @provisa route=federated`) que sobrepõem o roteamento automático |
 | `compiler/mutation_gen.py` | Compilador de mutação; presets de coluna — valores estáticos do lado do servidor ou de variável de sessão aplicados em insert/update, não expostos no tipo de entrada da mutação |
 | `auth/approval_hook.py` | Hook de aprovação ABAC — autorização externa plugável chamada antes da execução da consulta; transportes webhook, gRPC, e unix_socket; escopo por tabela/fonte/global; política de fallback configurável |
 | `subscriptions/` | Estado e entrega de subscription SSE |
@@ -623,7 +757,7 @@ O `compiler/enum_detect.py` examina os tipos enum nativos do PostgreSQL (`pg_enu
 ```
 
 ```sql
-/* @provisa route=federated */
+-- @provisa route=federated
 SELECT id, amount FROM orders
 ```
 
@@ -691,7 +825,7 @@ Para grandes cargas de trabalho analíticas, use:
 | Provisa gRPC | (processo host) | 50051 | Servidor gRPC Protobuf |
 | Motor de Federação | `trinodb/trino` (padrão) ou warehouse externo | 8080 / varia | Motor de federação de consulta — Trino para a stack embutida; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB para alvos de warehouse |
 | Zaychik | `provisa-zaychik` (construído a partir do código-fonte) | 8480 | Proxy Arrow Flight SQL para Trino; não exigido para motores de warehouse |
-| PostgreSQL | `postgres:16` | 5432 | Metadados de config + catálogo Iceberg |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Metadados de config + catálogo Iceberg |
 | MongoDB | `mongo:7` | 27017 | Fonte de dados NoSQL de demonstração |
 | MinIO | `minio/minio` | 9000/9001 | Armazenamento de objetos compatível com S3 |
 | Redis | `redis:7-alpine` | 6379 | Cache de resultado de consulta |

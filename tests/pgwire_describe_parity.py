@@ -82,19 +82,37 @@ def describes_as(*columns: tuple[str, str]):
     return _describe
 
 
-def registered_shape(sql: str, registry: dict[str, list[tuple[str, str]]]) -> list[tuple[str, str]]:
-    """``sql``'s result shape derived from ``registry`` (table -> [(column, registered type)]) by
-    the real derivation pgwire's Describe uses."""
+def _registered(registry: dict[str, list[tuple[str, str]]]) -> tuple[Any, Any, Any]:
     from provisa.compiler.introspect import ColumnMetadata
-    from provisa.compiler.result_shape import derive_result_shape
 
     table_map = {name: i for i, name in enumerate(registry, 1)}
     column_types = {
         i: [ColumnMetadata(column_name=c, data_type=t, is_nullable=True) for c, t in cols]
         for i, cols in enumerate(registry.values(), 1)
     }
-    ctx = SimpleNamespace(physical_to_sql={}, virtual_columns={}, columns_outside_relation=set())
-    return derive_result_shape(sql, table_map, ctx, column_types)
+    ctx = SimpleNamespace(
+        physical_to_sql={},
+        virtual_columns={},
+        columns_outside_relation=set(),
+        tables={},
+        nested_columns={},
+    )
+    return table_map, ctx, column_types
+
+
+def registered_shape(sql: str, registry: dict[str, list[tuple[str, str]]]) -> list[tuple[str, str]]:
+    """``sql``'s result shape derived from ``registry`` (table -> [(column, registered type)]) by
+    the real derivation pgwire's Describe uses."""
+    from provisa.compiler.result_shape import derive_result_shape
+
+    return derive_result_shape(sql, *_registered(registry))
+
+
+def registered_parameters(sql: str, registry: dict[str, list[tuple[str, str]]]) -> dict[int, str]:
+    """``sql``'s uncast parameters typed from ``registry``, as pgwire's Describe types them."""
+    from provisa.compiler.parameter_types import parameter_types
+
+    return parameter_types(sql, *_registered(registry))
 
 
 def assert_runtime_parity(runtime: Any, sql: str) -> list[str]:

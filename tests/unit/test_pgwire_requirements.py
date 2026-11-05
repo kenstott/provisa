@@ -1449,6 +1449,63 @@ class TestRoleSetOnPgwire:
         assert ctx.session.role_id == "meta:analyst+auditor"
         assert ctx.session.role_set == ("analyst", "auditor")
 
+    def test_trust_mode_user_names_a_derived_role(self):
+        """REQ-2057: as on the unsecured HTTP path, a named declared derived role qualifies the
+        role it is named with: the session acts as their meta-role, the derived role kept."""
+        from provisa.pgwire.server import ProvisaHandler
+
+        ctx = MagicMock()
+        ctx.params = {"user": "analyst,region__eu"}
+        ctx.session = _session()
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler.handle_post_auth = MagicMock()
+        fake_state = MagicMock()
+        fake_state.multitenancy = False
+        fake_state.auth_config = {"provider": "none"}
+        fake_state.auth_middleware_active = False
+        fake_state.settings_overrides = {
+            "derived_roles": [{"attribute": "region", "description": "The member's region."}]
+        }
+        with patch("provisa.pgwire.server.state", fake_state):
+            handler.handle_md5_password(ctx, b"x\x00")
+        assert ctx.session.role_id == "meta:analyst+region+region__eu"
+        assert ctx.session.role_set == ("analyst",)
+        assert ctx.session.role_quals == ("region", "region__eu")
+
+    def test_trust_mode_reads_the_derived_roles_of_the_deployments_org(self):
+        """REQ-1266: the startup packet arrives with no org bound; the declarations read are the
+        deployment org's, the one the session then serves."""
+        from provisa.core.request_context import current_org
+        from provisa.pgwire.server import ProvisaHandler
+
+        ctx = MagicMock()
+        ctx.params = {"user": "analyst"}
+        ctx.session = _session()
+        handler = object.__new__(ProvisaHandler)
+        handler.wfile = MagicMock()
+        handler.send_authentication_ok = MagicMock()
+        handler.handle_post_auth = MagicMock()
+        fake_state = MagicMock()
+        fake_state.org_id = "acme"
+        fake_state.auth_config = {"provider": "none"}
+        fake_state.auth_middleware_active = False
+        read_under: list[str | None] = []
+        ambient = current_org.get()
+
+        def declared(_state):
+            read_under.append(current_org.get())
+            return []
+
+        with (
+            patch("provisa.pgwire.server.state", fake_state),
+            patch("provisa.auth.derived_roles.declared_derived_roles", declared),
+        ):
+            handler.handle_md5_password(ctx, b"x\x00")
+        assert read_under == ["acme"] and current_org.get() == ambient
+        assert ctx.session.org_id == "acme"
+
     def test_trust_mode_refuses_a_named_meta_role(self):
         from provisa.pgwire.server import ProvisaHandler
 

@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """REQ-2050: a zoned timestamp is read as the instant it is -- by the readers that would lose its
-offset (SQL Server's datetimeoffset, Oracle's TIMESTAMP WITH [LOCAL] TIME ZONE) and through every
+offset (the MySQL family's TIMESTAMP, SQL Server's datetimeoffset, Oracle's TIMESTAMP WITH [LOCAL]
+TIME ZONE) and through every
 Arrow path, where it is UTC with its zone marked."""
 
 # Requirements: REQ-2050
@@ -19,6 +20,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pyarrow as pa
+import pytest
 
 from provisa.executor.drivers.zoned import (
     SQL_SS_TIMESTAMPOFFSET,
@@ -29,6 +31,7 @@ from provisa.executor.drivers.zoned import (
     datetimeoffset,
     mssql_connection,
 )
+from provisa.executor.drivers.mysql import CONVERSIONS
 
 _UTC = datetime(2024, 1, 2, 1, 4, 5, 123456, tzinfo=timezone.utc)
 
@@ -51,6 +54,15 @@ def test_a_sql_server_connection_reads_datetimeoffset_through_the_converter():
 
     conn = mssql_connection(_Conn())
     assert conn.converters == {SQL_SS_TIMESTAMPOFFSET: datetimeoffset}
+
+
+def test_a_mysql_timestamp_is_its_instant_in_utc_and_a_datetime_stays_a_wall_time():
+    from pymysql.constants import FIELD_TYPE
+
+    conv = CONVERSIONS
+    assert conv[FIELD_TYPE.TIMESTAMP]("2024-01-02 01:04:05.123456") == _UTC
+    assert conv[FIELD_TYPE.TIMESTAMP]("0000-00-00 00:00:00") == "0000-00-00 00:00:00"
+    assert conv[FIELD_TYPE.DATETIME]("2024-01-02 01:04:05") == datetime(2024, 1, 2, 1, 4, 5)
 
 
 def test_oracle_zoned_values_are_their_instants_in_utc():
@@ -166,3 +178,79 @@ def test_an_instant_lands_and_reads_as_utc_with_its_zone_marked():
         [arrow_value("2024-01-02T03:04:05.123456+02:00", "timestamptz")], arrow_type("timestamptz")
     )
     assert column.to_pylist() == [_UTC]
+
+
+def test_an_instant_literal_is_written_as_its_utc_wall_time_for_the_mysql_family():
+    """MariaDB reads TIMESTAMP('2024-01-01 20:04:05-05:00') as 20:04:05, five hours early: the
+    MySQL family is sent the instant in UTC, the zone its UTC session reads it in."""
+    from provisa.transpiler.transpile import transpile
+
+    def where(literal: str, dialect: str) -> str:
+        sql = f"SELECT id FROM t WHERE ts = CAST('{literal}' AS TIMESTAMPTZ)"
+        return transpile(sql, dialect).split("WHERE ", 1)[1]
+
+    assert where("2024-01-01 20:04:05-05:00", "mysql") == "ts = TIMESTAMP('2024-01-02 01:04:05')"
+    assert where("2024-01-02 03:04:05.5+02", "mysql") == (
+        "ts = TIMESTAMP('2024-01-02 01:04:05.500000')"
+    )
+    # No offset: read in the session's zone, UTC, as written.
+    assert where("2024-01-02 01:04:05", "mysql") == "ts = TIMESTAMP('2024-01-02 01:04:05')"
+    # A target that takes the offset keeps it.
+    assert "-05:00" in where("2024-01-01 20:04:05-05:00", "postgres")
+
+
+def _trino_state(source_type: str, data_type: str = "timestamptz"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        source_types={"src": source_type},
+        source_catalogs={"src": "src"},
+        tables=[
+            {
+                "source_id": "src",
+                "schema_name": "Shop",
+                "table_name": "Orders",
+                "columns": [
+                    {"column_name": "id", "data_type": "integer"},
+                    {"column_name": "placed_at", "data_type": data_type},
+                ],
+            }
+        ],
+    )
+
+
+@pytest.mark.parametrize("source_type", ["mariadb", "mysql", "tidb", "elasticsearch"])
+def test_an_instant_trino_reads_as_a_plain_timestamp_is_an_output_at_utc(source_type):
+    """Trino types a MySQL-family TIMESTAMP and an Elasticsearch date as a plain TIMESTAMP, the UTC
+    wall time with no zone: a declared instant is written with_timezone(col, 'UTC') where it is
+    an output, and nowhere else (its predicate pushes down as before)."""
+    from provisa.federation.trino_connectors import trino_utc_wall_columns
+    from provisa.transpiler.transpile import rewrite_instants_for_trino
+
+    columns = trino_utc_wall_columns(_trino_state(source_type))
+    assert columns == {("src", "shop", "orders"): {"placed_at"}}
+    sql = (
+        "SELECT o.id, o.placed_at FROM src.shop.orders AS o "
+        "WHERE o.placed_at > TIMESTAMP '2024-01-01 00:00:00'"
+    )
+    assert rewrite_instants_for_trino(sql, columns) == (
+        "SELECT o.id, WITH_TIMEZONE(o.placed_at, 'UTC') AS placed_at FROM src.shop.orders AS o "
+        "WHERE o.placed_at > CAST('2024-01-01 00:00:00' AS TIMESTAMP(0))"
+    )
+
+
+def test_an_instant_trino_reads_with_its_zone_or_a_wall_time_is_left_as_read():
+    from provisa.federation.trino_connectors import trino_utc_wall_columns
+
+    assert trino_utc_wall_columns(_trino_state("postgresql")) == {}
+    assert trino_utc_wall_columns(_trino_state("mariadb", data_type="timestamp")) == {}
+
+
+def test_a_zoned_trino_value_is_carried_at_utc():
+    from provisa.executor.trino import _instants_in_utc
+
+    at_two = datetime(2024, 1, 2, 3, 4, 5, tzinfo=timezone(timedelta(hours=2)))
+    rows = _instants_in_utc([[1, at_two]], ["integer", "timestamp(6) with time zone"])
+    assert rows == [[1, datetime(2024, 1, 2, 1, 4, 5, tzinfo=timezone.utc)]]
+    assert rows[0][1].tzinfo is timezone.utc
+    assert _instants_in_utc([[1, at_two]], ["integer", "time(3) with time zone"]) == [[1, at_two]]

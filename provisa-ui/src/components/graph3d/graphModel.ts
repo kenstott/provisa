@@ -13,10 +13,12 @@
 // Filters by domain, tag, sensitivity and a focus node apply to every layer; a preset is a named
 // set of layers with a layout. Pure data: the scene only draws what this decides.
 
-import type { TermRole } from "../../api/glossary";
-import { ONTOLOGY_NEIGHBOURHOOD, PRODUCT_NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
-import { lanesFrom } from "../lineage/lineage-layout";
+import type { TermGrounding, TermRole } from "../../api/glossary";
+import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
+import { layeredFit, layeredLayout } from "./layeredLayout";
+
+export { edgeClass, layeredFit } from "./layeredLayout";
 
 export type NodeType =
   | "product"
@@ -60,19 +62,17 @@ export type LayerId =
   // REQ-2130: the glossary's own layers.
   | "domains"
   | "data"
-  | "columns"
-  // The tables of the columns drawn, with the relationships between them (with Columns).
-  | "ownerTables";
+  | "columns";
 
-/** Force; lineage lanes left to right (REQ-1667); or a top-down tree (REQ-2130's Taxonomy). */
-export type LayoutKind = "force" | "lanes" | "tree";
+/** Force, or layers where edges have direction (REQ-2174; REQ-2130's Taxonomy). */
+export type LayoutKind = "force" | "layered";
 
 /** REQ-2130: a glossary term's standing (REQ-1387's admission rule decides draft). */
 export type { TermStatus } from "../../api/glossary";
 import type { TermStatus } from "../../api/glossary";
 
 /** Every standing a term can have, in the order a reader picks them. */
-export const TERM_STATUSES: TermStatus[] = ["live", "draft", "deprecated", "retired"];
+export const TERM_STATUSES: TermStatus[] = ["approved", "draft", "deprecated", "retired"];
 
 export interface GraphNode {
   id: string;
@@ -86,10 +86,11 @@ export interface GraphNode {
   /** The table a column or a profile belongs to: a column is drawn inside it until the table is
    * expanded; a profile is reached on its page. */
   parent?: string;
-  /** REQ-1667: the lineage lane the node stands in, when the data says (upstream negative). */
-  lane?: number;
   /** REQ-2130: a term's standing; deprecated is drawn dimmed. */
   status?: TermStatus;
+  /** REQ-1387: whether a term reaches data (the ground symbol before its name); absent for any
+   * other node, and for a term the graph does not read it of. */
+  grounding?: TermGrounding;
   /** REQ-2130: a term's role -- Class (tables), Property (columns), Concept (neither) -- coloured
    * apart (nodeLook); absent where the graph does not read it. */
   role?: TermRole;
@@ -107,6 +108,35 @@ export interface GraphNode {
    * Ontology View a data product's column is the Data layer's as well as Columns'. Empty: drawn
    * only as the end of an edge drawn (a table reached through its displayed columns). */
   layers?: LayerId[];
+  /** REQ-2174 (amended 2026-10-28, EVERY LANE NODE INFORMS AND LINKS): what helps a reader of
+   * the node, as its hover card and the detail panel say it (nodeFacts). Never drawn. */
+  info?: NodeInfo;
+}
+
+/** A node's facts as its graph read them; a fact not read (or not the role's to read) is absent. */
+export interface NodeInfo {
+  /** A term's or a product's status, as read: on a term the graph does not filter by it. */
+  status?: string;
+  /** A term's experts (its stewards), by user. */
+  stewards?: string[];
+  /** A product's owner role. */
+  owner?: string;
+  /** A column's type. */
+  dataType?: string;
+  /** A column's or a table's description. */
+  description?: string;
+  /** A column's sensitive tags, where the graph reads them as a fact and not as a filter (the
+   * glossary's: GraphNode.sensitivities is the product graph's filter). */
+  sensitive?: string[];
+  /** Whether a column is masked for some reader (its mask list holds a mask). */
+  masked?: boolean;
+  /** A table's source. */
+  source?: string;
+  /** A table's quality: its checkers' latest outcome, worst first ("fail", then "pass"); "none"
+   * when it has checkers that have never run. Absent when no checker scans it. */
+  quality?: "pass" | "fail" | "none";
+  /** When its checkers last ran, the latest. */
+  checkedAt?: string;
 }
 
 export interface GraphEdge {
@@ -158,27 +188,26 @@ export const LAYER_ORDER: LayerId[] = [
   "lineage",
 ];
 
-export type PresetId = "knowledge" | "ontology" | "productMap" | "lineage" | "taxonomy";
+export type PresetId = "all" | "ontology" | "products" | "taxonomy";
 
 export interface Preset {
   layers: LayerId[];
-  layout: LayoutKind;
   /** The term edge types it draws; every type when absent. */
   edgeTypes?: string[];
+  /** The layout it opens in; force when absent. */
+  layout?: LayoutKind;
 }
 
 export const PRESETS = {
   // Every layer but relationships to tables outside the product.
-  knowledge: { layers: LAYER_ORDER.filter((l) => l !== "outside"), layout: "force" },
+  all: { layers: LAYER_ORDER.filter((l) => l !== "outside") },
   // Terms, their edges, the columns bound to them and the products that own those columns.
-  ontology: { layers: ["ontology", "products"], layout: "force" },
+  ontology: { layers: ["ontology", "products"] },
   // Every product, grouped by domain, joined by data_product_edges.
-  productMap: { layers: ["products"], layout: "force" },
-  // Lineage edges alone, left to right in upstream lanes.
-  lineage: { layers: ["lineage"], layout: "lanes" },
+  products: { layers: ["products"] },
 } satisfies Partial<Record<PresetId, Preset>>;
 
-export const PRESET_ORDER: PresetId[] = ["knowledge", "ontology", "productMap", "lineage"];
+export const PRESET_ORDER: PresetId[] = ["all", "ontology", "products"];
 
 /** What a graph is scoped to: its layers and presets (REQ-2128's product graph, REQ-2130's
  * glossary), on the one engine. */
@@ -195,9 +224,6 @@ export interface GraphScope {
   foldColumns: boolean;
   /** The edge kinds the edge-type filter chooses among, by their labels. */
   typedKinds: EdgeKind[];
-  /** Edge kinds drawn only between nodes something else draws: they join what is shown and never
-   * bring a node in (the Ontology View's relationships between the tables of its columns). */
-  betweenDrawn: EdgeKind[];
   /** Layers always drawn and offered by no control: the graph itself (the Ontology View's terms
    * and their edges). A remembered setting without one is read with it. */
   implicitLayers: LayerId[];
@@ -217,43 +243,41 @@ export const PRODUCT_SCOPE: GraphScope = {
   orphans: false,
   foldColumns: true,
   typedKinds: ["term_edge"],
-  betweenDrawn: [],
   implicitLayers: [],
-  menus: false,
-  neighbourhood: PRODUCT_NEIGHBOURHOOD,
+  menus: true,
+  neighbourhood: NEIGHBOURHOOD,
 };
 
-/** REQ-2130: the glossary's Ontology View. Terms and their edges; the domains each term is in
- * (an enterprise-wide term in every one, so it sits at the centre); the columns a concrete term
- * IS (its physical refs, as the viewer may read them), shown by default and toggled beside the
- * filters; with Columns, the tables owning the columns drawn and the relationships declared
- * between them (Tables); off by default, the data products with their datasets and those
- * datasets' columns (Data). A column is drawn as itself, never folded into its table. */
+/** REQ-2130: the glossary's Ontology View, an ontology with its grounding (amended 2026-10-29):
+ * only what a shown term reaches is drawn. Terms and their edges, with the tables a class term
+ * grounds; the domains each term is in (an enterprise-wide term in every one, so it sits at the
+ * centre); the columns a concrete term IS (its physical refs, as the viewer may read them), each
+ * with its table, shown by default; off by default, the data product of each table drawn (Data).
+ * No relationship, join or lineage edge between tables: those are the ERD's. A column is drawn
+ * as itself, never folded into its table. */
 export const GLOSSARY_SCOPE: GraphScope = {
   layers: {
     ontology: { nodes: ["term"], edges: ["term_edge"] },
     domains: { nodes: ["domain"], edges: ["in_domain"] },
-    data: { nodes: ["table", "product"], edges: ["has_column", "member"] },
-    // Toggled beside the filters (Columns, and Tables with it), not in the Layers row.
-    columns: { nodes: ["column"], edges: ["term_binding"] },
-    ownerTables: { nodes: [], edges: ["relationship"] },
+    data: { nodes: ["product"], edges: ["member"] },
+    // Toggled beside the filters, not in the Layers row.
+    columns: { nodes: ["column"], edges: ["term_binding", "has_column"] },
   },
-  layerOrder: ["ontology", "domains", "data", "columns", "ownerTables"],
+  layerOrder: ["ontology", "domains", "data", "columns"],
   presets: {
     // Every edge type, in a force layout, with the columns each term is.
-    ontology: { layers: ["ontology", "domains", "columns"], layout: "force" },
+    ontology: { layers: ["ontology", "domains", "columns"] },
     // The is-a and part-of hierarchy alone, as a tree from the top down.
-    taxonomy: { layers: ["ontology"], layout: "tree", edgeTypes: ["KIND_OF", "PART_OF"] },
+    taxonomy: { layers: ["ontology"], edgeTypes: ["KIND_OF", "PART_OF"], layout: "layered" },
   },
   presetOrder: ["ontology", "taxonomy"],
   hiddenStatuses: ["retired"],
   orphans: true,
   foldColumns: false,
-  typedKinds: ["term_edge", "relationship"],
-  betweenDrawn: ["relationship"],
+  typedKinds: ["term_edge"],
   implicitLayers: ["ontology"],
   menus: true,
-  neighbourhood: ONTOLOGY_NEIGHBOURHOOD,
+  neighbourhood: NEIGHBOURHOOD,
 };
 
 export interface GraphFilters {
@@ -284,6 +308,9 @@ export interface QueryScope {
   /** The page's search, as searchItems splits it: the terms it matches and their neighbourhood
    * (neighbourhood.ts) are read; none, the whole graph. */
   search: string[];
+  /** REQ-2174: drawn as the 2D lane diagram, whose product lane names the product each table
+   * drawn belongs to, whatever the layers. Absent: drawn in 3D. */
+  lanes?: boolean;
 }
 
 export const NO_FILTERS: GraphFilters = {
@@ -393,14 +420,15 @@ export function visibleGraph(
     const a = fold(e.a);
     const b = fold(e.b);
     if (a === b) return;
-    const id = `${e.kind}:${a}>${b}`;
+    // REQ-2174: a term edge of each type is its own edge, so a lateral edge between two terms
+    // never hides a rank edge between them.
+    const id = `${e.kind}:${a}>${b}${e.kind === "term_edge" && e.label ? `:${e.label}` : ""}`;
     const seen = edges.get(id);
     if (seen) seen.paths = (seen.paths ?? 1) + (e.paths ?? 1);
     else edges.set(id, { ...e, id, a, b });
   };
   for (const e of data.edges) {
     if (!edgeLayers(scope, e).some((l) => layers.has(l))) continue;
-    if (scope.betweenDrawn.includes(e.kind)) continue;
     if (scope.typedKinds.includes(e.kind) && filters.edgeTypes.length > 0) {
       if (!filters.edgeTypes.includes(e.label ?? "")) continue;
     }
@@ -417,7 +445,8 @@ export function visibleGraph(
   if (!tablesOn && isOn("product")) {
     for (const id of touched) {
       const n = byId.get(id);
-      if (n?.type !== "column" || !n.parent) continue;
+      // A column drawn with its table (the Ontology View's) is reached through it.
+      if (n?.type !== "column" || !n.parent || touched.has(n.parent)) continue;
       for (const p of owners.get(n.parent) ?? []) add({ id: "", a: p, b: id, kind: "owns" });
     }
   }
@@ -432,12 +461,6 @@ export function visibleGraph(
     const n = byId.get(id);
     if (!n || !passes(n, filters)) drawn.delete(id);
   }
-  for (const e of data.edges) {
-    if (!scope.betweenDrawn.includes(e.kind)) continue;
-    if (!edgeLayers(scope, e).some((l) => layers.has(l))) continue;
-    if (filters.edgeTypes.length > 0 && !filters.edgeTypes.includes(e.label ?? "")) continue;
-    if (drawn.has(fold(e.a)) && drawn.has(fold(e.b))) add(e);
-  }
   let kept = [...edges.values()].filter((e) => drawn.has(e.a) && drawn.has(e.b));
   const anyFilter = filters.domains.length + filters.tags.length + filters.sensitivities.length > 0;
   if (anyFilter) {
@@ -451,10 +474,14 @@ export function visibleGraph(
   }
   const anchors = filters.focus.filter((f) => drawn.has(f));
   if (anchors.length > 0) {
-    // The union of each focus's neighbourhood.
-    const reached = new Set<string>();
-    for (const a of anchors)
-      for (const id of reach(a, kept, byId, scope.neighbourhood)) reached.add(id);
+    // One neighbourhood, counted from every focus at once. A product's is counted from its member
+    // tables too: members (0), their columns (1), the terms those are bound to (2).
+    const starts = anchors.flatMap((a) =>
+      byId.get(a)?.type === "product"
+        ? [a, ...kept.filter((e) => e.kind === "member" && e.a === a).map((e) => e.b)]
+        : [a],
+    );
+    const reached = reach(starts, kept, byId, scope.neighbourhood);
     for (const id of [...drawn]) if (!reached.has(id)) drawn.delete(id);
     kept = kept.filter((e) => drawn.has(e.a) && drawn.has(e.b));
   }
@@ -469,12 +496,12 @@ const judged = (n: GraphNode) =>
   n.tags !== undefined ||
   n.sensitivities !== undefined;
 
-/** What is reached from ``start`` within ``rule.depth`` hops, passing through no product or domain
- * (``rule.stopAt``). A table is an end too -- drawn where a reached column, term or table touches
- * it, its other columns and relationships not followed -- unless it is the start or entered by a
- * member edge (a member of the start product). */
+/** What is reached from ``starts`` within ``rule.depth`` hops, counted from the nearest start,
+ * passing through no product or domain (``rule.stopAt``). A table is an end too -- drawn where a
+ * reached column, term or table touches it, its other columns and relationships not followed --
+ * unless it is a start or entered by a member edge (a member of a product). */
 export function reach(
-  start: string,
+  starts: readonly string[],
   edges: GraphEdge[],
   byId: Map<string, GraphNode>,
   rule: Neighbourhood,
@@ -484,13 +511,14 @@ export function reach(
     next.set(e.a, [...(next.get(e.a) ?? []), [e.b, e.kind]]);
     next.set(e.b, [...(next.get(e.b) ?? []), [e.a, e.kind]]);
   }
-  const seen = new Set([start]);
+  const begin = new Set(starts);
+  const seen = new Set(starts);
   // Breadth first, so each node is met at its fewest hops.
-  let frontier: [string, EdgeKind | null][] = [[start, null]];
+  let frontier: [string, EdgeKind | null][] = starts.map((s) => [s, null]);
   for (let hop = 0; hop < rule.depth && frontier.length > 0; hop++) {
     const out: [string, EdgeKind | null][] = [];
     for (const [id, via] of frontier) {
-      if (id !== start) {
+      if (!begin.has(id)) {
         const t = byId.get(id)?.type;
         if (t !== undefined && rule.stopAt.includes(t)) continue;
         if (t === "table" && via !== rule.tableEnteredBy) continue;
@@ -526,122 +554,25 @@ const PULL: Record<EdgeKind, number> = {
   column_lineage: 0.4,
 };
 
-const LANE_GAP = 4;
-
-const TREE_GAP = 3;
-/** Wider across than down: a level's names sit side by side. */
-const TREE_SPREAD = 5;
-
-/** The term edges that set a tree's levels: ``a`` is a kind or a part of ``b``. */
-const HIERARCHY = new Set(["KIND_OF", "PART_OF"]);
-
-/** REQ-2130: a top-down tree over the term edges -- the general above the specific, the whole
- * above the part. Only KIND_OF and PART_OF set the levels: a term sits a level below the deepest
- * term it is a kind or part of, under the first of those; a term in no such edge is a root, the
- * roots side by side. A node joined to a term by any other edge (a column the term IS) hangs a
- * level below that term, under it; any other node is a root too. */
-function treeLayout(g: GraphData): Map<string, [number, number, number]> {
-  const terms = new Set(g.nodes.filter((n) => n.type === "term").map((n) => n.id));
-  const up = new Map<string, string[]>();
-  for (const e of g.edges)
-    if (e.kind === "term_edge" && HIERARCHY.has(e.label ?? "") && e.a !== e.b)
-      up.set(e.a, [...(up.get(e.a) ?? []), e.b].sort());
-  const depth = new Map<string, number>();
-  const visiting = new Set<string>();
-  // The longest path up to a root; an edge closing a cycle counts for nothing.
-  const depthOf = (id: string): number => {
-    const known = depth.get(id);
-    if (known !== undefined) return known;
-    visiting.add(id);
-    let d = 0;
-    for (const p of up.get(id) ?? []) if (!visiting.has(p)) d = Math.max(d, depthOf(p) + 1);
-    visiting.delete(id);
-    depth.set(id, d);
-    return d;
-  };
-  const parent = new Map<string, string>();
-  for (const id of [...terms].sort()) {
-    const d = depthOf(id);
-    const under = (up.get(id) ?? []).find((p) => depthOf(p) === d - 1);
-    if (under !== undefined) parent.set(id, under);
-  }
-  for (const e of [...g.edges].sort((x, y) => x.id.localeCompare(y.id))) {
-    const [term, other] = terms.has(e.a) ? [e.a, e.b] : [e.b, e.a];
-    if (!terms.has(term) || terms.has(other) || parent.has(other)) continue;
-    parent.set(other, term);
-    depth.set(other, depthOf(term) + 1);
-  }
-  const children = new Map<string, string[]>();
-  for (const [child, p] of parent) children.set(p, [...(children.get(p) ?? []), child]);
-  const x = new Map<string, number>();
-  let next = 0;
-  // Leaves side by side; a node centred over its children.
-  const place = (id: string): number => {
-    const kids = (children.get(id) ?? []).sort();
-    const under = kids.map(place);
-    const at = under.length === 0 ? next++ : (under[0] + under[under.length - 1]) / 2;
-    x.set(id, at);
-    return at;
-  };
-  const ids = g.nodes.map((n) => n.id).sort();
-  for (const id of ids) if (!parent.has(id)) place(id);
-  const deepest = Math.max(0, ...ids.map((id) => depth.get(id) ?? 0));
-  // Centred, so the camera's view of the whole tree is centred too.
-  const mid = (next - 1) / 2;
-  return new Map(
-    ids.map((id) => [
-      id,
-      [
-        ((x.get(id) as number) - mid) * TREE_SPREAD,
-        (deepest / 2 - (depth.get(id) ?? 0)) * TREE_GAP,
-        0,
-      ],
-    ]),
-  );
-}
-
-/** Each drawn node's place. Lanes: lineage left to right, members (``zero``) in lane 0. */
+/** Each drawn node's place. */
 export function layoutGraph(
   g: GraphData,
   layout: LayoutKind,
-  zero: string[],
-  /** How close a force layout draws the nodes (1 the usual spacing); other layouts are fixed. */
+  /** How close a force layout draws the nodes (1 the usual spacing); a layered one is fixed. */
   attraction = 1,
+  /** Every node in the z = 0 plane: the graph's 2D view (REQ-2174). A layered layout is flat already. */
+  flat = false,
 ): Map<string, [number, number, number]> {
+  if (layout === "layered") return layeredLayout(g);
   const ids = g.nodes.map((n) => n.id);
   const radius = Math.max(6, Math.cbrt(ids.length) * 3);
-  if (layout === "tree") return treeLayout(g);
-  if (layout === "force") {
-    return forceLayout(
-      ids,
-      g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
-      radius,
-      attraction,
-    );
-  }
-  const lane = lanesFrom(
-    g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b] as [string, string]),
-    zero.filter((z) => ids.includes(z)),
+  return forceLayout(
+    ids,
+    g.edges.map((e) => ({ a: e.a, b: e.b, strength: PULL[e.kind] })),
+    radius,
+    attraction,
+    flat,
   );
-  const given = new Map(g.nodes.filter((n) => n.lane !== undefined).map((n) => [n.id, n.lane]));
-  const lanes = new Map<number, string[]>();
-  for (const id of ids) {
-    const l = given.get(id) ?? lane.get(id) ?? 0;
-    lanes.set(l, [...(lanes.get(l) ?? []), id]);
-  }
-  const all = [...lanes.keys()];
-  const mid = (Math.min(...all) + Math.max(...all)) / 2;
-  const out = new Map<string, [number, number, number]>();
-  for (const [l, members] of lanes) {
-    members.sort();
-    const rows = Math.ceil(Math.sqrt(members.length));
-    members.forEach((id, i) => {
-      const r = i % rows;
-      const c = Math.floor(i / rows);
-      out.set(id, [(l - mid) * LANE_GAP, (r - (rows - 1) / 2) * 2, c * 2]);
-    });
-  }
-  return out;
 }
 
 /** A node's drawn edges. */
@@ -668,4 +599,25 @@ export function panelGraph(data: GraphData, product: string): GraphData {
     nodes: g.nodes.filter((n) => kept.has(n.id)),
     edges: edges.filter((e) => kept.has(e.a) && kept.has(e.b)),
   };
+}
+
+/** REQ-2174: the layout a view opens in, force whatever its edges fit, and whether the reader may
+ * pick Layered. */
+export function openingLayout(g: GraphData): { layout: LayoutKind; layeredPossible: boolean } {
+  return { layout: "force", layeredPossible: layeredFit(g).possible };
+}
+
+/** The layout drawn: the one asked for (the reader's choice, or a preset's own) where there is
+ * one, else the opening layout. Layered is impossible where a cycle closes (the control disables
+ * it), so it is never drawn there. */
+export function chosenLayout(g: GraphData, asked: LayoutKind | null): LayoutKind {
+  const open = openingLayout(g);
+  if (asked === null) return open.layout;
+  return asked === "layered" && !open.layeredPossible ? "force" : asked;
+}
+
+/** A remembered layout setting: "force" or "layered" is the reader's choice, "auto" (the default)
+ * is none: a preset's own layout, else force. */
+export function savedLayout(v: string): LayoutKind | null {
+  return v === "force" || v === "layered" ? v : null;
 }

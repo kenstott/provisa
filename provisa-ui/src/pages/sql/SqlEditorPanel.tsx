@@ -71,11 +71,13 @@ interface SqlEditorPanelProps {
   setSampleSize: React.Dispatch<React.SetStateAction<number>>;
   roles: (string | { value: string; label: string })[];
   setRole: React.Dispatch<React.SetStateAction<string>>;
-  // REQ-1163: the time travel statements run with over bitemporal views (ISO 8601, or none).
+  // REQ-1163: the time pickers' picks (ISO 8601, or none); a pick is written into the statement.
   asOf: string | null;
   setAsOf: (value: string | null) => void;
   asRecorded: string | null;
   setAsRecorded: (value: string | null) => void;
+  // REQ-2083: the values bound to the next run's $1…$n placeholders.
+  boundParams: string[];
   viewTable: RegisteredTable | null;
   viewSaving: boolean;
   setViewSaving: React.Dispatch<React.SetStateAction<boolean>>;
@@ -119,6 +121,7 @@ export function SqlEditorPanel({
   setAsOf,
   asRecorded,
   setAsRecorded,
+  boundParams,
   viewTable,
   viewSaving,
   setViewSaving,
@@ -411,6 +414,7 @@ export function SqlEditorPanel({
           onClick={handleRun}
           disabled={running || !sqlText.trim()}
           data-testid="sql-run"
+          style={{ flexShrink: 0 }}
         >
           {running ? t("sqlEditorPanel.running") : t("sqlEditorPanel.run")}
         </Button>
@@ -424,6 +428,7 @@ export function SqlEditorPanel({
             onClick={handleAnalyze}
             disabled={analyzing || running || !sqlText.trim()}
             data-testid="sql-analyze"
+            style={{ flexShrink: 0 }}
           >
             {analyzing ? t("sqlEditorPanel.analyzing") : t("sqlEditorPanel.analyze")}
           </Button>
@@ -506,6 +511,22 @@ export function SqlEditorPanel({
             style={{ width: "170px" }}
           />
         </Tip>
+        {boundParams.length > 0 && (
+          <Tip
+            text={t("sqlEditorPanel.boundParams", {
+              values: boundParams.map((v, i) => `$${i + 1} = ${v}`).join(", "),
+            })}
+          >
+            <Badge
+              size="sm"
+              variant="light"
+              data-testid="sql-bound-params"
+              style={{ flexShrink: 0, textTransform: "none" }}
+            >
+              {boundParams.map((_v, i) => `$${i + 1}`).join(" ")}
+            </Badge>
+          </Tip>
+        )}
         <div style={{ flex: 1 }} />
         {viewTable && (
           <Tip text={t("sqlEditorPanel.saveViewTitle", { tableName: viewTable.tableName })}>

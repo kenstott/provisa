@@ -19,20 +19,24 @@ from typing import Any
 
 import grpc
 
-from provisa.security.redaction import redact
+# What the client is told: redacted, in the model's names of the org the RPC bound (REQ-2087,
+# REQ-2152) -- held past the handler, which resets its binding before an error reaches here.
+from provisa.api.engine_error_names import client_text
+from provisa.core.request_context import answering_org
 
 
 class _RedactingContext:
-    def __init__(self, context: Any) -> None:
+    def __init__(self, context: Any, answered: Any) -> None:
         self._context = context
+        self._answered = answered
         self.aborted = False
 
     def abort(self, code: grpc.StatusCode, details: str) -> None:
         self.aborted = True
-        self._context.abort(code, redact(details or ""))
+        self._context.abort(code, client_text(details or "", self._answered.org_id))
 
     def set_details(self, details: str) -> None:
-        self._context.set_details(redact(details or ""))
+        self._context.set_details(client_text(details or "", self._answered.org_id))
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._context, name)
@@ -48,24 +52,26 @@ def _unanswered(rctx: _RedactingContext, exc: BaseException) -> None:
 
 def _unary(inner):
     def call(request_or_iterator, ctx):
-        rctx = _RedactingContext(ctx)
-        try:
-            return inner(request_or_iterator, rctx)
-        except Exception as exc:  # noqa: BLE001  # allow-blind-except: whatever a handler raises, its text reaches the client as gRPC's status message; this only redacts that text and re-raises an abort it already made
-            _unanswered(rctx, exc)
-            raise
+        with answering_org() as answered:
+            rctx = _RedactingContext(ctx, answered)
+            try:
+                return inner(request_or_iterator, rctx)
+            except Exception as exc:  # noqa: BLE001  # allow-blind-except: whatever a handler raises, its text reaches the client as gRPC's status message; this only redacts that text and re-raises an abort it already made
+                _unanswered(rctx, exc)
+                raise
 
     return call
 
 
 def _streaming(inner):
     def call(request_or_iterator, ctx):
-        rctx = _RedactingContext(ctx)
-        try:
-            yield from inner(request_or_iterator, rctx)
-        except Exception as exc:  # noqa: BLE001  # allow-blind-except: as _unary, for a response stream
-            _unanswered(rctx, exc)
-            raise
+        with answering_org() as answered:
+            rctx = _RedactingContext(ctx, answered)
+            try:
+                yield from inner(request_or_iterator, rctx)
+            except Exception as exc:  # noqa: BLE001  # allow-blind-except: as _unary, for a response stream
+                _unanswered(rctx, exc)
+                raise
 
     return call
 

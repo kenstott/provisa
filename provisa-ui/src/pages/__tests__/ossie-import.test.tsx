@@ -21,7 +21,7 @@ import type { OssieImportProposals } from "../../api/admin";
 const importOssie = vi.fn();
 const fetchOssieYaml = vi.fn();
 const fetchDbtSourcesYaml = vi.fn();
-const auth = vi.hoisted(() => ({ role: { id: "analyst" } as { id: string } | null }));
+const auth = vi.hoisted(() => ({ actingRoles: "analyst" as string | null }));
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => auth }));
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files and drops exports they need.
@@ -131,8 +131,9 @@ describe("Ossie interchange panel (REQ-1316)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("downloads a dbt sources file for the role in use (REQ-1967)", async () => {
-    auth.role = { id: "analyst" };
+  it("downloads a dbt sources file for the roles in use (REQ-1967, REQ-1620)", async () => {
+    // "Role: All": the selected roles as one set, never the first of them alone.
+    auth.actingRoles = "analyst,steward";
     fetchDbtSourcesYaml.mockResolvedValue("version: 2\nsources: []\n");
     const createObjectURL = vi.fn().mockReturnValue("blob:x");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
@@ -140,7 +141,7 @@ describe("Ossie interchange panel (REQ-1316)", () => {
     const user = userEvent.setup();
     render(<OssieInterchangePanel />);
     await user.click(screen.getByTestId("dbt-sources-download"));
-    await waitFor(() => expect(fetchDbtSourcesYaml).toHaveBeenCalledWith("analyst"));
+    await waitFor(() => expect(fetchDbtSourcesYaml).toHaveBeenCalledWith("analyst,steward"));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
     vi.unstubAllGlobals();
   });
@@ -153,11 +154,11 @@ describe("Ossie interchange panel (REQ-1316)", () => {
   });
 
   it("offers no sources file without a role to write it for, and shows a refusal", async () => {
-    auth.role = null;
+    auth.actingRoles = null;
     render(<OssieInterchangePanel />);
     expect(screen.getByTestId("dbt-sources-download")).toBeDisabled();
 
-    auth.role = { id: "analyst" };
+    auth.actingRoles = "analyst";
     fetchDbtSourcesYaml.mockRejectedValue(new Error("No role named analyst exists."));
     const user = userEvent.setup();
     render(<OssieInterchangePanel />);
@@ -215,7 +216,7 @@ describe("Ossie interchange panel (REQ-1316)", () => {
         {
           name: "id",
           alias: "order_key",
-          visibleTo: ["*"],
+          visibleTo: [],
           dataType: "bigint",
           description: undefined,
           isPrimaryKey: true,
@@ -223,7 +224,7 @@ describe("Ossie interchange panel (REQ-1316)", () => {
         {
           name: "amount",
           alias: undefined,
-          visibleTo: ["*"],
+          visibleTo: [],
           dataType: "decimal",
           description: "Line amount",
           isPrimaryKey: false,

@@ -25,9 +25,18 @@ from typing import Any
 
 # How a parameter reaches the source (core/models.py Column.native_filter_type).
 # partition_key (REQ-1982): a Cosmos DB container's partition key, which narrows a read to one
-# partition.
+# partition. column_value (REQ-2191): a real column of the table, given by equality, that narrows
+# the read to the rows having that value (a JDBC source's floor).
 PARAMETER_KINDS = frozenset(
-    {"path_param", "query_param", "graphql_arg", "grpc_input", "query_arg", "partition_key"}
+    {
+        "path_param",
+        "query_param",
+        "graphql_arg",
+        "grpc_input",
+        "query_arg",
+        "partition_key",
+        "column_value",
+    }
 )
 
 NF_PREFIX = "_nf_"
@@ -61,6 +70,12 @@ def parameter_name(column: Any) -> str:
     return name[len(NF_PREFIX) :] if name.startswith(NF_PREFIX) else name
 
 
+def required_parameters(columns: Iterable[Any]) -> list[str]:
+    """The parameters of ``columns`` a read must give, by the name a caller gives each: what the
+    Register Table picker names a table by before it is registered."""
+    return [parameter_name(c) for c in columns if is_parameter(c) and is_required(c)]
+
+
 def _canonical(name: str) -> str:
     from provisa.compiler.naming import apply_sql_name
 
@@ -77,18 +92,28 @@ def missing_parameters(
     ``given`` (the statement's arguments, by parameter name) nor through a join (``fed`` answers
     for a parameter column's name)."""
     have = {_canonical(k) for k, v in (given or {}).items() if v is not None}
-    # Each parameter once: a remote field that is also an argument is held both as its column and
-    # as its ``_nf_`` column, one parameter ("requires the parameter(s) ['id', 'id']").
-    return list(
-        dict.fromkeys(
-            parameter_name(c)
-            for c in columns
-            if is_parameter(c)
-            and is_required(c)
-            and _canonical(parameter_name(c)) not in have
-            and not fed(column_name(c))
-        )
-    )
+    # Each parameter once, by its declared column's name: a remote field that is also an argument
+    # is held both as its column and as its ``_nf_`` column, under the argument's own spelling
+    # ("requires the parameter(s) ['breed_name', 'breedName']").
+    missing: dict[str, str] = {}
+    for c in columns:
+        if not is_parameter(c) or not is_required(c) or fed(column_name(c)):
+            continue
+        key = _canonical(parameter_name(c))
+        if key in have:
+            continue
+        if key not in missing or not column_name(c).startswith(NF_PREFIX):
+            missing[key] = parameter_name(c)
+    return list(missing.values())
+
+
+class ParameterRequired(ValueError):
+    """A read of a table that leaves a required parameter without a value: refused before anything
+    is sent to the source, naming the table and the parameters (REQ-1986)."""
+
+    def __init__(self, table: str, reason: str) -> None:
+        self.table = table
+        super().__init__(f"Table {table!r} {reason}")
 
 
 def missing_reason(missing: list[str]) -> str:

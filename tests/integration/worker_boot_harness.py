@@ -99,17 +99,10 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
                 ],
             }
         ],
-        # org_admin is the reserved administrative role (REQ-1349): every org has it and a config
-        # file may not declare it, so only the harness's own role is listed.
-        "roles": [
-            # No full_results: the default row limit applies to this role's queries.
-            {
-                "id": "analyst",
-                "description": "Test role.",
-                "capabilities": ["query_development"],
-                "domain_access": ["*"],
-            },
-        ],
+        # REQ-2155: org_admin and analyst are standard roles every org has, and a config file may
+        # not declare one. The standard analyst holds no full_results: the default row limit
+        # applies to its queries.
+        "roles": [],
     }
 
 
@@ -225,6 +218,9 @@ class WorkerBoot:
             "PROVISA_REDIS_EMBEDDED": "1",
             "PROVISA_DATA_DIR": self.data_dir,
             "PROVISA_HOME": self.data_dir,
+            # The launch's trace folder, shared by its workers as a real host's are. Named, not
+            # left to PROVISA_HOME: an inherited PROVISA_TELEMETRY_DIR outranks it.
+            "PROVISA_TELEMETRY_DIR": os.path.join(self.data_dir, "telemetry"),
             # The launch's workers share ONE key store, as the workers of a real host do: the
             # file keystore under the launch's own data dir (REQ-1802). The test session's
             # keyring (tests/conftest.py) is a dict inside one process — inherited, it would give

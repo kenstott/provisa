@@ -75,6 +75,14 @@ describe("the page an issuer returns to", () => {
     expect(answer).toEqual({ state: "s", code: null, error: "access_denied" });
   });
 
+  it("carries the company Intuit names in its address (REQ-2197)", () => {
+    const answer = takeIssuerAnswer(
+      loc(`${SIGN_IN}/source-sign-in.html?state=s&code=c&realmId=9341453456789012`),
+      { replaceState: vi.fn() },
+    );
+    expect(answer).toEqual({ state: "s", code: "c", error: null, realm_id: "9341453456789012" });
+  });
+
   it("strips its address before anything else and asks no server for anything", async () => {
     const fetched = vi.spyOn(globalThis, "fetch");
     const replaced = vi.spyOn(window.history, "replaceState");
@@ -212,6 +220,17 @@ describe("what the form accepts as the issuer's answer", () => {
       state: "made-up-state",
       code: "made-up-code",
       error: null,
+    });
+  });
+
+  it("hands on the company an Intuit answer names (REQ-2197)", async () => {
+    const { hear, waiting } = form();
+    hear(SIGN_IN, { ...answer, realm_id: "9341453456789012" });
+    await expect(waiting).resolves.toEqual({
+      state: "made-up-state",
+      code: "made-up-code",
+      error: null,
+      realm_id: "9341453456789012",
     });
   });
 

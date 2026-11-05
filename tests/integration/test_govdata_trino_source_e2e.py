@@ -60,7 +60,13 @@ _COLD_START_SECONDS = 600
 def _cold_start(source, pr) -> None:
     """Start the source's server and wait for its first catalog query, failing with the end of
     the server's own log when the wait runs out: the report otherwise says only "STARTING" (warehouse
-    run 38886673581: the catalog was not answered in 600 s)."""
+    run 38886673581: the catalog was not answered in 600 s).
+
+    The adapter's catalog is prepared from its first use by the engine on (REQ-540, amended
+    2026-10-28): a registered table is that use, so the source is marked in use as a registration
+    marks it before the wait -- otherwise no preparation is sent and the wait answers STARTING
+    at once."""
+    pr.use_catalog_of(source)
     try:
         pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
     except pr.SourceStillStartingError as exc:
@@ -204,8 +210,10 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     schemas = {
         r[0] for r in _run(cur, "listing schemas", f"SHOW SCHEMAS FROM {_CATALOG}", data_dir)
     }
-    assert _SCHEMA in schemas, schemas
-    assert schemas - {"information_schema", "pg_catalog"} <= set(_SCHEMAS.split(",")), schemas
+    # The adapter serves every schema it has; which of them the source offers is the source's own
+    # list, enforced by Provisa (federation/askamerica.SchemaNotServed), not by the catalog Trino
+    # reads. Each schema the source lists is there.
+    assert set(_SCHEMAS.split(",")) <= schemas, schemas
 
     tables = {
         r[0]

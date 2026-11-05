@@ -12,7 +12,10 @@
 // editor starts a new role with none, so it states the requirement and withholds Save until a
 // domain (or "All Domains") is chosen — an empty picker never reads as "unrestricted". An
 // EXISTING role that has ended up with none (the server's backstop: it reads no data) is told
-// so in the table and in its edit form.
+// so in the table and in its edit form. The rule is for a role that holds a capability to apply
+// in a domain; one that holds none is a building block of grants and needs none (REQ-2155). A new
+// role's first step holds what a parent hands down, so a parent holding a capability and no domain
+// is what puts the requirement in front of it.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
@@ -27,26 +30,35 @@ const ROLES = [
   {
     id: "analyst",
     description: "What analyst is for.",
-    capabilities: [],
+    capabilities: ["usage"],
+    effectiveCapabilities: ["usage"],
     demonstrated: [],
     domain_access: ["sales"],
-    parentRoleId: null,
+    effectiveDomains: ["sales"],
+    parents: [],
+    standard: false,
   },
   {
     id: "everything",
     description: "What everything is for.",
-    capabilities: [],
+    capabilities: ["usage"],
+    effectiveCapabilities: ["usage"],
     demonstrated: [],
     domain_access: ["*"],
-    parentRoleId: null,
+    effectiveDomains: ["*"],
+    parents: [],
+    standard: false,
   },
   {
     id: "newrole",
     description: "What newrole is for.",
-    capabilities: [],
+    capabilities: ["usage"],
+    effectiveCapabilities: ["usage"],
     demonstrated: [],
     domain_access: [],
-    parentRoleId: null,
+    effectiveDomains: [],
+    parents: [],
+    standard: false,
   },
 ];
 
@@ -83,9 +95,9 @@ import { SecurityPage } from "../SecurityPage";
 
 // Mantine MultiSelect in jsdom: floating-ui hides the detached dropdown (all rects are 0), so
 // the options are found through the input's aria-controls listbox with hidden: true.
-async function chooseAllDomains() {
+async function choose(label: string, option: string) {
   const picker = screen
-    .getAllByLabelText("Domain Access")
+    .getAllByLabelText(label)
     .find((el) => el.tagName === "INPUT") as HTMLElement;
   fireEvent.click(picker);
   await waitFor(() => {
@@ -93,9 +105,11 @@ async function chooseAllDomains() {
   });
   const listbox = document.getElementById(picker.getAttribute("aria-controls") as string);
   fireEvent.click(
-    within(listbox as HTMLElement).getByRole("option", { name: "All Domains", hidden: true }),
+    within(listbox as HTMLElement).getByRole("option", { name: option, hidden: true }),
   );
 }
+
+const chooseAllDomains = () => choose("Domain Access", "All Domains");
 
 describe("SecurityPage — a role lists at least one domain", () => {
   it("states the requirement and withholds Save while a new role has no domain", async () => {
@@ -104,6 +118,8 @@ describe("SecurityPage — a role lists at least one domain", () => {
     expect(screen.queryByTestId("role-domains-required")).toBeNull();
     await openNewRole();
     fireEvent.change(screen.getByTestId("role-id-input"), { target: { value: "fresh" } });
+    // newrole hands down usage and no domain.
+    await choose("Inherits from", "newrole");
 
     expect(screen.getByTestId("role-domains-required")).toHaveTextContent(
       "must list at least one domain",

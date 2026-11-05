@@ -18,7 +18,6 @@ type Row = Record<string, unknown>;
 // The key a shown row keeps its drift row's index under; never shown.
 const ROW = "\u0000row";
 
-
 function label(row: Row): string {
   const k = keyOf(row);
   return [k.scope, k.column, k.subject, k.measure].filter((p) => p != null).join(" · ");

@@ -164,3 +164,31 @@ async def test_a_starting_adapter_yields_no_candidates_and_is_not_an_error(monke
     monkeypatch.setattr("provisa.api.admin.schema_query._source_for_introspection", _source)
     monkeypatch.setattr(pr, "ensure_endpoint_for_discovery", _starting)
     assert await fk.introspect_fk_constraints(_pools(), "govdata", "src", "sec", "t") == []
+
+
+@pytest.mark.asyncio
+async def test_tracking_a_starting_adapters_keys_tracks_none_and_any_other_failure_raises(
+    monkeypatch,
+):
+    """Only a bundled server not yet listening is expected; a catalog that fails to answer is
+    never taken for a table with no foreign keys."""
+    from provisa.federation import pgwire_replica as pr
+
+    async def _source(source_id):
+        return SimpleNamespace(id=source_id)
+
+    def _starting(source):
+        raise pr.SourceStillStartingError(source.id)
+
+    monkeypatch.setattr("provisa.api.admin.schema_query._source_for_introspection", _source)
+    monkeypatch.setattr(pr, "ensure_endpoint_for_discovery", _starting)
+    assert await fk.auto_register_fk_relationships(_pools(), "govdata", "src", "s", "t", None) == 0
+
+    class _Broken:
+        async def execute(self, sql, params=None):
+            raise RuntimeError("catalog unreachable")
+
+    with pytest.raises(RuntimeError, match="catalog unreachable"):
+        await fk.auto_register_fk_relationships(
+            _pools(pg=_Broken()), "postgresql", "pg", "s", "t", None
+        )

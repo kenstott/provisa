@@ -32,6 +32,8 @@ export interface ActionArg {
   // REQ-1159: for a dataset arg (table_ref/result_set), the declared IR-typed column contract of
   // the input relation, validated on the way in. Absent for a column_value scalar.
   columns?: DatasetColumn[];
+  // REQ-2168: the value a call that leaves the argument out passes; absent, it is required.
+  default?: unknown;
 }
 
 export interface InlineField {
@@ -40,6 +42,12 @@ export interface InlineField {
   // REQ-1679: per-field governance of the webhook's response — see DatasetColumn.
   visible_to?: string[] | null;
   masks?: MaskEntry[]; // REQ-2059: the ordered mask list
+}
+
+/** A command's name in one language (REQ-2168): renamed by `name`, or left out by `exclude`. */
+export interface LanguageBinding {
+  name?: string;
+  exclude?: boolean;
 }
 
 export interface TrackedFunction {
@@ -68,6 +76,8 @@ export interface TrackedFunction {
   productId?: string | null;
   // REQ-2001: a statement command's contract, derived from its statement at every build.
   contract?: StatementContract;
+  // REQ-2168: the command's name per language.
+  languageBindings?: Record<string, LanguageBinding>;
 }
 
 /** What a statement command's statement declares (REQ-2001), as the server derived it. */
@@ -147,6 +157,8 @@ export async function saveFunction(
     // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
     writesTable?: string | null;
     productId?: string | null;
+    // REQ-2168: the command's name per language.
+    languageBindings?: Record<string, LanguageBinding>;
   },
   /** The name of the command saved over (an update), or null for a new one (a create, which
    *  refuses a name that exists). */

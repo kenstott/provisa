@@ -24,9 +24,6 @@ from provisa.core.models import GovDataSubject, GovDataSubscription
 from provisa.core.schema_admin import orgs
 from tests.role_state import RoleState
 
-#: What the setting holds until an operator types over it: a reference, shown in its field.
-DEFAULT_REFERENCE = "${secret:kaggle_api_token}"
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -64,6 +61,19 @@ class TestSearchGovdataSubjects:
             await mcp_tools.search_govdata_subjects(_state(), "ghost", "inflation")
 
 
+# A reference the operator typed into the Kaggle token setting.
+TYPED_REFERENCE = "${secret:my_kaggle}"
+
+
+def _setting_holds(monkeypatch, typed: str) -> None:
+    from provisa.core import settings_registry
+
+    real = settings_registry.value
+    monkeypatch.setattr(
+        settings_registry, "value", lambda key: typed if key == "kaggle.api_token" else real(key)
+    )
+
+
 class TestSearchKaggleDatasets:
     @pytest.fixture(autouse=True)
     async def _bind_request_org(self, control_plane, monkeypatch):
@@ -90,6 +100,7 @@ class TestSearchKaggleDatasets:
             return "KGAT_resolved_token"
 
         monkeypatch.setattr("provisa.core.secrets.resolve_secrets", fake_resolve_secrets)
+        _setting_holds(monkeypatch, TYPED_REFERENCE)
 
         route = respx.get("https://www.kaggle.com/api/v1/datasets/list").mock(
             return_value=httpx.Response(
@@ -100,16 +111,23 @@ class TestSearchKaggleDatasets:
             respx.route(host="www.kaggle.com").mock(side_effect=route.side_effect)
             result = await mcp_tools.search_kaggle_datasets(_state(), "analyst", "inflation")
 
-        # The setting's own text, which starts as a reference shown in its field; no name is
-        # put together in code.
-        assert seen_reference["value"] == DEFAULT_REFERENCE
+        # The setting's own text, as the operator typed it; no name is put together in code.
+        assert seen_reference["value"] == TYPED_REFERENCE
         assert result[0]["ref"] == "owner/inflation"
 
-    async def test_missing_secret_fails_closed(self):
+    async def test_an_unset_setting_fails_naming_it(self):
+        # Unset as shipped: it names no secret nobody created, and the tool says what to set.
+        from provisa.kaggle.downloader import KaggleTokenUnset
+
+        with pytest.raises(KaggleTokenUnset, match="kaggle.api_token"):
+            await mcp_tools.search_kaggle_datasets(_state(), "analyst", "inflation")
+
+    async def test_a_reference_to_a_missing_secret_fails_closed(self, monkeypatch):
         # No mocking of resolve_secrets here — the org vault is real (empty), so this exercises
         # the ACTUAL ${secret:...} resolution path end to end and proves it fails closed rather
         # than silently returning an empty/garbage token.
-        with pytest.raises(KeyError, match="kaggle_api_token"):
+        _setting_holds(monkeypatch, TYPED_REFERENCE)
+        with pytest.raises(KeyError, match="my_kaggle"):
             await mcp_tools.search_kaggle_datasets(_state(), "analyst", "inflation")
 
     @pytest.mark.parametrize(
@@ -149,15 +167,16 @@ class TestSearchKaggleDatasets:
         await mcp_tools.search_kaggle_datasets(_state(), "analyst", "inflation")
         assert seen_token["token"] == used
 
-    async def test_the_setting_is_a_credential_field_whose_default_is_a_visible_reference(self):
+    async def test_the_setting_is_a_credential_field_with_no_default(self):
         from provisa.core import settings_registry
 
         setting = settings_registry.setting("kaggle.api_token")
-        assert (setting.type, setting.effect, setting.default) == ("str", "live", DEFAULT_REFERENCE)
+        assert (setting.type, setting.effect, setting.default) == ("str", "live", None)
+        assert setting.nullable is True
         # Shown again as typed, in a masked input: not sealed, not write-only.
         assert setting.credential is True and setting.secret is False
         described = settings_registry.describe("kaggle.api_token")
-        assert described["credential"] is True and described["value"] == DEFAULT_REFERENCE
+        assert described["credential"] is True and described["value"] is None
 
     async def test_real_secret_resolution_end_to_end(self, monkeypatch):
         # REQ-1799/1802: proves the actual bug (org-context binding, not just the fixed-name
@@ -173,10 +192,11 @@ class TestSearchKaggleDatasets:
         await secrets_store_mod.put(
             self.admin_db,
             "test_org",
-            "kaggle_api_token",  # the secret an operator created before the setting existed
+            "my_kaggle",  # a secret the operator created, named as they chose
             "KGAT_stored_token",
             owner_id=secrets_store_mod.ORG_OWNER,
         )
+        _setting_holds(monkeypatch, TYPED_REFERENCE)
 
         seen_token = {}
 

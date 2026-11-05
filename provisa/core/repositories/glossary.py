@@ -19,8 +19,9 @@ definition, a relationship, an expert, a retirement) or deleting it would leave 
 abstract term dangling — with no path to any rooted term — in which case the term is
 deprecated (kept, out of service, revived if its column returns) instead.
 
-What any consuming surface may then offer is one rule, ``core.glossary.live_term_ids``:
-in service, defined, and grounded in a physical column.
+A term's status is set by people (draft, approved, deprecated, retired) and its grounding is
+computed from the graph (``core.glossary.term_grounding``); what an agent may see follows from
+both (``core.glossary.agent_view``).
 """
 
 # Requirements: REQ-1387, REQ-1591, REQ-2130
@@ -36,10 +37,16 @@ from datetime import date
 from sqlalchemy import delete as _delete, func, or_, select, update
 
 from provisa.core.glossary import (
+    GROUNDED,
+    NOT_GROUNDED,
     TERM_EDGE_TYPES,
+    AgentView,
+    agent_view,
+    approvals_that_ground,
     grounded_term_ids,
-    live_term_ids,
     normalize_term,
+    term_grounding,
+    term_status,
     readable_term,
     table_concept,
 )
@@ -52,7 +59,6 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
-    glossary_term_table_refs,
     glossary_terms,
     registered_tables,
     relationships,
@@ -97,8 +103,10 @@ async def term_domains(conn: "Connection") -> dict[int, set[str]]:
     # columns, so their domains derive its own the same way.
     rows += (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id, registered_tables.c.domain_id)
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            select(
+                registered_tables.c.class_term_id.label("term_id"), registered_tables.c.domain_id
+            )
+            .where(registered_tables.c.class_term_id.is_not(None))
             .distinct()
         )
     ).fetchall()
@@ -133,15 +141,20 @@ async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "se
 # ---------------------------------------------------------------------------
 
 
+def _class_term_ids():
+    """The class term of every grounded table, one row per table (REQ-2130)."""
+    return select(registered_tables.c.class_term_id.label("term_id")).where(
+        registered_tables.c.class_term_id.is_not(None)
+    )
+
+
 async def _class_term_of(conn: "Connection", table_id: int) -> int | None:
     row = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id).where(
-                glossary_term_table_refs.c.table_id == table_id
-            )
+            select(registered_tables.c.class_term_id).where(registered_tables.c.id == table_id)
         )
     ).first()
-    return None if row is None else row.term_id
+    return None if row is None else row.class_term_id
 
 
 async def _primary_keys(conn: "Connection", table_id: int) -> set[str]:
@@ -230,10 +243,14 @@ async def draft_class_terms(conn: "Connection") -> set[int]:
     (REQ-2141). A term a configuration declared or a person grounded, or a curated one, is not."""
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.derived)
+            select(registered_tables.c.class_term_id, registered_tables.c.class_term_derived).where(
+                registered_tables.c.class_term_id.is_not(None)
+            )
         )
     ).fetchall()
-    drafts = {r.term_id for r in rows if r.derived} - {r.term_id for r in rows if not r.derived}
+    drafts = {r.class_term_id for r in rows if r.class_term_derived} - {
+        r.class_term_id for r in rows if not r.class_term_derived
+    }
     if not drafts:
         return set()
     graph = await _load_graph(conn)
@@ -266,7 +283,9 @@ async def _derive_class(conn: "Connection", table_id: int, concept: str) -> int 
     else:
         term_id = row.id
     await conn.execute_core(
-        glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id, derived=True)
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(class_term_id=term_id, class_term_derived=True)
     )
     return term_id
 
@@ -447,10 +466,7 @@ async def before_ref_removal(conn: "Connection") -> RemovalSnapshot:
     # REQ-2141: a Class holds its tables' keys, but only a draft is derived and goes with
     # them; a declared or curated Class is kept, a Concept again.
     grounded = {
-        r.term_id
-        for r in (
-            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
-        ).fetchall()
+        r.term_id for r in (await conn.execute_core(_class_term_ids().distinct())).fetchall()
     }
     curated = grounded - await draft_class_terms(conn)
     return RemovalSnapshot(await term_domains(conn), frozenset(held - curated))
@@ -558,13 +574,13 @@ def _is_concept(node: dict) -> bool:
 class _TermGraph:
     """In-memory term graph for the dangling-abstract-term reachability check."""
 
-    def __init__(self, terms: dict[int, dict], edges: list[tuple[int, int]]):
+    def __init__(self, terms: dict[int, dict], edges: list[tuple[int, int, str]]):
         self.terms = terms
         self.edges = edges
 
     def remove(self, term_id: int) -> None:
         self.terms.pop(term_id, None)
-        self.edges = [(a, b) for a, b in self.edges if term_id not in (a, b)]
+        self.edges = [e for e in self.edges if term_id not in (e[0], e[1])]
 
     def dangling(
         self,
@@ -578,7 +594,7 @@ class _TermGraph:
         operation being judged), so its dependents never read as "already dangling".
         """
         adjacency: dict[int, set[int]] = {}
-        for a, b in self.edges:
+        for a, b, _ in self.edges:
             if a in excluded or b in excluded:
                 continue
             adjacency.setdefault(a, set()).add(b)
@@ -611,6 +627,8 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
                 glossary_terms.c.deprecated,
                 glossary_terms.c.retired,
                 glossary_terms.c.definition,
+                glossary_terms.c.approved,
+                glossary_terms.c.deprecation_asserted,
             )
         )
     ).fetchall()
@@ -620,14 +638,15 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
     # REQ-1387 (GROUNDED TO A TABLE): a term grounding a table is rooted as one holding a column.
     classes = {
-        r.term_id
-        for r in (
-            await conn.execute_core(select(glossary_term_table_refs.c.term_id).distinct())
-        ).fetchall()
+        r.term_id for r in (await conn.execute_core(_class_term_ids().distinct())).fetchall()
     }
     edge_rows = (
         await conn.execute_core(
-            select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id)
+            select(
+                glossary_term_edges.c.from_term_id,
+                glossary_term_edges.c.to_term_id,
+                glossary_term_edges.c.rel_type,
+            )
         )
     ).fetchall()
     expert_rows = (
@@ -652,6 +671,8 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
             "deprecated": bool(r.deprecated),
             "retired": bool(r.retired),
             "definition": r.definition,
+            "approved": bool(r.approved),
+            "deprecation_asserted": bool(r.deprecation_asserted),
             "has_expert": r.id in with_experts,
             "tagged": r.id in tagged,
             "ref_count": counts.get(r.id, 0),
@@ -659,35 +680,38 @@ async def _load_graph(conn: "Connection") -> _TermGraph:
         }
         for r in term_rows
     }
-    return _TermGraph(terms, [(r.from_term_id, r.to_term_id) for r in edge_rows])
+    return _TermGraph(terms, [(r.from_term_id, r.to_term_id, r.rel_type) for r in edge_rows])
 
 
-async def live_ids(conn: "Connection") -> set[int]:
-    """Ids of the terms a consuming surface may offer, by the shared admission rule.
+def _rooted(graph: _TermGraph) -> set[int]:
+    return {tid for tid, node in graph.terms.items() if node["rooted"]}
 
-    Every term holding a ref -- to a column or a table -- is rooted here; the exporter runs the same rule over its own,
-    narrower notion of rooted (only refs whose column actually publishes).
-    """
+
+async def grounding(conn: "Connection") -> dict[int, str]:
+    """Every term's grounding (REQ-1387): grounded, grounded_pending or not_grounded. Every term
+    holding a ref -- to a column or a table -- is rooted here; the exporter runs the same rule over
+    its own, narrower notion of rooted (only refs whose column actually publishes)."""
     graph = await _load_graph(conn)
-    return live_term_ids(
-        graph.terms.values(),
-        graph.edges,
-        {tid for tid, node in graph.terms.items() if node["rooted"]},
-    )
+    return term_grounding(graph.terms.values(), graph.edges, _rooted(graph))
 
 
 async def grounded_ids(conn: "Connection") -> set[int]:
-    """Ids of terms with a structural path to a column, ignoring ``definition``.
-
-    Used by the curation surface to flag a dangling abstract term -- one with no edge chain
-    reaching any physical ref -- distinctly from one that is merely undefined.
-    """
+    """Ids of terms with a path to data over in-service terms, whatever the statuses on it:
+    every term whose grounding is not not_grounded."""
     graph = await _load_graph(conn)
-    return grounded_term_ids(
-        graph.terms.values(),
-        graph.edges,
-        {tid for tid, node in graph.terms.items() if node["rooted"]},
-    )
+    return grounded_term_ids(graph.terms.values(), graph.edges, _rooted(graph))
+
+
+async def agent_visible(conn: "Connection") -> AgentView:
+    """What an agent may see of the term graph (REQ-1387): ``core.glossary.agent_view``."""
+    graph = await _load_graph(conn)
+    return agent_view(graph.terms.values(), graph.edges, _rooted(graph))
+
+
+async def pending_on(conn: "Connection") -> dict[int, list[int]]:
+    """For each grounded_pending term, the draft terms whose approval alone grounds it."""
+    graph = await _load_graph(conn)
+    return approvals_that_ground(graph.terms.values(), graph.edges, _rooted(graph))
 
 
 def _is_curated(graph: _TermGraph, node: dict) -> bool:
@@ -705,7 +729,7 @@ def _is_curated(graph: _TermGraph, node: dict) -> bool:
         or node["retired"]
         or node["has_expert"]
         or node["tagged"]
-        or any(node["id"] in edge for edge in graph.edges)
+        or any(node["id"] in (a, b) for a, b, _ in graph.edges)
     )
 
 
@@ -775,37 +799,72 @@ async def list_terms(
     for r in ref_rows:
         counts[r.term_id] = counts.get(r.term_id, 0) + 1
     # REQ-2141: the tables a class term grounds, counted beside its columns in one query.
-    table_rows = (await conn.execute_core(select(glossary_term_table_refs.c.term_id))).fetchall()
+    table_rows = (await conn.execute_core(_class_term_ids())).fetchall()
     table_counts: dict[int, int] = {}
     for r in table_rows:
         table_counts[r.term_id] = table_counts.get(r.term_id, 0) + 1
-    # ``live`` rides the row so the admin surface shows the same admission rule the agent and
-    # export surfaces enforce, rather than re-deriving it from the flags and guessing at
-    # groundedness, which is a property of the graph and not of any one row.
-    live = await live_ids(conn)
-    grounded = await grounded_ids(conn)
+    # ``grounding`` rides the row so the admin surface shows the rule the agent and export
+    # surfaces enforce, rather than guessing at it: it is a property of the graph, not of any row.
+    grounded = await grounding(conn)
+    agents = set((await agent_visible(conn)).named)  # REQ-1387: what an agent sees by name
     gaps = await identity.identity_gap_ids(conn)  # REQ-2130: grounded in tables not all joined
     from provisa.core.glossary_findings import findings as _findings
 
     found = await _findings(conn)  # REQ-2146: counted on the row, so a list filters on it
     scope = await term_domains(conn)
+    # REQ-1387 (RELATED_TO HOLDS THE PLACE): the RELATED_TO edges each term is on, either end,
+    # counted on the row so the list filters on the ones that want review.
+    related_rows = (
+        await conn.execute_core(
+            select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id).where(
+                glossary_term_edges.c.rel_type == "RELATED_TO"
+            )
+        )
+    ).fetchall()
+    related: dict[int, int] = {}
+    for e in related_rows:
+        for tid in (e.from_term_id, e.to_term_id):
+            related[tid] = related.get(tid, 0) + 1
     return [
         dict(r._mapping)
         | {
             "ref_count": counts.get(r.id, 0),
+            "related_to": related.get(r.id, 0),
             "table_count": table_counts.get(r.id, 0),
             # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
             "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),
-            "status": status_of(r, live),  # REQ-2144
+            "status": term_status(r._mapping),  # REQ-1387, REQ-2144
+            "grounding": grounded[r.id],  # REQ-1387
+            "agent_visible": r.id in agents,
             "findings": len(found.get(r.id, [])),  # REQ-2146
             "identity_gap": r.id in gaps,
-            "live": r.id in live,
-            "grounded": r.id in grounded,
             "domains": sorted(scope.get(r.id, set())),
         }
         for r in rows
         if readable_term(domains, scope.get(r.id, set()))
     ]
+
+
+async def bindings(conn: "Connection") -> list[tuple[int, int, str | None]]:
+    """Every (term id, table id, column) a term is bound to: its column refs, and with column
+    None the tables it grounds as a class (REQ-2141)."""
+    refs = (
+        await conn.execute_core(
+            select(
+                glossary_term_refs.c.term_id,
+                glossary_term_refs.c.table_id,
+                glossary_term_refs.c.column_name,
+            )
+        )
+    ).fetchall()
+    classes = (
+        await conn.execute_core(
+            select(registered_tables.c.class_term_id, registered_tables.c.id).where(
+                registered_tables.c.class_term_id.is_not(None)
+            )
+        )
+    ).fetchall()
+    return [(r[0], r[1], r[2]) for r in refs] + [(r[0], r[1], None) for r in classes]
 
 
 async def get_term(conn: "Connection", term_id: int) -> dict | None:
@@ -836,11 +895,15 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     # REQ-2141: the tables this term grounds as a class.
     term["table_count"] = (
         await conn.execute_core(
-            select(func.count()).where(glossary_term_table_refs.c.term_id == term_id)
+            select(func.count()).where(registered_tables.c.class_term_id == term_id)
         )
     ).scalar_one()
     term["is_abstract"] = not term["ref_count"] and not term["table_count"]  # REQ-2141: derived
-    term["status"] = status_of(row, await live_ids(conn))  # REQ-2144
+    term["status"] = term_status(row._mapping)  # REQ-1387, REQ-2144
+    term["grounding"] = (await grounding(conn))[term_id]  # REQ-1387
+    # REQ-1387 findings: the draft terms whose approval alone would ground a pending term.
+    unlocking = (await pending_on(conn)).get(term_id, [])
+    term["pending_on"] = [{"term_id": tid, "name": await term_name(conn, tid)} for tid in unlocking]
     term["identity_gap"] = term_id in await identity.identity_gap_ids(conn)
     other = glossary_terms.alias("other")
     outgoing = (
@@ -876,7 +939,6 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     ).fetchall()
     term["experts"] = [dict(r._mapping) for r in experts]
     term["tags"] = await term_tags(conn, term_id)  # REQ-2145
-    term["live"] = term_id in await live_ids(conn)
     # REQ-1591: the same rule the list and the gates use, rather than reading the refs above —
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
     # which are exactly the two cases the declared rows exist to answer.
@@ -998,7 +1060,7 @@ async def _refuse_clearing_tagged(conn: "Connection", term_id: int, definition: 
         return
     tags = [t["tag_id"] for t in await term_tags(conn, term_id)]
     if tags:
-        raise TermIsTagged(await _term_name(conn, term_id), tags)
+        raise TermIsTagged(await term_name(conn, term_id), tags)
 
 
 async def set_definition(conn: "Connection", term_id: int, definition: str | None) -> bool:
@@ -1010,10 +1072,8 @@ async def set_definition(conn: "Connection", term_id: int, definition: str | Non
 
 
 # ---------------------------------------------------------------------------
-# Status (REQ-2144): draft | live | deprecated | retired
+# Status (REQ-1387, REQ-2144): draft | approved | deprecated | retired, all set by people
 # ---------------------------------------------------------------------------
-
-TERM_STATUSES = ("draft", "live", "deprecated", "retired")
 
 
 class StatusRefused(ValueError):
@@ -1025,29 +1085,82 @@ class StatusRefused(ValueError):
         self.params = params
 
 
-def status_of(row: Any, live: "set[int]") -> str:
-    """A term's status from its row and the admission rule: retired and deprecated (automatic or
-    asserted) as stored, else live when admitted, else draft."""
-    if row.retired:
-        return "retired"
-    if row.deprecated or row.deprecation_asserted:
-        return "deprecated"
-    return "live" if row.id in live else "draft"
-
-
 async def term_statuses(conn: "Connection") -> dict[int, str]:
-    live = await live_ids(conn)
     rows = (
         await conn.execute_core(
             select(
                 glossary_terms.c.id,
+                glossary_terms.c.approved,
                 glossary_terms.c.retired,
                 glossary_terms.c.deprecated,
                 glossary_terms.c.deprecation_asserted,
             )
         )
     ).fetchall()
-    return {r.id: status_of(r, live) for r in rows}
+    return {r.id: term_status(r._mapping) for r in rows}
+
+
+async def approve_term(conn: "Connection", term_id: int, *, by: "str | None") -> None:
+    """A steward approves a draft term (REQ-1387, REQ-2130): it needs a definition."""
+    row = (
+        await conn.execute_core(
+            select(
+                glossary_terms.c.name,
+                glossary_terms.c.definition,
+                glossary_terms.c.approved,
+                glossary_terms.c.retired,
+                glossary_terms.c.deprecated,
+                glossary_terms.c.deprecation_asserted,
+            ).where(glossary_terms.c.id == term_id)
+        )
+    ).fetchone()
+    if row is None:
+        raise TermNotFound(f"term {term_id} not found")
+    status = term_status(row._mapping)
+    if status != "draft":
+        raise StatusRefused(
+            "term_not_draft", f"only a draft term is approved; this one is {status}", status=status
+        )
+    if not (row.definition or "").strip():
+        raise StatusRefused(
+            "definition_required", f"term {row.name!r} needs a definition before it is approved"
+        )
+    await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(approved=True, status_by=by, status_at=func.now())
+    )
+    model_change.name("approve", "glossary term", str(term_id))
+
+
+async def bulk_approvable(conn: "Connection") -> list[int]:
+    """The draft terms a steward may approve together (REQ-2144): defined and grounded."""
+    graph = await _load_graph(conn)
+    grounded = term_grounding(graph.terms.values(), graph.edges, _rooted(graph))
+    return sorted(
+        tid
+        for tid, node in graph.terms.items()
+        if term_status(node) == "draft"
+        and (node["definition"] or "").strip()
+        and grounded[tid] == GROUNDED
+    )
+
+
+async def bulk_approve(conn: "Connection", term_ids: "list[int]", *, by: "str | None") -> list[int]:
+    """Approve ``term_ids`` together (REQ-2144). Each must be a defined, grounded draft; one that
+    is not refuses the whole batch by name, so nothing is half-approved."""
+    allowed = set(await bulk_approvable(conn))
+    refused = sorted(set(term_ids) - allowed)
+    if refused:
+        names = [await term_name(conn, tid) for tid in refused]
+        raise StatusRefused(
+            "not_bulk_approvable",
+            "only defined, grounded draft terms are approved together; not: " + ", ".join(names),
+            terms=", ".join(names),
+        )
+    for tid in sorted(set(term_ids)):
+        await approve_term(conn, tid, by=by)
+    return sorted(set(term_ids))
 
 
 def _reason(reason: "str | None") -> str:
@@ -1066,8 +1179,8 @@ async def deprecate_term(
     by: "str | None",
     today: "date",
 ) -> None:
-    """A curator deprecates a live term (REQ-2144): it stays in service -- it still conducts the
-    admission rule -- until ``retire_on``, when the scheduler retires it."""
+    """A curator deprecates an approved term (REQ-2144) until ``retire_on``, when the scheduler
+    retires it. A deprecated term breaks the chain through it (REQ-1387)."""
     text = _reason(reason)
     if retire_on is not None and retire_on < today:
         raise StatusRefused(
@@ -1078,9 +1191,11 @@ async def deprecate_term(
     status = (await term_statuses(conn)).get(term_id)
     if status is None:
         raise TermNotFound(f"term {term_id} not found")
-    if status != "live":
+    if status != "approved":
         raise StatusRefused(
-            "term_not_live", f"only a live term is deprecated; this one is {status}", status=status
+            "term_not_approved",
+            f"only an approved term is deprecated; this one is {status}",
+            status=status,
         )
     await conn.execute_core(
         update(glossary_terms)
@@ -1108,9 +1223,9 @@ async def _move_to_successor(conn: "Connection", term_id: int, successor: int, r
     if role == "class":
         tables = await _term_table_ids(conn, term_id)
         await conn.execute_core(
-            update(glossary_term_table_refs)
-            .where(glossary_term_table_refs.c.term_id == term_id)
-            .values(term_id=successor, derived=False)
+            update(registered_tables)
+            .where(registered_tables.c.class_term_id == term_id)
+            .values(class_term_id=successor, class_term_derived=False)
         )
         # the retiring term is kept, as the record of what it was, not settled away
         await rehome_keys(conn, tables, keep=frozenset({term_id}))
@@ -1152,7 +1267,7 @@ async def retire_term(
             raise StatusRefused("successor_is_self", "a term cannot succeed itself")
         if successor not in statuses:
             raise TermNotFound(f"term {successor} not found")
-        name = await _term_name(conn, successor)
+        name = await term_name(conn, successor)
         if statuses[successor] == "retired":
             raise StatusRefused(
                 "successor_retired", f"the successor {name!r} is retired", successor=name
@@ -1173,6 +1288,7 @@ async def retire_term(
         .where(glossary_terms.c.id == term_id)
         .values(
             retired=True,
+            approved=False,
             deprecation_asserted=False,
             retire_on=None,
             status_reason=text,
@@ -1239,7 +1355,7 @@ async def retire_due(conn: "Connection", today: "date") -> list[int]:
         await conn.execute_core(
             update(glossary_terms)
             .where(glossary_terms.c.id == r.id)
-            .values(retired=True, deprecation_asserted=False, status_at=func.now())
+            .values(retired=True, approved=False, deprecation_asserted=False, status_at=func.now())
         )
         retired.append(r.id)
     return retired
@@ -1262,6 +1378,9 @@ class TermDeleteRefused(ValueError):
     def __init__(self, term_id: int, dependents: list[Dependent]) -> None:
         self.term_id = term_id
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = "The term has physical refs in"
         super().__init__(
             "term has physical refs; retire it, or move its refs to another term, first"
         )
@@ -1330,7 +1449,7 @@ async def move_ref(
                 select(*_TABLE_ADDRESS[:3]).where(registered_tables.c.id == table_id)
             )
         ).fetchone()
-        raise KeyColumnDerived(column_name, _address(table), await _term_name(conn, key_class))
+        raise KeyColumnDerived(column_name, _address(table), await term_name(conn, key_class))
     await refuse_property_on_class(conn, to_term_id)
     # REQ-1591: before the move, so a losing term the settle keeps is stamped with the domains it
     # held rather than the empty set it is left with.
@@ -1342,6 +1461,18 @@ async def move_ref(
     )
     removed = await _settle_terms(conn, {row.term_id}, domains_before=domains_before)
     return {"source_term_removed": row.term_id in removed}
+
+
+async def term_edges(conn: "Connection") -> list[tuple[int, int, str]]:  # REQ-2135
+    """Every edge between terms: (from term id, to term id, relationship type)."""
+    rows = await conn.execute_core(
+        select(
+            glossary_term_edges.c.from_term_id,
+            glossary_term_edges.c.to_term_id,
+            glossary_term_edges.c.rel_type,
+        )
+    )
+    return [(r.from_term_id, r.to_term_id, r.rel_type) for r in rows.fetchall()]
 
 
 async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_type: str) -> None:
@@ -1445,6 +1576,20 @@ async def remove_expert(conn: "Connection", term_id: int, user_id: str) -> bool:
     return (result.rowcount or 0) > 0
 
 
+async def axioms(conn: "Connection") -> list[dict]:  # REQ-2163
+    """The ontology's RDFS/OWL/SKOS statements, one per row of the ontology schema's _axioms
+    view: the view states them, so its rule is the one every reader of axioms gets."""
+    from sqlalchemy import text
+
+    rows = await conn.execute_core(
+        text(
+            "SELECT subject_term_id, predicate, object_term_id, object_iri, object_literal "
+            "FROM _axioms_ontology WHERE object_table_id IS NULL ORDER BY id"
+        )
+    )
+    return [dict(r._mapping) for r in rows.fetchall()]
+
+
 async def export_graph(conn: "Connection") -> dict:
     """The whole term graph in one shape for the metadata-export builder (REQ-1387):
     terms, column and table refs joined to their table's config identity, edges, and experts."""
@@ -1501,14 +1646,11 @@ async def export_graph(conn: "Connection") -> dict:
         for r in (
             await conn.execute_core(
                 select(
-                    glossary_term_table_refs.c.term_id,
+                    registered_tables.c.class_term_id.label("term_id"),
                     registered_tables.c.source_id,
                     registered_tables.c.schema_name,
                     registered_tables.c.table_name,
-                ).join(
-                    registered_tables,
-                    glossary_term_table_refs.c.table_id == registered_tables.c.id,
-                )
+                ).where(registered_tables.c.class_term_id.is_not(None))
             )
         ).fetchall()
     ]
@@ -1518,12 +1660,20 @@ async def export_graph(conn: "Connection") -> dict:
     for term in terms:
         term["is_abstract"] = term["id"] not in rooted
         term["status"] = statuses[term["id"]]
+    # REQ-1591: each term's domains, by the one rule -- a catalog that files terms by domain
+    # (Purview's Unified Catalog) places them from these.
+    domains = [
+        {"term_id": term_id, "domain_id": domain_id}
+        for term_id, held in sorted((await term_domains(conn)).items())
+        for domain_id in sorted(held)
+    ]
     return {
         "terms": terms,
         "refs": refs,
         "table_refs": table_refs,
         "edges": edges,
         "experts": experts,
+        "domains": domains,
     }
 
 
@@ -1611,7 +1761,7 @@ def _address(row: Any) -> str:
     return f"{row.source_id}.{row.schema_name}.{row.table_name}"
 
 
-async def _term_name(conn: "Connection", term_id: int) -> str:
+async def term_name(conn: "Connection", term_id: int) -> str:
     row = (
         await conn.execute_core(select(glossary_terms.c.name).where(glossary_terms.c.id == term_id))
     ).fetchone()
@@ -1623,12 +1773,10 @@ async def _term_name(conn: "Connection", term_id: int) -> str:
 async def _term_table_ids(conn: "Connection", term_id: int) -> set[int]:
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.table_id).where(
-                glossary_term_table_refs.c.term_id == term_id
-            )
+            select(registered_tables.c.id).where(registered_tables.c.class_term_id == term_id)
         )
     ).fetchall()
-    return {r.table_id for r in rows}
+    return {r.id for r in rows}
 
 
 async def _non_key_refs(
@@ -1664,8 +1812,7 @@ async def _term_table_addresses(conn: "Connection", term_id: int) -> list[str]:
     rows = (
         await conn.execute_core(
             select(*_TABLE_ADDRESS[:3])
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
-            .where(glossary_term_table_refs.c.term_id == term_id)
+            .where(registered_tables.c.class_term_id == term_id)
             .order_by(*_TABLE_ADDRESS[:3])
         )
     ).fetchall()
@@ -1677,7 +1824,7 @@ async def refuse_class_on_property(conn: "Connection", term_id: int, table_id: i
     non-key column refs (REQ-2141)."""
     columns = await _non_key_refs(conn, term_id, also_grounding=table_id)
     if columns:
-        raise TermIsProperty(await _term_name(conn, term_id), columns)
+        raise TermIsProperty(await term_name(conn, term_id), columns)
 
 
 async def refuse_property_on_class(conn: "Connection", term_id: int) -> None:
@@ -1685,7 +1832,7 @@ async def refuse_property_on_class(conn: "Connection", term_id: int) -> None:
     (REQ-2141)."""
     tables = await _term_table_addresses(conn, term_id)
     if tables:
-        raise TermIsClass(await _term_name(conn, term_id), tables)
+        raise TermIsClass(await term_name(conn, term_id), tables)
 
 
 async def role_conflicts(conn: "Connection") -> dict:
@@ -1698,7 +1845,7 @@ async def role_conflicts(conn: "Connection") -> dict:
     classes = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
-            .where(glossary_terms.c.id.in_(select(glossary_term_table_refs.c.term_id)))
+            .where(glossary_terms.c.id.in_(_class_term_ids()))
             .order_by(glossary_terms.c.name)
         )
     ).fetchall()
@@ -1719,7 +1866,7 @@ async def role_conflicts(conn: "Connection") -> dict:
         await conn.execute_core(
             select(registered_tables.c.id, registered_tables.c.alias, *_TABLE_ADDRESS)
             .where(registered_tables.c.id.in_(keyed))
-            .where(~registered_tables.c.id.in_(select(glossary_term_table_refs.c.table_id)))
+            .where(registered_tables.c.class_term_id.is_(None))
             .order_by(*_TABLE_ADDRESS[:3])
         )
     ).fetchall()
@@ -1814,9 +1961,8 @@ async def term_tables(conn: "Connection", term_id: int) -> list[dict]:
         raise TermNotFound(f"term {term_id} not found")
     rows = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.table_id, *_TABLE_ADDRESS)
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
-            .where(glossary_term_table_refs.c.term_id == term_id)
+            select(registered_tables.c.id.label("table_id"), *_TABLE_ADDRESS)
+            .where(registered_tables.c.class_term_id == term_id)
             .order_by(*_TABLE_ADDRESS[:3])
         )
     ).fetchall()
@@ -1867,10 +2013,8 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name)
-            .join(
-                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
-            )
-            .where(glossary_term_table_refs.c.table_id == table_id)
+            .join(registered_tables, registered_tables.c.class_term_id == glossary_terms.c.id)
+            .where(registered_tables.c.id == table_id)
         )
     ).fetchone()
     if held is not None and (held.id == term_id or held.id not in await draft_class_terms(conn)):
@@ -1878,15 +2022,11 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     if held is not None:
         # The table's draft gives way to the curated class (REQ-2141).
         await identity.refuse_term_change(conn, table_id)
-        await conn.execute_core(
-            update(glossary_term_table_refs)
-            .where(glossary_term_table_refs.c.table_id == table_id)
-            .values(term_id=term_id, derived=False)
-        )
-    else:
-        await conn.execute_core(
-            glossary_term_table_refs.insert().values(term_id=term_id, table_id=table_id)
-        )
+    await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(class_term_id=term_id, class_term_derived=False)
+    )
     await _home_key_refs(conn, table_id)
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
@@ -1898,25 +2038,18 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     same-entity relationship stands on the one it has (identity.TableInIdentity)."""
     address = await _keyed_table(conn, table_id)
     await refuse_class_on_property(conn, term_id, table_id)
-    held = (
-        await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id).where(
-                glossary_term_table_refs.c.table_id == table_id
-            )
-        )
-    ).first()
-    if held is not None and held.term_id != term_id:
+    held = await _class_term_of(conn, table_id)
+    if held is not None and held != term_id:
         await identity.refuse_term_change(conn, table_id)
-    await conn.upsert(
-        glossary_term_table_refs,
-        {"term_id": term_id, "table_id": table_id, "derived": False},
-        index_elements=["table_id"],
-        update_columns=["term_id", "derived"],
+    await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(class_term_id=term_id, class_term_derived=False)
     )
     await _home_key_refs(conn, table_id)
-    if held is not None and held.term_id != term_id:
+    if held is not None and held != term_id:
         # A draft the configuration replaced keeps what else it holds, or goes (REQ-2141).
-        await _settle_terms(conn, {held.term_id}, domains_before=await term_domains(conn))
+        await _settle_terms(conn, {held}, domains_before=await term_domains(conn))
     model_change.name("ground", "glossary term", f"{term_id} to table {address}")
 
 
@@ -1925,10 +2058,11 @@ async def unground_table(conn: "Connection", term_id: int, table_id: int) -> boo
     same-entity relationship stands on it (identity.TableInIdentity)."""
     await identity.refuse_term_change(conn, table_id)
     result = await conn.execute_core(
-        _delete(glossary_term_table_refs).where(
-            (glossary_term_table_refs.c.term_id == term_id)
-            & (glossary_term_table_refs.c.table_id == table_id)
+        update(registered_tables)
+        .where(
+            (registered_tables.c.class_term_id == term_id) & (registered_tables.c.id == table_id)
         )
+        .values(class_term_id=None, class_term_derived=False)
     )
     ungrounded = (result.rowcount or 0) > 0
     if ungrounded:
@@ -2001,13 +2135,14 @@ async def related_terms_for_tables(
     rows = (
         await conn.execute_core(select(glossary_terms).where(glossary_terms.c.id.in_(visited)))
     ).fetchall()
-    live = await live_ids(conn)
     scope = await term_domains(conn)
     graph = await _load_graph(conn)
+    grounded = term_grounding(graph.terms.values(), graph.edges, _rooted(graph))
     return [
         dict(r._mapping)
         | {
-            "live": r.id in live,
+            "status": term_status(r._mapping),  # REQ-1387
+            "grounding": grounded[r.id],
             "domains": sorted(scope.get(r.id, set())),
             "is_abstract": not graph.terms[r.id]["rooted"],  # REQ-2141: derived
         }
@@ -2017,6 +2152,37 @@ async def related_terms_for_tables(
     ]
 
 
+def hop_id(term_id: int) -> str:
+    """An undefined term's anonymous identity on an agent surface (REQ-1387): distinct per term,
+    carrying neither its name nor its definition."""
+    return f"hop-{term_id}"
+
+
+async def _binding_addresses(conn: "Connection") -> dict[int, list[str]]:
+    """Every term's bindings as source.schema.table (a table it grounds) or
+    source.schema.table.column (a column it holds), in order."""
+    out: dict[int, list[str]] = {}
+    for r in (
+        await conn.execute_core(
+            select(
+                glossary_term_refs.c.term_id,
+                glossary_term_refs.c.column_name,
+                *_TABLE_ADDRESS,
+            ).join(registered_tables, glossary_term_refs.c.table_id == registered_tables.c.id)
+        )
+    ).fetchall():
+        out.setdefault(r.term_id, []).append(f"{_address(r)}.{r.column_name}")
+    for r in (
+        await conn.execute_core(
+            select(registered_tables.c.class_term_id.label("term_id"), *_TABLE_ADDRESS).where(
+                registered_tables.c.class_term_id.is_not(None)
+            )
+        )
+    ).fetchall():
+        out.setdefault(r.term_id, []).append(_address(r))
+    return {tid: sorted(held) for tid, held in out.items()}
+
+
 async def search_terms(
     conn: "Connection",
     query: str,
@@ -2024,29 +2190,30 @@ async def search_terms(
     limit: int = 25,
     domains: "frozenset[str] | None" = None,
 ) -> list[dict]:
-    """Term lookup for the MCP surface: match on name or definition, refs included.
+    """Term lookup for the MCP surface (REQ-1387): match on name or definition, among the terms
+    an agent may see by name (``core.glossary.agent_view``) -- an approved term on a path to data,
+    or a defined draft term on a path to data that holds an approved term, marked draft.
 
-    Only live terms are returned — see ``live_term_ids`` for the admission rule. This is the
-    surface an agent binds a question to a column through, so anything it offers must be
-    in service, defined, and grounded in a physical column: an undefined term is a draft,
-    a retired one was withdrawn, and an ungrounded one names no data.
-
-    The gate runs after the match rather than inside it because groundedness is a property of
-    the term graph, not of any one row.
+    Each hit carries its status and grounding, its bindings, its experts, and its paths down to
+    data: each step a named term ``{term_id, name, status}`` or an undefined term as an anonymous
+    ``{hop}``, distinct per term, and the data end with its bindings. That is the route an agent
+    follows to data and cites.
 
     ``domains`` narrows to the terms the caller's role may reach (REQ-1591), by the same ANY rule
-    the admin list uses; ``None`` is an unlimited caller and narrows nothing. The narrowing runs
-    before the limit is honoured in spirit — the row limit is applied to the match, and a caller
-    seeing fewer than ``limit`` results is seeing its own scope, not the end of the vocabulary.
+    the admin list uses; ``None`` is an unlimited caller and narrows nothing.
     """
-    live = await live_ids(conn)
-    if not live:
+    from provisa.core.glossary import agent_paths
+
+    graph = await _load_graph(conn)
+    rooted = _rooted(graph)
+    view = agent_view(graph.terms.values(), graph.edges, rooted)
+    if not view.named:
         return []
     pattern = f"%{query.lower()}%"
     rows = (
         await conn.execute_core(
             select(glossary_terms.c.id)
-            .where(glossary_terms.c.id.in_(live))
+            .where(glossary_terms.c.id.in_(sorted(view.named)))
             .where(
                 glossary_terms.c.name.ilike(pattern) | glossary_terms.c.definition.ilike(pattern)
             )
@@ -2054,12 +2221,214 @@ async def search_terms(
             .limit(limit)
         )
     ).fetchall()
+    grounded = term_grounding(graph.terms.values(), graph.edges, rooted)
     scope = await term_domains(conn)
+    addresses = await _binding_addresses(conn)
+
+    def step(tid: int) -> dict:
+        node: dict[str, Any] = (
+            {"term_id": tid, "name": graph.terms[tid]["name"], "status": view.named[tid]}
+            if tid in view.named
+            else {"hop": hop_id(tid)}
+        )
+        if tid in rooted:
+            node["bindings"] = addresses.get(tid, [])
+        return node
+
     out = []
     for r in rows:
         if not readable_term(domains, scope.get(r.id, set())):
             continue
         term = await get_term(conn, r.id)
-        if term is not None:
-            out.append(term)
+        if term is None:
+            continue
+        out.append(
+            {
+                "id": r.id,
+                "name": term["name"],
+                "definition": term["definition"],
+                "status": view.named[r.id],
+                "grounding": grounded[r.id],
+                "refs": term["refs"],
+                "bindings": addresses.get(r.id, []),
+                "experts": term["experts"],
+                "domains": term["domains"],
+                "paths": [[step(tid) for tid in path] for path in agent_paths(view, rooted, r.id)],
+            }
+        )
     return out
+
+
+async def vocabulary_refs(  # REQ-2135, REQ-2141
+    conn: "Connection",
+) -> tuple[dict[int, str], dict[tuple[int, str], list[str]]]:
+    """What the terms an agent may see by name ground, for SPARQL's vocabulary: each grounded
+    table's class term by table id, and the terms of each (table id, column) a term reference
+    names, in name order. A term no agent may see by name (REQ-1387, ``agent_view``) grounds
+    nothing here."""
+    live = set((await agent_visible(conn)).named)
+    names = {
+        r.id: r.name
+        for r in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+        if r.id in live
+    }
+    table_terms = {
+        r.id: names[r.class_term_id]
+        for r in (
+            await conn.execute_core(
+                select(registered_tables.c.id, registered_tables.c.class_term_id)
+            )
+        ).fetchall()
+        if r.class_term_id in names
+    }
+    column_terms: dict[tuple[int, str], list[str]] = {}
+    for r in (
+        await conn.execute_core(
+            select(
+                glossary_term_refs.c.table_id,
+                glossary_term_refs.c.column_name,
+                glossary_term_refs.c.term_id,
+            )
+        )
+    ).fetchall():
+        if r.term_id in names:
+            column_terms.setdefault((r.table_id, r.column_name), []).append(names[r.term_id])
+    return table_terms, {k: sorted(v) for k, v in column_terms.items()}
+
+
+# ---------------------------------------------------------------------------
+# Stewardship (REQ-2144, A STEWARD SEES THE IMPACT OF EACH ACTION)
+# ---------------------------------------------------------------------------
+
+#: The actions whose impact a steward previews.
+IMPACT_ACTIONS = ("approve", "retire", "bind")
+
+
+class ImpactRefused(ValueError):
+    """A preview refused by name: ``code`` (glossary.<code>) and its ``params``."""
+
+    def __init__(self, code: str, message: str, **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
+
+
+def _agent_tables(
+    terms: "dict[int, dict]",
+    edges: "list[tuple[int, int, str]]",
+    binds: "list[tuple[int, int, str | None]]",
+) -> set[int]:
+    """The tables an agent has a path to: those bound to a term it sees, named or as a hop."""
+    rooted = {b[0] for b in binds}
+    seen = agent_view(terms.values(), edges, rooted).seen()
+    return {table_id for term_id, table_id, _ in binds if term_id in seen}
+
+
+async def impact(
+    conn: "Connection",
+    action: str,
+    term_id: int,
+    *,
+    successor: "int | None" = None,
+    table_id: "int | None" = None,
+    column_name: "str | None" = None,
+) -> dict:
+    """What ``action`` on ``term_id`` would change, without changing it (REQ-2144): how many terms
+    become grounded, grounded_pending or not_grounded, and how many tables agents gain or lose a
+    path to. ``approve`` approves the term; ``retire`` retires it, its bindings going to
+    ``successor``; ``bind`` binds it to ``table_id`` (a table it grounds) or to the column
+    ``column_name`` of that table (moved onto it)."""
+    if action not in IMPACT_ACTIONS:
+        raise ImpactRefused(
+            "impact_action", f"no preview for {action!r}; one of {', '.join(IMPACT_ACTIONS)}"
+        )
+    graph = await _load_graph(conn)
+    if term_id not in graph.terms:
+        raise TermNotFound(f"term {term_id} not found")
+    binds = await bindings(conn)
+    before_terms = {tid: dict(node) for tid, node in graph.terms.items()}
+    after_terms = {tid: dict(node) for tid, node in graph.terms.items()}
+    after_binds = list(binds)
+    if action == "approve":
+        after_terms[term_id]["approved"] = True
+    elif action == "retire":
+        after_terms[term_id].update(retired=True, approved=False, deprecation_asserted=False)
+        if successor is not None:
+            if successor not in graph.terms:
+                raise TermNotFound(f"term {successor} not found")
+            after_binds = [(successor if t == term_id else t, tb, c) for t, tb, c in binds]
+    else:
+        if table_id is None:
+            raise ImpactRefused("impact_table_required", "binding names a table, or its column")
+        if column_name is None:
+            after_binds = [*binds, (term_id, table_id, None)]
+        else:
+            after_binds = [b for b in binds if (b[1], b[2]) != (table_id, column_name)]
+            after_binds.append((term_id, table_id, column_name))
+    edges = graph.edges
+    before = term_grounding(before_terms.values(), edges, {b[0] for b in binds})
+    after = term_grounding(after_terms.values(), edges, {b[0] for b in after_binds})
+    changed = {tid: after[tid] for tid in after if after[tid] != before[tid]}
+    tables_before = _agent_tables(before_terms, edges, binds)
+    tables_after = _agent_tables(after_terms, edges, after_binds)
+
+    def named(grounding_value: str) -> list[dict]:
+        return sorted(
+            (
+                {"term_id": tid, "name": graph.terms[tid]["name"]}
+                for tid, g in changed.items()
+                if g == grounding_value
+            ),
+            key=lambda t: t["name"],
+        )
+
+    from provisa.core.glossary import GROUNDED_PENDING
+
+    return {
+        "action": action,
+        "term_id": term_id,
+        "term": graph.terms[term_id]["name"],
+        "becomes_grounded": named(GROUNDED),
+        "becomes_pending": named(GROUNDED_PENDING),
+        "becomes_not_grounded": named(NOT_GROUNDED),
+        "tables_gained": len(tables_after - tables_before),
+        "tables_lost": len(tables_before - tables_after),
+    }
+
+
+async def stewardship_summary(conn: "Connection") -> dict:
+    """The stewardship summary (REQ-2144): the terms agents can see, the grounded_pending terms
+    each waiting on one approval (with the terms whose approval grounds them), and the approved
+    terms that reach no data. Each as ``{term_id, name}``, by name."""
+    graph = await _load_graph(conn)
+    rooted = _rooted(graph)
+    view = agent_view(graph.terms.values(), graph.edges, rooted)
+    grounded = term_grounding(graph.terms.values(), graph.edges, rooted)
+    waiting = approvals_that_ground(graph.terms.values(), graph.edges, rooted)
+
+    def ref(tid: int) -> dict:
+        return {"term_id": tid, "name": graph.terms[tid]["name"]}
+
+    def by_name(items: "list[dict]") -> list[dict]:
+        return sorted(items, key=lambda t: t["name"])
+
+    return {
+        "agent_visible": by_name(
+            [ref(tid) | {"status": status} for tid, status in view.named.items()]
+        ),
+        "waiting_on_one_approval": by_name(
+            [
+                ref(tid) | {"approve": by_name([ref(d) for d in drafts])}
+                for tid, drafts in waiting.items()
+            ]
+        ),
+        "approved_not_grounded": by_name(
+            [
+                ref(tid)
+                for tid, node in graph.terms.items()
+                if term_status(node) == "approved" and grounded[tid] == NOT_GROUNDED
+            ]
+        ),
+    }

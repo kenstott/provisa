@@ -13,7 +13,12 @@ surfaces that are not HTTP (Arrow Flight's ``healthcheck`` action).
 
 The shape is ``/health``'s: ``status``, the ``dependencies`` it reaches (``postgres``), the
 launch's ``workers`` roll call (ready / expected, REQ-1900) and the ``config`` stamps this worker
-has loaded beside the ones stored (REQ-1914)."""
+has loaded beside the ones stored (REQ-1914).
+
+The probe answers fast and says why: each control-plane read it makes waits for a free
+connection only ``_PROBE_WAIT_S`` (:func:`provisa.core.database.checkout_wait`). A pool with
+none free is the dependency's state, ``busy``; any dependency not ``ok`` makes the report
+``degraded``, and what needed a connection is reported as not read (None), never as read."""
 
 # Requirements: REQ-1900, REQ-1914
 
@@ -23,6 +28,11 @@ import asyncio
 from typing import Any
 
 from sqlalchemy.exc import SQLAlchemyError
+
+from provisa.core.database import PoolBusy, checkout_wait
+
+#: How long each control-plane read of the probe waits for a free connection.
+_PROBE_WAIT_S = 1.0
 
 
 async def health_report(state: Any) -> dict[str, Any]:
@@ -34,7 +44,8 @@ async def health_report(state: Any) -> dict[str, Any]:
     # org by name rather than reached through an unbound read (REQ-1266).
     token = set_current_org(state.org_id)
     try:
-        return await _deployment_health(state)
+        with checkout_wait(_PROBE_WAIT_S):
+            return await _deployment_health(state)
     finally:
         reset_current_org(token)
 
@@ -47,6 +58,8 @@ async def _deployment_health(state: Any) -> dict[str, Any]:
             async with tenant_db.acquire() as conn:
                 await conn.fetchval("SELECT 1")
             pg_status = "ok"
+        except PoolBusy:
+            pg_status = "busy"
         except (SQLAlchemyError, OSError, asyncio.TimeoutError):
             # The control plane cannot be reached: that IS the report, as on /health.
             pg_status = "unavailable"
@@ -54,23 +67,36 @@ async def _deployment_health(state: Any) -> dict[str, Any]:
 
     launch = launch_id()
     if launch is None:
-        ready = 1
+        ready: int | None = 1
     else:
         assert state.admin_db is not None
-        ready = await ready_worker_count(state.admin_db, launch)
+        ready = await _read(lambda: ready_worker_count(state.admin_db, launch))
     from provisa.api.model_reload import health as config_health
     from provisa.core.platform_state import nodes as cluster_nodes
 
     assert state.platform_state_db is not None  # brought up with the control planes at boot
+    config = await _read(config_health) if pg_status == "ok" else None
+    # REQ-1916: the nodes now in the cluster, each with its mode (and region, when the platform
+    # declares regions), so an operator sees whether any node does coordinator work.
+    nodes = await _read(lambda: cluster_nodes.live(state.platform_state_db))
+    busy = ready is None or (pg_status == "ok" and config is None) or nodes is None
+    if busy and pg_status == "ok":
+        pg_status = "busy"
     return {
-        "status": "ok",
+        "status": "ok" if pg_status == "ok" else "degraded",
         "dependencies": {"postgres": pg_status},
         "workers": {"ready": ready, "expected": expected_workers()},
-        "config": await config_health() if pg_status == "ok" else None,
-        # REQ-1916: the nodes now in the cluster, each with its mode (and region, when the
-        # platform declares regions), so an operator sees whether any node does coordinator work.
-        "nodes": [_node_view(n) for n in await cluster_nodes.live(state.platform_state_db)],
+        "config": config,
+        "nodes": None if nodes is None else [_node_view(n) for n in nodes],
     }
+
+
+async def _read(read: Any) -> Any:
+    """``read()``'s answer, or None when the control plane had no connection free for it."""
+    try:
+        return await read()
+    except PoolBusy:
+        return None
 
 
 def _node_view(node: dict[str, Any]) -> dict[str, Any]:

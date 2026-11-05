@@ -1,6 +1,6 @@
 # Federation Engines
 
-A source type says where data lives. A federation **engine** is the runtime Provisa compiles that data's queries into: the thing that holds the connectors, executes the plan, and owns the
+A source type says where data lives. A federation **engine** is the runtime Provisa compiles that data's queries into, which holds the connectors, executes the plan and owns the
 materialization store. The two are separate registries: `SourceType` in `provisa/core/models.py`
 lists what you can register, `_ENGINE_BUILDERS` in `provisa/federation/engine.py` lists what can run
 it. `trino` and several warehouses appear in both, meaning Provisa can read a Trino cluster as a
@@ -16,7 +16,7 @@ every input first.
 | Key | Engine | Notes |
 | --- | --- | --- |
 | `trino` | Trino (embedded MPP) | Provisa-managed Trino cluster; JVM heap and cluster config are editable in Admin and regenerate on restart |
-| `trino-byo` | Trino (bring your own) | External coordinator — same runtime, connection only, no cluster tuning |
+| `trino-byo` | Trino (bring your own) | External coordinator; same runtime, connection only, no cluster tuning |
 | `pg` | PostgreSQL | BYO or embedded; federates via FDWs or pg_duckdb |
 | `duckdb` | DuckDB (in-process) | Native partial federator; the desktop and demo default |
 | `clickhouse` | ClickHouse (embedded chdb) | OLAP federator; the only engine with a Hudi path |
@@ -49,7 +49,7 @@ extensions the service offers.
 
 ## Warehouse engines
 
-Partial federators: the warehouse executes, and sources it cannot reach natively land into it
+These are partial federators. The warehouse executes, and sources it cannot reach natively land into it
 first. Each reads Arrow-natively where the vendor's client supports it.
 
 | Key | Engine | Notes |
@@ -62,7 +62,7 @@ first. Each reads Arrow-natively where the vendor's client supports it.
 
 ## SQLAlchemy engines
 
-One runtime with zero federation connectors: every source LANDs into the target store and is then
+This is one runtime with zero federation connectors, so every source LANDs into the target store and is then
 federated with plain SQL. `sqlalchemy` takes any URL from `$PROVISA_ENGINE_URL`; the 20 keys below
 are the same runtime pre-named per database so a picker can name the product rather than the
 library.
@@ -72,12 +72,12 @@ library.
 | `sqlalchemy` | Any SQLAlchemy URL |
 | `mysql`, `mariadb`, `tidb`, `singlestore` | MySQL and its wire-compatible relatives |
 | `greenplum`, `cockroachdb`, `yugabytedb`, `opengauss` | PostgreSQL-wire relatives |
-| `oracle`, `mssql`, `db2`, `teradata` | Enterprise RDBMS |
-| `saphana`, `sapase`, `sqlanywhere` | SAP |
+| `oracle`, `mssql`, `db2` | Enterprise RDBMS |
+| `saphana` | SAP |
 | `redshift`, `vertica`, `exasol`, `monetdb` | Analytic stores |
 | `firebird` | Firebird |
 
-File-embedded stores are absent on purpose: the engine's store must be reachable over the network
+File-embedded stores are absent on purpose, because the engine's store must be reachable over the network
 from wherever Provisa runs, which a local file on someone else's disk is not.
 
 ## Two narrower lists
@@ -86,7 +86,7 @@ The 32 keys are the complete set, but two other places name a subset on purpose,
 the same list:
 
 - **The install wizard** offers 5 options: `duckdb`, `pg_duckdb`, `postgres_fdw`, `trino`,
-  `sqlalchemy`. These are provisioning choices, not builder keys: `pg_duckdb` and `postgres_fdw`
+  `sqlalchemy`. These are provisioning choices, not builder keys. `pg_duckdb` and `postgres_fdw`
   are two ways to provision the one `pg` engine. A wizard option must declare its platforms,
   provisioning route and startup cost, and the demo preset may only use bundled instant ones.
 
@@ -97,7 +97,7 @@ the same list:
 ## What an engine changes
 
 Engine choice decides which sources are reachable in place versus landed as a replica. Ask the
-running system rather than inferring it: `reachable_source_types(engine_key)` returns what an
+running system. `reachable_source_types(engine_key)` returns what an
 engine can federate, and `live_source_types(engine_key)` returns the subset it queries without
 materializing.
 
@@ -106,6 +106,18 @@ run joins in a database that indexes replicas. Trino's PostgreSQL store is index
 the work Trino pushes down to it. DuckDB joins its embedded store's replicas over a per-statement
 copy, where join indexes do not help. See [Replicas](replicas.md).
 
+## Known anomalies: functions an engine cannot write
+
+The functions Provisa ships for Cypher tools (the APOC set, see [Commands](commands.md#the-apoc-set-provisa-ships)) are SQL templates written in each engine's dialect. Where an engine's dialect has no equivalent, a call is refused by name when the statement is compiled, before anything is sent to the engine. A statement that would go directly to a source whose dialect cannot write the function goes to the engine instead. This table is generated from the templates.
+
+<!-- engine-function-anomalies:begin -->
+| Engine | Function not available |
+| --- | --- |
+| `clickhouse` | `apoc.map.fromLists` |
+| `clickhouse-server` | `apoc.map.fromLists` |
+| `snowflake` | `apoc.map.fromLists` |
+<!-- engine-function-anomalies:end -->
+
 ## Engine lifecycle (hosted deployment only)
 
 On the hosted cloud deployment, engine shards scale to zero replicas when idle, and no pod means no bill. A desktop or self-hosted install runs the engine as an always-on process; none of the
@@ -113,11 +125,11 @@ behavior below applies to it.
 
 **Cold starts.** When the first query arrives after an idle period, Provisa wakes the shard before
 dispatching. Autopilot needs 2–4 minutes to provision a node and start Trino. The query waits
-rather than failing: the wake happens at the top of `_execute_plan`, so the statement runs once
+rather than failing. The wake happens at the top of `_execute_plan`, so the statement runs once
 with its full retry budget intact once the engine is ready.
 
 **UI status.** A query waiting behind a cold start is not the same as a hung server. The UI
-polls `GET /data/engine/state` — which never wakes the engine — and shows a timed banner while
+polls `GET /data/engine/state`, which never wakes the engine, and shows a timed banner while
 the state is `starting`. The banner clears when the shard reports `ready`. Possible states:
 `always-on` (desktop/self-hosted or BYO coordinator), `ready`, `starting`, `stopped`.
 
@@ -149,7 +161,7 @@ route: if a cross-source query collapsed to a single live source after inlining,
 not `engine`.
 
 **EXPLAIN and ANALYZE.** The `POST /data/sql/explain` endpoint wraps the governed SQL in the
-dialect's EXPLAIN syntax. Passing `analyze: true` runs EXPLAIN ANALYZE: the query actually executes and the plan carries real row counts and timings. ANALYZE requires connector support;
+dialect's EXPLAIN syntax. Passing `analyze: true` runs EXPLAIN ANALYZE. The query actually executes, and the plan carries real row counts and timings. ANALYZE requires connector support;
 the dialects that collect statistics are:
 
 | Dialect | EXPLAIN | EXPLAIN ANALYZE |
@@ -161,5 +173,5 @@ the dialects that collect statistics are:
 | `sqlite` | `EXPLAIN QUERY PLAN` | not supported |
 
 Other dialects are not supported for EXPLAIN. Requesting ANALYZE on an unsupported dialect returns
-`400`. The plan the endpoint explains is the governed plan: the SQL that actually ran under the
+`400`. The plan the endpoint explains is the governed plan, the SQL that actually ran under the
 caller's role, after RLS and masking.

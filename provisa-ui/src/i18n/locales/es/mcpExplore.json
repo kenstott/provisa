@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} está en ejecución.",
     "toolDoneTooltip": "{{name}} ha terminado. Su resultado se devolvió al asistente.",
     "toolErrorTooltip": "{{name}} ha fallado. El asistente recibió el error y puede reintentarlo con otros argumentos.",
-    "roleNoteHelpTitle": "El rol con el que corre esta sesión"
+    "roleNoteHelpTitle": "El rol con el que corre esta sesión",
+    "toolExplainTooltip": "{{name}} terminó. Haz clic para ver la sentencia que envió y la que se ejecutó.",
+    "explainTitle": "Lo que ejecutó la consulta del agente",
+    "explainSent": "La sentencia que envió el agente",
+    "explainRan": "La sentencia que se ejecutó, gobernada para {{role}}"
   }
 }

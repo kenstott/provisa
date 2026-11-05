@@ -51,6 +51,8 @@ from typing import Any
 import sqlglot.expressions as exp
 from sqlglot.optimizer.scope import Scope, build_scope
 
+from provisa.compiler import walk_checks
+
 
 @dataclass(frozen=True)
 class _Base:
@@ -114,6 +116,12 @@ class Unrelated:
     reason: str
     left_column: str | None = None
     right_column: str | None = None
+    #: For a condition the statement writes: the condition as written, and each side as written
+    #: (left with ``left_table``), so a refusal names it as the statement does -- a side read
+    #: through a derived table or a CTE is that side, not the base column it resolves to.
+    written: str | None = None
+    left_written: str | None = None
+    right_written: str | None = None
 
 
 def _selects(scope: Scope) -> list[exp.Expr]:
@@ -233,7 +241,14 @@ class _Resolver:
                 view = marked_view(name)
                 if view is None or not isinstance(source, Scope):
                     continue
-                view_id = self._table_id(exp.Table(this=exp.to_identifier(view)))
+                # A view keyed schema.name (an ontology Class, REQ-2163) is its schema's table.
+                schema, _, name = view.rpartition(".")
+                view_id = self._table_id(
+                    exp.Table(
+                        this=exp.to_identifier(name),
+                        db=exp.to_identifier(schema) if schema else None,
+                    )
+                )
                 if view_id is None:
                     continue
                 instance = id(source.expression)
@@ -297,6 +312,10 @@ class _Resolver:
                         alts = [alt | {instance} for alt in alts]
                     per_source.append(alts)
             found = [frozenset().union(*choice) for choice in product(*per_source)]
+        # Alternatives are a set: two branches reading the same instances (none, for a graph
+        # session's tables, which are no registered table) are one choice. Kept as a list of
+        # each, a pattern of unions multiplies them hop by hop (arms ** hops of the same set).
+        found = list(dict.fromkeys(found))
         self._instances[key] = found
         return found
 
@@ -488,6 +507,18 @@ def _own_columns(scope: Scope) -> list[exp.Column]:
     return [c for c in scope.columns if c.find_ancestor(exp.Query) is query]
 
 
+def _derived_side(scope: Scope, column: exp.Column) -> str | None:
+    """``column`` as written when it is read through a derived table or a CTE of the scope it is
+    named in (or one around it) -- not a plain table's alias, which names its table -- else None."""
+    at: Scope | None = scope
+    while at is not None and column.table:
+        source = at.sources.get(column.table) or at.cte_sources.get(column.table)
+        if source is not None:
+            return None if isinstance(source, exp.Table) else column.sql(dialect="postgres")
+        at = at.parent
+    return None
+
+
 def _conjuncts(condition: exp.Expr | None) -> list[exp.Expr]:
     """``condition`` as the conditions it ANDs together."""
     if condition is None:
@@ -550,8 +581,15 @@ def _unrelated_in(
     def exempt(instance: int) -> bool:
         return exempt_table(table_of[instance])
 
-    def pair(left: set[_Base], right: set[_Base]) -> None:
-        """A pairing of columns the statement makes: registered, or refused."""
+    def pair(
+        left: set[_Base],
+        right: set[_Base],
+        written: exp.Expr | None = None,
+        sides: tuple[str | None, str | None] = (None, None),
+    ) -> None:
+        """A pairing of columns the statement makes: registered, or refused -- naming the
+        condition as written, and each side of it read through a derived table or a CTE
+        (``sides``), when the statement writes one."""
         for a in left:
             for b in right:
                 if a.instance == b.instance or exempt(a.instance) or exempt(b.instance):
@@ -588,8 +626,21 @@ def _unrelated_in(
                 ):
                     edges.add(frozenset({a.instance, b.instance}))
                 else:
-                    x, y = sorted((a, b), key=lambda c: (c.table_id, c.column))
-                    refuse(Unrelated(x.table_id, y.table_id, UNREGISTERED, x.column, y.column))
+                    (x, x_said), (y, y_said) = sorted(
+                        ((a, sides[0]), (b, sides[1])), key=lambda c: (c[0].table_id, c[0].column)
+                    )
+                    refuse(
+                        Unrelated(
+                            x.table_id,
+                            y.table_id,
+                            UNREGISTERED,
+                            x.column,
+                            y.column,
+                            written=None if written is None else written.sql(dialect="postgres"),
+                            left_written=x_said,
+                            right_written=y_said,
+                        )
+                    )
 
     def filters_only(a: int, b: int) -> bool:
         """Whether one of two instances is read in an IN / EXISTS subquery the other is outside
@@ -655,6 +706,9 @@ def _unrelated_in(
                 for c in _conjuncts(having.this if having is not None else None)
                 if c.find(exp.AggFunc) is None
             ]
+        # A walk's own check that it takes no relationship twice, as the graph compiler wrote it
+        # (provisa.compiler.walk_checks): the maintainer's one exemption from this rule.
+        conditions = [c for c in conditions if not walk_checks.compiled(c)]
 
         def one_instance(side: exp.Expr, scope: Scope = scope, mine: set[int] = mine) -> int | None:
             """The one instance every column of ``side`` is a plain column of, else None."""
@@ -677,11 +731,15 @@ def _unrelated_in(
                     left = tested.this.unnest()
                     given: set[_Base] = set()
                     drawn: set[int] = set()
+                    # What the subquery's selected column reads, where it reads it through a
+                    # derived table or a CTE of its own scope (the first branch that does).
+                    given_said: str | None = None
                     for branch in inner.set_operation_scopes or [inner]:
                         selects = _selects(branch)
                         only = selects[0].unalias() if len(selects) == 1 else None
                         if isinstance(only, exp.Column):
                             given |= resolver.resolve(branch, only)
+                            given_said = given_said or _derived_side(branch, only)
                         for alt in resolver.alternatives(branch):
                             drawn |= alt
                     mine_plain = (
@@ -695,7 +753,16 @@ def _unrelated_in(
                         if touching & outer_alt:
                             groups.append(frozenset(touching & outer_alt) | inner_alt)
                     if mine_plain and given:
-                        pair(mine_plain, given)
+                        sides = (
+                            _derived_side(scope, left) if isinstance(left, exp.Column) else None,
+                            given_said,
+                        )
+                        pair(
+                            mine_plain,
+                            given,
+                            tested if sides != (None, None) else None,
+                            sides,
+                        )
                     elif touching and drawn:
                         other_matching(touching | drawn)
                     continue
@@ -720,7 +787,16 @@ def _unrelated_in(
                     left_bases = resolver.resolve(scope, left_side)
                     right_bases = resolver.resolve(scope, right_side)
                     if left_bases and right_bases:
-                        pair(left_bases, right_bases)
+                        sides = (
+                            _derived_side(scope, left_side),
+                            _derived_side(scope, right_side),
+                        )
+                        pair(
+                            left_bases,
+                            right_bases,
+                            condition if sides != (None, None) else None,
+                            sides,
+                        )
                         continue
                 # A registered relationship's own condition, where one side of it is computed.
                 left_one = one_instance(left_side)

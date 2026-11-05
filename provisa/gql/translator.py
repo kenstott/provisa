@@ -27,48 +27,90 @@ Mapping:
 
 from __future__ import annotations
 
+import copy
+import dataclasses
+import functools
 import re
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import sqlglot.expressions as exp
-import sqlglot
 
+from provisa.gql import temporal
+from provisa.gql.expr_ast import (
+    Binary,
+    CypherExpr,
+    FunctionCall,
+    Index,
+    Literal as ExprLiteral,
+    ListLiteral,
+    MapLiteral,
+    Parameter as ExprParameter,
+    Paren,
+    Property,
+    Variable,
+    walk,
+)
 from provisa.gql.ir import (
     CypherAST,
     MatchClause,
     MatchStep,
     NodePattern,
     PathPattern,
+    ProcedureCall,
     ReturnItem,
     UnwindClause,
     WhereClause,
     WithClause,
     OrderItem,
 )
-from provisa.gql.label_map import CypherLabelMap, JunctionMapping, NodeMapping
+from provisa.gql.label_map import (
+    GRAPH_ID,
+    IDENTITY_COLUMN,
+    LABELS_COLUMN,
+    CypherLabelMap,
+    JunctionMapping,
+    NodeMapping,
+    is_session_node,
+)
+from provisa.gql.path_expr import PathExprMixin
+from provisa.gql.terms import TermsMixin
 from provisa.gql.path_functions import PathFunctionsMixin
+from provisa.gql.path_walk import SessionWalkMixin
 from provisa.gql.select_builder import SelectBuilderMixin
 from provisa.gql.correlated_call import CorrelatedCallMixin
-from provisa.gql.map_projection import rewrite_bare_map_literals
-from provisa.gql.group_by import GroupByMixin
+from provisa.gql.group_by import GroupByMixin, _has_aggregate
 from provisa.gql.translator_helpers import (
+    _json_valued,
+    _collects_maps,
+    _properties_of,
+    _required_properties,
     _fold_where_into_optional_joins,
-    _is_bare_variable,
+    _optional_step_matches_whole,
     _node_table_expr,
-    _optional_vars,
+    _clause_vars,
     _rewrite_cypher_fn_node,
-    _rewrite_property_access,
     _safe_alias,
     edge_properties_column,
+    via_column,
 )
+from provisa.gql.mistakes import unknown_label
 from provisa.gql.translator_types import (
+    CALL_MARKER,
+    CUT_COLUMN,
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
     CypherTranslateError,
     GraphVarKind,
+    map_key_column,
 )
+from provisa.gql.translator_every_rel import _EveryRelMixin
 from provisa.gql.translator_rel import _RelJoinMixin
 from provisa.gql.translator_union import _UnionMixin
+
+
+if TYPE_CHECKING:
+    from provisa.gql.expr_context import TranslatorExprContext
 
 
 def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
@@ -80,8 +122,309 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
 
     Returns (sql_ast, ordered_param_names, graph_vars).
     """
+    ast = _null_bound_matches(ast)
     translator = _Translator(ast, label_map, params)
-    return translator.translate()
+    sql_ast, ordered, graph_vars = translator.translate()
+    return quote_keywords(sql_ast), ordered, graph_vars
+
+
+@functools.cache
+def _keywords() -> frozenset[str]:
+    """The keywords sqlglot reads back as other than a column (``like``, ``qualify``) when its
+    own SQL text writes them bare."""
+    import sqlglot
+    from sqlglot.dialects.postgres import Postgres
+    from sqlglot.errors import SqlglotError
+
+    found: set[str] = set()
+    for keyword in Postgres.Tokenizer.KEYWORDS:
+        word = keyword.lower()
+        if not word.isidentifier() or word in found:
+            continue
+        for probe in (f"SELECT {word} FROM t", f"SELECT f({word}, 1), {word}.x FROM t AS {word}"):
+            try:
+                tree = sqlglot.parse_one(probe, read="postgres")
+            except SqlglotError:
+                found.add(word)
+                break
+            names = {n for c in tree.find_all(exp.Column) for n in (c.name, c.table)}
+            if word not in {n.lower() for n in names}:
+                found.add(word)
+                break
+    return frozenset(found)
+
+
+def quote_keywords(tree: exp.Expression) -> Any:
+    """``tree`` with each unquoted column name or column table that is a SQL keyword quoted: a Cypher variable
+    may be named ``like`` or ``order``, which the SQL text sqlglot writes (it quotes no keyword)
+    would read back as the keyword (REQ-347)."""
+    keywords = _keywords()
+    for column in tree.find_all(exp.Column):
+        # A column's name and its table's: an alias (AS like) sqlglot reads back as written.
+        for part in (column.args.get("this"), column.args.get("table")):
+            if isinstance(part, exp.Identifier) and not part.quoted:
+                if part.name.lower() in keywords:
+                    part.set("quoted", True)
+    return tree
+
+
+#: A value's type as a map literal writes it (expr_visitor._literal_kind) -> its engine type.
+_KIND_TYPES = {
+    "integer": "BIGINT",
+    "float": "DOUBLE",
+    "boolean": "BOOLEAN",
+    "list<integer>": "BIGINT[]",
+    "list<float>": "DOUBLE[]",
+    "list<boolean>": "BOOLEAN[]",
+    "list<string>": "VARCHAR[]",
+}
+
+
+def _schema_procedure_rows(
+    call: ProcedureCall, column: str, values: list[str], alias: exp.TableAlias
+) -> exp.Expression:  # REQ-572
+    """A schema procedure's values (CypherLabelMap.schema_procedure) as a relation of what the
+    call yields, under its alias."""
+    wrong = [yielded for yielded, _ in call.yields if yielded != column]
+    if wrong or not call.yields:
+        raise CypherTranslateError(
+            f"CALL {call.name}: it yields {column}: CALL {call.name}() YIELD {column}"
+        )
+    width = len(call.yields)
+    if not values:
+        empty = [exp.cast(exp.Null(), "TEXT") for _ in range(width)]
+        return exp.Subquery(this=exp.select(*empty).where(exp.false()), alias=alias)
+    rows = [
+        exp.Tuple(expressions=[exp.Literal.string(value) for _ in range(width)]) for value in values
+    ]
+    return exp.Values(expressions=rows, alias=alias)
+
+
+def _map_key_types(source: CypherExpr) -> dict[str, str]:
+    """For an UNWIND of map literals written in the statement, each key whose every value is of
+    one type, other than a string, -> that type's engine type."""
+    from provisa.gql.expr_ast import ListLiteral
+    from provisa.gql.expr_visitor import _literal_kind
+
+    if not isinstance(source, ListLiteral) or not all(
+        isinstance(item, MapLiteral) for item in source.items
+    ):
+        return {}
+    kinds: dict[str, set[str | None]] = {}
+    for item in source.items:
+        for key, value in cast(MapLiteral, item).entries:
+            kinds.setdefault(key, set()).add(_literal_kind(value))
+    found: dict[str, str] = {}
+    for key, of_key in kinds.items():
+        written = {k for k in of_key if k is not None and k != "list<>"}
+        if len(written) == 1 and (only := written.pop()) in _KIND_TYPES:
+            found[key] = _KIND_TYPES[only]
+    return found
+
+
+#: The graph functions of a path, node or relationship: null of null.
+_GRAPH_OF = frozenset(
+    {"nodes", "relationships", "length", "labels", "type", "startnode", "endnode", "id"}
+)
+
+
+def _null_bound_matches(ast: CypherAST) -> CypherAST:
+    """``ast`` with each OPTIONAL MATCH from a variable the last WITH binds to null (WITH null AS a
+    OPTIONAL MATCH p = (a)-[r]->()) read as what it is, a match of nothing: a WITH carrying what is
+    in scope and binding the match's own variables to null, and each graph function of one of them
+    null (REQ-778, amended 2026-10-27: a null binding is no mistake)."""
+    import copy
+
+    from provisa.gql.expr_ast import FunctionCall
+    from provisa.gql.ir import UnwindClause
+
+    if not any(isinstance(s, WithClause) for s in ast.pipeline):
+        return ast
+    out = copy.deepcopy(ast)
+    scope: list[str] = []
+    nulls: set[str] = set()
+    pipeline = []
+    for step in out.pipeline:
+        if isinstance(step, WithClause):
+            scope = [i.alias or i.name for i in step.items if i.alias or i.name]
+            nulls = {
+                i.alias
+                for i in step.items
+                if i.alias and isinstance(i.expression, ExprLiteral) and i.expression.kind == "null"
+            }
+        elif isinstance(step, UnwindClause):
+            scope.append(step.variable)
+        elif isinstance(step, MatchStep):
+            named: list[str] = []
+            for clause in step.matches:
+                pattern = clause.pattern
+                if isinstance(pattern, PathPattern):
+                    named += [n.variable for n in pattern.nodes if n.variable]
+                    named += [r.variable for r in pattern.rels if r.variable]
+                if clause.variable:
+                    named.append(clause.variable)
+            if all(c.optional for c in step.matches) and nulls & set(named):
+                fresh = [v for v in dict.fromkeys(named) if v not in scope]
+                items = [ReturnItem(expression=Variable(v), alias=v, name=v) for v in scope]
+                items += [
+                    ReturnItem(expression=ExprLiteral(None, "null"), alias=v, name=v) for v in fresh
+                ]
+                pipeline.append(WithClause(items=items))
+                scope += fresh
+                nulls |= set(fresh)
+                continue
+            scope += [v for v in named if v not in scope]
+        pipeline.append(step)
+    out.pipeline = pipeline
+
+    def _nulled(node: CypherExpr) -> CypherExpr:
+        for n in walk(node):
+            if isinstance(n, FunctionCall) and n.name.lower() in _GRAPH_OF and len(n.args) == 1:
+                if isinstance(n.args[0], Variable) and n.args[0].name in nulls:
+                    n.args[0] = ExprLiteral(None, "null")
+        return node
+
+    if out.return_clause is not None:
+        for item in out.return_clause.items:
+            item.expression = _nulled(item.expression)
+    return out
+
+
+def _projected_order(with_clause: WithClause) -> list[tuple[str, bool]] | None:
+    """A WITH's ORDER BY as (column, descending) of what it projects -- ORDER BY value where it
+    carries value -- or None where it orders by anything else, or not at all."""
+    if not with_clause.order_by:
+        return None
+    names = {
+        i.alias or (i.expression.name if isinstance(i.expression, Variable) else None)
+        for i in with_clause.items
+    }
+    order: list[tuple[str, bool]] = []
+    for item in with_clause.order_by:
+        if not (isinstance(item.expression, Variable) and item.expression.name in names):
+            return None
+        order.append((item.expression.name, item.direction == "DESC"))
+    return order
+
+
+def _order_collects(
+    select_exprs: list[exp.Expr], carried: str, order: list[tuple[str, bool]] | None
+) -> None:
+    """Each collect() a stage takes of the rows a WITH ... ORDER BY carries, in that order: the
+    ORDER BY into the ARRAY_AGG, as an engine reading the rows in parallel keeps no order
+    (openCypher: collect() keeps the order of the rows it reads)."""
+    if not order:
+        return
+    for expr in select_exprs:
+        for agg in list(expr.find_all(exp.Anonymous)):
+            if agg.name.upper() != "ARRAY_AGG" or len(agg.expressions) != 1:
+                continue
+            (value,) = agg.expressions
+            if isinstance(value, (exp.Distinct, exp.Order)):
+                continue  # a distinct list orders by its values alone
+            keys = [
+                exp.Ordered(this=exp.column(name, table=carried, quoted=True), desc=desc)
+                for name, desc in order
+            ]
+            agg.set("expressions", [exp.Order(this=value, expressions=keys)])
+
+
+def _is_mixed_list(
+    expr: CypherExpr,
+    json_lists: set[str],
+    is_graph_element: Callable[[str], bool] = lambda _name: False,
+) -> bool:
+    """Whether ``expr`` is a list of values of several types: a list literal of them, or a
+    variable bound to one. A node, relationship or path ([n, r, p, 1, 'a']) is a type beside any
+    other item: the list holds each as its JSON (ExprLowering._lower_ListLiteral)."""
+    from provisa.gql.expr_ast import ListLiteral
+    from provisa.gql.expr_visitor import _mixed_literal_kinds
+
+    if isinstance(expr, Variable):
+        return expr.name in json_lists
+    if not isinstance(expr, ListLiteral):
+        return False
+    graph = [isinstance(i, Variable) and is_graph_element(i.name) for i in expr.items]
+    if any(graph) and not all(graph):
+        return True
+    return _mixed_literal_kinds(expr.items)
+
+
+def _lists_mixed_lists(
+    expr: CypherExpr,
+    json_lists: set[str],
+    json_list_lists: set[str],
+    is_graph_element: Callable[[str], bool] = lambda _name: False,
+) -> bool:
+    """Whether ``expr`` is a list of lists of several types: a collect() of one, or a variable
+    bound to one."""
+    from provisa.gql.expr_ast import FunctionCall
+
+    if isinstance(expr, Variable):
+        return expr.name in json_list_lists
+    return (
+        isinstance(expr, FunctionCall)
+        and expr.name.lower() == "collect"
+        and len(expr.args) == 1
+        and _is_mixed_list(expr.args[0], json_lists, is_graph_element)
+    )
+
+
+def _comprehends_elements(expr: CypherExpr) -> bool:
+    """Whether ``expr`` is a pattern comprehension of paths, nodes or relationships of its
+    pattern: a list each item of which is its JSON (expr_context.resolve_pattern_comprehension)."""
+    from provisa.gql.expr_ast import PatternComprehension
+
+    if not isinstance(expr, PatternComprehension) or not isinstance(expr.projection, Variable):
+        return False
+    named = {expr.path_var} | {
+        item.variable for item in [*expr.pattern.nodes, *expr.pattern.rels] if item.variable
+    }
+    return expr.projection.name in named
+
+
+def _is_json_list(e: exp.Expression) -> bool:
+    """Whether ``e`` is a list of JSON-encoded values (GraphVarKind.JSON_LIST): a list literal of
+    them, or a list built from one -- appended to, prepended to, joined, sliced or reversed."""
+    return _json_valued(e) == "list"
+
+
+def _holds_json_maps(e: exp.Expression) -> bool:
+    """Whether ``e`` answers a map literal (``MAP(keys, to_json values)``) or a list of them: an
+    ARRAY[...] of maps, an ARRAY_AGG of one, or an ARRAY(SELECT map) -- COLLECT { }'s rows -- or a
+    CASE whose every result is one or null."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    if isinstance(e, exp.Coalesce):
+        # collect(): its ARRAY_AGG, nulls filtered out, else [] (translator_helpers).
+        e = e.this
+    if isinstance(e, exp.Filter):
+        e = e.this
+    # The translator builds MAP, ARRAY_AGG and ARRAY(SELECT ...) as calls by name; a parse of its
+    # SQL makes them their own node types.
+    called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
+    if isinstance(e, exp.Map) or called == "MAP":
+        return True
+    if isinstance(e, exp.Case):
+        # A map or null by a condition -- an OPTIONAL MATCH's map of what matched nothing.
+        results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
+        found = [r for r in results if r is not None and not isinstance(r, exp.Null)]
+        return bool(found) and all(_holds_json_maps(r) for r in found)
+    if isinstance(e, exp.ArrayAgg):
+        return _holds_json_maps(e.this)
+    if called == "ARRAY_AGG":
+        return len(e.expressions) == 1 and _holds_json_maps(e.expressions[0])
+    if (isinstance(e, exp.Array) or called == "ARRAY") and e.expressions:
+        (first, *rest) = e.expressions
+        if isinstance(first, (exp.Select, exp.Subquery)) and not rest:
+            inner = first.this if isinstance(first, exp.Subquery) else first
+            return (
+                isinstance(inner, exp.Select)
+                and len(inner.expressions) == 1
+                and _holds_json_maps(inner.expressions[0])
+            )
+        return all(_holds_json_maps(x) for x in e.expressions)
+    return False
 
 
 def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabelMap) -> None:
@@ -109,7 +452,7 @@ def refuse_unregistered_relationship_types(ast: CypherAST, label_map: CypherLabe
                     continue  # refused as an alternation on a single hop, by its own message
                 unknown.update(t for t in rel.types if t not in registered)
     if unknown:
-        raise UnregisteredRelationshipType(sorted(unknown))
+        raise UnregisteredRelationshipType(sorted(unknown), registered)
 
 
 def cypher_calls_to_sql_list(  # REQ-571
@@ -151,6 +494,110 @@ def _of_branch(node: _E, rel_types: dict[str, str]) -> _E:
 _FLIPPED = {"right": "left", "left": "right", "none": "none"}
 
 
+def _inlined(node: Any, values: dict[str, CypherExpr]) -> Any:
+    """``node`` (an IR tree) with each variable ``values`` holds read as its expression there."""
+    if isinstance(node, Variable) and node.name in values:
+        return copy.deepcopy(values[node.name])
+    if isinstance(node, list):
+        return [_inlined(item, values) for item in node]
+    if isinstance(node, tuple):
+        return tuple(_inlined(item, values) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return node
+    changed = {
+        f.name: _inlined(getattr(node, f.name), values) for f in dataclasses.fields(node) if f.init
+    }
+    return replace(node, **changed)
+
+
+def _reads_before_with(with_clause: WithClause) -> set[str]:  # REQ-347
+    """The variables the WITH's WHERE reads that the WITH does not carry: openCypher's WHERE of a
+    WITH sees the scope before the WITH as well as the names it gives (WithWhere7). A name a
+    comprehension, quantifier, reduce or pattern comprehension binds is its own, not read."""
+    from provisa.gql.expr_ast import (
+        ListComprehension,
+        MapProjection,
+        PatternComprehension,
+        Quantifier,
+        Reduce,
+    )
+
+    if with_clause.where is None:
+        return set()
+    read: set[str] = set()
+    bound: set[str] = set()
+    for node in walk(with_clause.where.expression):
+        if isinstance(node, Variable):
+            read.add(node.name)
+        elif isinstance(node, MapProjection):
+            read.add(node.var)
+        elif isinstance(node, (ListComprehension, Quantifier)):
+            bound.add(node.var)
+        elif isinstance(node, Reduce):
+            bound.update((node.var, node.accumulator))
+        elif isinstance(node, PatternComprehension):
+            pattern = node.pattern
+            bound.update(p.variable for p in [*pattern.nodes, *pattern.rels] if p.variable)
+            if node.path_var:
+                bound.add(node.path_var)
+    carried = {
+        i.alias or (i.expression.name if isinstance(i.expression, Variable) else i.name)
+        for i in with_clause.items
+    }
+    return read - bound - carried
+
+
+def _properties_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads the variable ``var``'s properties by name at run
+    time: keys(var), or var[key] of a key that is not a literal."""
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "keys"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if (
+        isinstance(node, Index)
+        and isinstance(node.obj, Variable)
+        and node.obj.name == var
+        and not isinstance(node.index, ExprLiteral)
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(_properties_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(_properties_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
+
+
+def labels_read(node: Any, var: str) -> bool:
+    """Whether ``node`` (an IR tree) reads the labels of ``var``: ``labels(var)``, or a label
+    test of it (``var:L``)."""
+    from provisa.gql.expr_ast import LabelPredicate
+
+    if (
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "labels"
+        and len(node.args) == 1
+        and isinstance(node.args[0], Variable)
+        and node.args[0].name == var
+    ):
+        return True
+    if (
+        isinstance(node, LabelPredicate)
+        and isinstance(node.operand, Variable)
+        and node.operand.name == var
+    ):
+        return True
+    if isinstance(node, (list, tuple)):
+        return any(labels_read(item, var) for item in node)
+    if not dataclasses.is_dataclass(node) or isinstance(node, type):
+        return False
+    return any(labels_read(getattr(node, f.name), var) for f in dataclasses.fields(node))
+
+
 def _from_carried(clause: MatchClause, carried: set[str]) -> MatchClause:
     """A pattern after a WITH, read from the node the WITH carries: ``(b)-[:K]->(a)`` with ``a``
     carried is ``(a)<-[:K]-(b)``, which goes on from ``a``'s rows instead of reading ``a`` again
@@ -182,12 +629,178 @@ def _type_literal(var: str, rel_type: str) -> exp.Literal:
     return lit
 
 
+#: An ISO 8601 date-time written as a string (REQ-409).
+_ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?")
+
+
+def _with_uncut_column(query: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
+    """A union part with the cut column added as 0, to line up with a part that carries it."""
+    if isinstance(query, exp.Union):
+        query.set("this", _with_uncut_column(query.this))
+        query.set("expression", _with_uncut_column(query.expression))
+        return query
+    return query.select(exp.alias_(exp.Literal.number(0), alias=CUT_COLUMN))
+
+
+def _cut_across_union(union: "exp.Select | exp.Union") -> exp.Select:
+    """A UNION that removes duplicates, with the cut column made the same on every row: each part
+    carries its own, and two rows that differ only in it are one row (REQ-2135)."""
+    columns = [
+        exp.column(name, table="_cutu", quoted=True)
+        for name in union.named_selects
+        if name != CUT_COLUMN
+    ]
+    cut = exp.Window(this=exp.Max(this=exp.column(CUT_COLUMN, table="_cutu", quoted=True)))
+    return (
+        exp.select(*columns, exp.alias_(cut, alias=CUT_COLUMN))
+        .distinct()
+        .from_(exp.alias_(exp.Subquery(this=union), alias="_cutu"))
+    )
+
+
+def _timestamp_literal(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """REQ-409: a WHERE's ISO 8601 date-time string is the timestamp it writes, so it compares with
+    a timestamp column on every engine (Trino refuses a varchar there)."""
+    if isinstance(node, exp.Literal) and node.is_string and _ISO_TIMESTAMP.fullmatch(node.this):
+        return exp.Cast(this=node, to=exp.DataType.build("TIMESTAMP"))
+    return node
+
+
+#: A segment's WHEREs: the MATCHes' (filtering the rows) and each OPTIONAL MATCH's own, with the
+#: variables it introduces (_steps_where).
+_StageWheres = tuple["WhereClause | None", list[tuple[set[str], "WhereClause | None"]]]
+
+
+#: The one row a statement that opens with an OPTIONAL MATCH starts from (_optional_start).
+_OPTIONAL_START = "_optional_start"
+
+
+def _optional_start(
+    from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    joins: list[dict],
+    matches: list[MatchClause],
+    carried: str | None,
+    lateral_bound: set[str],
+) -> "tuple[exp.Expression, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A statement that opens with an OPTIONAL MATCH answers one row, its variables null, where
+    the pattern matches nothing (REQ-345): it starts from one row and the pattern is joined to it as
+    any OPTIONAL MATCH is, so its WHERE conditions the match (_fold_where_into_optional_joins) and
+    it matches whole or not at all (_optional_step_matches_whole). After a WITH, the rows the WITH
+    carries are where it starts; in a CALL body, the outer row its imported variables are bound to
+    (``lateral_bound``)."""
+    if lateral_bound or not matches or not matches[0].optional:
+        return from_clause, joins
+    if carried is not None:
+        read = {
+            t.name
+            for part in [from_clause, *(j["table"] for j in joins)]
+            for t in part.find_all(exp.Table)
+            if not t.db
+        }
+        if carried in read:
+            return from_clause, joins  # its pattern goes on from the carried rows already
+        # The rows the WITH carries are where it starts: the pattern is joined to each, so a row
+        # it matches nothing for is kept, its variables null.
+        start = exp.Table(this=exp.Identifier(this=carried))
+        return start, [{"table": from_clause, "on": exp.true(), "join_type": "LEFT"}, *joins]
+    one = exp.Subquery(
+        this=exp.select(exp.alias_(exp.Literal.number(1), "_one")),
+        alias=exp.TableAlias(this=exp.to_identifier(_OPTIONAL_START)),
+    )
+    return one, [{"table": from_clause, "on": exp.true(), "join_type": "LEFT"}, *joins]
+
+
+def _and(
+    left: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    right: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if left is None:
+        return right
+    if right is None:
+        return left
+    return exp.And(this=left, expression=right)
+
+
+def _steps_where(
+    steps: list,
+) -> tuple[WhereClause | None, list[tuple[set[str], "WhereClause | None"]]]:
+    """A segment's MATCH steps' WHEREs, each its own clause's, as openCypher scopes it (REQ-345).
+    A WHERE after a MATCH filters the rows: those WHEREs ANDed, none dropped for another, returned
+    first. A WHERE after an OPTIONAL MATCH is that match's condition and never removes a row,
+    whatever it names: returned with the variables the OPTIONAL MATCH introduces, whose join it
+    conditions (_fold_where_into_optional_joins). Every OPTIONAL MATCH is returned, with its WHERE
+    or None: its pattern -- every comma-separated part of it -- matches whole or not at all
+    (_optional_step_matches_whole)."""
+    required: list[CypherExpr] = []
+    optional: list[tuple[set[str], WhereClause | None]] = []
+    seen: set[str] = set()
+    for step in steps:
+        new: set[str] = set()
+        for m in step.matches:
+            mine = _clause_vars(m)
+            new |= mine - seen
+            seen |= mine
+        if step.matches and step.matches[-1].optional:
+            optional.append((new, step.where))
+        elif step.where is not None:
+            required.append(step.where.expression)
+    if not required:
+        return None, optional
+    if len(required) == 1:
+        return WhereClause(required[0]), optional
+    joined: CypherExpr = Paren(required[0])
+    for w in required[1:]:
+        joined = Binary("AND", joined, Paren(w))
+    return WhereClause(joined), optional
+
+
+def _statement_exprs(ast: CypherAST) -> list[CypherExpr]:
+    """The expressions of ``ast``'s WHEREs, WITHs and RETURN, and of each statement embedded in
+    one of them, in the order written."""
+    from provisa.gql.expr_ast import SubqueryExpr, walk
+
+    exprs: list[CypherExpr] = []
+    for step in ast.pipeline:
+        if isinstance(step, MatchStep) and step.where:
+            exprs.append(step.where.expression)
+        elif isinstance(step, WithClause):
+            exprs.extend(i.expression for i in step.items)
+            exprs.extend(o.expression for o in step.order_by)
+            if step.where:
+                exprs.append(step.where.expression)
+    if ast.return_clause:
+        exprs.extend(i.expression for i in ast.return_clause.items)
+    exprs.extend(o.expression for o in ast.order_by)
+    embedded = [
+        node.body for expr in exprs for node in walk(expr) if isinstance(node, SubqueryExpr)
+    ]
+    for body in embedded:
+        exprs.extend(_statement_exprs(body))
+    return exprs
+
+
+def _held_whole(expr: Any, var: str) -> bool:
+    """Whether ``expr`` (a WITH's or RETURN's item) is ``var`` bare, or a list or map literal
+    holding it as one of its elements ([a, 1], {key: a}), at any depth."""
+    if isinstance(expr, Variable):
+        return expr.name == var
+    if isinstance(expr, ListLiteral):
+        return any(_held_whole(i, var) for i in expr.items)
+    if isinstance(expr, MapLiteral):
+        return any(_held_whole(v, var) for _, v in expr.entries)
+    return False
+
+
 class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-394, REQ-409
+    PathExprMixin,
+    TermsMixin,
     PathFunctionsMixin,
+    SessionWalkMixin,
     SelectBuilderMixin,
     CorrelatedCallMixin,
     GroupByMixin,
     _RelJoinMixin,
+    _EveryRelMixin,
     _UnionMixin,
 ):
     def __init__(
@@ -208,25 +821,104 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._cte_sources: set[str] = set()
         # var → domain_name for nodes resolved via a domain label only
         self._domain_nodes: dict[str, str] = {}
+        # Each variable in scope that is a node of a union of labels' rows (_build_domain_union),
+        # under the name it now has, with its union's columns (__label, __id, __node and the
+        # properties read of it): read where a MATCH draws it, or from a WITH carrying them.
+        self._union_columns: dict[str, list[str]] = {}
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
         # (FROM, joins, path steps by alias, relationship type by variable) of each extra branch
         self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict, dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # #293: each node a WITH carries beside another node, by its variable: (the WITH's CTE,
+        # the node's columns). Its columns are carried as "<var>.<column>", and a segment after
+        # the WITH reads the node as its own row of them (_expose_split_nodes).
+        self._split_carried: dict[str, tuple[str, list[str]]] = {}
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
         self._shortestpath_hops_col: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         self._shortestpath_is_all: bool = False
+        # REQ-2135: the variables a triple binds → the column holding each one's RDF term
+        self._term_vars: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-2135: one check per path bounded by the depth limit, true when it was cut there
+        self._cut_checks: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Counter for unique UNNEST alias names across the translation
         self._unwind_count: int = 0
         # UNWIND variables whose source array contains MAP elements (e.g. collect({...}))
         self._map_unwind_vars: set[str] = set()
+        # An UNWIND of map literals written in the statement -> each key's engine type, where every
+        # map gives that key a value of one type (a key's value is otherwise read as its text).
+        self._map_unwind_types: dict[str, dict[str, str]] = {}
         # Variables whose value is a MAP array (from collect({...}) or similar)
         self._map_array_vars: set[str] = set()
+        #: Each variable bound to a list of graph elements (_element_list_kind): collect(n) of a
+        #: node, relationship or path, or a session walk's nodes or relationships; their JSON
+        #: values, which the answer decodes.
+        self._element_list_vars: dict[str, str] = {}
+        #: Each variable a WITH bound to one item of such a list (WITH nodes[i] AS n1): its kind,
+        #: its value that item's JSON, which the answer decodes.
+        self._element_vars: dict[str, str] = {}
+        #: The node types a list of collected nodes draws from, by its variable (union_type).
+        self._element_list_labels: dict[str, list[str]] = {}
+        # Each UNWIND's UNNEST alias (``UNNEST(a) AS _uw0(x)``): its variable is that alias's column
+        self._unwind_aliases: set[str] = set()
         # A map literal a WITH carries -> its keys, each carried as a column of its own, "m.key",
         # which m.key reads (#287)
-        self._map_vars: dict[str, set[str]] = {}
+        self._map_vars: dict[str, dict[str, int]] = {}
+        # The columns a WITH carries a map literal's key in whose value is itself a map literal
+        # ({name: {name2: 'baz'}}): a key of it is read from its JSON-encoded values.
+        self._map_key_maps: set[str] = set()
+        # REQ-2173: a variable a WITH or UNWIND binds to a temporal value -> its kind (temporal.py)
+        self._temporal_kinds: dict[str, str] = {}
+        # REQ-2173: a variable bound to a time or date time a query names a zone for -> the zone
+        self._temporal_zones: dict[str, str] = {}
+        # A variable a WITH or UNWIND binds to a string (size() of it counts its characters)
+        self._text_vars: set[str] = set()
+        # A variable a WITH or UNWIND binds to a list (+ appends to it)
+        self._list_vars: set[str] = set()
+        # A variable a WITH binds to a list of values of several types (each item its JSON), and
+        # one an UNWIND or WITH binds to an item of one (its JSON): the answer decodes them.
+        self._json_list_vars: set[str] = set()
+        # Variables bound to a list of lists of several types (collect() of one): an UNWIND of
+        # one binds a list of several types.
+        self._json_list_lists: set[str] = set()
+        self._json_value_vars: set[str] = set()
+        # A variable a WITH binds to null (WITH null AS m): m[k] is null.
+        self._null_vars: set[str] = set()
+        # A variable a WITH binds to a parameter (WITH $expr AS expr) -> the parameter's name.
+        self._param_vars: dict[str, str] = {}
+        # A WITH stage's CTE -> its ORDER BY, where that orders by columns the stage projects:
+        # a collect() over its rows collects in that order (_order_collects).
+        self._stage_orders: dict[str, list[tuple[str, bool]] | None] = {}
+        # REQ-2173: a $param a client gives a temporal value -> its kind, and the zone it names
+        self._param_kinds: dict[str, str] = {}
+        self._param_zones: dict[str, str] = {}
+        for _name, _value in params.items():
+            _kind = temporal.value_kind(_value)
+            if _kind is not None:
+                self._param_kinds[temporal.parameter_key(_name)] = _kind
+                _zone = temporal.value_zone(_value)
+                if _zone is not None:
+                    self._param_zones[temporal.parameter_key(_name)] = _zone
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # A path a WITH carries on: one column of its CTE, its path object (WITH p)
+        self._carried_paths: set[str] = set()
+        # An embedded statement's names for the outer nodes it matches (expr_context), and each
+        # one's identity in the outer statement it is tied to
+        self._drawn_vars: set[str] = set()
+        # The comprehensions read one row per item so far (expr_context.resolve_element_rows)
+        self._element_row_count = 0
+        self._outer_identities: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: a walk's path variable -> its start's and end's identities (path_walk, path_functions)
+        self._walk_paths: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-751: a session walk's path or relationship variable -> the walk's trail, its nodes'
+        # and its relationships' lists (path_walk)
+        self._walk_trails: dict[str, tuple[exp.Expression, exp.Expression]] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # REQ-348: the node unions that name each node's graph identity (translator_union)
+        self._graph_id_unions: set[str] = set()
+        # REQ-2176: each union holding a graph session's nodes that names every label of its
+        # node (``__labels``), read by labels().
+        self._labels_unions: set[str] = set()
         # path_var → (step_nodes, step_edges) for flat-JOIN paths
         self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source
@@ -243,6 +935,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._alternation_types: dict[int, dict[str, str]] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
+        self._optional_rel_vars: set[str] = set()
+        self._rel_var_matched: dict[str, exp.Expression] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        self._held_end_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # REQ-1586: relationship variable → (junction alias, JunctionMapping) for a junction-backed
         # edge. This is what makes the junction row's columns reachable as the relationship's
         # attributes — in RETURN r, in r.attr expressions, and in a WHERE on r.attr.
@@ -264,6 +959,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         self._all_rels_node_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
+        # A union column -> the subquery, or the WITH, that gives it: a statement may read several
+        # unions of every relationship (translator_every_rel).
+        self._all_rels_var_alias: dict[str, str] = {}
+        # The labels each end of a read of every relationship may be, and its relationships
+        # (translator_union._build_all_rels_union).
+        self._all_rels_ends: dict[str, list[str]] = {}
+        self._all_rels_mappings: list = []
         # column names in the all-rels subquery for src node, rel, tgt node JSON objects
         self._all_rels_src_col: str | None = None
         self._all_rels_rel_col: str | None = None
@@ -286,14 +988,22 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         all_matches = [
             _from_carried(m, self._cte_sources) for step in match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where, optional_wheres = _steps_where(match_steps)
+        held: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
+            held = list(self._held_end_conditions)
+            from_clause, joins = _optional_start(
+                from_clause, list(joins), all_matches, carried, self._lateral_bound
+            )
             joins = self._beside_carried_rows(from_clause, list(joins), carried)
+            if unwinds:
+                _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
+                joins.extend(uw_joins)
+        elif carried is not None:
+            # A WITH right after a WITH goes on from the rows that WITH carries (#288).
+            from_clause = exp.Table(this=exp.Identifier(this=carried))
+            joins = []
             if unwinds:
                 _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
                 joins.extend(uw_joins)
@@ -301,47 +1011,149 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
             assert from_clause is not None
         else:
-            raise CypherTranslateError("Pipeline segment has no data source")
+            # A WITH that reads no pattern (WITH 1 AS x): one row, read from no table.
+            from_clause, joins = None, []
+        if from_clause is not None:
+            from_clause, joins = self._expose_split_nodes(from_clause, joins)
 
         select_exprs = self._build_with_select_items(with_clause.items)
+        if carried is not None and not all_matches:
+            _order_collects(select_exprs, carried, self._stage_orders.get(carried))
         where_expr = self._build_where(stage_where)
-        if where_expr and stage_where is not None:
-            joins, where_expr = _fold_where_into_optional_joins(
-                where_expr, _optional_vars(all_matches), stage_where.expression, joins
-            )
+        for step_vars, owned in optional_wheres:
+            step_vars = self._step_aliases(step_vars)
+            if owned is not None:
+                joins, kept = _fold_where_into_optional_joins(
+                    self._lower_where(owned), step_vars, joins
+                )
+                where_expr = _and(where_expr, kept)
+            joins = _optional_step_matches_whole(joins, step_vars)
+        before_with = _reads_before_with(with_clause)
+        aggregates = any(_has_aggregate(i.expression) for i in with_clause.items)
+        filters_read_rows = bool(before_with) and not aggregates
+        if filters_read_rows:
+            assert with_clause.where is not None
+            if with_clause.skip is not None or with_clause.limit is not None:
+                # Its WHERE keeps rows after the SKIP/LIMIT picks them, and reads variables only
+                # the rows before them hold.
+                raise CypherTranslateError(
+                    "A WITH with SKIP or LIMIT whose WHERE reads a variable the WITH does not "
+                    f"carry ({', '.join(sorted(before_with))}) is not supported; carry it"
+                )
+            # The WHERE reads the variables before the WITH, so it filters the rows the WITH
+            # reads, a name the WITH gives read as its value. DISTINCT and ORDER BY then act on
+            # the rows it keeps.
+            given = {
+                i.alias: i.expression
+                for i in with_clause.items
+                if i.alias
+                and not (isinstance(i.expression, Variable) and i.expression.name == i.alias)
+            }
+            read_rows = WhereClause(expression=_inlined(with_clause.where.expression, given))
+            where_expr = _and(where_expr, self._lower_where(read_rows))
 
-        stage_query = exp.select(*select_exprs).from_(from_clause)
+        stage_query = exp.select(*select_exprs)
+        if from_clause is not None:
+            stage_query = stage_query.from_(from_clause)
         for join in joins:
             stage_query = stage_query.join(
                 join["table"], on=join["on"], join_type=join["join_type"]
             )
         if where_expr:
             stage_query = stage_query.where(where_expr)
+        for cond in held:
+            stage_query = stage_query.where(cond)
+        if with_clause.distinct:
+            stage_query = stage_query.distinct()
         with_group_exprs = self._build_group_by_for_with(with_clause.items)
         if with_group_exprs:
             stage_query = stage_query.group_by(*with_group_exprs)
         # The WITH's ORDER BY, SKIP and LIMIT pick the rows it carries on, before its WHERE.
-        if with_clause.order_by:
-            stage_query = stage_query.order_by(*self._build_order_by(with_clause.order_by))
+        # Each key that orders nothing (a property no row has, null) is dropped: none may be left.
+        with_orders = (
+            self._build_order_by(with_clause.order_by, with_clause.items)
+            if with_clause.order_by
+            else []
+        )
+        if with_orders:
+            stage_query = stage_query.order_by(*with_orders)
         if with_clause.limit is not None:
-            stage_query = stage_query.limit(with_clause.limit)
+            stage_query = stage_query.limit(self._row_count(with_clause.limit, "LIMIT"))
         if with_clause.skip is not None:
-            stage_query = stage_query.offset(with_clause.skip)
-        if with_clause.where is not None:
+            stage_query = stage_query.offset(self._row_count(with_clause.skip, "SKIP"))
+        if with_clause.where is not None and not filters_read_rows:
             # The WITH's WHERE reads what the WITH carries, which here is the wrapped stage.
-            before = (self._var_table, self._cte_sources)
+            before = (
+                self._var_table,
+                self._cte_sources,
+                self._split_carried,
+                self._union_columns,
+            )
             self._update_var_table_for_with(with_clause.items, "_inner")
             with_where_expr = self._build_where(with_clause.where)
-            self._var_table, self._cte_sources = before
+            exposed = self._split_node_joins()
+            (
+                self._var_table,
+                self._cte_sources,
+                self._split_carried,
+                self._union_columns,
+            ) = before
             if with_where_expr:
-                stage_query = (
-                    exp.select(exp.Star())
-                    .from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
-                    .where(with_where_expr)
+                # The stage's own columns: a carried node read beside them adds its own (#293).
+                star = (
+                    exp.Column(this=exp.Star(), table=exp.to_identifier("_inner"))
+                    if exposed
+                    else exp.Star()
                 )
+                wrapper = exp.select(star)
+                wrapper = wrapper.from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
+                for join in exposed:
+                    wrapper = wrapper.join(join["table"], join_type=join["join_type"])
+                stage_query = wrapper.where(with_where_expr)
 
         cte_name = f"_w{n}"
+        self._stage_orders[cte_name] = _projected_order(with_clause)
         return cte_name, stage_query
+
+    def _split_node_joins(self) -> list[dict]:
+        """Each node a WITH carries beside another, read from its row of the WITH's CTE as a table
+        of its own columns under its own name (#293)."""
+        joins = []
+        for key, (cte, cols) in self._split_carried.items():
+            row = exp.select(
+                *(
+                    exp.alias_(exp.column(f"{key}.{c}", table=cte, quoted=True), c, quoted=True)
+                    for c in cols
+                )
+            )
+            table = exp.alias_(exp.Lateral(this=exp.Subquery(this=row)), alias=key)
+            joins.append({"table": table, "on": None, "join_type": "CROSS"})
+        return joins
+
+    def _expose_split_nodes(
+        self,
+        from_clause: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The segment's FROM with the carried nodes read from their WITH's rows (#293): a pattern
+        starting at one goes on from that WITH's CTE, and each such node is joined, per row, right
+        after it, before any join that reads it."""
+        if not self._split_carried:
+            return from_clause, joins
+        (cte,) = {c for c, _ in self._split_carried.values()}
+        exposed = self._split_node_joins()
+        # The CTE is read once, first: a join of it _beside_carried_rows set after is dropped.
+        rest = [
+            j for j in joins if not (isinstance(j["table"], exp.Table) and j["table"].name == cte)
+        ]
+        if isinstance(from_clause, exp.Table) and from_clause.name in (cte, *self._split_carried):
+            return exp.Table(this=exp.Identifier(this=cte)), [*exposed, *rest]
+        carried = {
+            "table": exp.Table(this=exp.Identifier(this=cte)),
+            "on": None,
+            "join_type": "CROSS",
+        }
+        return from_clause, [carried, *exposed, *rest]
 
     @staticmethod
     def _beside_carried_rows(
@@ -363,26 +1175,50 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if carried in read:
             return joins
         table = exp.Table(this=exp.Identifier(this=carried))
-        return [*joins, {"table": table, "on": None, "join_type": "CROSS"}]
+        beside = {"table": table, "on": None, "join_type": "CROSS"}
+        # Set before the first join whose condition reads its rows ((x:X), (a)-->(b) with a
+        # carried), which an engine binds only once they are joined.
+        first = next(
+            (
+                n
+                for n, j in enumerate(joins)
+                if j.get("on") is not None
+                and any(c.table == carried for c in j["on"].find_all(exp.Column))
+            ),
+            len(joins),
+        )
+        return [*joins[:first], beside, *joins[first:]]
+
+    def _read_parts(self, parts: CypherAST) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """REQ-2135: the rows of ``parts`` as this statement's FROM, each of its columns a variable
+        of the statement."""
+        sql, params, _ = cypher_to_sql(parts, self._lm, self._params)
+        for p in params:
+            if p not in self._param_seen:
+                self._param_order.append(p)
+                self._param_seen.add(p)
+        assert parts.return_clause is not None
+        for item in parts.return_clause.items:
+            assert item.alias is not None
+            self._term_vars[item.alias] = exp.column(item.alias, table="_parts")
+        return cast(exp.Expression, exp.alias_(exp.Subquery(this=sql), alias="_parts"))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _build_final_from(
         self,
         final_match_steps: list,
         final_unwinds: list,
         cte_defs: list[tuple[str, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[exp.Expression | None, list[dict], list[MatchClause], "_StageWheres"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/joins for the final segment.
 
-        Returns (from_clause, joins, all_matches, stage_where).
+        Returns (from_clause, joins, all_matches, its WHEREs as _steps_where gives them).
         """
+        if self._ast.parts is not None:
+            return self._read_parts(self._ast.parts), [], [], _steps_where(final_match_steps)
         all_matches = [
             _from_carried(m, self._cte_sources) for step in final_match_steps for m in step.matches
         ]
-        stage_where: WhereClause | None = None
-        for step in final_match_steps:
-            if step.where is not None:
-                stage_where = step.where
-                break
+        stage_where = _steps_where(final_match_steps)
 
         if not all_matches and not final_unwinds and cte_defs:
             last_cte_name = cte_defs[-1][0]
@@ -401,57 +1237,76 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 joins = list(uw_joins)
         elif all_matches:
             from_clause, joins = self._build_from_joins(all_matches)
-            joins = self._beside_carried_rows(
-                from_clause, list(joins), cte_defs[-1][0] if cte_defs else None
+            carried = cte_defs[-1][0] if cte_defs else None
+            from_clause, joins = _optional_start(
+                from_clause, list(joins), all_matches, carried, self._lateral_bound
             )
+            joins = self._beside_carried_rows(from_clause, list(joins), carried)
             if final_unwinds:
                 _, uw_joins = self._build_unwind_joins(final_unwinds, has_from=True)
                 joins = list(joins) + uw_joins
         else:
-            raise CypherTranslateError("Query has no data source")
+            # A statement that reads no pattern (RETURN 1 + 1): one row, read from no table.
+            return None, [], [], stage_where
 
+        from_clause, joins = self._expose_split_nodes(from_clause, joins)
         return from_clause, joins, all_matches, stage_where
+
+    def _step_aliases(self, step_vars: set[str]) -> set[str]:
+        """The aliases of the joins an OPTIONAL MATCH introducing ``step_vars`` reads: its
+        variables', and each derived table of a hop read from a union of relationships
+        (translator_every_rel) carrying one of them."""
+        held = getattr(self, "_all_rels_var_alias", {})
+        return set(step_vars) | {alias for col, alias in held.items() if col in step_vars}
 
     def _apply_where_and_fold(
         self,
-        stage_where: "WhereClause | None",
-        all_matches: list[MatchClause],
+        stage_where: "_StageWheres",
         joins: list[dict],
     ) -> tuple["exp.Expression | None", list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Build WHERE and fold optional-join conditions.
+        """Build the WHERE of the MATCHes and fold each OPTIONAL MATCH's own WHERE into its join.
 
-        Also updates self._extra_path_branches with folded WHERE.
+        Also updates self._extra_path_branches with the folded joins.
         """
-        where_expr = self._build_where(stage_where)
-        if where_expr and stage_where is not None:
-            opt_vars = _optional_vars(all_matches)
-            joins, where_expr = _fold_where_into_optional_joins(
-                where_expr, opt_vars, stage_where.expression, joins
-            )
-            raw_where = self._build_where(stage_where)
-            if raw_where is not None:
+        required, optional_wheres = stage_where
+        where_expr = self._build_where(required)
+        for step_vars, owned in optional_wheres:
+            step_vars = self._step_aliases(step_vars)
+            if owned is not None:
+                joins, kept = _fold_where_into_optional_joins(
+                    self._lower_where(owned), step_vars, joins
+                )
+                where_expr = _and(where_expr, kept)
                 self._extra_path_branches = [
                     (
                         bf,
                         _fold_where_into_optional_joins(
-                            _of_branch(raw_where, types), opt_vars, stage_where.expression, bj
+                            _of_branch(self._lower_where(owned), types), step_vars, bj
                         )[0],
                         bps,
                         types,
                     )
                     for bf, bj, bps, types in self._extra_path_branches
                 ]
+            joins = _optional_step_matches_whole(joins, step_vars)
+            self._extra_path_branches = [
+                (bf, _optional_step_matches_whole(bj, step_vars), bps, types)
+                for bf, bj, bps, types in self._extra_path_branches
+            ]
         return where_expr, joins
 
     def _build_main_query(
         self,
-        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        from_clause: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         select_exprs: list["exp.Expr"],
     ) -> "exp.Select":
-        """Assemble the main SELECT query from components."""
-        query = exp.select(*select_exprs).from_(from_clause)
+        """Assemble the main SELECT query from components. ``from_clause`` is None for a statement
+        that reads no pattern: a SELECT with no FROM."""
+        query = exp.select(*select_exprs)
+        if from_clause is not None:
+            query = query.from_(from_clause)
         if self._ast.return_clause and self._ast.return_clause.distinct:
             query = query.distinct()
         for join in joins:
@@ -460,11 +1315,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             query = query.where(where_expr)
         for lat_cond in self._lateral_conditions:
             query = query.where(lat_cond)
+        for held in self._held_end_conditions:
+            query = query.where(held)
         group_exprs = (
             self._build_group_by(self._ast.return_clause) if self._ast.return_clause else []
         )
         if group_exprs:
             query = query.group_by(*group_exprs)
+        if self._ast.return_clause and self._ast.return_clause.having is not None:
+            query = query.having(self._parse_expr(self._ast.return_clause.having))
         return query
 
     def _apply_extra_branches(
@@ -472,8 +1331,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         result: "exp.Select | exp.Union",
         select_exprs: list["exp.Expr"],
         where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict] | None = None,
     ) -> "exp.Select | exp.Union":
-        """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths."""
+        """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths. Each
+        branch is the same rows read another way, so each takes the main query's UNWINDs too;
+        a RETURN DISTINCT is distinct over every branch."""
+        distinct = bool(self._ast.return_clause and self._ast.return_clause.distinct)
+        unwinds = [j for j in joins or [] if isinstance(j["table"], exp.Unnest)]
         for extra_from, extra_joins, extra_path_steps_map, rel_types in self._extra_path_branches:
             branch_select_exprs = []
             for s_expr in select_exprs:
@@ -490,19 +1354,66 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 branch = branch.distinct()
             for j in extra_joins:
                 branch = branch.join(j["table"], on=j["on"], join_type=j["join_type"])
+            for j in unwinds:
+                if not any(j["table"] == held["table"] for held in extra_joins):
+                    branch = branch.join(j["table"].copy(), join_type=j["join_type"])
             if where_expr:
                 branch = branch.where(_of_branch(where_expr, rel_types))
-            result = exp.Union(this=result, expression=branch, distinct=False)
+            result = exp.Union(this=result, expression=branch, distinct=distinct)
         return result
 
+    def _construct_union(
+        self,
+        from_clause: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joins: list[dict],
+        where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        selects: list[list["exp.Expr"]],
+    ) -> "exp.Select | exp.Union":
+        """REQ-2135: a CONSTRUCT's triples, one select per template triple, put together with
+        UNION ALL: the graph is a set, and its writer keeps each triple once."""
+        result: exp.Select | exp.Union | None = None
+        for select_exprs in selects:
+            query = self._build_main_query(
+                from_clause.copy() if from_clause is not None else None,
+                [{**j, "table": j["table"].copy(), "on": j["on"].copy()} for j in joins],
+                where_expr.copy() if where_expr is not None else None,
+                select_exprs,
+            )
+            result = (
+                query
+                if result is None
+                else exp.Union(this=result, expression=query, distinct=False)
+            )
+        assert result is not None
+        return result
+
+    def _cut_column(self) -> "exp.Expr":
+        """REQ-2135: 1 when any path bounded by the depth limit was cut there, else 0."""
+        cut = self._cut_checks[0]
+        for check in self._cut_checks[1:]:
+            cut = exp.Or(this=cut, expression=check)
+        self._graph_vars[CUT_COLUMN] = GraphVarKind.CUT
+        return exp.alias_(
+            exp.Case(ifs=[exp.If(this=cut, true=exp.Literal.number(1))]).else_(
+                exp.Literal.number(0)
+            ),
+            alias=CUT_COLUMN,
+        )
+
     def _fold_union_parts(self, result: "exp.Select | exp.Union") -> "exp.Select | exp.Union":
-        """Fold UNION / UNION ALL parts into result."""
+        """Fold UNION / UNION ALL parts into result. A part that carries the cut column and one
+        that does not are made to match: the one without it is never cut (REQ-2135)."""
         for i, (sub_ast, is_all) in enumerate(self._ast.union_parts):
             sub_sql, sub_params, sub_graph_vars = cypher_to_sql(sub_ast, self._lm, self._params)
             for p in sub_params:
                 if p not in self._param_seen:
                     self._param_order.append(p)
                     self._param_seen.add(p)
+            head_cut = CUT_COLUMN in self._graph_vars
+            if CUT_COLUMN in sub_graph_vars and not head_cut:
+                result = _with_uncut_column(result)
+            elif head_cut and CUT_COLUMN not in sub_graph_vars:
+                sub_sql = _with_uncut_column(sub_sql)
             self._graph_vars.update(sub_graph_vars)
             # If the sub-branch has a per-branch LIMIT/SKIP, wrap it in a subquery so
             # the limit applies only to that branch, not the whole union.
@@ -511,6 +1422,8 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                     exp.alias_(exp.Subquery(this=sub_sql), alias=f"_ub{i}")
                 )
             result = exp.Union(this=result, expression=sub_sql, distinct=not is_all)
+        if CUT_COLUMN in self._graph_vars and not all(a for _, a in self._ast.union_parts):
+            result = _cut_across_union(result)
         return result
 
     def _apply_order_limit(
@@ -528,20 +1441,20 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             if order_exprs:
                 outer = outer.order_by(*order_exprs)
             if self._ast.limit is not None:
-                outer = outer.limit(self._ast.limit)
+                outer = outer.limit(self._row_count(self._ast.limit, "LIMIT"))
             if self._ast.skip is not None:
-                outer = outer.offset(self._ast.skip)
+                outer = outer.offset(self._row_count(self._ast.skip, "SKIP"))
             return outer
         if order_exprs:
             result = result.order_by(*order_exprs)
         if self._ast.limit is not None:
-            result = result.limit(self._ast.limit)
+            result = result.limit(self._row_count(self._ast.limit, "LIMIT"))
         if self._ast.skip is not None:
-            result = result.offset(self._ast.skip)
+            result = result.offset(self._row_count(self._ast.skip, "SKIP"))
         return result
 
     def translate(self) -> tuple[exp.Select | exp.Union, list[str], dict[str, GraphVarKind]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        if self._ast.return_clause is None:
+        if self._ast.return_clause is None and self._ast.construct is None:
             raise CypherTranslateError(
                 "Cannot translate a CALL {}-only query directly. "
                 "Use cypher_calls_to_sql_list() instead."
@@ -550,6 +1463,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         refuse_unregistered_relationship_types(self._ast, self._lm)
         segments = self._group_pipeline()
         cte_defs: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        # How many recursive CTEs the statement holds once each stage is built: a stage reads the
+        # walks it made, so each is defined ahead of it.
+        walks_by_stage: list[int] = []
 
         for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
             assert with_clause is not None
@@ -557,6 +1473,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 n, match_steps, unwinds, with_clause, cte_defs[-1][0] if cte_defs else None
             )
             cte_defs.append((cte_name, stage_query))
+            walks_by_stage.append(len(self._recursive_ctes))
             self._update_var_table_for_with(with_clause.items, cte_name)
 
         final_match_steps, final_unwinds, _ = segments[-1]
@@ -567,31 +1484,60 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         lateral_joins = self._translate_correlated_calls(self._ast.call_subqueries)
         joins = list(joins) + lateral_joins
 
-        select_exprs = self._build_select(self._ast.return_clause)
-        where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
+        if self._ast.construct is not None:
+            # REQ-2135: one select list per template triple, over the same matches.
+            selects: list[list[exp.Expr]] = self._construct_selects(self._ast.construct)
+        else:
+            assert self._ast.return_clause is not None
+            selects = [self._build_select(self._ast.return_clause)]
+        if self._cut_checks:
+            cut = self._cut_column()
+            for select_exprs in selects:
+                select_exprs.append(cut.copy())
+        where_expr, joins = self._apply_where_and_fold(stage_where, joins)
 
-        # Short-circuit: if any resolved node's WHERE props are all absent from its schema,
-        # the WHERE is always non-true → force FALSE to avoid scanning any tables.
-        if self._where_is_impossible_for_resolved_nodes():
-            where_expr = exp.false()
-        order_exprs = self._build_order_by(self._ast.order_by)
+        order_exprs = self._build_order_by(
+            self._ast.order_by,
+            self._ast.return_clause.items if self._ast.return_clause is not None else [],
+        )
 
-        query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
-        result: exp.Select | exp.Union = self._apply_extra_branches(query, select_exprs, where_expr)
+        if self._ast.construct is not None:
+            if self._extra_path_branches:
+                raise CypherTranslateError("A CONSTRUCT's pattern has no several-path branch")
+            if not all(is_all for _, is_all in self._ast.union_parts):
+                raise CypherTranslateError("A CONSTRUCT's parts are put together with UNION ALL")
+            result: exp.Select | exp.Union = self._construct_union(
+                from_clause, joins, where_expr, selects
+            )
+        else:
+            select_exprs = selects[0]
+            query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
+            result = self._apply_extra_branches(query, select_exprs, where_expr, joins)
 
-        for cte_name, cte_query in cte_defs:
+        defined = 0
+        for (cte_name, cte_query), made in zip(cte_defs, walks_by_stage, strict=True):
+            for walk_name, walk_expr in self._recursive_ctes[defined:made]:
+                result = result.with_(walk_name, as_=walk_expr, recursive=True)
+            defined = made
             result = result.with_(cte_name, as_=cte_query)
-        for cte_name, cte_expr in self._recursive_ctes:
+        for cte_name, cte_expr in self._recursive_ctes[defined:]:
             result = result.with_(cte_name, as_=cte_expr, recursive=True)
+        if self._recursive_ctes:
+            # The statement's WITH is recursive, whichever of its CTEs came first.
+            result.args["with_"].set("recursive", True)
 
         # If this is the first branch of a UNION ALL and has a per-branch LIMIT/SKIP,
         # apply it to just this branch before folding the union. Without this the limit
         # would be placed on the outer wrapper and constrain the whole union result.
-        if self._ast.union_parts and (self._ast.limit is not None or self._ast.skip is not None):
+        if (
+            self._ast.union_parts
+            and not self._ast.modifiers_of_whole
+            and (self._ast.limit is not None or self._ast.skip is not None)
+        ):
             if self._ast.limit is not None:
-                result = result.limit(self._ast.limit)
+                result = result.limit(self._row_count(self._ast.limit, "LIMIT"))
             if self._ast.skip is not None:
-                result = result.offset(self._ast.skip)
+                result = result.offset(self._row_count(self._ast.skip, "SKIP"))
             result = exp.select(exp.Star()).from_(
                 exp.alias_(exp.Subquery(this=result), alias="_ub_first")
             )
@@ -607,7 +1553,185 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
         result = self._apply_order_limit(result, order_exprs)
         result = self._reconcile_params_with_placeholders(result)
+        self._mark_json_maps(result)
         return result, self._param_order, self._graph_vars
+
+    def _mark_json_maps(self, result: "exp.Select | exp.Union") -> None:
+        """REQ-345: name each returned column that holds map literals, so the answer decodes their
+        JSON-encoded values. A UNION's columns are its first branch's."""
+        select: exp.Expression = result
+        while isinstance(select, exp.Union):
+            select = select.this
+        if not isinstance(select, exp.Select):
+            return
+        element_lists = {
+            (i.alias or i.name).lower()
+            for i in (self._ast.return_clause.items if self._ast.return_clause else [])
+            if self._is_element_list(i.expression)
+        }
+        for projection in select.expressions:
+            name = projection.alias_or_name
+            if not name or name.lower() in self._graph_vars:
+                continue
+            held = projection.this if isinstance(projection, exp.Alias) else projection
+            if name.lower() in element_lists:
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
+            elif _holds_json_maps(projection):
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_MAP
+            elif isinstance(held, exp.Column) and held.name in self._json_list_vars:
+                # A list of several types a WITH carries: each item its JSON.
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
+            elif _is_json_list(projection) or self._lists_union_values(projection):
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_LIST
+            elif _json_valued(projection, self._json_value_vars) == "value":
+                self._graph_vars[name.lower()] = GraphVarKind.JSON_VALUE
+
+    def _is_element_list(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a list of graph elements as their JSON values: collect(x) of a
+        node, relationship or path, or a variable a WITH bound to one."""
+        return self._element_list_kind(expr) is not None
+
+    def _element_list_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path": what the list of graph elements ``expr`` is holds, each its
+        JSON value: collect(x); a session walk's nodes(p) or relationships(p), or its
+        relationship variable (REQ-751); a variable a WITH bound to one; its tail, reverse or
+        slice; or a comprehension over one projecting its elements or a path's end,
+        [x IN collect(p) | head(nodes(x))]. None for any other expression."""
+        from provisa.gql.expr_ast import ListComprehension, Paren, Slice
+
+        while isinstance(expr, Paren):
+            expr = expr.inner
+        if isinstance(expr, Variable):
+            if expr.name in self._walk_trails and expr.name in self._varlen_rel_vars:
+                return "rel"
+            return self._element_list_vars.get(expr.name)
+        if isinstance(expr, Slice):
+            return self._element_list_kind(expr.obj)
+        if isinstance(expr, FunctionCall) and len(expr.args) == 1:
+            arg, fn = expr.args[0], expr.name.lower()
+            if fn in ("relationships", "nodes"):
+                walked = isinstance(arg, Variable) and (
+                    arg.name in self._walk_trails
+                    or arg.name in getattr(self, "_every_rel_paths", {})
+                )
+                if not walked:
+                    return None
+                return "node" if fn == "nodes" else "rel"
+            if fn in ("tail", "reverse"):
+                return self._element_list_kind(arg)
+        if isinstance(expr, ListComprehension):
+            held = self._element_list_kind(expr.source)
+            body = expr.projection
+            if held is None or body is None:
+                return held
+            if isinstance(body, Variable) and body.name == expr.var:
+                return held
+            if (
+                held == "path"
+                and isinstance(body, FunctionCall)
+                and body.name.lower() in ("head", "last")
+                and len(body.args) == 1
+                and isinstance(body.args[0], FunctionCall)
+                and body.args[0].name.lower() in ("nodes", "relationships")
+                and len(body.args[0].args) == 1
+                and isinstance(body.args[0].args[0], Variable)
+                and body.args[0].args[0].name == expr.var
+            ):
+                return "node" if body.args[0].name.lower() == "nodes" else "rel"
+            return None
+        if isinstance(expr, ListLiteral) and expr.items:
+            # [a, b] of nodes (or of relationships, or of paths): each item's JSON value.
+            kinds = {
+                self._element_kind(i.name) if isinstance(i, Variable) else None for i in expr.items
+            }
+            return kinds.pop() if len(kinds) == 1 else None
+        if isinstance(expr, Binary) and expr.op == "+":
+            # [a] + collect(n) + [b]: lists of one kind of element, joined.
+            left, right = self._element_list_kind(expr.left), self._element_list_kind(expr.right)
+            return left if left is not None and left == right else None
+        if not (
+            isinstance(expr, FunctionCall)
+            and expr.name.lower() == "collect"
+            and len(expr.args) == 1
+            and isinstance(expr.args[0], Variable)
+        ):
+            return None
+        return self._element_kind(expr.args[0].name)
+
+    def _element_item_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path": the one graph element ``expr`` is when it is an item of a
+        list of them (nodes[i], head(nodes), last(nodes)) or a variable a WITH bound to one; None
+        for any other expression."""
+        from provisa.gql.expr_ast import Index
+
+        if isinstance(expr, Variable):
+            return self._element_vars.get(expr.name)
+        if isinstance(expr, Index):
+            return self._element_list_kind(expr.obj)
+        if (
+            isinstance(expr, FunctionCall)
+            and len(expr.args) == 1
+            and expr.name.lower() in ("head", "last")
+        ):
+            return self._element_list_kind(expr.args[0])
+        return None
+
+    def _element_kind(self, name: str) -> str | None:
+        """ "node", "rel" or "path": the graph element the variable ``name`` is; None for any
+        other variable."""
+        if self._temporal_context()._element_of(name) is None:
+            return None
+        if name in self._path_vars:
+            return "path"
+        if name in self._rel_var_types or name in self._all_rels_rel_vars:
+            return "rel"
+        return "node"
+
+    def _element_list_types(self, expr: CypherExpr) -> list[str]:
+        """The node types the nodes of the list ``expr`` collects are drawn from, which a
+        property read of one of them takes its type from (union_type)."""
+        from provisa.gql.expr_ast import ListComprehension, Slice
+
+        if isinstance(expr, Variable):
+            return list(self._element_list_labels.get(expr.name, []))
+        if isinstance(expr, Slice):
+            return self._element_list_types(expr.obj)
+        if isinstance(expr, ListLiteral):
+            parts = [self._element_types(i.name) for i in expr.items if isinstance(i, Variable)]
+            return list(dict.fromkeys(t for part in parts for t in part))
+        if isinstance(expr, Binary):
+            parts = [self._element_list_types(expr.left), self._element_list_types(expr.right)]
+            return list(dict.fromkeys(t for part in parts for t in part))
+        if isinstance(expr, ListComprehension):
+            return self._element_list_types(expr.source)
+        if not (
+            isinstance(expr, FunctionCall) and expr.args and isinstance(expr.args[0], Variable)
+        ):
+            return []
+        return self._element_types(expr.args[0].name)
+
+    def _element_types(self, name: str) -> list[str]:
+        """The node types the node ``name`` is drawn from."""
+        from provisa.gql.translator_union import union_labels
+
+        nm = self._var_table.get(name, (name, None))[1]
+        if nm is not None:
+            return [nm.type_name]
+        if name in self._domain_nodes:
+            return union_labels(self._lm, self._domain_nodes[name])
+        return list(self._all_rels_ends.get(name, []))
+
+    def _lists_union_values(self, projection: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Whether ``projection`` is a list of nodes and relationships a read of every
+        relationship holds as their JSON ([n, r, m] of an unlabelled hop), which the answer
+        decodes as a list of maps."""
+        held = self._all_rels_node_vars | self._all_rels_rel_vars
+        e = projection.this if isinstance(projection, exp.Alias) else projection
+        return (
+            isinstance(e, exp.Array)
+            and bool(e.expressions)
+            and all(isinstance(x, exp.Column) and x.name in held for x in e.expressions)
+        )
 
     def _reconcile_params_with_placeholders(
         self,
@@ -615,9 +1739,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
     ) -> "exp.Select | exp.Union":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Drop/renumber ``$N`` params no longer present in the final query.
 
-        The impossible-WHERE short-circuit (``_where_is_impossible_for_resolved_nodes``) replaces
-        the whole WHERE with a literal FALSE, discarding every ``$N`` placeholder that lived inside
-        it while ``self._param_order`` still lists the params those placeholders bound to. Left
+        A rewrite that drops part of the statement (a WHERE folded to a literal) discards every
+        ``$N`` placeholder that lived inside it while ``self._param_order`` still lists the params
+        those placeholders bound to. Left
         alone, the caller's positional ``[parameters.get(name) for name in ordered_params]`` either
         hands the executor more bound values than the query has placeholders for (crash) or, worse,
         shifts every surviving param's value onto the wrong ``$N`` (silent corruption) — so both
@@ -664,15 +1788,15 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
 
     def _group_pipeline(
         self,
-    ) -> list[tuple[list[MatchStep], list[UnwindClause], WithClause | None]]:
+    ) -> list[tuple[list[MatchStep], list[UnwindClause | ProcedureCall], WithClause | None]]:
         segments: list = []
         current_matches: list[MatchStep] = []
-        current_unwinds: list[UnwindClause] = []
+        current_unwinds: list[UnwindClause | ProcedureCall] = []
         for item in self._ast.pipeline:
             if isinstance(item, MatchStep):
                 current_matches.append(item)
-            elif isinstance(item, UnwindClause):
-                current_unwinds.append(item)
+            elif isinstance(item, (UnwindClause, ProcedureCall)):
+                current_unwinds.append(item)  # REQ-2168: a call's rows are a source as UNWIND's
             elif isinstance(item, WithClause):
                 segments.append((list(current_matches), list(current_unwinds), item))
                 current_matches = []
@@ -680,30 +1804,26 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         segments.append((list(current_matches), list(current_unwinds), None))
         return segments
 
-    def _build_unwind_expr(self, expr_text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Parse a Cypher UNWIND source expression into a SQLGlot expression.
+    def _build_unwind_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """An UNWIND source as a SQLGlot expression. In an UNNEST a parameter is the executor's
+        ``$N`` placeholder as a name, which every dialect writes as it is (a parameter node is
+        ``@N`` in some), and a variable is its bare name, resolved by the engine."""
+        if isinstance(expr, Variable):
+            return exp.Column(this=exp.Identifier(this=expr.name, quoted=False))
+        if isinstance(expr, ExprLiteral) and expr.kind == "null":
+            # UNWIND null is no rows, as UNWIND [] is (openCypher).
+            return exp.Array(expressions=[])
 
-        Kept on the text path deliberately: an UNWIND source may be a bare ``$param`` that must survive
-        as the executor placeholder ``$N`` in every dialect (the AST parameter node renders ``@N`` in
-        some engines). The predicate/projection/order paths use the AST lowering (REQ-913)."""
-        text = expr_text.strip()
-        # Cypher list literal [...] → ARRAY[...]
-        if text.startswith("["):
-            text = "ARRAY" + text
-        text = self._rewrite_params_in_expr(text)
-        text = self._rewrite_cte_vars(text)
-        text = self._rewrite_cypher_props(text)
-        text = _rewrite_property_access(text)
-        try:
-            # No dialect: $N executor placeholders must survive as identifiers.
-            return sqlglot.parse_one(text)  # pyright: ignore[reportReturnType]
-        except Exception as exc:
-            # Treating an unparseable UNWIND source as a bare column emits wrong SQL — fail loud.
-            raise ValueError(f"Cannot parse UNWIND source expression {text!r}") from exc
+        def _placeholder(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            if isinstance(node, exp.Parameter):
+                return exp.Column(this=exp.Identifier(this=f"${node.this.this}", quoted=False))
+            return node
+
+        return self._lower_expr(expr).transform(_placeholder)
 
     def _build_unwind_joins(
         self,
-        unwinds: list[UnwindClause],
+        unwinds: list[UnwindClause | ProcedureCall],
         has_from: bool,
     ) -> tuple[exp.Expression | None, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/CROSS JOIN sources for UNWIND clauses.
@@ -714,14 +1834,31 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         from_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         cross_joins: list[dict] = []
         for uw in unwinds:
+            if isinstance(uw, ProcedureCall):  # REQ-2168
+                source = self._procedure_source(uw)
+                if not has_from and from_expr is None:
+                    from_expr = source
+                    has_from = True
+                else:
+                    cross_joins.append({"table": source, "on": None, "join_type": "CROSS"})
+                continue
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
-            # Detect MAP-element arrays: either literal collect({...}) or a variable
-            # assigned from collect({...}) in a preceding WITH clause.
-            raw_rewritten = rewrite_bare_map_literals(uw.expression)
-            if "MAP(ARRAY[" in raw_rewritten or uw.expression.strip() in self._map_array_vars:
+            if _json_valued(array_expr) == "list" or (
+                isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_vars
+            ):
+                self._json_value_vars.add(uw.variable)
+            if isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_lists:
+                self._json_list_vars.add(uw.variable)
+            # Detect MAP-element arrays: a list holding map literals, or a variable assigned from
+            # collect({...}) in a preceding WITH clause.
+            source = uw.expression
+            if any(isinstance(node, MapLiteral) for node in walk(source)) or (
+                isinstance(source, Variable) and source.name in self._map_array_vars
+            ):
                 self._map_unwind_vars.add(uw.variable)
+                self._map_unwind_types[uw.variable] = _map_key_types(source)
             unnest = exp.Unnest(
                 expressions=[array_expr],
                 alias=exp.TableAlias(
@@ -730,12 +1867,93 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                 ),
             )
             self._var_table[uw.variable] = (alias, None)
+            self._unwind_aliases.add(alias)
+            held = self._element_list_kind(uw.expression)
+            if held in ("node", "rel"):
+                # A node or relationship of a collected list: its JSON value, read on as a read
+                # of every relationship holds one (its properties, its identity, a later hop).
+                (self._all_rels_node_vars if held == "node" else self._all_rels_rel_vars).add(
+                    uw.variable
+                )
+                self._passthrough_vars.add(uw.variable)
+                self._all_rels_var_alias[uw.variable] = alias
+                self._all_rels_ends[uw.variable] = self._element_list_types(uw.expression)
+            element = self._temporal_context().temporal_element_kind(uw.expression)
+            if element is not None:
+                self._temporal_kinds[uw.variable] = element
+                zone = self._temporal_context().temporal_element_zone(uw.expression)
+                if zone is not None:
+                    self._temporal_zones[uw.variable] = zone
+            if self._temporal_context().holds_text_items(uw.expression):
+                self._text_vars.add(uw.variable)
+            if self._temporal_context().holds_list_items(uw.expression):
+                self._list_vars.add(uw.variable)
             if not has_from and from_expr is None:
                 from_expr = unnest
                 has_from = True
             else:
                 cross_joins.append({"table": unnest, "on": None, "join_type": "CROSS"})
         return from_expr, cross_joins
+
+    def _call_value(self, arg: CypherExpr, call: ProcedureCall, position: int) -> Any:
+        """A CALL argument's value: a literal, a ``$parameter``'s value, or a list or map of
+        them (``apoc.meta.data({sample: $SAMPLE})``)."""
+        from provisa.gql.expr_ast import ListLiteral, Literal, Parameter
+
+        if isinstance(arg, Literal):
+            return arg.value
+        if isinstance(arg, ListLiteral):
+            return [self._call_value(item, call, position) for item in arg.items]
+        if isinstance(arg, MapLiteral):
+            return {k: self._call_value(v, call, position) for k, v in arg.entries}
+        if isinstance(arg, Parameter):
+            if arg.name not in self._params:
+                raise CypherTranslateError(
+                    f"CALL {call.name}: parameter ${arg.name} (argument {position}) was not supplied"
+                )
+            return self._params[arg.name]
+        raise CypherTranslateError(
+            f"CALL {call.name}: argument {position} is not a value or a $parameter"
+        )
+
+    def _procedure_source(self, call: ProcedureCall) -> exp.Expression:  # REQ-2168
+        """A composed CALL as a source: the marker table function (CALL_MARKER) aliased with the
+        variables it yields, filtered by its WHERE. Each argument's value is written into it, so
+        a statement holding one is translated for its parameters' values."""
+        import json
+
+        alias = f"_call{self._unwind_count}"
+        self._unwind_count += 1
+        variables = [var for _, var in call.yields]
+        table_alias = exp.TableAlias(
+            this=exp.Identifier(this=alias),
+            columns=[exp.Identifier(this=v, quoted=True) for v in variables],
+        )
+        schema = self._lm.schema_procedure(call.name)
+        table: exp.Expression
+        if schema is not None:
+            table = _schema_procedure_rows(call, *schema, table_alias)
+        else:
+            values = [self._call_value(a, call, i + 1) for i, a in enumerate(call.args)]
+            marker = exp.Anonymous(
+                this=CALL_MARKER,
+                expressions=[
+                    exp.Literal.string(call.name),
+                    exp.Literal.string(json.dumps([col for col, _ in call.yields])),
+                    exp.Literal.string(json.dumps(values, default=str)),
+                ],
+            )
+            table = exp.Table(this=marker, alias=table_alias)
+        for var in variables:
+            self._var_table[var] = (alias, None)
+        self._unwind_aliases.add(alias)
+        condition = self._build_where(call.where)
+        if condition is None:
+            return table
+        return exp.Subquery(
+            this=exp.select(exp.Star()).from_(table).where(condition),
+            alias=exp.TableAlias(this=exp.Identifier(this=alias)),
+        )
 
     def _register_node(self, node: "NodePattern") -> None:
         """Register a single node into var_table and domain_nodes if not already present."""
@@ -793,7 +2011,9 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
                     )
                 assert type_label is not None
-                alias = fv or nm.table_name
+                # An anonymous first node is named as every anonymous node is (_node_alias), so a
+                # later anonymous node of its table takes a name of its own (REQ-345).
+                alias = fv or self._node_alias(first_node, nm, as_source=True)
                 return _node_table_expr(nm, alias)
         return None
 
@@ -813,112 +2033,318 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         return None
 
-    def _rewrite_cypher_props(self, text: str) -> str:
-        """Rewrite var.camelProp → var.sql_alias using NodeMapping.properties.
-
-        A property name that resolves on NO node type anywhere in the schema is not a legitimate
-        cross-type mismatch (that case is `_where_is_impossible_for_resolved_nodes`'s job, and is
-        left alone here) — it is an invalid name, most commonly a caller writing the raw physical
-        column name instead of the CQL name REQ-194 requires (`customer_id` instead of
-        `customerId`). Silently leaving such a reference unchanged used to let it slip through as
-        literal (coincidentally valid-looking) SQL text on the SELECT/RETURN side while the
-        separate WHERE-impossible check forced a bogus `WHERE FALSE` for the exact same reference on
-        the WHERE side — two silently-different behaviors for one caller bug, never surfaced as an
-        error (confirmed live, perf-bench duckdb rerun 2026-09-26). Raise loud and immediately
-        instead, at the one place this is actually detected.
-        """
-
-        def _replace(m: re.Match) -> str:
-            var, prop = m.group(1), m.group(2)
-            if var in self._all_rels_rel_vars:
-                return f"JSON_EXTRACT_SCALAR({edge_properties_column(var)}, '$.{prop}')"
-            if var in self._all_rels_node_vars:
-                return f"JSON_EXTRACT_SCALAR({var}, '$.properties.{prop}')"
-            if var in self._map_unwind_vars:
-                return f"JSON_EXTRACT_SCALAR(CAST(element_at({var}, '{prop}') AS JSON), '$')"
-            info = self._var_table.get(var)
-            if info and info[1]:
-                sql_alias = info[1].properties.get(prop)
-                if sql_alias:
-                    return f"{var}.{sql_alias}"
-                if not any(prop in other_nm.properties for other_nm in self._lm.nodes.values()):
-                    raise CypherTranslateError(
-                        f"Unknown property {prop!r} on {var} (type {info[1].type_name!r}) — "
-                        f"Cypher property names follow the configured GQL naming convention"
-                        f"; physical/raw column names are never valid here."
-                    )
-            return m.group(0)
-
-        return re.sub(r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b", _replace, text)
-
-    def _lower_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Lower a Cypher expression to sqlglot via the AST path (REQ-913): parse to a CypherExpr and
-        lower it node-to-node against the translator's traversal state — no text rewriting. Raises on a
-        construct the grammar/context cannot handle, so a gap surfaces loudly instead of degrading."""
+    def _temporal_context(self) -> "TranslatorExprContext":
+        """The context temporal kinds are read in (REQ-2173)."""
         from provisa.gql.expr_context import TranslatorExprContext
-        from provisa.cypher.expr_parser import parse_expression
+
+        return TranslatorExprContext(self)
+
+    def _lower_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Lower an expression tree to sqlglot node-to-node against the translator's traversal state
+        (REQ-913). Raises on a construct the context cannot handle, so a gap surfaces loudly instead
+        of degrading. The tree is the IR's: lowering works on its own copy."""
+        from provisa.gql.expr_context import TranslatorExprContext
         from provisa.gql.expr_visitor import ExprLowering
 
-        node = ExprLowering(TranslatorExprContext(self)).lower(parse_expression(text))
+        node = ExprLowering(TranslatorExprContext(self)).lower(copy.deepcopy(expr))
         return node.transform(_rewrite_cypher_fn_node)
 
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
-        return self._lower_expr(where.expression)
+        return self._lower_where(where)
 
-    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Parse a Cypher expression fragment into a SQLGlot expression via the AST path (REQ-913)."""
-        return self._lower_expr(text)
+    def _lower_where(self, where: WhereClause) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return self._lower_expr(where.expression).transform(_timestamp_literal)
 
-    def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    def _row_count(self, value: int | CypherExpr, clause: str) -> int | exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """SKIP's or LIMIT's count as SQL: a whole number written, or an expression that reads no
+        variable -- a parameter (bound, so the translation serves any value of its type) or one
+        whose value the engine works out, ``toInteger(rand() * 9)`` (the parser refuses one that
+        reads a variable). openCypher's rule: a count is a whole number of 0 or more; a parameter
+        not one is refused here, and a negative one by the engine when its translation is kept."""
+        if isinstance(value, int):
+            return value
+        if isinstance(value, ExprParameter):
+            given = self._params.get(value.name)
+            if isinstance(given, bool) or not isinstance(given, int):
+                raise CypherTranslateError(
+                    f"{clause} ${value.name} is {given!r}: {clause} takes a whole number of 0 or "
+                    "more"
+                )
+            if given < 0:
+                raise CypherTranslateError(
+                    f"{clause} ${value.name} is {given}: {clause} takes a whole number of 0 or more"
+                )
+            return self._lower_expr(value)
+        return exp.cast(self._lower_expr(value), exp.DataType.build("BIGINT"))
+
+    def _parse_expr(self, expr: CypherExpr) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """An expression tree as a SQLGlot expression (REQ-913)."""
+        return self._lower_expr(expr)
+
+    def _build_order_by(
+        self, order_by: list[OrderItem], returned: list[ReturnItem]
+    ) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """``order_by`` as SQL. ``alias.key`` of a map literal the clause names ``alias`` orders by
+        that key's own value: the map's SQL column holds it JSON-encoded."""
+        maps = {
+            r.alias: dict(r.expression.entries)
+            for r in returned
+            if r.alias and isinstance(r.expression, MapLiteral)
+        }
+        # A variable the RETURN names anew (RETURN r AS rel): a property of the name is the
+        # variable's own.
+        renamed = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and isinstance(r.expression, Variable)
+            and r.expression.name != r.alias
+            and r.alias not in self._var_table
+        }
+        # A name the clause gives a value that a variable already has (RETURN n.num AS n): the
+        # ORDER BY reads the value, not the variable, which the engine would bind it to.
+        shadowing = {
+            r.alias: r.expression
+            for r in returned
+            if r.alias
+            and r.alias in self._var_table
+            and not (isinstance(r.expression, Variable) and r.expression.name == r.alias)
+        }
         exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
-            inner = self._parse_expr(item.expression)
-            if item.direction == "DESC":
-                exprs.append(exp.Ordered(this=inner, desc=True))
-            else:
-                exprs.append(exp.Ordered(this=inner, desc=False))
+            target = _inlined(item.expression, shadowing)
+            if (
+                isinstance(target, Property)
+                and isinstance(target.obj, Variable)
+                and target.name in maps.get(target.obj.name, {})
+            ):
+                target = maps[target.obj.name][target.name]
+            elif (
+                isinstance(target, Property)
+                and isinstance(target.obj, Variable)
+                and target.obj.name in renamed
+            ):
+                target = dataclasses.replace(target, obj=renamed[target.obj.name])
+            inner = self._parse_expr(target)
+            if isinstance(inner, exp.Null):
+                # A key null for every row (a property the label has not) orders nothing, and an
+                # engine refuses a literal one.
+                continue
+            if (
+                isinstance(item.expression, Variable)
+                and item.expression.name in self._json_value_vars
+            ):
+                # Values of several types, each its JSON, in openCypher's order (json_order_key).
+                inner = exp.Anonymous(this="json_order_key", expressions=[inner])
+            # Cypher orders null as the largest value: last ascending, first descending.
+            desc = item.direction == "DESC"
+            exprs.append(exp.Ordered(this=inner, desc=desc, nulls_first=desc))
         return exprs
 
-    def _rewrite_cte_vars(self, text: str) -> str:
-        for var in self._cte_sources:
-            sql_alias = self._var_table.get(var, (var, None))[0]
-            if sql_alias != var:
-                text = re.sub(rf"\b{re.escape(var)}\.", f"{sql_alias}.", text)
-        return text
-
-    def _carried_map_keys(self, expr_text: str, alias: str) -> list[exp.Expr]:
+    def _carried_map_keys(self, expr: CypherExpr, alias: str) -> list[exp.Expr]:
         """A map literal the WITH carries as ``alias``: each key's own value as a column of its
-        own, ``"alias.key"``, which ``alias.key`` after the WITH reads -- the value as it is, not
-        its JSON-encoded copy in the map (#287)."""
-        from provisa.cypher.expr_parser import parse_expression
-        from provisa.gql.expr_ast import MapLiteral
-
-        literal = parse_expression(expr_text)
-        if not isinstance(literal, MapLiteral):
+        own, ``"alias.#n"`` by the key's place, which ``alias.key`` after the WITH reads -- the
+        value as it is, not its JSON-encoded copy in the map (#287). Named by place, not by key:
+        an engine folds the case of a name, and name and Name are two keys."""
+        if not isinstance(expr, MapLiteral):
             return []
-        self._map_vars[alias] = {key for key, _value in literal.entries}
-        return [
-            exp.alias_(self._lower_ast(value), f"{alias}.{key}", quoted=True)
-            for key, value in literal.entries
+        # Its values are read where the WITH reads, before it names the map: WITH {second:
+        # m.first} AS m reads the m an earlier WITH carries.
+        columns = [
+            exp.alias_(self._carried_value(value), map_key_column(alias, n), quoted=True)
+            for n, (_key, value) in enumerate(expr.entries)
         ]
+        self._map_vars[alias] = {key: n for n, (key, _value) in enumerate(expr.entries)}
+        self._map_key_maps |= {
+            map_key_column(alias, n)
+            for n, (_key, value) in enumerate(expr.entries)
+            if isinstance(value, MapLiteral)
+        }
+        return columns
 
-    def _lower_ast(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        from provisa.gql.expr_context import TranslatorExprContext
-        from provisa.gql.expr_visitor import ExprLowering
+    def _carried_value(self, value: CypherExpr) -> exp.Expression:
+        """A map's value a WITH carries: a node, relationship or path as its JSON object (as
+        the map holds it), any other value as it is."""
+        if isinstance(value, Variable):
+            element = self._temporal_context().resolve_element_value(value.name)
+            if element is not None:
+                return element
+        return self._lower_expr(value)
 
-        return (
-            ExprLowering(TranslatorExprContext(self)).lower(node).transform(_rewrite_cypher_fn_node)
+    def _is_typed_rel(self, name: str) -> bool:
+        """Whether ``name`` is a relationship a pattern between labelled nodes bound (its type's
+        own join, not a union of every relationship)."""
+        return name in self._rel_var_types and name in self._rel_var_endpoints
+
+    def _typed_rel_value(self, name: str) -> exp.Expression:
+        """The typed relationship ``name`` as the value a union of every relationship carries:
+        its edge object, its ``id`` the union's (its own row's id, else its ends' keys)."""
+        from provisa.gql.select_builder import node_key_text
+
+        src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = self._rel_var_endpoints[name]
+        if is_reversed:
+            src_alias, src_nm, tgt_alias, tgt_nm = tgt_alias, tgt_nm, src_alias, src_nm
+        via = self._rel_var_via.get(name)
+        edge_id: exp.Expression = exp.DPipe(
+            this=exp.DPipe(
+                this=node_key_text(src_alias, src_nm), expression=exp.Literal.string("-")
+            ),
+            expression=node_key_text(tgt_alias, tgt_nm),
         )
+        if via is not None and via[1].identity_column is not None:
+            edge_id = via_column(via[0], via[1].identity_column)
+        edge = self._temporal_context().resolve_graph_element(name)
+        assert isinstance(edge, exp.Anonymous)
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[exp.Literal.string("id"), edge_id, *(e.copy() for e in edge.expressions)],
+        )
+
+    def _is_graph_element(self, name: str) -> bool:
+        """Whether ``name`` is a node, relationship or path of the query."""
+        return self._temporal_context().resolve_element_value(name) is not None
+
+    def _carried_nodes(self, items: list[ReturnItem]) -> dict[str, NodeMapping | None]:
+        """The nodes a WITH carries by their keys, when it carries two or more: each is carried as
+        its own columns, ``<key>.<column>``, so two tables' columns of one name never meet (#293).
+        A node of a union of labels has no one mapping (None): its union's columns."""
+        nodes: dict[str, NodeMapping | None] = {}
+        for item in items:
+            expr = item.expression
+            if isinstance(expr, Variable) and expr.name in self._var_table:
+                meta = self._var_table[expr.name][1]
+                if isinstance(meta, NodeMapping):
+                    nodes[item.alias or expr.name] = meta
+                elif expr.name in self._union_columns:
+                    nodes[item.alias or expr.name] = None
+        # A node held in an earlier WITH's rows beside a value this WITH names again (WITH a,
+        # a.num2 % 3 AS x WITH a, a.num + a.num2 AS x): its row's columns hold the old value too,
+        # so it is carried as its own columns, or the new value would meet the old one's name.
+        held = {
+            self._var_table[i.expression.name][0]
+            for i in items
+            if isinstance(i.expression, Variable)
+            and i.expression.name in self._cte_sources
+            and i.expression.name in self._var_table
+        }
+        shadows = any(
+            i.alias
+            and not (isinstance(i.expression, Variable) and i.expression.name == i.alias)
+            and i.alias in self._var_table
+            and self._var_table[i.alias][0] in held
+            and self._var_table[i.alias][1] is None
+            for i in items
+        )
+        return nodes if len(nodes) > 1 or (nodes and shadows) else {}
+
+    def _carried_columns(self, items: list[ReturnItem]) -> dict[str, list[str]]:
+        """Each node a WITH carries beside another (_carried_nodes), by its key: its columns."""
+        split = self._carried_nodes(items)
+        names = {
+            i.alias or i.expression.name: i.expression.name
+            for i in items
+            if isinstance(i.expression, Variable)
+        }
+        return {
+            key: self._node_columns(nm) if nm is not None else self._union_columns[names[key]]
+            for key, nm in split.items()
+        }
+
+    def _node_columns(self, nm: NodeMapping) -> list[str]:
+        """Every column of ``nm``'s table a later clause can read: its properties, its keys and
+        the join columns of the relationships that reach it."""
+        cols = {*nm.properties.values(), *nm.physical_properties.values(), nm.id_column}
+        cols.update(nm.pk_columns)
+        if is_session_node(nm):
+            # A graph session's node: its graph identity, its identity in an answer and its
+            # labels (REQ-2176).
+            cols.update((GRAPH_ID, IDENTITY_COLUMN, LABELS_COLUMN))
+        rels = [
+            *self._lm.relationships.values(),
+            *(r for rs in self._lm.aliases.values() for r in rs),
+        ]
+        for rel in rels:
+            for end, column, expr in (
+                (rel.source_label, rel.join_source_column, rel.source_expr),
+                (rel.target_label, rel.join_target_column, rel.target_expr),
+            ):
+                if end not in (nm.label, nm.type_name):
+                    continue
+                if expr is not None:
+                    raise CypherTranslateError(
+                        f"A WITH carrying {nm.label} beside another node: its relationship "
+                        f"{rel.rel_type} joins on an expression"
+                    )
+                cols.add(column)
+        return sorted(c for c in cols if c)
 
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
         exprs: list[exp.Expr] = []
+        split = self._carried_columns(items)
         for item in items:
-            expr_text = item.expression.strip()
+            expr = item.expression
             alias = item.alias
-            if _is_bare_variable(expr_text) and expr_text in self._var_table:
+            bare = expr.name if isinstance(expr, Variable) else None
+            if bare is not None and (alias or bare) in split:
+                held_in = self._var_table[bare][0]
+                key = alias or bare
+                exprs.extend(
+                    exp.alias_(exp.column(c, table=held_in, quoted=True), f"{key}.{c}", quoted=True)
+                    for c in split[key]
+                )
+                continue
+            if bare is not None and self._is_union_value(bare):
+                # A node or an edge a union of every relationship carries is its value column (an
+                # edge's own properties beside it), never a table's row.
+                held_in = (
+                    self._var_table[bare][0]
+                    if bare in self._cte_sources
+                    else self._all_rels_var_alias.get(bare, self._all_rels_alias or "_all_rels")
+                )
+                key = alias or bare
+                exprs.append(exp.alias_(exp.column(bare, table=held_in), key, quoted=True))
+                if bare in self._all_rels_rel_vars:
+                    exprs.append(
+                        exp.alias_(
+                            exp.column(edge_properties_column(bare), table=held_in),
+                            edge_properties_column(key),
+                            quoted=True,
+                        )
+                    )
+                continue
+            if bare is not None and self._is_typed_rel(bare):
+                # A relationship between labelled nodes goes on as its value, as one a union of
+                # every relationship carries (its own properties beside it): a later pattern
+                # matches it again by it (translator_every_rel).
+                key = alias or bare
+                value = self._typed_rel_value(bare)
+                exprs.append(exp.alias_(value, key, quoted=True))
+                exprs.append(
+                    exp.alias_(
+                        exp.Anonymous(
+                            this="JSON_EXTRACT",
+                            expressions=[value.copy(), exp.Literal.string("$.properties")],
+                        ),
+                        edge_properties_column(key),
+                        quoted=True,
+                    )
+                )
+                continue
+            if bare is not None and bare in self._path_vars and bare not in self._var_table:
+                # A path goes on as its object, as RETURN p answers it: its nodes and edges are
+                # read here, where the pattern that matched them is in scope.
+                path = self._build_path_object(bare)
+                exprs.append(exp.alias_(path, alias or bare, quoted=True))
+                continue
+            if bare is not None and bare in self._var_table:
+                expr_text = bare
                 held_in, meta = self._var_table[expr_text]
+                if expr_text in self._union_columns:
+                    # A node of a union of labels goes on as its union's columns, read by name.
+                    exprs.append(exp.Column(this=exp.Star(), table=exp.Identifier(this=held_in)))
+                    continue
                 if expr_text in self._cte_sources and meta is None:
                     # A value an earlier WITH carries: one column of that WITH's rows.
                     carried = exp.column(expr_text, table=held_in, quoted=True)
@@ -929,50 +2355,185 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
                         self._map_vars[alias or expr_text] = keys
                         exprs.extend(
                             exp.alias_(
-                                exp.column(f"{expr_text}.{key}", table=held_in, quoted=True),
-                                f"{alias or expr_text}.{key}",
+                                exp.column(
+                                    map_key_column(expr_text, n), table=held_in, quoted=True
+                                ),
+                                map_key_column(alias or expr_text, n),
                                 quoted=True,
                             )
-                            for key in sorted(keys)
+                            for n in sorted(keys.values())
                         )
                     continue
-                tbl_col = exp.Column(
-                    this=exp.Star(),
-                    table=exp.Identifier(this=held_in),
-                )
-                if alias:
-                    exprs.append(exp.alias_(tbl_col, alias))
-                else:
-                    exprs.append(tbl_col)
+                if meta is None and held_in in self._unwind_aliases:
+                    # An UNWIND's or a CALL's variable is one column of its source, not a row.
+                    exprs.append(
+                        exp.alias_(self._parse_expr(expr), alias or expr_text, quoted=True)
+                    )
+                    continue
+                # The node's row goes on as its columns: a new name (WITH a AS b) is the
+                # variable's (_update_var_table_for_with), never an alias of the star, which an
+                # engine reads as one column.
+                exprs.append(exp.Column(this=exp.Star(), table=exp.Identifier(this=held_in)))
             else:
-                parsed = self._parse_expr(expr_text)
+                parsed = self._parse_expr(expr)
                 if alias:
                     exprs.append(exp.alias_(parsed, alias))
-                    exprs.extend(self._carried_map_keys(expr_text, alias))
+                    exprs.extend(self._carried_map_keys(expr, alias))
                 else:
                     exprs.append(parsed)
         return exprs
 
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
+        kinds: dict[str, str] = {}
+        zones: dict[str, str] = {}
+        texts: set[str] = set()
+        lists: set[str] = set()
+        json_lists: set[str] = set()
+        json_list_lists: set[str] = set()
+        json_values: set[str] = set()
+        #: Each relationship between labelled nodes the WITH carries, as its value from here on.
+        typed_carried: set[str] = set()
+        nulls = {
+            i.alias
+            for i in items
+            if i.alias and isinstance(i.expression, ExprLiteral) and i.expression.kind == "null"
+        }
+        bound_params: dict[str, str] = {}
+        for i in items:
+            name = i.alias or (i.expression.name if isinstance(i.expression, Variable) else None)
+            if not name:
+                continue
+            if isinstance(i.expression, ExprParameter):
+                bound_params[name] = i.expression.name
+            elif isinstance(i.expression, Variable) and i.expression.name in self._param_vars:
+                bound_params[name] = self._param_vars[i.expression.name]
+        split = self._carried_nodes(items)
+        self._split_carried = {k: (cte_name, c) for k, c in self._carried_columns(items).items()}
+        carried_paths: set[str] = set()
+        union_columns: dict[str, list[str]] = {}
+        element_lists: dict[str, str] = {}
+        element_types: dict[str, list[str]] = {}
+        element_vars: dict[str, str] = {}
         for item in items:
-            expr_text = item.expression.strip()
-            alias = item.alias
-            key = alias or (
-                _safe_alias(expr_text) if not _is_bare_variable(expr_text) else expr_text
+            name = item.alias or (
+                item.expression.name if isinstance(item.expression, Variable) else None
             )
-            if _is_bare_variable(expr_text) and expr_text in self._var_table:
-                original_meta = self._var_table[expr_text][1]
+            if name and self._temporal_context().is_text(item.expression):
+                texts.add(name)
+            if name and self._temporal_context().is_list(item.expression):
+                lists.add(name)
+            if name and (
+                _is_mixed_list(item.expression, self._json_list_vars, self._is_graph_element)
+                or _comprehends_elements(item.expression)
+            ):
+                json_lists.add(name)
+            if name and _lists_mixed_lists(
+                item.expression, self._json_list_vars, self._json_list_lists, self._is_graph_element
+            ):
+                json_list_lists.add(name)
+            if name and self._temporal_context().is_json_value(item.expression):
+                # A value an item of a list of several types is: its JSON, as the list holds it.
+                json_values.add(name)
+            found = self._temporal_context().temporal_kind(item.expression)
+            if name and found is not None:
+                kinds[name] = found
+                zone = self._temporal_context().temporal_zone(item.expression)
+                if zone is not None:
+                    zones[name] = zone
+            expr = item.expression
+            alias = item.alias
+            bare = expr.name if isinstance(expr, Variable) else None
+            key = alias or (bare if bare is not None else _safe_alias(item.name.strip()))
+            held_kind = self._element_list_kind(expr)
+            if held_kind is not None:
+                element_lists[key] = held_kind
+                element_types[key] = self._element_list_types(expr)
+            one_kind = self._element_item_kind(expr)
+            if one_kind is not None:
+                element_vars[key] = one_kind
+            if bare is not None and bare in self._union_columns:
+                union_columns[key] = self._union_columns[bare]
+            if bare is not None and (bare in self._carried_paths or bare in self._path_vars):
+                # From here on the path is the column its WITH carries, not its pattern.
+                carried_paths.add(key)
+            if key in split:
+                # Read as its own row of the carried columns, under its own name.
+                new_var_table[key] = (key, split[key])
+            elif bare is not None and bare in self._var_table:
+                original_meta = self._var_table[bare][1]
                 new_var_table[key] = (cte_name, original_meta)
-                if expr_text in self._map_array_vars:
+                if bare in self._map_array_vars:
                     self._map_array_vars.add(key)
             else:
                 new_var_table[key] = (cte_name, None)
                 # collect({...}) produces a MAP array — track the alias for UNWIND resolution
-                if re.search(r"\bcollect\s*\(\s*\{", expr_text, re.IGNORECASE) and key:
+                if _collects_maps(expr) and key:
                     self._map_array_vars.add(key)
+        for item in items:
+            bare = item.expression.name if isinstance(item.expression, Variable) else None
+            if bare is not None and self._is_typed_rel(bare):
+                # Carried as its value (_build_with_select_items), read on as a union's edge.
+                key = item.alias or bare
+                self._passthrough_vars.add(key)
+                self._all_rels_rel_vars.add(key)
+                self._all_rels_var_alias[key] = cte_name
+                typed_carried.add(key)
+                # What a property read of it takes its type from (translator_union).
+                rel_type = self._rel_var_types[bare]
+                self._all_rels_mappings.extend(
+                    r
+                    for r in [
+                        *self._lm.relationships.values(),
+                        *(r for rs in self._lm.aliases.values() for r in rs),
+                    ]
+                    if r.rel_type == rel_type and r not in self._all_rels_mappings
+                )
+                continue
+            if bare is None or not self._is_union_value(bare):
+                continue
+            # Read on from the WITH's rows as the value it carries (translator_every_rel).
+            key = item.alias or bare
+            self._passthrough_vars.add(key)
+            if bare in self._all_rels_rel_vars:
+                self._all_rels_rel_vars.add(key)
+            else:
+                self._all_rels_node_vars.add(key)
+                self._all_rels_ends[key] = list(self._all_rels_ends.get(bare, []))
+            self._all_rels_var_alias[key] = cte_name
+        # A relationship between labelled nodes is, after the WITH, the value it carries, or out
+        # of scope: a later pattern naming it binds it anew.
+        for name in [*self._rel_var_types]:
+            if name in typed_carried or name not in new_var_table:
+                self._rel_var_types.pop(name, None)
+                self._rel_var_endpoints.pop(name, None)
+        for path in carried_paths:
+            self._path_vars.pop(path, None)
+        for key in new_var_table:
+            # A name the WITH gives a value of its own (WITH [x IN collect(p) | ...] AS p) is no
+            # longer the path that pattern named.
+            if key not in carried_paths:
+                self._path_vars.pop(key, None)
+        # A relationship or node of a union the WITH does not carry is out of scope after it: a
+        # later MATCH naming it binds it anew (MATCH (me)-[r1]->() WITH me MATCH (me)-[r1]->()).
+        self._all_rels_rel_vars &= set(new_var_table)
+        self._all_rels_node_vars &= set(new_var_table)
+        self._carried_paths = carried_paths
+        self._element_list_vars = element_lists
+        self._element_vars = element_vars
+        self._element_list_labels = element_types
         self._var_table = new_var_table
+        self._union_columns = union_columns
         self._cte_sources = set(new_var_table.keys())
+        self._temporal_kinds = kinds
+        self._temporal_zones = zones
+        self._text_vars = texts
+        self._list_vars = lists
+        self._json_list_vars = json_lists
+        self._json_list_lists = json_list_lists
+        self._json_value_vars = json_values
+        self._null_vars = nulls
+        self._param_vars = bound_params
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
         """Return (type_name_key, domain_label). Raises on ambiguity.
@@ -990,9 +2551,24 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         full_type: list[str] = [label for label in labels if label in self._lm.nodes]
         domain_hits: list[str] = [label for label in labels if label in self._lm.domains]
         table_hits: list[str] = [label for label in labels if label in self._lm.nodes_by_table]
+        known = set(full_type) | set(domain_hits) | set(table_hits)
+        unknown = [label for label in labels if label not in known]
+        if unknown:
+            # REQ-778: a label no table has is the user's mistake -- even beside one that is
+            # known, which would otherwise widen the read to the whole domain.
+            raise unknown_label(unknown[0], self._lm)
 
+        # A domain names its own table: a full type name of another domain's table is no match
+        # for Domain:Table (REQ-2163: Ontology:Person is the Class, Person the model table).
+        if full_type and domain_hits and full_type[0] not in self._lm.domains[domain_hits[0]]:
+            full_type = []
+            table_hits = table_hits or [label for label in labels if label not in self._lm.domains]
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
+            if len(full_type) > 1 and all(is_session_node(self._lm.nodes[t]) for t in full_type):
+                # A graph session's node of several labels: those of its labels' nodes having
+                # them all (REQ-2176).
+                return self._lm.node_of_all(full_type), None
             if len(full_type) > 1:
                 raise CypherTranslateError(
                     f"Ambiguous labels — multiple full type labels: {full_type}"
@@ -1002,7 +2578,11 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         # Domain + table (any order): intersect to get unique type_name
         if domain_hits and table_hits:
             domain_set = set(self._lm.domains[domain_hits[0]])
-            table_set = set(self._lm.nodes_by_table[table_hits[0]])
+            # Every type of the table label, a Class's among them, which keeps no bare label where
+            # a model table has it (label_map, REQ-2163).
+            table_set = set(self._lm.nodes_by_table.get(table_hits[0], ())) | {
+                t for t, nm in self._lm.nodes.items() if nm.table_label == table_hits[0]
+            }
             candidates = domain_set & table_set
             if len(candidates) == 1:
                 return candidates.pop(), domain_hits[0]
@@ -1034,119 +2614,93 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         if domain_hits:
             return None, domain_hits[0]
 
-        raise CypherTranslateError(f"Unknown label(s): {labels}")
+        raise unknown_label(labels[0], self._lm)
+
+    def _referenced_var_props(self, var: str) -> list[str]:
+        """The property names referenced as ``var.prop`` in the statement, in order: in a
+        statement embedded in it (EXISTS { ... }) too, which reads them from this one's row."""
+        return _properties_of(var, _statement_exprs(self._ast))
+
+    def _required_var_props(self, var: str) -> list[str]:
+        """The properties of ``var`` a MATCH's WHERE filters its rows on (_required_properties):
+        a node of a type lacking one of them is never matched. An OPTIONAL MATCH's WHERE removes
+        no row (REQ-347), so it requires none."""
+        wheres = [
+            step.where.expression
+            for step in self._ast.pipeline
+            if isinstance(step, MatchStep)
+            and step.where
+            and not any(m.optional for m in step.matches)
+        ]
+        return _required_properties(var, wheres)
+
+    def _node_as_one_value(self, var: str) -> bool:
+        """Whether ``var`` is a domain node the statement returns, or a WITH carries, bare: each
+        type's arm of its union then carries the node as one JSON value of its own properties, not
+        a column for every property of every type -- beside a column for each property the
+        statement reads."""
+        if var not in self._domain_nodes:
+            return False
+        if var in self._zero_hop_paths().values():
+            # The one node of a path of no hops (MATCH p = (a)): the path's value is the node's.
+            return True
+        if _properties_read(self._ast, var):
+            # keys(n), n[key]: read from the properties its value holds (expr_context).
+            return True
+        items = [i for s in self._ast.pipeline if isinstance(s, WithClause) for i in s.items]
+        if self._ast.return_clause:
+            items.extend(self._ast.return_clause.items)
+        if any(_held_whole(i.expression, var) for i in items):
+            return True
+        # collect(n): a list of the nodes themselves (expr_context._agg_node).
+        return any(
+            isinstance(node, FunctionCall)
+            and node.name.lower() == "collect"
+            and len(node.args) == 1
+            and isinstance(node.args[0], Variable)
+            and node.args[0].name == var
+            for i in items
+            for node in walk(i.expression)
+        )
+
+    def _zero_hop_paths(self) -> dict[str, str]:
+        """Each path of no hops the statement names (MATCH p = (a)), to its one node's variable."""
+        return {
+            m.variable: m.pattern.nodes[0].variable
+            for s in self._ast.pipeline
+            if isinstance(s, MatchStep)
+            for m in s.matches
+            if m.variable
+            and isinstance(m.pattern, PathPattern)
+            and not m.pattern.rels
+            and m.pattern.nodes[0].variable
+        }
 
     def _collect_var_props(self, var: str) -> list[str]:
         """Return ordered list of property names referenced as var.prop in the AST.
 
         When the var appears bare in RETURN (e.g. ``RETURN n``) with no explicit
         property projections, all properties from the domain's node types are
-        included so that the domain union subquery exposes them.
+        included, for a union over its relationships to carry its ends with.
         """
-        pattern = re.compile(rf"\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)")
-        texts: list[str] = []
-        for step in self._ast.pipeline:
-            if isinstance(step, MatchStep) and step.where:
-                texts.append(step.where.expression)
-            elif isinstance(step, WithClause):
-                texts.extend(i.expression for i in step.items)
-                if step.where:
-                    texts.append(step.where.expression)
-        if self._ast.return_clause:
-            texts.extend(i.expression for i in self._ast.return_clause.items)
-        seen: set[str] = set()
-        props: list[str] = []
-        for text in texts:
-            for m in pattern.finditer(text):
-                p = m.group(1)
-                if p not in seen:
-                    props.append(p)
-                    seen.add(p)
-
-        # If var is returned bare (RETURN n) and is a domain node, include all
-        # domain properties so the union subquery exposes them for JSON serialization.
-        if not props and var in self._domain_nodes and self._ast.return_clause:
-            bare_pattern = re.compile(rf"^\s*{re.escape(var)}\s*$")
-            is_bare = any(
-                bare_pattern.match(item.expression) for item in self._ast.return_clause.items
+        props = self._referenced_var_props(var)
+        returned_bare = self._ast.return_clause is not None and any(
+            isinstance(item.expression, Variable) and item.expression.name == var
+            for item in self._ast.return_clause.items
+        )
+        if var in self._domain_nodes and returned_bare and not props:
+            domain = self._domain_nodes[var]
+            type_labels = (
+                list(self._lm.nodes.keys())
+                if domain == "__all__"
+                else self._lm.domains.get(domain, [])
             )
-            if is_bare:
-                domain = self._domain_nodes[var]
-                type_labels = (
-                    list(self._lm.nodes.keys())
-                    if domain == "__all__"
-                    else self._lm.domains.get(domain, [])
-                )
-                _reserved = {"id", "label"}
-                all_props: set[str] = set()
-                for label in type_labels:
-                    nm = self._lm.nodes.get(label)
-                    if nm:
-                        all_props.update(k for k in nm.properties.keys() if k not in _reserved)
-                props = sorted(all_props)
+            _reserved = {"id", "label"}
+            all_props: set[str] = set()
+            for label in type_labels:
+                nm = self._lm.nodes.get(label)
+                if nm:
+                    all_props.update(k for k in nm.properties.keys() if k not in _reserved)
+            props = sorted(all_props)
 
         return props
-
-    def _collect_where_only_props(self, var: str) -> list[str]:
-        """Return property names referenced as var.prop in WHERE clauses only (not RETURN/WITH)."""
-        pattern = re.compile(rf"\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)")
-        seen: set[str] = set()
-        props: list[str] = []
-        for step in self._ast.pipeline:
-            if isinstance(step, MatchStep) and step.where:
-                for m in pattern.finditer(step.where.expression):
-                    p = m.group(1)
-                    if p not in seen:
-                        props.append(p)
-                        seen.add(p)
-            elif isinstance(step, WithClause) and step.where:
-                for m in pattern.finditer(step.where.expression):
-                    p = m.group(1)
-                    if p not in seen:
-                        props.append(p)
-                        seen.add(p)
-        return props
-
-    def _where_is_impossible_for_resolved_nodes(self) -> bool:
-        """Return True if any resolved node variable's WHERE props are ALL missing from its type.
-
-        When a property referenced in WHERE doesn't exist on the resolved node type, every
-        access returns NULL.  If *all* WHERE props for a variable are missing, the WHERE
-        condition on that variable is always non-true (NULL comparisons), so the result is
-        zero rows regardless of query structure — we can skip the engine round-trip.
-
-        This check is skipped for domain-union / passthrough vars because those are already
-        pruned per-branch inside _build_domain_union.
-
-        `nm.properties` is keyed by the CQL property name (GQL-convention-derived, e.g. camelCase
-        `customerId` under apollo_graphql — REQ-194: CQL derives from GQL, physical column names are
-        never client-facing in ANY query language, Cypher included). A WHERE reference written in the
-        raw physical casing (`customer_id`) is a caller bug, not a valid alternate spelling — it is
-        correctly treated as nonexistent here. (2026-09-26: do not "fix" this by also accepting
-        `nm.properties.values()` — that was tried and reverted; it would make the compiler silently
-        tolerate a naming-authority violation instead of surfacing it. The actual bug was
-        demo/named/perf/bench/queries.py's Cypher text using physical names; fix the query text via
-        the naming authority, never the compiler's naming enforcement.)
-        """
-        for var, (_, nm) in self._var_table.items():
-            if nm is None:
-                continue
-            if var in self._domain_nodes or var in self._passthrough_vars:
-                continue
-            where_props = self._collect_where_only_props(var)
-            if where_props and not any(nm.properties.get(p) for p in where_props):
-                return True
-        return False
-
-    def _rewrite_params_in_expr(self, text: str) -> str:
-        """Replace $name with positional $N."""
-
-        def _replace(m: re.Match) -> str:
-            name = m.group(1)
-            if name not in self._param_seen:
-                self._param_order.append(name)
-                self._param_seen.add(name)
-            idx = self._param_order.index(name) + 1
-            return f"${idx}"
-
-        return re.sub(r"\$([A-Za-z_]\w*)", _replace, text)

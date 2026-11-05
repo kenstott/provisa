@@ -65,6 +65,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 import {
   ASKAMERICA_SERVING_BUDGET_MS,
   openRegisterForm,
@@ -72,8 +73,10 @@ import {
   pickSchemaAndTable,
   registerOfferedTable,
   runSqlOnPage,
+  saveRegistration,
   setSourceCacheTtl,
   submitRegisterAndExpectListed,
+  fillCheckerConnection,
   submitSourceAndExpectListed,
   waitForSourceServing,
 } from "./source-to-query-helpers";
@@ -158,6 +161,20 @@ test.describe("google_sheets: source to query through the UI (REQ-1742)", () => 
 test.describe("govdata: source to query through the UI (REQ-1742)", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
+  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
+  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
+  // outcome.
+  let created: string | undefined;
+  test.afterEach(async ({ page }) => {
+    if (created === undefined) return;
+    const id = created;
+    created = undefined;
+    await deleteSourceAndItsTables(async (query, variables) => {
+      const res = await page.request.post("/admin/graphql", { data: { query, variables } });
+      return res.json();
+    }, id);
+  });
+
   test("add the source, register a weather table, query it on the SQL page", async ({ page }) => {
     test.skip(
       !apiKey,
@@ -178,6 +195,7 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
     test.setTimeout(ASKAMERICA_SERVING_BUDGET_MS + 300000);
     const stamp = Date.now();
     const sourceId = `e2e_govdata_${stamp}`;
+    created = sourceId;
 
     // 1. Sources form — one data subject checked (Weather), API key filled
     await openSourcesForm(page);
@@ -301,11 +319,12 @@ for (const c of [
       const sourceId = `e2e_${c.type}_${stamp}`;
       const resultsTable = `e2e_${c.type}_vets_scan_${stamp}`;
 
-      // 1. Sources form — a checker source needs no connection fields at all (dq/contract.py: the
-      // dataset/contract carries everything the scan needs; NO_CONNECTION_TYPES, constants.ts).
+      // 1. Sources form — a checker source's connection is the pgwire endpoint its scans dial
+      // back through, entered like any database's (#276).
       await openSourcesForm(page);
       await page.getByTestId("sources-id-input").fill(sourceId);
       await page.getByTestId("sources-type-select").selectOption(c.type);
+      await fillCheckerConnection(page);
       await submitSourceAndExpectListed(page, sourceId);
 
       // 2. Register Table form — a checker source has no schema/table picker, only the DQ
@@ -364,7 +383,9 @@ for (const c of [
       expect(dryRunBody.data.dryRunDqContract.success, JSON.stringify(dryRunBody)).toBe(true);
       await expect(page.getByTestId("dq-dry-run-result")).toBeVisible({ timeout: 30000 });
       const outcomeBadge = page.getByTestId("dq-dry-run-result").locator(".mantine-Badge-root");
-      await expect(outcomeBadge.first()).toBeVisible();
+      // A dry run that could not scan says why in the result; the failure names it.
+      const said = await page.getByTestId("dq-dry-run-result").innerText();
+      await expect(outcomeBadge.first(), `the dry run answered: ${said}`).toBeVisible();
       await expect(outcomeBadge.first()).toHaveText(/pass|fail/);
 
       // Complete the registration too — the results table lands in the tables list carrying the
@@ -373,9 +394,14 @@ for (const c of [
       await page.getByTestId("register-table-dq-scan-interval").fill("3600");
       await page.getByTestId("register-table-submit").click();
       // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-      await page.getByTestId("table-edit-save").click();
+      await saveRegistration(page);
       // Registered under its result relation's name, <name>_<source>_dq (REQ-1443).
       const relation = `${resultsTable}_${sourceId.replaceAll("-", "_")}_dq`;
+      // The list shows 50 rows a page and every spec before this one has added tables, so the new
+      // one can be on any page: filter the list to it.
+      await page
+        .getByRole("searchbox", { name: /Filter by source, domain, or table/ })
+        .fill(relation);
       const badge = page.getByTestId(`tables-checker-${relation}`);
       await expect(badge).toBeVisible({ timeout: 20000 });
       await expect(badge).toHaveText(c.checker);

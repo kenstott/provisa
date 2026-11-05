@@ -4,10 +4,17 @@
     "tabHistory": "Geschiedenis",
     "tabFavorites": "Favorieten",
     "tabExport": "Exporteren naar Neo4j",
+    "tabExportSparql": "RDF of SPARQL-resultaten exporteren",
     "domainLabels": "Domeinlabels",
     "nodeLabels": "Knooplabels",
     "relationshipTypes": "Relatietypen",
     "propertyKeys": "Eigenschapssleutels",
+    "session": "Sessie",
+    "sessionFailed": "De sessie kon niet worden gelezen: {{error}}",
+    "sessionEmpty": "In deze sessie is niets aangemaakt.",
+    "sessionClear": "Sessie wissen",
+    "sessionLabelTip": "{{nodes}} knooppunten in de sessie, {{tagged}} modelknooppunten getagd",
+    "sessionTypeTip": "{{count}} relaties in de sessie",
     "loading": "Laden…",
     "noLabelsFound": "Geen labels gevonden",
     "noRelTypesFound": "Geen relatietypen gevonden",
@@ -30,6 +37,8 @@
     "tabSettings": "Weergave-instellingen",
     "maxNodes": "Max. knooppunten",
     "maxNodesHint": "Het maximale aantal knooppunten dat een query tekent",
-    "notCounted": "Niet geteld: {{list}}"
+    "notCounted": "Niet geteld: {{list}}",
+    "countsFailed": "Aantallen niet beschikbaar: {{error}}",
+    "schemaFailed": "Schema niet beschikbaar: {{error}}"
   }
 }

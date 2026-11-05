@@ -738,6 +738,7 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 | `mvRefreshInterval` | Sekunden zwischen Aktualisierungen |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Inkrementelle Wartung |
+| `mvHoldOnFailingChecks` | Bei fehlschlagenden Prüfungen anhalten: Eine Aktualisierung wird abgebrochen, und die Sicht behält ihre vorherige Kopie, solange eine Prüftabelle, die eine ihrer Eingaben prüft, bei ihrem letzten Lauf fehlgeschlagen ist |
 | `businessKey` | Spalten, die über alle Versionen hinweg dasselbe Ding bezeichnen; deklariert mit `validTime` und `recordedTime`, alle drei oder keine |
 | `validTime` | Spalte mit dem Datum, das das Unternehmen dem Datensatz gibt |
 | `recordedTime` | Spalte mit dem Zeitpunkt, zu dem diese Version erfasst oder geändert wurde |

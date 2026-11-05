@@ -738,6 +738,7 @@ La entrada central de registro de tablas. Campos clave más allá de lo básico:
 | `mvRefreshInterval` | Segundos entre actualizaciones |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Mantenimiento incremental |
+| `mvHoldOnFailingChecks` | Retener si fallan las comprobaciones: se cancela una actualización, y la vista conserva su copia anterior, mientras una tabla de comprobación que analiza una de sus entradas haya fallado en su última ejecución |
 | `businessKey` | Columnas que identifican la misma cosa entre versiones; se declara con `validTime` y `recordedTime`, las tres o ninguna |
 | `validTime` | Columna con la fecha que el negocio da al registro |
 | `recordedTime` | Columna con el momento en que se introdujo o modificó esta versión |

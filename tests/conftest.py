@@ -61,6 +61,10 @@ os.environ["PROVISA_LICENSING_SANDBOX_DIR"] = os.path.join(
     os.environ["PROVISA_DATA_DIR"], "licensing"
 )
 os.makedirs(os.environ["PROVISA_LICENSING_SANDBOX_DIR"], exist_ok=True)
+# The telemetry folder, where a native engine lands its traces, defaults to ~/.provisa/telemetry
+# whatever PROVISA_HOME says when PROVISA_TELEMETRY_DIR is exported for local-dev in the calling
+# shell. Forced, for the same reasons as PROVISA_DATA_DIR; a server a test spawns names its own.
+os.environ["PROVISA_TELEMETRY_DIR"] = os.path.join(os.environ["PROVISA_DATA_DIR"], "telemetry")
 # The trial clock too: pinned to the session's start, so no test changes behaviour on the date
 # the developer's machine was first seen (provisa/licensing/anchors.py _pinned_first_seen). A
 # test that needs the post-trial notice pins an earlier date for its own server.
@@ -238,9 +242,9 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     # S3-backed Hive: the metastore plus the core MinIO (reused) hold the table data on s3a://.
     "requires_hive_s3": ["hive-s3-metastore"],
     # REQ-1069 metadata-export targets. Marquez brings its own Postgres; OpenMetadata brings its
-    # own MySQL and reuses the core-stack Elasticsearch for search.
+    # own MySQL and its own Elasticsearch 9 (docker-compose.test.yml says why).
     "requires_marquez": ["marquez-db", "marquez"],
-    "requires_openmetadata": ["openmetadata-db", "elasticsearch", "openmetadata"],
+    "requires_openmetadata": ["openmetadata-db", "openmetadata-search", "openmetadata"],
     # Atlas embeds its own HBase and Solr, so the one service is the whole target.
     "requires_atlas": ["atlas"],
     # REQ-2119: GMS starts after its one-shot setup jobs, which compose runs as its dependencies
@@ -282,7 +286,7 @@ _HEAVY_MARKERS = frozenset(
         "requires_druid",
         "requires_hive",
         "requires_airport",
-        # A 1G JVM plus MySQL plus the Elasticsearch cluster. Session-provisioning it would leave
+        # A 1G JVM plus MySQL plus its own Elasticsearch. Session-provisioning it would leave
         # that resident for every unrelated integration test in the run.
         "requires_openmetadata",
         # An embedded HBase, an embedded Solr and the Atlas JVM in one container.
@@ -873,6 +877,34 @@ def _dump_service_diagnostics(services: list[str]) -> None:
         print(f"[conftest] {service} logs:\n{logs.stdout}{logs.stderr}")
 
 
+def _named_volumes(services: list[str]) -> list[str]:
+    """The named volumes ``services`` mount, by their project-qualified names.
+
+    ``rm -v`` drops a container's anonymous volumes only; a named one (mariadb's data directory)
+    outlives it, so a retry that is meant to be a cold boot would start on whatever the failed boot
+    left behind -- a data directory whose initialisation was cut off, which the next boot takes as
+    initialised (observed: mariadb's healthcheck user never created, every retry refused).
+    """
+    config = subprocess.run(
+        ["docker", "compose", *_ITEST_COMPOSE_ARGS, "config", "--format", "json"],
+        cwd=_REPO_ROOT,
+        env=_itest_compose_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    model = json.loads(config.stdout)
+    declared = model.get("volumes") or {}
+    return sorted(
+        {
+            (declared.get(mount["source"]) or {}).get("name", mount["source"])
+            for service in services
+            for mount in (model["services"].get(service) or {}).get("volumes") or []
+            if mount.get("type") == "volume" and mount.get("source")
+        }
+    )
+
+
 @pytest.fixture
 def _heavy_db_service(request):  # pyright: ignore
     """Bring up ONLY this test's heavy engine, then tear it down when the test ends.
@@ -929,13 +961,19 @@ def _heavy_db_service(request):  # pyright: ignore
                 break
             except subprocess.CalledProcessError as exc:
                 last_error = exc
+                # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv`
+                # below then destroys the evidence — on CI that left an exasol boot failure
+                # with no engine log and no healthcheck output at all. Dump both for EVERY failed
+                # attempt before its container goes away: a later attempt's failure can be the
+                # first one's consequence, and only the first one's own log says why it failed.
+                print(f"[conftest] attempt {_attempt + 1} of 3 failed: {exc}")
+                _dump_service_diagnostics(_with_companions(services))
                 # A retry only helps if the next attempt boots a NEW container. `up -d` leaves an
                 # existing-but-unhealthy container in place and re-waits on it, and its healthcheck
                 # retries are already spent — so all three attempts would wait on the same corpse
                 # (observed: atlas unhealthy with FailingStreak 40, embedded ZooKeeper never up).
-                # Destroy the containers and their anonymous volumes so the retry is a cold boot.
-                # Not after the final attempt — _dump_service_diagnostics below needs the failed
-                # container's state and logs still present.
+                # Destroy the containers, their anonymous volumes and the named volumes they mount
+                # so the retry is a cold boot.
                 if _attempt < 2:
                     subprocess.run(
                         [
@@ -950,12 +988,15 @@ def _heavy_db_service(request):  # pyright: ignore
                         env=_itest_compose_env(),
                         check=False,
                     )
+                    volumes = _named_volumes(_with_companions(services))
+                    if volumes:
+                        subprocess.run(
+                            ["docker", "volume", "rm", "-f", *volumes],
+                            cwd=_REPO_ROOT,
+                            env=_itest_compose_env(),
+                            check=True,
+                        )
         if last_error is not None:
-            # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv`
-            # below then destroys the evidence — on CI that left an exasol boot failure
-            # with no engine log and no healthcheck output at all. Dump both before the
-            # container goes away.
-            _dump_service_diagnostics(_with_companions(services))
             raise last_error
         yield
     finally:
@@ -1622,6 +1663,8 @@ def provisa_server(_reserve_flight_port):
         "FLIGHT_PORT": str(_flight_port),
         "PROVISA_CONFIG": _live_cfg,
         "PROVISA_ENCRYPTION_KEY": _master_key_b64(None),
+        # Its own trace folder: it compacts the folder every minute, as every server does.
+        "PROVISA_TELEMETRY_DIR": __import__("tempfile").mkdtemp(prefix="live-server-telemetry-"),
         **_server_coverage_env(),
     }
     # Keep the subprocess's own output. It used to go to DEVNULL, which turned every startup

@@ -136,6 +136,61 @@ async def test_a_view_set_back_to_draft_keeps_its_build_and_its_release_enables_
     assert "big_orders" in state.view_sql_map
 
 
+async def test_a_deleted_view_leaves_no_build_registered(rebuilt, model):
+    """REQ-1918: a view's build is a part of it and goes with it. A view over another, both
+    deleted, leaves neither registered -- a build left reading a view that is gone failed the
+    org's event wiring on every later change."""
+    from sqlalchemy import delete
+
+    from provisa.core.schema_org import registered_tables
+
+    await rebuilt("e2e_mv_a", draft=False)
+    state = await rebuilt("e2e_mv_b", draft=False, view_sql="SELECT id FROM views.e2e_mv_a")
+    assert {m.id for m in state.mv_registry.all()} == {"view-e2e_mv_a", "view-e2e_mv_b"}
+    async with model.acquire() as conn:
+        await conn.execute_core(
+            delete(registered_tables).where(registered_tables.c.table_name == "e2e_mv_b")
+        )
+    state = await rebuilt("e2e_mv_a", draft=False)
+    assert {m.id for m in state.mv_registry.all()} == {"view-e2e_mv_a"}
+    async with model.acquire() as conn:
+        await conn.execute_core(
+            delete(registered_tables).where(registered_tables.c.table_name == "e2e_mv_a")
+        )
+        from provisa.api import app_rebuild
+
+        await app_rebuild._register_user_views_in_state(conn, None, [], [])
+    assert state.mv_registry.all() == []
+    assert "e2e_mv_a" not in state.view_sql_map and "e2e_mv_b" not in state.view_sql_map
+
+
+async def test_a_materialized_view_not_built_from_a_view_survives_whatever_its_id(rebuilt):
+    """What is unregistered is decided by what a build was made from, never by its name: a
+    materialized view declared in the config is no view's build, so a rebuild keeps it, even one
+    whose id reads like a view's."""
+    state = await rebuilt("big_orders", draft=False)
+    declared = MVDefinition(
+        id="view-declared_in_config",
+        source_tables=["orders"],
+        target_catalog="store",
+        target_schema="views",
+        target_table="declared_in_config",
+        sql="SELECT id FROM orders",
+    )
+    state.mv_registry.register(declared)
+    state = await rebuilt("big_orders", draft=False)
+    assert state.mv_registry.get("view-declared_in_config") is declared
+    assert state.mv_registry.get("view-big_orders").view_table == "big_orders"
+
+
+async def test_a_view_no_longer_materialized_has_no_build(rebuilt):
+    state = await rebuilt("big_orders", draft=False)
+    assert state.mv_registry.get("view-big_orders") is not None
+    state = await rebuilt("big_orders", draft=False, materialize=False)
+    assert state.mv_registry.get("view-big_orders") is None
+    assert "big_orders" in state.view_sql_map  # still read, through its SQL
+
+
 async def test_a_draft_view_that_is_not_materialized_has_no_build(rebuilt):
     state = await rebuilt("big_orders", draft=True, materialize=False)
     assert state.mv_registry.get("view-big_orders") is None

@@ -1,0 +1,22 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:vulnerabilities/1-exploited-by-team.graphql",
+  "root_field": "s__viewExploitedInOurCodeGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:vulnerabilities/2-internet-facing-and-exploited.graphql",
+  "root_field": "s__viewExploitedInOurCode"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:vulnerabilities/3-open-alerts-with-their-weaknesses.graphql",
+  "root_field": "s__dependabotAlerts"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:vulnerabilities/4-alerts-by-state.graphql",
+  "root_field": "s__dependabotAlertsGroupBy"
+ }
+]

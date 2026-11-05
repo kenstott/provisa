@@ -19,25 +19,192 @@ in-memory DuckDB catalog tables. Extracted from catalog.py; leaf module.
 from __future__ import annotations
 
 import itertools
+import re
+
+from typing import cast
 
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.core.pg_error import PostgresError
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
     _INTERCEPT_SCHEMAS,
     _KNOWN_SETTINGS,
     _TABLE_MAP,
 )
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
+from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
+from provisa.core.pg_error import from_engine
+from provisa.transpiler import function_macros
+from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
+from provisa.transpiler.pg_functions import typed_calls
+from provisa.transpiler.pg_literals import postgres_literals
+from provisa.transpiler.pg_money import lowered
+from provisa.transpiler.to_char import to_char_for_duckdb
 
 # Monotonic process-lifetime transaction-id counter. Provisa has no real MVCC
 # transaction ids; txid_current() clients only require a stable increasing bigint.
-_TXID_COUNTER = itertools.count(1)
+#: PostgreSQL's FirstNormalTransactionId: xids 1 and 2 are the bootstrap's, always past.
+_TXID_COUNTER = itertools.count(3)
 
 
 def next_txid() -> int:
     """Return the next monotonic bigint transaction id for txid_current()."""
     return next(_TXID_COUNTER)
+
+
+# REQ-2167: what an emulated pg_catalog function answers, in the DuckDB type that is sent as the
+# type PostgreSQL 17 says it returns (catalog_types names the column that type): a count is 0, as
+# where nothing has happened; anything else is NULL, as for a time that never was.
+_DUCKDB_TYPES = {
+    "bigint": "BIGINT",
+    "integer": "INTEGER",
+    "smallint": "SMALLINT",
+    "oid": "UINTEGER",
+    "xid": "UINTEGER",
+    "double precision": "DOUBLE",
+    "real": "FLOAT",
+    "boolean": "BOOLEAN",
+    "timestamp with time zone": "TIMESTAMPTZ",
+    "text": "VARCHAR",
+    "name": "VARCHAR",
+    "inet": "VARCHAR",
+    # A record-returning statistics function (pg_stat_get_activity, ..._archiver, ..._wal):
+    # Provisa has nothing to report, so its answer is a NULL record.
+    "record": "VARCHAR",
+}
+#: A call of a function of the tid type (function_macros).
+_TID_FUNCTION = re.compile(r"\btid\w*\"?\s*\(")
+_COUNTS = frozenset({"BIGINT", "INTEGER", "SMALLINT", "UINTEGER", "DOUBLE", "FLOAT"})
+
+
+# REQ-2167: PostgreSQL subscripts an int2vector or oidvector (pg_index.indkey, indclass, ...) from
+# 0 and any other array from 1; DuckDB's lists are subscripted from 1. A subscript of one of
+# these columns is moved up by one, and array_lower / array_upper (which DuckDB lacks) and
+# generate_subscripts answer as PostgreSQL does for each.
+_VECTOR_COLUMNS = frozenset(
+    name
+    for columns in RELATIONS.values()
+    for name, pg_type, _ in columns
+    if pg_type in ("int2vector", "oidvector")
+)
+
+
+def _is_vector(node: exp.Expr, vectors: frozenset[str] = _VECTOR_COLUMNS) -> bool:
+    while isinstance(node, exp.Paren):
+        node = node.this
+    return isinstance(node, exp.Column) and node.name.lower() in vectors
+
+
+def _vector_names(tree: exp.Expr) -> frozenset[str]:
+    """The vector columns, and the names the statement gives them (pgjdbc reads pg_index.indoption
+    as tmp.I_INDOPTION), however many times renamed."""
+    names = _VECTOR_COLUMNS
+    while True:
+        renamed = names | {
+            alias.alias.lower()
+            for alias in tree.find_all(exp.Alias)
+            if _is_vector(alias.this, names)
+        }
+        if renamed == names:
+            return names
+        names = renamed
+
+
+def _plus_one(node: exp.Expression) -> exp.Expression:
+    return exp.Add(this=exp.Paren(this=node), expression=exp.Literal.number(1))
+
+
+def _from_zero(subscript: exp.Expression) -> exp.Expression:
+    """A vector's subscript (or slice bounds), counted from 0, as the list subscript from 1."""
+    if isinstance(subscript, exp.Slice):
+        return exp.Slice(
+            this=_plus_one(subscript.this) if subscript.this else None,
+            expression=_plus_one(subscript.expression) if subscript.expression else None,
+        )
+    return _plus_one(subscript)
+
+
+def _array_bound(fn: str, array: exp.Expression, vectors: frozenset[str]) -> exp.Expression:
+    """array_lower / array_upper of a one-dimensional array: NULL for an empty one, as in
+    PostgreSQL; else its first or last subscript."""
+    length = exp.Anonymous(this="len", expressions=[array])
+    first = 0 if _is_vector(array, vectors) else 1
+    bound = (
+        exp.Literal.number(first)
+        if fn == "array_lower"
+        else exp.Sub(this=length, expression=exp.Literal.number(1 - first))
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=length.copy(), expression=exp.Literal.number(0)), true=exp.null()
+            )
+        ],
+        default=bound,
+    )
+
+
+def _expandarray_call(node: exp.Expression) -> exp.Anonymous | None:
+    """``information_schema._pg_expandarray(a)`` (a setof (x, n): each element and its ordinal from
+    1), when ``node`` is that call."""
+    while isinstance(node, exp.Paren):
+        node = node.this
+    if isinstance(node, exp.Dot):
+        node = node.expression
+    if isinstance(node, exp.Anonymous) and node.name.lower() == "_pg_expandarray":
+        return node
+    return None
+
+
+def _expanded(array: exp.Expression, field: str) -> exp.Expression:
+    """A field of _pg_expandarray(array): x, each element (unnest), or n, its ordinal from 1
+    (generate_subscripts of the list, which DuckDB counts from 1 for any list)."""
+    if field == "x":
+        return exp.Anonymous(this="unnest", expressions=[array])
+    return exp.Anonymous(this="generate_subscripts", expressions=[array, exp.Literal.number(1)])
+
+
+def _index_column_name(index_oid: exp.Expression, column: exp.Expression) -> exp.Expression:
+    """pg_get_indexdef(index, column, pretty) for a column from 1: that key column's name; for 0,
+    the whole definition, which the catalog does not keep (NULL)."""
+    name = (
+        exp.select(exp.column("attname", table="a"))
+        .from_("_pg_index AS ix")
+        .join(
+            "_pg_attribute AS a",
+            on="a.attrelid = ix.indrelid",
+            join_type="inner",
+        )
+        .where(
+            exp.EQ(
+                this=exp.column("attnum", table="a"),
+                expression=exp.Anonymous(
+                    this="list_extract", expressions=[exp.column("indkey", table="ix"), column]
+                ),
+            )
+        )
+        .where(exp.EQ(this=exp.column("indexrelid", table="ix"), expression=index_oid))
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=column.copy(), expression=exp.Literal.number(0)), true=exp.null()
+            )
+        ],
+        default=exp.Subquery(this=name),
+    )
+
+
+def _emulated(fn: str, untyped: exp.Expression) -> exp.Expression:
+    """The answer of a pg_catalog function Provisa has nothing to report for; ``untyped`` where
+    PostgreSQL's return type has no DuckDB counterpart (a record, or overloads that differ)."""
+    duckdb_type = _DUCKDB_TYPES.get(FUNCTION_RETURNS.get(fn, ""))
+    if duckdb_type is None:
+        return untyped
+    value = exp.Literal.number(0) if duckdb_type in _COUNTS else exp.null()
+    return exp.cast(value, exp.DataType.build(duckdb_type, dialect="duckdb"))
 
 
 # _pg_type.typname stores PG's internal type names (int4, bool, varchar, ...).
@@ -46,6 +213,7 @@ def next_txid() -> int:
 # ischema_names and falls back to NullType — breaking DDL generation — for any
 # name it doesn't recognize, so internal names must be mapped before they reach it.
 _PG_TYPE_DISPLAY_NAMES: dict[str, str] = {
+    "_xml": "xml[]",
     "bool": "boolean",
     "int2": "smallint",
     "int4": "integer",
@@ -120,22 +288,35 @@ def _rewrite_pg_cast(node, _transform):
     """
     import sqlglot.expressions as exp
 
+    from provisa.pgwire.catalog_regs import reg_name, reg_oid, reg_type_of
+
     dtype = node.args.get("to")
     dtype_str = str(dtype).lower() if dtype else ""
+    # A type named in pg_catalog (psql writes ::pg_catalog.regclass) is that type.
+    dtype_str = dtype_str.removeprefix("pg_catalog.")
+    inner_reg = reg_type_of(node.this.to) if isinstance(node.this, exp.Cast) else None
+    if inner_reg is not None and dtype_str in _TEXT_CAST_TYPES:
+        # REQ-2167: a reg* value as text is the name of the object it names.
+        return reg_name(inner_reg, _reg_operand(node.this.this, _transform))
+    if dtype_str in ("regtype", "regnamespace"):
+        # REQ-2167: the oid of the type or schema a name names.
+        return reg_oid(dtype_str, _reg_operand(node.this, _transform))
     if dtype_str in _REG_CAST_TYPES:
-        # `'[schema.]name'::regclass` → unqualified `'name'`. Provisa's synthetic
-        # pg_description stores classoid as the short relation name (e.g.
-        # 'pg_class'), and DataGrip's comment queries filter
-        # `classoid = 'pg_catalog.pg_class'::regclass`. Map the literal to its last
-        # dotted component so the comparison matches — else every table/column
-        # description drops. Non-literal operands (a real oid column, or a call
-        # like pg_get_serial_sequence(...)) pass through untouched by the
-        # top-down walk that got us here — transform explicitly so a rewrite
-        # inside the operand (e.g. pg_get_serial_sequence → NULL) is not lost.
+        # `'[schema.]name'::regclass` is the relation's oid: DataGrip's comment queries filter
+        # `classoid = 'pg_catalog.pg_class'::regclass`, and an oid column compares with an oid.
+        # Another reg type's name literal → unqualified `'name'`. Non-literal operands (a real
+        # oid column, or a call like pg_get_serial_sequence(...)) pass through untouched by the
+        # top-down walk that got us here — transform explicitly so a rewrite inside the operand
+        # (e.g. pg_get_serial_sequence → NULL) is not lost.
         inner = node.this
         if isinstance(inner, exp.Literal) and inner.is_string:
+            if dtype_str == "regclass":
+                return reg_oid("regclass", inner)
             return exp.Literal.string(inner.this.rsplit(".", 1)[-1])
         return inner.transform(_transform)
+    if dtype_str in ("oidvector", "int2vector"):
+        # A vector is an integer list in the catalog DB (REQ-2167).
+        return exp.cast(node.this.transform(_transform), "INTEGER[]")
     if dtype_str in ("oid", "xid", "tid", "cid"):
         # DuckDB has no oid/xid/tid/cid types. Preserve the operand's value by
         # re-casting to BIGINT instead of dropping it — e.g. DataGrip emits
@@ -144,6 +325,14 @@ def _rewrite_pg_cast(node, _transform):
         # BIGINT covers every real catalog oid (< 2^31) and interops with signed
         # columns.
         inner = node.this
+        if (
+            inner_reg is not None
+            and isinstance(inner.this, exp.Literal)
+            and inner.this.is_string
+            and _CATALOG_CLASS_OIDS.get(inner.this.name.rsplit(".", 1)[-1]) is None
+        ):
+            # REQ-2167: the oid of the object a name names, read from the catalog.
+            return reg_oid(inner_reg, inner.this)
         if isinstance(inner, exp.Cast):
             # Chained cast (e.g. 'pg_extension'::regclass::oid): the transform
             # visits this outer cast before the inner one, and sqlglot's
@@ -152,13 +341,13 @@ def _rewrite_pg_cast(node, _transform):
             # are already fully transformed, so no further transform is needed.
             inner = _rewrite_pg_cast(inner, _transform) or inner.transform(_transform)
         elif isinstance(inner, exp.Literal) and inner.is_string:
-            class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
+            class_oid = _CATALOG_CLASS_OIDS.get(inner.name.rsplit(".", 1)[-1])
             if class_oid is not None:
                 return exp.Literal.number(class_oid)
         else:
             inner = inner.transform(_transform)
         if isinstance(inner, exp.Literal) and inner.is_string:
-            class_oid = _CATALOG_CLASS_OIDS.get(inner.this.rsplit(".", 1)[-1])
+            class_oid = _CATALOG_CLASS_OIDS.get(inner.name.rsplit(".", 1)[-1])
             if class_oid is not None:
                 return exp.Literal.number(class_oid)
         return exp.cast(inner, "BIGINT")
@@ -167,29 +356,273 @@ def _rewrite_pg_cast(node, _transform):
     return None
 
 
+#: The text types a reg* value is cast to for its name.
+_TEXT_CAST_TYPES = frozenset({"text", "varchar", "character varying", "name"})
+
+
+def _reg_operand(operand, _transform):
+    """A reg* cast's operand for the catalog: a name as it is written, anything else rewritten."""
+    import sqlglot.expressions as exp
+
+    if isinstance(operand, exp.Literal):
+        return operand
+    return operand.transform(_transform)
+
+
+#: format_type's modifier for a type whose typmod is a length or a precision: the typmod's SQL
+#: (``m``) gives the text after the type's name. A length or a precision and scale is held with
+#: VARHDRSZ (4) added; a time's or a bit string's typmod is the number itself.
+_TYPMOD_TEXT: dict[str, tuple[str, str]] = {
+    "varchar": ("character varying", "'(' || ({m} - 4) || ')'"),
+    "bpchar": ("character", "'(' || ({m} - 4) || ')'"),
+    "numeric": ("numeric", "'(' || (({m} - 4) >> 16) || ',' || (({m} - 4) & 65535) || ')'"),
+    "bit": ("bit", "'(' || {m} || ')'"),
+    "varbit": ("bit varying", "'(' || {m} || ')'"),
+}
+_TIME_TYPMOD_TEXT: dict[str, str] = {
+    "time": "'time(' || {m} || ') without time zone'",
+    "timetz": "'time(' || {m} || ') with time zone'",
+    "timestamp": "'timestamp(' || {m} || ') without time zone'",
+    "timestamptz": "'timestamp(' || {m} || ') with time zone'",
+}
+
+
+def _with_typmod(display_name, typmod):
+    """format_type(type, typmod): the type's name with the modifier its typmod gives (REQ-2167);
+    a negative typmod gives none, except that bpchar is then named bpchar, as PostgreSQL names
+    a character string of no declared length."""
+    import sqlglot
+
+    m = f"({typmod.sql(dialect='duckdb')})"
+    cases = [
+        f"WHEN '{internal}' THEN '{name}' || {suffix.replace('{m}', m)}"
+        for internal, (name, suffix) in _TYPMOD_TEXT.items()
+    ] + [
+        f"WHEN '{internal}' THEN {text.replace('{m}', m)}"
+        for internal, text in _TIME_TYPMOD_TEXT.items()
+    ]
+    shown = display_name.sql(dialect="duckdb")
+    sql = (
+        f"CASE WHEN {m} >= 0 THEN CASE typname {' '.join(cases)} ELSE {shown} END "
+        f"WHEN typname = 'bpchar' THEN 'bpchar' ELSE {shown} END"
+    )
+    return sqlglot.parse_one(sql, read="duckdb")
+
+
+# REQ-2167: the sizes a client asks for, each its PostgreSQL type.
+_SIZES = {
+    "pg_relation_size": "BIGINT",
+    "pg_total_relation_size": "BIGINT",
+    "pg_indexes_size": "BIGINT",
+    "pg_table_size": "BIGINT",
+    "pg_database_size": "BIGINT",
+    "pg_tablespace_size": "BIGINT",
+    "pg_column_size": "INTEGER",
+}
+
+# REQ-2167: the pg_get_ functions the catalog's macros answer (catalog_macros).
+_ANSWERED_BY_MACRO = frozenset(
+    {"pg_get_keywords", "pg_get_replica_identity_index", "pg_get_statisticsobjdef_expressions"}
+)
+
+
+#: The array element types whose literals are strings.
+_TEXT_ELEMENTS = frozenset({"text", "varchar", "name", "bpchar", "aclitem"})
+
+
+#: Whether a statement may hold a literal ``_literal_held`` reads: a cast of a string or an ARRAY.
+_LITERAL_CAST = re.compile(r"'\s*::|'\s+AS\b|\bARRAY\s*\[", re.IGNORECASE)
+
+
+def _element_type(to: exp.DataType) -> str | None:
+    """The name of the element type of array type ``to``: ``int[]``, or PostgreSQL's ``_int``."""
+    if to.is_type(exp.DataType.Type.ARRAY) and to.expressions:
+        element = to.expressions[0]
+        while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+            element = element.expressions[0]
+        return element.sql(dialect="postgres").lower()
+    kind = to.args.get("kind") if to.this == exp.DataType.Type.USERDEFINED else None
+    name = kind.name.lower() if isinstance(kind, exp.Identifier) else ""
+    return name[1:] if name.startswith("_") else None
+
+
+def _array_literal(text: str, element: str) -> exp.Expr:
+    """A '{...}'::type[] literal as a list: its elements strings where the type's are."""
+    elements = [e.strip() for e in text[1:-1].split(",") if e.strip()]
+    if element not in _TEXT_ELEMENTS:
+        return exp.Array(expressions=[sqlglot.parse_one(e, read="postgres") for e in elements])
+    written = [
+        exp.Null() if e.strip('"').upper() == "NULL" else exp.Literal.string(e.strip('"'))
+        for e in elements
+    ]
+    return exp.cast(exp.Array(expressions=written), "TEXT[]", dialect="postgres")
+
+
+def _literal_held(node: exp.Expr, tid_read: bool) -> exp.Expr:
+    """``node`` where it is a literal the catalog DB holds otherwise: '{...}'::type[] as a list,
+    '1 2'::oidvector as its list, '(0,1)'::tid as the integer the catalog holds a tid as (unless
+    a function of the tid type reads its text, ``tid_read``), and ARRAY[...]::type[] the ARRAY."""
+    if not isinstance(node, exp.Cast):
+        return node
+    value, to = node.this, node.to
+    element = _element_type(to)
+    if isinstance(value, exp.Literal) and value.is_string:
+        text = value.this
+        if (
+            element is not None
+            and text.startswith("{")
+            and text.endswith("}")
+            and "}" not in text[1:-1]
+        ):
+            return _array_literal(text, element)
+        if to.sql(dialect="postgres").lower() == "oidvector" and re.fullmatch(r"[\d ]*", text):
+            numbers = [exp.Literal.number(n) for n in text.split()]
+            return exp.cast(exp.Array(expressions=numbers), to.copy())
+        if to.sql(dialect="postgres").lower() == "tid" and not tid_read:
+            if re.fullmatch(r"\(\d+,\d+\)", text):
+                return exp.cast(exp.Literal.number(0), to.copy())
+    if isinstance(value, exp.Array) and element is not None:
+        return value
+    return node
+
+
+def _resolved_regs(node, args: list):
+    """A call of a macro with each 'name'::regclass argument the oid it names: the catalog's
+    own cast keeps a name, for a comparison with a name, and a macro reads an oid."""
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire.catalog_regs import reg_oid, reg_type_of
+
+    def resolved(arg):
+        if not isinstance(arg, exp.Cast):
+            return None
+        reg = reg_type_of(arg.to)
+        if reg is None or not (isinstance(arg.this, exp.Literal) and arg.this.is_string):
+            return None
+        return reg_oid(reg, arg.this)
+
+    oids = [resolved(a) for a in args]
+    if not any(o is not None for o in oids):
+        return node
+    out = node.copy()
+    out.set("expressions", [a if o is None else o for a, o in zip(out.expressions, oids)])
+    return out
+
+
+def _input_answer(fn: str, args: list) -> exp.Expr:
+    """pg_input_is_valid(value, type) or pg_input_error_info(value, type): strict, and the type's
+    input function's verdict; the message is that of a value that does not read as the type."""
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire.catalog_server_answers import input_check, input_failure
+
+    value, type_name = args
+    is_null = isinstance(value, exp.Null) or (
+        isinstance(value, exp.Cast) and isinstance(value.this, exp.Null)
+    )
+    if (
+        is_null
+        or isinstance(type_name, exp.Null)
+        or (isinstance(type_name, exp.Cast) and isinstance(type_name.this, exp.Null))
+    ):
+        return (
+            exp.cast(exp.null(), "BOOLEAN")
+            if fn == "pg_input_is_valid"
+            else sqlglot.parse_one(
+                "CAST(NULL AS STRUCT(message VARCHAR, detail VARCHAR, hint VARCHAR, "
+                "sql_error_code VARCHAR))",
+                read="duckdb",
+            )
+        )
+    check = input_check(value, type_name)
+    if fn == "pg_input_is_valid":
+        return check
+    verdict = check.sql(dialect="duckdb")
+    message, code = input_failure(value, type_name) if isinstance(value, exp.Literal) else ("", "")
+    said = exp.Literal.string(message).sql(dialect="duckdb")
+    return sqlglot.parse_one(
+        f"struct_pack(message := CASE WHEN {verdict} THEN NULL ELSE {said} END, "
+        "detail := CAST(NULL AS VARCHAR), hint := CAST(NULL AS VARCHAR), "
+        f"sql_error_code := CASE WHEN {verdict} THEN NULL ELSE '{code}' END)",
+        read="duckdb",
+    )
+
+
+def _oid_then_star(selected: list[exp.Expr]) -> None:
+    """Each ``x.*`` straight after ``x.oid`` in ``selected``, EXCLUDE (oid)."""
+    for before, star in zip(selected, selected[1:]):
+        if not (isinstance(star, exp.Column) and isinstance(star.this, exp.Star)):
+            continue
+        if isinstance(before, exp.Column) and before.name.lower() == "oid" and before.table:
+            if before.table == star.table and not star.this.args.get("except_"):
+                star.this.set("except_", [exp.column("oid")])
+
+
 def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot.expressions as exp
-    import re as _pre_re
 
-    # Convert PG array literals with type casts to DuckDB array syntax before
-    # sqlglot parses — sqlglot misparses e.g. '{16395}'::oid[] (treats [] as
-    # bracket indexing, not array type), causing a silent fallback to original SQL.
-    # '{a,b,c}'::type[] → [a,b,c]
-    sql = _pre_re.sub(
-        r"'\{([^}]*)\}'::\w+(?:\[\])+",
-        lambda m: "[" + m.group(1) + "]",
-        sql,
-    )
-    # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
-    sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
-
-    try:
+    # REQ-2167: PostgreSQL's array, oidvector and tid literals as the catalog DB holds each, on the
+    # tree: an array literal is its list, and an ARRAY[...] its cast is redundant to.
+    if _LITERAL_CAST.search(sql) is not None:
+        tid_read = _TID_FUNCTION.search(sql) is not None
         tree = sqlglot.parse_one(sql, read="postgres")
-    except Exception:
+        held = tree.transform(lambda node: _literal_held(node, tid_read))
+        sql = sql if held == tree else held.sql(dialect="postgres")
+
+    sql = to_char_for_duckdb(sql)  # REQ-2167
+    sql = lowered(sql, "duckdb")  # REQ-2171: the catalog DB holds money as the engine does
+    try:
+        sql = typed_calls(sql)  # REQ-2167
+        if "::bytea" in sql:
+            sql = postgres_literals(sql)  # REQ-2167: a bytea literal is PostgreSQL's input of it
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except Exception as exc:
+        if from_engine(exc) is not None:
+            raise  # REQ-2167: PostgreSQL's own refusal of the statement, not a failure to rewrite
         return sql
+    vectors = _vector_names(tree)
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if isinstance(node, exp.Dot) and node.expression.name.lower() in ("x", "n"):
+            call = _expandarray_call(node.this)
+            if call is not None:
+                return _expanded(
+                    call.expressions[0].transform(_transform), node.expression.name.lower()
+                )
+        if isinstance(node, exp.Table) and _expandarray_call(node.this) is not None:
+            # information_schema._pg_expandarray(a) [AS e[(x, n)]] in FROM: a lateral derived table.
+            array = node.this.expressions[0].transform(_transform)
+            alias = node.args.get("alias")
+            names = [c.name for c in alias.columns] if alias and alias.columns else ["x", "n"]
+            return exp.Subquery(
+                this=exp.select(
+                    exp.alias_(_expanded(array, "x"), names[0]),
+                    exp.alias_(_expanded(array.copy(), "n"), names[1]),
+                ),
+                alias=exp.TableAlias(
+                    this=exp.Identifier(this=alias.name if alias else "_pg_expandarray")
+                ),
+            )
+        if (
+            isinstance(node, exp.Table)
+            and isinstance(node.this, exp.Func)
+            and not isinstance(node.this, exp.Anonymous)
+            and (node.db or "").lower() in (*_INTERCEPT_SCHEMAS, "")
+        ):
+            # A pg_catalog set-returning function in FROM (psql: FROM pg_catalog.unnest(a) s(n)) is
+            # DuckDB's own function of that name. Aliased without column names, a one-column
+            # function's alias names its column, as in PostgreSQL (DuckDB's names the row).
+            alias = node.args.get("alias")
+            if (
+                alias is not None
+                and not alias.columns
+                and isinstance(node.this, (exp.GenerateSeries, exp.Explode))
+            ):
+                alias = exp.TableAlias(
+                    this=alias.this.copy(), columns=[exp.to_identifier(alias.name)]
+                )
+            return exp.Table(this=node.this.transform(_transform), alias=alias)
         if isinstance(node, exp.Table):
             # Schema-qualified scalar function used as a TVF (e.g. pg_catalog.pg_indexam_has_property(...) amcanorder).
             # Rewrite to a lateral subquery so DuckDB can parse it.
@@ -247,8 +680,37 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                         "alias", exp.TableAlias(this=exp.Identifier(this=name, quoted=False))
                     )
                 return new_tbl
+        if isinstance(node, exp.Bracket) and _is_vector(node.this, vectors):
+            return node.__class__(
+                **{
+                    **node.args,
+                    "this": node.this.transform(_transform),
+                    "expressions": [_from_zero(e.transform(_transform)) for e in node.expressions],
+                }
+            )
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
+            args = node.args.get("expressions", [])
+            if fn in SERVER_ANSWERED or (fn.startswith("reg") and fn.endswith("send")):
+                # REQ-2167: a macro of its own (catalog_server_answers, function_macros).
+                return cast("exp.Expression", _resolved_regs(node, args))
+            if fn == "getpgusername":
+                return exp.Literal.string(role_id)
+            if fn == "system_user":
+                return exp.cast(exp.null(), "VARCHAR")  # no authenticated identity to name
+            if fn in ("pg_input_is_valid", "pg_input_error_info") and len(args) == 2:
+                return cast("exp.Expression", _input_answer(fn, args))
+            first_dimension = len(args) == 2 and args[1] == exp.Literal.number(1)
+            if fn in ("array_lower", "array_upper") and first_dimension:
+                return _array_bound(fn, args[0].transform(_transform), vectors)
+            if fn == "generate_subscripts" and first_dimension and _is_vector(args[0], vectors):
+                return exp.Sub(
+                    this=exp.Anonymous(
+                        this="generate_subscripts",
+                        expressions=[args[0].transform(_transform), exp.Literal.number(1)],
+                    ),
+                    expression=exp.Literal.number(1),
+                )
             if fn == "json_build_object":
                 # DuckDB has no json_build_object; json_object takes the same
                 # alternating key/value argument list.
@@ -260,20 +722,34 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 args = node.args.get("expressions", [])
                 return exp.Anonymous(this="len", expressions=[args[0]] if args else [exp.null()])
             if fn == "current_schemas":
+                # The search path's schemas, pg_catalog first where implicit ones are asked for.
                 args = node.args.get("expressions", [])
-                include_implicit = True
-                if args and isinstance(args[0], exp.Boolean):
-                    include_implicit = args[0].this
-                elif args and isinstance(args[0], exp.false().__class__):
-                    include_implicit = False
-                base = exp.select(
-                    exp.Anonymous(this="list", expressions=[exp.column("nspname")])
-                ).from_("_pg_namespace")
-                if not include_implicit:
-                    base = base.where("nspname NOT IN ('pg_catalog', 'information_schema')")
-                return exp.Subquery(this=base)
+                if not (args and isinstance(args[0], exp.Boolean)):
+                    return exp.cast(exp.null(), "VARCHAR[]")  # strict: a NULL argument
+                schemas = ("pg_catalog", "public") if args[0].this else ("public",)
+                return exp.cast(
+                    exp.Array(expressions=[exp.Literal.string(s) for s in schemas]), "VARCHAR[]"
+                )
             if "pg_get_userbyid" in fn or "pg_get_role_name" in fn:
                 return exp.Literal.string("provisa")
+            if fn == "pg_relation_is_publishable" and len(args) == 1:
+                # REQ-2167: as PostgreSQL answers it: an ordinary or partitioned table outside
+                # pg_catalog and information_schema (psql \d's "Publications" footer).
+                return exp.Exists(
+                    this=exp.select("1")
+                    .from_("_pg_class")
+                    .where(
+                        exp.EQ(
+                            this=exp.column("oid"),
+                            expression=exp.cast(args[0].transform(_transform), "BIGINT"),
+                        )
+                    )
+                    .where(f"relkind IN ('r', 'p') AND relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}")
+                )
+            if fn == "pg_get_indexdef" and len(args) >= 2:
+                return _index_column_name(
+                    args[0].transform(_transform), args[1].transform(_transform)
+                )
             if "pg_get_constraintdef" in fn:
                 # The definition catalog_constraints recorded for the constraint, as PostgreSQL
                 # writes it; the pretty flag changes nothing for a key or a foreign key.
@@ -285,8 +761,20 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     .where(exp.EQ(this=exp.column("oid"), expression=oid_expr))
                 )
                 return exp.Subquery(this=subq)
-            if fn.startswith("pg_get_") or "pg_tablespace_location" in fn:
-                return exp.null()
+            if fn == "pg_get_expr" and len(args) >= 2:
+                # The expression catalog_privileges recorded in adbin, as text; NULL where the
+                # column has none (and for the node trees this catalog never holds).
+                expr = args[0]
+                if (
+                    isinstance(expr, exp.Cast)
+                    and expr.to.sql(dialect="postgres").lower() == "pg_node_tree"
+                ):
+                    expr = expr.this  # the cast names the argument's type; adbin is held as text
+                return exp.cast(expr.transform(_transform), "VARCHAR")
+            if (fn.startswith("pg_get_") and fn not in _ANSWERED_BY_MACRO) or (
+                "pg_tablespace_location" in fn
+            ):
+                return _emulated(fn, exp.null())
             if "pg_encoding_to_char" in fn:
                 return exp.Literal.string("UTF8")
             if "format_type" in fn:
@@ -308,6 +796,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     ],
                     default=exp.column("typname"),
                 )
+                if len(args) > 1 and not isinstance(args[1], exp.Null):
+                    display_name = _with_typmod(display_name, args[1].transform(_transform))
                 subq = (
                     exp.select(display_name)
                     .from_("_pg_type")
@@ -368,20 +858,41 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 or "pg_operator_is_visible" in fn
             ):
                 return exp.true()
-            if (
-                "pg_relation_size" in fn
-                or "pg_total_relation_size" in fn
-                or "pg_indexes_size" in fn
-                or "pg_stat_get" in fn
-            ):
-                return exp.Literal.number(0)
-            if "pg_table_is_visible" in fn or "pg_has_role" in fn:
+            if fn == "pg_size_pretty" and len(args) == 1:
+                # DuckDB's pg_size_pretty takes a BIGINT; a sum of sizes is wider (psql's dP+).
+                return exp.Anonymous(
+                    this="pg_size_pretty",
+                    expressions=[exp.cast(args[0].transform(_transform), "BIGINT")],
+                )
+            if fn in _SIZES:
+                # REQ-2167: Provisa reports no storage; a size is unknown, never a made-up 0.
+                return exp.cast(exp.null(), _SIZES[fn])
+            if "pg_stat_get" in fn:
+                return _emulated(fn, exp.Literal.number(0))
+            if "pg_table_is_visible" in fn and len(args) == 1:
+                # REQ-2167: every relation the catalog holds is visible; an oid naming none is
+                # NULL, as PostgreSQL answers it.
+                return exp.Subquery(
+                    this=exp.select(exp.true())
+                    .from_("_pg_class")
+                    .where(
+                        exp.EQ(
+                            this=exp.column("oid"),
+                            expression=exp.cast(args[0].transform(_transform), "BIGINT"),
+                        )
+                    )
+                )
+            if "pg_has_role" in fn:
                 return exp.true()
             if fn == "encode":
                 # PG encode(bytea, format) → return NULL; our catalog columns are VARCHAR not bytea
                 return exp.null()
+            if fn == "pg_indexam_has_property" and len(args) == 2:
+                # REQ-2167: what each built-in access method declares (src/backend/access/*).
+                from provisa.pgwire.catalog_server_answers import indexam_property
+
+                return cast("exp.Expression", indexam_property(*args))
             if fn in (
-                "pg_indexam_has_property",
                 "pg_am_has_property",
                 "pg_index_has_property",
                 "pg_index_column_has_property",
@@ -394,12 +905,14 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             if fn == "version":
                 return exp.Literal.string("PostgreSQL 14.0 on Provisa")
             if "set_config" in fn:
-                return exp.null()
+                # set_config answers the value it set.
+                args = node.args.get("expressions", [])
+                return args[1].transform(_transform) if len(args) > 1 else exp.null()
             if "current_setting" in fn:
                 args = node.args.get("expressions", [])
                 key = args[0].name.lower() if args and isinstance(args[0], exp.Literal) else ""
                 return exp.Literal.string(_KNOWN_SETTINGS.get(key, ""))
-        if type(node).__name__ == "CurrentUser":
+        if type(node).__name__ in ("CurrentUser", "SessionUser"):
             return exp.Literal.string(role_id)
         if type(node).__name__ == "CurrentDatabase":
             return exp.Literal.string(database)
@@ -410,8 +923,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             left = node.this
             if isinstance(left, exp.Identifier) and left.name.lower() in _INTERCEPT_SCHEMAS:
                 # Re-apply transform to inner node so schema-qualified function calls
-                # like pg_catalog.pg_encoding_to_char(...) are fully handled
-                return _transform(node.expression)
+                # like pg_catalog.pg_encoding_to_char(...) are fully handled, their arguments
+                # too (psql: pg_catalog.string_agg(pg_catalog.quote_ident(attname), ', ')).
+                return node.expression.transform(_transform)
         if isinstance(node, exp.EQ):
             # Rewrite `val = ANY(arr)` → `list_contains(arr, val)` so DuckDB
             # does not expand ANY into an internal subquery, which it rejects
@@ -432,7 +946,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         if isinstance(node, exp.Cast):
             rewritten_cast = _rewrite_pg_cast(node, _transform)
             if rewritten_cast is not None:
-                return rewritten_cast
+                return cast("exp.Expression", rewritten_cast)
         if isinstance(node, exp.Column):
             if node.name.lower() in ("xmin", "xmax", "cmin", "cmax", "ctid"):
                 return exp.cast(exp.Literal.number(0), "INTEGER")
@@ -447,8 +961,12 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 return exp.column(node.name, table=tname)
         return node
 
+    from provisa.pgwire.catalog_regs import coerce_reg_comparisons, project_reg_values
+
+    coerce_reg_comparisons(tree)  # REQ-2167: 'pg_class'::regclass = 'pg_class'
+    project_reg_values(tree)  # REQ-2167: a result column that is a reg* value
     try:
-        rewritten = tree.transform(_transform)
+        rewritten = function_macros.inline(tree.transform(_transform), "duckdb")
         # Move INNER JOINs before LEFT/RIGHT/FULL JOINs so DuckDB does not reject
         # forward alias references (e.g. `LEFT JOIN dsc ON c.oid=...` before
         # `INNER JOIN pg_class c` — c is not yet in scope).
@@ -462,17 +980,13 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 _outer = [j for j in _joins if (j.args.get("side") or "").upper() in _outer_sides]
                 if _inner and _outer:
                     _sel.set("joins", _inner + _outer)
-        sql_out = rewritten.sql(dialect="duckdb")
         # In real PG, oid is a hidden system column excluded from *. In our DuckDB tables,
         # oid is an explicit regular column, so "x.oid, x.*" returns oid twice. Remove the
         # duplicate by adding EXCLUDE on the star expression.
-        import re as _re
-
-        sql_out = _re.sub(
-            r"(\w+)\.oid\s*,\s*\1\.\*",
-            lambda m: f"{m.group(1)}.oid, {m.group(1)}.* EXCLUDE (oid)",
-            sql_out,
-        )
-        return sql_out
+        for _sel in rewritten.find_all(exp.Select):
+            _oid_then_star(_sel.expressions)
+        return rewritten.sql(dialect="duckdb")
+    except (PostgresError, NotImplementedError):
+        raise  # REQ-2167: the answer to the call, not a statement left unrewritten
     except Exception:
         return sql

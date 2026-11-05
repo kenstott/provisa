@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.drivers.registry import has_driver
 from provisa.otel_compat import get_tracer, timed_stage
@@ -53,7 +54,7 @@ API_SOURCES: set[str] = {
 }
 
 # REQ-2100: code sources, whose function is their access path; their rows are landed (REQ-863).
-CODE_SOURCES: frozenset[str] = frozenset({"node", "python"})
+CODE_SOURCES: frozenset[str] = CODE_SOURCE_TYPES
 
 # Virtual sources — always route through the engine (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
@@ -64,8 +65,12 @@ VIRTUAL_SOURCES: set[str] = {
     # NoSQL
     "mongodb",
     "cosmosdb",  # REQ-1982: read by its SDK and landed; no driver
-    "node",  # REQ-1984: read in its worker and landed; no driver
-    "python",  # REQ-1993: read in its worker and landed; no driver
+    # REQ-2191: a JDBC source has a driver, but a read of it sends only what it has been
+    # shown to do: its tables are read at their floor (or from their replica) and landed, and the
+    # engine runs the statement. Its writes still go to its driver.
+    "jdbc",
+    # REQ-1984, REQ-1993, REQ-2200: a code source is read in its worker and landed; no driver
+    *CODE_SOURCE_TYPES,
     "cassandra",
     "redis",
     # Query-API graph sources: a Neo4jDriver factory is registered (has_driver("neo4j") is True,
@@ -154,6 +159,8 @@ def _database(dsn: str) -> str:
 def _one_source(i: RouteInputs) -> str | None:
     if len(i.sources) == 1:
         return None
+    if not i.sources:
+        return "reads no source"
     if i.source_dsns:
         keys = [i.source_dsns.get(s) for s in i.sources]
         if None not in keys and len({_database(k) for k in keys if k is not None}) == 1:
@@ -169,10 +176,34 @@ def _dialect_supports(i: RouteInputs) -> str | None:
     from provisa.transpiler.dialect_capabilities import unsupported
 
     sid = _primary(i)
-    if i.source_types.get(sid, "") in API_SOURCES | CODE_SOURCES:
-        return None  # no SQL is sent to it: its access path is the API caller, the code function
-    construct = unsupported(i.statement, i.source_dialects.get(sid) or "", json_path=i.json_path)
+    if i.source_types.get(sid, "") in API_SOURCES:
+        return None  # no SQL is sent to it: its access path is the API caller
+    # REQ-2100: a code source runs the statement in DuckDB over its functions' rows.
+    dialect = i.source_dialects.get(sid) or ""
+    construct = unsupported(i.statement, dialect, json_path=i.json_path)
+    if construct is None:
+        construct = _unwritable_function(i.statement, dialect)  # REQ-2168
     return None if construct is None else f"source {sid!r} cannot run {construct}"
+
+
+def _unwritable_function(statement: str, dialect: str) -> str | None:
+    """A SQL expression function the statement calls that ``dialect`` cannot write (REQ-2168):
+    the statement goes to the engine, which can (core/sql_expression.refuse_unless_writable).
+    Asked only of a statement that calls one."""
+    from provisa.core.sql_expression import MARKER
+
+    if MARKER not in statement:
+        return None
+    import sqlglot
+    from sqlglot.errors import ErrorLevel, SqlglotError
+
+    try:
+        sqlglot.parse_one(statement, read="postgres").sql(
+            dialect=dialect, unsupported_level=ErrorLevel.RAISE
+        )
+    except SqlglotError as exc:
+        return f"a function its dialect cannot write ({exc})"
+    return None
 
 
 def _access_path(i: RouteInputs) -> str | None:

@@ -17,19 +17,22 @@ DDL, free). Swap the fed engine and only its IR→physical map changes; sources 
 
 ``data_type`` on a column is an IR name. For a LANDED table it is authoritative (it IS the store
 DDL); for a LIVE source it is informational (the engine's live resolution wins). Either way it is
-resolved at registration — never lazily backfilled, and never silently defaulted to ``varchar``.
+resolved at registration, never lazily backfilled. A type that names none of the vocabulary is
+``text`` (REQ-2171, NO TYPE LEFT UNMAPPED), its values read as text.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from datetime import timedelta
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from dateutil.relativedelta import relativedelta
 
-from provisa.core.native_types import NativeType, parse_native_type
+from provisa.core.native_types import PG_CHARACTER_TYPES, NativeType, parse_native_type
+from provisa.core.pg_range import RANGE_TYPES
 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import (
@@ -110,6 +113,320 @@ _IR_TO_SA: dict[str, Any] = {
     "vector": Embedding,
 }
 
+
+@dataclass(frozen=True)
+class Subtype:  # REQ-2171
+    """An IR type that is a subtype of another: ``base`` is the IR type it is stored and computed
+    as, ``pg_oid`` the PostgreSQL type pgwire and its catalog report it as. A type mapping with no
+    entry for a subtype maps it as its base.
+
+    Native semantics (amended 2026-10-27): ``semantics`` names what a sort, filter, join or
+    operator on the subtype means beyond its base (None: its base's semantics are its own).
+    ``native`` is, per SQL dialect, the form that gives a value of it the native type there: a
+    type name to cast to, or a call (``ST_GeomFromText()``, innermost last). A source dialect in
+    it is one an operation pushes down to. ``emulated`` is the dialects with a portable emulation
+    (``"*"``: every dialect)."""
+
+    base: str
+    pg_oid: int
+    semantics: str | None = None
+    native: Mapping[str, str] = field(default_factory=dict)
+    emulated: frozenset[str] = frozenset()
+    #: Per reader -- a SQL dialect a landing reads the column in, or an adapter source's type --
+    #: the expression over ``{col}`` that gives its value in the subtype's own form (its
+    #: PostgreSQL text form on a text base). A reader with none reads it as text (``landing_form``).
+    landing: Mapping[str, str] = field(default_factory=dict)
+
+
+# REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
+# types would hide. A subtype's name is its PostgreSQL type name; its values are held in
+# PostgreSQL's own text form on a text base. REQ-2171, THE TYPES ARE A SUPERSET OF POSTGRESQL'S:
+# every PostgreSQL 17 built-in type that a column can hold is one of these or a type of the IR. A
+# domain is its base, as PostgreSQL's wire describes it; a pseudo-type holds no column's value.
+_EVERY_DIALECT = frozenset({"*"})
+
+
+def _range(name: str, oid: int) -> Subtype:
+    """A range is emulated on every dialect (provisa.transpiler.pg_ranges)."""
+    return Subtype("text", oid, "range", {"postgres": name.upper()}, _EVERY_DIALECT)
+
+
+def _multirange(name: str, oid: int) -> Subtype:
+    return Subtype("text", oid, "multirange", {"postgres": name.upper()}, _EVERY_DIALECT)
+
+
+def _shape(name: str, oid: int) -> Subtype:
+    return Subtype("text", oid, "shape", {"postgres": name.upper()})
+
+
+# PostgreSQL's types with no operation of their own here: each is its canonical text. "char" keeps
+# the quotes PostgreSQL's format_type gives it: unquoted, char is the character type.
+HELD_AS_TEXT: dict[str, int] = {
+    '"char"': 18,
+    "name": 19,
+    "int2vector": 22,
+    "regproc": 24,
+    "tid": 27,
+    "xid": 28,
+    "cid": 29,
+    "oidvector": 30,
+    "pg_node_tree": 194,
+    "aclitem": 1033,
+    "refcursor": 1790,
+    "regprocedure": 2202,
+    "regoper": 2203,
+    "regoperator": 2204,
+    "regclass": 2205,
+    "regtype": 2206,
+    "txid_snapshot": 2970,
+    "pg_lsn": 3220,
+    "pg_ndistinct": 3361,
+    "pg_dependencies": 3402,
+    "tsquery": 3615,
+    "gtsvector": 3642,
+    "regconfig": 3734,
+    "regdictionary": 3769,
+    "jsonpath": 4072,
+    "regnamespace": 4089,
+    "regrole": 4096,
+    "regcollation": 4191,
+    "pg_brin_bloom_summary": 4600,
+    "pg_brin_minmax_multi_summary": 4601,
+    "pg_mcv_list": 5017,
+    "pg_snapshot": 5038,
+    "xid8": 5069,
+}
+
+SUBTYPES: dict[str, Subtype] = {
+    # DuckDB's inet extension holds an address with its mask, as PostgreSQL does. Trino's
+    # IPADDRESS holds no mask, and no emulation of it from Trino 481's functions answered as
+    # PostgreSQL does, so an inet or cidr operation on Trino is refused by name; its text form
+    # reads as ever.
+    "inet": Subtype("text", 869, "address", {"postgres": "INET", "duckdb": "INET"}),
+    "cidr": Subtype("text", 650, "address", {"postgres": "CIDR", "duckdb": "INET"}),
+    "macaddr": Subtype("text", 829, "mac", {"postgres": "MACADDR"}, _EVERY_DIALECT),
+    "macaddr8": Subtype("text", 774, "mac", {"postgres": "MACADDR8"}, _EVERY_DIALECT),
+    "xml": Subtype("text", 142),
+    "oid": Subtype("bigint", 26),
+    # Sized so every source's money is held exactly: PostgreSQL's (int64 cents, 17 integer
+    # digits) and SQL Server's (int64 ten-thousandths, 4 decimals). Its operators are computed
+    # on that base, in cents as PostgreSQL computes them, on every dialect but PostgreSQL's own
+    # (transpiler.pg_money).
+    "money": Subtype("numeric(21,4)", 790, "money", {"postgres": "MONEY"}, _EVERY_DIALECT),
+    # PostgreSQL's built-in shapes.
+    "point": _shape("point", 600),
+    "line": _shape("line", 628),
+    "lseg": _shape("lseg", 601),
+    "box": _shape("box", 603),
+    "path": _shape("path", 602),
+    "polygon": _shape("polygon", 604),
+    "circle": _shape("circle", 718),
+    # PostGIS's planar and geodetic types, in WKT. PostGIS has no fixed type OID (the extension
+    # assigns one at install), so these are Provisa's own, in the private range pgwire's PostGIS
+    # surface declares them in.
+    "geometry": Subtype(
+        "text",
+        8310,
+        "spatial",
+        {
+            "postgres": "GEOMETRY",
+            "duckdb": "ST_GeomFromText()",
+            "trino": "ST_GeometryFromText()",
+            "mysql": "ST_GeomFromText()",
+        },
+    ),
+    "geography": Subtype(
+        "text",
+        8311,
+        "spatial",
+        {
+            "postgres": "GEOGRAPHY",
+            "trino": "to_spherical_geography(ST_GeometryFromText())",
+        },
+    ),
+    # The range types, in PostgreSQL's range text form ("[1,10)").
+    "int4range": _range("int4range", 3904),
+    "int8range": _range("int8range", 3926),
+    "numrange": _range("numrange", 3906),
+    "tsrange": _range("tsrange", 3908),
+    "tstzrange": _range("tstzrange", 3910),
+    "daterange": _range("daterange", 3912),
+    # The multirange types, in PostgreSQL's multirange text form ("{[1,3),[5,7)}").
+    **{r.multirange: _multirange(r.multirange, r.multirange_oid) for r in RANGE_TYPES.values()},
+    # Bit strings, in PostgreSQL's text form ("0101"): ordered as text orders them.
+    "bit": Subtype("text", 1560),
+    "varbit": Subtype("text", 1562),
+    "tsvector": Subtype("text", 3614, "text_search", {"postgres": "TSVECTOR"}),
+    # A time of day with its offset, which ``time`` has no place for.
+    "timetz": Subtype(
+        "text",
+        1266,
+        "zoned_time",
+        {"postgres": "TIMETZ", "duckdb": "TIMETZ", "trino": "TIME WITH TIME ZONE"},
+    ),
+    # jsonb is not json: its text is normalized, its keys ordered and unique.
+    "jsonb": Subtype("json", 3802),
+    **{name: Subtype("text", oid) for name, oid in HELD_AS_TEXT.items()},
+}
+
+# REQ-2171: how a landing reads each subtype in its own form, beyond PostgreSQL (which casts any
+# subtype to its base, a PostGIS one through ST_AsText). Never a form other than the subtype's own
+# (no hex WKB for a geometry) where the reader has it: a reader not named here reads the column as
+# text (``_READ_AS_TEXT``).
+_LANDING: dict[str, dict[str, str]] = {
+    # A range or multirange reads as its PostgreSQL text.
+    **{
+        name: {"duckdb": "CAST({col} AS VARCHAR)", "trino": "CAST({col} AS VARCHAR)"}
+        for r in RANGE_TYPES.values()
+        for name in (r.name, r.multirange)
+    },
+    "inet": {
+        "duckdb": "CAST({col} AS VARCHAR)",
+        "trino": "CAST({col} AS VARCHAR)",
+        "clickhouse": "toString({col})",
+        # An adapter that hands the address over as its text.
+        "elasticsearch": "{col}",
+        "cassandra": "{col}",
+    },
+    "cidr": {"duckdb": "CAST({col} AS VARCHAR)", "trino": "CAST({col} AS VARCHAR)"},
+    "geometry": {
+        "duckdb": "ST_AsText({col})",
+        "mysql": "ST_AsText({col})",
+        "tsql": "{col}.STAsText()",
+    },
+    "geography": {"tsql": "{col}.STAsText()"},
+    "xml": {
+        "tsql": "CAST({col} AS NVARCHAR(MAX))",
+        "oracle": "XMLSERIALIZE(CONTENT {col} AS CLOB)",
+    },
+    "money": {"tsql": "CAST({col} AS DECIMAL(21,4))"},
+    # Trino writes a time's fraction to its precision and an offset's minutes: PostgreSQL neither.
+    "timetz": {
+        "trino": (
+            "regexp_replace(regexp_replace(CAST({col} AS VARCHAR), "
+            "'(\\.\\d*?[1-9])0+(?=[+-])|\\.0+(?=[+-])', '$1'), '([+-]\\d\\d):00$', '$1')"
+        ),
+    },
+}
+
+# What each SQL dialect a source or engine reads in writes to read a value as its text. An adapter
+# source is named by its type here, not by a dialect, and hands over what it holds.
+_READ_AS_TEXT: dict[str, str] = {
+    **dict.fromkeys(("athena", "druid", "duckdb", "snowflake", "trino"), "CAST({col} AS VARCHAR)"),
+    **dict.fromkeys(("bigquery", "databricks", "hive"), "CAST({col} AS STRING)"),
+    **dict.fromkeys(("postgres", "sqlite"), "CAST({col} AS TEXT)"),
+    **dict.fromkeys(("mysql", "singlestore"), "CAST({col} AS CHAR)"),
+    "exasol": "CAST({col} AS VARCHAR(2000000))",
+    "redshift": "CAST({col} AS VARCHAR(65535))",
+    "tsql": "CAST({col} AS NVARCHAR(MAX))",
+    "oracle": "TO_CHAR({col})",
+    "clickhouse": "toString({col})",
+}
+
+
+def _with_landing(name: str, sub: Subtype) -> Subtype:
+    if sub.base == "json":
+        return sub  # read as JSON by every reader
+    at_postgres = (
+        "ST_AsText({col})"
+        if name in ("geometry", "geography")
+        else f"CAST({{col}} AS {sub.base.upper()})"
+    )
+    return replace(sub, landing={"postgres": at_postgres, **_LANDING.get(name, {})})
+
+
+SUBTYPES = {name: _with_landing(name, sub) for name, sub in SUBTYPES.items()}
+
+
+def landing_form(subtype: str, reader: str) -> str:
+    """The expression over ``{col}`` that lands a column of ``subtype`` read by ``reader`` (a
+    SQL dialect, or an adapter source's type): the subtype's own form, or, for a reader with none,
+    the value as text. A subtype on a base other than text is its base's value, which the reader
+    gives by casting to it."""
+    sub = SUBTYPES[subtype]
+    own = sub.landing.get(reader)
+    if own is not None:
+        return own
+    if sub.base == "json" or reader not in _READ_AS_TEXT:
+        return "{col}"
+    if sub.base != "text":
+        return f"CAST({{col}} AS {sub.base.upper()})"
+    return _READ_AS_TEXT[reader]
+
+
+def read_form(subtype: str, dialect: str) -> str | None:
+    """The expression over ``{col}`` that reads a column of ``subtype`` as a value on ``dialect``:
+    its PostgreSQL text, as it lands (REQ-2171, THE TYPES ARE A SUPERSET OF POSTGRESQL'S). None
+    where the column is read as it is: PostgreSQL has every type, and what it sends is the form
+    itself, and a subtype on a base other than text is read as that base."""
+    if dialect == "postgres" or SUBTYPES[subtype].base != "text":
+        return None
+    return landing_form(subtype, dialect)
+
+
+# REQ-2171: a spelling of a subtype that is not its name, on any platform.
+_SUBTYPE_SPELLINGS: dict[str, str] = {
+    "bit varying": "varbit",
+    "time with time zone": "timetz",
+    "information_schema.sql_identifier": "name",  # a domain over name
+}
+
+# MySQL's spatial types are PostGIS's planar geometry, whichever shape a column declares.
+_MYSQL_SPATIAL = {
+    name: "geometry"
+    for name in (
+        "geometry",
+        "point",
+        "linestring",
+        "polygon",
+        "multipoint",
+        "multilinestring",
+        "multipolygon",
+        "geometrycollection",
+        "geomcollection",
+    )
+}
+
+# REQ-2171: a native spelling equivalent to a subtype, per source platform. A subtype's own name
+# (PostgreSQL's, which CockroachDB, YugabyteDB, DuckDB and SQL Server share where they have the
+# type) needs no entry.
+_PLATFORM_SUBTYPES: dict[str, dict[str, str]] = {
+    "trino": {"ipaddress": "inet"},
+    "clickhouse": {"ipv4": "inet", "ipv6": "inet"},
+    "sqlserver": {"money": "money", "smallmoney": "money", "xml": "xml"},
+    "oracle": {"xmltype": "xml"},
+    **{kind: _MYSQL_SPATIAL for kind in ("mysql", "mariadb", "tidb", "singlestore")},
+}
+
+
+def subtype_of(native_type: str, platform: str | None = None) -> str | None:
+    """The subtype a native spelling registers as (REQ-2171), or None when it has none. A
+    platform's own meaning of a spelling (SQL Server's ``bit`` is a boolean) is never a
+    subtype's."""
+    name = type_name(native_type)
+    if platform:
+        kind = platform.split("+", 1)[0]
+        own = _PLATFORM_SUBTYPES.get(kind, {}).get(name)
+        if own is not None:
+            return own
+        if name in _PLATFORM_ALIASES.get(kind, {}):
+            return None
+    return subtype_named(name)
+
+
+def subtype_named(type_spelling: str) -> str | None:
+    """The subtype ``type_spelling`` names, in any of its spellings (REQ-2171), or None."""
+    name = type_name(type_spelling)
+    name = _SUBTYPE_SPELLINGS.get(name, name)
+    return name if name in SUBTYPES else None
+
+
+def base_type(type_spelling: str) -> str:
+    """A subtype's base type (REQ-2171); any other type is its own."""
+    named = subtype_named(type_spelling)
+    return SUBTYPES[named].base if named is not None else type_spelling
+
+
 # Native / dialect spelling → canonical IR name. Everything a source or reflection reports maps
 # through here to ONE canonical IR name (e.g. ``varchar``/``character varying`` → ``text``).
 _ALIASES: dict[str, str] = {
@@ -123,10 +440,14 @@ _ALIASES: dict[str, str] = {
     # stores it and a landing reads it back with no platform to name (REQ-1730 swap lane).
     "nvarchar": "text",
     "char": "text",
+    # Exasol names a text column's character set after its size: VARCHAR(64) UTF8, CHAR(2) ASCII.
+    "varchar utf8": "text",
+    "varchar ascii": "text",
+    "char utf8": "text",
+    "char ascii": "text",
     "character": "text",
     "string": "text",
-    "json": "json",  # REQ-980: first-class JSON (jsonb narrows to portable generic JSON)
-    "jsonb": "json",
+    "json": "json",  # REQ-980: first-class JSON
     "super": "json",  # Redshift: holds any JSON value, so JSON at its source (REQ-1965)
     "bool": "boolean",
     "real": "float",
@@ -143,10 +464,13 @@ _ALIASES: dict[str, str] = {
     "timestamp with local time zone": "timestamptz",
     "timestamptz": "timestamptz",
     "time without time zone": "time",
-    "time with time zone": "time",
-    "timetz": "time",  # postgres time with time zone alias
     "datetime": "timestamp",
     "blob": "bytea",
+    # information_schema's domains, each its base.
+    "information_schema.cardinal_number": "integer",
+    "information_schema.character_data": "text",
+    "information_schema.time_stamp": "timestamptz",
+    "information_schema.yes_or_no": "text",
 }
 
 # Per-platform native→IR translators (REQ-846). Each platform has type spellings the generic
@@ -160,8 +484,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "varbinary": "bytea",
         "json": "json",  # REQ-980
         "timestamp with time zone": "timestamptz",
-        "time with time zone": "time",
-        "ipaddress": "text",
         "uuid": "uuid",
     },
     # REQ-1981: Amazon Athena's catalog spells a column's type as Hive DDL does; a composite
@@ -178,8 +500,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "bit": "boolean",
         "tinyint": "smallint",
         "int": "integer",
-        "money": "numeric",
-        "smallmoney": "numeric",
         "datetime": "timestamp",
         "datetime2": "timestamp",
         "smalldatetime": "timestamp",
@@ -191,7 +511,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "varbinary": "bytea",
         "image": "bytea",
         "uniqueidentifier": "uuid",
-        "xml": "text",
     },
     "duckdb": {
         "tinyint": "smallint",
@@ -229,7 +548,11 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
     },
     # REQ-2050: MySQL's TIMESTAMP is an instant (stored in UTC, read in the session's zone, which
     # the driver sets to UTC); its DATETIME is a civil date and time.
-    **{kind: {"timestamp": "timestamptz"} for kind in ("mysql", "mariadb", "tidb", "singlestore")},
+    # REQ-2171: a YEAR is a four-digit integer.
+    **{
+        kind: {"timestamp": "timestamptz", "year": "integer"}
+        for kind in ("mysql", "mariadb", "tidb", "singlestore")
+    },
     "bigquery": {
         "int64": "bigint",
         "float64": "double",
@@ -263,7 +586,6 @@ _PLATFORM_ALIASES: dict[str, dict[str, str]] = {
         "long": "text",
         "rowid": "text",
         "urowid": "text",
-        "xmltype": "text",
         "blob": "bytea",
         "raw": "bytea",
         "long raw": "bytea",
@@ -331,10 +653,15 @@ def bytea_hex(value: bytes | bytearray | memoryview) -> str:
     return "\\x" + bytes(value).hex()
 
 
+_TIMEDELTA_MAX_DAYS = 999_999_999
+
+
 def interval_parts(value: timedelta | relativedelta) -> tuple[int, int, int]:
     """An IR ``interval`` value as Postgres holds one: (months, days, microseconds). A duration with
     no months is a ``timedelta``; one with months (a year-month interval: Oracle's INTERVAL YEAR TO
     MONTH, Trino's and BigQuery's) is a ``relativedelta``, since a month has no fixed length."""
+    if isinstance(value, _ExactInterval):
+        return value.pg_parts
     if isinstance(value, timedelta):
         # A negative timedelta is held as negative days and positive seconds; its parts share a sign.
         if value < timedelta(0):
@@ -345,12 +672,65 @@ def interval_parts(value: timedelta | relativedelta) -> tuple[int, int, int]:
     return value.years * 12 + value.months, value.days, seconds * 1_000_000 + value.microseconds
 
 
+class _ExactInterval(relativedelta):
+    """An interval whose fields neither Python type keeps: each carries hours into days, and a
+    ``timedelta`` stops at a billion days. PostgreSQL keeps ``26:01:00`` apart from
+    ``1 day 02:01:00``, so the fields stay with it for the wire (``pg_parts``)."""
+
+    pg_parts: tuple[int, int, int]
+
+
 def interval_value(months: int, days: int, microseconds: int) -> timedelta | relativedelta:
     """The IR ``interval`` value of (months, days, microseconds), as a reader hands one on: a
-    ``timedelta`` when it has no months, else a ``relativedelta``."""
-    if not months:
-        return timedelta(days=days, microseconds=microseconds)
-    return relativedelta(months=months, days=days, microseconds=microseconds)
+    ``timedelta`` when it has no months and says the same fields back, a ``relativedelta`` when it
+    has months and is plain, else an :class:`_ExactInterval`."""
+    parts = (months, days, microseconds)
+    if abs(days) <= _TIMEDELTA_MAX_DAYS and not months:
+        plain: timedelta | relativedelta = timedelta(days=days, microseconds=microseconds)
+    else:
+        plain = relativedelta(months=months, days=days, microseconds=microseconds)
+    if interval_parts(plain) == parts:
+        return plain
+    exact = _ExactInterval(months=months, days=days, microseconds=microseconds)
+    exact.pg_parts = parts
+    return exact
+
+
+class _InfiniteDate(date):
+    """PostgreSQL's ``infinity`` or ``-infinity`` date: the nearest date Python holds, marked with
+    its sign (``pg_infinity``) so the wire writes PostgreSQL's own value."""
+
+    pg_infinity: int
+
+
+class _InfiniteDatetime(datetime):
+    """PostgreSQL's ``infinity`` or ``-infinity`` timestamp, as :class:`_InfiniteDate`."""
+
+    pg_infinity: int
+
+
+def infinite_date(sign: int) -> date:
+    """The IR ``date`` value of PostgreSQL's ``infinity`` (``sign`` 1) or ``-infinity`` (-1)."""
+    edge = date.max if sign > 0 else date.min
+    value = _InfiniteDate(edge.year, edge.month, edge.day)
+    value.pg_infinity = sign
+    return value
+
+
+def infinite_timestamp(sign: int, *, aware: bool) -> datetime:
+    """The IR ``timestamp`` (``aware``: ``timestamptz``, in UTC) value of PostgreSQL's
+    ``infinity`` (``sign`` 1) or ``-infinity`` (-1)."""
+    edge = datetime.max if sign > 0 else datetime.min
+    value = _InfiniteDatetime(
+        *edge.timetuple()[:6], edge.microsecond, tzinfo=timezone.utc if aware else None
+    )
+    value.pg_infinity = sign
+    return value
+
+
+def infinity_of(value: object) -> int:  # object-ok: any value a result row holds
+    """1 for an infinite date or timestamp, -1 for a negatively infinite one, else 0."""
+    return getattr(value, "pg_infinity", 0)
 
 
 def iso8601_duration(value: timedelta | relativedelta) -> str:
@@ -413,24 +793,30 @@ def to_ir(native_type: str, platform: str | None = None) -> str:
     ``platform`` (a dialect name — trino, sqlserver, duckdb, postgresql, mysql, …) selects a
     per-platform translator whose spellings take precedence; without it, only the generic aliases
     apply. Strips a length/precision qualifier (``varchar(255)`` → ``varchar``) and lowercases.
-    Raises on an unknown type — never a silent ``varchar`` default: a landed column's type must be
-    known at design time, and an unmapped type is a vocabulary gap to close, not to paper over.
-    A native array, struct or map, in any spelling, is ``json`` (REQ-1965)."""
+    A native array, struct or map, in any spelling, is ``json`` (REQ-1965). REQ-2171: every type
+    maps onto the vocabulary; one that names no type of it is ``text``, its values held in the
+    source's own text form."""
+    named = _named_ir(native_type, platform)
+    return named if named is not None else "text"
+
+
+def _named_ir(native_type: str, platform: str | None) -> str | None:
+    """The IR type ``native_type`` names, or None when it names none of the vocabulary."""
     if parse_native_type(native_type).nested:
         return "json"
+    subtype = subtype_of(native_type, platform)
+    if subtype is not None:
+        return to_ir(SUBTYPES[subtype].base)  # REQ-2171: a subtype is its base to the IR
     base = type_name(native_type)
     canon: str | None = None
     if platform:
         canon = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}).get(base)
     if canon is None:
         canon = _ALIASES.get(base, base)
-    if canon not in _IR_TO_SA:
-        raise ValueError(
-            f"unknown SQL type {native_type!r}"
-            f"{f' for platform {platform!r}' if platform else ''}: not in the IR vocabulary "
-            f"{sorted(IR_TYPES)} (add it to ir_types if a source legitimately produces it)"
-        )
-    return canon
+    if canon in _IR_TO_SA:
+        return canon
+    # A platform alias may name a sized type (Cassandra's varint is numeric(38,0)).
+    return type_name(canon) if type_name(canon) in _IR_TO_SA else None
 
 
 # The source kinds whose array type records no dimensions (PostgreSQL: "declaring the array size
@@ -487,12 +873,21 @@ def _array_of_a_primitive(shape: NativeType, platform: str | None) -> tuple[int,
     if not is_ir_type(node.spelling, platform):
         # REQ-1965: registering a natively nested column is never an error, and only an array
         # whose innermost element is a semantic SQL type has a depth above 0. An element with no
-        # semantic type (a ClickHouse IPv4, a PostGIS geometry) leaves the column plain JSON:
+        # semantic type (a ClickHouse Nothing) leaves the column plain JSON:
         # the whole value and the untyped operations work, nothing inside is typed.
         return None
     if platform and platform.split("+", 1)[0] in _ONE_LEVEL_ARRAY_PLATFORMS:
         depth = 1
     return depth, _semantic_type(node.spelling, platform)
+
+
+def element_subtype(native_type: str, platform: str | None = None) -> str | None:
+    """The subtype of the innermost element of the array ``native_type`` (REQ-2171), or None. An
+    array's ``element_type`` is that element's base, which is what a backend reads it as."""
+    node = parse_native_type(native_type)
+    while node.kind == "array" and node.element is not None:
+        node = node.element
+    return subtype_of(node.spelling, platform) if node.kind == "scalar" else None
 
 
 def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping:
@@ -507,6 +902,10 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
     spelling = native_type.strip().lower()
     shape = parse_native_type(spelling)
     if not shape.nested:
+        # ClickHouse's Nullable(IPv4) is the IPv4 it wraps.
+        subtype = subtype_of(shape.spelling, platform)
+        if subtype is not None:
+            return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
         own = _PLATFORM_ALIASES.get(platform.split("+", 1)[0], {}) if platform else {}
         # By the spelling's name, its size aside (Oracle's varchar2(64), interval day(2) to
         # second(6)) -- but a decimal keeps its size, which is its type (REQ-1961).
@@ -514,6 +913,8 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
 
         if spelling.split("(", 1)[0].strip() in DECIMAL_NAMES:
             return ColumnTyping(spelling)
+        if not is_ir_type(spelling, platform):
+            return ColumnTyping("text")  # REQ-2171: a type naming none of the IR's is text
         return ColumnTyping(own.get(spelling) or own.get(type_name(spelling)) or spelling)
     read_from = platform.split("+", 1)[0] if platform else None
     typed = _array_of_a_primitive(shape, platform)
@@ -528,6 +929,17 @@ def column_typing(native_type: str, platform: str | None = None) -> ColumnTyping
     )
 
 
+def character_typing(native_type: str, platform: str) -> ColumnTyping | None:
+    """What a PostgreSQL-wire column of a character type registers as (REQ-1961, VARCHAR AND
+    CHAR KEEP THEIR TYPE): text, keeping its native type -- varchar, varchar(n), char(n) or
+    bpchar, with its length -- as a hidden attribute, as a native array's is kept (REQ-1965).
+    None for any other type."""
+    spelling = native_type.strip().lower()
+    if type_name(spelling) not in PG_CHARACTER_TYPES:
+        return None
+    return ColumnTyping("text", native_type=spelling, native_platform=platform.split("+", 1)[0])
+
+
 def composite_typing(native_type: str, platform: str) -> ColumnTyping:
     """What a column of a named composite type registers as (REQ-1965): a struct, so plain JSON
     with its native type recorded. A composite's name does not say it is one -- only its
@@ -538,12 +950,9 @@ def composite_typing(native_type: str, platform: str) -> ColumnTyping:
 
 
 def is_ir_type(name: str, platform: str | None = None) -> bool:
-    """Whether ``name`` is a resolvable IR type (canonical, a generic alias, or platform-specific)."""
-    try:
-        to_ir(name, platform)
-        return True
-    except ValueError:
-        return False
+    """Whether ``name`` names a type of the IR vocabulary (canonical, a generic alias, a
+    platform's own spelling or a subtype), rather than being text because it names none."""
+    return _named_ir(name, platform) is not None
 
 
 def indexed_string_length() -> int:
@@ -560,6 +969,19 @@ def indexed_string_length() -> int:
     return int(os.environ.get("PROVISA_INDEXED_STRING_LENGTH", "255"))
 
 
+def _session_only_sqlalchemy(type_name: str) -> Any:
+    """REQ-2176: the column types only a session's ephemeral table holds, which no source's type
+    names (a source's time with a zone is ``timetz``, its array ``json``): ``zoned_time``, a time
+    of day with its offset, and ``list<elem>``, a list of one element type. None for any other."""
+    if type_name == "zoned_time":
+        return Time(timezone=True)
+    if type_name.startswith("list<") and type_name.endswith(">"):
+        from sqlalchemy import ARRAY
+
+        return ARRAY(to_sqlalchemy(type_name[5:-1]))
+    return None
+
+
 def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     """The SQLAlchemy generic type for an IR name (or a native spelling, normalized via ``to_ir``).
     This is the write face's IR → SQLAlchemy mapping; it renders per-dialect at DDL time.
@@ -569,6 +991,10 @@ def to_sqlalchemy(type_name: str, *, indexed: bool = False) -> Any:
     place this substitution happens, so every engine/dialect that lands a keyed column through
     ``materialize_exec.build_table`` gets it uniformly, not just the one dialect that happened to
     surface the gap. Every other IR type is already bounded/fixed-width and needs no substitution."""
+    session_only = _session_only_sqlalchemy(type_name)
+    if session_only is not None:
+        return session_only
+    type_name = base_type(type_name)  # REQ-2171: a subtype is stored as its base
     sa_type = _IR_TO_SA[to_ir(type_name)]
     if sa_type is Numeric:
         # A decimal named with its precision and scale lands with them: an unqualified NUMERIC is

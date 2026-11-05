@@ -52,6 +52,7 @@
       "mailboxes_failed": "Caselle di posta la cui lettura è fallita a metà: {{total}}. Ciò che ne è stato letto viene conservato e la lettura riprende al prossimo aggiornamento. Sono: {{accounts}}",
       "place_not_kept": "Questa copia è completa, ma non è stato possibile conservare il punto raggiunto dalla lettura, quindi il prossimo controllo delle modifiche richiederà di nuovo la lettura: {{reason}}",
       "indexes_not_planned": "Questa copia è completa e leggibile, ma non è stato possibile pianificarne gli indici, quindi viene letta senza di essi finché non viene ricostruita: {{reason}}",
+      "column_not_landed": "La colonna {{column}} ({{subtype}}) non è in questa copia: {{reader}} non può leggerla come {{subtype}}, quindi è esclusa e la sua lettura viene rifiutata.",
       "andMore": "{{ids}} e altri {{more}}",
       "other": "L’ultima build ha annotato: {{code}}"
     },

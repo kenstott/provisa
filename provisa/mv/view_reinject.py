@@ -13,8 +13,13 @@
 The one place a materialized view is put back into a statement: the pipeline's optimize stage,
 after governance, on the statement lowered to catalog-physical -- every surface's statement,
 SQL and compiled alike. Having run after governance, the rewrite sees the role's row filters
-and masks as part of the statement: a predicate or a mask over a column the view keeps is
-carried onto the view's column; one over anything else leaves the statement to its tables.
+and masks as part of the statement -- a mask as an expression (or a constant) in its column's
+place. A join-pattern view keeps every column its tables had at its build, so a row filter or a
+mask over a column of a table it covers is carried onto the view's column; one over a table it
+does not cover stays against that table. A column added since the view's build is named on the
+view, which the engine refuses: never answered from rows the role's filter did not judge. A
+subquery that names a read of its own as a covered table is named leaves the statement to its
+tables. An aggregate view answers only what ``mv.aggregate_catalog`` says it does.
 
 Two kinds of view answer:
 
@@ -28,6 +33,10 @@ Two kinds of view answer:
 
 A statement is rewritten only when every column it reads of a covered table is qualified by
 that table's alias, and reads none of them through ``*``: anything else is left as it is.
+
+A view's own build is never answered by that view (``exclude``): its definition is what it
+holds, so a build would read back what the view held before it, and an empty first build would
+keep it empty.
 """
 
 # Requirements: REQ-849, REQ-882, REQ-1586
@@ -221,6 +230,14 @@ def _rewrite_join(
     for column in select.find_all(exp.Column):
         if not column.table and len(joins) > 0:
             return None  # which table it reads is not said
+    for nested in select.find_all(exp.Select):
+        if nested is not select and any(
+            source.alias_or_name in prefixes
+            for source in nested.find_all(exp.Table, exp.Subquery, exp.CTE)
+        ):
+            # A subquery -- a row rule's, say -- names a read of its own as a covered table is
+            # named: its columns by that name are its own rows', not the view's.
+            return None
     # Each selected column keeps the name it is read back by, whatever the view calls it.
     select.set(
         "expressions",
@@ -246,13 +263,21 @@ def _rewrite_join(
     return select.sql(dialect="postgres")
 
 
-def reinject(sql: str, fresh_mvs: list[MVDefinition], ctx: CompilationContext) -> Reinjected | None:
+def reinject(
+    sql: str,
+    fresh_mvs: list[MVDefinition],
+    ctx: CompilationContext,
+    *,
+    exclude: str | None = None,
+) -> Reinjected | None:
     """``sql`` -- a governed read lowered to catalog-physical -- rewritten to read the fresh
     view that answers it, or None. A join-pattern view that covers every join wins over one
-    that covers fewer; among partial ones, the widest; then an aggregate view."""
+    that covers fewer; among partial ones, the widest; then an aggregate view. ``exclude`` is
+    the view ``sql`` is the build of, which answers none of it."""
     from provisa.mv.aggregate_catalog import rewrite_aggregate_query
 
-    fresh_mvs = [mv for mv in fresh_mvs if mv.is_fresh]  # a stale view answers nothing
+    # A stale view answers nothing, nor a view its own build.
+    fresh_mvs = [mv for mv in fresh_mvs if mv.is_fresh and mv.id != exclude]
     if not fresh_mvs:
         return None
     try:

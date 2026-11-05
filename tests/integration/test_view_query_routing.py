@@ -60,7 +60,9 @@ async def test_select_from_provisa_view_routes_through_engine(client):
                         tableName: "vq_view",
                         alias: "vq_view",
                         viewSql: "SELECT 1 AS n",
-                        columns: [{ name: "n", visibleTo: ["public"] }]
+                        # org_admin, the role this client acts as, reads the view: a table its
+                        # caller reads no column of is answered as missing (REQ-2152).
+                        columns: [{ name: "n", visibleTo: ["public", "org_admin"] }]
                     }) { success message }
                 }
             """

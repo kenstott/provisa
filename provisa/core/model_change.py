@@ -171,6 +171,14 @@ def _system() -> str | None:
     return None
 
 
+def writes_whole_model() -> bool:
+    """Whether this context is a path that writes the model as a whole and commits it itself (a
+    deploy, an undo, a merge, a schema's layout): no person is making these writes, so no row rule
+    holds them (REQ-2188)."""
+    current = _SCOPE.get()
+    return current is not None and current.discard
+
+
 def actor() -> str | None:
     """Who the current change is committed as: the request's actor, None for the system (a
     background change, a boot) or outside a change. A judgment's ``decided_by`` is this actor

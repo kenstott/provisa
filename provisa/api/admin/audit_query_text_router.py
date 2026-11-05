@@ -40,9 +40,43 @@ def _record_pool():
     return state.record_db
 
 
+async def _reads_its_tables(request: Request, audit_id: int) -> bool:
+    """Whether the caller is served every column of every table audit row ``audit_id`` read."""
+    import types
+
+    from sqlalchemy import select
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import serves_every_column
+    from provisa.api.app import state
+    from provisa.core.schema_org import query_audit_log
+
+    scope = catalog_scope(types.SimpleNamespace(context={"request": request}))
+    if scope.whole:
+        return True
+    async with _record_pool().acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(query_audit_log.c.table_ids).where(query_audit_log.c.id == audit_id)
+            )
+        ).fetchone()
+    if row is None:
+        return True  # no such row: answered as missing by the read itself
+    assert state.model_db is not None, "the org's model store is bound with its runtime"
+    async with state.model_db.acquire() as conn:
+        for table_id in row[0] or []:
+            if not await serves_every_column(conn, scope, int(table_id)):
+                return False
+    return True
+
+
 @router.get("/admin/audit/queries/{audit_id}/text")
 async def read_statement_text(request: Request, audit_id: int) -> dict:
     require_capability_request(request, Capability.VIEW_GOVERNANCE.value)
+    # REQ-2152: the text names columns of every table the statement read; it is told only to a
+    # caller served every column of each, and is otherwise answered as no such statement.
+    if not await _reads_its_tables(request, audit_id):
+        raise ApiError(404, "audit.statement_not_found", f"No audited statement {audit_id}")
     text = await read_query_text(_record_pool(), audit_id, encryption_service())
     if text is None:
         raise ApiError(404, "audit.statement_not_found", f"No audited statement {audit_id}")

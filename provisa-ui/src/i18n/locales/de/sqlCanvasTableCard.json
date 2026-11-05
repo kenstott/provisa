@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "{{tableName}} vom Canvas entfernen",
     "toggleColumn": "Auswahl der Spalte {{columnName}} umschalten",
-    "connectColumn": "Beziehung von {{columnName}} beginnen"
+    "connectColumn": "Beziehung von {{columnName}} beginnen",
+    "allColumns": "Alle Spalten ({{selected}} von {{total}})",
+    "unjoined": "{{tables}} ist nicht mit den anderen Tabellen verknüpft",
+    "joinsUnavailable": "Die Joins, die diese Rolle schreiben darf, konnten nicht gelesen werden: {{reason}}"
   }
 }

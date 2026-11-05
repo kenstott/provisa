@@ -601,7 +601,8 @@ def test_such_requests_are_counted_and_not_called_mismatches() -> None:
 
 def test_a_refusal_by_the_deployment_leaves_nothing_to_restore() -> None:
     """The deployment refuses to change a source declared in its configuration file; the run stops
-    with the deployment's own message and does not try to 'restore' what was never changed."""
+    with the deployment's own message and does not try to 'restore' what was never changed. The
+    TTL, set first (a replicated table needs one), was changed, and is put back."""
     setup = _setup(_declare(postgresql=("replica", 120)))
     admin = FakeAdmin()
     refused = "Source 'bench-postgresql' is declared in the configuration file"
@@ -635,4 +636,7 @@ def test_a_refusal_by_the_deployment_leaves_nothing_to_restore() -> None:
     ):
         with _applier(admin).applied(setup, _resolved(setup)):
             pass
-    assert admin.calls == [("refused", {})]  # no restore was attempted
+    names = [name for name, _ in admin.calls]
+    # the TTL change, the refused replicate (no restore of it), then the TTL put back
+    assert names == ["updateSourceCache", "refused", "updateSourceCache"], admin.calls
+    assert admin.calls[2][1]["ttl"] != admin.calls[0][1]["ttl"]

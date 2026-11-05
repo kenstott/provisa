@@ -35,45 +35,25 @@ on:
         type: string
         required: false
         default: ""
+      task_dump_s:
+        description: "Every N seconds the backends log what each request is awaiting (diagnostics); empty: never"
+        type: string
+        required: false
+        default: ""
   # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
-  # jobs read, by name; the caller passes each one and nothing is inherited.
+  # jobs read, by name; the caller passes each one and nothing is inherited. No live cloud
+  # warehouse's (Snowflake, Databricks, BigQuery, Fabric, Google Sheets): maintainer 2026-10-29,
+  # this lane never touches a live warehouse; the specs that do are the Playwright project
+  # "warehouse", run only by the nightly warehouse lane (integration-suite-lanes.yml warehouse-ui).
   workflow_call:
     secrets:
       ANTHROPIC_API_KEY:
         required: false
-      AZURE_CLIENT_ID:
+      OPENROUTER_API_KEY:
         required: false
-      AZURE_CLIENT_SECRET:
+      FREE_ASKAMERICA_KEY:
         required: false
-      AZURE_TENANT_ID:
-        required: false
-      DATABRICKS_HTTP_PATH:
-        required: false
-      DATABRICKS_SERVER_HOSTNAME:
-        required: false
-      DATABRICKS_TOKEN:
-        required: false
-      FABRIC_CAPACITY_NAME:
-        required: false
-      FABRIC_DATABASE:
-        required: false
-      FABRIC_RESOURCE_GROUP:
-        required: false
-      FABRIC_SQL_SERVER:
-        required: false
-      GOOGLE_APPLICATION_CREDENTIALS_JSON:
-        required: false
-      GOOGLE_CLOUD_PROJECT:
-        required: false
-      GSHEETS_TEST_SHEET_ID:
-        required: false
-      SNOWFLAKE_ACCOUNT:
-        required: false
-      SNOWFLAKE_PASSWORD:
-        required: false
-      SNOWFLAKE_USER:
-        required: false
-      SNOWFLAKE_WAREHOUSE:
+      KAGGLE_API_TOKEN:
         required: false
       SP_CERT_P12_BASE64:
         required: false
@@ -82,6 +62,8 @@ on:
       SP_CLIENT_ID:
         required: false
       SP_SITE_URL:
+        required: false
+      STRIPE_API_KEY:
         required: false
       SP_TENANT_ID:
         required: false
@@ -107,12 +89,13 @@ jobs:
   # PROVISIONING_SPECS).
   playwright:
     name: Playwright core lane
+    # Maintainer 2026-10-29: no live cloud warehouse is touched here (no credentials are passed),
+    # so this job neither wakes nor stops the shared compute and holds no live-cloud-warehouses
+    # group; the warehouse specs run in integration-suite-lanes.yml warehouse-ui.
     uses: ./.github/workflows/lane.yml
     with:
       name: ui-core
       timeout: 120
-      # Fabric's SQL endpoint (the cloud-warehouse spec) is reached through ODBC Driver 18.
-      odbc: true
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
       # environment must be a real repo-root .venv. `cassandra` and `saphana` are their demo
       # primers' own dependencies (demo/sources/*/prime.py); `gx` and `soda` are the two
@@ -133,9 +116,13 @@ jobs:
         PROVISA_E2E_LANE=core
         PROVISA_E2E_WORKERS=2
         PROVISA_E2E_SPECS=${{ inputs.specs }}
+        PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
-      # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
-      # its folder): the run's own record of what did not execute.
+      # json beside the line and the HTML report (in a file of its own: the HTML reporter empties
+      # its folder): the run's own record of what did not execute. The line reporter prints each
+      # failure's error as it fails, not in a summary at the end: a runner stopped before the end
+      # (run 40097774612, "The runner has received a shutdown signal" at 87 minutes, no report and
+      # no artifact) still leaves every failure it reached in the log.
       # Playwright stops ITSELF after 95 minutes, inside the job's bound: a run the job timeout
       # kills writes no report at all (release .479, run 38022153596: 108 failed attempts and
       # not one line of error text, no artifact). Stopped by its own limit it prints every
@@ -145,7 +132,7 @@ jobs:
       run: >-
         for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}" || { echo "::error::no spec ${spec%%:*}"; exit 1; }; done; 
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core --global-timeout=5700000 --reporter=list,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
+        npx playwright test --project=core --global-timeout=5700000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.
@@ -159,29 +146,19 @@ jobs:
         provisa-ui/playwright-results.json
       artifact-retention: 7
     secrets:
-      # chat-panel-streaming.spec.ts drives a live model and fails by name without it. This
+      # chat-panel-streaming.spec.ts drives a live model (Haiku through OpenRouter, the e2e
+      # config's ai_endpoints/ai_models: e2e/liveModel.ts) and fails by name without it. This
       # workflow runs on release pushes, tags and dispatch only (no pull_request trigger), so
       # the secret never reaches a fork's code.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      # The live sources this job's specs register: Snowflake, Databricks, BigQuery, Google
-      # Sheets and Fabric (source-to-query-cloud-warehouse / -special-cases). Passed by name.
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
-      DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
-      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
-      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
-      GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
-      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
-      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
-      FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
-      FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
+      # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
+      # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
+      # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
   # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
   provisioning:
@@ -201,9 +178,13 @@ jobs:
         CI=true
         PROVISA_E2E_LANE=core
         PROVISA_E2E_SPECS=${{ inputs.specs }}
+        PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
-      # json beside the list and the HTML report (in a file of its own: the HTML reporter empties
-      # its folder): the run's own record of what did not execute.
+      # json beside the line and the HTML report (in a file of its own: the HTML reporter empties
+      # its folder): the run's own record of what did not execute. The line reporter prints each
+      # failure's error as it fails, not in a summary at the end: a runner stopped before the end
+      # (run 40097774612, "The runner has received a shutdown signal" at 87 minutes, no report and
+      # no artifact) still leaves every failure it reached in the log.
       # Playwright stops ITSELF after 125 minutes, inside the job's bound: a run the job timeout
       # kills writes no report at all (release .479, run 38022153596: 108 failed attempts and
       # not one line of error text, no artifact). Stopped by its own limit it prints every
@@ -213,7 +194,7 @@ jobs:
       run: >-
         for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}" || { echo "::error::no spec ${spec%%:*}"; exit 1; }; done; 
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core-provisioning --workers=1 --global-timeout=7500000 --reporter=list,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
+        npx playwright test --project=core-provisioning --workers=1 --global-timeout=7500000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.
@@ -228,6 +209,7 @@ jobs:
       artifact-retention: 7
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # SharePoint (source-to-query.spec.ts), the one live source among this job's specs.
       SP_CERT_P12_BASE64: ${{ secrets.SP_CERT_P12_BASE64 }}
       SP_TENANT_ID: ${{ secrets.SP_TENANT_ID }}

@@ -40,6 +40,7 @@ SUMMARY_KINDS: tuple[str, ...] = (
     "plausible_type",
     "constraints",
     "constraint_checks",
+    "classifications",
     "drift",
 )
 
@@ -244,8 +245,11 @@ async def decide_profile_constraint(
     and sample as the run recorded them; ``definition`` replaces the proposed one (accept as
     edited)."""
     require_role(role, state)
+    from provisa.api.admin.capabilities import require_capability_request
     from provisa.api.admin.profiler_checks_router import DecisionInput, decide_constraint
 
+    # REQ-2155: deciding a constraint is managing data quality; asked before the run is read.
+    require_capability_request(request, "dq_rw")
     if status not in ("accepted", "dismissed"):
         raise ValueError(f"status must be 'accepted' or 'dismissed', not {status!r}")
     run_id = await _latest_succeeded_run(request, table_id)
@@ -447,14 +451,16 @@ async def set_column_fake(
     }
 
 
-async def propose_fakes(state: Any, role: str, request: Any, table_id: int) -> dict:
-    """Fill from profile: fakes and synthetic rules proposed from the latest succeeded run. Nothing
-    is saved."""
+async def propose_fakes(
+    state: Any, role: str, request: Any, table_id: int, columns: list[str] | None = None
+) -> dict:
+    """Fill from profile: fakes and synthetic rules proposed from the latest succeeded run, for
+    ``columns`` only when named (declared or not). Nothing is saved."""
     require_role(role, state)
     from provisa.api.admin.fakes_router import ProposeIn
     from provisa.api.admin.fakes_router import propose_fakes as route
 
-    return await route(request, ProposeIn(tableId=table_id))
+    return await route(request, ProposeIn(tableId=table_id, columns=columns))
 
 
 # -- synthetic datasets ------------------------------------------------------------------------

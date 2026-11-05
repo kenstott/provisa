@@ -191,7 +191,7 @@ describe("Choose folder", () => {
     fireEvent.change(input, { target: { files: [f] } });
     await waitFor(() => expect(seen.at(-1)?.code_upload_filename).toBe("rates.zip"));
     expect(screen.getByTestId("code-folder-note").textContent).toBe(
-      "This browser cannot keep the folder: choose it again to send a newer copy.",
+      "This browser cannot keep the folder, so choose it again to send a newer copy.",
     );
     // Nothing is kept for it, so Save sends nothing again.
     expect(await resendHeldFolder("other", seen.at(-1)!, async () => "never")).toBe(seen.at(-1));

@@ -39,6 +39,9 @@ OWNERS: dict[str, set[str]] = {
         "provisa/federation/duckdb_runtime.py",
         "provisa/federation/backend.py",
         "provisa/executor/drivers/duckdb_driver.py",
+        # REQ-2194: the DuckDB driver's Arrow reader (duckdb_driver and duckdb_runtime import it);
+        # it raises a reader error met mid-stream as the duckdb exception the statement run raises.
+        "provisa/executor/drivers/duckdb_arrow.py",
         # REQ-1730: a scratch in-memory DuckDB connection is the only available reader for a
         # source type DuckDB reaches only by community extension (firebird/airport) and no other
         # engine reaches at all — there is no separate Python client library for either wire
@@ -54,6 +57,11 @@ OWNERS: dict[str, set[str]] = {
         # REQ-1994: a scratch in-memory DuckDB holding the one row a mail-source write names, to
         # evaluate the governed WHERE over it exactly as SQL does -- no engine, no store.
         "provisa/federation/mail_write.py",
+        # REQ-2100: a built code host's front end, carried as it is into the image, imports nothing
+        # of Provisa's: its scratch in-memory DuckDB applies a read's residual to the function's
+        # Arrow batches (residual.py) and answers pgwire's catalog over them (pgfront.py).
+        "provisa/codehost/residual.py",
+        "provisa/codehost/pgfront.py",
         # REQ-2068: a scratch in-memory DuckDB ATTACHes a regions demo's seed file and a region's
         # PostgreSQL store and copies tables between them -- no engine, no org, no query path.
         "provisa/api/demo_region_seed.py",
@@ -61,6 +69,9 @@ OWNERS: dict[str, set[str]] = {
         # by the faked projection, beside its real values, for the leak-rate check -- no engine,
         # no store, nothing leaves the process.
         "provisa/fakes/adequacy.py",
+        # REQ-2006: the one door every DuckDB database is opened through -- capped by the
+        # deployment's engine.duckdb_memory_limit, and kept while open for the leak probe's reading.
+        "provisa/core/engine_memory.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf
@@ -91,6 +102,9 @@ OWNERS: dict[str, set[str]] = {
         # Unity Catalog publishing maps the connector's own error class to report a refused
         # statement against its product, as Horizon does for Snowflake's (REQ-2117).
         "provisa/api/metadata_export/unity_catalog.py",
+        # The engine runtime maps the connector's errors to a refused statement or a lost
+        # warehouse (REQ-778), as clickhouse_runtime and snowflake_runtime do for theirs.
+        "provisa/federation/databricks_runtime.py",
     },
     "google.cloud.bigquery": set(),
     "asyncpg": {

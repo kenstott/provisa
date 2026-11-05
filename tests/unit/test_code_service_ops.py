@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 from contextlib import asynccontextmanager
 from datetime import datetime
 from types import SimpleNamespace
@@ -356,7 +357,13 @@ def test_a_call_carries_the_requests_trace_and_holds_its_scope_while_it_runs(tmp
     frame = w._call_frame(5, "rates", "table", [1, worker.ABSENT], ["n", "d"], None)  # noqa: SLF001
     assert frame["traceparent"] == "00-trace-span-01"
     assert worker.call_scope("tok", 5) is not None
-    w._close(5)  # noqa: SLF001
+    mine, theirs = socket.socketpair()
+    try:
+        # The call's connection, given back when the call closes.
+        w._close(worker._Lane(mine), 5)  # noqa: SLF001
+    finally:
+        mine.close()
+        theirs.close()
     assert worker.call_scope("tok", 5) is None
 
 
@@ -374,3 +381,25 @@ def test_a_calls_stage_names_what_it_is_never_its_arguments(tmp_path):
         "codesource.code_hash": "h1",
     }
     assert "secret-arg" not in json.dumps(seen)
+
+
+def test_a_call_pulled_on_a_readers_thread_stays_in_the_request_that_asked():
+    """DuckDB takes a call's batches on a scan thread, outside the request: the call still acts as
+    the request's role, so a service it asks (dq) answers that role (REQ-2133)."""
+    import threading
+
+    from provisa.core.request_context import current_acting_role
+
+    def batches():
+        yield current_acting_role.get()
+
+    token = current_acting_role.set("analyst")
+    try:
+        items = worker.pulled(batches())
+    finally:
+        current_acting_role.reset(token)
+    seen: list = []
+    reader = threading.Thread(target=lambda: seen.extend(items))  # a thread of no request's
+    reader.start()
+    reader.join()
+    assert seen == ["analyst"]

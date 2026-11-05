@@ -14,6 +14,24 @@
     "deleteConfirm": "Eliminare il report {{name}}?",
     "deleted": "Report {{name}} eliminato.",
     "empty": "Nessun report registrato nel dominio ops.",
-    "resize": "Ridimensiona l'elenco dei report"
+    "resize": "Ridimensiona l'elenco dei report",
+    "drift": {
+      "title": "Deriva dal periodo precedente",
+      "baseline": "Confrontato con il modello del {{date}}, l'ultima versione entro il {{cutoff}}.",
+      "noHistory": "Nessuna cronologia: il modello non ha versioni del {{cutoff}} o precedenti con cui confrontare.",
+      "none": "Nessun termine ha perso o acquisito ancoraggio.",
+      "counts": "Persi: {{lost}} · Acquisiti: {{gained}} · Nuovi: {{new}}",
+      "renameRule": "I termini vengono abbinati per nome, quindi una ridenominazione appare come un termine perso e uno nuovo.",
+      "term": "Termine",
+      "before": "Prima",
+      "after": "Ora",
+      "change": "Modifica",
+      "absent": "Non nel modello",
+      "changeKind": {
+        "lost": "Perso",
+        "gained": "Acquisito",
+        "new": "Nuovo"
+      }
+    }
   }
 }

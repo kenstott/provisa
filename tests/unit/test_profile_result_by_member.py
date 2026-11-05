@@ -38,7 +38,7 @@ def _config() -> dict:
                 "cron": "0 2 * * *", "low_cardinality_max": 100, "drift_window": 7,
                 "drift_season": "none", "drift_distance": 3.0, "drift_slope": 3.0,
                 "drift_ks": 0.2, "drift_psi": 0.25, "correlation_max_columns": 20,
-                "joint_max_distinct": 20, "category_max_columns": 10}},
+                "joint_max_distinct": 20, "category_max_columns": 10, "classification_sample": 500}},
         ],
         "domains": [{"id": "harbor"}],
         "roles": [],

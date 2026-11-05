@@ -268,6 +268,10 @@ def _governed_violations(sql: str) -> list:
         for r in _CONFIG["relationships"]
         if r["source_table_id"] in ids and r["target_table_id"] in ids
     ]
+    # REQ-2155: the grants folded over each role's ancestors, as the server's build does.
+    from provisa.core.db import fold_config_grants
+
+    fold_config_grants(tables, config.get("roles") or [])
     role = {"id": "org_admin", "domain_access": ["*"], "capabilities": []}
     naming.configure(gql="apollo_graphql")
     schema_input = SchemaInput(

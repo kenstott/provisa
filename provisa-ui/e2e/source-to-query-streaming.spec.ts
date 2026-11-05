@@ -174,6 +174,14 @@ test.afterAll(async () => {
   );
 });
 
+/** Save the table editor and wait for it to close. A save is the table's update and then the
+ * reload of the tables it rebuilds: measured on the CI runner at 8-10 s with nothing stalled
+ * (run 40104554330, tables-role-ttl.spec.ts), so 15 s left a busy runner no margin. */
+async function saveTable(page: Parameters<typeof runSqlOnPage>[0]) {
+  await page.getByTestId("table-edit-save").click();
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 60000 });
+}
+
 /** Poll `sql` on the SQL page every 3s until it returns at least `minRows` rows, or fail at
  * `timeoutMs`. Push/poll landing is asynchronous (REQ-1733's debounce, rss's poll cadence) —
  * an immediate SELECT would be a flaky false negative, not a real assertion. */
@@ -187,9 +195,9 @@ async function pollUntilLanded(
   const deadline = Date.now() + timeoutMs;
   let rows: string[][] = [];
   while (Date.now() < deadline) {
-    // A kafka listener lands what is produced once it is consuming (a new group starts at the
-    // topic's end), and a save re-wires it asynchronously: a message produced before it is
-    // positioned is never landed. Produced again before each poll; the table's key lands it once.
+    // A save re-wires the listener asynchronously, and the message is produced again before each
+    // poll until it lands; the table's key lands it once. A table's first listener reads from the
+    // topic's earliest offset (REQ-1733), so what was produced before it started lands too.
     produce?.();
     rows = await runSqlOnPage(page, sql);
     if (rows.length >= minRows) return rows;
@@ -359,8 +367,7 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     // Cache TTL is on the table's "Load and timeliness" section.
     await page.getByTestId("table-section-load").click();
     await page.getByLabel(/^Cache TTL/).fill("5");
-    await page.getByTestId("table-edit-save").click();
-    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+    await saveTable(page);
 
     // 4. SQL page: rss lands through the poll cadence just configured — asynchronous, retry
     // rather than assert immediately (the same shape kafka/websocket use above for their own
@@ -524,8 +531,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     // captures "kafka" (isPushSignal) at check time, not whatever ttl/probe default preceded it.
     await page.getByTestId("live-delivery-enable").check();
     await page.getByTestId("live-kafka-topic").fill(topic);
-    await page.getByTestId("table-edit-save").click();
-    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+    await saveTable(page);
 
     // 4. Produce a message on the registered topic and query it on the SQL page: push_wiring's
     // listener (re-wired on save, same state.push_listener_disconnects idempotency websocket's
@@ -685,8 +691,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await page.getByRole("option", { name: "kafka", exact: true }).click();
     await page.getByTestId("live-delivery-enable").check();
     await page.getByTestId("live-kafka-topic").fill(topic);
-    await page.getByTestId("table-edit-save").click();
-    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+    await saveTable(page);
 
     const landedRows = await pollUntilLanded(
       page,
@@ -796,16 +801,20 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await page.getByRole("option", { name: "kafka", exact: true }).click();
     await page.getByTestId("live-delivery-enable").check();
     await page.getByTestId("live-kafka-topic").fill(topic);
-    await page.getByTestId("table-edit-save").click();
-    await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+    await saveTable(page);
 
+    // The table's first listener reads the topic from its earliest offset (REQ-1733): the message
+    // sampled for discovery lands beside the one produced after the save.
     const landedRows = await pollUntilLanded(
       page,
       `SELECT id, value FROM pet_store.${registered} ORDER BY id`,
-      1,
+      2,
       180000,
       () => produceKafkaMessage(topic, { id: "sample-2", value: "hello-sample-2" }),
     );
-    expect(landedRows).toEqual([["sample-2", "hello-sample-2"]]);
+    expect(landedRows).toEqual([
+      ["sample-1", "hello-sample"],
+      ["sample-2", "hello-sample-2"],
+    ]);
   });
 });

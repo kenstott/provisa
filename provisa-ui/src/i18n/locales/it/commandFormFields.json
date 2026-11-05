@@ -64,6 +64,10 @@
     "outputColumnsTitle": "Colonne del dataset di output",
     "addOutputColumn": "+ Aggiungi colonna di output",
     "removeOutputColumn": "rimuovi la colonna di output {{name}}",
-    "datasetColumnPlaceholder": "colonna"
+    "datasetColumnPlaceholder": "colonna",
+    "bindingTemplate": "Espressione SQL",
+    "bindingTemplateHint": "Un'espressione SQL. Scrivi ogni argomento come {{placeholder}}; viene eseguita all'interno della query chiamante.",
+    "argDefault": "Valore predefinito dell'argomento {{name}}",
+    "argDefaultPlaceholder": "Valore predefinito (vuoto se obbligatorio)"
   }
 }

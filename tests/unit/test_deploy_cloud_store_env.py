@@ -126,6 +126,10 @@ def test_the_patch_overlay_and_the_sandbox_vm_read_the_lists():
 
 
 def test_first_launch_offers_what_the_lists_say():
+    """The sandbox tier offers its list; the regions tier's nodes (REQ-2068), one per visitor
+    region, together offer theirs, each demo once."""
     text = (_REPO / "packaging" / "linux" / "first-launch.sh").read_text()
-    offered = re.findall(r'PROVISA_DEMO_BUNDLES: "([^"]+)"', text)
-    assert sorted(offered) == sorted([_list("sandbox-tier-bundles"), _list("regions-tier-bundles")])
+    sandbox, *regions = re.findall(r'PROVISA_DEMO_BUNDLES: "([^"]+)"', text)
+    assert sandbox == _list("sandbox-tier-bundles")
+    served = [demo for node in regions for demo in node.split(",")]
+    assert sorted(served) == sorted(_list("regions-tier-bundles").split(","))

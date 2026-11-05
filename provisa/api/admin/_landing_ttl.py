@@ -180,6 +180,55 @@ async def _stored_type(conn: Any, source_id: str) -> str | None:
     return None if row is None else row.type
 
 
+async def row_materialize_save_refusal(
+    conn: Any, source_id: str, table_name: str, row_materialize: bool, pk_columns: list[str]
+) -> MutationResult | None:
+    """A failing MutationResult when a table saved with row_materialize is of a source whose type
+    has no row fetch by primary keys, or is refused it for a reason of its own, or -- for a type
+    whose fetch is each table's own -- is a table without one (REQ-1865,
+    ``core.source_registry.row_materialize_refusal``); None otherwise."""
+    if not row_materialize:
+        return None
+    from provisa.core.source_registry import (
+        ROW_FETCH_BY_KEYS_PER_TABLE,
+        no_key_fetch_refusal,
+        row_materialize_refusal,
+    )
+
+    source_type = await _stored_type(conn, source_id)
+    own = None
+    if source_type in ROW_FETCH_BY_KEYS_PER_TABLE:
+        from provisa.api.admin._graphql_table_registration import stored_key_fetches
+        from provisa.api.app import state
+        from provisa.graphql_remote.by_keys import has_key_fetch
+
+        fetches = await stored_key_fetches(state, source_id, table_name)
+        own = has_key_fetch(fetches, pk_columns)
+        if not own:
+            return MutationResult(
+                success=False,
+                message=no_key_fetch_refusal(table_name),
+                code="schema.row_materialize_no_key_fetch",
+                params={"table": table_name},
+            )
+    refused = row_materialize_refusal(table_name, source_type, table_fetches_by_keys=own)
+    return None if refused is None else MutationResult(success=False, message=refused)
+
+
+def _reach_type(source_id: str, source_type: str | None, hints: dict[str, str]) -> str | None:
+    """The type the bound engine's reach of the source is judged by: a JDBC source attached
+    live there is judged as the built-in type its URL names (REQ-2191)."""
+    from types import SimpleNamespace
+
+    from provisa.api.app import state
+    from provisa.jdbc_source.attach import reach_type
+
+    if source_type is None:
+        return None
+    source = SimpleNamespace(id=source_id, type=source_type, federation_hints=hints)
+    return reach_type(source, state.federation_engine)
+
+
 def _engine_reads_in_place(source_type: str | None) -> bool:
     """Whether the bound engine reads a source of ``source_type`` live in place (an attach or a
     scan) rather than serving it from a replica (federation.strategy.engine_attaches). A source not
@@ -306,7 +355,10 @@ async def landing_ttl_refusal(
     hints = (
         federation_hints if federation_hints is not None else await _stored_hints(conn, source_id)
     )
-    engine_lands = not (hints.get("reach") == "scan" or _engine_reads_in_place(source_type))
+    engine_lands = not (
+        hints.get("reach") == "scan"
+        or _engine_reads_in_place(_reach_type(source_id, source_type, hints))
+    )
     for t in tables:
         if not engine_lands and not lands_from_config(
             materialize=t.materialize,

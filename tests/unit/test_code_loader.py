@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Batched join keys through a ``loader`` (REQ-2100): a join's argument sets reach a function that
-takes a ``loader`` as a hash of sparse keys, de-duplicated by their hashes, in batches of the size
-it declares, and each set is given the rows answered under its own key. A read with the table's own
-arguments calls it without one. The worker is a real Python host process (unsandboxed)."""
+"""Batched join keys through a ``@loader`` (REQ-2100): a join's argument sets reach the function
+in its read context's ``keys``, a hash of sparse keys, de-duplicated by their hashes, in batches of
+the size it declares, and each set is given the rows answered under its own key. A read with the
+table's own arguments has no keys. The worker is a real Python host process (unsandboxed)."""
 
 # Requirements: REQ-2100
 from __future__ import annotations
@@ -36,6 +36,8 @@ pytestmark = pytest.mark.unit
 CODE = '''
 from dataclasses import dataclass
 
+from provisa_services import ReadContext
+
 _calls = 0
 
 
@@ -48,36 +50,47 @@ class Score:
     call: int
 
 
-def churn(
-    customer_id: str | None = None, plan: str = "basic", loader: dict | None = None
-) -> list[Score]:
+@dataclass
+class ChurnInputs:
+    customer_id: str | None = None
+    plan: str = "basic"
+
+
+@dataclass
+class StrayInputs:
+    customer_id: str | None = None
+
+
+def churn(inputs: ChurnInputs, context: ReadContext) -> list[Score]:
     """@table
     @loader 2
     """
     global _calls
     _calls += 1
-    if loader is None:
-        return [Score(customer_id, plan, 0.0, 0, _calls)]
+    if context.keys is None:
+        return [Score(inputs.customer_id, inputs.plan, 0.0, 0, _calls)]
     return {
-        key: [Score(k["customer_id"], k.get("plan", "basic"), 0.5, len(loader), _calls)]
-        for key, k in loader.items()
+        key: [Score(k["customer_id"], k.get("plan", "basic"), 0.5, len(context.keys), _calls)]
+        for key, k in context.keys.items()
     }
 
 
-def unbatched(
-    customer_id: str | None = None, plan: str = "basic", loader: dict | None = None
-) -> list[Score]:
-    """@table"""
+def unbatched(inputs: ChurnInputs, context: ReadContext) -> list[Score]:
+    """@table
+    @loader
+    """
     global _calls
     _calls += 1
     return {
-        key: [Score(k["customer_id"], k.get("plan", "basic"), 0.5, len(loader), _calls)] * 2
-        for key, k in loader.items()
+        key: [Score(k["customer_id"], k.get("plan", "basic"), 0.5, len(context.keys), _calls)] * 2
+        for key, k in context.keys.items()
     }
 
 
-def stray(customer_id: str | None = None, loader: dict | None = None) -> list[Score]:
-    """@table"""
+def stray(inputs: StrayInputs, context: ReadContext) -> list[Score]:
+    """@table
+    @loader
+    """
     return {"not-a-key-sent": [Score("x", "basic", 0.0, 0, 0)]}
 '''
 
@@ -226,35 +239,47 @@ def test_the_loader_is_no_parameter_of_the_table_and_its_size_is_read(tmp_path, 
     [
         (
             '''
-            def f(x: int | None = None) -> list[dict]:
+            from dataclasses import dataclass
+
+
+            @dataclass
+            class In:
+                x: int | None = None
+
+
+            def f(inputs: In) -> list[dict]:
                 """@table
                 @loader 10
                 """
                 return []
             ''',
-            "f: loader 10 declares a batch size, and f has no loader parameter",
+            "f: a @loader is given the join's keys in its read context, and f takes no ReadContext",
         ),
         (
             '''
-            def f(loader: dict | None = None) -> list[dict]:
+            from provisa_services import ReadContext
+
+
+            def f(context: ReadContext) -> list[dict]:
                 """@table
                 @loader many
                 """
                 return []
             ''',
-            "f: loader many: a batch size is a positive whole number",
+            "f: @loader many: a batch size is a positive whole number",
         ),
         (
-            """
-            from typing import Annotated
+            '''
+            from provisa_services import ReadContext
 
 
-            def f(loader: Annotated[dict | None, "loader 5"] = None) -> list[dict]:
-                '''@table
+            def f(context: ReadContext) -> list[dict]:
+                """@table
                 @loader 10
-                '''
+                @loader 5
+                """
                 return []
-            """,
+            ''',
             "f: two batch sizes declared, 10 and 5",
         ),
     ],
@@ -263,15 +288,3 @@ def test_a_batch_size_the_function_cannot_take_is_refused_by_name(tmp_path, sour
     with pytest.raises(ManifestRefused) as refused:
         read_manifest(_read(tmp_path, source, "m"), PYTHON_RULES)
     assert problem in refused.value.problems
-
-
-def test_annotated_declares_the_batch_size(tmp_path):
-    source = """
-    from typing import Annotated
-
-
-    def f(loader: Annotated[dict | None, "loader 50"] = None) -> list[dict]:
-        '''@table'''
-        return []
-    """
-    assert read_manifest(_read(tmp_path, source, "m"), PYTHON_RULES).export("f").loader_batch == 50

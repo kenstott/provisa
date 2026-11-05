@@ -1,0 +1,163 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b0bac4ef-6df2-4879-9f54-7dfbf94069eb
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The PostgreSQL types of a catalog statement's result columns (REQ-2167).
+
+A column the statement reads from a pg_catalog or information_schema relation, as it is or
+through an alias, a subquery or a CTE, has the type PostgreSQL 17 declares for it
+(catalog_pg17.RELATIONS); a column that is a call of a pg_catalog function has the type PostgreSQL
+17 says the function returns (catalog_pg17.FUNCTION_RETURNS); any other column has the type its
+expression gives."""
+
+from __future__ import annotations
+
+import functools
+
+import sqlglot
+import sqlglot.expressions as exp
+from sqlglot.errors import ParseError
+from sqlglot.optimizer.annotate_types import annotate_types
+from sqlglot.optimizer.qualify import qualify
+from sqlglot.schema import MappingSchema
+
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS, TYPES
+from provisa.pgwire.function_types import call_result_type
+
+# The types whose text and binary forms are those of the wire type a catalog column is served
+# with (text, a 4-byte integer, or a timestamp with time zone), named the way the statement's annotation names them; their
+# OIDs are PostgreSQL 17's, as RELATIONS records them.
+_SAME_WIRE_FORM = frozenset(
+    {
+        "name",
+        '"char"',
+        "pg_node_tree",
+        "oid",
+        "xid",
+        "information_schema.sql_identifier",
+        "information_schema.character_data",
+        "information_schema.yes_or_no",
+        "information_schema.cardinal_number",
+        "information_schema.time_stamp",
+        # Held as text in the always-empty statistics relations (catalog_pg17_tables): described
+        # as PostgreSQL's, though no value of one is ever sent.
+        "anyarray",
+        "pg_ndistinct",
+        "pg_dependencies",
+        "pg_mcv_list",
+        "pg_statistic[]",
+        # A record-returning catalog function answers a NULL record, and pg_sleep the void value
+        # (empty text): no composite value is ever sent.
+        "record",
+        "void",
+        # REQ-2167: a server function's value, held as what its wire form is: xid8 a bigint, the
+        # object identifier types an oid, and the rest their text. A binary pg_snapshot or
+        # aclitem is its text.
+        "xid8",
+        "pg_snapshot",
+        "txid_snapshot",
+        "aclitem",
+        "tid",
+        "regcollation",
+        "regconfig",
+        "regdictionary",
+        "regoper",
+        "regoperator",
+        "regprocedure",
+        "regrole",
+    }
+)
+
+CATALOG_TYPE_OIDS: dict[str, int] = {
+    entry[-1]: oid for oid, entry in TYPES.items() if entry[-1] in _SAME_WIRE_FORM
+}
+
+_PSEUDO_TYPES = frozenset(entry[-1] for entry in TYPES.values() if entry[3] == "p")
+
+# A function returning a polymorphic pseudo-type (anyelement, anyarray, ...) is left to its
+# expression; one returning record or void is that type.
+_FUNCTION_TYPES = {
+    name: returns
+    for name, returns in FUNCTION_RETURNS.items()
+    if returns not in _PSEUDO_TYPES or returns in ("record", "void")
+}
+
+
+def _column_type(pg_type: str) -> str | exp.DataType:
+    """A column's type for the annotation. sqlglot reads ``oid[]`` (and ``regtype[]``) as the
+    element type, so an array of a type it knows is built as an array explicitly."""
+    if not pg_type.endswith("[]"):
+        return pg_type
+    element = exp.DataType.build(pg_type[:-2], dialect="postgres", udt=True)
+    if element.is_type(exp.DataType.Type.USERDEFINED):
+        return pg_type
+    return exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[element], nested=True)
+
+
+@functools.cache
+def _schema() -> MappingSchema:
+    nested: dict[str, object] = {
+        schema: {
+            relation: {name: _column_type(pg_type) for name, pg_type, _ in columns}
+            for (in_schema, relation), columns in RELATIONS.items()
+            if in_schema == schema
+        }
+        for schema, _ in RELATIONS
+    }
+    return MappingSchema(nested, dialect="postgres")
+
+
+@functools.lru_cache(maxsize=4096)
+def result_types(sql: str) -> tuple[tuple[str, str], ...]:
+    """Each result column's name and PostgreSQL type, as PostgreSQL's format_type names it (an
+    unknown type is the empty string). An unqualified relation is pg_catalog's, first on PostgreSQL's
+    search path."""
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except ParseError:
+        return ()  # a call sqlglot reads as syntax (convert): the engine's types describe it
+    qualified = qualify(
+        tree,
+        db="pg_catalog",
+        schema=_schema(),
+        dialect="postgres",
+        validate_qualify_columns=False,
+        quote_identifiers=False,
+    )
+    annotated = annotate_types(qualified, schema=_schema(), dialect="postgres")
+    if not isinstance(annotated, exp.Query):
+        return ()
+    return tuple(
+        (select.alias_or_name, _function_type(select.unalias()) or _format_type(select.type))
+        for select in annotated.selects
+    )
+
+
+def _function_type(expression: exp.Expr) -> str:
+    """The type PostgreSQL 17 says a pg_catalog function call returns; empty when the expression
+    is not such a call."""
+    if isinstance(expression, exp.Dot):
+        expression = expression.expression
+    overload = call_result_type(expression)  # REQ-2167: the overload its arguments name
+    if overload is not None and (overload not in _PSEUDO_TYPES or overload in ("record", "void")):
+        return overload
+    if isinstance(expression, exp.Anonymous):
+        name = expression.name.lower()
+    elif isinstance(expression, exp.Func):
+        name = type(expression).sql_names()[0].lower()
+    else:
+        return ""
+    return _FUNCTION_TYPES.get(name, "")
+
+
+def _format_type(data_type) -> str:
+    if data_type is None or data_type.is_type("unknown"):
+        return ""
+    # A type named in pg_catalog is the type of its bare name (pg_catalog.regclass is regclass).
+    return data_type.sql("postgres").lower().removeprefix("pg_catalog.")

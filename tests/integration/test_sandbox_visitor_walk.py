@@ -33,10 +33,12 @@ by name, before the bundle is published (demo-bundles.yml runs this test on the 
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +46,7 @@ import httpx
 import pytest
 import yaml
 
+from tests.integration.regions_tier import regions_tier, serves_on_regions_tier
 from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET, _deployment_config
 
 # local_platform: the tier's control plane is the local platform's, no shared stack (only the
@@ -92,17 +95,48 @@ def _bundle(demo: str, out: Path) -> Path:
 @pytest.fixture(params=published_demos())
 def tier(request, tmp_path_factory):
     """A sandbox tier serving the demo ``request.param`` from its bundle, as the cloud's node does:
-    the bundle in a registry of this test's own, pulled by the node's sync, its stores up."""
-    from tests.integration.demo_registry import DemoRegistry
-    from tests.integration.isolated_server import IsolatedServer
-
+    the bundle in a registry of this test's own, pulled by the node's sync, its stores up. A demo
+    whose demo.yaml names regions is served by a regions tier node, as the cloud's regions tier
+    serves it; every other demo by the plain sandbox tier."""
     demo = request.param
     work = tmp_path_factory.mktemp(f"visitor_{demo}")
     bundle = _bundle(demo, work / "built")
     version = bundle.name.removeprefix(f"{demo}-").removesuffix(".tar.gz")
+    project = f"provisa-demo-{demo}-{version}"
+    serve = _regions_tier if serves_on_regions_tier(_NAMED / demo) else _plain_tier
+    try:
+        with serve(demo, bundle, work) as (server, bundles):
+            assert (bundles / demo / "ready").read_text().strip() == version
+            server.demo = demo
+            server.directory = bundles / demo / version
+            yield server
+    finally:
+        subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)
+
+
+_AUTH = {"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"}
+
+
+@contextlib.contextmanager
+def _regions_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path]]:
+    bundles = work / "data" / "demo-bundles"
+    env = {"PROVISA_LOGS_ALLOWED_ROOTS": str(bundles)}
+    with regions_tier(f"visitor{demo}", demo, bundle, work, auth=_AUTH, env=env) as served:
+        server, _stack, synced_into = served
+        yield server, synced_into
+
+
+@contextlib.contextmanager
+def _plain_tier(
+    demo: str, bundle: Path, work: Path, *, control_plane: str = "postgres"
+) -> Iterator[tuple[Any, Path]]:
+    """``control_plane``: IsolatedServer's; "own" for a tier restarted on its own record of what
+    it built (a template another test recorded in the shared one has no folder here)."""
+    from tests.integration.demo_registry import DemoRegistry
+    from tests.integration.isolated_server import IsolatedServer
+
     registry = DemoRegistry()
     registry.start()
-    project = f"provisa-demo-{demo}-{version}"
     server = None
     try:
         print(registry.push(bundle))
@@ -110,7 +144,6 @@ def tier(request, tmp_path_factory):
         synced = registry.sync(demo, bundles)
         print(synced.stdout, synced.stderr)
         assert synced.returncode == 0, (demo, synced.stdout, synced.stderr)
-        assert (bundles / demo / "ready").read_text().strip() == version
         config = work / "config.yaml"
         _deployment_config(config)
         # The deployment's naming is the one every org's schema is named by: the cloud's sandbox
@@ -123,7 +156,8 @@ def tier(request, tmp_path_factory):
             f"visitor{demo}",
             engine="duckdb",
             config=str(config),
-            auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
+            control_plane=control_plane,
+            auth=_AUTH,
             env={
                 "PROVISA_SANDBOX_TIER": "true",
                 "PROVISA_DEMO_BUNDLES": demo,
@@ -132,14 +166,11 @@ def tier(request, tmp_path_factory):
                 "PROVISA_LOGS_ALLOWED_ROOTS": str(bundles),
             },
         )
-        server.demo = demo
-        server.directory = bundles / demo / version
         server.start(timeout=600)
-        yield server
+        yield server, bundles
     finally:
         if server is not None:
             server.stop_process()
-        subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)
         registry.stop()
 
 
@@ -229,8 +260,9 @@ def _answered(what: str, resp: httpx.Response, sql: str | None = None) -> tuple[
 
 class Walk:
     """The visitor's page state through the tour, as demoTour.ts keeps it: the page the tour is on,
-    the role the app acts as (the header's picker), the SQL explorer's run-as role and time travel,
-    and the environment every request after an ``env`` step is served from."""
+    the role the app acts as (the header's picker), the SQL explorer's run-as role, the value an
+    ``as_recorded_from`` step binds to the next statement's $1 (REQ-2083), and the environment
+    every request after an ``env`` step is served from."""
 
     def __init__(self, tier, token: dict[str, str]) -> None:
         self.tier = tier
@@ -240,8 +272,7 @@ class Walk:
         self.sql_role: str | None = None
         self.page: str | None = None
         self.env: str | None = None
-        self.as_of: str | None = None
-        self.as_recorded: str | None = None
+        self.bound: list[str] = []
         self.answers: dict[str, list[dict]] = {}
 
     def _role(self, chosen: str) -> str:
@@ -256,13 +287,9 @@ class Walk:
                 self.app_role = self._role(step["role"])
         if "env" in step:
             self.env = step["env"]
-        if "as_of" in step:
-            self.as_of = step["as_of"]
-        if "as_recorded" in step:
-            self.as_recorded = step["as_recorded"]
         if "as_recorded_from" in step:
             taken = step["as_recorded_from"]
-            self.as_recorded = str(self.answers[taken["step"]][taken["row"]][taken["column"]])
+            self.bound = [str(self.answers[taken["step"]][taken["row"]][taken["column"]])]
 
     def headers(self, *, sql: bool) -> dict[str, str]:
         sent = {
@@ -271,10 +298,6 @@ class Walk:
         }
         if self.env is not None:
             sent["x-provisa-env"] = self.env
-        if sql and self.as_of is not None:
-            sent["X-Provisa-As-Of"] = self.as_of
-        if sql and self.as_recorded is not None:
-            sent["X-Provisa-As-Recorded"] = self.as_recorded
         return sent
 
     def send(
@@ -310,11 +333,26 @@ class Walk:
             self.choose(step)
             key = step["key"]
             if "sql" in step:
-                answer = self.send(
-                    f"{key} (sql)", "POST", "/data/sql", {"sql": step["sql"]}, sql=step["sql"]
-                )
+                # A bound value goes with this statement alone, as the page sends it.
+                body = {"sql": step["sql"], **({"params": self.bound} if self.bound else {})}
+                self.bound = []
+                answer = self.send(f"{key} (sql)", "POST", "/data/sql", body, sql=step["sql"])
                 if answer is not None:  # None: refused outside a view's read window (_answered)
                     self.answers[key] = answer["sql"]
+            if step.get("mcp_connect"):
+                # The explorer's Connect panel reads the MCP server's status; the agent's own
+                # questions (mcp) are answered live by a model, so the walk sends none.
+                self.send(f"{key} (mcp-connect)", "GET", "/admin/mcp-server", None)
+            if "region" in step or step.get("purposes"):
+                # The regions the page lists, as the visitor reads them: the Platform page's, read-only
+                # in a sandbox (REQ-1922), or the org's, which Admin > Regions and Federation's tab
+                # per region both read.
+                path = (
+                    "/admin/platform/regions"
+                    if self.page == "/admin/platform"
+                    else "/admin/regions"
+                )
+                self.send(f"{key} (regions)", "GET", path, None)
             if "cypher" in step:
                 self.send(f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]})
             if "example" in step and not _is_subscription(examples[step["example"]]):
@@ -335,7 +373,8 @@ _CREATE_SOURCE = "mutation CreateSource($input: SourceInput!) { createSource(inp
 
 
 def _build_live_source(tier, token: dict[str, str]) -> list[str]:
-    """The core tour's live-built source (REQ-2115), as its Save sends it from the visitor's
+    """The source the core tour's form is filled in with (REQ-2115), which the tour cancels: saved
+    here as the visitor's own Save would send it from the visitor's
     sandbox: supplies.parquet from the org's own copy its demo ships ({files}/supplies.parquet,
     REQ-2101 amended), its table set up as a draft. The copy Provisa publishes is refused here --
     a sandbox may reach no address its demo does not declare -- which is why the demo ships one.
@@ -380,7 +419,7 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
     assert not remote["success"] and "provisa.dev" in remote["message"], remote
     made = create("supplies", "{files}/supplies.parquet")
     if not made["success"]:
-        raise _failed(tier, f"the tour's live source was refused: {made}")
+        raise _failed(tier, f"the tour's source form's values were refused: {made}")
     return ["stepBuildSource {files}/supplies.parquet saved; the published address refused"]
 
 
@@ -400,7 +439,7 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     spec = yaml.safe_load((tier.directory / "demo.yaml").read_text())
     if spec.get("tour") == "core":
         # Toured by the product's core tour (no tour.yaml of its own): the explorers are walked,
-        # and the tour's live-built source saved from the org's own copy where the demo ships it.
+        # and the tour's source form's values saved from the org's own copy where the demo ships it.
         assert not steps, f"{tier.demo} is toured by the core tour and has a tour of its own"
         built = _build_live_source(tier, token)
         print("\n".join(built))

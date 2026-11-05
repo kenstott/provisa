@@ -39,7 +39,6 @@ from graphql import (
 )
 
 from provisa.compiler.params import ParamCollector
-from provisa.core.source_registry import TIME_TRAVEL_SOURCES
 
 from provisa.compiler.sql_types import (
     ColumnRef,
@@ -53,6 +52,7 @@ from provisa.compiler.sql_rewrite import (
     _q,
     _sql_str_literal,
     _table_ref,
+    travel_ref,
 )
 from provisa.compiler.sql_where import (
     RelationshipConditions,
@@ -68,6 +68,7 @@ from provisa.compiler.sql_where import (
     _has_joins,
     _below_takes_lateral_args,
     _has_lateral_force_args,
+    _joins_row_level_to_one,
 )
 from provisa.compiler.sql_selection import (
     _build_gql_selection,
@@ -162,7 +163,12 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
 
             src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
             _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
-            _use_agg = not flat and not _has_lateral_force_args(sel) and not _below
+            _use_agg = (
+                not flat
+                and not _has_lateral_force_args(sel)
+                and not _below
+                and not _joins_row_level_to_one(sel, join_meta, ctx)
+            )
             if (
                 join_meta.default_limit is not None
                 or _has_lateral_force_args(sel)
@@ -185,6 +191,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         RelationshipConditions(
                             ctx, join_meta.target.type_name, use_catalog, sources
                         ),
+                        ctx.aggregate_columns,
                     )
                 )
                 if sel.selection_set:
@@ -210,7 +217,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
                 _agg_limit = _explicit_limit(sel, variables) or join_meta.default_limit
-                _from_clause = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
+                _target_ref = travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)
+                _from_clause = f"{_target_ref} {_q(join_alias)}"
                 _where_expr = f"{tgt_expr} = {src_expr}"
                 _rel_key = sel.alias.value if sel.alias else sel_name
                 _pv = (
@@ -218,6 +226,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     if join_meta.child_src_val is not None
                     else (src_expr if join_meta.source_column_type != "integer" else None)
                 )
+                _json_text: set[str] = set()
                 json_expr, alias_counter = _build_rel_json_expr(
                     sel.selection_set.selections,
                     ctx,
@@ -233,6 +242,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     sources,
                     variables,
                     parent_src_val=_pv,
+                    json_text=_json_text,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(
@@ -243,12 +253,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         nested_in=None,
                         cardinality=join_meta.cardinality,
                         is_agg=True,
+                        json=True,
+                        json_text=frozenset(_json_text),
                     )
                 )
             else:
                 _join_on = f"{src_expr} = {tgt_expr}"
                 join_clauses.append(
-                    f"LEFT JOIN {_table_ref(join_meta.target, use_catalog)}"
+                    f"LEFT JOIN {travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
                     f" {_q(join_alias)}"
                     f" ON {_join_on}"
                 )
@@ -379,42 +391,26 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
+                    # a path into a JSON column (col_path) is read as text (->>)
+                    json=not col_path and (table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=not col_path
+                    and (table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 
-    # FROM clause
-    ref = _table_ref(table, use_catalog)
+    # FROM clause. REQ-1163: a relation that has versions is read at the time its field's
+    # as_of / as_recorded say, written as the SQL call form the pipeline lifts per reference.
+    ref = travel_ref(_table_ref(table, use_catalog), field_node, variables)
     if use_aliases:
         assert root_alias is not None
         from_clause = f"{ref} {_q(root_alias)}"
     else:
         from_clause = ref
 
-    # Process arguments before building SQL so as_of can modify the FROM clause
     args = {}
     if field_node.arguments:
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
-
-    # Time-travel: append FOR TIMESTAMP/VERSION AS OF to table ref in FROM clause (REQ-372)
-    if "as_of" in args:
-        if table.source_type not in TIME_TRAVEL_SOURCES:
-            raise ValueError(
-                f"as_of is not supported for source type {table.source_type!r}; "
-                f"only iceberg and delta_lake sources support time-travel"
-            )
-        as_of_val = args["as_of"]
-        # Numeric → version; string → timestamp
-        try:
-            version = int(as_of_val)
-            time_travel_clause = f" FOR VERSION AS OF {version}"
-        except (TypeError, ValueError):
-            time_travel_clause = f" FOR TIMESTAMP AS OF TIMESTAMP '{as_of_val}'"
-        if use_aliases:
-            assert root_alias is not None
-            from_clause = f"{ref}{time_travel_clause} {_q(root_alias)}"
-        else:
-            from_clause = f"{ref}{time_travel_clause}"
 
     result_limit: int | None = None
 
@@ -422,7 +418,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     # PG places TABLESAMPLE after the (optional) alias; SQLGlot transpiles per dialect.
     # Not compatible with time-travel or lateral op-join wrapping.
     if "sample" in args:
-        if "as_of" in args or has_lateral_ops_joins:
+        if "as_of" in args or "as_recorded" in args or has_lateral_ops_joins:
             raise ValueError("sample cannot be combined with as_of or op-relationship joins")
         _pct = float(args["sample"])
         if not 0 < _pct <= 100:
@@ -447,6 +443,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 table.table_id,
                 ctx.exposed_to_physical,
                 RelationshipConditions(ctx, table.type_name, use_catalog, sources),
+                ctx.aggregate_columns,
             )
         )
     where_parts += native_arg_conditions(api_args)
@@ -611,7 +608,7 @@ def _compile_connection_field(  # REQ-218
     use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile a _connection root query field to SQL with cursor pagination."""
-    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns, reverse_order
+    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns
 
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
@@ -631,7 +628,16 @@ def _compile_connection_field(  # REQ-218
             continue
         phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
         select_parts.append(_q(phys_name))
-        columns.append(ColumnRef(None, phys_name, sel_name, None))
+        columns.append(
+            ColumnRef(
+                None,
+                phys_name,
+                sel_name,
+                None,
+                json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+            )
+        )
 
     if not select_parts:
         select_parts.append("1")
@@ -655,7 +661,13 @@ def _compile_connection_field(  # REQ-218
         _conn_vvals = ctx.virtual_columns.get(table.table_id)
         where_parts.append(
             _compile_where(
-                args["where"], collector, None, _conn_vvals, table.table_id, ctx.exposed_to_physical
+                args["where"],
+                collector,
+                None,
+                _conn_vvals,
+                table.table_id,
+                ctx.exposed_to_physical,
+                column_types=ctx.aggregate_columns,
             )
         )
 
@@ -674,9 +686,9 @@ def _compile_connection_field(  # REQ-218
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
-        if is_backward:
-            order_sql = reverse_order(order_sql)
+        order_sql = _compile_order_by(
+            order_by_val, None, table.table_id, ctx.exposed_to_physical, reverse=is_backward
+        )
         sql += f" ORDER BY {order_sql}"
     else:
         direction = "DESC" if is_backward else "ASC"
@@ -721,7 +733,17 @@ class UnknownRootField(ValueError):
 
 #: A root field's arguments that are not a table's parameters (REQ-1986).
 _STANDARD_ARGS = frozenset(
-    {"where", "order_by", "limit", "offset", "distinct_on", "as_of", "sample", "similar"}
+    {
+        "where",
+        "order_by",
+        "limit",
+        "offset",
+        "distinct_on",
+        "as_of",
+        "as_recorded",
+        "sample",
+        "similar",
+    }
 )
 
 

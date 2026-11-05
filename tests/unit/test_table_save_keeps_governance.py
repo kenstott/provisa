@@ -26,6 +26,7 @@ import types
 import pytest
 
 from provisa.api.admin import _hiding_guard
+from provisa.api.admin.catalog_scope import CatalogScope
 from provisa.api.admin._hiding_guard import (
     GOVERNANCE_FIELDS,
     governance_sets,
@@ -42,7 +43,7 @@ def _column(name: str, **governance):
         "masks": [],
     }
     fields.update(governance)
-    return types.SimpleNamespace(name=name, description=None, **fields)
+    return types.SimpleNamespace(name=name, description=None, scope="domain", **fields)
 
 
 # The table as stored: one granted and masked column, one open column.
@@ -53,11 +54,15 @@ def _stored_columns():
             visible_to=["analyst", "auditor"],
             masks=[
                 {"to": ["auditor"], "mask": None},
-                {"to": ["*"], "mask": {"type": "regex", "pattern": ".+@", "replace": "***@"}},
+                {"mask": {"type": "regex", "pattern": ".+@", "replace": "***@"}},
             ],
         ),
         _column("id"),
     ]
+
+
+# The stored table as read_table returns it.
+_STORED = types.SimpleNamespace(id=7, domain_id="sales")
 
 
 def _governance(columns) -> dict[str, dict]:
@@ -81,10 +86,10 @@ def _stored(monkeypatch):
         return _Pool()
 
     async def _stored_table(conn, model):  # noqa: ARG001
-        return {"id": 7} if model.table_name == "customers" else None
+        return {"id": 7, "domain_id": "sales"} if model.table_name == "customers" else None
 
     async def _read_table(table_id):  # noqa: ARG001
-        return "stored"
+        return _STORED
 
     monkeypatch.setattr("provisa.api.admin.schema_helpers._get_pool", _pool)
     monkeypatch.setattr(_hiding_guard, "stored_table", _stored_table)
@@ -92,6 +97,11 @@ def _stored(monkeypatch):
     monkeypatch.setattr(
         "provisa.api.mcp.table_edit.table_input",
         lambda stored: types.SimpleNamespace(columns=_stored_columns()),
+    )
+    # Every column is served here: what a caller may not read is test_table_save_keeps_unserved.
+    monkeypatch.setattr(
+        "provisa.api.admin.catalog_scope.catalog_scope",
+        lambda info: CatalogScope(whole=True, reach=None, served={}, governance=True, role=None),
     )
 
 
@@ -118,7 +128,7 @@ async def test_a_save_without_view_governance_leaves_every_stored_grant_and_mask
         ("visible_to", ["analyst"]),
         ("visible_to", ["analyst", "auditor"]),  # the stored value itself: no oracle
         ("masks", [{"to": ["analyst"], "mask": None}]),
-        ("masks", [{"to": ["*"], "mask": {"type": "constant", "value": "***"}}]),
+        ("masks", [{"mask": {"type": "constant", "value": "***"}}]),
     ],
 )
 async def test_an_attempt_to_set_one_is_refused_by_name(monkeypatch, field, value):
@@ -210,7 +220,7 @@ async def test_a_tool_that_writes_the_stored_table_back_is_what_the_guard_refuse
     from provisa.api.mcp import table_edit
 
     info, _request = grant(monkeypatch, "table_registration")
-    written_back = _save(*table_edit.table_input("stored").columns)
+    written_back = _save(*table_edit.table_input(_STORED).columns)
     assert governance_sets(info, written_back) == [
         "email.visible_to",
         "email.masks",
@@ -223,7 +233,7 @@ async def test_an_editor_tool_builds_its_save_from_what_its_caller_is_shown(monk
     from provisa.api.mcp import table_edit
 
     info, request = grant(monkeypatch, "table_registration")
-    edited = table_edit.editor_input(request, "stored")
+    edited = table_edit.editor_input(request, _STORED)
     for column in edited.columns:
         for field in GOVERNANCE_FIELDS:
             assert getattr(column, field) in (None, []), (column.name, field)
@@ -238,7 +248,7 @@ async def test_an_editor_tool_of_a_governance_viewer_starts_from_the_stored_gran
     from provisa.api.mcp import table_edit
 
     _info, request = grant(monkeypatch, "table_registration", "view_governance")
-    edited = table_edit.editor_input(request, "stored")
+    edited = table_edit.editor_input(request, _STORED)
     assert _governance(edited.columns) == _governance(_stored_columns())
 
 

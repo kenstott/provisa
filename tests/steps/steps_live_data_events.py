@@ -118,9 +118,15 @@ def when_load_invoked(shared_data, monkeypatch):
         flatten_calls = shared_data["flatten_calls"]
         fake_pages = [{"items": [{"id": 1, "title": "Widget"}, {"id": 2, "title": "Gadget"}]}]
 
-        async def _fake_call_api(endpoint, params, *, base_url, auth):
+        async def _fake_call_api(endpoint, params, *, base_url, auth, source_headers):
             call_api_calls.append(
-                {"endpoint": endpoint, "params": params, "base_url": base_url, "auth": auth}
+                {
+                    "endpoint": endpoint,
+                    "params": params,
+                    "base_url": base_url,
+                    "auth": auth,
+                    "source_headers": source_headers,
+                }
             )
             return caller_mod.ApiAnswer(fake_pages)  # what call_api returns
 
@@ -229,6 +235,7 @@ def given_openapi_source_with_registered_endpoint(shared_data):
     api_source = SimpleNamespace(
         base_url="https://api.example.com",
         auth={"type": "bearer", "token": "tok-123"},
+        headers={},
     )
 
     # Endpoints are held by (source, table): a table is named within its source.

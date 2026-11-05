@@ -75,10 +75,17 @@ async def org_bound(grant: ServiceGrant) -> AsyncIterator[tuple["Database", dict
 
 
 async def answer(
-    grant: ServiceGrant, method: str, path: str, body: bytes, span: Any = None
+    grant: ServiceGrant,
+    method: str,
+    path: str,
+    body: bytes,
+    span: Any = None,
+    role: str | None = None,
 ) -> bytes:
     """The JSON answer to ``path`` (after ``llm/``) for ``grant``'s source; a refusal is raised.
-    ``span``: the stage the call reports its model and tokens on (REQ-2106)."""
+    ``span``: the stage the call reports its model and tokens on (REQ-2106). ``role``: the role the
+    request the call serves acts as, whose LLM budget holds it (REQ-1174); None for a call serving
+    no request, which only the source's own cap holds."""
     if method != "POST":
         raise ServiceRefused(405, f"the LLM service is called with POST, not {method}")
     if path not in ("v1/chat/completions", "v1/embeddings"):
@@ -92,10 +99,11 @@ async def answer(
     if not isinstance(request, dict) or not isinstance(request.get("model"), str):
         raise ServiceRefused(400, "the request names no model")
     async with org_bound(grant) as (model_db, cfg):
+        budget = None if role is None else _budget(role, model_db)
         if path == "v1/chat/completions":
-            answered = await _chat(grant, model_db, cfg, request)
+            answered = await _chat(grant, model_db, cfg, request, budget)
         else:
-            answered = await _embeddings(grant, model_db, cfg, request)
+            answered = await _embeddings(grant, model_db, cfg, request, budget)
     if span is not None:
         span.set_attribute("codesource.llm.model", answered["model"])
         span.set_attribute("codesource.llm.input_tokens", answered["usage"]["prompt_tokens"])
@@ -110,8 +118,68 @@ async def embed(
 ) -> list[list[float]]:
     """``texts`` embedded by the org's vector model ``model``, metered for the source as an
     embeddings call is (a source's own vector collection, REQ-2106)."""
-    answered = await _embeddings(grant, model_db, cfg, {"model": model, "input": texts})
+    # A source's own vector collection serves no one request: only the source's cap holds it.
+    answered = await _embeddings(grant, model_db, cfg, {"model": model, "input": texts}, None)
     return [d["embedding"] for d in answered["data"]]
+
+
+def _budget(role: str, model_db: "Database") -> Any:
+    """REQ-1174: the hold of ``role``'s LLM budget, in the bound org, on one call."""
+    from provisa.api.app import state
+    from provisa.security import llm_budget
+
+    return llm_budget.guard(state, role, model_db)
+
+
+async def _admit_budget(budget: Any, model: str) -> None:
+    """The call admitted by its role's LLM budget (REQ-1174), or refused naming the window."""
+    from provisa.security.llm_budget import BudgetRefused
+
+    if budget is None:
+        return
+    try:
+        await budget.admit(model)
+    except BudgetRefused as exc:
+        raise ServiceRefused(429, str(exc)) from None
+
+
+async def _debit_budget(budget: Any, model: str, usage: Any) -> None:
+    """What the call used counted against its role (REQ-1174). The answer is returned whatever it
+    used: a chat call's output was held to the role's allowance (:func:`_held_output`)."""
+    if budget is not None:
+        await budget.debit(usage, model)
+
+
+def _held_output(
+    params: dict, budget: Any, model: str, provider_key: str, custom_endpoint: bool
+) -> dict:
+    """The call's parameters with its output limit the role's remaining allowance (REQ-1174: the
+    smaller of its per-call cap and each window's room), so the model itself stops there; a
+    limit the request sets is kept where it is smaller. Unchanged when no limit holds the call."""
+    from provisa.api.mcp.chat import output_cap
+    from provisa.security.llm_budget import BudgetRefused
+
+    if budget is None:
+        return params
+    try:
+        allowed = budget.allowance(model)
+    except BudgetRefused as exc:
+        raise ServiceRefused(429, str(exc)) from None
+    if allowed is None:
+        return params
+    asked = [params[k] for k in _OUTPUT_LIMITS if params.get(k) is not None]
+    rest = {k: v for k, v in params.items() if k not in _OUTPUT_LIMITS}
+    try:
+        cap = output_cap(provider_key, custom_endpoint, min([allowed, *asked]))
+    except ValueError as exc:
+        raise ServiceRefused(400, str(exc)) from None
+    if "options" in cap:
+        cap = {"options": {**(rest.get("options") or {}), **cap["options"]}}
+    return {**rest, **cap}
+
+
+#: The OpenAI wire's two names for a call's output limit.
+_OUTPUT_LIMITS = ("max_tokens", "max_completion_tokens")
 
 
 async def _model_db(org_id: str) -> "Database":
@@ -284,7 +352,9 @@ def _redacted_messages(messages: Any, org_id: str) -> Any:
     return redact_value(messages, org_id)
 
 
-async def _chat(grant: ServiceGrant, model_db: "Database", cfg: dict, request: dict) -> dict:
+async def _chat(
+    grant: ServiceGrant, model_db: "Database", cfg: dict, request: dict, budget: Any
+) -> dict:
     from provisa.api.mcp import polly_usage
 
     if request.get("stream"):
@@ -294,8 +364,13 @@ async def _chat(grant: ServiceGrant, model_db: "Database", cfg: dict, request: d
         raise ServiceRefused(400, "the request has no messages")
     vendor, model = chat_route(cfg, request["model"])
     price = await _admit(grant, model_db, model)
+    await _admit_budget(budget, model)
     provider, provider_key = await _provider(cfg, model_db, vendor)
     params = {k: v for k, v in request.items() if k not in ("model", "messages", "stream")}
+    custom = any(
+        ep["id"] == vendor for ep in cfg.get("ai_endpoints") or [] if ep.get("enabled", True)
+    )
+    params = _held_output(params, budget, model, provider_key, custom)
     try:
         resp = await asyncio.to_thread(
             provider.chat_completions_create,
@@ -316,6 +391,7 @@ async def _chat(grant: ServiceGrant, model_db: "Database", cfg: dict, request: d
         else polly_usage.Usage(calls=1)
     )
     await _meter(grant, model_db, model, usage, price)
+    await _debit_budget(budget, model, usage)
     return completion_json(resp, model, usage)
 
 
@@ -355,7 +431,9 @@ def completion_json(resp: Any, model: str, usage: Any) -> dict:
 # -- embeddings ---------------------------------------------------------------------------------
 
 
-async def _embeddings(grant: ServiceGrant, model_db: "Database", cfg: dict, request: dict) -> dict:
+async def _embeddings(
+    grant: ServiceGrant, model_db: "Database", cfg: dict, request: dict, budget: Any
+) -> dict:
     from provisa.api.mcp import polly_usage
     from provisa.security.redaction import redact
     from provisa.vector.providers import EmbeddingError, get_provider
@@ -375,6 +453,7 @@ async def _embeddings(grant: ServiceGrant, model_db: "Database", cfg: dict, requ
             403, f"the model {request['model']!r} is not one of the org's vector models"
         ) from None
     price = await _admit(grant, model_db, vector_model.id)
+    await _admit_budget(budget, vector_model.id)
     try:
         vectors, tokens = await get_provider(vector_model.provider).embed_with_usage(
             [redact(t, grant.org_id) for t in texts], vector_model
@@ -385,6 +464,7 @@ async def _embeddings(grant: ServiceGrant, model_db: "Database", cfg: dict, requ
         ) from None
     usage = polly_usage.Usage(input_tokens=tokens or 0, calls=1)
     await _meter(grant, model_db, vector_model.id, usage, price)
+    await _debit_budget(budget, vector_model.id, usage)
     return {
         "object": "list",
         "model": vector_model.id,

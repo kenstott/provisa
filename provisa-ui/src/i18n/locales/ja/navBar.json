@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "組織",
     "itemDashboard": "ダッシュボード",
@@ -35,6 +36,8 @@
     "itemEmail": "メール",
     "itemMaintenance": "メンテナンス",
     "itemDeploymentSettings": "デプロイ設定",
+    "itemPlatform": "プラットフォーム",
+    "itemRegions": "リージョン",
     "itemBilling": "請求",
     "itemExplore": "MCP",
     "itemEncryption": "暗号化",
@@ -48,6 +51,7 @@
     "itemMetadataExport": "エクスポート",
     "itemImport": "インポート",
     "itemTags": "タグ",
+    "itemClassificationKinds": "分類",
     "itemDataProducts": "プロダクト",
     "itemReports": "レポート",
     "itemGlossary": "オントロジー",
@@ -74,6 +78,9 @@
     "sandboxExitLogOut": "ログアウトのみ",
     "itemPython": "Python",
     "itemNotebook": "ノートブック",
-    "itemContainerRegistries": "コンテナレジストリ"
+    "itemContainerRegistries": "コンテナレジストリ",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "カタログ",
+    "itemReferenceLibrary": "参照ライブラリ"
   }
 }

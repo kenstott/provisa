@@ -39,7 +39,8 @@ def _term_node() -> NodeMapping:
         catalog_name="provisa_admin",
         schema_name="public",
         table_name="glossary_terms",
-        properties={"name": "name"},
+        # The key is a property, as every published column is (label_map.from_schema).
+        properties={"id": "id", "name": "name"},
     )
 
 

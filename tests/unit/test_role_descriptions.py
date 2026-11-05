@@ -55,26 +55,13 @@ def test_a_derived_role_needs_a_description_and_a_valid_attribute():
         DerivedRole(attribute="9region", description="x")
 
 
-def test_every_seeded_role_has_a_description():
-    from provisa.core.db import SEEDED_ROLE_DESCRIPTIONS, SEEDED_ROLE_IDS
+def test_every_standard_role_has_a_description():
+    """REQ-2080, REQ-2155: each standard role's description is part of its definition, written with
+    it on every init_schema (db.assert_standard_roles)."""
+    from provisa.core.db import SEEDED_ROLE_IDS, STANDARD_ROLES
 
-    assert set(SEEDED_ROLE_DESCRIPTIONS) == SEEDED_ROLE_IDS
-    assert all(d.strip() for d in SEEDED_ROLE_DESCRIPTIONS.values())
-
-
-def test_the_schema_seed_writes_the_same_descriptions():
-    import re
-
-    from provisa.core.db import SEEDED_ROLE_DESCRIPTIONS
-
-    sql = (_REPO / "provisa" / "core" / "schema.sql").read_text()
-    written = {
-        rid: text.replace("''", "'")
-        for text, rid in re.findall(
-            r"UPDATE roles SET description = '((?:[^']|'')*)' WHERE id = '(\w+)' AND", sql
-        )
-    }
-    assert written == SEEDED_ROLE_DESCRIPTIONS
+    assert set(STANDARD_ROLES) == SEEDED_ROLE_IDS
+    assert all(spec.description.strip() for spec in STANDARD_ROLES.values())
 
 
 def _configs() -> list[Path]:

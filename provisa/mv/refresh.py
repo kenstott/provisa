@@ -32,12 +32,14 @@ from datetime import date, datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl, system_ts_literal
+from provisa.mv.store_shape import output_columns, shape_probe, view_key
 from provisa.mv.bitemporal_inherit import InheritedBuild, inherited_build
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN
 from provisa.otel_compat import detached_trace_context
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.transpiler.pg_forms_geometric import around
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -265,9 +267,7 @@ async def _refresh_bitemporal(
     existing_business = [c for c in existing_cols if c not in sys_names]
     new_cols = list(
         (
-            await engine.execute_engine(
-                f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
-            )
+            await engine.execute_engine(shape_probe(select_sql), authorization=authorization)
         ).column_names
     )
     if new_cols != existing_business:
@@ -549,7 +549,8 @@ async def _probe_source_count(
     """Run a COUNT(*) probe over the build's own statement (REQ-2108: a DIRECT build's is its
     staged rows, so the source is read once) to estimate result size."""
     res = await engine.execute_engine(
-        f"SELECT COUNT(*) FROM ({select_sql}) _probe", authorization=authorization
+        around(select_sql, lambda s: f"SELECT COUNT(*) FROM ({s}) _probe"),
+        authorization=authorization,
     )
     return res.rows[0][0]
 
@@ -567,8 +568,8 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     (REQ-1912), so it stands in only for a join-pattern view, which has no SQL of its own; each
     input is addressed where the engine reads it at the read (``preflight_eval``)."""
     source = getattr(mv, "preprocess", None)
-    if source is None or not source.strip():
-        return None
+    if (source is None or not source.strip()) and not mv.hold_on_failing_checks:
+        return None  # REQ-2133: a view that holds on failing checks is checked without one
 
     from provisa.events.lineage import extract_inputs  # noqa: PLC0415
     from provisa.events.processor import NodeContext  # noqa: PLC0415
@@ -576,7 +577,15 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
 
     ctx = NodeContext(node=mv.id, kind="mv", claimed=[], prior_hash=None)
     inputs = sorted(extract_inputs(mv.sql or select_sql, "postgres"))
-    return await evaluate_streams(engine, source, inputs, ctx)
+    return await evaluate_streams(
+        engine,
+        source,
+        inputs,
+        ctx,
+        product_id=mv.product_id,
+        hold=mv.hold_on_failing_checks,  # REQ-2133
+        table_id=mv.table_id,
+    )
 
 
 class SealedBuildRefused(ValueError):
@@ -629,6 +638,22 @@ async def _sealed_stamp(mv: MVDefinition, day: date, store) -> str:  # REQ-2120
             f"MV {mv.id!r}: calendar {mv.calendar!r} has no {mv.grain} window on {day}"
         )
     return system_ts_literal(sealed.end)
+
+
+async def _create_keyed(engine, mv: MVDefinition, select_sql: str, authorization) -> bool:
+    """Create the view's store table through the engine's reconcile, keyed by ``view_key``, as
+    the event loop's reconcile keeps it (REQ-970). False when the engine gives no column types to
+    create it from -- the reconcile then skips the view too, so neither keys its table."""
+    columns = await output_columns(engine, select_sql, authorization=authorization)
+    if not columns:
+        return False
+    await engine.reconcile_mv_table(
+        schema=mv.target_schema,
+        table=mv.target_table,
+        columns=columns,
+        pk_columns=view_key(mv) or None,
+    )
+    return True
 
 
 async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
@@ -936,7 +961,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 if table_exists:
                     new_cols = (
                         await engine.execute_engine(
-                            f"SELECT * FROM ({select_sql}) _shape LIMIT 0",
+                            shape_probe(select_sql),
                             authorization=authorization,
                         )
                     ).column_names
@@ -953,6 +978,12 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                         )
                         table_exists = False
 
+                if not table_exists and hasattr(engine, "reconcile_mv_table"):
+                    # REQ-970: the store table is created as the event loop's reconcile keeps it
+                    # -- its columns and its key (declared, or its GROUP BY's) -- and then filled.
+                    # A CREATE TABLE AS built it with no key, which that reconcile took for drift:
+                    # it dropped and re-created the table empty while the view read as fresh.
+                    table_exists = await _create_keyed(engine, mv, select_sql, authorization)
                 if table_exists:
                     await engine.execute_engine(
                         f"DELETE FROM {target}", authorization=authorization
@@ -970,7 +1001,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                     await engine.reconcile_mv_metadata(
                         schema=mv.target_schema,
                         table=mv.target_table,
-                        pk_columns=list(getattr(mv, "primary_key", []) or []) or None,
+                        pk_columns=view_key(mv) or None,
                     )
 
             # Get row count
@@ -1007,6 +1038,12 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             row_count,
             duration,
         )
+        if store is not None and ledger is not None:
+            # REQ-2015: its indexes follow the landing, never in it. Without its stores a view has
+            # no build row to keep them on.
+            from provisa.mv.view_indexes import plan_view_indexes  # noqa: PLC0415
+
+            await plan_view_indexes(engine, mv, model_db=store, state_db=ledger, served=state)
         await _post_refresh_delta_capture(
             engine, mv, ledger, prev_rows, target, authorization=authorization
         )  # REQ-877

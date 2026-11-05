@@ -41,6 +41,7 @@ const PANELS: Readonly<Record<string, Panel>> = {
     form: ["pages/SecurityPage.tsx", "components/admin/ResidencyGrant.tsx"],
     notAField: {
       "residencyGrant.right": "the data_residency capability's tick: shown in Capabilities",
+      "residencyGrant.values": "data_residency's value: shown with it in Capabilities",
     },
   },
   "Commands (functions and webhooks)": {
@@ -197,6 +198,8 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "registerTableForm.aliasLabel": "registration's SQL alias: shown in Identity as SQL Alias",
       "registerTableForm.descriptionLabel":
         "registration's description: shown in Identity as Description",
+      "registerTableForm.checkReasonLabel":
+        "a checker's claim, its registration's description: shown in Identity as Description",
       "registerTableForm.cacheTtlLabel":
         "registration's cache TTL: shown in Load and timeliness as Cache TTL",
       "registerTableForm.neo4jTableNameLabel": "a neo4j table's name: shown in Identity as Table",

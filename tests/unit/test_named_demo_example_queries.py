@@ -64,9 +64,9 @@ async def test_the_setup_status_carries_them(tmp_path, monkeypatch):
 
 
 def _weblogs_views_schema():
-    """The GraphQL schema the analyst is served for the weblogs demo's views."""
+    """The GraphQL schema the shop's analyst is served for the weblogs demo's views."""
     config = yaml.safe_load((_WEBLOGS / "config.yaml").read_text())
-    (role,) = [r for r in config["roles"] if r["id"] == "analyst"]
+    (role,) = [r for r in config["roles"] if r["id"] == "shop_analyst"]
     return _views_schema(_WEBLOGS, role)
 
 
@@ -141,6 +141,10 @@ def _views_schema(home: Path, role: dict, *, include_tables: bool = False):
         and rel["target_table_id"] in ids
         and rel.get("via_table", rel["source_table_id"]) in ids
     ]
+    # REQ-2155: the grants folded over each role's ancestors, as the server's build does.
+    from provisa.core.db import fold_config_grants
+
+    fold_config_grants(tables, raw.get("roles") or [])
     naming.configure(gql="apollo_graphql")
     return generate_schema(
         SchemaInput(

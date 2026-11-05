@@ -20,12 +20,29 @@ truth for OID/attnum/name mappings) plus every _populate_* table builder.
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from collections import OrderedDict
+from typing import Any
 
+from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
+from provisa.pgwire.cast_types import described_type, registered_spelling
+from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
+from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID, PUBLIC_OID
+from provisa.pgwire.catalog_pg17_tables import (
+    create_relation,
+    populate_client_relations,
+    populate_unqueried_relations,
+)
+from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
 from provisa.pgwire.function_catalog import populate_functions
-from provisa.pgwire.catalog_columns_data import _SYSTEM_TABLE_COLUMNS
+from provisa.pgwire.catalog_macros import populate_catalog_macros
+from provisa.security.rights import SQL_CATALOG_TABLES, Capability, has_capability
+from provisa.pgwire.catalog_privileges import populate_privilege_macros, populate_table_privileges
 from provisa.pgwire.catalog_data import (
+    served_database_name,
+    UNQUERIED_RELATIONS,
     _TABLE_MAP,
     _PG_OID_ATTR_META,
     _PG_SETTINGS_ROWS,
@@ -33,9 +50,11 @@ from provisa.pgwire.catalog_data import (
     pg_type_rows,
 )
 from provisa.pgwire.ext_surfaces import extension_rows
+from provisa.core.org_forget import on_forget
 from provisa.pgwire.system_tables import _populate_empty_system_tables
 from provisa.pgwire.catalog_constraints import (
     _populate_pg_constraint,
+    _populate_index_classes,
     _populate_pg_index,
     _populate_is_constraints,
 )
@@ -43,10 +62,13 @@ from provisa.pgwire.catalog_constraints import (
 log = logging.getLogger(__name__)
 
 
-# Stable OID assignments for system objects surfaced in pg_class/pg_attribute.
-# 8001+ for pg_catalog tables, 9001+ for information_schema views.
+# Stable OID assignments for system objects surfaced in pg_class/pg_attribute: PostgreSQL's own for
+# the catalogs other relations name by oid (a comment's classoid, a 'pg_type'::regclass), else 8001+
+# for pg_catalog tables, 9001+ for information_schema views.
 _PG_CAT_TABLE_NAMES: list[str] = sorted(k[1] for k in _TABLE_MAP if k[0] == "pg_catalog")
-_PG_CAT_TABLE_OIDS: dict[str, int] = {n: 8001 + i for i, n in enumerate(_PG_CAT_TABLE_NAMES)}
+_PG_CAT_TABLE_OIDS: dict[str, int] = {
+    n: _CATALOG_CLASS_OIDS.get(n, 8001 + i) for i, n in enumerate(_PG_CAT_TABLE_NAMES)
+}
 
 _IS_VIEW_NAMES: list[str] = [
     "schemata",
@@ -67,16 +89,17 @@ _IS_VIEW_NAMES: list[str] = [
 ]
 _IS_VIEW_OIDS: dict[str, int] = {n: 9001 + i for i, n in enumerate(_IS_VIEW_NAMES)}
 
-# Column definitions sourced from the live PostgreSQL 16 instance (information_schema.columns).
-# Keys: information_schema view name OR pg_catalog table name.
-# Values: ordered list of (column_name, pg_data_type).
-
 
 def _physical_to_pg_name(column_type: str) -> str:
     t = column_type.lower().split("(")[0].strip()
     return {
         "varchar": "character varying",
         "char": "character",
+        # REQ-1961: a text column recording a character native type is listed as that type.
+        "character varying": "character varying",
+        "character": "character",
+        "bpchar": "character",
+        "numeric": "numeric",
         "integer": "integer",
         "int": "integer",
         "bigint": "bigint",
@@ -90,11 +113,12 @@ def _physical_to_pg_name(column_type: str) -> str:
         "timestamp with time zone": "timestamp with time zone",
         "timestamptz": "timestamp with time zone",  # REQ-2050
         "decimal": "numeric",
-        "json": "jsonb",
+        "json": "json",
         "row": "jsonb",
         "array": "ARRAY",
         "varbinary": "bytea",
         "uuid": "uuid",
+        **{name: name for name in SUBTYPES},  # REQ-2171: a subtype is its PostgreSQL type
     }.get(t, "text")
 
 
@@ -103,6 +127,10 @@ def _physical_to_pg_oid(column_type: str) -> int:
     return {
         "varchar": 1043,
         "char": 18,
+        "character varying": 1043,  # REQ-1961
+        "character": 1042,
+        "bpchar": 1042,
+        "numeric": 1700,
         "integer": 23,
         "int": 23,
         "bigint": 20,
@@ -116,12 +144,12 @@ def _physical_to_pg_oid(column_type: str) -> int:
         "timestamp with time zone": 1184,
         "timestamptz": 1184,  # REQ-2050
         "decimal": 1700,
-        "json": 3802,
-        "jsonb": 3802,
+        "json": 114,
         "row": 3802,
         "array": 2277,
         "varbinary": 17,
         "uuid": 2950,
+        **{name: s.pg_oid for name, s in SUBTYPES.items()},  # REQ-2171
     }.get(t, 25)
 
 
@@ -137,28 +165,35 @@ class CatalogIndex:  # REQ-532
         "attnum_to_col",
         "ns_map",
         "metric_oids",
+        "database",
     )
 
-    def __init__(self) -> None:
+    def __init__(self, database: str) -> None:
+        # REQ-588: the served database, every catalog the index lists its tables and schemas under.
+        self.database = database
         self.tables: list[tuple] = []
         self.all_cols: list[tuple] = []
         self.table_id_to_oid: dict[int, int] = {}
         self.toid_to_table: dict[int, tuple] = {}
         self.col_attnum: dict[tuple[int, str], int] = {}
         self.attnum_to_col: dict[tuple[int, int], str] = {}
-        self.ns_map: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
+        self.ns_map: dict[str, int] = {
+            "pg_catalog": PG_CATALOG_OID,
+            "information_schema": INFORMATION_SCHEMA_OID,
+            "public": PUBLIC_OID,
+        }
         # REQ-1319: metric name -> relation OID for the reserved `metrics` namespace.
         self.metric_oids: dict[str, int] = {}
 
 
 def _build_catalog_index(
-    ctx, col_types: dict, metrics: list | None = None
+    ctx, col_types: dict, metrics: list | None = None, *, database: str
 ) -> CatalogIndex:  # REQ-128, REQ-363
     """Build the CatalogIndex once. All populate functions read from it — nothing recomputes."""
     from provisa.compiler.naming import domain_to_sql_name, apply_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
-    idx = CatalogIndex()
+    idx = CatalogIndex(database)
     if not ctx:
         return idx
 
@@ -180,7 +215,9 @@ def _build_catalog_index(
         if tm.table_id in seen_table_ids:
             continue
         seen_table_ids.add(tm.table_id)
-        cat = "provisa"
+        if (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES:
+            continue  # REQ-2190: the catalog's own views are no table of it
+        cat = idx.database
         raw_schema = tm.domain_id or tm.schema_name or "public"
         sch = domain_to_sql_name(raw_schema)
         tname = semantic_table_name(tm)
@@ -201,7 +238,10 @@ def _build_catalog_index(
             if (tm.table_id, phys) in ctx.columns_outside_relation:
                 continue  # registered, but the relation a statement reads does not hold it
             exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys)
-            idx.all_cols.append((toid, exposed, col.data_type, col.is_nullable, i))
+            # REQ-2171: a subtyped column is listed as its subtype's PostgreSQL type; REQ-1961: a
+            # text column recording a character native type as that type.
+            listed_type = col.subtype or registered_spelling(col.data_type, col.native_type)
+            idx.all_cols.append((toid, exposed, listed_type, col.is_nullable, i))
             idx.col_attnum[(toid, exposed)] = i
             idx.attnum_to_col[(toid, i)] = exposed
 
@@ -222,8 +262,8 @@ def _build_catalog_index(
         idx.ns_map["metrics"] = _ns_extra
         for i, m in enumerate(sorted(metrics, key=lambda m: m.name)):
             toid = 60000 + i
-            idx.tables.append(("provisa", "metrics", m.name, toid, toid))
-            idx.toid_to_table[toid] = ("provisa", "metrics", m.name)
+            idx.tables.append((idx.database, "metrics", m.name, toid, toid))
+            idx.toid_to_table[toid] = (idx.database, "metrics", m.name)
             idx.metric_oids[m.name] = toid
             # A metric with no declared datatype surfaces as double — the natural type of
             # an aggregate value; the design mandates this default (REQ-1319: datatype is
@@ -243,7 +283,7 @@ def _populate_is_schemata(db, idx: CatalogIndex) -> None:
     seen_schemas: set[tuple] = {(c, s) for c, s, *_ in idx.tables}
     # Always include schemas from the namespace map (public, information_schema, pg_catalog).
     for ns in idx.ns_map:
-        seen_schemas.add(("provisa", ns))
+        seen_schemas.add((idx.database, ns))
     if seen_schemas:
         db.executemany(
             "INSERT INTO _is_schemata VALUES (?,?,'provisa',NULL,NULL,NULL,NULL)",
@@ -285,7 +325,7 @@ def _populate_is_columns(db, idx: CatalogIndex) -> None:
         generation_expression VARCHAR, is_updatable VARCHAR)""")
     col_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
-        c, s, t = idx.toid_to_table.get(toid, ("provisa", "public", ""))
+        c, s, t = idx.toid_to_table.get(toid, (idx.database, "public", ""))
         pg_type = _physical_to_pg_name(col_type)
         null_str = "YES" if is_nullable else "NO"
         col_rows.append(
@@ -342,7 +382,7 @@ def _populate_is_columns(db, idx: CatalogIndex) -> None:
 
 def _populate_pg_namespace(db, idx: CatalogIndex) -> None:
     db.execute("""CREATE TABLE _pg_namespace (
-        oid INTEGER, nspname VARCHAR, nspowner INTEGER, nspacl VARCHAR)""")
+        oid INTEGER, nspname VARCHAR, nspowner INTEGER, nspacl VARCHAR[])""")
     ns_rows = [(oid, name, 10, None) for name, oid in idx.ns_map.items()]
     db.executemany("INSERT INTO _pg_namespace VALUES (?,?,?,?)", ns_rows)
 
@@ -357,8 +397,8 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
         relhasrules BOOLEAN, relhastriggers BOOLEAN, relhassubclass BOOLEAN,
         relrowsecurity BOOLEAN, relforcerowsecurity BOOLEAN, relispopulated BOOLEAN,
         relreplident VARCHAR, relispartition BOOLEAN, relrewrite INTEGER,
-        relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR,
-        reloptions VARCHAR, relpartbound VARCHAR)""")
+        relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR[],
+        reloptions VARCHAR[], relpartbound VARCHAR)""")
     natts_by_toid: dict[int, int] = {}
     for col in idx.all_cols:
         natts_by_toid[col[0]] = natts_by_toid.get(col[0], 0) + 1
@@ -405,12 +445,12 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
             )
         )
     for vname, oid in _IS_VIEW_OIDS.items():
-        natts = len(_SYSTEM_TABLE_COLUMNS.get(vname, []))
+        natts = len(RELATIONS[("information_schema", vname)])
         pg_class_rows.append(
             (
                 oid,
                 vname,
-                12,
+                INFORMATION_SCHEMA_OID,
                 oid + 100000,
                 0,
                 10,
@@ -444,7 +484,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
             )
         )
     for tname, oid in _PG_CAT_TABLE_OIDS.items():
-        natts = len(_SYSTEM_TABLE_COLUMNS.get(tname, []))
+        natts = len(RELATIONS[("pg_catalog", tname)])
         pg_class_rows.append(
             (
                 oid,
@@ -548,16 +588,16 @@ def _populate_pg_description(
             continue
         ns_oid = idx.ns_map.get(domain_to_sql_name(_did))
         if ns_oid is not None:
-            desc_rows.append((ns_oid, "pg_namespace", 0, _ddesc))
+            desc_rows.append((ns_oid, _CATALOG_CLASS_OIDS["pg_namespace"], 0, _ddesc))
 
     for _, _, _, table_id, toid in idx.tables:
         tdesc = tid_desc.get(table_id)
         if tdesc:
-            desc_rows.append((toid, "pg_class", 0, tdesc))
+            desc_rows.append((toid, _CATALOG_CLASS_OIDS["pg_class"], 0, tdesc))
         for cname, cdesc_val in (tid_col_desc.get(table_id) or {}).items():
             attnum = idx.col_attnum.get((toid, cname))
             if attnum is not None:
-                desc_rows.append((toid, "pg_class", attnum, cdesc_val))
+                desc_rows.append((toid, _CATALOG_CLASS_OIDS["pg_class"], attnum, cdesc_val))
 
     # REQ-1319: metric relation descriptions — description, else ai_context (the definition
     # text written for AI consumers; the design mandates this fallback so an AI-documented
@@ -566,165 +606,143 @@ def _populate_pg_description(
         m_toid = idx.metric_oids.get(m.name)
         text = m.description or m.ai_context
         if m_toid is not None and text:
-            desc_rows.append((m_toid, "pg_class", 0, text))
+            desc_rows.append((m_toid, _CATALOG_CLASS_OIDS["pg_class"], 0, text))
 
     if desc_rows:
         db.executemany("INSERT INTO _pg_description VALUES (?,?,?,?)", desc_rows)
 
 
+def _attribute_row(
+    attrelid: int,
+    attname: str,
+    atttypid: int,
+    attnum: int,
+    storage: tuple[int, bool, str, str],
+    atttypmod: int = -1,
+    attnotnull: bool = False,
+) -> tuple:
+    """One _pg_attribute row, in PostgreSQL 17's order, of a plain column: no compression method
+    (attcompression is the empty "char"), no statistics target set (attstattarget is NULL since
+    PostgreSQL 17), no value stored for rows older than the column (attmissingval)."""
+    attlen, attbyval, attalign, attstorage = storage
+    return (
+        attrelid,
+        attname,
+        atttypid,
+        attlen,
+        attnum,
+        -1,  # attcacheoff
+        atttypmod,
+        0,  # attndims
+        attbyval,
+        attalign,
+        attstorage,
+        "",  # attcompression
+        attnotnull,
+        False,  # atthasdef
+        False,  # atthasmissing
+        "",  # attidentity
+        "",  # attgenerated
+        False,  # attisdropped
+        True,  # attislocal
+        0,  # attinhcount
+        0,  # attcollation
+        None,  # attstattarget
+        None,  # attacl
+        None,  # attoptions
+        None,  # attfdwoptions
+        None,  # attmissingval
+    )
+
+
+_PG_ATTRIBUTE_WIDTH = len(RELATIONS[("pg_catalog", "pg_attribute")])
+_ATTRIBUTE_BATCH = 1000
+
+
+def _insert_attributes(db, rows: list[tuple]) -> None:
+    """One statement per batch: a row at a time, the system relations' columns alone were most of
+    the time a catalog build took (REQ-2167: DBeaver waits on the build when it connects)."""
+    row = f"({','.join(['?'] * _PG_ATTRIBUTE_WIDTH)})"
+    for at in range(0, len(rows), _ATTRIBUTE_BATCH):
+        batch = rows[at : at + _ATTRIBUTE_BATCH]
+        db.execute(
+            f"INSERT INTO _pg_attribute VALUES {','.join([row] * len(batch))}",
+            [value for values in batch for value in values],
+        )
+
+
 def _populate_pg_attribute(db, idx: CatalogIndex) -> None:
-    db.execute("""CREATE TABLE _pg_attribute (
-        attrelid INTEGER, attname VARCHAR, atttypid INTEGER, attstattarget INTEGER,
-        attlen SMALLINT, attnum SMALLINT, attndims INTEGER, attcacheoff INTEGER,
-        atttypmod INTEGER, attbyval BOOLEAN, attalign VARCHAR, attstorage VARCHAR,
-        attnotnull BOOLEAN, atthasdef BOOLEAN, atthasmissing BOOLEAN,
-        attidentity VARCHAR, attgenerated VARCHAR, attisdropped BOOLEAN,
-        attislocal BOOLEAN, attinhcount INTEGER, attcollation INTEGER,
-        attacl VARCHAR, attoptions VARCHAR, attfdwoptions VARCHAR)""")
+    create_relation(db, "pg_catalog", "pg_attribute")
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in idx.all_cols:
         pg_oid = _physical_to_pg_oid(col_type)
-        attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
-            pg_oid, (-1, False, "i", "x")
-        )
+        # REQ-1961: a sized numeric's typmod and a character type's length, as pgwire sends them.
+        described = described_type(col_type)
+        typmod = described.typmod if described is not None and described.oid == pg_oid else -1
+        storage = _PG_OID_ATTR_META.get(pg_oid, (-1, False, "i", "x"))
         attr_rows.append(
-            (
-                toid,
-                col_name,
-                pg_oid,
-                -1,
-                attlen,
-                ordinal,
-                0,
-                -1,
-                -1,
-                attbyval,
-                attalign,
-                attstorage,
-                not is_nullable,
-                False,
-                False,
-                "",
-                "",
-                False,
-                True,
-                0,
-                0,
-                None,
-                None,
-                None,
-            )
+            _attribute_row(toid, col_name, pg_oid, ordinal, storage, typmod, not is_nullable)
         )
-    if attr_rows:
-        db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?'] * 24)})", attr_rows)
+    _insert_attributes(db, attr_rows)
 
 
-def _populate_system_attributes(db) -> None:
-    """Add pg_attribute rows for pg_catalog and information_schema system objects."""
-    _type_to_oid = {
-        "varchar": 1043,
-        "name": 25,
-        "text": 25,
-        "oid": 23,
-        "integer": 23,
-        "smallint": 21,
-        "bigint": 20,
-        "boolean": 16,
-        "real": 700,
-        "double": 701,
-        "double precision": 701,
-        "xid": 23,
-        "array": 25,
-        "char": 18,
-        "timestamp with time zone": 1184,
-        "timestamp": 1114,
-    }
-    attr_rows = []
-    for is_name, oid in _IS_VIEW_OIDS.items():
-        for attnum, (col_name, col_type) in enumerate(_SYSTEM_TABLE_COLUMNS.get(is_name, []), 1):
-            pg_oid = _type_to_oid.get(col_type.lower().split("(")[0].strip(), 25)
-            attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
-                pg_oid, (-1, False, "i", "x")
+def _type_storage(type_oid: int) -> tuple[int, bool, str, str]:
+    """A PostgreSQL 17 type's (typlen, typbyval, typalign, typstorage)."""
+    _ns, _name, length, _kind, _category, _notnull, _base, byval, align, storage, *_ = TYPES[
+        type_oid
+    ]
+    return length, byval, align, storage
+
+
+def _populate_system_attributes(db) -> None:  # REQ-2167
+    """Each pg_catalog and information_schema relation's columns, as PostgreSQL 17 declares them
+    (what SELECT * from one sends), so a client describing one is told what it will read."""
+    _insert_attributes(
+        db,
+        [
+            _attribute_row(relid, column, type_oid, attnum, _type_storage(type_oid))
+            for schema, relations in (
+                ("information_schema", _IS_VIEW_OIDS),
+                ("pg_catalog", _PG_CAT_TABLE_OIDS),
             )
-            attr_rows.append(
-                (
-                    oid,
-                    col_name,
-                    pg_oid,
-                    -1,
-                    attlen,
-                    attnum,
-                    0,
-                    -1,
-                    -1,
-                    attbyval,
-                    attalign,
-                    attstorage,
-                    False,
-                    False,
-                    False,
-                    "",
-                    "",
-                    False,
-                    True,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                )
-            )
-    for pg_name, oid in _PG_CAT_TABLE_OIDS.items():
-        for attnum, (col_name, col_type) in enumerate(_SYSTEM_TABLE_COLUMNS.get(pg_name, []), 1):
-            pg_oid = _type_to_oid.get(col_type.lower().split("(")[0].strip(), 25)
-            attlen, attbyval, attalign, attstorage = _PG_OID_ATTR_META.get(
-                pg_oid, (-1, False, "i", "x")
-            )
-            attr_rows.append(
-                (
-                    oid,
-                    col_name,
-                    pg_oid,
-                    -1,
-                    attlen,
-                    attnum,
-                    0,
-                    -1,
-                    -1,
-                    attbyval,
-                    attalign,
-                    attstorage,
-                    False,
-                    False,
-                    False,
-                    "",
-                    "",
-                    False,
-                    True,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                )
-            )
-    if attr_rows:
-        db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?'] * 24)})", attr_rows)
+            for name, relid in relations.items()
+            for attnum, (column, _, type_oid) in enumerate(RELATIONS[(schema, name)], 1)
+        ],
+    )
+
+
+# PostgreSQL 17's subscripting functions (pg_type.dat's typsubscript): an array's, a fixed-length
+# type's that subscripts as an array of its parts, and jsonb's.
+_ARRAY_SUBSCRIPT_HANDLER = 6179
+_RAW_ARRAY_SUBSCRIPT_HANDLER = 6180
+_JSONB_SUBSCRIPT_HANDLER = 6098
+_JSONB_OID = 3802
+#: name, point, lseg, box and line.
+_RAW_ARRAY_TYPES = frozenset({19, 600, 601, 603, 628})
+
+
+def _subscript_handler(oid: int, category: str, base: int) -> int:
+    """pg_type.typsubscript: 0 (written "-") for a type that takes no subscript. A domain
+    subscripts as its base type does."""
+    subscripted = base or oid
+    if subscripted == _JSONB_OID:
+        return _JSONB_SUBSCRIPT_HANDLER
+    if subscripted in _RAW_ARRAY_TYPES:
+        return _RAW_ARRAY_SUBSCRIPT_HANDLER
+    return _ARRAY_SUBSCRIPT_HANDLER if category == "A" else 0
+
+
+def _element_type(oid: int) -> int:
+    """pg_type.typelem: the element type of an array type (oidvector and int2vector too), as
+    PostgreSQL 17 records it; 0 for any other type."""
+    entry = TYPES.get(oid)
+    return 0 if entry is None or entry[4] != "A" else entry[10]
 
 
 def _populate_pg_type(db) -> None:
-    db.execute("""CREATE TABLE _pg_type (
-        oid INTEGER, typname VARCHAR, typnamespace INTEGER, typowner INTEGER,
-        typlen SMALLINT, typbyval BOOLEAN, typtype VARCHAR, typcategory VARCHAR,
-        typispreferred BOOLEAN, typisdefined BOOLEAN, typdelim VARCHAR,
-        typrelid INTEGER, typelem INTEGER, typarray INTEGER,
-        typinput VARCHAR, typoutput VARCHAR, typreceive VARCHAR, typsend VARCHAR,
-        typmodin VARCHAR, typmodout VARCHAR, typanalyze VARCHAR,
-        typalign VARCHAR, typstorage VARCHAR, typnotnull BOOLEAN,
-        typbasetype INTEGER, typtypmod INTEGER, typndims INTEGER, typcollation INTEGER,
-        typdefaultbin VARCHAR, typdefault VARCHAR, typacl VARCHAR)""")
+    create_relation(db, "pg_catalog", "pg_type")
     db.executemany(
-        f"INSERT INTO _pg_type VALUES ({','.join(['?'] * 31)})",
+        f"INSERT INTO _pg_type VALUES ({','.join(['?'] * len(RELATIONS[('pg_catalog', 'pg_type')]))})",
         [
             (
                 oid,
@@ -739,15 +757,17 @@ def _populate_pg_type(db) -> None:
                 True,
                 ",",
                 0,
+                _subscript_handler(oid, cat, base),
+                _element_type(oid),
+                0,
+                # regproc: no I/O functions are listed (0, whose text form is "-").
                 0,
                 0,
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
+                0,
+                0,
+                0,
+                0,
+                0,
                 align,
                 storage,
                 nn,
@@ -771,24 +791,12 @@ def _populate_pg_extension(db) -> None:
         db.executemany("INSERT INTO _pg_extension VALUES (?,?,?,?,?,?,?,?)", rows)
 
 
-def served_database_name(state) -> str:  # REQ-1235
-    """The database a pgwire client is connected to. Under multi-tenancy that is the bound org,
-    which the client named (database name or TLS hostname); a single-tenant deployment has one
-    database, ``provisa``."""
-    from provisa.api.org_resolve import DEFAULT_DATABASE
-    from provisa.core.request_context import require_current_org
-
-    if getattr(state, "multitenancy", False):
-        return require_current_org()
-    return DEFAULT_DATABASE
+#: What pg_roles shows of every role's password, whatever it is.
+_MASKED = "********"
 
 
 def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
-    db.execute("""CREATE TABLE _pg_roles (
-        oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
-        rolcreaterole BOOLEAN, rolcreatedb BOOLEAN, rolcanlogin BOOLEAN,
-        rolreplication BOOLEAN, rolconnlimit INTEGER, rolpassword VARCHAR,
-        rolvaliduntil VARCHAR, rolbypassrls BOOLEAN, rolconfig VARCHAR)""")
+    create_relation(db, "pg_catalog", "pg_roles")
 
     rows: list[tuple] = []
     seen_names: set[str] = set()
@@ -802,38 +810,39 @@ def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
         seen_names.add(rname)
         roid = 10 + i
         rows.append(
-            (roid, rname, False, True, False, False, True, False, -1, None, None, False, None)
+            (roid, rname, False, True, False, False, True, False, -1, _MASKED, None, False, None)
         )
     # Ensure the connected role is present even if state.roles is empty
     if role_id not in seen_names:
         rows.append(
-            (10, role_id, False, True, False, False, True, False, -1, None, None, False, None)
+            (10, role_id, False, True, False, False, True, False, -1, _MASKED, None, False, None)
         )
         seen_names.add(role_id)
     # Standard PG system roles
     for oid, name, sup, inh, crrole, crdb, login, repl, conn, byp in _PG_SYSTEM_ROLES:
         if name not in seen_names:
             rows.append(
-                (oid, name, sup, inh, crrole, crdb, login, repl, conn, None, None, byp, None)
+                (oid, name, sup, inh, crrole, crdb, login, repl, conn, _MASKED, None, byp, None)
             )
             seen_names.add(name)
 
-    db.executemany("INSERT INTO _pg_roles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
-    db.execute("""CREATE TABLE _pg_user AS
-        SELECT oid AS usesysid, rolname AS usename,
-               rolcreatedb AS usecreatedb, rolsuper AS usesuper,
-               rolreplication AS userepl, rolbypassrls AS usebypassrls,
-               '********' AS passwd, rolvaliduntil AS valuntil,
-               rolconfig AS useconfig
-        FROM _pg_roles WHERE rolcanlogin""")
-    db.execute("""CREATE TABLE _pg_database (
-        oid INTEGER, datname VARCHAR, datdba INTEGER, encoding INTEGER,
-        datlocprovider VARCHAR, datistemplate BOOLEAN, datallowconn BOOLEAN,
-        datconnlimit INTEGER, datfrozenxid INTEGER, datminmxid INTEGER,
-        dattablespace INTEGER, datcollate VARCHAR, datctype VARCHAR, datacl VARCHAR)""")
+    db.executemany(
+        "INSERT INTO _pg_roles (oid, rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, "
+        "rolcanlogin, rolreplication, rolconnlimit, rolpassword, rolvaliduntil, rolbypassrls, "
+        "rolconfig) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        rows,
+    )
+    create_relation(db, "pg_catalog", "pg_user")
     db.execute(
-        "INSERT INTO _pg_database VALUES "
-        "(16384,?,10,6,'c',FALSE,TRUE,-1,726,1,1663,'en_US.UTF-8','en_US.UTF-8',NULL)",
+        "INSERT INTO _pg_user SELECT rolname, oid, rolcreatedb, rolsuper, rolreplication, "
+        "rolbypassrls, rolpassword, rolvaliduntil, rolconfig FROM _pg_roles WHERE rolcanlogin"
+    )
+    create_relation(db, "pg_catalog", "pg_database")
+    # A libc-provider database (datlocale and daticurules are NULL) with no login event trigger
+    # (dathasloginevt) and no recorded collation version.
+    db.execute(
+        "INSERT INTO _pg_database VALUES (16384,?,10,6,'c',FALSE,TRUE,FALSE,-1,726,1,1663,"
+        "'en_US.UTF-8','en_US.UTF-8',NULL,NULL,NULL,NULL)",
         [served_database_name(state)],
     )
 
@@ -843,7 +852,7 @@ def _populate_pg_settings(db) -> None:
         name VARCHAR, setting VARCHAR, unit VARCHAR, category VARCHAR,
         short_desc VARCHAR, extra_desc VARCHAR, context VARCHAR,
         vartype VARCHAR, source VARCHAR, min_val VARCHAR, max_val VARCHAR,
-        enumvals VARCHAR, boot_val VARCHAR, reset_val VARCHAR,
+        enumvals VARCHAR[], boot_val VARCHAR, reset_val VARCHAR,
         sourcefile VARCHAR, sourceline INTEGER, pending_restart BOOLEAN)""")
     db.executemany(
         f"INSERT INTO _pg_settings VALUES ({','.join(['?'] * 17)})",
@@ -879,7 +888,15 @@ def _populate_pg_tables_and_am(db, idx: CatalogIndex) -> None:
     )
 
 
-_row_count_cache: dict[str, tuple[float, dict[int, float]]] = {}
+_row_count_cache: dict[tuple[str, str], tuple[float, dict[int, float]]] = {}
+
+
+@on_forget(size=lambda: len(_row_count_cache))
+def _forget_row_counts(org_id: str) -> None:
+    for key in [k for k in _row_count_cache if k[0] == org_id]:
+        _row_count_cache.pop(key, None)
+
+
 _ROW_COUNT_TTL = 300.0
 # REQ-1905: reltuples is a best-effort estimate for BI tools -- one SHOW STATS FOR engine round-trip
 # per visible table. A catalog reflection (SQLAlchemy get_columns, the hstore oid lookup) runs on the
@@ -922,10 +939,25 @@ def _fetch_row_counts(ctx, idx: CatalogIndex, engine_conn) -> dict[int, float]:
     return result
 
 
-def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
-    from provisa.federation.duckdb_backend import local_catalog_connection
+def _row_counts_for(role_id: str, ctx, idx, engine_conn) -> dict[int, float]:
+    """The role's row-count estimates, kept for ``_ROW_COUNT_TTL`` by org and role: a role's id is
+    its org's (org_admin, sandbox), and one org's estimates are never another's."""
+    from provisa.core.request_context import require_current_org
 
-    db = local_catalog_connection()
+    now = time.monotonic()
+    key = (require_current_org(), role_id)
+    cached = _row_count_cache.get(key)
+    if cached and now - cached[0] < _ROW_COUNT_TTL:
+        return cached[1]
+    row_counts = _fetch_row_counts(ctx, idx, engine_conn)
+    _row_count_cache[key] = (now, row_counts)
+    return row_counts
+
+
+def role_catalog_index(state, role_id: str) -> tuple[object, CatalogIndex, list]:
+    """The role's compilation context, its catalog index and the metrics it is served: what a SQL
+    surface lists as the role's catalog (pgwire's catalog, Flight SQL's catalog commands,
+    REQ-2175)."""
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
     # REQ-1319: governed metrics from the loaded config, filtered to the connected role's
@@ -933,16 +965,21 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     # _populate_pg_roles_and_database — partial/mock states carry no metrics list.
     _metrics_attr = getattr(getattr(state, "config", None), "metrics", None)
     all_metrics = _metrics_attr if isinstance(_metrics_attr, list) else []
-    metrics = [m for m in all_metrics if "*" in m.visible_to or role_id in m.visible_to]
-    idx = _build_catalog_index(ctx, col_types, metrics)
+    metrics = [m for m in all_metrics if role_id in m.visible_to]
+    return (
+        ctx,
+        _build_catalog_index(ctx, col_types, metrics, database=served_database_name(state)),
+        metrics,
+    )
 
-    now = time.monotonic()
-    cached = _row_count_cache.get(role_id)
-    if cached and now - cached[0] < _ROW_COUNT_TTL:
-        row_counts = cached[1]
-    else:
-        row_counts = _fetch_row_counts(ctx, idx, getattr(state, "engine_conn", None))
-        _row_count_cache[role_id] = (now, row_counts)
+
+def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
+    from provisa.federation.duckdb_backend import local_catalog_connection
+
+    db = local_catalog_connection()
+    ctx, idx, metrics = role_catalog_index(state, role_id)
+
+    row_counts = _row_counts_for(role_id, ctx, idx, getattr(state, "engine_conn", None))
 
     _populate_is_schemata(db, idx)
     _populate_is_tables(db, idx)
@@ -953,16 +990,120 @@ def _build_catalog_db(role_id: str, state):  # REQ-127, REQ-128, REQ-363
     _populate_system_attributes(db)
     _populate_pg_type(db)
     _populate_empty_system_tables(db)
-    _populate_pg_extension(db)  # REQ-892: advertise enabled extension surfaces
-    populate_functions(db, state, role_id)  # REQ-872
+    roles = getattr(state, "roles", None)
+    role = roles.get(role_id) if isinstance(roles, dict) else None
     raw_tables = state.schema_build_cache.get("tables", []) if state else []
+    populate_table_privileges(  # REQ-2167: has_table_privilege, pg_get_expr
+        db,
+        idx,
+        ctx,
+        raw_tables,
+        role_id,
+        isinstance(role, dict) and has_capability(role, Capability.WRITE),
+    )
+    populate_privilege_macros(db, role_id)
+    _populate_pg_extension(db)  # REQ-892: advertise enabled extension surfaces
+    populate_functions(db, state, role_id, idx.database)  # REQ-872
     raw_domains = state.schema_build_cache.get("domains", []) if state else []
     _populate_pg_description(db, idx, raw_tables, raw_domains, metrics)
     constraint_rows = _populate_pg_constraint(db, ctx, idx)
     _populate_pg_index(db, constraint_rows)
+    _populate_index_classes(db, constraint_rows)
     _populate_pg_roles_and_database(db, role_id, state)
     _populate_pg_settings(db)
     _populate_pg_tables_and_am(db, idx)
     _populate_is_constraints(db, constraint_rows, idx)
+    populate_client_relations(db)  # REQ-2167
+    populate_unqueried_relations(db, UNQUERIED_RELATIONS)
+    populate_catalog_macros(db)  # REQ-2167: over the relations above
 
+    return db
+
+
+# REQ-2167: a role's catalog DB, built once and kept for every catalog statement of the role while
+# what it was built from is unchanged -- DBeaver sends dozens on connect, and building the catalog
+# for each cost each one. Kept per org and role, the most recently used first out of the bound.
+_CATALOG_DB_LIMIT = 256
+_catalog_dbs: OrderedDict[tuple[str, str], tuple[tuple[Any, ...], Any]] = OrderedDict()
+_catalog_dbs_lock = threading.Lock()
+
+
+@on_forget(size=lambda: len(_catalog_dbs))
+def _forget_catalog_dbs(org_id: str) -> None:
+    with _catalog_dbs_lock:
+        for key in [k for k in _catalog_dbs if k[0] == org_id]:
+            _catalog_dbs.pop(key, None)
+
+
+def _current_row_counts(role_id: str) -> dict[int, float] | None:
+    """The role's row-count estimates while they are current (``_row_counts_for``); None once they
+    are due to be fetched again."""
+    from provisa.core.request_context import require_current_org
+
+    cached = _row_count_cache.get((require_current_org(), role_id))
+    if cached and time.monotonic() - cached[0] < _ROW_COUNT_TTL:
+        return cached[1]
+    return None
+
+
+def _catalog_inputs(role_id: str, state) -> tuple[Any, ...]:
+    """What a role's catalog DB is built from: the schema generation, and objects compared by
+    identity (each replaced, never mutated, when the model is rebuilt); by value the role ids
+    (pg_roles lists every role, and a meta-role is added to and dropped from the registry in
+    place), the served database and the enabled surfaces."""
+    from provisa.pgwire.ext_surfaces import enabled_surface_keys
+
+    registry = state.schema_build_cache
+    config = getattr(state, "config", None)
+    roles = getattr(state, "roles", None)
+    return (
+        getattr(state, "schema_boot_id", None),
+        getattr(state, "schema_version", None),
+        state.contexts.get(role_id),
+        registry,
+        registry.get("column_types"),
+        registry.get("tables"),
+        registry.get("domains"),
+        config,
+        getattr(config, "metrics", None),
+        roles,
+        frozenset(roles) if isinstance(roles, dict) else None,
+        getattr(state, "tracked_functions", None),
+        _current_row_counts(role_id),
+        served_database_name(state),
+        enabled_surface_keys(),
+    )
+
+
+def _same_inputs(kept: tuple[Any, ...], now: tuple[Any, ...]) -> bool:
+    return len(kept) == len(now) and all(
+        a is b or (isinstance(a, (str, int, frozenset)) and a == b) for a, b in zip(kept, now)
+    )
+
+
+def catalog_db_for(role_id: str, state):  # REQ-2167
+    """The role's catalog DB, built only when none is kept for what it is built from now. Shared
+    by every statement it answers: each runs on its own cursor, and the DB is never closed (it is
+    dropped when replaced, a cursor still in use keeping it open). Nothing is kept while the model
+    is being rebuilt, or when the row-count estimates were due (the build fetches them anew)."""
+    from provisa.core.request_context import require_current_org
+    from provisa.pgwire.governed_plan import _rebuild_in_progress
+
+    key = (require_current_org(), role_id)
+    inputs = _catalog_inputs(role_id, state)
+    with _catalog_dbs_lock:
+        kept = _catalog_dbs.get(key)
+        if kept is not None and _same_inputs(kept[0], inputs):
+            _catalog_dbs.move_to_end(key)
+            return kept[1]
+    rebuilding = _rebuild_in_progress()
+    db = _build_catalog_db(role_id, state)
+    if rebuilding or _rebuild_in_progress():
+        return db
+    built_from = _catalog_inputs(role_id, state)
+    with _catalog_dbs_lock:
+        _catalog_dbs[key] = (built_from, db)
+        _catalog_dbs.move_to_end(key)
+        while len(_catalog_dbs) > _CATALOG_DB_LIMIT:
+            _catalog_dbs.popitem(last=False)
     return db

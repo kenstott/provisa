@@ -1,6 +1,7 @@
 {
   "graphPage": {
     "emptyStateHint": "Execute uma consulta Cypher para explorar o grafo",
+    "emptyStateHintSparql": "Execute uma consulta SPARQL para explorar o grafo",
     "emptyStateShortcut": "⌘↵ para executar"
   }
 }

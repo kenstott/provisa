@@ -1,7 +1,8 @@
 # Build the Provisa Windows container-tier installer (REQ-889 / REQ-633) with Inno
 # Setup. This is the separate, on-demand upgrade that adds the compute stack
-# (Trino + services) via WSL2 + containerd - the Windows equivalent of the macOS
-# Lima tier. NO VirtualBox. The base native installer (build-sfx.ps1) ships
+# (Trino + services) via WSL2 + containerd. NO VirtualBox. (The macOS container
+# tier runs on the user's own Docker with the core-images tarball; Windows
+# provisions its own runtime instead.) The base native installer (build-sfx.ps1) ships
 # without any of this; users download and run this only to upgrade tiers.
 #
 # CI stages the core image tarballs into packaging/windows/images before running.
@@ -12,8 +13,8 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 
-# Pins (overridable). nerdctl-full version must match what the macOS Lima tier
-# provisions so both tiers run the same containerd/nerdctl.
+# Pins (overridable). nerdctl-full is the containerd/nerdctl bundle installed into
+# the Provisa WSL2 distro.
 $NerdctlVersion = if ($env:NERDCTL_VERSION) { $env:NERDCTL_VERSION } else { '2.2.2' }
 $RootfsUrl = if ($env:ROOTFS_URL) { $env:ROOTFS_URL } else {
   'https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz'

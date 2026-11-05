@@ -69,6 +69,13 @@ async def store_connection(dsn: str) -> AsyncGenerator[Any]:
         engine.dispose()
 
 
+async def table_exists(store_dsn: str, *, schema: str, table: str) -> bool:
+    """Whether the store ``store_dsn`` holds ``schema.table``, read from its own catalog through
+    the store's connection: absent is False, a store that cannot be read raises."""
+    async with store_connection(store_dsn) as conn:
+        return await conn.has_table(table, schema)
+
+
 async def ensure_table(
     store_dsn: str,
     *,

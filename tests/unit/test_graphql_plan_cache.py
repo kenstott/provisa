@@ -30,14 +30,19 @@ from provisa.api.data.graphql_plan import GraphQLPlan, PlanRequest
 from provisa.pgwire import governed_plan
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.directives import QueryDirectives
-from provisa.compiler.sql_types import CompiledQuery
+from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 from tests.role_state import RoleState
+from tests.unit.json_encoder.rows import field_answer
 
 
 def _cq(
     sql: str = 'SELECT "order_id" FROM "sales"."orders"', sources=("sales-pg",)
 ) -> CompiledQuery:
-    return CompiledQuery(sql=sql, params=[1], root_field="orders", columns=[], sources=set(sources))
+    # The one column the statement selects, as a compile declares each (orderId over order_id).
+    columns = [ColumnRef(alias=None, column="order_id", field_name="orderId", nested_in=None)]
+    return CompiledQuery(
+        sql=sql, params=[1], root_field="orders", columns=columns, sources=set(sources)
+    )
 
 
 _ROLE = {"id": "analyst"}
@@ -73,7 +78,6 @@ def _request(state, **over) -> PlanRequest:
         schema=_SCHEMA,
         query="{ orders { orderId } }",
         variables=None,
-        as_of=None,
         eligible=True,
     )
     kwargs.update(over)
@@ -90,12 +94,11 @@ def _no_rebuild(monkeypatch):
     [
         {"query": "{ b }"},
         {"variables": {"x": 2}},
-        {"as_of": "TIMESTAMP '2026-01-01'"},
     ],
 )
 def test_the_plan_is_partitioned_on_the_requests_own_inputs(change):
     state = _state()
-    base = dict(query="{ a }", variables={"x": 1}, as_of=None)
+    base = dict(query="{ a }", variables={"x": 1})
     _request(state, **base).record(_DIRECTIVES, [_cq()])
     assert _request(state, **base).cached() is not None
     assert _request(state, **{**base, **change}).cached() is None, change
@@ -255,7 +258,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         seen_sql.append(compiled.sql)
         seen_hints.append(kwargs.get("cache_hint"))
         compiled.sql = "MUTATED DOWNSTREAM"
-        return compiled.root_field, [{"orderId": 1}], None, None
+        return compiled.root_field, field_answer([{"orderId": 1}]), None, None
 
     async def _awake(state):
         return None
@@ -276,6 +279,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         kafka_table_configs={},
         source_types={"sales-pg": "postgresql"},
         settings_overrides={},
+        config=None,  # no config file: no subgraph declared (REQ-259)
         model_stamp=1,
     )
     monkeypatch.setattr(app_module, "state", state)
@@ -306,8 +310,6 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
             x_provisa_redirect_format=None,
             x_provisa_stats=None,
             x_provisa_normalized=None,
-            x_provisa_as_of=None,
-            x_provisa_as_recorded=None,
             x_provisa_trace=None,
         )
         defaults.update(headers)
@@ -441,7 +443,7 @@ def test_a_single_aggregate_root_is_answered_in_the_data_envelope(monkeypatch):
     answer = {"aggregate": {"count": 4}, "nodes": [{"orderId": 1}]}
 
     async def _aggregate(compiled, *args, **kwargs):
-        return compiled.root_field, answer, None, None
+        return compiled.root_field, field_answer(answer), None, None
 
     monkeypatch.setattr(endpoint, "_execute_one_field", _aggregate)
     body = json.loads(bytes(h.call().body))

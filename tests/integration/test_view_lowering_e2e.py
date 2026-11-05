@@ -57,7 +57,7 @@ def server():
         email={
             "masks": [
                 {"to": ["org_admin"], "mask": None},
-                {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                {"mask": {"type": "constant", "value": "***"}},
             ]
         },
     )

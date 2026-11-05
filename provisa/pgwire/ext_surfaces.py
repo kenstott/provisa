@@ -34,6 +34,9 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
+from provisa.core.ir_types import SUBTYPES
+from provisa.transpiler.pg_syntax import NegativeInnerProduct
+
 _ENV_VAR = "PROVISA_PGWIRE_EXT_SURFACES"
 
 # pg_trgm's default similarity threshold; the `%` operator is `similarity(a,b) >= 0.3`.
@@ -42,8 +45,9 @@ _PG_TRGM_THRESHOLD = 0.3
 # Surface type OIDs live in a private high range (8300-8399) so they never collide
 # with the 8001+ pg_catalog-table / 9001+ information_schema-view OIDs.
 _VECTOR_OID = 8300
-_GEOMETRY_OID = 8310
-_GEOGRAPHY_OID = 8311
+# REQ-2171: PostGIS's types are subtypes, at the OIDs the subtypes declare.
+_GEOMETRY_OID = SUBTYPES["geometry"].pg_oid
+_GEOGRAPHY_OID = SUBTYPES["geography"].pg_oid
 
 # pgcrypto digest() algorithm → federation-engine hash function.
 _DIGEST_FUNCS = {"md5": "md5", "sha1": "sha1", "sha256": "sha256", "sha512": "sha512"}
@@ -185,21 +189,6 @@ def reject_unimplemented(sql: str, keys: frozenset[str]) -> None:
 
 # --- Operator / function mapping ---------------------------------------------
 
-# `<#>` (negative inner product) does not parse in sqlglot, so it is rewritten
-# textually before parsing. Operands cover pgvector usage: params, ARRAY[...],
-# casted literals, and (qualified) column references.
-_OPERAND = r"(\$\d+|ARRAY\[[^\]]*\]|'[^']*'(?:::\w+)?|[A-Za-z_][\w.]*(?:::\w+)?)"
-_INNER_PROD_RE = re.compile(rf"{_OPERAND}\s*<#>\s*{_OPERAND}")
-
-
-def _rewrite_inner_product(sql: str) -> str:
-    """Textually rewrite ``a <#> b`` → ``array_negative_inner_product(a, b)``."""
-    prev = None
-    while prev != sql:
-        prev = sql
-        sql = _INNER_PROD_RE.sub(r"array_negative_inner_product(\1, \2)", sql)
-    return sql
-
 
 def _json_path(node: exp.Expression) -> str:
     """Build a SQL/JSON path (``$.a.b``) from a -> / #> right operand."""
@@ -241,6 +230,10 @@ def _map_vector(node: exp.Expression) -> exp.Expression:
             this=_cosine_similarity(node.this),
             desc=not node.args.get("desc"),
             nulls_first=node.args.get("nulls_first"),
+        )
+    if isinstance(node, NegativeInnerProduct):  # a <#> b, which pg_syntax reads
+        return exp.Anonymous(
+            this="array_negative_inner_product", expressions=[node.this, node.expression]
         )
     if isinstance(node, exp.Distance):  # a <-> b  (L2)
         return exp.Anonymous(this="array_distance", expressions=[node.this, node.expression])
@@ -305,8 +298,6 @@ def rewrite_surface_operators(sql: str) -> str:
     mappers = [_MAPPERS[k] for k in keys if k in _MAPPERS]
     if not mappers:
         return sql
-    if "pgvector" in keys:
-        sql = _rewrite_inner_product(sql)
     try:
         tree = sqlglot.parse_one(sql, read="postgres")
     except SqlglotError:

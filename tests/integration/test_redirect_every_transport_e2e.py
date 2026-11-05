@@ -84,15 +84,20 @@ def results_store():
 
 
 # NL generation needs a model. The test serves one of its own: an OpenAI-style chat-completions
-# endpoint that answers every prompt with the same SQL, registered as the org's custom endpoint
-# (REQ-1790) for the NL operations. The SQL branch validates it and runs it with the delivery.
+# endpoint, registered as the org's custom endpoint (REQ-1790) for the NL operations. The test's
+# role may not bypass the relationship guard, so its NL runs strict (REQ-603): the GraphQL prompt
+# is answered with the GraphQL read, which compiles to the SQL branch's statement, run with the
+# delivery; every other prompt with that SQL.
 _NL_SQL = "SELECT id FROM sales.orders"
+_NL_GRAPHQL = "{ s__orders { id } }"
+_GRAPHQL_PROMPT = "Generate a GraphQL query"
 _LLM_KEY_ENV = "PROVISA_TEST_REDIRECT_LLM_KEY"
 
 
 class _StubModel(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802 — http.server's handler name
-        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        prompt = self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode()
+        answer = _NL_GRAPHQL if _GRAPHQL_PROMPT in prompt else _NL_SQL
         body = json.dumps(
             {
                 "id": "stub",
@@ -102,7 +107,7 @@ class _StubModel(BaseHTTPRequestHandler):
                 "choices": [
                     {
                         "index": 0,
-                        "message": {"role": "assistant", "content": _NL_SQL},
+                        "message": {"role": "assistant", "content": answer},
                         "finish_reason": "stop",
                     }
                 ],
@@ -401,8 +406,8 @@ def _nl(boot) -> dict:
         time.sleep(1)
     branch = out["branches"]["sql"]
     assert out["state"] == "complete" and branch["error"] is None, out
-    # The branch reports the statement as the runner normalized it (quoted, aliased).
-    assert branch["query"] == 'SELECT id FROM "sales"."orders" AS "orders"', branch
+    # The branch reports the statement strict NL compiled from the GraphQL read (quoted).
+    assert branch["query"] == 'SELECT "id" FROM "sales"."orders"', branch
     return branch["result"]["redirect"]
 
 

@@ -23,17 +23,27 @@
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
+import { load } from "js-yaml";
 import { resolve } from "path";
 import { TOUR_STEPS, stepRoute, tourItinerary } from "../tour/tourSteps";
 
 const SRC = resolve(__dirname, "..");
-const SCHEMA_SQL = resolve(SRC, "../../provisa/core/schema.sql");
+// REQ-2155: the standard roles' one definition.
+const STANDARD_ROLES = resolve(SRC, "../../provisa/core/standard_roles.yaml");
 
 function orgAdminCapabilities(): Set<string> {
-  const sql = readFileSync(SCHEMA_SQL, "utf-8");
-  const seed = /'org_admin',\s*'(\[[\s\S]*?\])'::jsonb/.exec(sql);
-  if (!seed) throw new Error("schema.sql: org_admin role seed not found");
-  return new Set(JSON.parse(seed[1]) as string[]);
+  // org_admin's own capabilities and every ancestor's.
+  const roles = load(readFileSync(STANDARD_ROLES, "utf-8")) as Record<
+    string,
+    { parents: string[]; capabilities: string[] }
+  >;
+  const held = new Set<string>();
+  const walk = (id: string) => {
+    roles[id].capabilities.forEach((c) => held.add(c));
+    roles[id].parents.forEach(walk);
+  };
+  walk("org_admin");
+  return held;
 }
 
 /** Every path the tour navigates to, without its query string. */

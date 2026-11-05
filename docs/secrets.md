@@ -1,8 +1,8 @@
 # Secrets
 
-**Names go in. Values never come back out.**
+**Secret names go in, and values never come back out.**
 
-No API endpoint returns a stored secret value, and no UI offers a "show" button. Someone who has lost a value replaces it, with the same call and the same form that created it. This isn't a policy choice: the read path simply doesn't exist in the code.
+No API endpoint returns a stored secret value, and no UI offers a "show" button. Someone who has lost a value replaces it, with the same call and the same form that created it. This isn't a policy choice. The read path doesn't exist in the code.
 
 ---
 
@@ -13,7 +13,7 @@ Three reference forms are valid wherever Provisa resolves credentials:
 | Form | Resolves from | Who can use it |
 | ------ | -------------- | --------------- |
 | `${env:VAR_NAME}` | The server process's environment | Deployment configuration only |
-| `${secret:NAME}` | The org vault — shared by all members | Any field that accepts a credential reference |
+| `${secret:NAME}` | The org vault, shared by all members | Any field that accepts a credential reference |
 | `${user:NAME}` | The acting person's personal vault | Any field that accepts a credential reference |
 
 On a multi-tenant deployment, keep platform credentials in a secrets service and out of environment variables. A tenant admin can write `${env:...}` into a credential field of their own, so any value in the process environment is within every tenant's reach. Leave only the secrets backend's own credential in the environment.
@@ -52,7 +52,7 @@ Five backends ship:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (secrets) | `azure-keyvault-secrets` |
 
-Selection fails closed: an unknown or unavailable backend stops startup with an error, and Provisa never falls back to another one quietly.
+Selection fails closed. An unknown or unavailable backend stops startup with an error, and Provisa never falls back to another one quietly.
 
 ### The backend's own credential
 
@@ -94,13 +94,13 @@ A reference is refused, by name, when:
 - its name is too long for the service once prefixed (GCP 255 characters, Azure 127); this is refused when the reference is saved, with the limit stated;
 - no organization is bound to the operation that reads it.
 
-A deployment of one organization reads a reference exactly as written, with no prefix: the service it is wired to is that organization's own, and nothing has to be moved.
+A deployment of one organization reads a reference exactly as written, with no prefix, because the service it is wired to is that organization's own and nothing has to be moved.
 
 **Moving to the prefix.** On a deployment of many organizations, every secret an organization references has to sit under that organization's prefix. Copy each one there with the service's own tooling, then shorten the reference to the name inside the prefix (`${secret:teams/data/db}` kept at `orgs/acme/db` becomes `${secret:db}`). A reference whose secret has not been moved fails as not found; it is not read from where it was.
 
 ## Provisa's built-in store
 
-This is the default when no central service is configured. Every row in `secrets_store` holds an encrypted envelope blob. The `value` column is binary, and the decryption key lives in the process environment, outside the database. A copy of the control plane without the deployment's master key holds ciphertext and nothing else.
+This is the default when no central service is configured. Every row in `secrets_store` holds an encrypted envelope blob. The `value` column is binary, and the decryption key lives in the process environment, outside the database. A copy of the model store without the deployment's master key holds ciphertext and nothing else.
 
 Encryption is never optional. When no process-wide encryption key is configured, the store uses a local keychain. If the host has no keychain to hold a key, the store refuses to write, and the value is never stored in the clear.
 
@@ -112,7 +112,7 @@ Encryption is never optional. When no process-wide encryption key is configured,
 | `owner_id` | Text | `"*"` for org vault; user id for personal vault |
 | `name` | Text | The reference name |
 | `value` | LargeBinary | Encrypted envelope blob |
-| `description` | Text | What the secret is for — never derived from the value |
+| `description` | Text | What the secret is for; never derived from the value |
 | `updated_by` | Text | Who last set it |
 
 An organization that has created its own encryption key has its secrets wrapped under that key; otherwise they are wrapped under the deployment's. See [Encryption at Rest](security.md#encryption-at-rest-and-the-organizations-own-keys).
@@ -187,5 +187,5 @@ A platform admin operating the control plane can't read any org's secret values.
 
 ## See also
 
-- [Security Model](security.md) — layered access control, authentication, and audit logging
-- [Configuration Reference](configuration.md) — `${env:VAR}` syntax for process-level credentials
+- [Security Model](security.md): layered access control, authentication, and audit logging
+- [Configuration Reference](configuration.md): `${env:VAR}` syntax for process-level credentials

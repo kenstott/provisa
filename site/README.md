@@ -6,6 +6,8 @@ Static, framework-free landing page for provisa.dev. No build step.
 site/
   index.html            hero, interfaces, governance, sources, download, CTA + signup
   register.html         free license registration form (REQ-1793)
+  start/                one page per home-page problem card: the pain, then a five-minute quick start
+                         (the hero lines link to them; each carries the home page's navigation)
   styles.css            brand tokens mirror provisa-ui/src/theme/tokens.css (dark)
   favicon.svg           the Provisa "P" mark
   _headers              Cloudflare Pages caching + security headers

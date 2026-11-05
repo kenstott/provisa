@@ -116,6 +116,20 @@ const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.ge
 /** The sign-in screen, whichever provider the deployment renders it with. */
 const signIn = (page: Page) => page.getByRole("heading", { name: "Login" });
 
+/**
+ * Open the app on a credential the gate refuses, and wait out the sign-in page's code. The gate
+ * drops the credential and App renders sign-in, a code-split page (lazyPage, App.tsx) whose loading
+ * fallback (page-loading) stands until its modules arrive -- which the lane's dev server serves on
+ * first request, on a busy runner slower than the check that follows (run 40177970935: 11-15 s).
+ * The credential gone, App has rendered the page or its fallback; the fallback gone, the check
+ * after this measures the gate, not the dev server.
+ */
+async function openRefused(page: Page) {
+  await page.goto("/");
+  await expect.poll(() => stored(page, "provisa_token"), { timeout: 60000 }).toBeNull();
+  await expect(page.getByTestId("page-loading")).toHaveCount(0, { timeout: 60000 });
+}
+
 // Each test below deliberately drives a refused or failing identity response, so the browser
 // logs the failed fetch however correctly the app handles it. Anything else still fails.
 test.use({
@@ -133,7 +147,7 @@ test("a credential the deployment rejects returns the visitor to sign-in", async
   // yet, the administrator it tells them to ask does not exist.
   await stubDeployment(page, { identityStatus: 401 });
 
-  await page.goto("/");
+  await openRefused(page);
 
   await expect(signIn(page)).toBeVisible();
   expect(await stored(page, "provisa_token")).toBeNull();
@@ -144,7 +158,7 @@ test("a rejected credential clears the whole session, not just the token", async
   // identity to an org it may not belong to.
   await stubDeployment(page, { identityStatus: 403 });
 
-  await page.goto("/");
+  await openRefused(page);
   await expect(signIn(page)).toBeVisible();
 
   expect(await stored(page, "provisa_token")).toBeNull();

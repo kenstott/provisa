@@ -26,7 +26,9 @@
     "running": "Running",
     "unreachable": "Unreachable",
     "port": "port {{port}}",
+    "cypherOverHttp": "Cypher over HTTP",
     "mvRefreshLoop": "MV Refresh Loop",
-    "stopped": "Stopped"
+    "stopped": "Stopped",
+    "copyUrl": "Copy URL"
   }
 }

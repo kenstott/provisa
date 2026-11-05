@@ -40,7 +40,7 @@ _CREATE_ORDER = {
     "arguments": [{"name": "customer_id", "type": "integer"}, {"name": "total", "type": "number"}],
     "returns": "provisa.public.orders",
     "return_schema": "[]",  # table-valued (set-returning)
-    "visible_to": [],
+    "visible_to": ["alice"],
     "kind": "mutation",
 }
 _SECRET_FN = {

@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from graphql import graphql_sync, print_schema
 
 from provisa.api.errors import ApiError
+from provisa.security.rights import SYSTEM_DOMAINS
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
     return reachable
 
 
-_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
+_ALWAYS_VISIBLE_DOMAINS = SYSTEM_DOMAINS
 
 
 def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039
@@ -96,15 +97,19 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     root_ids = seed_ids
     # The role is passed as it is: its own domain_access decides which of these tables it is
     # shown (_build_visible_tables). The requested domains only chose the roots above.
+    from provisa.mv.time_travel import relation_kinds
+
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
+        root_domain_ids=set(domain_ids),
         relationships=relationships,
         column_types=cache["column_types"],
         naming_rules=cache["naming_rules"],
         role=role,
         domains=cache["domains"],
         source_types=state.source_types,
+        time_travel=relation_kinds(state, filtered_tables),  # REQ-1163
         domain_prefix=cache["domain_prefix"],
         physical_table_map=cache["physical_table_map"],
         functions=cache["functions"],
@@ -145,7 +150,8 @@ async def get_domains(  # REQ-471
     x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     x_role: str = Header(None, alias="X-Role"),
 ):
-    """Return domain IDs accessible to the requesting role."""
+    """Return domain IDs the requesting role reaches: its data domains and, by capability, the
+    system domains (its flattened domain_access)."""
     from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
@@ -158,12 +164,10 @@ async def get_domains(  # REQ-471
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import reaches_domain
 
     access = role["domain_access"]
-    if reaches_all_domains(access):
-        return JSONResponse(all_domains)
-    return JSONResponse([d for d in all_domains if d in set(access)])
+    return JSONResponse([d for d in all_domains if reaches_domain(access, d)])
 
 
 @router.get("/data/sdl", response_class=PlainTextResponse)

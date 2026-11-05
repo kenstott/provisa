@@ -29,7 +29,7 @@ intent the SQL branch's own LLM call already resolved. These tests cover:
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from provisa.compiler.sql_types import ColumnRef, CompiledQuery, JoinMeta, TableMeta
 from provisa.nl.runner import (
@@ -58,9 +58,13 @@ def _group_by_compiled(root_field: str = "pets_group_by") -> CompiledQuery:
     return CompiledQuery(sql="", params=[], root_field=root_field, columns=columns, sources=set())
 
 
-class _FakeResult:
-    def __init__(self, rows):
-        self.rows = rows
+def _FakeResult(rows):  # noqa: N802 — read as the result class it stands for
+    """The engine's result of ``rows``: a row result, which hands the encoders its rows as Arrow
+    (``QueryResult.arrow_batches``, REQ-2194)."""
+    from provisa.executor.result import QueryResult
+
+    width = len(rows[0]) if rows else 0
+    return QueryResult(rows=list(rows), column_names=[f"c{i}" for i in range(width)])
 
 
 def _pets_meta() -> TableMeta:
@@ -450,7 +454,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_grpc("QueryPetsAggregate", "admin", app_state, None)
@@ -475,7 +479,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_grpc(
@@ -494,21 +498,31 @@ class TestExecutorRouting:
             "group_by": [{"group_key": '{"species": "dog"}', "aggregate": {"count": 3}}]
         }
 
-    async def test_execute_grpc_plain_falls_back_to_sql(self):
+    async def test_execute_grpc_plain_routes_through_graphql(self):
+        """Query{Type} is the servicer's row read: lowered to GraphQL text and run through the
+        compiled pipeline, its rows previewed as the columns and rows the client receives."""
         from provisa.nl import executor
 
-        app_state = RoleState(contexts={"admin": _ctx()})
+        schema = MagicMock()
+        app_state = RoleState(contexts={"admin": _ctx()}, schemas={"admin": schema})
+        result = _FakeResult([(1, "rex")])
+        result.column_names = ["id", "name"]
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT * FROM pet_store.pets LIMIT 20", []),
-            ),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ pets(limit: 20) { id name } }", {}),
+            ) as fake_text,
             patch.object(
-                executor, "_execute_sql", new=AsyncMock(return_value={"columns": [], "rows": []})
+                executor,
+                "_compile_and_execute_graphql",
+                new=AsyncMock(return_value=[(SimpleNamespace(), result, None)]),
             ) as fake_exec,
         ):
-            await executor._execute_grpc("QueryPets", "admin", app_state, None)
+            preview = await executor._execute_grpc("QueryPets", "admin", app_state, None)
+        fake_text.assert_called_once_with(app_state.contexts["admin"], schema, "Pets", limit=20)
         fake_exec.assert_awaited_once()
+        assert fake_exec.await_args.args[0] == "{ pets(limit: 20) { id name } }"
+        assert preview == {"columns": ["id", "name"], "rows": [{"id": 1, "name": "rex"}]}
 
     async def test_execute_jsonapi_aggregate_routes_through_graphql(self):
         from provisa.nl import executor
@@ -524,7 +538,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_jsonapi(
@@ -551,7 +565,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_jsonapi(
@@ -565,7 +579,7 @@ class TestExecutorRouting:
             app_state.contexts["admin"], "Pets", ["species"], None, False, []
         )
         fake_exec.assert_awaited_once()
-        # serialize_group_by → [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]
+        # serialize_rows → [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]
         # jsonapi wraps each row as typed-resourceless JSON:API object.
         assert result == {
             "data": [
@@ -588,11 +602,20 @@ class TestExecutorRouting:
 
         app_state = RoleState(contexts={"admin": _ctx()})
         cq = _group_by_compiled()
-        nodes_columns = [
-            ColumnRef(alias=None, column="species", field_name="species", nested_in="__join_key__"),
-            ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
+        # A group's nodes are a column of its own row (aggregates._nodes_column).
+        cq.columns = [
+            *cq.columns,
+            ColumnRef(
+                alias=None,
+                column="nodes",
+                field_name="nodes",
+                nested_in=None,
+                cardinality="one-to-many",
+                is_agg=True,
+                json=True,
+            ),
         ]
-        cq.nodes_columns = nodes_columns
+        cq.has_nodes = True
         with (
             patch.object(
                 executor,
@@ -602,9 +625,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(
-                    return_value=[(cq, _FakeResult([("dog", 3)]), _FakeResult([("dog", "Rex")]))]
-                ),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3, '[{"name": "Rex"}]')]))]),
             ),
         ):
             result = await executor._execute_jsonapi(
@@ -635,11 +656,20 @@ class TestExecutorRouting:
 
         app_state = RoleState(contexts={"admin": _ctx()})
         cq = _group_by_compiled()
-        nodes_columns = [
-            ColumnRef(alias=None, column="species", field_name="species", nested_in="__join_key__"),
-            ColumnRef(alias=None, column="name", field_name="name", nested_in=None),
+        # A group's nodes are a column of its own row (aggregates._nodes_column).
+        cq.columns = [
+            *cq.columns,
+            ColumnRef(
+                alias=None,
+                column="nodes",
+                field_name="nodes",
+                nested_in=None,
+                cardinality="one-to-many",
+                is_agg=True,
+                json=True,
+            ),
         ]
-        cq.nodes_columns = nodes_columns
+        cq.has_nodes = True
         with (
             patch.object(
                 executor,
@@ -649,9 +679,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(
-                    return_value=[(cq, _FakeResult([("dog", 3)]), _FakeResult([("dog", "Rex")]))]
-                ),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3, '[{"name": "Rex"}]')]))]),
             ),
         ):
             result = await executor._execute_openapi(
@@ -701,7 +729,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([(5,)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_openapi(
@@ -727,7 +755,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]), None)]),
+                new=AsyncMock(return_value=[(cq, _FakeResult([("dog", 3)]))]),
             ) as fake_exec,
         ):
             result = await executor._execute_openapi(

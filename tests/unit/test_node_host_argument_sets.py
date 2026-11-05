@@ -30,8 +30,12 @@ pytestmark = pytest.mark.unit
 
 CORE = HOST.with_name("host-core.mjs")
 
-# The stand-in Arrow library: a schema, and nothing a test's sendRows stand-in needs beyond it.
-_ARROW = "module.exports = { tableFromIPC: () => ({ schema: { fields: [] } }) };\n"
+# The stand-in Arrow library: a schema, and the classes the host tells Arrow the code made by;
+# nothing a test's sendRows stand-in needs beyond them.
+_ARROW = (
+    "module.exports = { tableFromIPC: () => ({ schema: { fields: [] } }), "
+    "Table: class {}, RecordBatch: class {} };\n"
+)
 
 _SCRIPT = textwrap.dedent(
     """

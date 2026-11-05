@@ -96,3 +96,44 @@ def test_a_value_with_no_json_form_is_refused_by_its_type():
 
 def test_the_bundle_carries_them_beside_the_seed(tmp_path):
     assert carry.results_path(tmp_path) == tmp_path / "seeded" / "profile_results.json"
+
+
+def test_a_demo_started_from_its_bundle_loads_the_runs_the_bundle_carries(tmp_path):
+    """REQ-2052 (A FIRST RUN IS SEEDED): a bundle started on its own server has the runs its build
+    measured, as its hosted template does."""
+    run = {"run_id": "r1", "run_time": _RUN_TIME, "status": "succeeded", "row_count": 5000}
+    carry.results_path(tmp_path).parent.mkdir()
+    carry.results_path(tmp_path).write_text(
+        json.dumps(
+            {"results": [{"table": ["crm", "public", "customers"], "kind": "runs", "rows": [run]}]},
+            default=carry._encode,
+        )
+    )
+    conn = _Conn({42: ("crm", "public", "customers")})
+    assert asyncio.run(carry.load_bundle_runs(conn, tmp_path)) == ["customers_42_profile_runs"]
+
+
+def test_a_server_started_as_no_demo_or_a_bundle_without_runs_is_refused_by_name(tmp_path):
+    with pytest.raises(ValueError, match="started as no named demo"):
+        asyncio.run(carry.load_bundle_runs(_Conn({}), None))
+    with pytest.raises(ValueError, match=r"carries no profile runs \(profile_results\.json\)"):
+        asyncio.run(carry.load_bundle_runs(_Conn({}), tmp_path))
+
+
+def test_the_route_refuses_a_server_started_as_no_demo_by_name(monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from provisa.api.admin import profiler_router
+    from provisa.api.errors import ApiError
+
+    class _Db:
+        @asynccontextmanager
+        async def acquire(self):
+            yield _Conn({})
+
+    monkeypatch.setattr(profiler_router, "require_capability_request", lambda *_a: None)
+    monkeypatch.setattr(profiler_router, "_db", lambda: _Db())
+    monkeypatch.delenv("PROVISA_NAMED_DEMO_DIR", raising=False)
+    with pytest.raises(ApiError) as refused:
+        asyncio.run(profiler_router.load_carried_runs(SimpleNamespace()))
+    assert refused.value.status_code == 409 and "no named demo" in str(refused.value)

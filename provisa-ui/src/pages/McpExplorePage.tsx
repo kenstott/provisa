@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { useEffect, useRef, useState } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Code, Group, Text, TextInput, Title } from "@mantine/core";
+import { Alert, Badge, Button, Code, Group, Loader, Modal, Text, TextInput } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import {
   MainContainer,
@@ -24,11 +25,12 @@ import {
 import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy, Trash2 } from "lucide-react";
+import { Check, Copy, Trash2, Compass } from "lucide-react";
 import { HelpBubble } from "../components/HelpBubble";
 import { useAuth } from "../context/AuthContext";
 import { Tip } from "../components/Tip";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, setStored } from "../lib/browserStorage";
+import { explainSql, type ExplainResponse } from "../api/admin";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
 function CopyButton({ text }: { text: string }) {
@@ -81,7 +83,7 @@ function useCopy(): [boolean, (text: string) => void] {
   return [copied, copy];
 }
 
-function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
+function ConnectClaudeDesktop({ roleId, reveal }: { roleId: string; reveal: string | null }) {
   const [url, setUrl] = useState("");
   const [bridgeCommand, setBridgeCommand] = useState("");
   const [bridgeArgs, setBridgeArgs] = useState<string[]>([]);
@@ -126,7 +128,7 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
 
   if (enabled === false) {
     return (
-      <Text size="xs" c="dimmed" mb="sm">
+      <Text size="xs" c="dimmed" mb="sm" data-testid="mcp-connect-off">
         MCP server is off. Set PROVISA_MCP_PORT to enable it, then reload to connect Claude Desktop.
       </Text>
     );
@@ -137,9 +139,9 @@ function ConnectClaudeDesktop({ roleId }: { roleId: string }) {
     <div style={{ marginBottom: "var(--mantine-spacing-sm)" }}>
       {/* The config that points Claude Desktop at this MCP server, so the same governed tools are
           available outside Provisa. */}
-      <Collapsibles id="mcp-explore.claude-desktop">
+      <Collapsibles id="mcp-explore.claude-desktop" reveal={reveal}>
         <CollapsibleItem value="setup" defaultOpen={false} title="Connect Claude Desktop">
-          <Text size="xs" c="dimmed" mb={6}>
+          <Text size="xs" c="dimmed" mb={6} data-testid="mcp-connect-config">
             In Claude Desktop, open Settings → Developer → Edit Config (this creates the file if it
             doesn&apos;t exist yet), paste the JSON below, then restart Claude.{" "}
             {bundled ? (
@@ -199,6 +201,59 @@ interface ToolEvent {
   error?: boolean;
 }
 
+/** The statement a run_sql call sent, or null for any other call. */
+function toolSql(tool: ToolEvent): string | null {
+  if (tool.name !== "run_sql") return null;
+  const input = tool.input as { sql?: unknown } | undefined;
+  return typeof input?.sql === "string" ? input.sql : null;
+}
+
+// REQ-2172: what a run_sql call of the agent ran -- the statement it sent, and the statement the
+// one pipeline ran for it under the explorer's role, row rules and masks applied (the SQL
+// explorer's explain, /data/sql/explain). The developer's view; the agent itself is never told.
+function ToolExplain({ sql, roleId, onClose }: { sql: string; roleId: string; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [plan, setPlan] = useState<ExplainResponse | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    explainSql(sql.trim().replace(/;+$/, ""), roleId)
+      .then((p) => {
+        if (!cancelled) setPlan(p);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sql, roleId]);
+  return (
+    <Modal opened onClose={onClose} size="xl" title={t("mcpExplore.explainTitle")}>
+      <div data-testid="mcp-explain-panel">
+        <Text size="xs" fw={600} mb={4}>
+          {t("mcpExplore.explainSent")}
+        </Text>
+        <Code block mb="sm" data-testid="mcp-explain-sent">
+          {sql}
+        </Code>
+        <Text size="xs" fw={600} mb={4}>
+          {t("mcpExplore.explainRan", { role: roleId })}
+        </Text>
+        {error ? (
+          <Alert color="red">{error}</Alert>
+        ) : plan ? (
+          <Code block data-testid="mcp-explain-ran" style={{ whiteSpace: "pre-wrap" }}>
+            {plan.sql}
+          </Code>
+        ) : (
+          <Loader size="sm" />
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // REQ-1008: the MCP "explore" surface as an LLM chatbot — a Claude agent drives the governed MCP
 // tools (list/describe/run/explain/search) under the active role, streamed over SSE.
 export function McpExplorePage() {
@@ -213,30 +268,27 @@ export function McpExplorePage() {
   const [draft, setDraft] = useState(""); // controlled input value (for copy/clear tools)
   // Latest-value ref so the SSE reader appends to current text without stale closures.
   const assistantRef = useRef("");
+  // REQ-2172: the run_sql call whose explain is open, the handed-over question's answer is on
+  // screen (a demo tour step waits for it), and the Connect panel a tour step opens.
+  const [explaining, setExplaining] = useState<string | null>(null);
+  const [answered, setAnswered] = useState(false);
+  const [revealConnect, setRevealConnect] = useState<string | null>(null);
 
   // Persist the conversation per role so it survives navigating away and back (and reloads within
   // the tab). Role-scoped so one role's chat never restores under another (governance isolation).
   const storageKey = `mcp.chat.${roleId || "default"}`;
   useEffect(() => {
-    try {
-      // The product tour seeds a canned conversation here (a live chat needs an LLM key).
-      const seed = getStored("provisa_mcp_tour_chat", { session: true });
-      const saved = seed ?? getStored(storageKey, { session: true });
-      /* eslint-disable-next-line react-hooks/set-state-in-effect --
-         restore persisted (or tour-seeded) conversation on mount / role change */
-      setMessages(saved ? (JSON.parse(saved) as ChatMsg[]) : []);
-    } catch {
-      /* corrupt/absent → start fresh */
-    }
+    // The product tour seeds a canned conversation here (a live chat needs an LLM key).
+    const seed = getStoredJson<ChatMsg[]>("provisa_mcp_tour_chat", { session: true });
+    const saved = seed ?? getStoredJson<ChatMsg[]>(storageKey, { session: true });
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       restore persisted (or tour-seeded) conversation on mount / role change */
+    setMessages(saved ?? []);
   }, [storageKey]);
   useEffect(() => {
-    try {
-      // Don't persist the tour's canned chat into the role's real history.
-      if (getStored("provisa_mcp_tour_chat", { session: true })) return;
-      setStored(storageKey, JSON.stringify(messages), { session: true });
-    } catch {
-      /* storage full / unavailable — persistence is best-effort */
-    }
+    // Don't persist the tour's canned chat into the role's real history.
+    if (getStored("provisa_mcp_tour_chat", { session: true })) return;
+    setStored(storageKey, JSON.stringify(messages), { session: true });
   }, [storageKey, messages]);
 
   // Sent-input history (shell-style): Up/Down cycle through past entries. Persisted per role,
@@ -246,13 +298,8 @@ export function McpExplorePage() {
   const histIndexRef = useRef(-1); // -1 = live draft; 0 = most recent entry
   const recalledRef = useRef<string | null>(null);
   useEffect(() => {
-    try {
-      const saved = getStored(histKey, { session: true });
-      /* eslint-disable-next-line react-hooks/set-state-in-effect -- restore input history */
-      setHistory(saved ? (JSON.parse(saved) as string[]) : []);
-    } catch {
-      /* absent → empty history */
-    }
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- restore input history */
+    setHistory(getStoredJson<string[]>(histKey, { session: true }) ?? []);
   }, [histKey]);
 
   const onDraftKey = (e: React.KeyboardEvent) => {
@@ -281,11 +328,7 @@ export function McpExplorePage() {
     // Record in input history (skip a consecutive duplicate), cap at 100, and reset the cursor.
     setHistory((h) => {
       const next = h[h.length - 1] === text ? h : [...h, text].slice(-100);
-      try {
-        setStored(histKey, JSON.stringify(next), { session: true });
-      } catch {
-        /* best-effort */
-      }
+      setStored(histKey, JSON.stringify(next), { session: true });
       return next;
     });
     histIndexRef.current = -1;
@@ -359,18 +402,26 @@ export function McpExplorePage() {
   // A question handed to the page (NL "MCP Chat ›", Polly) is sent once, whether the page was just
   // opened or already open. The hand-off is removed from the history entry once handled, so a
   // refresh does not send it again.
-  useNavPayload<{ mcpQuestion?: string }>((payload) => {
-    if (payload.mcpQuestion) void send(payload.mcpQuestion);
+  useNavPayload<{ mcpQuestion?: string; mcpConnect?: boolean }>((payload) => {
+    if (payload.mcpConnect) setRevealConnect("setup");
+    if (payload.mcpQuestion) {
+      setAnswered(false);
+      void send(payload.mcpQuestion).then(() => setAnswered(true));
+    }
   });
+  // The badge a tour's explain step opens: the turn's last run_sql call.
+  const lastSqlTool = tools.reduce((last, tl, i) => (toolSql(tl) !== null ? i : last), -1);
 
   return (
     <div
       className="page"
       style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+      data-testid="mcp-explore"
+      data-answered={answered ? "" : undefined}
     >
-      <Title order={2} mb={4}>
+      <PageTitle icon={Compass} mb={4}>
         {t("mcpExplore.title")}
-      </Title>
+      </PageTitle>
       <Text c="dimmed" size="sm" mb="xs">
         {t("mcpExplore.intro")}
       </Text>
@@ -386,37 +437,53 @@ export function McpExplorePage() {
         }
       />
 
-      <ConnectClaudeDesktop roleId={roleId} />
+      <ConnectClaudeDesktop roleId={roleId} reveal={revealConnect} />
 
       {tools.length > 0 && (
         <Group gap={6} mb="xs" wrap="wrap">
-          {tools.map((tl, i) => (
-            <Tip
-              text={
-                tl.error
-                  ? t("mcpExplore.toolErrorTooltip", { name: tl.name })
-                  : tl.running
-                    ? t("mcpExplore.toolRunningTooltip", { name: tl.name })
-                    : t("mcpExplore.toolDoneTooltip", { name: tl.name })
-              }
-              key={i}
-            >
-              <Badge
-                size="sm"
-                variant={tl.running ? "outline" : "light"}
-                color={tl.error ? "red" : "grape"}
-                data-testid="mcp-chat-tool"
+          {tools.map((tl, i) => {
+            const sql = toolSql(tl);
+            return (
+              <Tip
+                text={
+                  tl.error
+                    ? t("mcpExplore.toolErrorTooltip", { name: tl.name })
+                    : tl.running
+                      ? t("mcpExplore.toolRunningTooltip", { name: tl.name })
+                      : sql !== null
+                        ? t("mcpExplore.toolExplainTooltip", { name: tl.name })
+                        : t("mcpExplore.toolDoneTooltip", { name: tl.name })
+                }
+                key={i}
               >
-                {tl.name}
-              </Badge>
-            </Tip>
-          ))}
+                <Badge
+                  size="sm"
+                  variant={tl.running ? "outline" : "light"}
+                  color={tl.error ? "red" : "grape"}
+                  data-testid="mcp-chat-tool"
+                  data-mcp-explain-last={i === lastSqlTool ? "" : undefined}
+                  {...(sql !== null
+                    ? {
+                        component: "button" as const,
+                        onClick: () => setExplaining(sql),
+                        style: { cursor: "pointer" },
+                      }
+                    : {})}
+                >
+                  {tl.name}
+                </Badge>
+              </Tip>
+            );
+          })}
         </Group>
       )}
       {error && (
         <Alert color="red" mb="xs">
           {error}
         </Alert>
+      )}
+      {explaining !== null && (
+        <ToolExplain sql={explaining} roleId={roleId} onClose={() => setExplaining(null)} />
       )}
 
       <div

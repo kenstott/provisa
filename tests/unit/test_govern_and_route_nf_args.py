@@ -121,7 +121,6 @@ async def test_nf_condition_extracted_and_forwarded_as_nf_args(monkeypatch):
         return (
             exec_sql,
             RouteDecision(route=Route.DIRECT, source_id=SOURCE_ID, dialect=None, reason="test"),
-            SOURCE_ID,
             False,
             {SOURCE_ID},
             (),

@@ -98,17 +98,32 @@ def test_a_junction_backed_edge_keeps_its_junction_and_scalars_add_nothing():
 
 # --- run_cypher -----------------------------------------------------------------
 
+#: The caller a tool call is made for: its graph session is the one it runs in (REQ-2176).
+_PRINCIPAL = ("ada", ["analyst"])
 
-async def test_run_cypher_runs_through_the_cypher_pipeline_under_the_role():
+
+@pytest.fixture(autouse=True)
+def _graph_sessions(monkeypatch):
+    from tests.unit.graph_session_double import empty_graph_sessions
+
+    return empty_graph_sessions(monkeypatch)
+
+
+async def test_run_cypher_runs_through_the_cypher_pipeline_under_the_role(_graph_sessions):
     state = _make_state()
     run = AsyncMock(return_value=(["c", "r", "o"], [[ADA, PLACED, ORDER]], None))
     with patch("provisa.bolt.session._execute_cypher", run):
         result = await tools.run_cypher(
-            state, "analyst", "MATCH (c)-[r:PLACED]->(o) RETURN c, r, o", {"n": 1}
+            state,
+            "analyst",
+            "MATCH (c)-[r:PLACED]->(o) RETURN c, r, o",
+            {"n": 1},
+            principal=_PRINCIPAL,
         )
     run.assert_awaited_once_with(
         "MATCH (c)-[r:PLACED]->(o) RETURN c, r, o", {"n": 1}, "analyst", roles=["analyst"]
     )
+    assert _graph_sessions == ["ada"], "it ran in the caller's graph session"
     assert result["columns"] == ["c", "r", "o"]
     assert result["rows"] == [{"c": ADA, "r": PLACED, "o": ORDER}]
     assert [n["data"]["id"] for n in result["elements"]["nodes"]] == [
@@ -123,18 +138,22 @@ async def test_run_cypher_caps_its_rows_and_draws_only_the_rows_returned(monkeyp
     second = _node("Sales:Customer", 2, name="Grace")
     run = AsyncMock(return_value=(["c"], [[ADA], [second]], None))
     with patch("provisa.bolt.session._execute_cypher", run):
-        result = await tools.run_cypher(_make_state(), "analyst", "MATCH (c) RETURN c")
+        result = await tools.run_cypher(
+            _make_state(), "analyst", "MATCH (c) RETURN c", principal=_PRINCIPAL
+        )
     assert result["row_count"] == 1 and result["total_rows"] == 2 and result["truncated"] is True
     assert [n["data"]["id"] for n in result["elements"]["nodes"]] == ["Sales:Customer:1"]
 
 
 async def test_run_cypher_refuses_no_role_and_lets_a_refusal_through():
     with pytest.raises(ValueError, match="role is required"):
-        await tools.run_cypher(_make_state(), "", "MATCH (n) RETURN n")
+        await tools.run_cypher(_make_state(), "", "MATCH (n) RETURN n", principal=_PRINCIPAL)
     run = AsyncMock(side_effect=PermissionError("denied for role analyst"))
     with patch("provisa.bolt.session._execute_cypher", run):
         with pytest.raises(PermissionError):
-            await tools.run_cypher(_make_state(), "analyst", "MATCH (s:Secret) RETURN s")
+            await tools.run_cypher(
+                _make_state(), "analyst", "MATCH (s:Secret) RETURN s", principal=_PRINCIPAL
+            )
 
 
 # --- render_graph -------------------------------------------------------------------
@@ -265,6 +284,7 @@ async def test_the_server_offers_run_cypher_and_render_graph():
 
     names = {t.name for t in await build_mcp_server(_make_state()).list_tools()}
     assert {"run_cypher", "render_graph", "generate_explore_queries"} <= names
+    assert "clear_graph_session" in names  # REQ-2176
 
 
 # --- generate_explore_queries: all six surfaces, under the caller's role ---------------

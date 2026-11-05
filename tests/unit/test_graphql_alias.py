@@ -5,37 +5,36 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""Unit tests for _derive_graphql_alias in admin schema."""
+"""Unit tests for derive_graphql_alias, the one derivation of a relationship's GraphQL field (REQ-351)."""
 
 import pytest
 
-from provisa.api.admin._row_mappers import _derive_graphql_alias
+from provisa.core.relationship_names import derive_graphql_alias
 
 
 @pytest.mark.parametrize(
-    "target,cardinality,alias,expected",
+    "target,cardinality,expected",
     [
         # one-to-many: pluralise
-        ("review", "one-to-many", None, "reviews"),
-        ("order", "one-to-many", None, "orders"),
-        ("line_item", "one-to-many", None, "lineItems"),
-        ("category", "one-to-many", None, "categories"),  # y → ies
-        ("address", "one-to-many", None, "addresses"),  # s → es
-        ("box", "one-to-many", None, "boxes"),  # x → es
-        ("match", "one-to-many", None, "matches"),  # ch → es
+        ("review", "one-to-many", "reviews"),
+        ("order", "one-to-many", "orders"),
+        ("line_item", "one-to-many", "lineItems"),
+        ("category", "one-to-many", "categories"),  # y → ies
+        ("address", "one-to-many", "addresses"),  # s → es
+        ("box", "one-to-many", "boxes"),  # x → es
+        ("match", "one-to-many", "matches"),  # ch → es
         # many-to-one: singular
-        ("customer", "many-to-one", None, "customer"),
-        ("order", "many-to-one", None, "order"),
+        ("customer", "many-to-one", "customer"),
+        ("order", "many-to-one", "order"),
         (
             "ProductCategory",
             "many-to-one",
-            None,
             "productCategory",
         ),  # PascalCase normalized to snake then compound-noun rule
-        ("product_category", "many-to-one", None, "productCategory"),
+        ("product_category", "many-to-one", "productCategory"),
         # empty target
-        ("", "one-to-many", None, None),
+        ("", "one-to-many", None),
     ],
 )
-def test_derive_graphql_alias(target, cardinality, alias, expected):
-    assert _derive_graphql_alias(target, cardinality, alias) == expected
+def test_derive_graphql_alias(target, cardinality, expected):
+    assert derive_graphql_alias(target, cardinality) == expected

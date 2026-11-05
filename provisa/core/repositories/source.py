@@ -40,6 +40,7 @@ KEPT_ON_FORM_EDIT: tuple[str, ...] = (
     "approval_hook",
     "allowed_domains",
     "gql_naming_convention",
+    "brand_setup",  # REQ-1923: set by the brand's own add (graphql_remote_router)
 )
 
 
@@ -57,6 +58,7 @@ def _source_values(source: Source) -> dict:
         # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
         "mapping": source.mapping or {},
         "federation_hints": source.federation_hints or {},
+        "brand_setup": source.brand_setup,  # REQ-1923
         "cdc": source.cdc.model_dump() if source.cdc else None,  # REQ-824
         "change_signal": getattr(source, "change_signal", "ttl"),  # REQ-929
         "load_protected": getattr(source, "load_protected", False),  # REQ-1141
@@ -99,6 +101,16 @@ def source_from_row(row: dict) -> Source:  # REQ-1695
     """
     fields = {k: v for k, v in row.items() if k in Source.model_fields and v is not None}
     fields["password"] = row["password_ref"]
+    # Rows saved between d7daab1f6 and REQ-1923's column hold a brand's setup as a dict in
+    # federation_hints (a map of strings), which fails every read. Read it as brand_setup; the
+    # next save writes the new shape, so no row is rewritten here.
+    hints = fields.get("federation_hints")
+    if isinstance(hints, dict) and isinstance(hints.get("brand_setup"), dict):
+        hints = dict(hints)
+        legacy_setup = hints.pop("brand_setup")
+        fields["federation_hints"] = hints
+        if not fields.get("brand_setup"):
+            fields["brand_setup"] = legacy_setup
     return Source.model_validate(fields)
 
 
@@ -232,6 +244,9 @@ class SourceDeleteRefused(Exception):
         self.source_id = source_id
         self.reason = reason
         self.dependents = dependents or []
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Source {source_id!r} is still referred to by"
         if reason == "dependents":
             named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in self.dependents)
             message = f"Source {source_id!r} is still referred to by: {named}"

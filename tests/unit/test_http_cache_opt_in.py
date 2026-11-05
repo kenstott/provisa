@@ -21,7 +21,6 @@ states an opt-in too, two that disagree are refused by name. Each surface report
 
 from __future__ import annotations
 
-import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,10 +35,33 @@ from provisa.executor.result import QueryResult
 from tests.unit import test_rest_jsonapi_request_plan as _plan_tests
 
 
+# One instant for the whole test: an entry is stored relative to it and its age is read at it, so
+# the age a response reports is the one the entry was made with however long the test takes.
+_NOW = 1_800_000_000.0
+
+
+@pytest.fixture(autouse=True)
+def _graph_sessions(monkeypatch):
+    """REQ-2176: every Cypher statement reads its principal's graph session; the stand-in state
+    has no control plane to hold one, so each is given an empty one."""
+    from tests.unit.graph_session_double import empty_graph_sessions
+
+    empty_graph_sessions(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def _frozen_clock(monkeypatch):
+    from types import SimpleNamespace
+
+    from provisa.cache import store
+
+    monkeypatch.setattr(store, "time", SimpleNamespace(time=lambda: _NOW))
+
+
 def _stored(age_seconds: int):
     from provisa.cache.store import CachedResult
 
-    return CachedResult(data=b"", cached_at=time.time() - age_seconds, ttl=300)
+    return CachedResult(data=b"", cached_at=_NOW - age_seconds, ttl=300)
 
 
 # -- the standard header ---------------------------------------------------------------------------
@@ -253,7 +275,7 @@ def _cypher(monkeypatch):
     from tests.unit.test_cypher_kept_plan import _Pipeline, _state
 
     pipe = _Pipeline(monkeypatch, _state())
-    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", MagicMock())
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
     return pipe
 

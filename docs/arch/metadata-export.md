@@ -61,10 +61,10 @@ unknown tier raises; the error names the feature and the org.
 - Directionality is a structural invariant: the module exposes no read/ingest entry point.
 
 Tests
-- `tests/unit/test_metadata_export_provider.py` — factory resolves each registered name;
+- `tests/unit/test_metadata_export_provider.py`: factory resolves each registered name;
   unknown name raises; disabled config yields no provider; credentials never appear in
   `repr()` or logs.
-- `tests/unit/test_metadata_export_config.py` — config parses from YAML, validation
+- `tests/unit/test_metadata_export_config.py`: config parses from YAML, validation
   rejects `enabled: true` with no provider/endpoint.
 - Import-boundary test: `provisa/api/metadata_export/` defines no function whose name
   starts with `ingest`/`import_`/`pull` (guards the outbound-only constraint).
@@ -86,10 +86,10 @@ directly.
     MV DAG from `provisa/events/lineage.py:177`.
 
 Tests
-- `tests/unit/test_metadata_snapshot_builder.py` — golden snapshot from a fixture config
+- `tests/unit/test_metadata_snapshot_builder.py`: golden snapshot from a fixture config
   (`/snapshot-testing`); asserts column count, steward attribution, relationship version,
   and that a masked column is present with its masking attribute (Phase 3 fills the value).
-- `tests/unit/test_metadata_snapshot_lineage.py` — a 3-hop MV chain produces the expected
+- `tests/unit/test_metadata_snapshot_lineage.py`: a 3-hop MV chain produces the expected
   column-level edges, not table-level approximations.
 - `tests/features/REQ-1070.feature` + steps.
 
@@ -102,7 +102,7 @@ Tests
 - Tags carry the *fact* (this column is masked, by this rule, for these roles), never the mask pattern itself, which is a policy secret.
 
 Tests
-- `tests/unit/test_metadata_export_governance.py` — each of the three signal kinds
+- `tests/unit/test_metadata_export_governance.py`: each of the three signal kinds
   produces a tag; a role in `unmasked_to` does not suppress the tag; mask patterns and
   RLS predicate bodies are absent from the emitted payload (this is the leak test).
 - `tests/features/REQ-1071.feature`.
@@ -112,22 +112,22 @@ Tests
 The two standards-first targets. Both are subclasses of `MetadataExport` over the Phase 2
 model.
 
-- `provisa/api/metadata_export/openlineage.py` — emits OpenLineage `RunEvent`s with the
+- `provisa/api/metadata_export/openlineage.py`: emits OpenLineage `RunEvent`s with the
   `columnLineage`, `schema`, `ownership`, and `dataQuality` facets. Lineage edges come from
   compiled queries and the MV DAG, so runs are real executions, not synthetic scans.
-- `provisa/api/metadata_export/openmetadata.py` — maps assets to the OpenMetadata ingestion
+- `provisa/api/metadata_export/openmetadata.py`: maps assets to the OpenMetadata ingestion
   API (`createOrUpdate` for database/schema/table/column entities); governance tags become
   OpenMetadata tags/glossary terms.
 
 Tests
-- `tests/unit/test_openlineage_emit.py` — emitted JSON validates against the pinned
+- `tests/unit/test_openlineage_emit.py`: emitted JSON validates against the pinned
   OpenLineage JSON Schema (vendored under `tests/fixtures/`); column-lineage facet matches
   the Phase 2 graph.
-- `tests/unit/test_openmetadata_map.py` — entity FQNs, hierarchy, and tag mapping.
-- `tests/integration/test_metadata_export_openlineage_e2e.py` — publish against a Marquez
+- `tests/unit/test_openmetadata_map.py`: entity FQNs, hierarchy, and tag mapping.
+- `tests/integration/test_metadata_export_openlineage_e2e.py`: publish against a Marquez
   container (OpenLineage reference server) on a per-worktree compose project; assert the
   dataset + column lineage is readable back out of Marquez.
-- `tests/integration/test_metadata_export_openmetadata_e2e.py` — same shape against an
+- `tests/integration/test_metadata_export_openmetadata_e2e.py`: same shape against an
   OpenMetadata container.
 - `tests/features/REQ-1069.feature`.
 
@@ -135,19 +135,19 @@ Tests
 
 Each is a thin subclass; no new metadata model.
 
-- `atlas.py` — Apache Atlas REST v2 (`/api/atlas/v2/entity/bulk`) with a Provisa typedef
+- `atlas.py`: Apache Atlas REST v2 (`/api/atlas/v2/entity/bulk`) with a Provisa typedef
   bootstrap. **Microsoft Purview rides this adapter**: its ingestion surface is
   Atlas-API-compatible; the difference is auth (Entra ID token) and base URL, so Purview is
   a config variant plus an auth strategy, not a fourth code path.
-- `datahub.py` — MCP/MCE emit over the DataHub REST sink.
-- `atlan.py`, `collibra.py` — REST asset upsert.
+- `datahub.py`: MCP/MCE emit over the DataHub REST sink.
+- `atlan.py`, `collibra.py`: REST asset upsert.
 
 Tests
-- `tests/unit/test_metadata_export_vendors.py` — one file rather than one per vendor: all
+- `tests/unit/test_metadata_export_vendors.py`: one file rather than one per vendor: all
   four map the SAME governed fixture the e2e publishes, so the four mappings are compared
   against each other rather than each against its own recorded payload. Recorded HTTP fixtures were dropped, because a fixture recorded from our own client proves only that the client
   did not change.
-- `tests/integration/test_metadata_export_atlas_e2e.py` — real Apache Atlas container
+- `tests/integration/test_metadata_export_atlas_e2e.py`: real Apache Atlas container
   (`requires_atlas`), publish then read every assertion back out of Atlas's own API. This is
   also the Purview contract test, since the wire format is the same.
 - Atlan, Collibra, DataHub and Purview are *not executed against a live service*. Atlas
@@ -178,12 +178,12 @@ Shipped as `provisa/api/metadata_export/publishing.py`.
   around every publish, so a publish for org A can never read org B's config.
 
 Tests
-- `tests/unit/test_metadata_export_sync.py` — claim/complete lifecycle against a real
+- `tests/unit/test_metadata_export_sync.py`: claim/complete lifecycle against a real
   SQLite control plane; a failed or raising publish leaves the work item reclaimable, never
   silently completed; two drains publish once; one org's queue is invisible to another
   (which absorbed the planned separate tenant-isolation file, since isolation IS the
   queue's own boundary).
-- `tests/unit/test_metadata_export_gate.py` — the REQ-1073 gate on the path with no request
+- `tests/unit/test_metadata_export_gate.py`: the REQ-1073 gate on the path with no request
   behind it: jobs armed for an entitled org, disarmed when the tier lapses.
 - `tests/features/REQ-1072.feature` + `tests/steps/steps_metadata_export_sync.py`.
 
@@ -196,7 +196,7 @@ Tests
   status and per-asset error list.
 
 Tests
-- `tests/unit/test_metadata_export_admin_surface.py` — the four endpoints driven directly,
+- `tests/unit/test_metadata_export_admin_surface.py`: the four endpoints driven directly,
   which is what the planned admin e2e would have covered; premium publishes, non-premium is
   refused at read, write, health and publish.
 - `provisa-ui/src/__tests__/MetadataExportTab.test.tsx` and `provisa-ui/e2e/metadata-export-admin.spec.ts`.
@@ -217,17 +217,17 @@ Phases 5 and 6 are independent of each other.
 
 ## Decisions, as settled
 
-1. **Snapshot cadence vs. event granularity** — settled as *full snapshot on both paths*,
+1. **Snapshot cadence vs. event granularity.** Settled as *full snapshot on both paths*,
    against the original recommendation of a delta on the event path. A delta would need a
    second builder and a second correctness argument; the full snapshot already has one, and
    one snapshot shape is what makes the event path and the reconcile converge on the same
    catalog state rather than race into different ones.
-2. **Purview auth** — settled as a widened `MetadataExportConfig` (`auth_mode` plus the
+2. **Purview auth.** Settled as a widened `MetadataExportConfig` (`auth_mode` plus the
    Entra fields), not a pluggable strategy object. Atlas then forced a third mode anyway:
    stock Apache Atlas rejects a bearer token, so `basic` joined `api_key`, `bearer` and
    `entra`. Four flat modes on one config beat four strategy classes for a branch this
    small, and the admin form renders the modes directly.
-3. **Tier names** — settled as `free` / `standard` / `premium`, with metadata export
+3. **Tier names.** Settled as `free` / `standard` / `premium`, with metadata export
    requiring `premium`. An unrecognised tier is refused, never defaulted.
 
 ## Not executed against a live service

@@ -56,7 +56,12 @@ vi.mock("react-router-dom", async (importOriginal) => ({
   useNavigate: () => navigate,
 }));
 
-const mockAuth = { billing: false, email: "visitor@example.com", selectOrg: vi.fn(), refresh: vi.fn() };
+const mockAuth = {
+  billing: false,
+  email: "visitor@example.com",
+  selectOrg: vi.fn(),
+  refresh: vi.fn(),
+};
 vi.mock("../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../context/AuthContext")>()),
   useAuth: () => mockAuth,
@@ -77,7 +82,13 @@ beforeEach(() => {
   forgetInvite();
   setQuery("");
   mockProviderType.mockResolvedValue("firebase");
-  mockInviteInfo.mockResolvedValue({ token: TOKEN, org_id: "sandbox", org_name: "Sandbox", role_id: "sandbox_user", valid: true });
+  mockInviteInfo.mockResolvedValue({
+    token: TOKEN,
+    org_id: "sandbox",
+    org_name: "Sandbox",
+    role_id: "sandbox_user",
+    valid: true,
+  });
 });
 
 afterEach(() => {
@@ -98,7 +109,11 @@ describe("REQ-1616 an invitation kept until it is redeemed", () => {
     // The state an org-subdomain bounce or a second tab leaves behind: the account is about to
     // exist, the invitation is in hand, and this tab's URL says nothing about it.
     rememberInvite(TOKEN);
-    mockRedeem.mockResolvedValue({ user_id: "visitor", org_id: "sandbox", role_id: "sandbox_user" });
+    mockRedeem.mockResolvedValue({
+      user_id: "visitor",
+      org_id: "sandbox",
+      role_id: "sandbox_user",
+    });
     renderRouted(<LoginPage onLoginSuccess={vi.fn()} authDisabled={false} />);
 
     fireEvent.click(await screen.findByTestId("firebase-signin-button"));
@@ -132,7 +147,11 @@ describe("REQ-1616 an invitation kept until it is redeemed", () => {
 describe("REQ-1616 onboarding spends an invitation that went unredeemed", () => {
   it("redeems the held invitation on arrival and enters the org", async () => {
     rememberInvite(TOKEN);
-    mockRedeem.mockResolvedValue({ user_id: "visitor", org_id: "sandbox", role_id: "sandbox_user" });
+    mockRedeem.mockResolvedValue({
+      user_id: "visitor",
+      org_id: "sandbox",
+      role_id: "sandbox_user",
+    });
 
     render(<OnboardOrgPage />);
 
@@ -147,9 +166,9 @@ describe("REQ-1616 onboarding spends an invitation that went unredeemed", () => 
 
     render(<OnboardOrgPage />);
 
-    await waitFor(() => expect(screen.getByTestId("onboard-org-error")).toHaveTextContent(
-      "Invite already used",
-    ));
+    await waitFor(() =>
+      expect(screen.getByTestId("onboard-org-error")).toHaveTextContent("Invite already used"),
+    );
     expect(mockRedeem).toHaveBeenCalledTimes(1);
     expect(pendingInvite()).toBeNull();
   });

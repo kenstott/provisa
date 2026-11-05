@@ -77,9 +77,9 @@ tables:
   table: store
   description: The chain's shops
   columns:
-  - {name: store_id, data_type: varchar, is_primary_key: true, description: 'The shop''s code, such as S-01', visible_to: [org_admin]}
-  - {name: name, data_type: varchar, description: The shop's name, visible_to: [org_admin]}
-  - {name: region, data_type: varchar, description: The region the shop is in, visible_to: [org_admin]}
+  - {name: store_id, data_type: varchar, is_primary_key: true, description: 'The shop''s code, such as S-01', visible_to: [data_steward]}
+  - {name: name, data_type: varchar, description: The shop's name, visible_to: [data_steward]}
+  - {name: region, data_type: varchar, description: The region the shop is in, visible_to: [data_steward]}
 - source_id: sales
   domain_id: sales
   schema: sales
@@ -94,15 +94,15 @@ tables:
   description: 'Bronze: every batch landed, as delivered and never changed; the well-formed fields typed
     on landing, the messy ones kept as the feed spelled them'
   columns:
-  - {name: line_id, data_type: integer, is_primary_key: true, description: The line of the feed, visible_to: [org_admin]}
-  - {name: batch_id, data_type: integer, description: The day's batch, visible_to: [org_admin]}
-  - {name: landed_at, data_type: timestamp, description: When the batch landed in bronze, visible_to: [org_admin]}
-  - {name: sale_id, data_type: varchar, description: The sale's id, visible_to: [org_admin]}
-  - {name: sold_at, data_type: timestamp, description: When it was sold, visible_to: [org_admin]}
-  - {name: quantity, data_type: integer, description: How many were sold, visible_to: [org_admin]}
-  - {name: store, data_type: varchar, description: 'The shop''s code as the feed spelled it, such as " s-01"', visible_to: [org_admin]}
-  - {name: product, data_type: varchar, description: 'The product as the feed spelled it, such as "COFFEE" or "cofee"', visible_to: [org_admin]}
-  - {name: unit_price, data_type: varchar, description: 'The price of one as the feed wrote it, such as "$4.50" or "4.5"', visible_to: [org_admin]}
+  - {name: line_id, data_type: integer, is_primary_key: true, description: The line of the feed, visible_to: [data_steward]}
+  - {name: batch_id, data_type: integer, description: The day's batch, visible_to: [data_steward]}
+  - {name: landed_at, data_type: timestamp, description: When the batch landed in bronze, visible_to: [data_steward]}
+  - {name: sale_id, data_type: varchar, description: The sale's id, visible_to: [data_steward]}
+  - {name: sold_at, data_type: timestamp, description: When it was sold, visible_to: [data_steward]}
+  - {name: quantity, data_type: integer, description: How many were sold, visible_to: [data_steward]}
+  - {name: store, data_type: varchar, description: 'The shop''s code as the feed spelled it, such as " s-01"', visible_to: [data_steward]}
+  - {name: product, data_type: varchar, description: 'The product as the feed spelled it, such as "COFFEE" or "cofee"', visible_to: [data_steward]}
+  - {name: unit_price, data_type: varchar, description: 'The price of one as the feed wrote it, such as "$4.50" or "4.5"', visible_to: [data_steward]}
 views:
 # The checks: per batch and check, how many of the batch's rows fail it; a batch passes when every
 # check has none.
@@ -138,12 +138,12 @@ views:
       FROM "sales"."bronze" GROUP BY batch_id
     ) AS c
   columns:
-  - {name: batch_id, data_type: integer, description: The batch checked, visible_to: [org_admin]}
-  - {name: run_id, data_type: varchar, description: 'The batch''s check run, such as dq-b1', visible_to: [org_admin]}
-  - {name: check_name, data_type: varchar, description: The check, visible_to: [org_admin]}
-  - {name: definition, data_type: varchar, description: What the check asks of every row, visible_to: [org_admin]}
-  - {name: failing_rows, data_type: bigint, description: How many rows of the batch fail the check, visible_to: [org_admin]}
-  - {name: outcome, data_type: varchar, description: 'pass, or fail when any row fails it', visible_to: [org_admin]}
+  - {name: batch_id, data_type: integer, description: The batch checked, visible_to: [data_steward]}
+  - {name: run_id, data_type: varchar, description: 'The batch''s check run, such as dq-b1', visible_to: [data_steward]}
+  - {name: check_name, data_type: varchar, description: The check, visible_to: [data_steward]}
+  - {name: definition, data_type: varchar, description: What the check asks of every row, visible_to: [data_steward]}
+  - {name: failing_rows, data_type: bigint, description: How many rows of the batch fail the check, visible_to: [data_steward]}
+  - {name: outcome, data_type: varchar, description: 'pass, or fail when any row fails it', visible_to: [data_steward]}
 # Silver: bronze cleaned, from the batches whose checks all passed.
 - id: silver
   domain_id: sales
@@ -174,16 +174,16 @@ views:
     ) AS s
     WHERE version = 1
   columns:
-  - {name: sale_id, data_type: varchar, description: The sale's id, visible_to: [org_admin]}
-  - {name: batch_id, data_type: integer, description: The batch it came in, visible_to: [org_admin]}
-  - {name: run_id, data_type: varchar, description: The check run that admitted the batch, visible_to: [org_admin]}
-  - {name: store_id, data_type: varchar, description: 'The shop''s code, trimmed and upper-cased', visible_to: [org_admin]}
-  - {name: product, data_type: varchar, description: 'The product, one spelling each', visible_to: [org_admin]}
-  - {name: sold_at, data_type: timestamp, description: When it was sold, visible_to: [org_admin]}
-  - {name: sale_day, data_type: date, description: The day it was sold, visible_to: [org_admin]}
-  - {name: quantity, data_type: integer, description: 'How many, as the latest line of the sale says', visible_to: [org_admin]}
-  - {name: unit_price, data_type: 'decimal(8,2)', description: 'The price of one, as a number', visible_to: [org_admin]}
-  - {name: amount, data_type: 'decimal(18,2)', description: Quantity times unit price, visible_to: [org_admin]}
+  - {name: sale_id, data_type: varchar, description: The sale's id, visible_to: [data_steward]}
+  - {name: batch_id, data_type: integer, description: The batch it came in, visible_to: [data_steward]}
+  - {name: run_id, data_type: varchar, description: The check run that admitted the batch, visible_to: [data_steward]}
+  - {name: store_id, data_type: varchar, description: 'The shop''s code, trimmed and upper-cased', visible_to: [data_steward]}
+  - {name: product, data_type: varchar, description: 'The product, one spelling each', visible_to: [data_steward]}
+  - {name: sold_at, data_type: timestamp, description: When it was sold, visible_to: [data_steward]}
+  - {name: sale_day, data_type: date, description: The day it was sold, visible_to: [data_steward]}
+  - {name: quantity, data_type: integer, description: 'How many, as the latest line of the sale says', visible_to: [data_steward]}
+  - {name: unit_price, data_type: 'decimal(8,2)', description: 'The price of one, as a number', visible_to: [data_steward]}
+  - {name: amount, data_type: 'decimal(18,2)', description: Quantity times unit price, visible_to: [data_steward]}
 # Gold: totals by day and product, one GROUP BY over silver.
 - id: gold
   domain_id: sales
@@ -198,13 +198,13 @@ views:
     FROM "sales"."view_silver"
     GROUP BY sale_day, product
   columns:
-  - {name: sale_day, data_type: date, description: The day, visible_to: [org_admin]}
-  - {name: product, data_type: varchar, description: The product, visible_to: [org_admin]}
-  - {name: sales, data_type: bigint, description: How many sales, visible_to: [org_admin]}
-  - {name: items, data_type: bigint, description: How many items they sold, visible_to: [org_admin]}
-  - {name: revenue, data_type: 'decimal(38,2)', description: What they took, visible_to: [org_admin]}
-  - {name: min_price, data_type: 'decimal(8,2)', description: The lowest price paid, visible_to: [org_admin]}
-  - {name: max_price, data_type: 'decimal(8,2)', description: The highest price paid, visible_to: [org_admin]}
+  - {name: sale_day, data_type: date, description: The day, visible_to: [data_steward]}
+  - {name: product, data_type: varchar, description: The product, visible_to: [data_steward]}
+  - {name: sales, data_type: bigint, description: How many sales, visible_to: [data_steward]}
+  - {name: items, data_type: bigint, description: How many items they sold, visible_to: [data_steward]}
+  - {name: revenue, data_type: 'decimal(38,2)', description: What they took, visible_to: [data_steward]}
+  - {name: min_price, data_type: 'decimal(8,2)', description: The lowest price paid, visible_to: [data_steward]}
+  - {name: max_price, data_type: 'decimal(8,2)', description: The highest price paid, visible_to: [data_steward]}
 relationships:
 - {id: batch-checks, alias: CHECKED_BY, cardinality: one-to-many, source_table_id: bronze, source_column: batch_id, target_table_id: view_dq_results, target_column: batch_id}
 - {id: silver-checks, alias: ADMITTED_BY, cardinality: one-to-many, source_table_id: view_silver, source_column: run_id, target_table_id: view_dq_results, target_column: run_id}

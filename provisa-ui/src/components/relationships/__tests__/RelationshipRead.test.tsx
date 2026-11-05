@@ -46,6 +46,8 @@ const base: Relationship = {
   viaTypeColumn: "relation_type",
   viaTypeValue: "bonded pair",
   viaLabelSource: "column",
+  // The type the server serves the junction edge as (its nomination, upper-snaked).
+  cypherType: "BONDED_PAIR",
 };
 
 function show(rel: Relationship, domainsEnabled = true) {
@@ -104,11 +106,11 @@ describe("a relationship's read view", () => {
     ]);
     expect(fields("relationship-read-junction")).toEqual([
       ["Junction table", "pet_relations"],
-      ["Junction column → source", "pet_id"],
-      ["Junction column → target", "other_pet_id"],
-      ["Discriminator column", "relation_type"],
-      ["Discriminator value", "bonded pair"],
-      ["Name the edge from", "Discriminator value"],
+      ["Column linking to the source", "pet_id"],
+      ["Column linking to the target", "other_pet_id"],
+      ["Relationship type column", "relation_type"],
+      ["Relationship type value", "bonded pair"],
+      ["Name the relationship from", "Relationship type value"],
     ]);
     expect(screen.queryByText("HAS_BONDED_PAIRS")).toBeNull();
   });

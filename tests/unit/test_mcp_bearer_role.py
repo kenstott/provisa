@@ -151,6 +151,29 @@ async def test_no_bearer_loopback_passes_through():
     assert _status(sent) == 200
 
 
+@pytest.mark.asyncio
+async def test_a_loopback_call_is_audited_as_the_anonymous_user():
+    """REQ-074/REQ-1386: a loopback call has no bearer and so no principal, but it is a request: its
+    statements are recorded, attributed to the anonymous user on the mcp surface, as every other
+    transport records an unauthenticated request (provisa/audit/context.py). Unbound, begin_audit
+    opened no record and no loopback MCP statement reached query_audit_log."""
+    from provisa.audit.context import ANONYMOUS_USER, current_audit_identity
+
+    downstream = _Recorder()
+    app = mcp_server._wrap_role_auth(
+        downstream,
+        SimpleNamespace(
+            org_id="default", user_attributes={}, settings_overrides={"derived_roles": []}
+        ),
+        require_token=False,
+    )
+
+    await _drain(app, _http_scope([]))
+
+    assert downstream.audit_seen == (ANONYMOUS_USER, "mcp")
+    assert current_audit_identity() is None  # nothing leaks to the next request
+
+
 def test_sync_resolve_token_role_wrapper(monkeypatch):
     # the sync wrapper delegates to the async core
     async def _fake(token, state):

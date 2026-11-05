@@ -22,6 +22,7 @@ every Trino reference inside the Trino engine's own instance and out of the gene
 
 from __future__ import annotations
 
+from provisa.core.read_refusal import ReadRefused
 import asyncio
 import logging
 from contextlib import contextmanager
@@ -83,7 +84,7 @@ class EngineBackend:
     # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
     # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
     # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
-    # saphana/sapase/sqlanywhere/monetdb/db2/firebird) are tracked, not guessed at, in a filed
+    # saphana/monetdb/db2/firebird) are tracked, not guessed at, in a filed
     # issue — SQLGlot compatibility per product needs verifying, not assuming.
     _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
 
@@ -118,6 +119,12 @@ class EngineBackend:
         from provisa.transpiler.transpile import transpile
 
         return transpile(pg_sql, self.dialect)
+
+    def exact_reads(self, state: Any, physical_sql: str) -> str:
+        """``physical_sql`` with each read an engine would round at its source made exact there
+        (REQ-2167). An engine whose reads keep a source's values as they are changes nothing."""
+        del state
+        return physical_sql
 
     @property
     def has_otel_catalog(self) -> bool:
@@ -216,6 +223,13 @@ class EngineBackend:
 
     # -- replica builds (REQ-1915): this engine and its store as parties to a build ----------
 
+    def require_readable_store(self, store_dsn: str) -> None:
+        """Refuse a materialization store this engine could not read back, by name. Called by
+        ``FederationEngine.materialize_store``, the door every write and read address comes
+        through, which the boot passes. The base engine reads whatever store it is given through
+        its own attach or connector; an engine confined to its own database overrides this."""
+        del store_dsn
+
     def replica_engine(
         self, state: Any, source: Any, table: Any, *, address: ReplicaAddress, args: Any
     ) -> Any:
@@ -250,6 +264,25 @@ class EngineBackend:
             # REQ-424: this engine reads the store through its own connector, not the store's SQL.
             native_vectors=False,
         )
+
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: how a session's temporary tables are written in place in this engine's store
+        (:class:`provisa.federation.session_rows.SessionRows`), or None for a store with no such
+        face. None here: a store that does not declare one has each session table landed again
+        whole on every change (provisa.pgwire.temp_exec), as every replica is."""
+        del state
+
+    def _materialize_store_rows(self) -> Any:
+        """The in-place face of this engine's materialization store, where its replicas and
+        session tables land: a PostgreSQL store's own connection, None for any other."""
+        from sqlalchemy import make_url
+
+        from provisa.federation.session_rows import SqlAlchemySessionRows
+
+        dsn = self.engine.materialize_store()
+        if make_url(dsn).get_backend_name() != "postgresql":
+            return None
+        return SqlAlchemySessionRows(dsn)
 
     def replica_indexer(self, state: Any, *, address: ReplicaAddress) -> Any:
         """How the replica at ``address`` gets its key and join indexes after it lands
@@ -449,6 +482,18 @@ class EngineBackend:
                         )
                     await apply_cdc(conn, table, changes.pk_columns, changes.events)
 
+    async def landed_table_exists(self, state: Any, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed (REQ-318). Base default: the materialization
+        store's own catalog, through the store's connection -- where the base write face lands
+        (``store_writer``). Absent is False; a catalog that cannot be read raises, never read as
+        absent."""
+        del state
+        from provisa.federation import store_writer
+
+        return await store_writer.table_exists(
+            self.engine.materialize_store(), schema=schema, table=table
+        )
+
     async def analyze_landed_table(
         self, state: Any, *, catalog: str | None, schema: str, table: str
     ) -> None:  # REQ-280, REQ-1688
@@ -562,6 +607,12 @@ class EngineBackend:
         }
 
     def classify_error(self, exc: Exception) -> str | None:
+        return None
+
+    def refusal_of(self, exc: Exception) -> ReadRefused | None:
+        """What the engine cannot answer because of what it is, said by name (REQ-778): a
+        refusal its error stands for, else None and the error is answered by its kind."""
+        del exc
         return None
 
     # -- federation lifecycle (REQ-825) ----------------------------------------
@@ -965,6 +1016,12 @@ class TrinoBackend(EngineBackend):
     reads_other_regions = True  # REQ-1922: a catalog of that region's store
     computes_fakes = True  # REQ-1494: the provisa-functions plugin
 
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: Trino's session tables are in its PostgreSQL materialization store, written
+        there in place."""
+        del state
+        return self._materialize_store_rows()
+
     @property
     def dialect(self) -> str:
         return "trino"
@@ -982,18 +1039,26 @@ class TrinoBackend(EngineBackend):
         return frozenset(OPS_TABLES)
 
     def transpile_physical(self, pg_sql: str) -> str:
+        from provisa.federation.trino_connectors import trino_utc_wall_columns
         from provisa.transpiler.transpile import (
+            rewrite_instants_for_trino,
             rewrite_prometheus_labels_for_trino,
             transpile_to_trino,
         )
 
-        sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+        from provisa.transpiler.pg_forms_geometric import around
 
-        label_columns = getattr(state, "prometheus_label_columns", None)
-        if label_columns:
-            sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
-        return sql
+        def rewritten(sql: str) -> str:
+            # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+            sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+            label_columns = getattr(state, "prometheus_label_columns", None)
+            if label_columns:
+                sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
+            return sql
+
+        # REQ-2171: a geometric form's routines are kept as written, ahead of the statement.
+        return around(transpile_to_trino(pg_sql), rewritten)
 
     def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
         """Register (once per process) and return the catalog Trino reads the store ``dsn`` under
@@ -1384,9 +1449,11 @@ class TrinoBackend(EngineBackend):
         """Register the source's catalog — its live attach. A source the operator floors
         (REQ-030/826/1141) is read only from its replica, so it has no catalog at all (REQ-1912):
         one left from before the setting was turned on is dropped. Nothing can then read the
-        source through the engine, whatever a statement names."""
+        source through the engine, whatever a statement names. A JDBC source attached live here
+        is registered as the built-in type its URL names (REQ-2191)."""
         from provisa.core import catalog
         from provisa.core.operator_floor import floor_setting
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         with self._provisioning_conn(state) as conn:
             if conn is None:
@@ -1394,6 +1461,9 @@ class TrinoBackend(EngineBackend):
             if floor_setting(source) is not None:
                 catalog.drop_catalog(conn, source.id, catalog_name=catalog_name)
                 return
+            named = attach_type(source, self.engine)
+            if named is not None:
+                source = attach_view(source, named)
             catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
 
     def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:

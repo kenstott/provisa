@@ -17,6 +17,9 @@ Connecting a source exposes nothing. A table can be queried only after someone w
 Register Table lists the schemas and tables the source actually offers, using the source's own names for them. Internal namespaces such as engine catalogs or cache schemas never show up. Columns arrive with a data type, including the precision and scale of numbers, and a column is never saved without one. Where the source has a native catalog that tells more, Provisa asks it; otherwise it asks the engine.
 { #source-registration-introspection }
 
+The table picker lists lookups apart from ordinary tables. A lookup is a table that can't be read without a parameter, such as a remote GraphQL field with a required `id` or an OpenAPI operation with a path parameter. Lookups sit in their own group, **Lookups (need a parameter)**. Each is marked 🔑, as in `🔑 customer`, and its tooltip names what it needs, such as `needs id`. You see the required filter before you pick the table.
+{ #source-registration-lookups }
+
 ### Connector catalog
 
 Provisa reads the common relational databases and cloud warehouses: PostgreSQL, MySQL and their wire-compatible relatives, SQL Server, Oracle, Snowflake, BigQuery, Databricks, Athena and others, plus Trino and HiveServer2 endpoints. You register one with host, credentials and database, and the same registration works whichever engine runs underneath. Operators can also declare their own connectors in configuration when a source is not in the list.
@@ -54,8 +57,11 @@ Domains group tables by business area. Each domain has a steward, can nest under
 The model is stored once in a model store: sources, tables, columns, relationships, roles, rules and views. Every save goes through a check that shows what the change would affect before it lands. You can review the whole model as JSON or as a workbook.
 { #semantic-model-governed-changes }
 
-The entity relationship diagram opens as a dialog from the Tables and Relationships pages and draws every registered table and its relationships. Tables sit inside a box for their domain, and a domain can be collapsed to hide its tables. A toggle picks how much of each table to show: all columns, only key columns, or none. Hovering a domain, table or column shows its description. The diagram follows the domain filter on the page, draws a relationship backed by a junction table through that table's own node, and exports as SVG, PNG or JSON.
+The entity relationship diagram is a view of the Tables and Relationships pages, turned on by its icon, and draws every registered table and its relationships. Tables sit inside a box for their domain, and a domain can be collapsed to hide its tables. Domains are packed side by side to fill the pane. A toggle picks how much of each table to show: all columns, only key columns, or none. Hovering a domain, table or column shows its description. The table or relationship whose detail panel is open is highlighted. The diagram follows the domain filter on the page and draws a relationship backed by a junction table through that table's own node. Point at the diagram to show its image controls: zoom, fit, full screen, and a download as SVG, PNG, JPEG or JSON.
 { #semantic-model-erd }
+
+An arrangement you build by hand can be kept as a named layout. The **Layout** menu in the diagram's toolbar lists the saved layouts beside **Automatic**, the generated arrangement, which always exists and can't be deleted. **Save as…** names a new layout, **Save** writes your changes to the one shown, and **Delete** removes it for everyone. Once you change the diagram, the layout is marked **Unsaved**. A layout keeps the selection, where each domain and table stands, what is collapsed, and every option in the toolbar: column detail, edge style, snap and whether orphans show. Columns and relationships always come from the live model. Places are kept by id, so a renamed table keeps its place, and a deleted one simply disappears. A table registered later in a domain the layout shows is not placed for you: it waits in a "new since the layout was saved" tray until you click **Place**. Layouts are shared in the environment. Anyone signed in can open one, and read rights still apply, so a reader sees a layout without the tables they can't read. Saving and deleting a layout need the right to register tables. To link to one, add it to the page address: `?view=erd&layout=Sales%20overview`.
+{ #semantic-model-erd-layouts }
 
 ### Views
 
@@ -80,6 +86,9 @@ A metric is a named, governed aggregate with its own definition. You write it on
 
 The business glossary maps plain-language terms to the physical fields behind them. Terms can be derived from column names or written by hand, scoped to one or more domains, related to other terms, and owned by a curator. A term with relationships cannot be deleted. Reading the glossary and administering it are separate rights.
 { #glossary-tags-ontology-terms }
+
+Find terms proposes new terms from the places your organization already writes definitions down. It reads a document (PDF, Word, Markdown, HTML, plain text or a regulation's eCFR XML), a registered table of terms and definitions, or a registered table of text. A table of terms and definitions is read as it stands, with no AI model. A document or a table of text is read by the organization's AI model, within the role's AI budget. Every proposal lands in a review queue as a draft that cites the passages or rows it came from, and is matched against the glossary so it is offered as a new term or a merge. See [Finding terms in documents and tables](ontology.md#finding-terms-in-documents-and-tables).
+{ #glossary-tags-ontology-find-terms }
 
 Tags come from one org-wide registry. A tag can apply to sources, tables, columns or relationships, and can take a parameter such as the entity a column holds. People assign tags; nothing assigns them automatically. A few system tags have fixed meaning, and the deprecated tag works on any model object. Tags travel with metadata exports and show up in catalog comments.
 { #glossary-tags-ontology-tags }
@@ -301,6 +310,14 @@ CREATE, SET and DELETE write to tables through the same write pipeline as SQL, s
 Graph analytics run over a query result in the Graph Explorer. A configurable size limit keeps them in bounds, and the community detection algorithm that cost the most is allowed only on small graphs.
 { #cypher-and-graph-analytics-analytics }
 
+### SPARQL
+
+SPARQL is a graph language beside Cypher, written in the same query editor and sent by standard RDF clients to a SPARQL 1.1 endpoint. A table is a class and its rows are its subjects, a column linked to a term is a predicate, and a relationship is an edge, so there is no triple store to load. Each query becomes one SQL statement, governed and routed like any other. Property paths stop at a depth limit the operator sets, and a result cut there says so.
+{ #sparql-query }
+
+SPARQL Update changes the ontology and the data through the same governed writes as every other surface, under the same rights. It never writes raw triples.
+{ #sparql-update }
+
 ### Natural-language query
 
 Ask a question in plain language and Provisa starts an asynchronous job. It generates the answer as SQL, GraphQL, Cypher, gRPC, JSON:API and OpenAPI requests in parallel, runs each one, and returns the results side by side. Seeing the same answer in every language makes it easy to check and reuse.
@@ -353,8 +370,11 @@ Provisa ships client libraries for the places where a standard driver is not eno
 
 ### Arrow Flight
 
-Provisa runs an Arrow Flight server for high-throughput consumers. Results stream batch by batch, so the full result never sits in memory, and every governance rule applies. Flight SQL is also supported, and engines that cannot produce Arrow natively are adapted by a generic row-to-Arrow converter.
+Provisa runs an Arrow Flight server for high-throughput consumers. Results stream batch by batch, so the full result never sits in memory, and every governance rule applies. Engines that cannot produce Arrow natively are adapted by a generic row-to-Arrow converter.
 { #arrow-flight-server }
+
+The same server speaks Arrow Flight SQL, so a standard Flight SQL client such as the ADBC Flight SQL driver connects without a Provisa-specific client. It serves statements, prepared statements with bound parameters, updates, bulk ingest into the model's tables, catalog metadata (catalogs, schemas, tables, table types and keys), transactions (acknowledged, holding nothing) and sessions, whose current schema a client sets and whose temporary tables an ingest may create. Each statement runs as the caller's role through the same governed SQL pipeline as every other transport, and the catalog lists what pgwire lists to that role. Results against the ADBC driver validation suite are on the Arrow Flight SQL conformance page.
+{ #arrow-flight-sql }
 
 When Trino is the engine, the Flight route goes through a Flight SQL proxy. If the proxy is unavailable the request fails, and Provisa does not quietly fall back to another route.
 { #arrow-flight-trino-route }
@@ -535,6 +555,9 @@ Everything the console does goes through an admin GraphQL API at its own endpoin
 
 The interface follows one design language. Forms share a layout in which a field is as wide as what it holds. Each item opens in a detail panel with its name and actions pinned at the top and its sections in tabs. Creating an object asks only for what it needs, and editing happens on the page rather than in a modal. Light and dark themes are supported, and every tooltip looks the same.
 { #admin-console-design }
+
+Deleting from a detail panel works like saving. After you confirm, the delete control shows a spinner, every field and action in the panel is disabled, and the item's row in the list is marked as being deleted so nothing else offers it. When the delete finishes, the panel closes and the list no longer shows the item. A delete that fails unlocks the panel and says why, where a refused save would. A glossary term's Delete behaves the same way.
+{ #admin-console-delete }
 
 ### Explorers
 

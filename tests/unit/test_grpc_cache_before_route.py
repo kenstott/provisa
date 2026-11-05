@@ -28,6 +28,7 @@ import grpc.aio
 import pytest
 
 from provisa.grpc.server import ProvisaServicer
+from tests.grpc_model import grpc_model
 from tests.unit.test_cache_before_route import pipe  # noqa: F401  (the pipeline fixture)
 
 pytestmark = pytest.mark.asyncio
@@ -36,24 +37,40 @@ _HINT = [("x-provisa-role", "analyst"), ("x-provisa-cache", "true")]
 _NO_HINT = [("x-provisa-role", "analyst")]
 
 
-class _Order:
-    """Stands in for the generated ``Orders`` message class."""
+_SERVICE = None
 
-    DESCRIPTOR = SimpleNamespace(
-        fields=[SimpleNamespace(name="id")],
-        fields_by_name={"id": None},  # no field descriptor: the row value is passed through
+
+def _orders_service():
+    """A compiled service whose Orders message the encoder writes each row into (REQ-2194)."""
+    global _SERVICE
+    if _SERVICE is None:
+        from provisa.grpc.descriptor import OrgDescriptor
+
+        _SERVICE = OrgDescriptor(
+            'syntax = "proto3"; package provisa.v1; message Orders { optional int64 id = 1; }'
+        )
+    return _SERVICE
+
+
+def _serve_orders(p) -> None:
+    """The role's schema and context for the stand-in's ``sales.orders`` (table 1, source pg),
+    installed once: a row read, native or proxied, is lowered to GraphQL and compiled against
+    them."""
+    if getattr(p, "orders_served", False):
+        return
+    schema, ctx = grpc_model(
+        [("id", "integer")], role="analyst", source_id="pg", schema_name="sales"
     )
-
-    def __init__(self, **fields) -> None:
-        self.fields = fields
+    p.state.contexts["analyst"] = ctx
+    p.state.schemas["analyst"] = schema
+    p.orders_served = True
 
 
 def _servicer(p) -> ProvisaServicer:
-    ctx = p.state.contexts["analyst"]
-    ctx.aggregate_columns[1] = [("id", "integer")]
+    _serve_orders(p)
     p.state.source_pools.supports_stream = lambda _source_id: False  # the buffered DIRECT read
     p.state.multitenancy = False
-    servicer = ProvisaServicer(p.state, SimpleNamespace(Orders=_Order))
+    servicer = ProvisaServicer(p.state, _orders_service())
     servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg
     return servicer
@@ -68,6 +85,7 @@ def _request(limit: int, order_id: int | None = None):
     )
     return SimpleNamespace(
         limit=limit,
+        offset=0,
         read_mask=SimpleNamespace(paths=[]),
         filter=filter_msg,
         HasField=lambda name: name == "filter" and bool(set_fields),
@@ -79,7 +97,9 @@ def _request(limit: int, order_id: int | None = None):
 async def _query(servicer, request, metadata) -> list[dict]:
     context = AsyncMock(spec=grpc.aio.ServicerContext)
     context.invocation_metadata = MagicMock(return_value=metadata)
-    rows = [m.fields async for m in servicer._handle_query(request, context, "Orders", "orders")]
+    orders = _orders_service().Orders
+    sent = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+    rows = [{f.name: v for f, v in orders.FromString(m).ListFields()} for m in sent]
     context.abort.assert_not_awaited()
     return rows
 
@@ -160,8 +180,7 @@ async def _proxy(p, body: dict, *, hinted: bool) -> list[dict]:
 
     from provisa.api.data.endpoint_grpc_proxy import grpc_proxy
 
-    p.state.contexts["analyst"].aggregate_columns[1] = [("id", "integer")]
-    p.state.schemas = {"analyst": object()}  # the proxy only checks the role has a schema
+    _serve_orders(p)
     headers = {"x-provisa-role": "analyst"}
     if hinted:
         headers["x-provisa-cache"] = "true"

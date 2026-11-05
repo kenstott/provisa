@@ -1,0 +1,380 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b169b29b-cc1f-4627-abf4-8fd7bb2c6279
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The vocabulary a SPARQL query is read against (REQ-2135, REQ-2141): which IRI names which
+class, which property and which edge of the graph mapping Cypher uses.
+
+Data and vocabulary are kept apart, instances under ``/id/`` (:mod:`provisa.gql.iri`) and the
+vocabulary under ``/vocab/``:
+
+- a table's class, ``{base}/vocab/{domain}/{table}``; every table is a class, its rows its
+  instances (the W3C Direct Mapping);
+- a column's predicate, ``{base}/vocab/{domain}/{table}#{column}``, for a column bound to no
+  property term: two columns of one name need not mean the same thing;
+- a term's class or property, ``{base}/vocab/term/{name}``: a class term types the instances of
+  the tables it grounds besides their table class, and a property term is the predicate of the
+  columns it grounds, in place of their own (REQ-2163, A TERM-BOUND COLUMN'S PROPERTY IS THE
+  TERM'S): one IRI shared by every class that has it, as a Cypher property key is, its domains
+  (rdfs:domain) those classes;
+- an edge type, ``{base}/vocab/rel/{relationship type}``.
+
+Each segment is percent-encoded as an instance key is. The vocabulary is built for one role, from
+the label map built for it, so a class or predicate the role cannot read is not in it.
+"""
+
+# Requirements: REQ-2135, REQ-2141, REQ-2163
+
+from __future__ import annotations
+
+from collections import defaultdict
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from urllib.parse import quote
+
+from provisa.gql.label_map import CypherLabelMap
+
+RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+RDFS = "http://www.w3.org/2000/01/rdf-schema#"
+OWL = "http://www.w3.org/2002/07/owl#"
+SKOS = "http://www.w3.org/2004/02/skos/core#"
+XSD = "http://www.w3.org/2001/XMLSchema#"
+RDF_TYPE = f"{RDF}type"
+
+# A column's SQL type as the xsd datatype of its literals.
+_XSD_OF_SQL = (
+    (
+        ("tinyint", "smallint", "integer", "int", "bigint", "hugeint", "int2", "int4", "int8"),
+        "integer",
+    ),
+    (("decimal", "numeric", "number"), "decimal"),
+    (("double", "float", "real", "float4", "float8"), "double"),
+    (("boolean", "bool"), "boolean"),
+    (("timestamp", "datetime", "timestamptz"), "dateTime"),
+    (("date",), "date"),
+    (("time",), "time"),
+)
+
+
+def xsd_of(sql_type: str) -> str:
+    """The xsd datatype of a column of ``sql_type``; text, and anything else, is a string."""
+    head = sql_type.strip().lower().split("(")[0].split(" ")[0]
+    for names, xsd in _XSD_OF_SQL:
+        if head in names:
+            return f"{XSD}{xsd}"
+    return f"{XSD}string"
+
+
+def xsd_of_sql(column: str) -> str:
+    """:func:`xsd_of` as a PostgreSQL expression over the SQL type held in ``column`` (REQ-2163:
+    a Property's range in ontology._axioms), from the same table."""
+    head = f"LOWER(SPLIT_PART(SPLIT_PART(TRIM({column}), '(', 1), ' ', 1))"
+    whens = " ".join(
+        f"WHEN {head} IN ({', '.join(repr(n) for n in names)}) THEN '{XSD}{xsd}'"
+        for names, xsd in _XSD_OF_SQL
+    )
+    return f"CASE {whens} ELSE '{XSD}string' END"
+
+
+def _seg(value: str) -> str:
+    return quote(value, safe="")
+
+
+@dataclass(frozen=True)
+class ColumnPredicate:
+    """A predicate read from a property of nodes of ``label``."""
+
+    label: str
+    prop: str
+    datatype: str
+
+
+@dataclass(frozen=True)
+class EdgePredicate:
+    """A predicate read from edges of ``rel_type``, ``source`` to ``target``."""
+
+    rel_type: str
+    source: str
+    target: str
+    #: What it joins: the same for a join declared from both ends (RelationshipMapping.join).
+    join: str = field(compare=False)
+
+
+@dataclass(frozen=True)
+class Grounding:
+    """The curated terms (REQ-2141), by the labels and properties of the label map: the class term
+    of a label's table, and the property terms of a label's properties."""
+
+    class_terms: dict[str, str] = field(default_factory=dict)  # label → term name
+    property_terms: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
+
+
+@dataclass
+class Vocabulary:
+    base: str
+    #: class IRI → the labels whose nodes it types
+    classes: dict[str, list[str]]
+    #: label → every class IRI typing its nodes (its table class first)
+    classes_of: dict[str, list[str]]
+    columns: dict[str, list[ColumnPredicate]]
+    edges: dict[str, list[EdgePredicate]]
+    #: label → (predicate IRI, ColumnPredicate) for each predicate its nodes have
+    columns_of: dict[str, list[tuple[str, ColumnPredicate]]]
+    edges_of: dict[str, list[tuple[str, EdgePredicate]]]
+    prefixes: dict[str, str]
+    #: the labels whose tables are read by arguments, which no path includes (REQ-2135)
+    parameterized: frozenset[str]
+
+    def labels_of_class(self, iri: str) -> list[str]:
+        return self.classes.get(iri, [])
+
+    def property_iri(self, label: str, prop: str) -> str | None:
+        """The predicate ``label``'s property ``prop`` is published under: its first property
+        term's IRI when a term binds it, else its column's own; None when it has none."""
+        return next((iri for iri, cp in self.columns_of.get(label, []) if cp.prop == prop), None)
+
+
+def table_class_iri(base: str, domain: str, table: str) -> str:
+    return f"{base}/vocab/{_seg(domain)}/{_seg(table)}"
+
+
+def column_iri(base: str, domain: str, table: str, column: str) -> str:
+    return f"{table_class_iri(base, domain, table)}#{_seg(column)}"
+
+
+def term_iri(base: str, name: str) -> str:
+    return f"{base}/vocab/term/{_seg(name)}"
+
+
+def edge_iri(base: str, rel_type: str) -> str:
+    return f"{base}/vocab/rel/{_seg(rel_type)}"
+
+
+def build_vocabulary(
+    lm: CypherLabelMap,
+    base: str,
+    column_types: dict[tuple[str, str], str],
+    grounding: Grounding,
+) -> Vocabulary:
+    """The vocabulary of ``lm``'s nodes and relationships. ``column_types`` is each
+    (label, property)'s SQL type. A node with no domain has no IRI and so no vocabulary."""
+    classes: dict[str, list[str]] = defaultdict(list)
+    classes_of: dict[str, list[str]] = defaultdict(list)
+    columns: dict[str, list[ColumnPredicate]] = defaultdict(list)
+    columns_of: dict[str, list[tuple[str, ColumnPredicate]]] = defaultdict(list)
+    edges: dict[str, list[EdgePredicate]] = defaultdict(list)
+    edges_of: dict[str, list[tuple[str, EdgePredicate]]] = defaultdict(list)
+    prefixes = {"rdf": RDF, "rdfs": RDFS, "owl": OWL, "skos": SKOS, "xsd": XSD}
+
+    for label, nm in lm.nodes.items():
+        if not nm.domain_id or nm.traversal_only:
+            continue
+        own = table_class_iri(base, nm.domain_id, nm.table_name)
+        prefixes.setdefault(nm.domain_id, f"{base}/vocab/{_seg(nm.domain_id)}/")
+        class_iris = [own]
+        if label in grounding.class_terms:
+            class_iris.append(term_iri(base, grounding.class_terms[label]))
+        for c in class_iris:
+            classes[c].append(label)
+            classes_of[label].append(c)
+        for prop in nm.properties:
+            datatype = xsd_of(column_types.get((label, prop), "varchar"))
+            cp = ColumnPredicate(label, prop, datatype)
+            terms = grounding.property_terms.get((label, prop), ())
+            iris = (
+                [term_iri(base, t) for t in terms]
+                if terms
+                else [column_iri(base, nm.domain_id, nm.table_name, prop)]
+            )
+            for iri in iris:
+                columns[iri].append(cp)
+                columns_of[label].append((iri, cp))
+
+    all_rels = [*lm.relationships.values(), *(r for rs in lm.aliases.values() for r in rs)]
+    for rel in all_rels:
+        if rel.source_label not in classes_of or rel.target_label not in classes_of:
+            continue
+        ep = EdgePredicate(rel.rel_type, rel.source_label, rel.target_label, rel.join)
+        iri = edge_iri(base, rel.rel_type)
+        if ep not in edges[iri]:
+            edges[iri].append(ep)
+            edges_of[rel.source_label].append((iri, ep))
+    prefixes.setdefault("rel", f"{base}/vocab/rel/")
+    prefixes.setdefault("term", f"{base}/vocab/term/")
+    return Vocabulary(
+        base=base,
+        classes=dict(classes),
+        classes_of=dict(classes_of),
+        columns=dict(columns),
+        edges=dict(edges),
+        columns_of=dict(columns_of),
+        edges_of=dict(edges_of),
+        prefixes=prefixes,
+        parameterized=frozenset(
+            label for label, nm in lm.nodes.items() if label in classes_of and nm.parameterized
+        ),
+    )
+
+
+def _props_by_column(nm) -> dict[str, str]:
+    """A node's properties by the column each reads: its physical name, and its SQL one."""
+    out = {col: prop for prop, col in nm.properties.items()}
+    out.update({col: prop for prop, col in nm.physical_properties.items()})
+    return out
+
+
+def grounding_from_refs(
+    lm: CypherLabelMap,
+    table_terms: dict[int, str],
+    column_terms: dict[tuple[int, str], list[str]],
+) -> Grounding:
+    """The grounding of ``lm`` from the glossary's references: ``table_terms`` the class term of
+    each registered table by its id, ``column_terms`` the terms of each (table id, column) a term
+    reference names. A reference to what ``lm`` does not hold (a table the role cannot read)
+    grounds nothing here."""
+    class_terms: dict[str, str] = {}
+    property_terms: dict[tuple[str, str], tuple[str, ...]] = {}
+    for label, nm in lm.nodes.items():
+        if nm.table_id in table_terms:
+            class_terms[label] = table_terms[nm.table_id]
+        by_column = _props_by_column(nm)
+        for (table_id, column), terms in column_terms.items():
+            if table_id == nm.table_id and column in by_column:
+                property_terms[(label, by_column[column])] = tuple(terms)
+    return Grounding(class_terms, property_terms)
+
+
+def column_types_of(lm: CypherLabelMap, ctx: object) -> dict[tuple[str, str], str]:
+    """Each (label, property)'s SQL type, from the compilation context's columns."""
+    aggregate_columns: dict[int, list[tuple[str, str]]] = getattr(ctx, "aggregate_columns")
+    out: dict[tuple[str, str], str] = {}
+    for label, nm in lm.nodes.items():
+        by_column = _props_by_column(nm)
+        for column, sql_type in aggregate_columns.get(nm.table_id, []):
+            if column in by_column:
+                out[(label, by_column[column])] = sql_type
+    return out
+
+
+def concepts_of(base: str, terms: list[dict]) -> list[dict]:
+    """The Concept terms of ``terms`` (glossary list rows) an agent may see by name: a term that
+    grounds no table and no column (REQ-2141) and that ``agent_visible`` admits (REQ-1387), as
+    IRIs."""
+    return [
+        {
+            "iri": term_iri(base, t["name"]),
+            "name": t["name"],
+            "definition": t["definition"],
+            "domains": list(t["domains"]),
+        }
+        for t in terms
+        if t["is_abstract"] and t["agent_visible"]
+    ]
+
+
+def superclasses_of(
+    base: str, terms: list[dict], edges: list[tuple[int, int, str]]
+) -> dict[str, list[str]]:
+    """Each term's superclasses (REQ-2135, VISUALIZER VOCABULARY): the terms it is a KIND_OF, as
+    IRIs. ``terms`` are the glossary rows the role reads (``id``, ``name``); an edge to or from a
+    term outside them is no superclass, so the role learns no term it cannot read. ``edges`` are
+    (from term id, to term id, relationship type)."""
+    names = {t["id"]: t["name"] for t in terms}
+    out: dict[str, list[str]] = {}
+    for from_id, to_id, rel_type in edges:
+        if rel_type == "KIND_OF" and from_id in names and to_id in names:
+            out.setdefault(term_iri(base, names[from_id]), []).append(term_iri(base, names[to_id]))
+    return out
+
+
+def term_domains_of(base: str, terms: list[dict]) -> dict[str, list[str]]:
+    """Each term's domains (REQ-1591, ``domains`` on a glossary list row) by its IRI, so a client
+    shows a term when one of its domains is checked (REQ-1723)."""
+    return {term_iri(base, t["name"]): list(t["domains"]) for t in terms}
+
+
+def vocabulary_document(
+    vocab: Vocabulary,
+    concepts: list[dict],
+    superclasses: Mapping[str, list[str]],
+    term_domains: Mapping[str, list[str]],
+) -> dict:
+    """The vocabulary as GET /data/sparql/vocabulary answers it: its base and prefixes; each class
+    (a table's own, or a Class term) with the labels it types and, for a Class term, the terms it
+    is a KIND_OF (:func:`superclasses_of`); each predicate: a column's own once per column, with
+    its label, property and datatype, and a Property term once, with ``classes``, its rdfs:domain
+    per class whose column binds it, each that class's IRI with its label, property and datatype
+    (REQ-2163); each edge type with its source, its target and its ``join``, the same for a join
+    declared from both ends; and the live Concept terms (:func:`concepts_of`). A class says it is
+    ``parameterized`` when every label it types is read by arguments, and ``parameterized_labels``
+    names those it types that are, which no path includes (REQ-2135). A Class or Property term, and
+    a Concept, carries its ``domains`` (:func:`term_domains_of`); a term with none is in no domain,
+    and a client shows it under every selection (REQ-1723, REQ-2163)."""
+    term_root = f"{vocab.base}/vocab/term/"
+
+    def kind(iri: str, own: str) -> str:
+        return "term" if iri.startswith(term_root) else own
+
+    def terms_part(iri: str) -> dict:
+        return {"domains": list(term_domains.get(iri, []))} if iri.startswith(term_root) else {}
+
+    def predicate(iri: str, cps: list[ColumnPredicate]) -> list[dict]:
+        if not iri.startswith(term_root):
+            return [
+                {
+                    "iri": iri,
+                    "kind": "column",
+                    "label": cp.label,
+                    "property": cp.prop,
+                    "datatype": cp.datatype,
+                }
+                for cp in cps
+            ]
+        classes = [
+            {
+                "class": vocab.classes_of[cp.label][0],
+                "label": cp.label,
+                "property": cp.prop,
+                "datatype": cp.datatype,
+            }
+            for cp in cps
+        ]
+        return [{"iri": iri, "kind": "term", "classes": classes, **terms_part(iri)}]
+
+    return {
+        "base": vocab.base,
+        "prefixes": dict(vocab.prefixes),
+        "classes": [
+            {
+                "iri": iri,
+                "kind": kind(iri, "table"),
+                "labels": list(labels),
+                "parameterized": all(label in vocab.parameterized for label in labels),
+                "parameterized_labels": [x for x in labels if x in vocab.parameterized],
+                "superclasses": list(superclasses.get(iri, [])),
+                **terms_part(iri),
+            }
+            for iri, labels in vocab.classes.items()
+        ],
+        "predicates": [
+            entry for iri, cps in vocab.columns.items() for entry in predicate(iri, cps)
+        ],
+        "edges": [
+            {
+                "iri": iri,
+                "type": ep.rel_type,
+                "source": ep.source,
+                "target": ep.target,
+                "join": ep.join,
+            }
+            for iri, eps in vocab.edges.items()
+            for ep in eps
+        ],
+        "concepts": concepts,
+    }

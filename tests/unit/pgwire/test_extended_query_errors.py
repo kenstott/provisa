@@ -1,0 +1,220 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: fd1f0e78-d109-41c4-b2e2-0fe2338b0441
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""An error in an extended-query cycle is answered with an ErrorResponse, and the cycle's later
+messages are discarded up to its Sync (pgspec TestExtended/ErrorDuringExtended,
+TestExtended_ErrorDuringBind)."""
+
+from __future__ import annotations
+
+import struct
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+from buenavista.postgres import BVContext
+
+from provisa.pgwire.server import ProvisaHandler
+
+
+def _parse_payload(sql: str, stmt: str = "") -> bytes:
+    return stmt.encode() + b"\x00" + sql.encode() + b"\x00" + struct.pack("!h", 0)
+
+
+def _bind_payload(n_params: int, stmt: str = "", portal: str = "") -> bytes:
+    body = portal.encode() + b"\x00" + stmt.encode() + b"\x00" + struct.pack("!h", 0)
+    body += struct.pack("!h", n_params)
+    for _ in range(n_params):
+        body += struct.pack("!i", 1) + b"1"
+    return body + struct.pack("!h", 0)
+
+
+class _Ctx(SimpleNamespace):
+    def mark_error(self):
+        self.has_error = True
+
+    def add_statement(self, stmt, sql, param_oids):
+        self.stmts[stmt] = (sql, param_oids)
+
+    def add_portal(self, portal, stmt, params, result_formats):
+        self.portals[portal] = (stmt, params, result_formats)
+
+
+def _handler():
+    written: list[bytes] = []
+
+    class _W:
+        def write(self, data):
+            written.append(bytes(data))
+
+        def flush(self):
+            pass
+
+    handler = ProvisaHandler.__new__(ProvisaHandler)
+    handler.wfile = _W()
+    handler._open_request = lambda: None
+    return handler, written
+
+
+def _codes(written: list[bytes]) -> list[bytes]:
+    return [w[:1] for w in written if w[:1] in (b"E", b"1", b"2")]
+
+
+def test_a_syntax_error_is_refused_at_parse():
+    handler, written = _handler()
+    ctx = _Ctx(session=SimpleNamespace(org_id=None), has_error=False, stmts={}, portals={})
+    handler.handle_parse(ctx, _parse_payload("SELECTT BOGUS SYNTAX"))
+    blob = b"".join(written)
+    assert blob[:1] == b"E" and b"42601" in blob
+    assert ctx.has_error
+
+
+def test_messages_after_an_error_are_discarded_until_sync():
+    handler, written = _handler()
+    ctx = _Ctx(session=SimpleNamespace(org_id=None), has_error=True, stmts={}, portals={})
+    handler.handle_parse(ctx, _parse_payload("SELECT 1"))
+    handler.handle_bind(ctx, _bind_payload(0))
+    assert written == []
+
+
+def test_a_valid_statement_parses():
+    handler, written = _handler()
+    ctx = _Ctx(session=SimpleNamespace(org_id=None), has_error=False, stmts={}, portals={})
+    handler.handle_parse(ctx, _parse_payload("SELECT $1::int AS val"))
+    assert _codes(written) == [b"1"]
+    assert ctx.stmts[""] == ("SELECT $1::int AS val", [])
+
+
+def test_a_bind_with_the_wrong_parameter_count_is_refused():
+    handler, written = _handler()
+    ctx = _Ctx(
+        session=SimpleNamespace(org_id=None),
+        has_error=False,
+        stmts={"": ("SELECT $1::int AS val", [])},
+        portals={},
+    )
+    handler.handle_bind(ctx, _bind_payload(0))
+    blob = b"".join(written)
+    assert blob[:1] == b"E" and b"08P01" in blob
+    assert b"supplies 0 parameters" in blob
+
+
+def test_a_bind_with_the_right_parameter_count_binds():
+    handler, written = _handler()
+    ctx = _Ctx(
+        session=SimpleNamespace(org_id=None),
+        has_error=False,
+        stmts={"": ("SELECT $1::int AS val, '$2'", [])},
+        portals={},
+    )
+    handler.handle_bind(ctx, _bind_payload(1))
+    assert _codes(written) == [b"2"]
+
+
+def _context():
+    return BVContext(MagicMock(), None, {})
+
+
+def test_closing_a_statement_or_portal_that_does_not_exist_is_no_error():
+    # PostgreSQL's Close: "It is not an error to issue Close against a nonexistent name."
+    handler, written = _handler()
+    ctx = _context()
+    handler.handle_close(ctx, b"Snever_prepared\x00")
+    handler.handle_close(ctx, b"Pnever_bound\x00")
+    assert [w[:1] for w in written] == [b"3", b"3"]
+    assert not ctx.has_error
+
+
+def test_executing_an_unknown_portal_answers_34000():
+    handler, written = _handler()
+    ctx = _context()
+    handler.handle_execute(ctx, b"never_bound\x00" + struct.pack("!i", 0))
+    blob = b"".join(written)
+    assert blob[:1] == b"E" and b"34000" in blob and b'portal "never_bound" does not exist' in blob
+    assert ctx.has_error
+
+
+def test_a_simple_query_error_ends_at_its_ready_for_query():
+    """A Query message's error ends with its ReadyForQuery: it has no Sync. An extended cycle
+    after it is answered, not discarded up to its Sync as if it had failed itself (the client
+    saw no result at all: psycopg's "got no result from the query")."""
+    handler, written = _handler()
+    handler._report_zone = lambda: None
+    handler._shield = SimpleNamespace(lock=MagicMock(), settle=lambda: None)
+    handler._close_request = lambda: None
+    session = MagicMock(org_id=None)
+    session.in_transaction.return_value = False
+    session.execute_sql.side_effect = RuntimeError("lastval is not yet defined in this session")
+    ctx = BVContext(session, None, {})
+    handler._process_query_stmts(ctx, ["SELECT lastval()"])
+    assert _codes(written) == [b"E"]
+    assert written[-1][:1] == b"Z"
+    assert not ctx.has_error
+    written.clear()
+    handler.handle_parse(ctx, _parse_payload("SELECT 1"))
+    assert _codes(written) == [b"1"]
+
+
+class _TxSession(SimpleNamespace):
+    """Opens and closes its transaction as ProvisaSession does; ``SELECT bogus`` fails."""
+
+    def in_transaction(self):
+        return self.transaction_open
+
+    def execute_sql(self, sql, *args, **kwargs):
+        from provisa.pgwire.server import _transaction_open
+
+        if sql == "SELECT bogus":
+            raise RuntimeError('column "bogus" does not exist')
+        self.transaction_open = _transaction_open(sql, self.transaction_open)
+        return SimpleNamespace(has_results=lambda: False, status=lambda: sql.split()[0])
+
+
+def _query_handler():
+    handler, written = _handler()
+    handler._report_zone = lambda: None
+    handler._shield = SimpleNamespace(lock=MagicMock(), settle=lambda: None)
+    handler._close_request = lambda: None
+    return handler, written
+
+
+def _status_after(handler, written, ctx, sql: str) -> bytes:
+    written.clear()
+    handler._process_query_stmts(ctx, [sql])
+    assert written[-1][:1] == b"Z"
+    return written[-1][-1:]
+
+
+def test_a_failed_query_in_a_transaction_reports_it_failed_until_rollback():
+    """pgspec TestSimpleQuery/TransactionStatus, TestSimpleQuery_TransactionStatusByte: after a
+    failed statement in a transaction ReadyForQuery reports 'E', and 'I' once it is rolled back."""
+    handler, written = _query_handler()
+    ctx = BVContext(_TxSession(org_id=None, transaction_open=False), None, {})
+    assert _status_after(handler, written, ctx, "BEGIN") == b"T"
+    assert _status_after(handler, written, ctx, "SELECT bogus") == b"E"
+    assert _status_after(handler, written, ctx, "ROLLBACK") == b"I"
+    assert _status_after(handler, written, ctx, "BEGIN") == b"T"
+
+
+def test_a_failed_transaction_still_answers_the_next_extended_cycle():
+    """The failed transaction is not the cycle's error: the next extended cycle is answered."""
+    handler, written = _query_handler()
+    ctx = BVContext(_TxSession(org_id=None, transaction_open=False), None, {})
+    _status_after(handler, written, ctx, "BEGIN")
+    assert _status_after(handler, written, ctx, "SELECT bogus") == b"E"
+    assert not ctx.has_error
+    written.clear()
+    handler.handle_parse(ctx, _parse_payload("SELECT 1"))
+    assert _codes(written) == [b"1"]
+
+
+def test_an_error_outside_a_transaction_reports_idle():
+    handler, written = _query_handler()
+    ctx = BVContext(_TxSession(org_id=None, transaction_open=False), None, {})
+    assert _status_after(handler, written, ctx, "SELECT bogus") == b"I"

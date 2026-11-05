@@ -10,14 +10,14 @@
 
 """Widening who a column's scope serves takes the right to grant the column.
 
-A column's ``scope`` decides who is served it beside its grant list (REQ-1959): ``restricted``
-with an empty ``visible_to`` is served to nobody, ``domain`` with an empty list to every role
-that reaches the table's domain, ``public`` also to roles outside it. The save's hiding check
+A column's ``scope`` decides how far beyond its domain a column reaches (REQ-1959, REQ-2153):
+``domain`` not at all, ``listed`` with its names in the catalog of every role, ``public`` served
+to the roles it grants outside the domain too. The save's hiding check
 (REQ-1943, REQ-1944) did not look at ``scope`` — so a table editor holding only
-``table_registration`` could reveal a column nobody was served by changing its scope, on a
+``table_registration`` could reveal a column beyond its domain by changing its scope, on a
 sensitive column too.
 
-The rule: restricted < domain < public. A table editor narrows a scope; widening one needs
+The rule: domain < listed < public. A table editor narrows a scope; widening one needs
 ``column_grant`` or ``access_config`` in the table's domain; on a column carrying a sensitive
 tag any change of scope needs ``sensitive_data``.
 
@@ -41,10 +41,17 @@ from tests.unit.test_data_steward_domain_scope import (  # the real-database har
     _stored,
     plane,  # noqa: F401  (fixture)
 )
+from tests.unit.gate_identity import serve_every_column
 
 pytestmark = pytest.mark.asyncio
 
 _VIEW = "view_governance"  # so the save is judged on its rights to hide, not on being shown
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
 
 
 def _role(*capabilities: str) -> dict:
@@ -80,12 +87,12 @@ async def _save_scope(plane_, role: str, column: str, scope: str):  # noqa: ANN0
     return await M().update_table(_info(role), edited)
 
 
-_WIDENINGS = [("restricted", "domain"), ("restricted", "public"), ("domain", "public")]
-_NARROWINGS = [("domain", "restricted"), ("public", "domain"), ("public", "restricted")]
+_WIDENINGS = [("domain", "listed"), ("domain", "public"), ("listed", "public")]
+_NARROWINGS = [("listed", "domain"), ("public", "listed"), ("public", "domain")]
 
 
 def test_the_order_of_who_a_scope_serves():
-    """restricted < domain < public: each of the six changes is a widening or a narrowing."""
+    """domain < listed < public: each of the six changes is a widening or a narrowing."""
     from provisa.api.admin._hiding_guard import scope_widens
 
     assert all(scope_widens(before, after) for before, after in _WIDENINGS)
@@ -94,7 +101,7 @@ def test_the_order_of_who_a_scope_serves():
 
 @pytest.mark.parametrize("stored, sent", _WIDENINGS)
 async def test_a_table_editor_alone_may_not_widen_a_columns_scope(callers, stored, sent):
-    """The defect: served to nobody -> every role in reach, by a caller with no right to grant."""
+    """The defect: a column revealed beyond its domain, by a caller with no right to grant."""
     await _store_scope(callers, "amount", stored)
     result = await _save_scope(callers, "scope_editor", "amount", sent)
     assert result.success is False, f"{stored} -> {sent} was saved"
@@ -120,7 +127,7 @@ async def test_the_right_to_grant_a_column_changes_its_scope_either_way(callers,
     assert (await _stored(callers.db, callers.ids["orders"], "amount"))["scope"] == sent
 
 
-@pytest.mark.parametrize("scope", ["domain", "public", "restricted"])
+@pytest.mark.parametrize("scope", ["domain", "listed", "public"])
 async def test_an_unchanged_scope_is_saved_by_a_table_editor(callers, scope):
     """The editor's form sends every column's scope back; one it did not change needs no
     right beyond the editor's own."""
@@ -164,23 +171,21 @@ async def test_the_mcp_table_tools_save_through_the_same_check(callers):
     from provisa.api.mcp import table_edit
     from tests.unit.test_data_steward_domain_scope import _request
 
-    await _store_scope(callers, "amount", "restricted")
+    await _store_scope(callers, "amount", "domain")
     edited = await _input(callers.ids["orders"])
-    _column(edited, "amount").scope = "domain"
+    _column(edited, "amount").scope = "listed"
     with pytest.raises(ValueError, match=r"amount \(scope\).*column_grant"):
         await table_edit.save_table(_request("scope_editor"), edited)
-    assert (await _stored(callers.db, callers.ids["orders"], "amount"))["scope"] == "restricted"
+    assert (await _stored(callers.db, callers.ids["orders"], "amount"))["scope"] == "domain"
 
 
-@pytest.mark.parametrize(
-    "scope, refused", [("domain", False), ("restricted", False), ("public", True)]
-)
+@pytest.mark.parametrize("scope, refused", [("domain", False), ("listed", True), ("public", True)])
 async def test_a_column_of_a_table_being_registered_is_checked_against_the_default(
     callers, scope, refused
 ):
-    """A column not stored yet is compared with scope ``domain``: registering it ``restricted``
-    narrows and is the registrar's to do; registering it ``public`` widens and needs the right
-    to grant."""
+    """A column not stored yet is compared with scope ``domain``: registering it so is the
+    registrar's to do; registering it ``listed`` or ``public`` widens and needs the right to
+    grant."""
     import types
 
     from provisa.api.admin._hiding_guard import hiding_refusal
@@ -249,7 +254,7 @@ def test_a_configuration_apply_names_any_scope_change_on_a_sensitive_column():
         "amount": {"column_name": "amount", **fields, "scope": "public"},
     }
     applied = [
-        types.SimpleNamespace(name="email", **fields, scope="restricted"),
-        types.SimpleNamespace(name="amount", **fields, scope="restricted"),
+        types.SimpleNamespace(name="email", **fields, scope="listed"),
+        types.SimpleNamespace(name="amount", **fields, scope="listed"),
     ]
     assert hiding_changes(stored, applied, frozenset({"email"})) == ["email (scope)"]

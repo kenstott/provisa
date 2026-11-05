@@ -49,6 +49,9 @@ class _Deployment:
 
     multitenancy = True
     security_high = False
+    # Each organisation declares no derived role: an unsecured call's role resolves to itself
+    # (derived_roles.unsecured_principal, REQ-1952).
+    settings_overrides: dict = {"derived_roles": []}
 
     def __init__(self, protos: dict[str, str], roles: dict[str, dict[str, str]] | None = None):
         self.protos = protos  # organisation -> the proto its wire is encoded with
@@ -255,11 +258,15 @@ message Orders { int32 id = 1; google.protobuf.Timestamp created_at = 2; }
 message OrdersRequest { int32 limit = 1; }
 service ProvisaService { rpc QueryOrders (OrdersRequest) returns (stream Orders); }
 """).Orders
-from provisa.grpc.server import _proto_value  # after the organisation's service is compiled
+import pyarrow as pa
+
+from provisa.grpc.server import _row_encoder  # after the organisation's service is compiled
 
 when = datetime(2026, 10, 12, 3, 4, 5, tzinfo=timezone.utc)
-field = orders.DESCRIPTOR.fields_by_name["created_at"]
-row = orders(id=1, created_at=_proto_value(field, when)).SerializeToString()
+batch = pa.record_batch(
+    {"id": pa.array([1], pa.int32()), "created_at": pa.array([when], pa.timestamp("us", "UTC"))}
+)
+(row,) = _row_encoder(orders, ["id", "created_at"]).encode(batch)
 assert orders.FromString(row).created_at.ToDatetime(tzinfo=timezone.utc) == when
 '''
 
@@ -318,19 +325,24 @@ def test_a_role_with_no_service_and_a_call_naming_no_role_are_described_nothing(
         assert refused.value.code() == status
 
 
-def test_a_change_to_a_role_is_described_by_the_next_call(deployment):
+def test_a_change_to_a_role_is_described_by_the_next_call(deployment, monkeypatch):
     """A meta-role is a role built from the roles its caller holds; when its members change its
     surface is rebuilt, its proto with it, and the next reflection call describes that."""
+    from provisa.security import meta_role
+
     state, channel = deployment
+    # The caller names a and b; it acts as their meta-role (REQ-1952), whose surface this
+    # deployment stands in for below.
+    monkeypatch.setattr(meta_role, "ensure_meta_role", lambda _s, m: meta_role.meta_role_id(m))
     state.roles["acme"]["meta:a+b"] = _proto("Orders", "id")
-    assert [m.name for m in _described(channel, "acme", "meta:a+b").message_type] == [
+    assert [m.name for m in _described(channel, "acme", "a,b").message_type] == [
         "Orders",
         "OrdersRequest",
     ]
     state.roles["acme"]["meta:a+b"] = _proto("Orders", "id").replace(
         "message Orders { int32 id = 1; }", "message Orders { int32 id = 1; string note = 2; }"
     )
-    orders = _described(channel, "acme", "meta:a+b").message_type[0]
+    orders = _described(channel, "acme", "a,b").message_type[0]
     assert [f.name for f in orders.field] == ["id", "note"]
     # Another role of the same organisation is described as before.
     assert [f.name for f in _described(channel, "acme").message_type[0].field] == ["id"]
@@ -351,12 +363,14 @@ def built(monkeypatch):
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
+                "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
             },
             {
                 "id": "finance_reader",
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["finance"],
+                "own_domain_access": ["finance"],
             },
         ],
     )
@@ -377,10 +391,11 @@ def built(monkeypatch):
 
 def _table_fields(schema) -> list[str]:
     """The root fields a role's Query type serves its tables through: every field but the
-    semantic-address resolver every schema carries (REQ-1365), which reads no one table."""
-    from provisa.compiler.schema_gen import RESOLVE_FIELD
+    semantic-address resolver every schema carries (meta's resolve, REQ-1365), which reads no one
+    table."""
+    from provisa.compiler.schema_gen import resolve_field
 
-    return sorted(f for f in schema.query_type.fields if f != RESOLVE_FIELD)
+    return sorted(f for f in schema.query_type.fields if f != resolve_field(schema))
 
 
 def _service(file: descriptor_pb2.FileDescriptorProto) -> tuple[set[str], dict[str, list[str]]]:
@@ -432,7 +447,9 @@ def test_a_meta_role_is_described_what_its_members_are_served_together(built, mo
     for name in ("meta_roles", "meta_resolved_at", "masking_rules"):
         monkeypatch.setattr(state._active_runtime(), name, {}, raising=False)
     meta = ensure_meta_role(state, ["sales_reader", "finance_reader"])
-    methods, messages = _service(_reflected(channel, (("x-provisa-role", meta),)))
+    # The caller names the roles it holds; the server acts as their meta-role (REQ-1952).
+    as_set = (("x-provisa-role", "sales_reader,finance_reader"),)
+    methods, messages = _service(_reflected(channel, as_set))
     assert {"QueryOrders", "QueryLedger"} <= methods
     assert _table_fields(state.schemas[meta]) == ["ledger", "orders"]
     # Each member alone is still described its own.
@@ -509,7 +526,7 @@ def test_a_model_edit_that_rebuilds_a_meta_role_is_described_by_the_next_call(bu
         monkeypatch.setattr(state._active_runtime(), name, {}, raising=False)
     roles = [dict(state.roles[r]) for r in ("sales_reader", "finance_reader")]
     meta = ensure_meta_role(state, ["sales_reader", "finance_reader"])
-    as_meta = (("x-provisa-role", meta),)
+    as_meta = (("x-provisa-role", "sales_reader,finance_reader"),)  # acts as ``meta``
     before, _messages = _service(_reflected(channel, as_meta))
     assert {"QueryOrders", "QueryLedger"} <= before and "QueryPurchases" not in before
 
@@ -550,8 +567,15 @@ def meta_reach(monkeypatch):
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
+                "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
             },
-            {"id": "cataloguer", "capabilities": ["usage"], "domain_access": ["sales", "meta"]},
+            # REQ-1132: as flattening writes a role holding catalog_read.
+            {
+                "id": "cataloguer",
+                "capabilities": ["usage", "catalog_read"],
+                "domain_access": ["sales", "meta"],
+                "own_domain_access": ["sales", "meta"],
+            },
         ],
     )
 
@@ -563,15 +587,14 @@ def _rpcs(proto: str) -> set[str]:
 
 
 def test_a_table_only_traversed_to_has_no_rpc_as_it_has_no_root_field(meta_reach):
-    """Every role's surface holds the catalog tables, to be read through each type's ``_meta``.
-    A role that does not reach the catalog domain has no root field for them in its GraphQL
+    """A role holding no catalog_read has no root field for the catalog tables in its GraphQL
     Query type -- and no RPC for them in its service, whose Query message already says so."""
     state = meta_reach
     without, with_reach = state.proto_files["sales_reader"], state.proto_files["cataloguer"]
     assert _table_fields(state.schemas["sales_reader"]) == ["orders"]
     assert {r for r in _rpcs(without) if "Meta" in r} == set()
     assert {"QueryOrders", "QueryOrdersBatch"} <= _rpcs(without)
-    assert "message RegisteredTablesMeta {" in without, "its message stays: it is traversed to"
+    assert "message RegisteredTablesMeta {" not in without, "the capability opens the domain"
 
     roots = sorted(state.schemas["cataloguer"].query_type.fields)
     assert "registeredTablesMeta" in roots and "orders" in roots
@@ -587,10 +610,14 @@ def test_the_generic_command_rpc_is_every_roles(meta_reach):
 
 
 def test_every_roles_service_resolves_a_semantic_address(meta_reach):
-    """REQ-1365, REQ-1929: resolve is in every role's GraphQL schema, so its RPC is in every
+    """REQ-1365, REQ-1929: meta's resolve is in every role's GraphQL schema, so its RPC is in every
     role's service, generated from the same rule."""
+    from provisa.compiler.schema_gen import resolve_field
+
     for role in ("sales_reader", "cataloguer"):
-        assert "resolve" in meta_reach.schemas[role].query_type.fields
+        schema = meta_reach.schemas[role]
+        assert "_resolve" not in schema.query_type.fields
+        assert resolve_field(schema).endswith("resolve")
         assert "Resolve" in _rpcs(meta_reach.proto_files[role])
 
 

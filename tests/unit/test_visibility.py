@@ -12,11 +12,8 @@
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
-from provisa.security.visibility import (
-    is_column_visible,
-    visible_column_names,
-    visible_tables,
-)
+from provisa.security.visibility import visible_tables
+from tests.served_columns import is_column_visible, visible_column_names
 from tests.write_governance import grants_over
 
 

@@ -13,9 +13,11 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
+import type { ApprovedJoin } from "../components/canvas/joinGraph";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
+import { columnKeys, rowByKeys } from "../lib/columnKeys";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -611,11 +613,16 @@ export interface TableMetadata {
   pagingKind?: PagingKind | null;
   pagination?: Paging | null;
   pagingCeilingRows?: number | null;
+  // REQ-1986: the parameters a read of it must give, by the name a caller gives each; a table
+  // with any is a lookup, listed apart in the picker.
+  requiredParameters?: string[];
 }
 
 export interface ColumnMetadata {
   name: string;
   dataType: string;
+  /** REQ-2171: the subtype the column registers as; dataType is its base. */
+  subtype?: string | null;
   comment: string | null;
   nativeFilterType: string | null;
   /** Whether the source requires a value for this parameter; null where it is not recorded. */
@@ -900,6 +907,12 @@ export interface PlatformSettings {
   };
   cache: {
     default_ttl: number;
+  };
+  // REQ-259: the org's Apollo Federation subgraph and the role it serves as.
+  federation: {
+    enabled: boolean;
+    subgraph_name: string;
+    role: string | null;
   };
   naming: {
     // Deployment-wide, so absent for an org administrator; the two below are the org's own.
@@ -1551,6 +1564,10 @@ export interface CompileResult {
   warnings?: string[];
   compiled_cypher?: string | null;
   cypher_error?: string | null;
+  /** REQ-2136: the root's read as a SPARQL SELECT, its PREFIX lines with it; null with
+   * ``sparql_error`` saying why there is none. */
+  compiled_sparql?: string | null;
+  sparql_error?: string | null;
 }
 
 /** One thing an answer says about itself (REQ-1350), as the server sends it. */
@@ -1576,22 +1593,6 @@ export function toResultRedirect(handle: {
   };
 }
 
-/**
- * REQ-1163: a statement's time travel over bitemporal views -- as of a time on each view's clock,
- * and as Provisa had recorded it at a time. Each is an ISO 8601 time; an empty one is not sent.
- */
-export interface TimeTravel {
-  asOf?: string | null;
-  asRecorded?: string | null;
-}
-
-function timeTravelHeaders(travel: TimeTravel | undefined): Record<string, string> {
-  const headers: Record<string, string> = {};
-  if (travel?.asOf) headers["X-Provisa-As-Of"] = travel.asOf;
-  if (travel?.asRecorded) headers["X-Provisa-As-Recorded"] = travel.asRecorded;
-  return headers;
-}
-
 /** What a refused statement says: in the reader's language by its code and params (serverErrors),
  * else in the server's own words; never the body it came in. */
 async function refusal(resp: Response, op: string): Promise<string> {
@@ -1607,11 +1608,7 @@ async function refusal(resp: Response, op: string): Promise<string> {
     : text || requestFailed(op, resp.status);
 }
 
-function sqlHeaders(
-  role: string,
-  statsEnabled: boolean,
-  timeTravel: TimeTravel | undefined,
-): Record<string, string> {
+function sqlHeaders(role: string, statsEnabled: boolean): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -1619,7 +1616,6 @@ function sqlHeaders(
     // `role` is a fallback for callers with no auth context at all. Without it here, the
     // middleware's default-assigned role silently overrode the SQL Explorer's picker.
     "X-Provisa-Role": role,
-    ...timeTravelHeaders(timeTravel),
   };
   if (statsEnabled) headers["X-Provisa-Stats"] = "true";
   return headers;
@@ -1629,9 +1625,8 @@ export async function runSql(
   // A statement, or a statement with the values of its $1…$n placeholders. The values are
   // sent beside the text and bound by the server; they are never written into it.
   statement: string | { sql: string; params: (string | number)[] },
-  role: string = "org_admin",
+  role: string,
   statsEnabled: boolean = false,
-  timeTravel?: TimeTravel,
 ): Promise<{
   columns: string[];
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
@@ -1648,7 +1643,7 @@ export async function runSql(
   redirect?: ResultRedirect;
 }> {
   try {
-    const headers = sqlHeaders(role, statsEnabled, timeTravel);
+    const headers = sqlHeaders(role, statsEnabled);
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       // The acting role travels ONLY in X-Provisa-Role. Under "Role: All" that header is the
       // comma-separated set; a body `role` repeating it is refused as a mismatch (data.role_mismatch,
@@ -1713,6 +1708,7 @@ export async function runSql(
 /** One statement's answer in a batch answered one result per statement. */
 export interface StatementAnswer {
   statement: string;
+  /** Each column's key, unique by position (lib/columnKeys); columnLabel gives its name. */
   columns: string[];
   column_types: string[] | null;
   rows: Record<string, unknown>[];
@@ -1721,6 +1717,15 @@ export interface StatementAnswer {
   error?: string;
   /** REQ-1194 / REQ-1224: landed in the results store, not in `rows`. */
   redirect?: ResultRedirect;
+}
+
+/** The joins the acting role's statements may write: what the SQL canvas draws. */
+export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
+  const resp = await fetch(`${API_BASE_RAW}/data/sql/approved-joins`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!resp.ok) throw new Error(await refusal(resp, "fetchApprovedJoins"));
+  return ((await resp.json()) as { joins: ApprovedJoin[] }).joins;
 }
 
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
@@ -1738,7 +1743,8 @@ export async function splitSql(sql: string): Promise<string[]> {
 interface EachEntry {
   statement: string;
   warnings: StatementWarning[];
-  data?: Record<string, unknown>[];
+  /** Each row's values in column order. */
+  data?: unknown[][];
   columns?: string[];
   column_types?: string[] | null;
   redirect?: Parameters<typeof toResultRedirect>[0];
@@ -1751,13 +1757,17 @@ export async function runSqlEach(
   sql: string,
   role: string,
   statsEnabled: boolean,
-  timeTravel?: TimeTravel,
+  // REQ-1937: the values of the statement's $1…$n placeholders, bound by the server; none sent
+  // when there are none.
+  params: (string | number)[] = [],
 ): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
-      headers: sqlHeaders(role, statsEnabled, timeTravel),
-      body: JSON.stringify({ sql, results: "each" }),
+      headers: sqlHeaders(role, statsEnabled),
+      body: JSON.stringify(
+        params.length > 0 ? { sql, results: "each", params } : { sql, results: "each" },
+      ),
     });
     if (!resp.ok) return { answers: [], error: await refusal(resp, "runSql") };
     const json = (await resp.json()) as { results: EachEntry[]; provisa_stats?: unknown };
@@ -1778,11 +1788,13 @@ export async function runSqlEach(
           return { ...empty, warnings: e.warnings, redirect: toResultRedirect(e.redirect) };
         if (!Array.isArray(e.columns) || !Array.isArray(e.data))
           throw new Error(`runSql: an answer for "${e.statement}" holds neither rows nor error`);
+        // Keyed by position, so two columns of one name each keep their own value.
+        const keys = columnKeys(e.columns);
         return {
           statement: e.statement,
-          columns: e.columns,
+          columns: keys,
           column_types: e.column_types ?? null,
-          rows: e.data,
+          rows: e.data.map((row) => rowByKeys(keys, row)),
           warnings: e.warnings,
         };
       }),
@@ -1823,7 +1835,6 @@ export async function explainSql(
   sqlText: string,
   role: string = "org_admin",
   analyze: boolean = false,
-  timeTravel?: TimeTravel,
 ): Promise<ExplainResponse> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/explain`, {
     method: "POST",
@@ -1831,7 +1842,6 @@ export async function explainSql(
       "Content-Type": "application/json",
       Accept: "application/json",
       "X-Provisa-Role": role,
-      ...timeTravelHeaders(timeTravel),
     },
     body: JSON.stringify({ sql: sqlText, analyze }),
   });
@@ -2020,6 +2030,8 @@ export interface ProtocolHealth {
   name: string;
   status: "running" | "down" | "disabled";
   port: number | null;
+  /** Where an HTTP surface is served; a socket listener has a `port` instead. */
+  path: string | null;
 }
 
 export interface SystemHealth {
@@ -2493,6 +2505,17 @@ export async function submitNlQuery(
   return res.json();
 }
 
+/** Whether `role` may run non-strict NL: only a role that may bypass the relationship guard, by the
+ * server's one bypass rule (REQ-603). The NL page holds its Strict switch on for any other. */
+export async function fetchNlMode(role: string): Promise<{ non_strict: boolean }> {
+  const res = await fetch(`${API_BASE}/query/nl/mode`, { headers: { "X-Provisa-Role": role } });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(serverMessage(data, data.error || requestFailed("NL mode", res.status)));
+  }
+  return res.json();
+}
+
 export interface NlBranchEvent {
   target: "sql" | "graphql" | "cypher";
   query: string | null;
@@ -2823,7 +2846,8 @@ export interface MaskPatternVerdict {
 
 export interface MasksReport {
   unreachable: { entry: number; covered_by: number | null }[];
-  unlisted_unmasked: boolean;
+  /** What a save of this list is refused with; null when every entry is reached. */
+  refusal: { code: string; message: string; params: { entries: string } } | null;
   applies: number | null;
   /** Each construct of a regex entry outside the universal dialect; empty when all pass. */
   patterns: MaskPatternVerdict[];

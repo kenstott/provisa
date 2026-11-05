@@ -818,3 +818,68 @@ async def test_native_columns_pg_wire_family_reports_ir_types(source_type):
         ("seen_at", "timestamp"),
         ("opens", "time"),
     ]
+
+
+async def test_redshift_lists_its_tables_without_casting_text_to_regclass():
+    """Redshift has no text-to-regclass cast ("cannot cast type text to regclass", u7spec-kaggle
+    40184207167), so a listing that resolved each table's comment by casting its name left the
+    Register Table picker empty. Its tables and their comments are read from pg_catalog, which
+    Redshift keeps (pg_class, pg_namespace, pg_description)."""
+    from types import SimpleNamespace
+
+    from provisa.api.admin import introspect
+
+    sent: list[tuple[str, list]] = []
+
+    class _Redshift:
+        def has(self, _sid):
+            return True
+
+        async def execute(self, _sid, sql, params=None):
+            if "regclass" in sql:
+                raise RuntimeError("cannot cast type text to regclass")
+            sent.append((sql, params))
+            return SimpleNamespace(rows=[("widgets", "the e2e's table")])
+
+    tables = await introspect._native_tables_rdbms("rs", "redshift", "provisa_ui_e2e", _Redshift())
+    assert [(t.name, t.comment) for t in tables] == [("widgets", "the e2e's table")]
+    ((sql, params),) = sent
+    assert "pg_description" in sql and params == ["provisa_ui_e2e"]
+
+
+class _MssqlCatalog:
+    """INFORMATION_SCHEMA.TABLES of a warehouse holding one view, widgets, as a Synapse
+    serverless pool holds its relations (it has no tables of its own, only views and external
+    tables): answers each listing with the relations of the types it names."""
+
+    def __init__(self):
+        self.relations = [("widgets", "VIEW")]
+
+    def has(self, _sid):
+        return True
+
+    async def execute(self, _sid, sql, params=None):
+        from types import SimpleNamespace
+
+        rows = [(name, None) for name, kind in self.relations if f"'{kind}'" in sql]
+        return SimpleNamespace(rows=rows)
+
+
+async def test_a_synapse_view_is_offered_as_a_table():
+    """A Synapse serverless pool holds only views and external tables, so a listing of base tables
+    alone offered nothing to register (u7spec-kaggle 40184207167: the e2e's widgets view)."""
+    from provisa.api.admin import introspect
+
+    tables = await introspect.native_tables(
+        "syn", "synapse", "provisa_ui_e2e", _MssqlCatalog(), None, None
+    )
+    assert [t.name for t in tables] == ["widgets"]
+
+
+async def test_fabric_still_offers_only_its_base_tables():
+    from provisa.api.admin import introspect
+
+    tables = await introspect.native_tables(
+        "fab", "fabric", "provisa_ui_e2e", _MssqlCatalog(), None, None
+    )
+    assert tables == []

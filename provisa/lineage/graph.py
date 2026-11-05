@@ -51,10 +51,15 @@ class Node:  # REQ-1160
     id: str
     column: str
     relation: str | None  # source/intermediate relation name; None for a bare output column
-    kind: str  # "source" | "derived" | "command"
+    kind: str  # "source" | "derived" | "command" | "native"
     # REQ-1161: True when this node's relation is materialized (an MV / CTAS snapshot). A cycle that
     # crosses a materialized node is a legal time-lagged feedback loop, not a design error.
     materialized: bool = False
+    # REQ-2116: a native node's source object -- the source, and the schema and table it is read
+    # from where the source has them (None for an API, a topic, a file or a function).
+    source_id: str | None = None
+    source_schema: str | None = None
+    source_table: str | None = None
 
 
 @dataclass
@@ -65,6 +70,21 @@ class Edge:  # REQ-1160
     target: str  # downstream node id
     transform: str  # the raw projection expression (SQL)
     ops: tuple[TransformOp, ...]  # the named operations composing the transform
+
+
+def _node_dict(n: Node) -> dict:
+    out = {
+        "id": n.id,
+        "column": n.column,
+        "relation": n.relation,
+        "kind": n.kind,
+        "materialized": n.materialized,
+    }
+    if n.kind == "native":
+        out.update(
+            source_id=n.source_id, source_schema=n.source_schema, source_table=n.source_table
+        )
+    return out
 
 
 @dataclass
@@ -86,16 +106,7 @@ class LineageGraph:  # REQ-1160
     def to_dict(self) -> dict:
         """Serialize to a render-ready graph JSON (nodes + edges + outputs) — the API/UI payload."""
         return {
-            "nodes": [
-                {
-                    "id": n.id,
-                    "column": n.column,
-                    "relation": n.relation,
-                    "kind": n.kind,
-                    "materialized": n.materialized,
-                }
-                for n in self.nodes.values()
-            ],
+            "nodes": [_node_dict(n) for n in self.nodes.values()],
             "edges": [
                 {
                     "source": e.source,

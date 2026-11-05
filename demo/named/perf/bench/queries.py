@@ -63,6 +63,9 @@ class Query:
     description: str
     sql: str | None = None
     cypher: str | None = None
+    # SPARQL 1.1 query text (POST /data/sparql): its own dialect, rendered from the same request
+    # as every other transport's (REQ-2135).
+    sparql: str | None = None
     # GraphQL query text (POST /data/graphql) — same HTTP transport as `cypher`'s http surface,
     # GraphQL-JSON encoding instead of Cypher-JSON. See module docstring for field-naming/filter
     # verification.
@@ -195,6 +198,12 @@ QUERIES: list[Query] = [
         # earlier asymmetry did not reproduce and looks like a run-condition artifact (process/
         # connection state at the time), not an architectural defect — flag if it recurs.
         sql="SELECT region, sum(amount) AS revenue, count(*) AS n FROM perf_bench.orders GROUP BY region",
+        # The 70/30 saturation mix takes its heavy half from here, so without this text Bolt never
+        # ramps. Same rollup as the SQL: Cypher groups on the non-aggregated return item.
+        cypher="""
+            MATCH (o:PerfBench:Orders)
+            RETURN o.region AS region, sum(o.amount) AS revenue, count(o) AS n
+        """,
         # ordersGroupBy: schema_gen.py's _build_group_by_query_field (gated by config.yaml's
         # orders.enable_group_by: true). aggregate.sum.amount == revenue, aggregate.count == n —
         # sum's sub-field is the raw column name "amount" (aggregate_gen.py keys AggregateFields
@@ -301,15 +310,20 @@ QUERIES: list[Query] = [
     Query(
         id="neo4j_materialize_cold",
         category="materialize_cost",
-        description="First read of a Neo4j-source table after cache expiry — one Cypher HTTP call + flatten + land",
-        sql="SELECT count(*) FROM perf_bench.bench_order_node",
+        description="First read of a Neo4j-source row after cache expiry — one Cypher HTTP call + flatten + land",
+        # bench_order_node is row_materialize (REQ-1865): it lands the rows a request names by key,
+        # and refuses a read of the whole table. A literal primary-key filter is the read that
+        # lands one row.
+        sql="SELECT count(*) FROM perf_bench.bench_order_node WHERE order_id = :order_id",
+        params={"order_id": 12345},
         iterations=1,
     ),
     Query(
         id="neo4j_materialize_warm",
         category="materialize_cost",
-        description="Repeat read of the same Neo4j-source table within TTL — local materialized scan",
-        sql="SELECT count(*) FROM perf_bench.bench_order_node",
+        description="Repeat read of the same Neo4j-source row within TTL — local materialized read",
+        sql="SELECT count(*) FROM perf_bench.bench_order_node WHERE order_id = :order_id",
+        params={"order_id": 12345},
         iterations=10,
     ),
     Query(

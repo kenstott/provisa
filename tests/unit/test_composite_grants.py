@@ -83,7 +83,7 @@ def test_a_meta_role_holds_its_members_ancestors_and_its_derived_roles(monkeypat
                 "sender",
                 [
                     {"to": ["developer+region__eu"], "mask": None},
-                    {"to": ["*"], "mask": {"type": "constant", "value": None}},
+                    {"mask": {"type": "constant", "value": None}},
                 ],
                 "varchar",
             )

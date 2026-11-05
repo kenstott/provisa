@@ -36,6 +36,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from provisa.core.org_provisioning import schema_exists as _schema_exists
+
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
@@ -195,18 +197,6 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
                 + count_key_patterns(count_scope(org_id, env or PROD, region=region.id))
             )
     return plan
-
-
-async def _schema_exists(control_plane: "Database", schema: str) -> bool:
-    from sqlalchemy import text
-
-    async with control_plane.acquire() as conn:
-        found = await conn.execute_core(
-            text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s").bindparams(
-                s=schema
-            )
-        )
-        return found.fetchone() is not None
 
 
 def _is_sql(url: str) -> bool:

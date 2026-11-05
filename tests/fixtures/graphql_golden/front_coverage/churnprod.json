@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:churnprod/1-at-risk.graphql",
+  "root_field": "c__viewAtRisk"
+ }
+]

@@ -139,6 +139,7 @@ async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch)
                     "element_type": None,
                     "native_type": None,
                     "native_platform": None,
+                    "subtype": None,  # REQ-2171
                 }
             ],
         },
@@ -174,13 +175,14 @@ async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch)
                     "element_type": None,
                     "native_type": None,
                     "native_platform": None,
+                    "subtype": None,  # REQ-2171
                 }
             ],
         },
     ]
     state, _, registered = _state([], [cfg_tbl], [], registered)
 
-    async def _fetch_tables(conn):
+    async def _fetch_tables(conn, **_kw):
         return registered
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)

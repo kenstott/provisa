@@ -1,0 +1,76 @@
+# pgwire (REQ-2167). scripts/conformance/by_design.py.
+#
+# Two groups here name pg_catalog functions, and by_design.groups refuses any other: a function not
+# served is otherwise failed, whatever its family (REQ-2167, amended 2026-10-29, PG_CATALOG FUNCTIONS
+# ARE GAPS, INTERNAL FUNCTIONS).
+
+# Catalog functions (pgwire_catalog_types.py, part 1). Each case keeps PostgreSQL's proof as its
+# reason: an internal argument, or the refusal function_probe.INTERNAL_REFUSAL recognizes. A refusal
+# that names this server's state is no proof, and stays failed.
+
+- group: Internal functions
+  requirement: REQ-2167
+  decision: >-
+    PostgreSQL itself cannot call these from SQL: each takes an internal argument, or runs only
+    from a trigger, an event trigger, binary upgrade or initdb, or is the input or output function
+    of a pseudo-type. They are parts of the server rather than functions a client calls.
+  case: "^catalog function::"
+  reason: "^no call reaches it: "
+
+- group: Not supported
+  requirement: REQ-2167
+  decision: >-
+    Provisa does not model a source's sequences, so nextval, currval and setval are refused by name;
+    lastval is answered from the session's own inserts. regexp_replace with a start position, an
+    occurrence number and flags is refused by name; its other forms are served.
+  case: "^catalog function::(?:(?:nextval|currval|setval)\\(|regexp_replace\\(text, text, text, integer, integer, text\\)$)"
+  reason: "^not served: (?:ERROR:\\s+)?(?:nextval|currval|setval|regexp_replace)\\(\\) has no form "
+
+# Type conversions (pgwire_catalog_types.py, part 3): a statement whose every difference from
+# PostgreSQL is one a design decision makes. Each group names the statements (case) and the only
+# differences they may have (reason): any other difference in the same statement stays a failure.
+
+- group: A source's array column is JSON
+  requirement: REQ-1965
+  decision: >-
+    Semantic SQL has no array type: a source's native array column is registered as JSON, the
+    type every catalog and every wire lists for it, so its value is sent as a JSON array rather
+    than a PostgreSQL array.
+  case: "^type conversion::SELECT c_(int4|text|float8)_array FROM conformance\\.types_fixture$"
+  reason: "^type oid 3802 \\(jsonb\\), PostgreSQL \\d+ \\(_\\w+\\); text '\\[.*\\]', PostgreSQL '\\{.*\\}'; binary 01[0-9a-f]+, PostgreSQL [0-9a-f]+$"
+
+- group: The session's role and database
+  requirement: REQ-588
+  decision: >-
+    current_user and session_user name the role the session acts as, and current_database()
+    the served database (the organization the client named, or provisa): not a PostgreSQL user
+    or database.
+  case: "^type conversion::SELECT (current_user|session_user|current_database\\(\\)) AS v$"
+  reason: "^text '[^']*', PostgreSQL '[^']*'; binary [0-9a-f]*, PostgreSQL [0-9a-f]*$"
+
+- group: The server's version
+  requirement: REQ-579
+  decision: >-
+    The server reports version 14.0.provisa, so a tool that gates features on the version
+    behaves as with PostgreSQL 14: server_version_num is 140000.
+  case: "^type conversion::SELECT pg_catalog\\.current_setting\\('server_version_num'\\) AS v$"
+  reason: "^text '140000', PostgreSQL '\\d+'; binary 313430303030, PostgreSQL [0-9a-f]+$"
+
+- group: An unsized source numeric is the numeric(38,s) registration samples
+  requirement: REQ-1961
+  decision: >-
+    A registered numeric(p,s) column is described with its typmod (PGWIRE SENDS NUMERIC(P,S)).
+    An unsized source numeric registers as numeric(38,s), s the largest scale among its values
+    at registration, so an engine that cannot hold an unbounded numeric reads it exactly: it is
+    described as that numeric(38,s), where PostgreSQL describes an unsized numeric.
+  case: "^type conversion::SELECT c_numeric FROM conformance\\.types_fixture$"
+  reason: "^typmod 2490376, PostgreSQL -1$"
+
+- group: The catalog's bootstrap owner is provisa
+  requirement: REQ-2167
+  decision: >-
+    The pgwire catalog's bootstrap role (oid 10) is named provisa, not postgres:
+    pg_get_userbyid(10) and every owner column answer provisa (THE CATALOG'S BOOTSTRAP OWNER IS
+    PROVISA).
+  case: "^type conversion::SELECT pg_catalog\\.pg_get_userbyid\\(10\\) AS v$"
+  reason: "^text 'provisa', PostgreSQL 'postgres'; binary 70726f76697361, PostgreSQL 706f737467726573$"

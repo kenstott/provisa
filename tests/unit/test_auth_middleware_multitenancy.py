@@ -1085,6 +1085,15 @@ def test_an_unsecured_role_sets_meta_role_is_built_in_the_environment_the_reques
     meta-role was built unbound, in prod's runtime, and the request -- bound to synthetic by
     _OrgRoutingMiddleware -- was refused "unknown role 'meta:...'"."""
     built, runtimes = _meta_built(monkeypatch)
+    from provisa.core.request_context import current_env, current_org
+
+    def ensure(_state, members, quals=()):
+        # Unsecured, the set resolves through the transports' one resolver
+        # (derived_roles.unsecured_acting_role), which builds where the request is bound.
+        built.append((tuple(sorted(members)), (current_org.get(), current_env.get())))
+        return "meta:" + "+".join(sorted(members))
+
+    monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", ensure)
     app = FastAPI()
     app.add_middleware(AuthMiddleware, provider=None, default_org_id="default")
 

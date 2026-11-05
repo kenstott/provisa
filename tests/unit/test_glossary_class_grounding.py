@@ -31,9 +31,10 @@ if TYPE_CHECKING:
     from fastapi import Request
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import glossary_router
 from provisa.api.errors import ApiError
-from provisa.core.env_deploy import _decompose, _existing_ids
+from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
 from provisa.core.env_merge import requirements
 from provisa.core.env_project import project
 from provisa.core.models import Column, Table
@@ -41,13 +42,20 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
     domains,
-    glossary_term_table_refs,
     glossary_terms,
     registered_tables,
     sources,
 )
+from tests.unit.gate_identity import serve_every_column
 
 SCHEMA = "org_default"
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 def _request() -> "Request":
@@ -261,29 +269,12 @@ async def test_a_term_its_author_claimed_is_refused_to_another_curator(control_p
 
 
 @pytest.mark.asyncio
-async def test_the_meta_view_resolves_each_grounding_and_a_table_names_its_class_term(
-    control_plane, monkeypatch
-):
+async def test_the_meta_view_names_each_tables_class_term(control_plane, monkeypatch):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            for name in ("glossary_term_domains", "glossary_term_table_refs", "registered_tables"):
-                await conn.execute(_META_TABLE_VIEWS[name])
-            rows = await conn.fetch(
-                "SELECT term_id, table_id, source_id, schema_name, table_name, domain_id,"
-                " term_domains FROM glossary_term_table_refs_meta WHERE table_name = 'customers'"
-            )
-            assert [tuple(r) for r in rows] == [
-                (
-                    ids["party"],
-                    ids["customers"],
-                    "__derived__",
-                    "s",
-                    "customers",
-                    "sales",
-                    "|sales|",
-                )
-            ]
+            await conn.execute(ONTOLOGY_TABLE_VIEWS["_domains"])
+            await conn.execute(_META_TABLE_VIEWS["registered_tables"])
             classes = dict(
                 tuple(r)
                 for r in await conn.fetch(
@@ -301,20 +292,19 @@ def test_the_meta_schema_reaches_a_terms_tables_and_a_tables_class_term():
     from provisa.api._meta_seed import META_RELATIONSHIPS
 
     edges = {r[0]: r for r in META_RELATIONSHIPS}
-    tables = edges["meta:glossary_terms:tables"]
-    assert (tables[2], tables[5], tables[7], tables[9]) == (
-        "glossary_terms",
+    tables = edges["ontology:_terms:tables"]
+    assert (tables[2], tables[4], tables[5], tables[7], tables[9]) == (
+        "_terms",
+        "class_term_id",
         "one-to-many",
-        "glossary_term_table_refs",
+        "registered_tables",
         "tables",
     )
-    assert edges["meta:glossary_term_table_refs:registered_tables"][9] == "table"
-    assert edges["meta:glossary_term_table_refs:term"][9] == "term"
     class_term = edges["meta:registered_tables:class_term"]
     assert (class_term[3], class_term[5], class_term[7], class_term[9]) == (
         "class_term_id",
         "many-to-one",
-        "glossary_terms",
+        "_terms",
         "classTerm",
     )
 
@@ -331,35 +321,38 @@ async def test_an_environment_tree_carries_a_tables_class_term_and_deploys_it_ba
         async with db.acquire() as conn:
             tree = await project(conn, SCHEMA)
             existing = await _existing_ids(conn, SCHEMA)
+            # The roles the tree holds, as a deploy reads them (REQ-2155: they name their parents).
+            roles = await _roles_after(conn, SCHEMA, tree)
         [path] = [p for p, b in tree.items() if b.get("table_name") == "customers"]
         term_path = next(p for p, b in tree.items() if b.get("name") == "party")
         assert tree[path]["class_term"] == [{"term": term_path}]
         assert term_path in requirements(path, tree[path], tree)
-        rows = _decompose(tree, existing, frozenset())
-        assert [
-            r for r in rows["glossary_term_table_refs"] if r["table_id"] == ids["customers"]
-        ] == [{"table_id": ids["customers"], "term_id": ids["party"], "derived": False}]
+        rows = _decompose(tree, existing, roles)
+        [row] = [r for r in rows["registered_tables"] if r["id"] == ids["customers"]]
+        assert (row["class_term_id"], row["class_term_derived"]) == (ids["party"], False)
 
 
 # --- grounded to a table (REQ-1387): the admission rule and the derived domains ---------------
 
 
 @pytest.mark.asyncio
-async def test_a_term_grounded_only_in_a_table_is_grounded_and_live_once_defined(
+async def test_a_term_grounded_only_in_a_table_is_grounded_and_conducts_to_its_neighbour(
     control_plane, monkeypatch
 ):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         async with db.acquire() as conn:
             assert ids["party"] not in await glossary_repo.grounded_ids(conn)
-            await glossary_repo.add_edge(conn, ids["ledger"], ids["party"], "KIND_OF")
+            # party is a kind of ledger: grounding runs down from ledger to party.
+            await glossary_repo.add_edge(conn, ids["party"], ids["ledger"], "KIND_OF")
             await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
             grounded = await glossary_repo.grounded_ids(conn)
             # Grounded through the table, and conducted over the edge to its neighbour.
             assert {ids["party"], ids["ledger"]} <= grounded
-            live = await glossary_repo.live_ids(conn)
-            assert ids["ledger"] in live and ids["party"] not in live  # party has no definition
+            grounding = await glossary_repo.grounding(conn)
+            # party is the data end, so its draft status stands between nothing (REQ-1387)
+            assert grounding[ids["ledger"]] == grounding[ids["party"]] == "grounded"
             # retired, party's table goes to its successor and party conducts no more (REQ-2144)
             client = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
             await glossary_repo.retire_term(
@@ -391,9 +384,9 @@ async def test_a_class_terms_domains_derive_from_the_tables_it_grounds(control_p
             assert await glossary_repo.unground_table(conn, proposed, staff.id)
             await glossary_repo.ground_table(conn, ids["party"], staff.id)
             assert (await glossary_repo.term_domains(conn))[ids["party"]] == {"hr"}
-            await conn.execute(_META_TABLE_VIEWS["glossary_term_domains"])
+            await conn.execute(ONTOLOGY_TABLE_VIEWS["_domains"])
             rows = await conn.fetch(
-                "SELECT domain_id FROM glossary_term_domains_meta WHERE term_id = $1",
+                "SELECT domain_id FROM _domains_ontology WHERE term_id = $1",
                 ids["party"],
             )
             assert [r[0] for r in rows] == ["hr"]
@@ -406,15 +399,15 @@ async def test_the_meta_terms_view_counts_a_table_as_grounding(control_plane, mo
             await glossary_repo.set_definition(conn, ids["party"], "Someone we deal with.")
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            for name in ("glossary_term_domains", "glossary_terms"):
-                await conn.execute(_META_TABLE_VIEWS[name])
+            for name in ("_domains", "_terms"):
+                await conn.execute(ONTOLOGY_TABLE_VIEWS[name])
             rows = await conn.fetch(
-                "SELECT name, is_rooted, grounded, live FROM glossary_terms_meta"
+                "SELECT name, is_rooted, grounding, status FROM _terms_ontology"
                 " WHERE name IN ('party', 'ledger') ORDER BY name"
             )
             assert [tuple(r) for r in rows] == [
-                ("ledger", False, False, False),
-                ("party", True, True, True),
+                ("ledger", False, "not_grounded", "draft"),
+                ("party", True, "grounded", "draft"),
             ]
 
 
@@ -490,9 +483,9 @@ async def test_the_check_reports_a_class_holding_non_key_refs_and_changes_nothin
             note = await glossary_repo.get_term_by_ref(conn, ids["customers"], "note")
             assert note is not None
             await conn.execute_core(  # planted past the rules: note made customers' class
-                glossary_term_table_refs.update()
-                .where(glossary_term_table_refs.c.table_id == ids["customers"])
-                .values(term_id=note["id"])
+                registered_tables.update()
+                .where(registered_tables.c.id == ids["customers"])
+                .values(class_term_id=note["id"])
             )
         found = await glossary_router.list_findings(_request())
         [entry] = [
@@ -567,6 +560,8 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "status_reason": None,
                 "retire_on": None,
                 "retired": False,
+                "approved": True,
+                "export_excluded": False,
             },
             {
                 "id": 2,
@@ -578,6 +573,8 @@ def test_the_export_roots_a_class_term_by_a_published_table():
                 "status_reason": None,
                 "retire_on": None,
                 "retired": False,
+                "approved": True,
+                "export_excluded": False,
             },
         ],
         "refs": [],
@@ -675,7 +672,7 @@ async def test_a_config_states_a_tables_class_term_and_the_store_exports_it(cfg_
         await apply_config(_config(class_term="sale"), conn)
         assert await _class_term_of_orders(conn) == "sale"
         [sale] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "sale"]
-        assert sale["live"]
+        assert sale["grounding"] == "grounded"
 
 
 @pytest.mark.asyncio
@@ -865,10 +862,7 @@ async def _class_of(conn, table: str) -> "str | None":
     row = (
         await conn.execute_core(
             select(glossary_terms.c.name)
-            .join(
-                glossary_term_table_refs, glossary_term_table_refs.c.term_id == glossary_terms.c.id
-            )
-            .join(registered_tables, glossary_term_table_refs.c.table_id == registered_tables.c.id)
+            .join(registered_tables, registered_tables.c.class_term_id == glossary_terms.c.id)
             .where(
                 (registered_tables.c.table_name == table) & (registered_tables.c.schema_name == "m")
             )

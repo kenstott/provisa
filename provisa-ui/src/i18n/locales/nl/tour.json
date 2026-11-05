@@ -79,16 +79,16 @@
       },
       "step2": {
         "title": "Registreer een bron",
-        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 73 connectoren."
+        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 77 connectoren."
       },
       "step3": {
-        "title": "73 brontypen, 14 categorieën",
+        "title": "77 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Abonnementen, RDBMS, Cloud-datawarehouse, Analytics, Data lake, NoSQL, Code-resolvers, Grafen, Bestanden, API, Streaming, Enterprise, Datakwaliteit, Overig</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
       "stepBuildSource": {
-        "title": "Een bron, live toegevoegd",
-        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
-        "acting": "Bron toevoegen"
+        "title": "Een bron, ingevuld",
+        "description": "De kiezer ging open met zijn hele lijst, <strong>Parquet File</strong> werd gekozen en het formulier werd ingevuld met het adres van het bestand (<code>supplies.parquet</code>). Meer heeft een bestandsbron niet nodig. Dit is alleen een blik op het formulier: Volgende drukt op <strong>Annuleren</strong> en er wordt niets opgeslagen.",
+        "acting": "Bron invullen"
       },
       "step4": {
         "title": "Alles wordt een tabel",
@@ -300,7 +300,7 @@
       },
       "stepPublish": {
         "title": "Publiceren naar de tools van je organisatie",
-        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, Atlan en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
+        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
       },
       "stepRelsAgents": {
         "title": "Relaties en AI-agents",
@@ -872,13 +872,9 @@
         "title": "Waar een martkolom vandaan komt",
         "description": "De lineage van de kolommen van de mart: elke kolom teruggevolgd via de point-in-time-view en de satellites naar het bronveld waar hij vandaan komt."
       },
-      "datavaultAnalyst": {
-        "title": "De weergave van een analist",
-        "description": "Vervolgens draait de SQL-verkenner als de Europese analist. Persoonsgegevens staan in de satellieten, dus daar worden ze beheerd."
-      },
       "datavaultMasked": {
         "title": "Gemaskeerd waar de persoonsgegevens zijn",
-        "description": "Als analist toont de CRM-satelliet alleen Europese klanten. Hun contactpersonen worden achtergehouden, en de namen in hun e-mails en de cijfers van hun telefoonnummers zijn verborgen. De hubs en links blijven leesbaar, dus de analist kan er nog steeds op koppelen."
+        "description": "De SQL-verkenner draait nu als de Europese analist. Persoonsgegevens staan in de satellieten, dus daar worden ze beheerd. Als analist toont de CRM-satelliet alleen Europese klanten. Hun contactpersonen worden achtergehouden, en de namen in hun e-mails en de cijfers van hun telefoonnummers zijn verborgen. De hubs en links blijven leesbaar, dus de analist kan er nog steeds op koppelen."
       },
       "datavaultRecap": {
         "title": "Wat u zag",
@@ -937,16 +933,32 @@
         "description": "U zag de eigen data van de verzekeraar, per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
       },
       "retailScenario": {
-        "title": "Eén concern, twee regio's",
+        "title": "Een verhaal van twee regio's",
         "description": "Een retailconcern runt een EU- en een US-dochteronderneming als één bedrijf. Kan dat zonder de GDPR te schenden? Elke dochteronderneming houdt een eigen database: dit is die van de EU, met haar klanten van het loyaliteitsprogramma, hun toestemming voor marketing, bestellingen, personeel en de mail die het personeel buiten het concern stuurt."
       },
+      "retailPlatformRegions": {
+        "title": "Regio's beginnen in één configuratie",
+        "description": "De configuratie van het platform declareert de regio's, hier de EU en de US, en kent ze toe aan de organisatie. Elke regio heeft haar eigen gegevensverwerking: haar eigen engine en haar eigen opslag. Het doel van de EU is dataresidentie, voor klantgegevens die in de Europese Unie moeten blijven. In deze sandbox kunt u deze pagina lezen, maar niet wijzigen."
+      },
+      "retailPurposes": {
+        "title": "Wat een doel zegt",
+        "description": "De legenda legt elk doel uit. Een doel zegt waarom een regio bestaat. Het verplaatst geen gegevens en beslist niet wie ze leest. Dat doen twee lagen, en de rondleiding toont elk ervan: homing, de regels van de engine over waar gegevens staan, en beveiliging, de regels van de data steward over wie wat leest."
+      },
+      "retailOrgRegions": {
+        "title": "De regio's en opslag van de organisatie",
+        "description": "De organisatie heeft beide regio's. Elke rij noemt de opslag die daar wordt gebruikt: de engine van de regio, en waar haar replica's, views, cache, buildstatus en logboek worden bewaard. EU-gegevens worden verwerkt met de eigen opslag van de EU."
+      },
+      "retailEngines": {
+        "title": "Eén engine per regio",
+        "description": "Federatie heeft een tabblad voor elke regio, en elke regio draait haar eigen engine. Eén configuratie geeft dus twee omgevingen voor gegevensverwerking. U bent op de US-node. Die leest EU-gegevens alleen via de opslag van de EU, nooit uit een eigen kopie."
+      },
       "retailRegions": {
-        "title": "Eén definitie van elke regio",
-        "description": "De database van de US-dochteronderneming, gevestigd in de US. Het model declareert beide regio's en legt één keer vast waar elke tabel staat en welke views waar worden gebouwd. Een tweede Provisa-node draait in de EU: die kopieert de EU-tabellen naar de eigen opslag van de EU en bouwt daar de EU-views. U zit op de US-node, die EU-gegevens alleen uit die EU-opslag leest, zodat elke grensoverschrijdende regel op één plek wordt toegepast."
+        "title": "Homing: elke bron noemt haar thuisregio",
+        "description": "De database van de US-dochteronderneming is gevestigd in de US, die van de EU-dochteronderneming in de EU. Homing is de regel van de engine over waar gegevens staan. De replica's en cache van een gevestigde tabel blijven in haar thuisregio, en andere regio's bereiken haar alleen via die regio."
       },
       "retailEuCustomers": {
         "title": "Een EU-tabel, gevestigd in de EU",
-        "description": "De EU-klanten. De tabel noemt de EU als haar regio: haar rijen worden alleen naar de opslag van de EU gekopieerd en alleen daar berekend. Lezers elders krijgen ze via de views van de EU, of helemaal niet."
+        "description": "De EU-klanten. De regio van de tabel is de EU, dus haar replica's en cache staan alleen in de opslag van de EU. Homing beslist waar de rijen staan. Het beslist niet wie ze mag lezen. Dat is de volgende laag."
       },
       "retailRequests": {
         "title": "Verzoeken van betrokkenen",
@@ -957,12 +969,12 @@
         "description": "Een verzoek wordt op e-mailadres gekoppeld aan de klanten van elke dochteronderneming. Zo vindt één verzoek dezelfde persoon in beide."
       },
       "retailAsAnalyst": {
-        "title": "Als concernanalist",
-        "description": "Vervolgens schakelt de rolkiezer naar <strong>group_analyst</strong>, die in de US aan de concernrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
+        "title": "De regels van de data steward, als groepsanalist",
+        "description": "De tweede laag is beveiliging: de regels van de data steward beslissen wat elke lezer krijgt, naar rol en naar de regio van de lezer. Ze worden toegepast in de thuisregio, voordat er iets uit vertrekt. Vervolgens schakelt de rolkiezer over naar <strong>group_analyst</strong>, die in de US aan groepsrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
       },
       "retailGroupView": {
         "title": "Concernrapportage, EU-klanten gepseudonimiseerd",
-        "description": "Elke klant van het loyaliteitsprogramma van het concern. US-klanten verschijnen zoals ze zijn; EU-klanten verschijnen onder een pseudoniem dat de EU heeft berekend, zonder naam of adres. Het EU-deel is uit de opslag van de EU gelezen, en de registratie van deze query noemt de EU als de regio die antwoordde."
+        "description": "Elke loyaliteitsklant van de groep. US-klanten verschijnen zoals ze zijn. EU-klanten verschijnen onder een pseudoniem, omdat de regel van de steward zegt dat een lezer buiten de EU geen naam of adres krijgt. De EU paste die regel toe voordat haar rijen vertrokken, en het logboek van deze query noemt de EU als de regio die antwoordde."
       },
       "retailGroupGraphql": {
         "title": "Hetzelfde, in GraphQL",
@@ -972,13 +984,9 @@
         "title": "Terug naar alle rollen",
         "description": "Vervolgens schakelt de rolkiezer terug naar <strong>All</strong>."
       },
-      "retailAsMarketing": {
-        "title": "Als EU-marketing",
-        "description": "Hierna draait de SQL-verkenner als marketing_eu."
-      },
       "retailAudience": {
         "title": "Alleen klanten die toestemming gaven",
-        "description": "EU-marketing leest de EU-klanten die toestemming voor marketing gaven, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
+        "description": "De SQL-verkenner draait nu als <strong>marketing_eu</strong>. De regel van de steward laat EU-marketing de EU-klanten lezen die met marketing instemden, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
       },
       "retailAsDpo": {
         "title": "Als functionaris gegevensbescherming",
@@ -1006,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "De afzender, onthuld in de EU",
-        "description": "Dezelfde wachtrij. De maskeringslijst van de afzenderkolom onthult de afzender alleen aan een beoordelaar die ook region__eu heeft; alle anderen lezen hem achtergehouden. Het is één toekenning, reviewer en region__eu, zonder een rol die voor de combinatie is gemaakt."
+        "description": "Dezelfde wachtrij. Het masker van de steward op de afzenderkolom toont de afzender alleen aan een beoordelaar wiens toegewezen regio de EU is (region__eu). Alle anderen lezen hem achtergehouden. Wat een lezer krijgt, hangt af van zijn regio en van zijn rol, en er is geen rol voor de combinatie gemaakt."
       },
       "retailAsAdmin": {
         "title": "Terug naar elke rol",
@@ -1022,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Wat u zag",
-        "description": "Eén model definieerde beide regio's: waar elke tabel staat, welke views waar worden gebouwd, en wie wat leest. De concernrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die toestemming gaven, en een inzageverzoek en een wissing waren elk één query. De insidercontrole onthulde een afzender alleen in de EU, en elke lezing staat in één registratie."
+        "description": "Eén configuratie kende twee regio's toe, elk met een eigen engine en eigen opslag: twee omgevingen voor gegevensverwerking. Homing hield de EU-tabellen, hun replica's en hun cache in de EU. De regels van de data steward bepaalden wat elke lezer kreeg, naar rol en naar de regio van de lezer, en de EU paste ze toe voordat er iets vertrok. Groepsrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die instemden, inzage en wissing waren elk één query, de afzender werd alleen aan een beoordelaar in de EU getoond, en elke leesactie staat in één logboek."
       },
       "provisioningScenario": {
         "title": "Waar deze demo over gaat",
@@ -1078,7 +1086,7 @@
       },
       "provisioningClose": {
         "title": "Een leesactie buiten het venster",
-        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent."
+        "description": "close_by_category, de afsluiting van finance, mag alleen van 02:00 tot 02:15 UTC worden gelezen. Daarbuiten wordt deze leesactie geweigerd, met de naam van de view en wanneer het venster weer opent. Binnen het venster geeft ze in plaats daarvan de afsluiting terug."
       },
       "provisioningRest": {
         "title": "De downloads via REST",
@@ -1140,13 +1148,9 @@
         "title": "Relaties, één keer gedeclareerd",
         "description": "<strong>OF_PRODUCT</strong> verbindt een bestelregel in PostgreSQL met het product in MongoDB. Samen met PLACED_BY, HAS_ITEM en SHIPPED_AS zijn deze vier relaties één keer gedeclareerd, en de app en de BI-tool lezen er allebei doorheen."
       },
-      "storefrontAsCustomer": {
-        "title": "Aangemeld als klant",
-        "description": "De app stuurt haar queries als de rol <strong>customer</strong>, waarvan de rijfilters elk antwoord beperken tot de eigen bestellingen van de ingelogde klant. Vervolgens schakelt de rolkiezer naar <strong>customer</strong>, zodat de query hieronder precies zo draait als de app hem draait."
-      },
       "storefrontScreen": {
         "title": "De ene query van de app",
-        "description": "Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. Uitgevoerd als <strong>customer</strong> geeft ze zeven bestellingen, allemaal van de aangemelde klant."
+        "description": "De app stuurt haar queries als de rol <strong>customer</strong>, waarvan de rijfilters elk antwoord beperken tot de eigen bestellingen van de ingelogde klant. De rolkiezer staat nu op <strong>customer</strong>. Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. Uitgevoerd als <strong>customer</strong> geeft ze zeven bestellingen, allemaal van de aangemelde klant."
       },
       "storefrontApp": {
         "title": "Het scherm dat ze vult",
@@ -1156,13 +1160,9 @@
         "title": "Dezelfde bestellingen via JSON:API",
         "description": "Een client die JSON:API verkiest, vraagt dezelfde bestellingen op, nog steeds als de klant, met hun regels en zendingen erbij. Elke bestelling verwijst naar de regels en de zending die ze bevat, en het id van een regel is de samengestelde sleutel."
       },
-      "storefrontAnalyst": {
-        "title": "Nu als analist",
-        "description": "De BI-kant leest als <strong>analyst</strong>: ze ziet elke bestelling, maar geen e-mail van een klant. Vervolgens schakelt de kiezer voor uitvoeren als naar <strong>analyst</strong>."
-      },
       "storefrontAnalystSql": {
         "title": "De SQL van de analist",
-        "description": "Te late zendingen per regio en vervoerder, over dezelfde tabellen en relaties. <strong>a_customer</strong> toont een e-mailadres zoals de analist het leest: gemaskeerd."
+        "description": "De BI-kant leest als <strong>analyst</strong>: ze ziet elke bestelling, maar geen e-mail van een klant. De SQL-verkenner draait nu als <strong>analyst</strong>. Te late zendingen per regio en vervoerder, over dezelfde tabellen en relaties. <strong>a_customer</strong> toont een e-mailadres zoals de analist het leest: gemaskeerd."
       },
       "storefrontBi": {
         "title": "Het BI-dashboard",
@@ -1188,13 +1188,9 @@
         "title": "De tabellen, zoals de app ze kende",
         "description": "De vier tabellen kwamen over met de namen die de app gebruikt. <strong>customers</strong> behoudt Hasura's aangepaste namen <strong>givenName</strong> en <strong>familyName</strong>, de producttabel behoudt zijn rootnaam <strong>catalog</strong>, en elke kolom draagt de rollen die haar mogen lezen, uit de select-rechten."
       },
-      "hasuramigrationAsAna": {
-        "title": "Aangemeld als Ana",
-        "description": "Ana is klant. Haar token bevatte <strong>x-hasura-user-id: 1</strong>, en Provisa leest die claim als de sessiewaarde <strong>hasura_user_id</strong>, waarmee de geïmporteerde rijregels vergelijken. Vervolgens schakelt de rolkiezer naar <strong>ana</strong>, zodat de queries hieronder precies zo draaien als de webwinkel ze voor haar draait."
-      },
       "hasuramigrationMyOrders": {
         "title": "De bestelgeschiedenis, hervormd",
-        "description": "De bestelgeschiedenis-query van de webwinkel, eenmaal hervormd voor Provisa: het rootveld draagt zijn domein, de kolomnamen volgen de conventie van Provisa en order_by is een lijst. De relaties <strong>items</strong> en <strong>product</strong> behielden hun Hasura-namen. Als Ana uitgevoerd antwoordt hij met haar vier bestellingen en die van niemand anders."
+        "description": "Ana is klant. Haar token bevatte <strong>x-hasura-user-id: 1</strong>, en Provisa leest die claim als de sessiewaarde <strong>hasura_user_id</strong>, waarmee de geïmporteerde rijregels vergelijken. De rolkiezer staat nu op <strong>ana</strong>. De bestelgeschiedenis-query van de webwinkel, eenmaal hervormd voor Provisa: het rootveld draagt zijn domein, de kolomnamen volgen de conventie van Provisa en order_by is een lijst. De relaties <strong>items</strong> en <strong>product</strong> behielden hun Hasura-namen. Als Ana uitgevoerd antwoordt hij met haar vier bestellingen en die van niemand anders."
       },
       "hasuramigrationProfile": {
         "title": "Een lezing op sleutel",
@@ -1208,21 +1204,13 @@
         "title": "Nog één relatie",
         "description": "<strong>BUYS_FOR</strong> koppelt een klant aan zijn Salesforce-account, goedgekeurd zoals de relaties die de import meebracht. Vanaf hier is het account één veld verwijderd van elke klant, in elke interface, onder de regels van elke rol."
       },
-      "hasuramigrationAsSupport": {
-        "title": "De helpdesk",
-        "description": "Supportmedewerkers kunnen elke bestelling en elke klant lezen, zoals hun Hasura-rechten toestonden. Vervolgens schakelt de rolkiezer naar <strong>support</strong>, en het bestelscherm van de supportafdeling draait zoals zij het gebruiken."
-      },
       "hasuramigrationSupportScreen": {
         "title": "Bestellingen met hun accounts",
-        "description": "Het bestelscherm van de helpdesk, hervormd, met iets nieuws: naast de klant van elke bestelling het account uit Salesforce, de branche en de stad, in hetzelfde verzoek. Klanten zonder account tonen er geen."
-      },
-      "hasuramigrationAnalyst": {
-        "title": "De analist",
-        "description": "Analisten kunnen besteltotalen en accountkoppelingen lezen, maar geen namen of e-mails, en nooit geannuleerde bestellingen. Dat zijn de rijregel en de kolomlijsten die de import overnam. Vervolgens schakelt de rolkiezer naar <strong>analyst</strong>."
+        "description": "Supportmedewerkers kunnen elke bestelling en elke klant lezen, zoals hun Hasura-rechten toestonden. De rolkiezer staat nu op <strong>support</strong>. Het bestelscherm van de helpdesk, hervormd, met iets nieuws: naast de klant van elke bestelling het account uit Salesforce, de branche en de stad, in hetzelfde verzoek. Klanten zonder account tonen er geen."
       },
       "hasuramigrationByIndustry": {
         "title": "Omzet per branche",
-        "description": "Eén SQL-statement over de winkel en Salesforce: omzet per branche van het account achter elke bestelling. De regels van de analist gelden zoals in GraphQL: geannuleerde bestellingen blijven buiten beschouwing en er wordt geen naam of e-mailadres gelezen."
+        "description": "Analisten kunnen besteltotalen en accountkoppelingen lezen, maar geen namen of e-mails, en nooit geannuleerde bestellingen. Dat zijn de rijregel en de kolomlijsten die de import overnam. De SQL-verkenner draait nu als <strong>analyst</strong>. Eén SQL-statement over de winkel en Salesforce: omzet per branche van het account achter elke bestelling. De regels van de analist gelden zoals in GraphQL: geannuleerde bestellingen blijven buiten beschouwing en er wordt geen naam of e-mailadres gelezen."
       },
       "hasuramigrationRecap": {
         "title": "Wat je zag",
@@ -1332,13 +1320,9 @@
         "title": "Wat een analist ziet",
         "description": "Eenmaal aangemeld ziet een analist van bieder A wat aan bidder_a is toegekend: de geaggregeerde views, de profielen, de gemaskeerde steekproef en de records van de verkoper zonder één klantidentiteit. Er is geen klantnaam te lezen, en ook geen bedrijfs- of dealnaam uit het CRM."
       },
-      "dataroomBidder": {
-        "title": "Nu als bieder A",
-        "description": "De volgende statements draaien als <strong>bidder_a</strong>, precies zoals die van de analisten."
-      },
       "dataroomProfile": {
         "title": "Het profiel van de facturen",
-        "description": "Elke kolom van de factuurtabel zoals de profiler die aantrof: rijen, nulls, unieke waarden en bereik. Een bieder leert hoe volledig de records zijn zonder er één te lezen. Hier zijn sommige facturen nooit betaald."
+        "description": "Deze statements draaien als <strong>bidder_a</strong>, precies zoals die van de analisten. Elke kolom van de factuurtabel zoals de profiler die aantrof: rijen, nulls, unieke waarden en bereik. Een bieder leert hoe volledig de records zijn zonder er één te lezen. Hier zijn sommige facturen nooit betaald."
       },
       "dataroomCounts": {
         "title": "Klantaantallen",
@@ -1406,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Elke gevoelige kolom is gedekt",
-        "description": "Dezelfde controle, nu uit het model gelezen: elke gevoelige kolom, haar tags en of een nepwaarde die dekt. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+        "description": "Gevoelige dekking is een standaardrapport op de pagina Rapporten: elke gevoelige kolom, haar tags en of een nepwaarde die dekt, nu uit het model gelezen. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+      },
+      "testdataPollyProposes": {
+        "title": "Een nepwaarde, voorgesteld uit het profiel",
+        "description": "Polly krijgt de vraag welke nepwaarde het zou voorstellen voor customers.email. Het leest de laatste profielrun van de kolom, ziet dat de waarden e-mailadressen zijn en stelt de e-mail-nepwaarde voor. Het model declareert er al een, dus het voorstel toetst die keuze aan de data. Er wordt niets opgeslagen tot iemand daarvoor kiest."
       },
       "testdataProd": {
         "title": "Productie: de echte rijen",
@@ -1676,41 +1664,25 @@
         "title": "Bij elke afsluiting opgebouwd",
         "description": "De dagafsluitingstotalen zijn een view die in het warehouse wordt gematerialiseerd volgens de kalender van de bank, die om 18:00 Londense tijd sluit. De view is één GROUP BY over de ene tabel van het grootboek, dus de opbouw draait volledig in het grootboek en alleen de gegroepeerde rijen komen terug. Ze erft de versies van het grootboek en heeft geen eigen historie-instellingen nodig. Elke dag is bij zijn eigen afsluiting vastgelegd. 1 en 2 oktober zijn later opnieuw vastgelegd, toen hun correcties binnenkwamen."
       },
-      "bankingAsOps": {
-        "title": "Als operations",
-        "description": "De volgende query draait als operations, dat volgens de eigen regels van het grootboek in boekingen kijkt. Het ziet geen boeking op een personeelsrekening, en elke tegenpartij blijft verborgen."
-      },
       "bankingDashboard": {
         "title": "Het dashboard, via GraphQL",
-        "description": "De totalen van Londen voor 1 oktober, elk met de boekingen erachter genest. Eén verzoek leest de totalen uit het warehouse en de boekingen uit het grootboek, verbonden via de relatie die u net zag."
-      },
-      "bankingAsAnalyst": {
-        "title": "Als rapportageanalist",
-        "description": "De SQL hierna draait als de rapportage-analisten van de bank. Zij lezen de eindedagtotalen en de vijf grootboekkolommen waaruit die totalen worden opgebouwd: boekdatum, filiaal, product, valuta en bedrag. Een rekening, een tegenpartij of een houder zien zij nooit."
+        "description": "Deze query draait als operations, dat volgens de eigen regels van het grootboek in boekingen kijkt. Het ziet geen boeking op een personeelsrekening, en elke tegenpartij blijft verborgen. De totalen van Londen voor 1 oktober, elk met de boekingen erachter genest. Eén verzoek leest de totalen uit het warehouse en de boekingen uit het grootboek, verbonden via de relatie die u net zag."
       },
       "bankingDay": {
         "title": "De totalen van één dag",
-        "description": "1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
-      },
-      "bankingAsReported": {
-        "title": "Zoals gerapporteerd bij de afsluiting",
-        "description": "Vastgelegd op staat nu op de afsluiting van 1 oktober. Een BI-tool doet hetzelfde met SET provisa.as_recorded in zijn pgwire-sessie. Vastgelegd op filtert de transacties op updated_at en de dagtotalen op de afsluiting van elke dag, zodat u de cijfers ziet die de bank die avond rapporteerde."
+        "description": "Deze SQL draait als de rapportage-analisten van de bank. Zij lezen de eindedagtotalen en de vijf grootboekkolommen waaruit die totalen worden opgebouwd: boekdatum, filiaal, product, valuta en bedrag. Een rekening, een tegenpartij of een houder zien zij nooit. 1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
       },
       "bankingReported": {
         "title": "Wat er gerapporteerd werd",
-        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
-      },
-      "bankingAsRestated": {
-        "title": "Zoals sindsdien gecorrigeerd",
-        "description": "Vastgelegd op schuift naar de afsluiting van 12 oktober, de laatste van de dertig dagen. Tegen die tijd zijn de terugboeking van 6 oktober en de laat ingevoerde handel van 7 oktober allebei vastgelegd."
+        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober: het argument as_recorded van de view leest ze zoals ze toen waren vastgelegd, en een BI-tool via pgwire doet hetzelfde met SET provisa.as_recorded. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
       },
       "bankingRestated": {
         "title": "Wat het nu zegt",
-        "description": "Dezelfde SQL. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
+        "description": "Dezelfde SQL met as_recorded op de afsluiting van 12 oktober, de laatste van de dertig dagen. Het totaal van Londen voor 1 oktober bevat de teruggedraaide betaling niet meer, en het USD-totaal van Edinburgh voor 2 oktober bevat nu de late handel. De versies die bij elke afsluiting zijn gerapporteerd, blijven naast de gecorrigeerde bewaard, en recorded_at toont wanneer elke versie is vastgelegd."
       },
       "bankingAsOpsSql": {
         "title": "Terug naar operations",
-        "description": "De explorer draait nu als operations, nog steeds vastgelegd op de afsluiting van 12 oktober."
+        "description": "De explorer draait nu als operations."
       },
       "bankingPostings": {
         "title": "De boekingen achter een totaal",
@@ -1727,6 +1699,239 @@
       "bankingAsAdmin": {
         "title": "Weer als beheerder",
         "description": "Het dashboard is wat operations ziet. De rest van de rondleiding is weer als beheerder, en elke volgende instructie noemt de rol waarmee ze draait."
+      },
+      "groupexposureScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een Praagse bank leent aan bedrijven en legt van elk bedrijf de eigenaar vast met diens Legal Entity Identifier (LEI). EU-regels beperken wat zij mag lenen aan één klant, of aan een groep bedrijven die één eigenaar beheerst, tot 25% van haar tier 1-kapitaal. De vraag: bij welke groepen zit de bank boven die grens? Haar boeken noemen de eigenaar van elke kredietnemer, niet van wie die eigenaar is. De bank, haar kredietnemers en haar leningen zijn verzonnen; de concerns die hen bezitten zijn echt."
+      },
+      "groupexposureJoin": {
+        "title": "Gekoppeld via de LEI",
+        "description": "De eigenarentabel van de bank en de tabellen uit Wikidata delen de LEI van de eigenaar, en deze relaties koppelen ze. De gegevens van de bank blijven in haar database en die van Wikidata in de replica; de koppeling gebeurt in de query."
+      },
+      "groupexposureAnswer": {
+        "title": "Het antwoord in SQL",
+        "description": "De view group_exposure brengt elke faciliteit via de LEI van de eigenaar en Wikidata onder bij het concern van de kredietnemer. De concerns Veolia en Vinci komen elk boven 25% van het tier 1-kapitaal, en een joint venture van Veolia en EPH telt bij beide mee. Noch de boeken van de bank noch Wikidata laten dat alleen zien. De kredietnemers en hun leningen zijn verzonnen."
+      },
+      "groupexposureExample": {
+        "title": "Het antwoord in GraphQL",
+        "description": "Dezelfde view in GraphQL: de concerns waaraan de bank het meest leent, hun kredietnemers, wat is toegezegd en of elk boven de grens zit."
+      },
+      "groupexposureRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "Het leningenboek van een verzonnen bank en openbare linked data uit Wikidata, via LEI gekoppeld in één beheerst model. De eigendomsketens uit Wikidata maken van veel kleine leningen een paar grote groepsblootstellingen, en het antwoord wordt geleverd in SQL, GraphQL en REST."
+      },
+      "groupexposureWikidata": {
+        "title": "Van wie de eigenaren zijn, uit Wikidata",
+        "description": "Wikidata, de openbare kennisgraaf, legt van elk bedrijf de LEI en de moederorganisatie vast. Deze bron leest dat via de SPARQL-querydienst van Wikidata. De tabellen zijn één keer geladen, toen de demo werd gebouwd, dus de demo roept Wikidata nooit aan terwijl u hem gebruikt."
+      },
+      "groupexposureFacilities": {
+        "title": "De kredietfaciliteiten van de bank",
+        "description": "Elke termijnlening, doorlopende kredietfaciliteit en garantie die de bank heeft verstrekt, met de kredietnemer, wat is toegezegd en wat is opgenomen. De grens telt wat is toegezegd."
+      },
+      "groupexposureGroups": {
+        "title": "Het concern van elke eigenaar",
+        "description": "Voor elke eigenaar die de bank vastlegt, het bedrijf bovenaan de keten van moederorganisaties in Wikidata, gevonden met één SPARQL-eigenschapspad. Wikidata weet dat een Tsjechische holding bij Veolia of E.ON hoort, ook al weten de boeken van de bank dat niet."
+      },
+      "groupexposureTerms": {
+        "title": "In gewone woorden",
+        "description": "De woordenlijst legt de termen uit waarmee een risicomanager werkt: grote blootstelling, tier 1-kapitaal, Legal Entity Identifier en moederorganisatie. Een groep verbonden cliënten is een set bedrijven die één risico vormen omdat één ervan de andere beheerst."
+      },
+      "groupexposureAlone": {
+        "title": "Alleen de boeken",
+        "description": "De eigen blootstelling van elke kredietnemer, zoals de boeken van de bank die zien. De grootste ligt onder 10% van het tier 1-kapitaal, dus geen enkele kredietnemer komt in de buurt van de grens van 25%."
+      },
+      "groupexposureRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint, hier gegroepeerd op of een concern boven de grens zit en op de server opgeteld, klaar voor een risicorapport of een spreadsheet."
+      },
+      "agentdataScenario": {
+        "title": "Geef een agent je data",
+        "description": "Een retailer wil een AI-agent op zijn orderdata, beperkt tot wat de persoon voor wie hij handelt mag zien. De agent bereikt de data via de MCP-server van Provisa. De MCP-verkenner, zo meteen, toont precies wat zo'n externe agent ziet. Polly is daarentegen de assistent voor het werken in Provisa zelf. Dit is de orderdatabase van de retailer, live gelezen."
+      },
+      "agentdataCustomers": {
+        "title": "Wie welke klanten mag zien",
+        "description": "De klantentabel draagt de regels: een supportmedewerker West leest alleen de klanten in het westen en hun orders, met gemaskeerde e-mailadressen en zonder prijzen. De BI-analist leest elke regio en wat de orders opbrachten, maar geen enkel e-mailadres."
+      },
+      "agentdataSupportAsks": {
+        "title": "De vraag van de supportmedewerker",
+        "description": "De agent handelt als de rol in de kopregel, nu de supportmedewerker West, zodat elke toolaanroep die hij doet als die rol draait. De agent vindt de tabellen, schrijft SQL en voert het uit met MCP-tools, die tijdens het draaien worden getoond. Alleen de klanten in het westen komen terug, en hun e-mailadressen komen gemaskeerd binnen: meer krijgt de rol niet."
+      },
+      "agentdataExplain": {
+        "title": "Wat er echt draaide",
+        "description": "De run_sql-aanroep van de agent, geopend: de opdracht die hij stuurde, en dan de opdracht die voor zijn rol draaide. Provisa voegde het rijfilter West en de e-mailmaskering toe. De agent schreef geen van beide en hoort er nooit over."
+      },
+      "agentdataOutOfReach": {
+        "title": "Een vraag buiten bereik",
+        "description": "Gevraagd wat de orders van elke klant opbrachten, vindt de agent geen prijzen in de tabellen die zijn rol mag lezen, en zegt dat. Hij kan niet om de rol heen: bij elke toolaanroep gelden dezelfde regels."
+      },
+      "agentdataAnalystRole": {
+        "title": "Nu als BI-analist",
+        "description": "Volgende zet de kopregel op de BI-analist. De agent is dezelfde; de rol is anders."
+      },
+      "agentdataAnalystAsks": {
+        "title": "Dezelfde vraag, een andere rol",
+        "description": "Dezelfde vraag als analist: elke regio komt terug, er is helemaal geen e-mailkolom en de omzetweergave staat tussen zijn tabellen. Andere tabellen, rijen en kolommen, van dezelfde agent en dezelfde server."
+      },
+      "agentdataConnect": {
+        "title": "Je eigen agent, dezelfde server",
+        "description": "Dit is de server die de agent van de verkenner gebruikte. Plak deze configuratie in Claude Desktop, of richt een willekeurige MCP-client op de URL, en je eigen agent krijgt dezelfde beheerde tools, gebonden aan dezelfde regels."
+      },
+      "auditScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een accountantskantoor controleert negen organisaties zonder winstoogmerk die federale subsidies besteden. Voor het veldwerk vraagt de partner of de vastgelegde federale subsidies van elke cliënt overeenkomen met wat de overheid volgens haar registers aan die cliënt betaalde. De overzichten en subsidiedossiers van de cliënten staan in de eigen database van het kantoor; de Single Audit-indieningen en federale verplichtingen zijn openbaar. De cliënten en hun cijfers zijn verzonnen; de programma's, county's en openbare gegevens zijn echt."
+      },
+      "auditAnswer": {
+        "title": "De open punten van elke cliënt",
+        "description": "De view readiness beantwoordt dezelfde vraag voor alle cliënten tegelijk en wordt opgeslagen bijgehouden. Ze zet elke regel van het overzicht naast de subsidiedossiers en de openbare gegevens van het programma, en somt de punten op die elk gereedheidsmemo nodig heeft."
+      },
+      "auditExample": {
+        "title": "Open punten in GraphQL",
+        "description": "De punten van het gereedheidsmemo als GraphQL-query, voor de eigen opdrachttools van het kantoor."
+      },
+      "auditRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "De eigen cliëntdossiers van het kantoor en de openbare indieningen en verplichtingen van de overheid, gekoppeld in één beheerd model. Eén opgeslagen view beantwoordt de vraag van de partner voor elke cliënt. Elk team leest alleen zijn eigen cliënten, en elke query wordt vastgelegd."
+      },
+      "auditGovdata": {
+        "title": "De openbare gegevens",
+        "description": "De overheidsgegevens komen van AskAmerica: elke subsidieregel van de Single Audits over 2023 die bij het Federal Audit Clearinghouse zijn ingediend in Vermont, New Hampshire en Maine, elk naast wat USAspending aan dezelfde ontvanger onder hetzelfde programma verplichtte, en de verplichtingen van USAspending per county en programma."
+      },
+      "auditSchedule": {
+        "title": "Het overzicht van de cliënt",
+        "description": "Het concept van het overzicht van bestedingen van federale subsidies (Schedule of Expenditures of Federal Awards) van elke cliënt over 2023: één regel per subsidie, met het Assistance Listing, of de subsidie rechtstreeks van een federale instantie of via een staatsinstantie kwam, en wat de cliënt zegt te hebben besteed."
+      },
+      "auditNotices": {
+        "title": "De subsidiedossiers",
+        "description": "De federale subsidiedossiers die elke cliënt voor zijn directe subsidies heeft: één rij per verplichting, het federale boekjaar waarin die is aangegaan en het bedrag. Een meerjarige subsidie kan zijn verplicht vóór het jaar waarin ze werd besteed."
+      },
+      "auditFiled": {
+        "title": "Dezelfde aansluiting, op openbare indieningen",
+        "description": "Elke subsidieregel die de gecontroleerde organisaties in de drie staten over 2023 indienden, naast wat USAspending dat jaar onder hetzelfde programma aan hen als verplicht vastlegde. Een niet-aansluitende regel is op zich geen tekort. Een doorgegeven regel kwam via een staatsinstantie bij de organisatie, dus geen federale subsidie noemt haar en er wordt geen aansluiting verwacht; en een subsidie die in een eerder jaar is verplicht toont geen verplichting in het controlejaar. De niet-aansluitende regels blijven zichtbaar, niet verborgen."
+      },
+      "auditCounty": {
+        "title": "Federaal geld per county",
+        "description": "Wat USAspending in federaal boekjaar 2023 in de county van elke cliënt als verplicht vastlegde, per programma, geteld waar het werk wordt gedaan. Het laat zien of een programma dat de cliënt opvoert in zijn county überhaupt uitbetaalt."
+      },
+      "auditRecordedAs": {
+        "title": "Van overzicht naar dossiers",
+        "description": "Deze relatie koppelt elke regel van het overzicht via de subsidiereferentie van het kantoor aan de subsidiedossiers. Een regel zonder dossier erachter, en een dossier zonder regel, zijn waar de accountant naar zoekt."
+      },
+      "auditCountyJoin": {
+        "title": "Cliënten en hun county's",
+        "description": "De countycode van elke cliënt koppelt die aan de verplichtingen per county van USAspending, en de Assistance Listings koppelen het overzicht aan de openbare indieningen van hetzelfde programma in de staat."
+      },
+      "auditTerms": {
+        "title": "In de woorden van een accountant",
+        "description": "De ontologie legt de termen van een Single Audit uit: het overzicht, het Assistance Listing, de doorgevende instantie, de verplichting, een timingverschil, een ontbrekende subsidie en het gereedheidsmemo."
+      },
+      "auditRequest": {
+        "title": "Het verzoek van de partner",
+        "description": "De partner vraagt de analist om Brindlewood Community Health klaar te maken voor het veldwerk. Dit is het conceptoverzicht: vijf federale programma's, waarvan drie directe subsidies. Daarna werkt de analist het verzoek met Polly uit."
+      },
+      "auditPollySchedule": {
+        "title": "Welke subsidies het vastlegt",
+        "description": "De analist begint bij wat de cliënt vastlegt. Polly somt de subsidies op het overzicht over 2023 op en toont de SQL die ze uitvoerde. Haar antwoord is gegenereerd toen de demo werd gebouwd en is erbij opgeslagen."
+      },
+      "auditPollyRecords": {
+        "title": "Wat de dossiers als betaald tonen",
+        "description": "Daarna de kant van de overheid: wat de federale subsidiedossiers van de cliënt in federaal boekjaar 2023 als aan hem verplicht tonen. Eén van de verplichtingen hoort bij een programma dat niet op het overzicht staat."
+      },
+      "auditPollyDiffer": {
+        "title": "Waar ze verschillen",
+        "description": "Polly zet het overzicht naast de subsidiedossiers en somt elke subsidie op waarbij de twee niet overeenkomen, met de query achter haar antwoord."
+      },
+      "auditPollyKinds": {
+        "title": "Timing of ontbrekend",
+        "description": "Een timingverschil is een subsidie die in een eerder jaar is verplicht en dit jaar is besteed; die vraagt alleen een toelichting. Een ontbrekende subsidie is een directe regel zonder federaal dossier erachter; die vraagt een correctie. Polly deelt de verschillen in die twee soorten in."
+      },
+      "auditPollyMemo": {
+        "title": "Het gereedheidsmemo",
+        "description": "Tot slot het memo: elk punt dat de cliënt moet toelichten of corrigeren voordat het veldwerk begint, van de timingverschillen tot de subsidie die het overzicht weglaat."
+      },
+      "auditPublic": {
+        "title": "Het patroon in openbare indieningen",
+        "description": "Dezelfde aansluiting, uitgevoerd op de openbare indieningen van de drie staten. Dit zijn de programma's waarvan de directe subsidieregels het vaakst geen USAspending-verplichting in het controlejaar hebben. Ze worden getoond zoals ze zijn, en ze laten zien waarom een niet-aansluitende regel een vraag voor de accountant is en geen fout."
+      },
+      "auditAsTeam": {
+        "title": "Als het Maine-team",
+        "description": "Uitgevoerd als het opdrachtteam Maine geeft dezelfde view alleen de drie cliënten van dat team. Rijregels op elke tabel en op de view beperken elk team tot zijn eigen opdrachten. De partner ziet ze allemaal."
+      },
+      "auditLineage": {
+        "title": "Waar elk cijfer vandaan komt",
+        "description": "De lineage volgt elke kolom van het antwoord via de view terug naar de tabellen van het kantoor en de openbare gegevens, zodat een reviewer ziet waar elk cijfer in het memo vandaan komt."
+      },
+      "auditRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint, gegroepeerd per bevinding en op de server opgeteld, zodat een werkdossier-spreadsheet hem via HTTP kan lezen."
+      },
+      "banksecrecyScenario": {
+        "title": "Een bank leest een Amerikaanse wet",
+        "description": "Een lokale bank moet contanten boven 10.000 $ melden onder de Bank Secrecy Act. Deze demo leest de regel zelf vanaf het openbare adres, vindt de begrippen die hij gebruikt, verankert ze in de gegevens van de bank en vraagt dan per concept: welke contanten vereisen een Currency Transaction Report, en wie splitst op? Hij begint bij het kernsysteem van de bank, live gelezen waar het staat."
+      },
+      "banksecrecyCash": {
+        "title": "Contanten aan de loketten",
+        "description": "Elke contante storting en opname aan het loket: de rekening, het filiaal, de kassier, het tijdstip en de werkdag waarop ze geboekt is. Contanten na 17:00 uur worden op de volgende werkdag geboekt."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "Namens wie",
+        "description": "Elke transactie noemt wie aan het loket stond en van wie de contanten zijn. Brengt een medewerker of familielid contanten, dan tellen die mee voor het totaal van de rekeninghouder, zoals de wet ze telt."
+      },
+      "banksecrecyFindTerms": {
+        "title": "De wet lezen vanaf het openbare adres",
+        "description": "Begrippen zoeken leest een document vanaf zijn adres, hier 31 CFR 1010.311 via de officiële API van eCFR. Een scan vraagt het AI-model naar elke passage en duurt minuten, dus de rondleiding stopte deze. Dezelfde scan liep bij het bouwen van de demo.",
+        "acting": "Het adres van de regelgeving invullen en een scan starten"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "De begrippen in de regel",
+        "description": "De vooraf gedane scan: elk kandidaatbegrip met de passage waar het uit komt. Een financiële instelling meldt elke contante transactie boven 10.000 $. Begrippen die de woordenlijst al heeft, worden aangeboden om samen te voegen."
+      },
+      "banksecrecyAggregation": {
+        "title": "De aggregatieregel",
+        "description": "Uit 31 CFR 1010.313 komen meerdere transacties en namens: contanten door of namens één persoon, boven 10.000 $ op één werkdag, gelden als één transactie, en elk filiaal hoort bij één instelling. Nachtstortingen tellen op de volgende werkdag."
+      },
+      "banksecrecyDefinitions": {
+        "title": "De definities die hij gebruikt",
+        "description": "De woorden van de regel staan gedefinieerd in 31 CFR 1010.100: persoon, werkdag, financiële instelling, opsplitsen. Elke definitie is een eigen passage, dus elk begrip komt met de alinea die het definieert."
+      },
+      "banksecrecyLibrary": {
+        "title": "Bewaard in de referentiebibliotheek",
+        "description": "De build van de demo heeft elk gescand document in de referentiebibliotheek bewaard, dus de regelgeving blijft bij het model als beheerde referentie: Polly en de agents van de organisatie citeren de passages in hun antwoorden."
+      },
+      "banksecrecyGrounded": {
+        "title": "De woorden van de wet, verankerd",
+        "description": "Transaction in currency is het begrip van de regelgeving. De contante transactie van de bank is daar een soort van, dus het begrip bereikt de tabel cash_transactions. Persoon bereikt zo de klanten, en financiële instelling bereikt de filialen van de bank."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Werkdag, op zijn kolom",
+        "description": "De werkdag van de regelgeving is de dag waarop een bank een transactie op de rekening van de klant boekt. De kolom business_day van de bank bevat precies dat, dus het begrip houdt de kolom zelf vast."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Welke contanten vereisen een melding? Als kassier",
+        "description": "Gevraagd per concept: contanten in of uit van meer dan 10.000 $ door of namens één persoon op één werkdag, meerdere transacties als één geteld over rekeningen en filialen. Een kassier ziet de verschuldigde meldingen, met gemaskeerde rekeningnummers en fiscale nummers."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "Dezelfde vraag, als compliance",
+        "description": "De compliance officer stelt dezelfde vraag en ziet rekeningnummers en fiscale nummers volledig, zoals de melding ze nodig heeft. Het totaal van Dana Whitmore bevat contanten die iemand anders namens haar bracht."
+      },
+      "banksecrecyStructuring": {
+        "title": "Wie splitst op?",
+        "description": "Stortingen net onder 10.000 $, drie keer of vaker, over filialen en dagen. Geen ervan vereiste op zichzelf een melding. Victor Hale ging in een week naar drie filialen, en de twee stortingen van Marcus Reed op één dag vereisten samen een melding. Alleen compliance ziet deze view."
+      },
+      "banksecrecyPollyWalk": {
+        "title": "Wat moet de bank doen?",
+        "description": "Een klant stort steeds contant geld net onder 10.000 $. Wat moet de bank doen? Zoeken naar die woorden in de passages van de wet mist het antwoord. Polly loopt in plaats daarvan door het glossarium: stortingen onder de drempel, naar structureren (structuring), naar melding van ongebruikelijke activiteit, en komt bij 31 CFR 1010.314 en 31 CFR 1020.320, de passages die het zeggen."
+      },
+      "banksecrecyExample": {
+        "title": "Hetzelfde antwoord in GraphQL",
+        "description": "De verschuldigde meldingen als API-aanroep. Elke interface leest dezelfde beheerde view, met dezelfde maskers voor dezelfde rol."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "In gewone woorden gevraagd",
+        "description": "Compliance vraagt Polly in gewone woorden: welke contanten vereisen een Currency Transaction Report? Polly vindt de beheerde view die het concept bereikt en antwoordt daaruit, en noemt dus dezelfde personen als de SQL en de GraphQL. Niemand hoefde de naam van de view te kennen."
+      },
+      "banksecrecyRecap": {
+        "title": "Wat u zag",
+        "description": "De wet werd vanaf het openbare adres gelezen, de begrippen gevonden en verankerd in de tabellen van de bank, en de bank vroeg per concept. Het Currency Transaction Report bereikt de gegevens via zijn meerdere transacties, en elke rol zag wat hij mag zien."
       }
     },
     "status": {
@@ -1797,7 +2002,7 @@
         "summary": "Verklaart het weer de schade in de portefeuille van een gewasverzekeraar? Zijn eigen boerderijen, polissen en claims, per county en oogstjaar gekoppeld aan de schade per oorzaak van de USDA, het weer van NOAA en de opbrengsten van NASS, geven het antwoord in SQL, GraphQL en REST."
       },
       "retail": {
-        "title": "Eén concern, twee regio's",
+        "title": "Een verhaal van twee regio's",
         "summary": "Een retailconcern met een EU- en een US-dochteronderneming, gerund als één bedrijf onder de GDPR: EU-gegevens blijven in de EU, de concernrapportage leest ze gepseudonimiseerd, en inzage, wissing, insidercontrole en audit zijn elk één query."
       },
       "provisioning": {
@@ -1843,6 +2048,22 @@
       "banking": {
         "title": "Dagafsluitingsrapportage zonder het grootboek te kopiëren",
         "summary": "De dagafsluitingstotalen van een bank, bij elke afsluiting rechtstreeks berekend uit een grootboek dat nooit naar het warehouse wordt gekopieerd, gelezen zoals gerapporteerd en zoals sindsdien gecorrigeerd, met hetzelfde antwoord via GraphQL, SQL en een agent."
+      },
+      "groupexposure": {
+        "title": "Groepsblootstelling via Wikidata",
+        "summary": "Bij welke concerns gaat een bank over haar grens voor grote blootstellingen? Haar leningenportefeuille, via de LEI van de eigenaar van elke kredietnemer en SPARQL gekoppeld aan de ketens van moederorganisaties in Wikidata, brengt elke kredietnemer onder bij zijn concern. De bank en haar kredietnemers zijn verzonnen; de concerns zijn echt."
+      },
+      "agentdata": {
+        "title": "Geef een agent je data",
+        "summary": "Kan een AI-agent de orderdata van een retailer krijgen en beperkt worden tot wat zijn gebruiker mag zien? De MCP-verkenner toont de agent als supportmedewerker en als analist: andere rijen en kolommen, gemaskeerde e-mails en de beheerde SQL achter elk antwoord."
+      },
+      "audit": {
+        "title": "Gereedheid voor de Single Audit",
+        "summary": "Komen de vastgelegde federale subsidies van een cliënt zonder winstoogmerk overeen met wat de overheid volgens haar eigen registers aan die cliënt betaalde? De overzichten van cliënten van een accountantskantoor, gekoppeld aan Single Audit-indieningen en verplichtingen uit USAspending, geven het antwoord."
+      },
+      "banksecrecy": {
+        "title": "Contantenmeldingen gelezen uit de Bank Secrecy Act",
+        "summary": "Een bank leest de meldregel voor contanten van de Bank Secrecy Act vanaf het officiële openbare adres, vindt de begrippen en verankert ze in haar eigen tabellen. Daarna vraagt ze per concept welke contanten een Currency Transaction Report vereisen en wie net onder 10.000 $ opsplitst. De bank en haar klanten zijn verzonnen; de regelgeving is echt."
       }
     }
   }

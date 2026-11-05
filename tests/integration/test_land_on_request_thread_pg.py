@@ -136,3 +136,24 @@ def test_two_requests_landing_different_tables_both_land(runtime, monkeypatch):
     assert not set(request_threads) & set(submissions.from_threads), (
         "a land was handed to a pool thread instead of running on its request's thread"
     )
+
+
+@pytest.mark.asyncio
+async def test_whether_a_table_is_landed_is_read_from_the_stores_catalog(runtime):
+    """REQ-318, on the test stack's Postgres: the engine's own catalog and the store path a broad
+    federator (Trino) lands through both say absent is False and landed is True, and a catalog
+    that cannot be read raises -- never read as a table that is not there."""
+    from provisa.federation import store_writer
+    from provisa.federation.pg_runtime import PgFederationRuntime
+
+    rt, schema = runtime
+    await rt.land_table(schema=schema, table="lte_landed", columns=_COLUMNS, rows=[])
+    assert await rt.landed_table_exists(schema=schema, table="lte_landed") is True
+    assert await rt.landed_table_exists(schema=schema, table="lte_never") is False
+    assert await store_writer.table_exists(_dsn(), schema=schema, table="lte_landed") is True
+    assert await store_writer.table_exists(_dsn(), schema=schema, table="lte_never") is False
+
+    closed = PgFederationRuntime(engine_dsn=_dsn())
+    closed.close()
+    with pytest.raises(psycopg2.InterfaceError):  # its connection is gone
+        await closed.landed_table_exists(schema=schema, table="lte_landed")

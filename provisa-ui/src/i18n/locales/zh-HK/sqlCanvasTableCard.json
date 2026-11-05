@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "從畫布移除 {{tableName}}",
     "toggleColumn": "切換選取欄 {{columnName}}",
-    "connectColumn": "從 {{columnName}} 開始建立關係"
+    "connectColumn": "從 {{columnName}} 開始建立關係",
+    "allColumns": "所有欄（{{selected}}/{{total}}）",
+    "unjoined": "{{tables}} 未與其他表連接",
+    "joinsUnavailable": "無法讀取此角色可編寫的連接：{{reason}}"
   }
 }

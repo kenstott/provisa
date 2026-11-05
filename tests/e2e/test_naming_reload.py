@@ -133,7 +133,7 @@ class TestNamingConventionReload:
         await _set_gql_naming_convention(client, "apollo_graphql")
 
         sdl_admin = await _get_sdl(client, role="org_admin")
-        sdl_analyst = await _get_sdl(client, role="analyst")
+        sdl_analyst = await _get_sdl(client, role="sales_analytics_analyst")
 
         from graphql import build_schema
 

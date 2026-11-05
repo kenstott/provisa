@@ -23,7 +23,6 @@ from sqlalchemy import select
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.schema_org import (
-    glossary_term_table_refs,
     registered_tables,
     relationships,
     table_columns,
@@ -71,12 +70,10 @@ async def _address(conn: "Connection", table_id: int) -> str:
 async def _class_term(conn: "Connection", table_id: int) -> int | None:
     row = (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id).where(
-                glossary_term_table_refs.c.table_id == table_id
-            )
+            select(registered_tables.c.class_term_id).where(registered_tables.c.id == table_id)
         )
     ).first()
-    return None if row is None else row.term_id
+    return None if row is None else row.class_term_id
 
 
 async def _keys(conn: "Connection", table_id: int) -> list[frozenset[str]]:
@@ -201,10 +198,12 @@ async def identity_gap_ids(conn: "Connection") -> set[int]:
     tables: dict[int, set[int]] = {}
     for r in (
         await conn.execute_core(
-            select(glossary_term_table_refs.c.term_id, glossary_term_table_refs.c.table_id)
+            select(registered_tables.c.class_term_id, registered_tables.c.id).where(
+                registered_tables.c.class_term_id.is_not(None)
+            )
         )
     ).fetchall():
-        tables.setdefault(r.term_id, set()).add(r.table_id)
+        tables.setdefault(r.class_term_id, set()).add(r.id)
     joined: dict[int, set[int]] = {}
     for r in (
         await conn.execute_core(

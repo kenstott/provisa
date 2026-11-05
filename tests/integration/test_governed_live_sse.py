@@ -71,7 +71,7 @@ def _table(schema: str) -> dict:
                 "varchar",
                 masks=[
                     {"to": ["reader"], "mask": None},
-                    {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                    {"mask": {"type": "constant", "value": "***"}},
                 ],
             ),
             _col("ts", "integer"),

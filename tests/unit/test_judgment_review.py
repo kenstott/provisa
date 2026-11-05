@@ -432,7 +432,7 @@ async def test_a_fake_and_a_mask_entry_carry_their_why(control_plane):
                     visible_to=[],
                     fake="email()",
                     fake_why=fake_why,
-                    masks=[MaskEntry(to=["*"], mask=None, why=mask_why)],
+                    masks=[MaskEntry(mask=None, why=mask_why)],
                 )
             ],
         )

@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:dataroom/1-revenue-by-segment.graphql",
+  "root_field": "d__viewRevenueBySegment"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:dataroom/2-data-quality.graphql",
+  "root_field": "d__viewDataQuality"
+ }
+]

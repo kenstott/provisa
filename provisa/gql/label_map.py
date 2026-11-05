@@ -16,6 +16,7 @@ No separate config. TableMeta.type_name → node label; JoinMeta → relationshi
 from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -23,6 +24,7 @@ from typing import TYPE_CHECKING
 from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
     apply_cql_property as _apply_cql_property,
+    unprefixed_field_name,
 )
 from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.compiler.sql_types import key_list
@@ -34,10 +36,6 @@ if TYPE_CHECKING:
     from provisa.compiler.sql_types import JunctionMeta
 
 # Requirements: REQ-351, REQ-392, REQ-394, REQ-467, REQ-471, REQ-574
-
-# Catalog domain id — local constant (kept in sync with provisa.security.rights.META_DOMAIN_ID) to
-# avoid importing a higher layer into the cypher package.
-_META_DOMAIN_ID = "meta"
 
 # REQ-1320: star-schema modeling role → the additional node label Neo4j clients see.
 _ROLE_LABELS = {"fact": "Fact", "dimension": "Dimension"}
@@ -72,9 +70,23 @@ class NodeMapping:
     modeling_role: str | None = None  # REQ-1320: "fact" | "dimension" | None (star-schema role)
     # REQ-1991: the cypher prop names whose columns are declared objects: map properties
     map_properties: frozenset[str] = frozenset()
+    # REQ-778: each cypher prop name's registered data type, (name, type) pairs, so a comparison of
+    # it to a literal of another kind is refused in the user's terms before an engine is asked.
+    # A tuple, so a mapping pickled before the field existed reads the empty default.
+    property_types: tuple[tuple[str, str], ...] = ()
     # The table's name as a statement queries it -- its _name_ (compiler.context); "" for a
     # traversal-only node built without its table's compilation.
     query_name: str = ""
+    #: A compound key's columns as statements name them, in key order (REQ-2136): its identity
+    #: and its _id hold every one. Empty for a key of one column (``id_column``).
+    key_columns: tuple[str, ...] = ()
+    #: Whether the role is served the whole of the table's key as registered (``key_is_served``).
+    #: A subject's IRI is its key's values, so where it is not, none of the role's subjects of this
+    #: table can be named: SPARQL leaves the table out of an open pattern and refuses it by name.
+    key_readable: bool = True
+    #: A graph session's date time properties, each with the zone its values were written in
+    #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
+    property_zones: tuple[tuple[str, str], ...] = ()
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -90,6 +102,12 @@ class NodeMapping:
     @property
     def sql_table_name(self) -> str:
         return self.physical_table_name or self.table_name
+
+    @property
+    def parameterized(self) -> bool:
+        """Whether its table is read by arguments (REQ-1986): a function of them, with no rows of
+        its own for a path to walk (REQ-2135)."""
+        return bool(self.native_filter_columns)
 
     @property
     def role_label(self) -> str | None:  # REQ-1320
@@ -120,6 +138,16 @@ class JunctionMapping:  # REQ-1586
     type_column: str | None = None
     type_value: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    #: Each attribute's registered data type, (property, type), where it is known: what a read of
+    #: every relationship (translator_union) reads it as, not its text.
+    attribute_types: tuple[tuple[str, str], ...] = ()
+    #: The junction column a row's own identity is, where one row is one edge of its own: a
+    #: session relationship's rel_id (REQ-2176), so two between the same ends are two edges.
+    #: None for a model junction, whose edge is named by its two ends.
+    identity_column: str | None = None
+    #: The type column's property name: a row's own type, read where a hop reads every row of the
+    #: junction (an untyped hop), whatever its type.
+    type_attribute: str | None = None
     # REQ-1586: which nomination names the exposed type — see junction_rel_type.
     label_source: str = ""
     label_fixed: str = ""
@@ -148,11 +176,40 @@ class RelationshipMapping:
     )
     many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
     via: JunctionMapping | None = None  # REQ-1586: set on a junction-backed edge, None on FK/PK
+    #: A stored edge with one direction (a session relationship, REQ-2176): a directed pattern
+    #: traverses it only from its source to its target. A model relationship is a join, which a
+    #: directed pattern may read from either end (False).
+    directed: bool = False
 
     @property
     def properties(self) -> dict[str, str]:
         """REQ-1586: the relationship's attributes. Empty unless it is junction-backed."""
         return self.via.attributes if self.via else {}
+
+    @property
+    def join(self) -> str:
+        """What this relationship joins, the same from either end (REQ-2135): two relationships
+        with one join (SUBMITTED and SUBMITTED_BY) are one edge declared twice, so a path that
+        walks either way takes one of them. A junction's types are a join each."""
+        via = self.via
+        source = [
+            self.source_label,
+            self.join_source_column,
+            self.source_expr,
+            self.source_constant,
+            via.source_columns if via else None,
+        ]
+        target = [
+            self.target_label,
+            self.join_target_column,
+            self.target_expr,
+            None,
+            via.target_columns if via else None,
+        ]
+        table = [via.catalog_name, via.schema_name, via.table_name] if via else None
+        type_of = [via.type_column, via.type_value] if via else None
+        ends = sorted(json.dumps(end, default=str) for end in (source, target))
+        return json.dumps([ends, table, type_of])
 
     @property
     def constant_source(self) -> bool:
@@ -165,8 +222,66 @@ class RelationshipMapping:
         )
 
 
+#: REQ-348: the column a graph session's node relation names a node's graph identity by (``Label|key``
+#: for a model node, an ephemeral node's id), which the session's relationships name their ends by.
+GRAPH_ID = "__graph_id"
+#: REQ-2176: the column a graph session's node relation names every label of its node by, which
+#: labels() of a session node reads.
+LABELS_COLUMN = "__labels"
+#: While a read after a write runs (provisa.ephemeral.then), a session relationship's id is read
+#: as this property, which the read finds it again by; it is none of the relationship's keys.
+SESSION_REL_ID = "__rel_id"
+
+
+#: The catalog a graph session's relations are named in (provisa.ephemeral.read, REQ-2176).
+SESSION_CATALOG = "__session__"
+#: The column of a graph session's node relation holding each node's identity in an answer, the
+#: same under whichever label it is read: a model node's ``Label|key``, a node the session created
+#: ``Label|id`` after the first of its labels in name order (``|id`` with none) (REQ-2176).
+IDENTITY_COLUMN = "__identity"
+
+
+def is_session_node(nm: "NodeMapping") -> bool:
+    """Whether ``nm`` is a graph session's node relation (provisa.ephemeral.read), whose rows
+    carry each node's identity (IDENTITY_COLUMN)."""
+    return nm.catalog_name == SESSION_CATALOG
+
+
+@dataclass(frozen=True)
+class SessionWalk:
+    """REQ-348: a graph session's relationships, every one a row of one relation of
+    ``(rel_id, type, from_id, to_id)``, its ends graph identities (GRAPH_ID): what a path
+    function with an unlabelled end walks."""
+
+    catalog_name: str
+    schema_name: str
+    table_name: str
+
+
+def _used_key(rel: "RelationshipMapping", direction: str) -> tuple:
+    """What find_paths records of a relationship it has walked: the mapping itself (its labels,
+    type and join) and the direction taken, so two mappings of one type name are two edges."""
+    return (
+        rel.source_label,
+        rel.target_label,
+        rel.rel_type,
+        rel.join_source_column,
+        rel.join_target_column,
+        rel.source_expr,
+        rel.target_expr,
+        direction,
+    )
+
+
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
+
+    #: REQ-348: set on a graph session's label map (provisa.ephemeral.read.overlay); None on the
+    #: model graph, where a path function's ends are labelled.
+    session_walk: SessionWalk | None = None
+    #: A graph session's node relations of several labels (node_of_all): each one's table name ->
+    #: the labels its nodes all have, and its type name -> the same (REQ-2176).
+    label_sets: dict[str, tuple[str, ...]] = {}
 
     def __init__(
         self,
@@ -175,8 +290,21 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         domains: dict[str, list[str]] | None = None,
         nodes_by_table: dict[str, list[str]] | None = None,
         aliases: dict[str, list[RelationshipMapping]] | None = None,
+        sql_only_nodes: dict[str, NodeMapping] | None = None,
+        sql_only_tables: dict[tuple[str, str], str] | None = None,
+        sql_only_relationships: dict[str, RelationshipMapping] | None = None,
+        sql_only_aliases: dict[str, list[RelationshipMapping]] | None = None,
     ) -> None:
         self.nodes = nodes
+        # REQ-2163: the relationships touching a SQL-only node, which no graph surface has either:
+        # kept for with_sql_only, as the nodes are.
+        self.sql_only_relationships: dict[str, RelationshipMapping] = sql_only_relationships or {}
+        self.sql_only_aliases: dict[str, list[RelationshipMapping]] = sql_only_aliases or {}
+        # REQ-2163: the nodes of tables SQL alone serves (security.rights.SQL_ONLY_TABLES): no
+        # Cypher label, kept for a language that lowers to them (with_sql_only), each found by
+        # its (domain id, registered table name).
+        self.sql_only_nodes: dict[str, NodeMapping] = sql_only_nodes or {}
+        self.sql_only_tables: dict[tuple[str, str], str] = sql_only_tables or {}
         # keyed by rel_type (can map multiple if different source/target pairs)
         self.relationships = relationships
         # domain_label (PascalCase) → [type_name, ...]
@@ -185,10 +313,27 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
         # rel_type → all RelationshipMappings with that type (supports UNION fan-out)
         self.aliases: dict[str, list[RelationshipMapping]] = aliases or {}
-        # case-insensitive lookup indexes: lowercase → canonical key
-        self._nodes_ci: dict[str, str] = {k.lower(): k for k in self.nodes}
-        self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
-        self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
+
+    def with_sql_only(self) -> "CypherLabelMap":
+        """This map with the SQL-only tables' nodes in it, for SPARQL's lowering of its
+        RDFS/OWL/SKOS patterns to ontology._axioms (REQ-2163); the Cypher surface never has them."""
+        nodes_by_table = {k: list(v) for k, v in self.nodes_by_table.items()}
+        domains = {k: list(v) for k, v in self.domains.items()}
+        for type_name, nm in self.sql_only_nodes.items():
+            nodes_by_table.setdefault(nm.table_label, []).append(type_name)
+            if nm.domain_label:
+                domains.setdefault(nm.domain_label, []).append(type_name)
+        aliases = {k: list(v) for k, v in self.aliases.items()}
+        for rel_type, held in self.sql_only_aliases.items():
+            aliases.setdefault(rel_type, []).extend(held)
+        return CypherLabelMap(
+            nodes={**self.nodes, **self.sql_only_nodes},
+            relationships={**self.relationships, **self.sql_only_relationships},
+            domains=domains,
+            nodes_by_table=nodes_by_table,
+            aliases=aliases,
+            sql_only_tables=self.sql_only_tables,
+        )
 
     def display_label(self, nm: "NodeMapping") -> str:  # REQ-572
         """Return the shortest unambiguous label for a node.
@@ -200,14 +345,60 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             return nm.label
         return nm.table_label
 
-    def canonical_label(self, label: str) -> str:  # REQ-572
-        """Return the canonical-cased label, falling back to input if not found."""
-        return (
-            self._nodes_ci.get(label.lower())
-            or self._domains_ci.get(label.lower())
-            or self._nodes_by_table_ci.get(label.lower())
-            or label
+    def node_of_all(self, keys: list[str]) -> str:
+        """The type name of the nodes of a graph session having every label of ``keys`` (each a
+        session label's type name, REQ-2176): one relation, of the first label's nodes that have
+        the rest too, with every property any of them publishes. Made once per label map."""
+        import dataclasses
+
+        held = sorted(set(keys))
+        name = "&".join(held)
+        if name in self.nodes:
+            return name
+        first = self.nodes[held[0]]
+        properties: dict[str, str] = {}
+        types: dict[str, str] = {}
+        for key in held:
+            nm = self.nodes[key]
+            properties.update(nm.properties)
+            types.update(dict(nm.property_types))
+        table = f"nodes_all__{name}"
+        combined = dataclasses.replace(
+            first,
+            type_name=name,
+            table_name=table,
+            properties=properties,
+            physical_properties=dict(properties),
+            property_types=tuple((p, types[p]) for p in properties if p in types),
         )
+        self.nodes = {**self.nodes, name: combined}
+        self.label_sets = {**self.label_sets, table: tuple(held), name: tuple(held)}
+        return name
+
+    def canonical_label(self, label: str) -> str:  # REQ-572
+        """The label as written: labels are case-sensitive (openCypher), so ``A`` and ``a`` are
+        two labels, each found by its exact name."""
+        return label
+
+    def schema_procedure(self, name: str) -> tuple[str, list[str]] | None:  # REQ-572
+        """The column ``CALL <name>()`` yields and its values, this map's own, when ``name`` is a
+        procedure answered from the map; else None. Names the system keeps to itself (``__``)
+        are no label or type of the graph."""
+        procedure = name.lower()
+        values: set[str]
+        if procedure == "db.labels":
+            column = "label"
+            values = {nm.table_label for nm in self.nodes.values()}
+            values |= {nm.domain_label for nm in self.nodes.values() if nm.domain_label}
+        elif procedure == "db.relationshiptypes":
+            column = "relationshipType"
+            values = {r.rel_type for r in self.relationships.values()}
+        elif procedure == "db.propertykeys":
+            column = "propertyKey"
+            values = {key for nm in self.nodes.values() for key in nm.properties}
+        else:
+            return None
+        return column, sorted(v for v in values if not v.startswith("__"))
 
     def node(self, label: str) -> NodeMapping:  # REQ-572
         try:
@@ -235,9 +426,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         results: list[list[RelationshipMapping]] = []
         # queue: (current_label, path_so_far, used_rel_keys)
         # Cypher path semantics: no repeated relationships within a path.
-        # key = (rel_type, forward|reverse) to avoid traversing the same
-        # physical edge twice in one path regardless of direction.
-        queue: list[tuple[str, list[RelationshipMapping], frozenset[str]]] = [
+        # key = the mapping (source label, target label, type, join) and the direction taken:
+        # one type name may map several relationships (A-[:T]->B-[:T]->C), which are not one
+        # edge, so the type name alone does not tell two of them apart (REQ-348).
+        queue: list[tuple[str, list[RelationshipMapping], frozenset[tuple]]] = [
             (start_label, [], frozenset())
         ]
         while queue:
@@ -258,7 +450,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                     continue
                 # Forward edge
                 if rel.source_label == cur_label:
-                    key = f"{rel.rel_type}:fwd"
+                    key = _used_key(rel, "fwd")
                     if key not in used_rel_keys:
                         tgt_nm = self.nodes.get(rel.target_label)
                         if tgt_nm and tgt_nm.native_filter_columns:
@@ -266,7 +458,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         queue.append((rel.target_label, path + [rel], used_rel_keys | {key}))
                 # Reverse edge (only when bidirectional)
                 if bidirectional and rel.target_label == cur_label:
-                    key = f"{rel.rel_type}:rev"
+                    key = _used_key(rel, "rev")
                     if key not in used_rel_keys:
                         src_nm = self.nodes.get(rel.source_label)
                         if src_nm and src_nm.native_filter_columns:
@@ -300,6 +492,12 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
+    def touches_parameterized(self, rel: RelationshipMapping) -> bool:
+        """Whether either end of ``rel`` is a parameterized table, which no path includes
+        (REQ-2135)."""
+        ends = (self.nodes.get(rel.source_label), self.nodes.get(rel.target_label))
+        return any(nm is not None and nm.parameterized for nm in ends)
+
     def relationships_for(  # REQ-572
         self, source_label: str, target_label: str | None = None
     ) -> list[RelationshipMapping]:
@@ -327,10 +525,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         marked traversal_only=True — they cannot be used as MATCH starting nodes.
 
         ``domain_access`` is the ACTING ROLE's own list and is required: it decides whether the
-        meta catalog may be a MATCH root, and there is no list to read off a missing role, so
+        system domains may be a MATCH root, and there is no list to read off a missing role, so
         ``None`` raises rather than leaving the catalog open.
         """
-        from provisa.security.rights import reaches_all_domains
+        from provisa.security.rights import SYSTEM_DOMAINS, reaches_all_domains, reaches_domain
 
         if domain_access is None:
             raise ValueError(
@@ -346,7 +544,7 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
         ctx_typed: CompilationContext = ctx  # type: ignore[assignment]
 
         target_pk = _build_target_pk(ctx_typed)
-        _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table)
+        _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table, all_tables)
         aliases = _build_relationship_mappings(ctx_typed, relationships)
 
         _all_access = reaches_all_domains(domain_access)
@@ -357,7 +555,13 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             and all_column_types is not None
         ):
             _add_cross_domain_nodes(
-                all_tables,
+                # A system domain the role holds no capability for is no node of its graph.
+                [
+                    t
+                    for t in all_tables
+                    if t["domain_id"] not in SYSTEM_DOMAINS
+                    or reaches_domain(domain_access, t["domain_id"])
+                ],
                 all_relationships,
                 all_column_types,
                 source_catalogs,
@@ -380,14 +584,67 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             for nm in nodes.values():
                 nm.modeling_role = _roles_by_id.get(nm.table_id) or nm.modeling_role
 
-        # REQ-1132: meta (catalog) is DISCOVERABLE ONLY BY TRAVERSAL for a role without a meta grant
-        # — it may not be a bare MATCH (n) root (which would emit a direct meta FROM and be V001-blocked,
-        # the same rule SQL enforces). Mark meta nodes traversal_only so MATCH (mine)-[]->(meta) still
-        # works while MATCH (n) roots on the role's own domains only. A meta grant / "*" keeps it direct.
-        if not _all_access and _META_DOMAIN_ID not in domain_access:
-            for nm in nodes.values():
-                if nm.domain_id == _META_DOMAIN_ID:
-                    nm.traversal_only = True
+        # REQ-1132, REQ-2163: a system domain is a MATCH root for a role holding its capability, by
+        # the rule SQL enforces (rights.reaches_domain); any other role is left with traversal,
+        # as a direct FROM would be V001-blocked -- but a Class table, which no relationship
+        # reaches, is read as a root, as SQL reads it, under the read rights of the tables it is
+        # the union of.
+        from provisa.compiler.ontology_classes import is_class_table_id
+
+        for nm in nodes.values():
+            if (
+                nm.domain_id in SYSTEM_DOMAINS
+                and not reaches_domain(domain_access, nm.domain_id)
+                and not is_class_table_id(nm.table_id)
+            ):
+                nm.traversal_only = True
+
+        # REQ-2163: an ontology Class never takes a model table's bare label: where a table and a
+        # Class share one, it is the table's, and the Class is reached by its qualified label
+        # (Ontology:Person) on every graph surface.
+        for listed in nodes_by_table.values():
+            tables_of = [t for t in listed if not is_class_table_id(nodes[t].table_id)]
+            if tables_of:
+                listed[:] = tables_of
+
+        # REQ-2163: a table SQL alone serves is no label of the graph (security.rights).
+        from provisa.security.rights import META_DOMAIN_ID, SQL_ONLY_TABLES, reaches_domain
+
+        # REQ-1132: and so is meta's default tier, which a role with no meta grant reads on SQL.
+        no_meta = domain_access is not None and not reaches_domain(domain_access, META_DOMAIN_ID)
+        sql_only_domains = {domain for domain, _table in SQL_ONLY_TABLES}
+        sql_only_tables = {
+            (tm.domain_id, tm.original_table_name or tm.table_name): tm.type_name
+            for tm in ctx_typed.tables.values()
+            if (no_meta and tm.domain_id == META_DOMAIN_ID)
+            or (
+                tm.domain_id in sql_only_domains
+                and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_ONLY_TABLES
+            )
+        }
+        sql_only_types = set(sql_only_tables.values())
+        sql_only = {t: nodes.pop(t) for t in list(nodes) if t in sql_only_types}
+        for listed in (*domains.values(), *nodes_by_table.values()):
+            listed[:] = [t for t in listed if t not in sql_only]
+        for key in [k for k, v in nodes_by_table.items() if not v]:
+            del nodes_by_table[key]
+
+        # A relationship touching one is no relationship of the graph either: the graph schema
+        # names each relationship's ends by their labels.
+        def _touches(rm: RelationshipMapping) -> bool:
+            return rm.source_label in sql_only or rm.target_label in sql_only
+
+        sql_only_rels = {k: rm for k, rm in relationships.items() if _touches(rm)}
+        for key in sql_only_rels:
+            del relationships[key]
+        sql_only_aliases: dict[str, list[RelationshipMapping]] = {}
+        for rel_type, held in list(aliases.items()):
+            touching = [rm for rm in held if _touches(rm)]
+            if touching:
+                sql_only_aliases[rel_type] = touching
+                held[:] = [rm for rm in held if not _touches(rm)]
+                if not held:
+                    del aliases[rel_type]
 
         return cls(
             nodes=nodes,
@@ -395,6 +652,10 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
             domains=domains,
             nodes_by_table=nodes_by_table,
             aliases=aliases,
+            sql_only_nodes=sql_only,
+            sql_only_tables={k: t for k, t in sql_only_tables.items() if t in sql_only},
+            sql_only_relationships=sql_only_rels,
+            sql_only_aliases=sql_only_aliases,
         )
 
 
@@ -480,8 +741,12 @@ def _build_node_mappings(
     nodes: dict[str, NodeMapping],
     domains: dict[str, list[str]],
     nodes_by_table: dict[str, list[str]],
+    all_tables: list[dict] | None = None,
 ) -> None:
-    """Populate nodes/domains/nodes_by_table from ctx tables. Mutates all three dicts."""
+    """Populate nodes/domains/nodes_by_table from ctx tables. Mutates all three dicts.
+    ``all_tables`` is the registry (every column, whoever may read it), what a table's key is read
+    from: the role's own columns can only say what its key would be were the rest not there."""
+    registered = {t["id"]: t for t in all_tables or []}
     # REQ-1991: the declared object columns, by physical name (gql_json_columns names a column as
     # the schema spells it).
     object_columns = {
@@ -501,6 +766,15 @@ def _build_node_mappings(
         col_names = [c for c, _ in col_list]
         user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
         _phys_id = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
+        _table = registered.get(table_meta.table_id)
+        _key = (
+            registered_key(table_meta.type_name, _table, target_pk)
+            if _table is not None and _table.get("columns")
+            else None
+        )
+        key_readable = _key is None or set(_key) <= set(col_names)
+        if _key is not None and key_readable:
+            _phys_id = _key[0]
         id_col = ctx_typed.physical_to_sql.get((table_meta.table_id, _phys_id), _phys_id)
         _gov_obj = ctx_typed.gql_governed_object_cols
         props: dict[str, str] = {
@@ -530,7 +804,10 @@ def _build_node_mappings(
             # Single-domain mode: the default domain is implicit — never label with it.
             domain_id = None
         domain_label = _apply_cql_label(domain_id) if domain_id else None
-        _, table_label = _split_cypher_labels(field_name)
+        # REQ-2163: a system schema's SDL prefix (on_, op_) is no part of its bare label.
+        _, table_label = _split_cypher_labels(
+            unprefixed_field_name(field_name, table_meta.domain_id)
+        )
         cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
         logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
         physical_table = table_meta.table_name
@@ -556,6 +833,17 @@ def _build_node_mappings(
             native_filter_columns=nf_cols,
             physical_table_name=physical_table_name,
             map_properties=map_props,
+            property_types=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), data_type)
+                for c, data_type in col_list
+                if (table_meta.table_id, c) not in _gov_obj
+            ),
+            key_columns=tuple(
+                ctx_typed.physical_to_sql.get((table_meta.table_id, c), c) for c in user_pks
+            )
+            if len(user_pks) > 1
+            else (),
+            key_readable=key_readable,
         )
 
         if domain_label:
@@ -589,8 +877,11 @@ def junction_rel_type(via: JunctionMapping) -> str:  # REQ-1586
     raise ValueError(f"Junction on {via.table_name!r} has no label source nomination")
 
 
-def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # REQ-1586
-    """Convert a compiler JunctionMeta into the Cypher-side JunctionMapping."""
+def _junction_mapping(
+    via: "JunctionMeta | None", column_types: "dict[str, str]"
+) -> JunctionMapping | None:  # REQ-1586
+    """Convert a compiler JunctionMeta into the Cypher-side JunctionMapping (``column_types``: the
+    junction table's columns' data types, by column)."""
     if via is None:
         return None
     return JunctionMapping(
@@ -603,6 +894,10 @@ def _junction_mapping(via: "JunctionMeta | None") -> JunctionMapping | None:  # 
         type_column=via.type_column,
         type_value=via.type_value,
         attributes=dict(via.attributes),
+        attribute_types=tuple(
+            (prop, column_types[col]) for prop, col in via.attributes if col in column_types
+        ),
+        type_attribute=via.type_attribute,
         label_source=via.label_source,
         label_fixed=via.label_fixed,
     )
@@ -619,7 +914,13 @@ def _build_relationship_mappings(
             continue
         cypher_alias = getattr(join_meta, "cypher_alias", None)
         cardinality = getattr(join_meta, "cardinality", None)
-        via = _junction_mapping(getattr(join_meta, "via", None))
+        _via_meta = getattr(join_meta, "via", None)
+        via = _junction_mapping(
+            _via_meta,
+            dict(ctx_typed.aggregate_columns.get(_via_meta.table.table_id, []))
+            if _via_meta is not None
+            else {},
+        )
         # REQ-1586: a junction edge is named by its nomination, not by the GraphQL field it would
         # have had — the field name describes the junction table, the nomination describes the edge.
         rel_type = (
@@ -696,6 +997,12 @@ def _junction_from_rel_dict(  # REQ-1586
             for c in all_column_types.get(via_id, [])
             if c.column_name not in keys
         },
+        attribute_types=tuple(
+            (_apply_cql_property(c.column_name), c.data_type)
+            for c in all_column_types.get(via_id, [])
+            if c.column_name not in keys
+        ),
+        type_attribute=_apply_cql_property(type_column) if type_column else None,
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )
@@ -852,6 +1159,18 @@ _ID_SUFFIX = ("_id", "_pk", "_oid")
 _ID_PREFIX = ("id_",)
 
 
+def registered_key(type_name: str, table: dict, target_pk: dict[str, str]) -> list[str]:
+    """The key of a registered table, by the registry's columns, whoever may read them: its primary
+    key's columns, else the one column ``_resolve_id_column`` resolves. A parameter column is an
+    argument and no key. A role's columns alone would resolve another key where it may not read
+    this one, naming a subject by a column that tells no row from another."""
+    columns = [c for c in table["columns"] if not c.get("native_filter_type")]
+    primary = [c["column_name"] for c in columns if c.get("is_primary_key")]
+    return primary or [
+        _resolve_id_column(type_name, [c["column_name"] for c in columns], target_pk, [])
+    ]
+
+
 def _resolve_id_column(  # REQ-392, REQ-394
     type_name: str,
     col_names: list[str],
@@ -868,7 +1187,9 @@ def _resolve_id_column(  # REQ-392, REQ-394
     3. Single column ending in _id / _pk / _oid (unambiguous).
     4. Single column starting with id_.
     5. First column in the column list.
-    6. Fallback: "id".
+
+    A table with no column to resolve one from is refused, naming it: its node has no identity,
+    and none is invented for it.
     """
     # 0. User-designated PK
     if user_pks:
@@ -898,8 +1219,7 @@ def _resolve_id_column(  # REQ-392, REQ-394
     if col_names:
         return col_names[0]
 
-    # 6. Hard fallback
-    return "id"
+    raise ValueError(f"{type_name!r} has no column to identify its rows by: it is no graph node")
 
 
 def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:

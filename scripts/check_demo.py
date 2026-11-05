@@ -31,6 +31,9 @@ Each check is the one the repo already has, run for this demo alone:
               (scripts/demo_stores.py SHARED_TYPES) with the suffix config.yaml names its data with
               (ns_env) and, for Postgres and MongoDB, its access script
   locales     the tour's words translated in every locale, not the English left in place
+  regions     a published demo in regions (demo.yaml regions) one the regions sandbox tier serves:
+              named in PROVISA_SANDBOX_REGIONS_DEMOS (packaging/linux/first-launch.sh), the list
+              the UI server routes to that tier by (provisa/ui_server.py)
 
 Exits 1 when any check found something missing.
 """
@@ -42,6 +45,7 @@ import json
 import re
 import subprocess
 import sys
+import tarfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -59,6 +63,7 @@ _STORE_LABELS = ("com.provisa.demo.host_env", "com.provisa.demo.port_env", "com.
 #: The shared store types whose data the node loads with the demo's roles and grants: their access
 #: script (com.provisa.demo.access) is required (scripts/demo_stores.py loads it).
 _SHARED_ACCESS = ("postgres", "mongo")
+INSTALL = ROOT / "packaging" / "linux" / "first-launch.sh"
 
 
 def demo_cases(collected: list[str], name: str) -> list[str]:
@@ -95,7 +100,11 @@ def check_examples(home: Path) -> list[str]:
     queries = sorted((home / "queries").glob("*.graphql"))
     if not queries:
         return ["queries/ holds no example query"]
-    admin = {"id": "org_admin", "capabilities": [], "domain_access": ["*"]}
+    admin = {
+        "id": "org_admin",
+        "capabilities": [],
+        "domain_access": ["*", "meta", "ontology", "ops"],
+    }
     schema = _views_schema(home, admin, include_tables=True)
     problems = []
     for query in queries:
@@ -154,6 +163,81 @@ def check_images(home: Path) -> list[str]:
     return problems
 
 
+#: What a demo can use that only a newer Provisa runs, with the first release carrying it: a demo
+#: using one needs requires_provisa at least that release, or an older Provisa loads its bundle and
+#: fails at query time. Raise DEMO_FORMAT (provisa/core/demo_bundles.py) with each entry.
+_FEATURES = (
+    ("roles with parents, or grants naming data_steward (REQ-2155)", "0.1.0a496"),
+    ("a code export taking inputs (REQ-2100)", "0.1.0a496"),
+    ("roles listing what they hold of their parents' rights (REQ-2155)", "0.1.0a497"),
+    ("a setup scanning a document for terms, carried in its bundle (REQ-2201)", "0.1.0a499"),
+)
+_INPUTS = re.compile(r"\binputs\b")
+
+
+def _uses_role_parents(home: Path) -> bool:
+    text = (home / "config.yaml").read_text()
+    config = yaml.safe_load(text) or {}
+    has_parents = any(r.get("parents") for r in config.get("roles") or [])
+    return has_parents or re.search(r"\bdata_steward\b", text) is not None
+
+
+def _narrows_parents(home: Path) -> bool:
+    config = yaml.safe_load((home / "config.yaml").read_text()) or {}
+    return any(r.get("parents") for r in config.get("roles") or [])
+
+
+def _uses_export_inputs(home: Path) -> bool:
+    for archive in sorted((home / "code").glob("*.tar.gz")):
+        with tarfile.open(archive) as tar:
+            for member in tar.getmembers():
+                if member.isfile() and member.name.endswith((".py", ".ts", ".js", ".mjs")):
+                    text = tar.extractfile(member).read().decode("utf-8", "replace")
+                    if _INPUTS.search(text):
+                        return True
+    return False
+
+
+def _scans_for_terms(home: Path) -> bool:
+    from provisa.api.demo_templates import demo_scans
+
+    return bool(demo_scans(home))
+
+
+def _uses(home: Path) -> tuple[bool, bool, bool, bool]:
+    """Whether this demo uses each _FEATURES entry, in its order."""
+    return (
+        _uses_role_parents(home),
+        _uses_export_inputs(home),
+        _narrows_parents(home),
+        _scans_for_terms(home),
+    )
+
+
+def _features_used(home: Path) -> list[str]:
+    """The first release of each _FEATURES entry this demo uses."""
+    return [first for (_, first), uses in zip(_FEATURES, _uses(home)) if uses]
+
+
+def needed_release(home: Path) -> str | None:
+    """The first release carrying every feature the demo uses; None when it uses none."""
+    from provisa.core import demo_bundles as bundles
+
+    firsts = _features_used(home)
+    return max(firsts, key=bundles.provisa_version_key) if firsts else None
+
+
+def check_features(home: Path, required: str) -> list[str]:
+    """The features this demo uses that come after ``required``, one problem each."""
+    from provisa.core import demo_bundles as bundles
+
+    return [
+        f"demo.yaml: requires_provisa {required} is older than {first}, which {feature} needs"
+        for (feature, first), uses in zip(_FEATURES, _uses(home))
+        if uses and bundles.provisa_version_key(required) < bundles.provisa_version_key(first)
+    ]
+
+
 def check_bundle(home: Path) -> list[str]:
     from provisa.core import demo_bundles as bundles
 
@@ -165,7 +249,7 @@ def check_bundle(home: Path) -> list[str]:
         bundles.check_directory(home)
     except bundles.BundleError as e:
         return [f"demo.yaml: {e}"]
-    return []
+    return check_features(home, required)
 
 
 def _shared_type(role: str | None, image: str) -> str | None:
@@ -245,6 +329,27 @@ def check_locales(name: str, home: Path, locales: Path = LOCALES) -> list[str]:
     return problems
 
 
+def regions_demos(install: Path = INSTALL) -> frozenset[str]:
+    """The demos the install's regions sandbox tier serves: its PROVISA_SANDBOX_REGIONS_DEMOS, each
+    entry a demo and the region its node serves (``retail=us``; provisa/ui_server.py)."""
+    found = re.search(r'PROVISA_SANDBOX_REGIONS_DEMOS:\s*"([^"]*)"', install.read_text())
+    if found is None:
+        raise ValueError(f"{install.relative_to(ROOT)} sets no PROVISA_SANDBOX_REGIONS_DEMOS")
+    return frozenset(entry.split("=", 1)[0] for entry in found.group(1).split(",") if entry)
+
+
+def check_regions(name: str, home: Path, listed: frozenset[str] | None = None) -> list[str]:
+    spec = yaml.safe_load((home / "demo.yaml").read_text()) or {}
+    if not spec.get("published") or not spec.get("regions"):
+        return []
+    if name in (regions_demos() if listed is None else listed):
+        return []
+    return [
+        "demo.yaml: in regions, but not one PROVISA_SANDBOX_REGIONS_DEMOS names "
+        f"({INSTALL.relative_to(ROOT)})"
+    ]
+
+
 def checks(name: str, home: Path) -> dict[str, Callable[[], list[str]]]:
     return {
         "tests": lambda: check_tests(name),
@@ -254,6 +359,7 @@ def checks(name: str, home: Path) -> dict[str, Callable[[], list[str]]]:
         "bundle": lambda: check_bundle(home),
         "run-compose": lambda: check_run_compose(home, name),
         "locales": lambda: check_locales(name, home),
+        "regions": lambda: check_regions(name, home),
     }
 
 

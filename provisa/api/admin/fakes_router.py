@@ -74,9 +74,23 @@ async def check_column_fake(request: Request, body: ColumnFakeIn) -> dict[str, A
         "fake_stable": body.stable,
         "synthetic_rule": body.syntheticRule or None,
     }
+    from provisa.api.admin.read_rights import served_columns_request
+
     async with state.model_db.acquire() as conn:
         tables = await fetch_tables(conn)
         relationships = await fetch_relationships(conn)
+        served = (
+            None
+            if body.tableId is None
+            else await served_columns_request(conn, request, body.tableId)
+        )
+    # REQ-2152: a table the caller is served no column of, or a stored column it is not served,
+    # is not checked: the steward fakes what it reads.
+    stored = {c["column_name"] for t in tables if t["id"] == body.tableId for c in t["columns"]}
+    if served == set() or (
+        served is not None and body.column in stored and body.column not in served
+    ):
+        raise ApiError(404, "fakes.table_not_found", f"table {body.tableId} is not registered")
     target = next((t for t in tables if t["id"] == body.tableId), None)
     if target is None:
         tables.append({"id": None, "table_name": body.tableName, "columns": [column]})
@@ -95,6 +109,9 @@ async def check_column_fake(request: Request, body: ColumnFakeIn) -> dict[str, A
 
 class ProposeIn(BaseModel):
     tableId: int
+    # REQ-2053: propose for these columns only, each from the profile even when it declares a
+    # fake or a rule already. None: every column that declares neither.
+    columns: list[str] | None = None
 
 
 @router.post("/propose")
@@ -107,9 +124,14 @@ async def propose_fakes(request: Request, body: ProposeIn) -> dict[str, Any]:
 
     if state.model_db is None:
         raise ApiError(503, "fakes.database_unavailable", "Database unavailable")
+    from provisa.api.admin.profiler_checks_router import _physical_names
+    from provisa.api.admin.read_rights import served_columns_request
+
     async with state.model_db.acquire() as conn:
         reg = next((t for t in await fetch_tables(conn) if t["id"] == body.tableId), None)
-        if reg is None:
+        # REQ-2152: a table the caller is served no column of is answered as unregistered.
+        served = None if reg is None else await served_columns_request(conn, request, body.tableId)
+        if reg is None or served == set():
             raise ApiError(404, "fakes.table_not_found", f"table {body.tableId} is not registered")
         latest = await latest_facts(
             conn, org_id=require_current_org(), env=current_env.get(), reg=reg
@@ -128,8 +150,26 @@ async def propose_fakes(request: Request, body: ProposeIn) -> dict[str, Any]:
         c["column_name"] for c in reg["columns"] if c.get("fake") or c.get("synthetic_rule")
     }
     pii = {c for c, tagged in tags.items() if "pii" in tagged}
-    out = propose(run_id, facts, pii, declared)
-    return {"runId": out.run_id, "columns": out.columns, "unmatchedPii": out.unmatched_pii}
+    # REQ-2152: only the columns the caller is served (the profile names them as published).
+    physical = {} if served is None else _physical_names(body.tableId)
+
+    def _reads(name: str) -> bool:
+        return served is None or physical.get(name) in served
+
+    named = None if body.columns is None else set(body.columns)
+    # A named column the caller is not served is refused as one the run does not profile.
+    unread = sorted(n for n in named or () if not _reads(n))
+    try:
+        if unread:
+            raise ValueError(f"run {run_id} profiles no column {', '.join(map(repr, unread))}")
+        out = propose(run_id, facts, pii, declared, named)
+    except ValueError as exc:
+        raise ApiError(422, "fakes.column_not_profiled", str(exc), table=reg["table_name"]) from exc
+    return {
+        "runId": out.run_id,
+        "columns": {name: fake for name, fake in out.columns.items() if _reads(name)},
+        "unmatchedPii": [name for name in out.unmatched_pii if _reads(name)],
+    }
 
 
 @router.post("/adequacy")
@@ -137,11 +177,26 @@ async def check_adequacy(request: Request) -> dict[str, Any]:
     """REQ-2091: run the adequacy checks on every sensitive column's fake and synthetic rule now,
     as the daily schedule does. Answers how many checks passed, failed and did not run; the
     findings are in the sensitive_coverage meta view."""
+    from provisa.api.admin.read_rights import served_columns_request
     from provisa.core.request_context import current_env, require_current_org
-    from provisa.fakes.adequacy import run_org
+    from provisa.fakes.adequacy import counts, run_checks
     from provisa.security.sensitive import SENSITIVE_DATA
 
     require_capability_request(request, SENSITIVE_DATA)
     if state.model_db is None:
         raise ApiError(503, "fakes.database_unavailable", "Database unavailable")
-    return await run_org(state, require_current_org(), current_env.get())
+    rows = await run_checks(state, require_current_org(), current_env.get())
+    # REQ-2152: the checks run on every sensitive column (Provisa's own identity); the caller is
+    # told only of those on columns it is served.
+    async with state.model_db.acquire() as conn:
+        served = {
+            tid: await served_columns_request(conn, request, tid)
+            for tid in {r["table_id"] for r in rows}
+        }
+    return counts(
+        [
+            r
+            for r in rows
+            if served[r["table_id"]] is None or r["column_name"] in served[r["table_id"]]
+        ]
+    )

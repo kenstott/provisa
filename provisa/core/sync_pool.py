@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import threading
 import time
+import weakref
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Generic, TypeVar
@@ -33,6 +34,16 @@ C = TypeVar("C")
 
 class PoolTimeout(RuntimeError):
     """No pooled connection was returned within the pool's wait bound."""
+
+
+# Every pool still referenced, for ``/debug/leak-probe`` (REQ-2149): a soak reads each one's
+# connections over hours.
+_live: weakref.WeakSet[BlockingPool] = weakref.WeakSet()
+
+
+def pools() -> list[dict[str, int | str]]:
+    """Each live pool's name, open connections, the ones checked out and its maxsize."""
+    return [pool.counts() for pool in list(_live)]
 
 
 class BlockingPool(Generic[C]):
@@ -61,10 +72,20 @@ class BlockingPool(Generic[C]):
         self._cond = threading.Condition(threading.Lock())
         for _ in range(minsize):
             self._idle.append(self._new())
+        _live.add(self)
 
     @property
     def maxsize(self) -> int:
         return self._maxsize
+
+    def counts(self) -> dict[str, int | str]:
+        with self._cond:
+            return {
+                "name": self._name,
+                "open": self._created,
+                "checked_out": self._created - len(self._idle),
+                "maxsize": self._maxsize,
+            }
 
     def _new(self) -> C:
         conn = self._create()

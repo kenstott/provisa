@@ -75,25 +75,24 @@ export interface TourStep {
    * opens its own statement.
    */
   openQuery?: {
-    // "role": a set of roles the SQL explorer runs as (REQ-2057). "asOf"/"asRecorded": the SQL
-    // explorer's time-travel pickers (REQ-1163).
+    // "role": a set of roles the SQL explorer runs as (REQ-2057). "params": the value bound to the
+    // SQL explorer's next statement's $1 (REQ-2083). "mcpQuestion": a question for the MCP
+    // explorer's agent (REQ-2172).
     stateKey:
       | "sql"
+      | "mcpQuestion"
       | "query"
       | "openApiUrl"
       | "jsonapiUrl"
       | "grpcMethod"
       | "role"
-      | "asOf"
-      | "asRecorded";
+      | "params";
     text: string;
     /** REQ-2083: the text is a value of an earlier tour statement's answer, read when the step
-     *  runs: `sql` run again as it ran (role, time travel), row `row`'s `column`. */
+     *  runs: `sql` run again as it ran (its role), row `row`'s `column`. */
     from?: {
       sql: string;
       role?: string;
-      asOf?: string;
-      asRecorded?: string;
       row: number;
       column: string;
     };
@@ -102,10 +101,12 @@ export interface TourStep {
    * The state handed to `route`'s page once per visit to the step, with no statement: the Graph
    * page's `view` (REQ-2010: `groupBy`, its newest frame grouped by that property, its query kept)
    * or the Notebook tab's `cells` (REQ-2084: added to the open notebook, and run with `autoRun`), or
-   * the Python tab's `code` (REQ-2071: into its editor, and run with `autoRun`).
+   * the Python tab's `code` (REQ-2071: into its editor, and run with `autoRun`), or the MCP
+   * explorer's Connect Claude Desktop panel opened (REQ-2172: `mcpConnect`).
    */
   navState?:
     | { view: { groupBy: string } }
+    | { mcpConnect: true }
     | { cells: string[]; autoRun: boolean }
     | { code: string; autoRun: boolean };
   /**
@@ -114,6 +115,12 @@ export interface TourStep {
    * and close leave the picker as it was.
    */
   chooseOnNext?: { open: string; option: string };
+  /**
+   * On entering the step, once per visit: open the picker `open` on the step's page and choose its
+   * option `option`, then run the step's statement. A role picked on the step that explains it, so
+   * that what the step opens runs as that role and no step announces a role over an empty editor.
+   */
+  chooseFirst?: { open: string; option: string };
   /**
    * Named warm-up for *this* step's backend work, resolved by the runner's prefetch registry and
    * fired one step early (while the previous popover is on screen). The start-up prefetch only
@@ -182,10 +189,17 @@ export interface TourStep {
    * aborts the tour, this only sets how long "never" takes to establish.
    */
   waitMs?: number;
+  /**
+   * REQ-2052: what the page shows when the step's object does not exist (a table never profiled).
+   * Once it appears the step stops at once, stuck, its text naming why, instead of waiting out
+   * `element`.
+   */
+  absent?: string;
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';
-// REQ-2115: the Parquet file Provisa publishes (REQ-2113), the core tour's live-built source.
+// REQ-2115: the Parquet file Provisa publishes (REQ-2113), the address the core tour's source form
+// is filled in with.
 export const SUPPLIES_PARQUET_URL = "https://provisa.dev/demo-data/supplies.parquet";
 /** REQ-2101 (amended): the copy a demo ships into its org's own folder (starthere's org_files/). */
 export const SUPPLIES_ORG_FILE = "supplies.parquet";
@@ -196,9 +210,9 @@ export interface TourContext {
   orgFiles: string[];
 }
 
-/** Where the live-built source reads supplies.parquet: the org's own copy where its demo ships
- * one, read in place with no network (a sandbox may reach no address its demo does not declare);
- * else the copy Provisa publishes. */
+/** Where the core tour's source form says supplies.parquet is: the org's own copy where its demo
+ * ships one, read in place with no network (a sandbox may reach no address its demo does not
+ * declare); else the copy Provisa publishes. */
 export function suppliesAddress(orgFiles: string[]): string {
   return orgFiles.includes(SUPPLIES_ORG_FILE)
     ? `{files}/${SUPPLIES_ORG_FILE}`
@@ -312,20 +326,19 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: '[data-testid="source-type-picker-close"]',
   },
   {
-    // REQ-2115: a source built live, as the visitor would build it: the picker opened and its
-    // whole list shown, Parquet File chosen, the file given as its address, and saved. A static
-    // known address, so very unlikely to fail; the popover then explains the row.
+    // REQ-2115 (amended 2026-10-29, THE TOUR FILLS THE FORM AND CANCELS): the picker opened and its
+    // whole list shown, Parquet File chosen and the form filled in, as the visitor would. The
+    // popover explains the filled form; Next (or Back, or closing) presses Cancel, so nothing is
+    // saved, no row appears and a saved source can't refuse the visitor's own later on.
     actions: ({ orgFiles }) => [
       { do: "press", target: { testId: "sources-add-toggle" } },
       { do: "show", target: { testId: "source-type-picker-body" } },
       { do: "press", target: { testId: "source-type-option-parquet" } },
       { do: "fill", target: { testId: "sources-id-input" }, value: SUPPLIES_SOURCE_ID },
       { do: "fill", target: { testId: "source-file-location" }, value: suppliesAddress(orgFiles) },
-      { do: "press", target: { role: "button", name: "Save" } },
     ],
-    // The new row's first cell, its ID: the row runs on under the source's detail, which Save
-    // opens beside the list, and a spotlight on the whole row lit that panel too.
-    element: `[data-testid="sources-row-${SUPPLIES_SOURCE_ID}"] td:first-child`,
+    element: '[data-tour="sources-form"]',
+    clickAfterNext: '[data-testid="sources-cancel"]',
     key: "stepBuildSource",
   },
   {
@@ -490,7 +503,7 @@ export const TOUR_STEPS: TourStep[] = [
     element: '[data-tour="rels-erd-modal"]',
     key: "step17",
     clickBefore: '[data-tour="rels-erd"]',
-    clickAfterNext: '[data-testid="erd-close"]',
+    clickAfterNext: '[data-tour="rels-erd"]',
   },
   {
     route: "/security/roles",
@@ -936,10 +949,11 @@ export function stepsTheOrgCanShow(
  * opened, which is the same hang by a different path.
  *
  * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
- * `meetsRequirement` bound to the signed-in capabilities.
+ * `meetsRequirement` bound to the signed-in capabilities, and given each owner's route, so a page
+ * a demo sandbox's visitor may read without its capability (the Platform page) is kept for them.
  */
 export function tourItinerary(
-  meets: (capability: Capability) => boolean,
+  meets: (capability: Capability, route: string) => boolean,
   scope?: RunScope,
   steps: readonly TourStep[] = TOUR_STEPS,
 ): number[] {
@@ -958,7 +972,7 @@ export function tourItinerary(
       if (step.capability === undefined) {
         throw new Error(`Tour: step ${i} declares a route with no capability`);
       }
-      ownerAllowed = meets(step.capability);
+      ownerAllowed = meets(step.capability, step.route);
     }
     // The owner walk covers every step, so a scoped run whose first step is routeless still
     // resolves its owner's rights; the scope only filters what is kept.

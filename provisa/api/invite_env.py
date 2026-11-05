@@ -33,7 +33,6 @@ from provisa.core.org_invite import (
     ENV_POLICY_NONE,
     ENV_POLICY_PER_VISITOR,
     ENV_POLICY_SHARED,
-    SANDBOX_ROLE,
     sandbox_env_name,
 )
 
@@ -151,13 +150,6 @@ async def redeem_env(invite: dict, user_id: str) -> RedeemedEnv:
             # env's real connections copied in at creation, not stripped -- the ordinary REQ-1491
             # convenience would otherwise leave every source unbound and every table unreachable.
             strip_identities=False,
-            # REQ-1597: a `sandbox` invitation's redeemer also holds `org_admin` here (see
-            # `seat_redeemed_roles`), so the withholding is applied to THAT name, in this
-            # environment only, by reading it off this environment's own `sandbox` row. Union of
-            # the two assignments is then the sandbox definition and nothing wider.
-            define_role_from=(
-                ("org_admin", SANDBOX_ROLE) if invite["role_id"] == SANDBOX_ROLE else None
-            ),
         )
         logger.info(f"Environment {name} created successfully")
     except Exception as e:
@@ -173,21 +165,12 @@ async def seat_redeemed_roles(model_db, user_id: str, role_id: str) -> None:
     (REQ-1595) resolves roles out of the schema it pinned the member to, so an assignment written to
     prod is one the redeemer never has.
 
-    The invitation's own role is always granted. ``sandbox`` grants a SECOND assignment, ``org_admin``,
-    and that is the whole of REQ-1597 that could not be expressed as a role id: a column is visible to
-    a role when ``table_columns.visible_to`` NAMES it (``schema_gen._build_visible_tables``), and an
-    authored model's grants name the roles it was authored against. ``sandbox`` is named by none of
-    them, so on its own it is shown no column on any table -- and ``schema_gen`` then drops every
-    table left with none, leaving a visitor the tables whose API path/query parameters are exempt
-    from the gate and nothing else. Not a smaller sandbox: an empty one.
+    The invitation's role alone is granted (REQ-2155). A sandbox visitor reads the copied model
+    through the grants that name ``viewer``, which ``sandbox`` inherits like every role
+    (``security.inheritance``), and REQ-1596's pin keeps the member out of any environment where it
+    is not.
 
-    So the visitor also holds the name the grants carry. It is not a widening, because
-    ``create_environment`` has already reduced ``org_admin`` IN THIS ENVIRONMENT to the ``sandbox``
-    row's own capabilities (``define_role_from``), and capabilities resolve as the union over the
-    holder's roles -- so the union here is the sandbox definition exactly. Prod's ``org_admin`` is
-    untouched, and REQ-1596's pin is what keeps the member out of any environment where it is not.
-
-    REQ-1337: both are granted as the deployment. The invitation's role was checked against its
+    REQ-1337: it is granted as the deployment. The invitation's role was checked against its
     INVITER when it was issued and again at this redemption (``resolve_invite_role``); what is
     granted here is what that check let through.
     """
@@ -195,10 +178,6 @@ async def seat_redeemed_roles(model_db, user_id: str, role_id: str) -> None:
     from provisa.security.rights import DEPLOYMENT_GRANTER
 
     await grant_org_role(model_db, user_id, role_id, granter_capabilities=DEPLOYMENT_GRANTER)
-    if role_id == SANDBOX_ROLE:
-        await grant_org_role(
-            model_db, user_id, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
-        )
 
 
 async def release_env(invite: dict, redeemed: RedeemedEnv) -> None:

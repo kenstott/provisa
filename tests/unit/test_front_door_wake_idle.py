@@ -40,6 +40,7 @@ CONFIG = {
     "project": "provisa-cloud",
     "zone": "us-east1-b",
     "instance": "coordinator",
+    "sandbox_instance": "sandbox",
     "backend_host": "10.0.0.2",
     "ports": {"5432": {"wake_style": "raw"}, "443": {"wake_style": "html"}},
     "status_port": 9443,
@@ -961,3 +962,67 @@ def test_a_quiet_connection_outlasts_the_ui_servers_own_proxy_timeout(proxy):
     from provisa.core.settings_registry import setting
 
     assert proxy.SPLICE_IDLE_SECONDS > setting("ui.proxy_timeout").default
+
+
+def _request(path: str, accept: str = "text/html") -> bytes:
+    return f"GET {path} HTTP/1.1\r\nHost: cloud.provisa.dev\r\nAccept: {accept}\r\n\r\n".encode()
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/demos", "/demos/retail", "/demos/retail?x=1", "/public/demos/retail/status", "/sandboxes/x"],
+)
+def test_a_request_for_a_demo_is_known_as_one(proxy, path):
+    assert proxy._names_a_demo(_request(path))
+
+
+@pytest.mark.parametrize("path", ["/", "/data/graphql", "/demosx", "/admin/demos"])
+def test_any_other_request_is_not(proxy, path):
+    assert not proxy._names_a_demo(_request(path))
+
+
+def test_a_demo_request_starts_the_sandbox_vm_beside_the_coordinator(proxy):
+    """REQ-2006: the VM was started only once the coordinator was up, and a visitor waited for the
+    two one after the other. A wake for a demo starts it at once, and only once."""
+    proxy.set_status("TERMINATED")
+    proxy._last_sandbox_call = float("-inf")
+    proxy.start_sandbox()
+    assert ("POST", "instances/sandbox/start") in proxy.calls
+    proxy.calls.clear()
+    proxy.wake_sandbox(wait=True)
+    proxy.wake_sandbox(wait=True)
+    assert proxy.calls.count(("POST", "instances/sandbox/start")) == 1
+
+
+def test_a_sandbox_vm_already_up_is_not_started_again(proxy):
+    proxy.set_status("RUNNING")
+    proxy.start_sandbox()
+    assert not [c for c in proxy.calls if c[0] == "POST"]
+
+
+def test_a_deployment_with_no_sandbox_vm_starts_none(proxy, monkeypatch):
+    monkeypatch.setattr(proxy, "SANDBOX_INSTANCE", "")
+    proxy._last_sandbox_call = float("-inf")
+    proxy.wake_sandbox(wait=True)
+    assert proxy.calls == []
+
+
+def test_the_waking_page_says_the_real_wait_and_how_far_along_it_is(proxy, monkeypatch):
+    _clock(monkeypatch, proxy, 1000.0)
+    proxy._last_woke = 1000.0 - 75
+    page = proxy.waking_page(proxy.WAKING_TEXT)
+    assert "about five minutes" in page
+    assert "two minutes" not in page
+    assert "1:15" in page
+    assert "width:25%" in page
+
+
+def test_the_waking_answer_to_a_fetch_says_the_real_wait(proxy):
+    assert "about five minutes" in proxy.waking_json(True)["detail"]
+    assert proxy.waking_json(True)["code"] == "front_door.coordinator_waking"
+    assert proxy.waking_json(False)["code"] == "front_door.coordinator_updating"
+
+
+def test_the_updating_page_claims_no_progress(proxy):
+    assert "__PROGRESS__" not in proxy.waking_page(proxy.UPDATING_TEXT)
+    assert "wake-bar" not in proxy.waking_page(proxy.UPDATING_TEXT).split("</style>", 1)[1]

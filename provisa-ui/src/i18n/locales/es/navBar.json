@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "Organizaciones",
     "itemDashboard": "Panel",
@@ -35,6 +36,8 @@
     "itemEmail": "Correo electrónico",
     "itemMaintenance": "Mantenimiento",
     "itemDeploymentSettings": "Configuración del despliegue",
+    "itemPlatform": "Plataforma",
+    "itemRegions": "Regiones",
     "itemBilling": "Facturación",
     "itemExplore": "MCP",
     "itemEncryption": "Cifrado",
@@ -48,6 +51,7 @@
     "itemMetadataExport": "Exportar",
     "itemImport": "Importar",
     "itemTags": "Etiquetas",
+    "itemClassificationKinds": "Clasificación",
     "itemDataProducts": "Productos",
     "itemReports": "Informes",
     "itemGlossary": "Ontología",
@@ -74,6 +78,9 @@
     "sandboxExitLogOut": "Solo cerrar sesión",
     "itemPython": "Python",
     "itemNotebook": "Cuaderno",
-    "itemContainerRegistries": "Registros de contenedores"
+    "itemContainerRegistries": "Registros de contenedores",
+    "itemSparql": "SPARQL",
+    "itemCatalogs": "Catálogos",
+    "itemReferenceLibrary": "Biblioteca de referencia"
   }
 }

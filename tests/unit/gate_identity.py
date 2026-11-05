@@ -32,12 +32,38 @@ def grant(monkeypatch, *capabilities: str, state=None):
     monkeypatch.setattr(
         appmod.state if state is None else state,
         "roles",
-        {"test_role": {"capabilities": list(capabilities), "domain_access": ["*"]}},
+        # REQ-2153: a built role carries its own domain access beside its reach.
+        {
+            "test_role": {
+                "capabilities": list(capabilities),
+                "domain_access": ["*"],
+                "own_domain_access": ["*"],
+            }
+        },
         raising=False,
     )
     identity = types.SimpleNamespace(
         user_id="test-user", roles=["test_role"], acting_roles=["test_role"]
     )
-    request = types.SimpleNamespace(state=types.SimpleNamespace(identity=identity))
+    # The acting role, as the auth middleware binds it on every request (request.state.role).
+    request = types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=identity, role="test_role")
+    )
     info = types.SimpleNamespace(context={"request": request})
     return info, request
+
+
+def serve_every_column(monkeypatch) -> None:
+    """Answer every caller the whole catalog (admin/catalog_scope.py), for a test of a table save
+    whose subject is not which columns its caller is served (REQ-2152 has its own tests)."""
+    # Imported before the patch: a first import after it would bind the patched name, and the undo
+    # would then restore that one, leaving every later test in the process reading it.
+    import provisa.api.admin.schema_query  # noqa: F401
+    from provisa.api.admin.catalog_scope import CatalogScope
+
+    def whole(info):
+        return CatalogScope(whole=True, reach=None, served={}, governance=True, role=None)
+
+    monkeypatch.setattr("provisa.api.admin.catalog_scope.catalog_scope", whole)
+    # schema_query binds the name at import, so its reference is replaced too.
+    monkeypatch.setattr("provisa.api.admin.schema_query.catalog_scope", whole)

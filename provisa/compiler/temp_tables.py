@@ -46,6 +46,9 @@ from provisa.compiler.definitions import (
 class TempTable:
     name: str
     columns: list[tuple[str, str]]  # (name, type as declared or inferred)
+    # A SERIAL column's last value given (0 before the first): an INSERT that omits the column
+    # takes the next, as PostgreSQL's sequence gives it. Never reused within the session.
+    serials: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -59,6 +62,13 @@ class TempSession:
     # Advanced each time a table of it is created or dropped: what a statement kept for the
     # session was governed against.
     generation: int = 0
+    # What a layer keeps beside its tables for the session, by the layer's name (REQ-2176: the
+    # session's ephemeral graph). It ends with the session.
+    extensions: dict[str, Any] = field(default_factory=dict)
+    # REQ-2176: a session no connection holds -- a principal's graph session, durable across
+    # connections and workers. Its schema is no keeper's to renew or reap: its own retention
+    # sweep (provisa.api.graph_session) drops it.
+    kept: bool = False
 
 
 _SESSION: ContextVar[TempSession | None] = ContextVar("temp_session", default=None)

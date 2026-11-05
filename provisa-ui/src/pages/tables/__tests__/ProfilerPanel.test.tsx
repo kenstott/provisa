@@ -22,7 +22,10 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../../../api/profiler", () => api);
 // The runs view is fetched as the viewer's acting role, which the server makes it safe for.
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "analyst" } }) }));
+vi.mock("../../../context/AuthContext", () => ({
+  // "Role: All": the selected roles as one set, never the first of them alone (REQ-1620).
+  useAuth: () => ({ role: { id: "analyst" }, actingRoles: "analyst,steward" }),
+}));
 
 import { ProfilerPanel } from "../ProfilerPanel";
 import type { RegisteredTable } from "../../../types/admin";
@@ -226,7 +229,9 @@ describe("ProfilerPanel", () => {
     // REQ-1934 DUPLICATE ROWS: each run's duplicate rows beside it.
     expect(cellOf("2026-10-03T03:00:00Z", "Duplicates")).toHaveTextContent("49 (0.5%)");
     expect(cellOf("2026-10-05T03:00:00Z", "Duplicates")).toHaveTextContent("null");
-    await waitFor(() => expect(api.fetchProfileRun).toHaveBeenCalledWith(7, "r1", "analyst"));
+    await waitFor(() =>
+      expect(api.fetchProfileRun).toHaveBeenCalledWith(7, "r1", "analyst,steward"),
+    );
     const rows = await screen.findByTestId("profile-rows-columns");
     expect(rows).toHaveTextContent("amount");
     expect(rows).toHaveTextContent("20.5");

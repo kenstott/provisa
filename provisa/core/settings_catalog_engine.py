@@ -100,7 +100,24 @@ INTERNAL_TLS: list[Setting] = [
     ),
 ]
 
+# REQ-2006: the most memory any DuckDB engine of this deployment may use. Unset is DuckDB's own
+# (80% of the host), for an engine that has the host to itself; a host it shares with other
+# services states its share. A demo sandbox's engine keeps its own cap (sandbox.memory_limit).
+ENGINE_MEMORY = Setting(
+    key="engine.duckdb_memory_limit",
+    card="engine",
+    type="int",
+    effect="live",  # read when an engine is built
+    req="REQ-2006",
+    env="PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT",
+    default=None,
+    nullable=True,
+    min=32 * 1024 * 1024,
+    unit="bytes",
+)
+
 DECLARED: list[Setting] = [
     *(_sizing(field, type_) for field, type_ in SIZING.items()),
     *INTERNAL_TLS,
+    ENGINE_MEMORY,
 ]

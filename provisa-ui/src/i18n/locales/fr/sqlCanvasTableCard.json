@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "Retirer {{tableName}} du canevas",
     "toggleColumn": "Basculer la sélection de la colonne {{columnName}}",
-    "connectColumn": "Démarrer une relation depuis {{columnName}}"
+    "connectColumn": "Démarrer une relation depuis {{columnName}}",
+    "allColumns": "Toutes les colonnes ({{selected}} sur {{total}})",
+    "unjoined": "{{tables}} n'est pas jointe aux autres tables",
+    "joinsUnavailable": "Les jointures que ce rôle peut écrire n'ont pas pu être lues : {{reason}}"
   }
 }

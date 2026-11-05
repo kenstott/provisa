@@ -35,6 +35,7 @@ const ICON_COMPONENTS = new Set([
   "OpenAsQuery",
   "ExportMenu",
   "OntologyToggle",
+  "ErdToggle",
 ]);
 
 /** Containers read through: their children stand in the toolbar in their order. */
@@ -138,6 +139,10 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
     }
     if (tag === "HelpBubble") {
       out.push([attr(open, "target") ? "icon" : "help", line(n)]);
+      return;
+    }
+    if (tag === "PageHelp") {
+      out.push(["help", line(n)]);
       return;
     }
     out.push([ICON_COMPONENTS.has(tag) ? "icon" : "named", line(n)]);

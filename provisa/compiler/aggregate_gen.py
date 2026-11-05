@@ -89,7 +89,7 @@ def _classify_columns(
         if _is_numeric(meta.data_type):
             numeric_cols.append((col_name, meta.data_type))
         if _is_comparable(meta.data_type):
-            comparable_cols.append((col_name, meta.data_type))
+            comparable_cols.append((col_name, meta.subtype or meta.data_type))  # REQ-2171
     return numeric_cols, comparable_cols
 
 

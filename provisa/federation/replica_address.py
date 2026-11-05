@@ -37,6 +37,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from provisa.core.read_refusal import ReadRefused
+
 if TYPE_CHECKING:
     from provisa.federation.engine import FederationEngine
 
@@ -92,16 +94,26 @@ class ReplicaAddress:
 
 
 def replica_table_name(source_id: str, schema_name: str, table_name: str) -> str:
-    """The one name of a table's replica, on every engine: source, schema and table joined.
+    """The one name of a table's replica, on every engine: source, schema and table joined, in
+    lower case -- the name every engine reaches, quoted or not (Trino folds every name it is given
+    to lower case, so a store table named with a capital, Oracle's ``SYSTEM``, was out of its reach).
 
-    A joined name longer than PostgreSQL's identifier limit keeps its head and ends in a digest of
-    the whole, so two long names never fold into one table."""
+    A name lower case changed ends in a digest of the name as written, so two tables whose names
+    differ only in case (PostgreSQL's ``"Orders"`` and ``orders``) never fold into one replica. A
+    name longer than PostgreSQL's identifier limit keeps its head and ends in a digest of the
+    whole, so two long names never fold into one table either."""
     joined = f"{source_id}__{schema_name}__{table_name}"
-    if len(joined.encode()) <= _MAX_NAME_BYTES:
-        return joined
-    digest = hashlib.sha256(joined.encode()).hexdigest()[:_DIGEST_CHARS]
-    head = joined.encode()[: _MAX_NAME_BYTES - _DIGEST_CHARS - 2].decode(errors="ignore")
-    return f"{head}__{digest}"
+    name = joined.lower()
+    if name != joined:
+        name = f"{name}__{_digest(joined)}"
+    if len(name.encode()) <= _MAX_NAME_BYTES:
+        return name
+    head = name.encode()[: _MAX_NAME_BYTES - _DIGEST_CHARS - 2].decode(errors="ignore")
+    return f"{head}__{_digest(joined)}"
+
+
+def _digest(joined: str) -> str:
+    return hashlib.sha256(joined.encode()).hexdigest()[:_DIGEST_CHARS]
 
 
 def replica_schema(org_id: str, *, region: str | None = None) -> str:
@@ -219,6 +231,9 @@ class ReplicaRoute:
     source_id: str
     table_name: str
     target: TableKey
+    #: REQ-2171: each column its replica was built without: (name lowercased, subtype, the reader
+    #: with no form to land it in). A read of one is refused by name.
+    not_landed: tuple[tuple[str, str, str], ...] = ()
 
 
 class AmbiguousReplica(RuntimeError):
@@ -307,6 +322,8 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
     tree = sqlglot.parse_one(pg_sql, read="postgres")
     changed = False
     replica_aliases: set[str] = set()
+    # REQ-2171: each replica-read table's columns its replica was built without, by its alias.
+    left_out: dict[str, Mapping[str, tuple[str, str]]] = {}
     live_tables = 0
     for tbl in tree.find_all(exp.Table):
         if not tbl.name:
@@ -317,6 +334,11 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
             live_tables += 1
             continue
         replica_aliases.add(tbl.alias_or_name.lower())
+        route = routes.routes.get(key)
+        if route is not None and route.not_landed:
+            left_out[tbl.alias_or_name.lower()] = {
+                name: (subtype, reader) for name, subtype, reader in route.not_landed
+            }
         catalog, schema, table = target
         if not tbl.alias:
             # Column references written against the table's own name keep binding to it.
@@ -325,8 +347,11 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
         tbl.set("db", exp.to_identifier(schema, quoted=True))
         tbl.set("catalog", exp.to_identifier(catalog, quoted=True) if catalog else None)
         changed = True
+    if left_out:
+        _refuse_not_landed(tree, left_out, single=live_tables == 0 and len(replica_aliases) == 1)
     if changed:
         from provisa.transpiler.native_json import strip_native_json
+        from provisa.transpiler.native_subtype import strip_reads
 
         def _read_from_a_replica(column: exp.Expr) -> bool:
             qualifier = column.args.get("table")
@@ -335,7 +360,39 @@ def address_replicas(pg_sql: str, routes: ReplicaRoutes) -> str:
             return qualifier.name.lower() in replica_aliases if qualifier else live_tables == 0
 
         strip_native_json(tree, _read_from_a_replica)
+        strip_reads(tree, _read_from_a_replica)
     return tree.sql(dialect="postgres") if changed else pg_sql
+
+
+class ColumnNotLanded(ReadRefused):
+    """A read of a column its table's replica was built without (REQ-2171): no reader of its
+    source has a form to land it in as its subtype defines, and it is never landed in another."""
+
+    code = "query.column_not_landed"
+
+    def __init__(self, column: str, subtype: str, reader: str) -> None:
+        self.params = {"column": column, "subtype": subtype, "dialect": reader}
+        super().__init__(
+            f"column {column} ({subtype}) is not in its table's replica: {reader} has no way to "
+            f"read it as a {subtype}, so it was not landed and cannot be read from the replica"
+        )
+
+
+def _refuse_not_landed(
+    tree: Any, left_out: dict[str, Mapping[str, tuple[str, str]]], *, single: bool
+) -> None:
+    """Raise :class:`ColumnNotLanded` for the first column the statement reads that its
+    replica-read table was built without. An unqualified column is the replica's when the
+    statement reads that one table alone."""
+    import sqlglot.expressions as exp
+
+    for column in tree.find_all(exp.Column):
+        qualifier = column.table.lower() if column.table else None
+        if qualifier is None and single:
+            qualifier = next(iter(left_out))
+        missing = left_out.get(qualifier or "", {}).get(column.name.lower())
+        if missing is not None:
+            raise ColumnNotLanded(column.name, *missing)
 
 
 def read_address(key: TableKey, routes: ReplicaRoutes) -> TableKey:

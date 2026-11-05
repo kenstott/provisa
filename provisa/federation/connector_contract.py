@@ -23,7 +23,9 @@ sources, SPARQL). A code source's function cannot, so its proxy implements it on
 list, and a source the engine reads through its own connector is the engine's: neither has one.
 
 v1: Qdrant reports a complete dataset for what it answers exactly (a similarity top-k, a
-retrieve by id, a scroll); every other connector declares no capability and lands. The target
+retrieve by id, a scroll); a code source for any statement over its own tables (DuckDB answers it
+over their functions' rows, codesource.proxy); every other connector declares no capability and
+lands. The target
 shape of a capability, for later: the comparators it evaluates exactly, per data type; the
 ordering, by one key or several, in which directions; and the limit, as offset and length."""
 
@@ -93,6 +95,7 @@ def contract_for(source_type: str) -> SourceContract | None:
     """``source_type``'s contract, or None for a SQL database or a source the engine reads."""
     if not _CONTRACTS:
         from provisa.api_source.contract import ApiEndpointContract
+        from provisa.codesource.languages import CODE_SOURCE_TYPES
         from provisa.codesource.proxy import CodeProxy
         from provisa.graphql_remote.contract import GraphqlRemoteContract
         from provisa.qdrant.contract import QdrantContract
@@ -100,8 +103,7 @@ def contract_for(source_type: str) -> SourceContract | None:
 
         _CONTRACTS.update(
             {
-                "node": CodeProxy(),
-                "python": CodeProxy(),
+                **{t: CodeProxy() for t in CODE_SOURCE_TYPES},
                 "qdrant": QdrantContract(),
                 "openapi": ApiEndpointContract("REST"),
                 "graphql_api": ApiEndpointContract("GraphQL API"),
@@ -110,6 +112,7 @@ def contract_for(source_type: str) -> SourceContract | None:
                 "neo4j": ApiEndpointContract("Neo4j"),
                 "graphql_remote": GraphqlRemoteContract("GraphQL remote"),
                 "grpc_remote": GrpcRemoteContract("gRPC remote"),
+                "quickbooks": ApiEndpointContract("QuickBooks Online"),  # REQ-2197
             }
         )
     return _CONTRACTS.get(source_type)

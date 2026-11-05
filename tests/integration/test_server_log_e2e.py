@@ -10,8 +10,8 @@
 
 """Integration: an error logged by a provisa module reaches a started server's stderr, once.
 
-A real server (DuckDB engine, SQLite control plane and source) is sent a Cypher statement its
-engine refuses at run time. ``provisa.api.rest.cypher_router`` reports that on its module logger;
+A real server (DuckDB engine, SQLite source) is sent a Cypher statement its engine refuses at run
+time. ``provisa.api.rest.cypher_router`` reports that on its module logger;
 the line must appear on the process's stderr — the log an operator reads — exactly once."""
 
 from __future__ import annotations
@@ -54,10 +54,14 @@ def server():
 
 
 def test_a_module_loggers_error_is_on_the_servers_stderr_exactly_once(server):
-    # 'seven' is not a number: the engine refuses the comparison when it runs the statement.
+    # 'seven' is not a number: the engine refuses the bound value when it runs the statement. (A
+    # literal of the wrong kind is refused at translation, before any engine runs: REQ-778.)
     response = httpx.post(
         f"{server.base_url}/data/cypher",
-        json={"query": f"MATCH (t:{_LABEL}) WHERE t.name = 7 RETURN t.name AS name", "params": {}},
+        json={
+            "query": f"MATCH (t:{_LABEL}) WHERE t.id = $v RETURN t.name AS name",
+            "params": {"v": "seven"},
+        },
         headers={"X-Provisa-Role": _ROLE},
         timeout=server.request_timeout + 10,
     )

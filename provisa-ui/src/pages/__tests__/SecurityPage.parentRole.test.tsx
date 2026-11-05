@@ -25,16 +25,27 @@ const ROLES = [
     description: "What analyst is for.",
     capabilities: [],
     demonstrated: [],
-    domain_access: ["sales"],
-    parentRoleId: null,
+    domain_access: ["*"],
+    parents: ["viewer"],
+    standard: true,
   },
   {
     id: "junior",
     description: "What junior is for.",
     capabilities: [],
     demonstrated: [],
-    domain_access: [],
-    parentRoleId: "analyst",
+    domain_access: ["sales"],
+    parents: ["analyst", "auditor"],
+    standard: false,
+  },
+  {
+    id: "auditor",
+    description: "What auditor is for.",
+    capabilities: [],
+    demonstrated: [],
+    domain_access: ["sales"],
+    parents: [],
+    standard: false,
   },
 ];
 
@@ -73,9 +84,9 @@ import { SecurityPage } from "../SecurityPage";
 // that saves a new role chooses "All Domains" in the picker first.
 // Mantine MultiSelect in jsdom: floating-ui hides the detached dropdown (all rects are 0), so
 // the options are found through the input's aria-controls listbox with hidden: true.
-async function chooseAllDomains() {
+async function choose(label: string, option: string) {
   const picker = screen
-    .getAllByLabelText("Domain Access")
+    .getAllByLabelText(label)
     .find((el) => el.tagName === "INPUT") as HTMLElement;
   fireEvent.click(picker);
   await waitFor(() => {
@@ -83,41 +94,58 @@ async function chooseAllDomains() {
   });
   const listbox = document.getElementById(picker.getAttribute("aria-controls") as string);
   fireEvent.click(
-    within(listbox as HTMLElement).getByRole("option", { name: "All Domains", hidden: true }),
+    within(listbox as HTMLElement).getByRole("option", { name: option, hidden: true }),
   );
 }
 
 const input = (testid: string) => screen.getByTestId(testid) as HTMLInputElement;
 
-describe("SecurityPage — role inheritance (REQ-1677)", () => {
-  it("shows the parent in the expanded role row", () => {
+describe("SecurityPage — role inheritance (REQ-1677, REQ-2155)", () => {
+  it("shows every parent in the expanded role row", () => {
     render(<SecurityPage />);
     fireEvent.click(screen.getByText("junior"));
-    expect(screen.getByTestId("role-parent-junior")).toHaveTextContent("analyst");
+    expect(screen.getByTestId("role-parent-junior")).toHaveTextContent("analyst, auditor");
   });
 
-  it("stages the chosen parent through upsertRole", async () => {
+  it("stages the chosen parents, in order, through upsertRole", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityPage />);
     await openNewRole();
     fireEvent.change(input("role-id-input"), { target: { value: "intern" } });
-    const select = input("role-parent-select");
-    fireEvent.click(select);
-    fireEvent.change(select, { target: { value: "analyst" } });
-    fireEvent.click(await screen.findByRole("option", { name: "analyst", hidden: true }));
+    await choose("Domain Access", "All Domains");
+    await choose("Inherits from", "analyst");
+    await choose("Inherits from", "auditor");
     fireEvent.click(screen.getByTestId("save-role"));
     await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalled());
-    expect(upsertRoleSpy.mock.calls[0][0]).toMatchObject({ id: "intern", parentRoleId: "analyst" });
+    expect(upsertRoleSpy.mock.calls[0][0]).toMatchObject({
+      id: "intern",
+      parents: ["analyst", "auditor"],
+    });
   });
 
-  it("sends null when no parent is chosen", async () => {
+  it("sends no parents when none is chosen", async () => {
     upsertRoleSpy.mockClear();
     render(<SecurityPage />);
     await openNewRole();
     fireEvent.change(input("role-id-input"), { target: { value: "solo" } });
-    await chooseAllDomains();
+    await choose("Domain Access", "All Domains");
     fireEvent.click(screen.getByTestId("save-role"));
     await waitFor(() => expect(upsertRoleSpy).toHaveBeenCalled());
-    expect(upsertRoleSpy.mock.calls[0][0]).toMatchObject({ id: "solo", parentRoleId: null });
+    expect(upsertRoleSpy.mock.calls[0][0]).toMatchObject({ id: "solo", parents: [] });
+  });
+
+  it("offers a standard role no edit or delete, and says why", () => {
+    render(<SecurityPage />);
+    fireEvent.click(screen.getByText("analyst"));
+    expect(screen.queryByTestId("edit-role-analyst")).toBeNull();
+    expect(screen.queryByTestId("delete-role-analyst")).toBeNull();
+    expect(screen.getByTestId("role-standard-analyst")).toHaveTextContent("Provisa's own");
+  });
+
+  it("offers an organisation's own role edit and delete", () => {
+    render(<SecurityPage />);
+    fireEvent.click(screen.getByText("junior"));
+    expect(screen.getByTestId("edit-role-junior")).toBeTruthy();
+    expect(screen.getByTestId("delete-role-junior")).toBeTruthy();
   });
 });

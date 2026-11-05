@@ -65,13 +65,12 @@ async def get_unique_constraints(
 ) -> UniqueConstraintsResponse:  # REQ-1093
     """Introspect declared UNIQUE constraints for one (schema, table) on an RDB source.
 
-    Seeds the register/edit "Uniques" panel. Returns an empty list when the source
-    exposes none or does not support constraint introspection — uniqueness is never
-    inferred from data.
+    Seeds the register/edit "Uniques" panel from the keys the source declares (REQ-2170). An
+    empty list when the source declares none or its catalog is not read here -- uniqueness is
+    never inferred from data.
     """
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
-    from provisa.discovery.fk_introspect import introspect_unique_constraints
 
     if state.model_db is None:
         raise ApiError(503, "discovery.database_not_connected", "Database not connected")
@@ -87,15 +86,24 @@ async def get_unique_constraints(
             source_id=source_id,
         )
     source_type = fetched._mapping["type"]
-    raw = await introspect_unique_constraints(
-        state.source_pools, source_type, source_id, schema, table
-    )
     return UniqueConstraintsResponse(
         source_id=source_id,
-        unique_constraints=[
-            DiscoveredUniqueConstraint(name=u["name"], columns=u["columns"]) for u in raw
-        ],
+        unique_constraints=await _declared_uniques(state, source_type, source_id, schema, table),
     )
+
+
+async def _declared_uniques(
+    state, source_type: str, source_id: str, schema: str, table: str
+) -> list[DiscoveredUniqueConstraint]:
+    """The unique constraints ``schema.table`` declares at its source (REQ-1093, REQ-2170)."""
+    from provisa.discovery.declared_keys import declared_keys
+
+    declared = await declared_keys(state.source_pools, source_type, source_id, schema, table)
+    if declared is None:
+        return []  # the source's catalog is not read here: it states no constraint
+    return [
+        DiscoveredUniqueConstraint(name=u.name, columns=list(u.columns)) for u in declared.unique
+    ]
 
 
 @router.get("/ir-types", response_model=list[str])
@@ -230,14 +238,9 @@ async def discover_source_schema(
     # Only for RDB sources with a known table; introspection reads the live source constraints.
     unique_constraints: list[DiscoveredUniqueConstraint] = []
     if hints.table and hints.schema_name:
-        from provisa.discovery.fk_introspect import introspect_unique_constraints
-
-        raw_uniques = await introspect_unique_constraints(
-            state.source_pools, source_type, source_id, hints.schema_name, hints.table
+        unique_constraints = await _declared_uniques(
+            state, source_type, source_id, hints.schema_name, hints.table
         )
-        unique_constraints = [
-            DiscoveredUniqueConstraint(name=u["name"], columns=u["columns"]) for u in raw_uniques
-        ]
 
     return DiscoverResponse(
         source_id=source_id,

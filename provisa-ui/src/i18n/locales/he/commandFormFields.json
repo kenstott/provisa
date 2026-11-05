@@ -64,6 +64,10 @@
     "outputColumnsTitle": "עמודות מערך הנתונים של הפלט",
     "addOutputColumn": "+ הוספת עמודת פלט",
     "removeOutputColumn": "הסרת עמודת הפלט {{name}}",
-    "datasetColumnPlaceholder": "עמודה"
+    "datasetColumnPlaceholder": "עמודה",
+    "bindingTemplate": "ביטוי SQL",
+    "bindingTemplateHint": "ביטוי SQL אחד. כתבו כל ארגומנט כ-{{placeholder}}; הוא רץ בתוך השאילתה הקוראת.",
+    "argDefault": "ערך ברירת המחדל של הארגומנט {{name}}",
+    "argDefaultPlaceholder": "ברירת מחדל (השאירו ריק אם נדרש)"
   }
 }

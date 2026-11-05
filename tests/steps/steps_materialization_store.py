@@ -212,6 +212,16 @@ def given_probe_mv_with_matching_token(shared_data, monkeypatch):
 
     monkeypatch.setattr("provisa.mv.governed_build.view_build_sql", _built_from)
 
+    # Its input is resolved against the app's model (REQ-939): a model of its own holding the one
+    # orders table, never whatever earlier tests of the session left -- where two tables named
+    # orders made the bare input ambiguous and the build was refused before the probe.
+    from provisa.api import app as appmod
+
+    model = appmod.AppState()
+    model.tables = [{"id": 1, "source_id": "src", "schema_name": "public", "table_name": "orders"}]
+    model.source_catalogs = {}
+    monkeypatch.setattr(appmod, "state", model)
+
     registry = MVRegistry()
     mv = _make_probe_mv("rel-mv", source_tables=["orders"])
     registry.register(mv)

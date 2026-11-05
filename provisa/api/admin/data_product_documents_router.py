@@ -15,7 +15,9 @@ ODCS contract of each member it names. They are built from the same snapshot the
 publishes (``publishing.org_snapshot``), so a catalog that pulls reads what one that is pushed to
 was told. Reading them asks what reading a data product asks (``data_product_read``), and they are
 part of the metadata export, so the org's tier must include it (REQ-1073; nothing gates it on a
-self-hosted install, REQ-1066).
+self-hosted install, REQ-1066). The product's own Contracts panel reads the same contracts as JSON,
+asking only what reading the product asks, and each contract's saved versions, which the standard
+has no element for (REQ-2158).
 """
 
 # Requirements: REQ-2118, REQ-1073
@@ -36,17 +38,21 @@ router = APIRouter()
 _YAML = "application/yaml"
 
 
-async def _documents(request: Request, product_id: str):
+async def _documents(request: Request, product_id: str, *, export: bool = True):
+    """The product's documents. ``export`` is a catalog's pull, part of the metadata export; the
+    product's own page reads the same contracts without it (REQ-2158), as it reads the product."""
     require_capability_request(request, "data_product_read")
     org_id = require_active_org_id(request)
-    try:
-        await require_feature(org_id, Feature.METADATA_EXPORT)
-    except (EntitlementError, KeyError) as exc:
-        raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
+    if export:
+        try:
+            await require_feature(org_id, Feature.METADATA_EXPORT)
+        except (EntitlementError, KeyError) as exc:
+            raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
     from provisa.api.metadata_export.odps import product_documents
     from provisa.api.metadata_export.publishing import org_snapshot
 
-    snapshot = await org_snapshot(org_id)
+    # Built for this product: only what its documents carry is read (REQ-2158).
+    snapshot = await org_snapshot(org_id, product_id=product_id)
     product = next((p for p in snapshot.data_products if p.id == product_id), None)
     if product is None:
         # A product with no exported member builds nothing (DataProductAsset), so it has no
@@ -70,16 +76,63 @@ async def data_product_odps(product_id: str, request: Request) -> Response:  # R
     return _yaml(document)
 
 
-@router.get("/data-products/{product_id}/contracts/{member}.yaml")
-async def data_product_contract(product_id: str, member: str, request: Request) -> Response:
-    """A member's ODCS 3.1 contract, the member named by its address (source.schema.table)."""
-    _, contracts = await _documents(request, product_id)
+@router.get("/data-products/{product_id}/contracts.json")
+async def data_product_contracts(product_id: str, request: Request) -> dict:  # REQ-2158
+    """Every output port's ODCS 3.1 contract, by its member's address, as the product's
+    Contracts panel shows them: each element declared or derived, the one document a catalog
+    pulls."""
+    _, contracts = await _documents(request, product_id, export=False)
+    return contracts
+
+
+def _port_contract(product_id: str, member: str, contracts: dict[str, dict]) -> dict:
+    """The output port ``member``'s contract, or why there is none."""
     contract = contracts.get(member)
     if contract is None:
         raise ApiError(
             404,
             "data_products.no_contract",
-            f"data product {product_id!r} has no member {member!r}; its members are "
+            f"data product {product_id!r} has no output port {member!r}; its output ports are "
             f"{', '.join(sorted(contracts))}",
         )
-    return _yaml(contract)
+    return contract
+
+
+@router.get("/data-products/{product_id}/contracts/{member}.json")
+async def data_product_contract_json(product_id: str, member: str, request: Request) -> dict:
+    """One output port's ODCS 3.1 contract, as the product's contracts list shows it when that
+    port's row opens (REQ-2158): asking what reading the product asks, as contracts.json does."""
+    _, contracts = await _documents(request, product_id, export=False)
+    return _port_contract(product_id, member, contracts)
+
+
+@router.get("/data-products/{product_id}/contracts/{member}/versions.json")
+async def data_product_contract_versions(
+    product_id: str, member: str, request: Request
+) -> list[dict]:
+    """One output port's saved contract versions, oldest first, each with when and by whom it was
+    saved and its differences from the one before (REQ-2158): read with the port's contract when
+    its row opens, asking what reading the product asks."""
+    require_capability_request(request, "data_product_read")
+    require_active_org_id(request)
+    from provisa.api.app import state
+    from provisa.core.models import DataContract
+    from provisa.core.repositories import data_product as data_product_repo
+
+    assert state.model_db is not None  # the org's model store is bound with its runtime
+    async with state.model_db.acquire() as conn:
+        rows = await data_product_repo.member_contracts(conn, product_id)
+    contracts = {
+        f"{r['source_id']}.{r['schema_name']}.{r['table_name']}": r["contract"] for r in rows
+    }
+    contract = DataContract.model_validate(_port_contract(product_id, member, contracts))
+    return [
+        v.model_dump(mode="json", exclude={"contract": {"versions"}}) for v in contract.versions
+    ]
+
+
+@router.get("/data-products/{product_id}/contracts/{member}.yaml")
+async def data_product_contract(product_id: str, member: str, request: Request) -> Response:
+    """A member's ODCS 3.1 contract, the member named by its address (source.schema.table)."""
+    _, contracts = await _documents(request, product_id)
+    return _yaml(_port_contract(product_id, member, contracts))

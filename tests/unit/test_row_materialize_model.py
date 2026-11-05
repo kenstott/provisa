@@ -63,6 +63,7 @@ class _FakeSource:
         self.id = "src1"
         self.cache_ttl = cache_ttl
         self.type = type
+        self.mapping: dict = {}  # as Source declares it: nothing stored
 
 
 class _FakeConfig:
@@ -115,14 +116,14 @@ def test_config_loader_accepts_query_template_projecting_the_pk():
 
 def test_config_loader_rejects_query_template_on_non_neo4j_source():
     """sparql has no parser/AST to safely resolve a projected property or splice a filter against
-    -- row_materialize on a query_template table is only wired for neo4j today."""
+    -- it declares no row fetch by keys (REQ-1865), so its query_template table is refused that."""
     table = _table(
         row_materialize=True,
         cache_ttl=60,
         query_template="SELECT ?id ?status WHERE { ?o :id ?id ; :status ?status }",
     )
     config = _FakeConfig([table], [_FakeSource(cache_ttl=None, type="sparql")])
-    with pytest.raises(ValueError, match="no keyed-fetch translation"):
+    with pytest.raises(ValueError, match="needs row fetch by primary keys, which sparql sources"):
         _validate_row_materialize(config)
 
 
@@ -130,24 +131,30 @@ def test_config_loader_rejects_query_template_on_non_neo4j_source():
     ("source_type", "why"),
     [
         ("openapi", "filtered by its own parameters"),
-        ("graphql_remote", "filtered by its own parameters"),
         ("grpc_remote", "filtered by its own parameters"),
         ("govdata", "read live on every request"),
-        ("dynamodb", "no connector or driver reaches"),
-        ("stripe", "no connector or driver reaches"),
     ],
 )
 def test_config_loader_refuses_row_materialize_on_a_type_it_cannot_apply_to(source_type, why):
-    """REQ-1915: an API source is filtered by its parameters, govdata is never replicated, and a
-    type nothing reaches yet has no rows to fetch: a row-level flag on any of them is refused by
-    name at registration, naming the type."""
+    """REQ-1915: an API source is filtered by its parameters and govdata is never replicated: a
+    row-level flag on either is refused by name at registration, naming the type and its reason."""
     table = _table(row_materialize=True, cache_ttl=60)
     config = _FakeConfig([table], [_FakeSource(cache_ttl=60, type=source_type)])
     with pytest.raises(ValueError, match=f"source type '{source_type}': .*{why}"):
         _validate_row_materialize(config)
 
 
-@pytest.mark.parametrize("source_type", ["postgresql", "mongodb", "sparql", "prometheus"])
+@pytest.mark.parametrize("source_type", ["dynamodb", "stripe", "sparql", "prometheus"])
+def test_config_loader_refuses_row_materialize_on_a_type_with_no_row_fetch_by_keys(source_type):
+    """REQ-1865: a type that declares no row fetch by primary keys -- nothing reaches it yet, or
+    nothing it is read by fetches a row by its key -- is refused by name."""
+    table = _table(row_materialize=True, cache_ttl=60)
+    config = _FakeConfig([table], [_FakeSource(cache_ttl=60, type=source_type)])
+    with pytest.raises(ValueError, match=f"which {source_type} sources don't support"):
+        _validate_row_materialize(config)
+
+
+@pytest.mark.parametrize("source_type", ["postgresql", "mongodb", "clickhouse", "iceberg"])
 def test_config_loader_accepts_row_materialize_on_a_fetchable_type(source_type):
     table = _table(row_materialize=True, cache_ttl=60)
     config = _FakeConfig([table], [_FakeSource(cache_ttl=60, type=source_type)])

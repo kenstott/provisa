@@ -4,10 +4,17 @@
     "tabHistory": "Historial",
     "tabFavorites": "Favoritos",
     "tabExport": "Exportar a Neo4j",
+    "tabExportSparql": "Exportar RDF o resultados SPARQL",
     "domainLabels": "Etiquetas de dominio",
     "nodeLabels": "Etiquetas de nodos",
     "relationshipTypes": "Tipos de relaciones",
     "propertyKeys": "Claves de propiedades",
+    "session": "Sesión",
+    "sessionFailed": "No se pudo leer la sesión: {{error}}",
+    "sessionEmpty": "No se ha creado nada en esta sesión.",
+    "sessionClear": "Borrar sesión",
+    "sessionLabelTip": "{{nodes}} nodos en la sesión, {{tagged}} nodos del modelo etiquetados",
+    "sessionTypeTip": "{{count}} relaciones en la sesión",
     "loading": "Cargando…",
     "noLabelsFound": "No se encontraron etiquetas",
     "noRelTypesFound": "No se encontraron tipos de relaciones",
@@ -30,6 +37,8 @@
     "tabSettings": "Ajustes de vista",
     "maxNodes": "Máx. de nodos",
     "maxNodesHint": "Máximo de nodos que dibuja una consulta",
-    "notCounted": "Sin contar: {{list}}"
+    "notCounted": "Sin contar: {{list}}",
+    "countsFailed": "Recuentos no disponibles: {{error}}",
+    "schemaFailed": "Esquema no disponible: {{error}}"
   }
 }

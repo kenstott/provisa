@@ -60,18 +60,18 @@ describe("the Tables surface gate (REQ-1944)", () => {
 describe("hidingDomains (REQ-1944)", () => {
   it("is the domains of the roles carrying a hiding right, not of every role held", () => {
     const governed = hidingDomains([
-      { capabilities: ["masking_config"], domain_access: ["sales"] },
-      { capabilities: ["usage"], domain_access: ["finance"] },
+      { effectiveCapabilities: ["masking_config"], domain_access: ["sales"] },
+      { effectiveCapabilities: ["usage"], domain_access: ["finance"] },
     ]);
     expect(governed).toEqual(new Set(["sales"]));
   });
 
   it("is every domain when one such role reaches all of them", () => {
-    expect(hidingDomains([{ capabilities: ["sensitive_data"], domain_access: ["*"] }])).toBeNull();
+    expect(hidingDomains([{ effectiveCapabilities: ["sensitive_data"], domain_access: ["*"] }])).toBeNull();
   });
 
   it("is nothing for a caller holding no hiding right", () => {
-    expect(hidingDomains([{ capabilities: ["usage"], domain_access: ["*"] }])).toEqual(new Set());
+    expect(hidingDomains([{ effectiveCapabilities: ["usage"], domain_access: ["*"] }])).toEqual(new Set());
   });
 });
 

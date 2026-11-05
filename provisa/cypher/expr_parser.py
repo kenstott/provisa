@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import copy
 import functools
+import re
+import sys
 from typing import Any, cast
 
 import pyparsing as pp
@@ -47,9 +49,19 @@ from provisa.gql.expr_ast import (
     SubqueryExpr,
     Unary,
     Variable,
+    walk,
 )
 
 pp.ParserElement.enable_packrat()
+
+
+# The grammar descends about 170 Python frames per level of nesting (its operator precedence
+# levels), so the default limit of 1000 refuses a literal nested six deep ([[[[[[1]]]]]]). The
+# frames are Python's own, not the C stack's (Python 3.12), so the limit is raised to read the
+# openCypher TCK's 40-deep literals.
+_RECURSION_LIMIT = 20000
+if sys.getrecursionlimit() < _RECURSION_LIMIT:
+    sys.setrecursionlimit(_RECURSION_LIMIT)
 
 
 class CypherExprParseError(Exception):
@@ -116,12 +128,40 @@ _ident_any = pp.Word(pp.alphas + "_", pp.alphanums + "_")  # allows keyword-like
 
 def _mk_number(t: pp.ParseResults) -> Literal:
     s = str(t[0])
-    return Literal(float(s) if "." in s else int(s), "number")
+    if s[:2] in ("0x", "0X"):
+        return Literal(int(s, 16), "number")
+    if s[:2] == "0o":
+        return Literal(int(s[2:], 8), "number")
+    return Literal(float(s) if any(c in s for c in ".eE") else int(s), "number")
 
 
-_number = pp.Regex(r"\d+\.\d+|\d+").set_parse_action(_mk_number)
-_sstring = pp.QuotedString("'", esc_char="\\", unquote_results=True)
-_dstring = pp.QuotedString('"', esc_char="\\", unquote_results=True)
+# Hexadecimal, octal and decimal numbers, as the statement tokenizer reads them (cypher/parser.py).
+_number = pp.Regex(
+    r"0[xX][0-9A-Fa-f]+|0o[0-7]+|(?:\d+\.\d+|\.\d+|\d+)(?:[eE][-+]?\d+)?"
+).set_parse_action(_mk_number)
+#: A Cypher string's escapes: \\\\ \\' \\" \\b \\f \\n \\r \\t, \\uXXXX and \\UXXXXXXXX.
+_ESCAPE = re.compile(r"\\(u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|.)", re.DOTALL)
+_ESCAPED = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+
+
+def _unescaped(text: str) -> str:
+    """A string literal's text between its quotes, its escapes read as Cypher reads them."""
+
+    def one(m: re.Match[str]) -> str:
+        code = m.group(1)
+        if code[0] in "uU" and len(code) > 1:
+            return chr(int(code[1:], 16))
+        return _ESCAPED.get(code, code)
+
+    return _ESCAPE.sub(one, text)
+
+
+_sstring = pp.QuotedString("'", esc_char="\\", unquote_results=False).set_parse_action(
+    lambda t: _unescaped(str(t[0])[1:-1])
+)
+_dstring = pp.QuotedString('"', esc_char="\\", unquote_results=False).set_parse_action(
+    lambda t: _unescaped(str(t[0])[1:-1])
+)
 _string = (_sstring | _dstring).set_parse_action(lambda t: Literal(t[0], "string"))
 _true = pp.CaselessKeyword("TRUE").set_parse_action(lambda: Literal(True, "boolean"))
 _false = pp.CaselessKeyword("FALSE").set_parse_action(lambda: Literal(False, "boolean"))
@@ -141,8 +181,10 @@ def _build_grammar() -> pp.ParserElement:
     # function call: name( [DISTINCT] (args | *) )
     _star = pp.Literal("*")
     arg_list = pp.Optional(pp.DelimitedList(expr))
+    # A namespaced name (apoc.text.join) is one name: a function's Cypher command binding.
+    func_name = pp.Combine(_ident_any + pp.ZeroOrMore("." + _ident_any), adjacent=False)
     func_call = (
-        _ident_any("name")
+        func_name("name")
         + _LPAR
         + pp.Group(pp.Optional(pp.CaselessKeyword("DISTINCT"))("distinct") + (_star | arg_list))(
             "body"
@@ -247,7 +289,8 @@ def _build_grammar() -> pp.ParserElement:
     def _mk_subq(t):
         raw = t["body"].strip()
         inner = raw[1:-1].strip() if raw.startswith("{") else raw  # drop the outer braces
-        return SubqueryExpr(kind=t["kind"].upper(), body=inner)
+        kind = t["kind"].upper()
+        return SubqueryExpr(kind=kind, body=cast(Any, _BodyText(inner)))
 
     subq.set_parse_action(_mk_subq)
 
@@ -275,7 +318,12 @@ def _build_grammar() -> pp.ParserElement:
     # pattern comprehension: [ <pattern> [WHERE pred] | projection ]
     # The graph pattern is captured as raw text (up to WHERE or |) for the path translator; SkipTo
     # stops at the first top-level WHERE/| so the predicate is never swallowed into the pattern.
-    pattern_text = pp.SkipTo(pp.CaselessKeyword("WHERE") | pp.Literal("|"))
+    # A ``|`` inside a relationship's brackets, ``[:T|U]``, separates its types and ends nothing:
+    # the text runs over quoted strings and bracketed or parenthesised spans whole.
+    pattern_text = pp.Regex(
+        r"""(?:'[^']*'|"[^"]*"|\[[^\]]*\]|\((?:[^()]|\([^()]*\))*\)"""
+        r"""|(?!(?<!\w)(?i:where)\b)[^|\[\('"])+"""
+    )
     pattern_comp = (
         _LBRK
         + pp.Optional(_ident("pathvar") + pp.Suppress("="))  # optional path binding: [p = (…) | …]
@@ -288,8 +336,10 @@ def _build_grammar() -> pp.ParserElement:
     )
 
     def _mk_pattern_comp(t):
+        from provisa.cypher.parser import parse_pattern
+
         return PatternComprehension(
-            pattern=t["pattern"].strip(),
+            pattern=parse_pattern(t["pattern"].strip()),
             path_var=str(_val(t["pathvar"])) if "pathvar" in t else None,
             predicate=t["pred"] if "pred" in t else None,
             projection=t["proj"],
@@ -303,12 +353,20 @@ def _build_grammar() -> pp.ParserElement:
     )
 
     # map literal: { key: value, ... }
-    map_entry = pp.Group((_ident | _sstring) + pp.Suppress(":") + expr)
+    # A map key is a name, keyword or not ({start: a, end: b}), or a quoted string.
+    map_entry = pp.Group((_ident_any | _sstring) + pp.Suppress(":") + expr)
     map_lit = (_LBRC + pp.Optional(pp.DelimitedList(map_entry)) + _RBRC).set_parse_action(
         lambda t: MapLiteral([(str(e[0]), _e(e[1])) for e in t])
     )
 
     paren = (_LPAR + expr + _RPAR).set_parse_action(lambda t: Paren(inner=_e(t[0])))
+
+    # A pattern written as a predicate, (n)-[:R]->(): whether it matches, EXISTS { the pattern }.
+    pattern_node = r"\(\s*\w*(?:\s*:\s*\w+)*\s*(?:\{[^{}]*\})?\s*\)"
+    pattern_rel = r"\s*(?:<-|-)\s*(?:\[[^\[\]]*\])?\s*(?:->|-)\s*"
+    pattern_pred = pp.Regex(rf"{pattern_node}(?:{pattern_rel}{pattern_node})+").set_parse_action(
+        lambda t: SubqueryExpr(kind="EXISTS", body=cast(Any, _BodyText(str(t[0]))), predicate=True)
+    )
 
     atom = (
         _number
@@ -326,6 +384,7 @@ def _build_grammar() -> pp.ParserElement:
         | pattern_comp
         | list_lit
         | map_lit
+        | pattern_pred
         | paren
         | _variable
     )
@@ -385,6 +444,18 @@ def _build_grammar() -> pp.ParserElement:
             i += 2
         return node
 
+    def _fold_comparison(t):
+        # openCypher chains comparisons (oC_ComparisonExpression): a < b = c is a < b AND b = c,
+        # never (a < b) = c.
+        seq = list(t[0])
+        node: CypherExpr | None = None
+        for i in range(1, len(seq), 2):
+            # The operand two comparisons share is each one's own copy.
+            left = seq[i - 1] if i == 1 else copy.deepcopy(seq[i - 1])
+            step = Binary(op=str(seq[i]).upper(), left=left, right=seq[i + 1])
+            node = step if node is None else Binary(op="AND", left=node, right=step)
+        return node
+
     def _fold_unary(t):
         op, operand = t[0][0], t[0][1]
         return Unary(op=str(op).upper(), operand=operand)
@@ -395,21 +466,20 @@ def _build_grammar() -> pp.ParserElement:
     ends_with = (pp.CaselessKeyword("ENDS") + pp.CaselessKeyword("WITH")).set_parse_action(
         lambda: "ENDS WITH"
     )
-    cmp_op = (
-        pp.one_of("<> != <= >= = < > =~")
-        | starts_with
-        | ends_with
-        | pp.CaselessKeyword("CONTAINS")
-        | pp.CaselessKeyword("IN")
+    cmp_op = pp.one_of("<> != <= >= = < > =~")
+    # openCypher's string and list predicates bind tighter than a comparison and looser than + and
+    # - (oC_StringListNullPredicateExpression): a = b IN c is a = (b IN c), a + b IN c is (a + b) IN c.
+    string_list_op = (
+        starts_with | ends_with | pp.CaselessKeyword("CONTAINS") | pp.CaselessKeyword("IN")
     )
 
-    # A postfix predicate bound directly onto the primary: IS [NOT] NULL, or the labeled-node test
-    # IS [NOT] :Label (the verbose form of `n:Label`; labels are Provisa's fixed domain/object types).
+    # The labeled-node test IS [NOT] :Label (the verbose form of `n:Label`; labels are Provisa's
+    # fixed domain/object types), bound directly onto the primary.
     is_label = pp.Suppress(":") + pp.DelimitedList(_ident_any, delim=":")
     is_suffix = pp.Group(
         pp.CaselessKeyword("IS").suppress()
         + pp.Optional(pp.CaselessKeyword("NOT"))("neg")
-        + (pp.CaselessKeyword("NULL")("isnull") | is_label("labels"))
+        + is_label("labels")
     )("issuffix")
     predicate = primary + pp.Optional(is_suffix)
 
@@ -418,13 +488,25 @@ def _build_grammar() -> pp.ParserElement:
         if "issuffix" not in t:
             return base
         suf = t["issuffix"]
-        negated = "neg" in suf
-        if "isnull" in suf:
-            return IsNull(operand=base, negated=negated)
         node: CypherExpr = LabelPredicate(operand=base, labels=[str(x) for x in suf["labels"]])
-        return Unary(op="NOT", operand=node) if negated else node
+        return Unary(op="NOT", operand=node) if "neg" in suf else node
 
     predicate.set_parse_action(_mk_predicate)
+
+    # IS [NOT] NULL, a postfix at the string and list predicates' level: a + b IS NULL is
+    # (a + b) IS NULL, a = b IS NULL is a = (b IS NULL).
+    is_null_op = pp.Group(
+        pp.CaselessKeyword("IS").suppress()
+        + pp.Optional(pp.CaselessKeyword("NOT"))("neg")
+        + pp.CaselessKeyword("NULL").suppress()
+    )
+
+    def _fold_is_null(t):
+        seq = list(t[0])
+        node = seq[0]
+        for suf in seq[1:]:
+            node = IsNull(operand=node, negated="neg" in suf)
+        return node
 
     expr <<= pp.infix_notation(
         predicate,
@@ -433,7 +515,9 @@ def _build_grammar() -> pp.ParserElement:
             (pp.Literal("^"), 2, pp.OpAssoc.LEFT, _fold_binary),  # power (BNF: arithmetic factor)
             (pp.one_of("* / %"), 2, pp.OpAssoc.LEFT, _fold_binary),
             (pp.one_of("+ -"), 2, pp.OpAssoc.LEFT, _fold_binary),
-            (cmp_op, 2, pp.OpAssoc.LEFT, _fold_binary),
+            (string_list_op, 2, pp.OpAssoc.LEFT, _fold_binary),
+            (is_null_op, 1, pp.OpAssoc.LEFT, _fold_is_null),
+            (cmp_op, 2, pp.OpAssoc.LEFT, _fold_comparison),
             (pp.CaselessKeyword("NOT"), 1, pp.OpAssoc.RIGHT, _fold_unary),
             (pp.CaselessKeyword("AND"), 2, pp.OpAssoc.LEFT, _fold_binary),
             (pp.CaselessKeyword("XOR"), 2, pp.OpAssoc.LEFT, _fold_binary),
@@ -461,6 +545,10 @@ def _mk_map_projection(node: CypherExpr, suf) -> MapProjection:
 _GRAMMAR = _build_grammar()
 
 
+class _BodyText(str):
+    """A subquery's body as written, parsed once the expression holding it is (_parse_cached)."""
+
+
 # The grammar is a pure function of the fragment's text and costs about a millisecond per call
 # (pyparsing, pure Python); a request parses half a dozen fragments, the same ones on every request
 # of the same statement shape. Bounded, so a client generating unbounded distinct text cannot grow
@@ -474,7 +562,15 @@ def _parse_cached(text: str) -> CypherExpr:
         result = _GRAMMAR.parse_string(text, parse_all=True)
     except pp.ParseBaseException as exc:  # noqa: BLE001 — normalize to our error type
         raise CypherExprParseError(f"cannot parse Cypher expression {text!r}: {exc}") from exc
-    return _e(result[0])
+    from provisa.cypher.parser import subquery_statement
+
+    expr = _e(result[0])
+    # A subquery's body is parsed after the expression around it, not inside that parse: inside
+    # it, each nesting level's grammar frames would stack on the level's around it.
+    for node in walk(expr):
+        if isinstance(node, SubqueryExpr) and isinstance(node.body, _BodyText):
+            node.body = subquery_statement(node.kind, node.body)
+    return expr
 
 
 def parse_expression(text: str) -> CypherExpr:

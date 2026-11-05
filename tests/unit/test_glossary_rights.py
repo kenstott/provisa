@@ -27,7 +27,6 @@ and onto ``glossary_read``. ``glossary_rw`` is curation on top of that. Asserted
 
 from __future__ import annotations
 
-import json
 import re
 import types
 from pathlib import Path
@@ -152,26 +151,13 @@ class TestGlossaryGates:
 # --- the seeds -----------------------------------------------------------------------------------
 
 
-def _schema_sql_seed(role_id: str) -> set[str]:
-    sql = _SCHEMA_SQL.read_text()
-    seed = re.search(rf"'{role_id}',\s*'(\[[\s\S]*?\])'::jsonb", sql)
-    assert seed, f"schema.sql: {role_id} seed not found"
-    return set(json.loads(seed.group(1)))
-
-
 def _db_seed(role_id: str) -> set[str]:
-    from provisa.core.db import _SEED_ROLES
+    from provisa.core.db import STANDARD_ROLE_RIGHTS
 
-    for seeded_id, caps in _SEED_ROLES:
+    for seeded_id, caps in STANDARD_ROLE_RIGHTS.items():
         if seeded_id == role_id:
             return set(caps)
-    raise AssertionError(f"db.py _SEED_ROLES: {role_id} not found")
-
-
-@pytest.mark.parametrize("role_id", ["org_admin", "analyst", "developer", "modeler"])
-def test_the_two_seeds_agree_on_the_glossary_rights(role_id):
-    glossary = {"glossary_read", "glossary_rw", "org_glossary_rw"}
-    assert _schema_sql_seed(role_id) & glossary == _db_seed(role_id) & glossary
+    raise AssertionError(f"standard_roles.yaml: {role_id} not found")
 
 
 def test_an_analyst_reads_the_glossary_but_does_not_curate_it():
@@ -180,7 +166,8 @@ def test_an_analyst_reads_the_glossary_but_does_not_curate_it():
     assert "glossary_rw" not in caps
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "modeler"])
+# REQ-2155: the glossary is the data steward's to curate, and org_admin's through it.
+@pytest.mark.parametrize("role_id", ["org_admin", "data_steward"])
 def test_the_curating_roles_hold_both(role_id):
     assert {"glossary_read", "glossary_rw"} <= _db_seed(role_id)
 
@@ -212,3 +199,114 @@ def test_org_admin_alone_owns_the_org_glossary(role_id):
 def test_the_org_owner_also_holds_the_ordinary_rights():
     # It widens what a curator may do; it does not replace the right that opens the surface.
     assert {"glossary_read", "glossary_rw"} <= _db_seed("org_admin")
+
+
+# --- the picker's roster -------------------------------------------------------------------------
+
+
+def test_the_sandbox_curates_without_user_management():
+    # Why the picker has a roster of its own: the role a "Try it Out" visitor holds curates the
+    # glossary, so the page fills an author/expert picker for it, but is withheld user_management
+    # (REQ-1608) -- the right the team page's /orgs/{id}/members answers to. Read from there, the
+    # visitor's term page showed "fetchOrgMembers failed (403)".
+    from provisa.core.db import STANDARD_ROLE_RIGHTS
+
+    assert "glossary_rw" in STANDARD_ROLE_RIGHTS["sandbox"]
+    assert "user_management" not in STANDARD_ROLE_RIGHTS["sandbox"]
+
+
+def test_the_picker_roster_is_gated_on_glossary_rw():
+    assert _endpoint_gates()["GET /people"] == "glossary_rw"
+
+
+@pytest.fixture
+def roster(monkeypatch):
+    import provisa.core.org_membership as membership
+    from provisa.api.app import state
+
+    asked: list[str] = []
+
+    async def _roster(admin_db, org_id):
+        asked.append(org_id)
+        return [
+            {
+                "user_id": "u1",
+                "email": "ada@acme.test",
+                "display_name": "Ada Lovelace",
+                "provider": "google",
+                "created_at": "2026-10-01T00:00:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(membership, "org_roster", _roster)
+    monkeypatch.setattr(state, "admin_db", object())
+    return asked
+
+
+def _curator_request(caps: set[str]):
+    request = _request(caps)
+    request.state.active_org_id = "acme"
+    return request
+
+
+async def test_a_curator_without_user_management_reads_who_is_in_the_org(resolve_caps, roster):
+    from provisa.api.admin.glossary_router import attributable_people
+
+    resolve_caps({"glossary_read", "glossary_rw"})
+    people = await attributable_people(_curator_request({"glossary_read", "glossary_rw"}))
+    assert roster == ["acme"]
+    # Who each person is, and nothing of how they sign in or when they joined: that is the team
+    # page's, under user_management.
+    assert people == [{"user_id": "u1", "email": "ada@acme.test", "display_name": "Ada Lovelace"}]
+
+
+async def test_a_reader_is_refused_the_roster(resolve_caps, roster):
+    from provisa.api.admin.glossary_router import attributable_people
+
+    resolve_caps({"glossary_read"})
+    with pytest.raises(ApiError) as err:
+        await attributable_people(_curator_request({"glossary_read"}))
+    assert err.value.status_code == 403
+    assert roster == []
+
+
+@pytest.fixture
+def two_visitor_roster(monkeypatch):
+    import provisa.core.org_membership as membership
+    from provisa.api.app import state
+
+    async def _roster(admin_db, org_id):
+        return [
+            {"user_id": "alice", "email": "alice@visitor.test", "display_name": "Alice Visitor"},
+            {"user_id": "bob", "email": "bob@visitor.test", "display_name": "Bob Visitor"},
+        ]
+
+    monkeypatch.setattr(membership, "org_roster", _roster)
+    monkeypatch.setattr(state, "admin_db", object())
+
+
+async def test_the_shared_sandbox_roster_lists_only_the_caller(resolve_caps, two_visitor_roster):
+    # REQ-1592 (amended 2026-11-02): every visitor to the shared "Try it Out" org is a curator, so
+    # the roster there would hand each visitor every other visitor's name and email.
+    from provisa.api.admin.glossary_router import attributable_people
+    from provisa.api.sandbox_org import SANDBOX_ORG_ID
+
+    resolve_caps({"glossary_read", "glossary_rw"})
+    request = _request({"glossary_read", "glossary_rw"}, user_id="alice")
+    request.state.active_org_id = SANDBOX_ORG_ID
+    people = await attributable_people(request)
+    assert people == [
+        {"user_id": "alice", "email": "alice@visitor.test", "display_name": "Alice Visitor"}
+    ]
+    assert "bob@visitor.test" not in repr(people)
+    assert "Bob Visitor" not in repr(people)
+
+
+async def test_a_real_org_roster_lists_every_member(resolve_caps, two_visitor_roster):
+    from provisa.api.admin.glossary_router import attributable_people
+
+    resolve_caps({"glossary_read", "glossary_rw"})
+    request = _request({"glossary_read", "glossary_rw"}, user_id="alice")
+    request.state.active_org_id = "acme"
+    people = await attributable_people(request)
+    assert [p["user_id"] for p in people] == ["alice", "bob"]

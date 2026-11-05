@@ -11,7 +11,7 @@ does, a rooted term whose refs are all withheld is withheld with them, an abstra
 term publishes on its edges alone, and an edge needs both endpoints published.
 """
 
-# Requirements: REQ-1387
+# Requirements: REQ-1387, REQ-1389, REQ-2141
 
 from __future__ import annotations
 
@@ -51,6 +51,9 @@ def _glossary() -> dict:
                 "is_abstract": False,
                 "deprecated": False,
                 "deprecation_asserted": False,
+                "approved": True,
+                "retired": False,
+                "export_excluded": False,
                 "status_reason": None,
                 "retire_on": None,
             },
@@ -61,6 +64,9 @@ def _glossary() -> dict:
                 "is_abstract": False,
                 "deprecated": False,
                 "deprecation_asserted": False,
+                "approved": True,
+                "retired": False,
+                "export_excluded": False,
                 "status_reason": None,
                 "retire_on": None,
             },
@@ -71,6 +77,9 @@ def _glossary() -> dict:
                 "is_abstract": True,
                 "deprecated": False,
                 "deprecation_asserted": False,
+                "approved": True,
+                "retired": False,
+                "export_excluded": False,
                 "status_reason": None,
                 "retire_on": None,
             },
@@ -140,36 +149,71 @@ def test_export_excluded_term_is_withheld_with_its_edges():
 def test_retired_term_is_withheld_and_stops_grounding_its_dependents():
     """The soft delete reaches the vendor snapshot too, and unlike export_excluded it also
     stops conducting: party reached a column only through customer, so withdrawing customer
-    leaves party naming no data and it goes with it."""
+    leaves party naming no data. Party is approved, so it publishes with that grounding
+    (REQ-1387)."""
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
     glossary["terms"][0]["retired"] = True  # customer taken out of service
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
-    assert snapshot.glossary_terms == []
+    assert [(t.name, t.grounding) for t in snapshot.glossary_terms] == [("party", "not_grounded")]
     assert snapshot.glossary_edges == []
 
 
-def test_undefined_and_ungrounded_terms_never_reach_a_vendor():
-    """A term with no definition is a proposal and an abstract term wired to nothing names no
-    data; a catalog would bind assets to either, so neither publishes."""
+def test_draft_terms_never_reach_a_vendor_and_approved_ones_carry_their_grounding():
+    """REQ-1387: the export publishes approved terms with their grounding. A draft is a
+    proposal a catalog would bind assets to, so it never publishes; it still conducts, so a
+    term above it reaches data through it."""
     config = _config([_table("orders", columns=["cust_id"])])
     glossary = _glossary()
-    glossary["terms"][0]["definition"] = None  # customer is still just a column name
+    glossary["terms"][0]["approved"] = False  # customer is still a draft
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
-    # customer drops as undefined, but it still conducts: grounding is structural, so party's
-    # chain reaches a real column through it either way.
-    assert {t.name for t in snapshot.glossary_terms} == {"party"}
+    # customer is the data end, so nothing stands between party and data.
+    assert [(t.name, t.grounding) for t in snapshot.glossary_terms] == [("party", "grounded")]
 
     glossary = _glossary()
     glossary["edges"] = []  # party wired to nothing physical
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
     )
-    assert {t.name for t in snapshot.glossary_terms} == {"customer"}
+    assert {(t.name, t.grounding, t.status) for t in snapshot.glossary_terms} == {
+        ("customer", "grounded", "approved"),
+        ("party", "not_grounded", "approved"),
+    }
+
+
+def test_a_term_reaching_data_only_through_a_draft_is_exported_pending():
+    """REQ-1387: grounded_pending when every path down has a draft term strictly between."""
+    config = _config([_table("orders", columns=["cust_id"])])
+    glossary = _glossary()
+    glossary["terms"].append(
+        {
+            "id": 5,
+            "name": "counterparty",
+            "definition": "A party on the other side of a deal.",
+            "is_abstract": True,
+            "deprecated": False,
+            "deprecation_asserted": False,
+            "approved": True,
+            "retired": False,
+            "export_excluded": False,
+            "status_reason": None,
+            "retire_on": None,
+        }
+    )
+    glossary["terms"][2]["approved"] = False  # party, between counterparty and customer
+    # party is a kind of counterparty: grounding runs down from counterparty through party.
+    glossary["edges"].append({"from_term_id": 3, "to_term_id": 5, "rel_type": "KIND_OF"})
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert {t.name: t.grounding for t in snapshot.glossary_terms} == {
+        "customer": "grounded",
+        "counterparty": "grounded_pending",
+    }
 
 
 def test_snapshot_without_glossary_is_empty_not_absent():
@@ -177,3 +221,163 @@ def test_snapshot_without_glossary_is_empty_not_absent():
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert snapshot.glossary_terms == []
     assert snapshot.glossary_edges == []
+
+
+def _class_glossary() -> dict:
+    """A Class term grounding two tables, one of them withheld, and a Property on a column."""
+    glossary = _glossary()
+    glossary["terms"].append(
+        {
+            "id": 4,
+            "name": "order",
+            "definition": "A customer's request to buy.",
+            "is_abstract": False,
+            "deprecated": False,
+            "deprecation_asserted": False,
+            "approved": True,
+            "retired": False,
+            "export_excluded": False,
+            "status_reason": None,
+            "retire_on": None,
+        }
+    )
+    glossary["table_refs"] = [
+        {"term_id": 4, "source_id": "wh", "schema_name": "public", "table_name": "orders"},
+        {"term_id": 4, "source_id": "wh", "schema_name": "public", "table_name": "staging"},
+    ]
+    return glossary
+
+
+def test_a_class_term_is_rooted_for_export_through_its_published_tables():
+    """REQ-2141 admission: a Class term holds no column ref, so a published table it grounds
+    is what roots it; with every grounded table withheld it does not publish."""
+    tables = [
+        _table("orders", columns=["cust_id"]),
+        _table("staging", product_id=None, columns=["hidden_id"]),
+    ]
+    snapshot = build_snapshot(
+        _config(tables), org_id="acme", dialect="postgres", contexts={}, glossary=_class_glossary()
+    )
+    order = next(t for t in snapshot.glossary_terms if t.name == "order")
+    assert order.refs == ()
+    assert [t.parts for t in order.tables] == [("wh", "public", "orders")]
+
+    withheld = [_table("orders", product_id=None, columns=["cust_id"]), tables[1]]
+    snapshot = build_snapshot(
+        _config(withheld),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        glossary=_class_glossary(),
+    )
+    assert "order" not in {t.name for t in snapshot.glossary_terms}
+
+
+def test_each_term_carries_its_role():
+    """REQ-2141: class when it grounds tables, property when it owns column refs, concept when
+    neither -- the role decides what a catalog assigns the term to (REQ-1389)."""
+    config = _config([_table("orders", columns=["cust_id"])])
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=_class_glossary()
+    )
+    assert {t.name: t.role for t in snapshot.glossary_terms} == {
+        "customer": "property",
+        "party": "concept",
+        "order": "class",
+    }
+
+
+def test_a_class_proposal_no_one_has_defined_is_not_exported_or_assigned():
+    """REQ-2141: sync proposes a draft Class for a keyed table; until a steward approves it the
+    term is a proposal, not vocabulary, so it neither publishes nor is assigned to the table."""
+    glossary = _class_glossary()
+    glossary["terms"][3]["definition"] = None
+    glossary["terms"][3]["approved"] = False
+    glossary["table_refs"][0]["proposed"] = True
+    snapshot = build_snapshot(
+        _config([_table("orders", columns=["cust_id"])]),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        glossary=glossary,
+    )
+    assert "order" not in {t.name for t in snapshot.glossary_terms}
+    assert all(not t.tables for t in snapshot.glossary_terms)
+
+
+def test_axioms_ride_along_with_the_terms_they_state():
+    """REQ-1592 (2026-10-27), REQ-2163: the ontology's axioms reach the snapshot with the terms
+    they state -- one about a withheld term, or naming one, does not."""
+    from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, XSD
+
+    config = _config(
+        [
+            _table("orders", columns=["cust_id"]),
+            _table("staging", product_id=None, columns=["hidden_id"]),
+        ]
+    )
+    glossary = _glossary()
+    glossary["axioms"] = [
+        {
+            "subject_term_id": 1,
+            "predicate": f"{RDFS}subClassOf",
+            "object_term_id": 3,
+            "object_iri": None,
+            "object_literal": None,
+        },
+        {
+            "subject_term_id": 1,
+            "predicate": f"{RDFS}range",
+            "object_term_id": None,
+            "object_iri": f"{XSD}integer",
+            "object_literal": None,
+        },
+        # shadow is withheld: neither its axiom nor one naming it publishes.
+        {
+            "subject_term_id": 2,
+            "predicate": f"{RDF}type",
+            "object_term_id": None,
+            "object_iri": f"{OWL}DatatypeProperty",
+            "object_literal": None,
+        },
+        {
+            "subject_term_id": 3,
+            "predicate": f"{RDFS}subClassOf",
+            "object_term_id": 2,
+            "object_iri": None,
+            "object_literal": None,
+        },
+    ]
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert [
+        (a.subject_term_id, a.predicate, a.object_term_id, a.object_iri)
+        for a in snapshot.glossary_axioms
+    ] == [
+        (1, f"{RDFS}subClassOf", 3, None),
+        (1, f"{RDFS}range", None, f"{XSD}integer"),
+    ]
+
+
+def test_an_approved_term_a_curator_deprecated_publishes_marked_and_a_retired_one_does_not():
+    """REQ-1387 (DOWN IS FROM BROADER TO NARROWER): the export publishes an approved term a
+    curator later deprecated, marked deprecated, so catalogs keep the marker; retired terms do
+    not publish."""
+    config = _config([_table("orders", columns=["cust_id"])])
+    glossary = _glossary()
+    glossary["terms"][0]["deprecation_asserted"] = True  # a curator deprecated customer
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert {(t.name, t.status) for t in snapshot.glossary_terms} == {
+        ("customer", "deprecated"),
+        ("party", "approved"),
+    }
+
+    glossary = _glossary()
+    glossary["terms"][0].update(retired=True, approved=False, deprecation_asserted=False)
+    snapshot = build_snapshot(
+        config, org_id="acme", dialect="postgres", contexts={}, glossary=glossary
+    )
+    assert "customer" not in {t.name for t in snapshot.glossary_terms}

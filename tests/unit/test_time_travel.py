@@ -10,10 +10,9 @@
 
 """Unit tests for Iceberg/Delta time-travel queries (REQ-372).
 
-Verifies:
-- as_of with ISO 8601 timestamp → FOR TIMESTAMP AS OF
-- as_of with integer version/snapshot ID → FOR VERSION AS OF
-- as_of on non-time-travel source → compile-time rejection
+Verifies (REQ-372 as amended 2026-10-26, under REQ-1163's arguments):
+- as_recorded on an Iceberg or Delta table → its snapshot at that time (FOR TIMESTAMP AS OF)
+- as_of on one (no valid time) or either argument on any other table → refused by name
 - TIME_TRAVEL_SOURCES set contains correct entries
 """
 
@@ -31,7 +30,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)
 
 
-def _build_lake_ctx(source_type: str):
+def _build_lake_ctx(source_type: str, time_travel: dict[int, str] | None = None):
     """Build schema + context for a single lake source table."""
     tables = [
         {
@@ -67,6 +66,7 @@ def _build_lake_ctx(source_type: str):
         role=role,
         domains=domains,
         source_types={"lake-src": source_type},
+        time_travel=time_travel or {},
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -87,100 +87,54 @@ class TestTimeTravelSourcesSet:
         assert "postgresql" not in TIME_TRAVEL_SOURCES
 
 
-class TestIcebergTimeTravelTimestamp:
-    def test_for_timestamp_as_of(self):
-        schema, ctx = _build_lake_ctx("iceberg")
-        doc = parse('{ events(as_of: "2024-01-15T12:00:00") { id ts } }')
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        assert "FOR TIMESTAMP AS OF TIMESTAMP '2024-01-15T12:00:00'" in sql
+def _snapshot_ctx(source_type: str):
+    """The lake table's schema and context, its time travel decided as the build decides it
+    (provisa.mv.time_travel.relation_kinds over the registered row and its source's type)."""
+    from types import SimpleNamespace
+
+    from provisa.mv.time_travel import relation_kinds
+
+    state = SimpleNamespace(tables=[], source_types={"lake-src": source_type})
+    row = {"id": 10, "source_id": "lake-src", "table_name": "events", "view_sql": None}
+    return _build_lake_ctx(source_type, relation_kinds(state, [row]))
+
+
+def _read(source_type: str, query: str) -> str:
+    """The statement the engine runs for ``query``: compiled, its arguments lifted per reference,
+    then each snapshot table read at its reference's recorded time."""
+    from graphql import validate
+
+    from provisa.mv.time_travel import lift, read_snapshots
+
+    schema, ctx = _snapshot_ctx(source_type)
+    document = parse(query)
+    errors = validate(schema, document)
+    if errors:
+        raise ValueError(errors[0].message)
+    [compiled] = compile_query(document, ctx, use_catalog=True)
+    sql, travel = lift(compiled.sql, lambda _t: "snapshot")
+    return read_snapshots(sql, ctx, travel)
+
+
+class TestSnapshotTimeTravel:
+    """REQ-372 (amended 2026-10-26): an Iceberg or Delta table travels by its snapshots under the
+    one time-travel argument every relation that keeps versions takes: a snapshot is a commit
+    time, so as_recorded selects it (REQ-1163)."""
+
+    @pytest.mark.parametrize("source_type", ["iceberg", "delta_lake"])
+    def test_as_recorded_reads_the_snapshot_current_then(self, source_type):
+        sql = _read(source_type, '{ events(as_recorded: "2024-01-15T12:00:00") { id ts } }')
+        assert "FOR TIMESTAMP AS OF CAST('2024-01-15 12:00:00" in sql
         assert "FOR VERSION AS OF" not in sql
 
-    def test_timestamp_placed_before_alias(self):
-        schema, ctx = _build_lake_ctx("iceberg")
-        doc = parse('{ events(as_of: "2024-06-01 00:00:00") { id } }')
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        # Table ref should precede the time-travel clause which precedes the alias
-        assert "FOR TIMESTAMP AS OF" in sql
+    def test_a_read_with_no_time_reads_the_current_snapshot(self):
+        assert "AS OF" not in _read("iceberg", "{ events { id } }")
 
-    def test_original_select_preserved(self):
-        schema, ctx = _build_lake_ctx("iceberg")
-        doc = parse('{ events(as_of: "2024-01-15T00:00:00") { id payload } }')
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        assert "SELECT" in sql
-        assert '"id"' in sql
-        assert '"payload"' in sql
+    def test_a_snapshot_table_maps_no_valid_time(self):
+        with pytest.raises(ValueError, match="as_of"):
+            _read("iceberg", '{ events(as_of: "2024-01-15T12:00:00") { id } }')
 
-
-class TestIcebergTimeTravelVersion:
-    def test_for_version_as_of_integer(self):
-        schema, ctx = _build_lake_ctx("iceberg")
-        doc = parse("{ events(as_of: 1234567890) { id } }")
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        assert "FOR VERSION AS OF 1234567890" in sql
-        assert "FOR TIMESTAMP AS OF" not in sql
-
-    def test_for_version_as_of_string_integer(self):
-        schema, ctx = _build_lake_ctx("iceberg")
-        doc = parse('{ events(as_of: "9876543210") { id } }')
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        assert "FOR VERSION AS OF 9876543210" in sql
-
-
-class TestDeltaLakeTimeTravel:
-    def test_delta_timestamp_as_of(self):
-        schema, ctx = _build_lake_ctx("delta_lake")
-        doc = parse('{ events(as_of: "2025-03-01T08:00:00") { id ts } }')
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        assert "FOR TIMESTAMP AS OF TIMESTAMP '2025-03-01T08:00:00'" in sql
-
-    def test_delta_version_as_of(self):
-        schema, ctx = _build_lake_ctx("delta_lake")
-        doc = parse("{ events(as_of: 42) { id } }")
-        results = compile_query(doc, ctx)
-        sql = results[0].sql
-        assert "FOR VERSION AS OF 42" in sql
-
-
-class TestTimeTravelRejection:
-    def test_postgresql_as_of_rejected(self):
-        schema, ctx = _build_lake_ctx("postgresql")
-        doc = parse('{ events(as_of: "2024-01-01T00:00:00") { id } }')
-        with pytest.raises(ValueError, match="as_of is not supported"):
-            compile_query(doc, ctx)
-
-    def test_hive_s3_as_of_rejected(self):
-        schema, ctx = _build_lake_ctx("hive_s3")
-        doc = parse('{ events(as_of: "2024-01-01T00:00:00") { id } }')
-        with pytest.raises(ValueError, match="as_of is not supported"):
-            compile_query(doc, ctx)
-
-    def test_unknown_source_type_as_of_rejected(self):
-        schema, ctx = _build_lake_ctx("mongodb")
-        doc = parse('{ events(as_of: "2024-01-01T00:00:00") { id } }')
-        with pytest.raises(ValueError, match="as_of is not supported"):
-            compile_query(doc, ctx)
-
-
-class TestTimeTravelCatalogQualified:
-    def test_iceberg_timestamp_with_catalog(self):
-        schema, ctx = _build_lake_ctx("iceberg")
-        doc = parse('{ events(as_of: "2024-01-15T12:00:00") { id } }')
-        results = compile_query(doc, ctx, use_catalog=True)
-        sql = results[0].sql
-        assert "FOR TIMESTAMP AS OF TIMESTAMP '2024-01-15T12:00:00'" in sql
-        # Should still include catalog-qualified table name
-        assert "lake_src" in sql
-
-    def test_delta_version_with_catalog(self):
-        schema, ctx = _build_lake_ctx("delta_lake")
-        doc = parse("{ events(as_of: 7) { id } }")
-        results = compile_query(doc, ctx, use_catalog=True)
-        sql = results[0].sql
-        assert "FOR VERSION AS OF 7" in sql
-        assert "lake_src" in sql
+    @pytest.mark.parametrize("source_type", ["postgresql", "hive_s3"])
+    def test_a_table_that_keeps_no_versions_takes_no_time(self, source_type):
+        with pytest.raises(ValueError, match="as_recorded"):
+            _read(source_type, '{ events(as_recorded: "2024-01-01T00:00:00") { id } }')

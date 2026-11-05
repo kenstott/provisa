@@ -11,8 +11,12 @@
     "addViewTitle": "Créer une nouvelle vue dans l'explorateur SQL",
     "model": "+ Modèle",
     "modelTitle": "Modéliser une entité ou un fait (schéma en étoile / Data Vault)",
+    "modelMenu": "Choisir comment modéliser",
+    "modelEntityFact": "Entité/Fait",
+    "modelStarSchema": "Schéma en étoile",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Classeur",
-    "reportXlsxTitle": "Télécharger le modèle sous forme de feuille de calcul pour revue : sources, tables, colonnes, relations, vues, métriques, vues matérialisées et termes de l'ontologie, une feuille chacun",
+    "reportXlsxTitle": "Télécharger le modèle sous forme de feuille de calcul pour revue : sources, tables, colonnes, relations, vues, métriques, vues matérialisées, ontologie, produits de données, contrats de données, qualité des données et profils de données, une feuille chacun",
     "viewErd": "Afficher l'ERD",
     "colSource": "Source",
     "colDomain": "Domaine",
@@ -46,6 +50,8 @@
     "nextPage": "Page suivante",
     "firstPage": "Première page",
     "lastPage": "Dernière page",
+    "listedElsewhere": "Listé dans d'autres domaines",
+    "listedElsewhereHint": "Noms que d'autres domaines listent. Demandez l'accès à ce domaine pour les lire.",
     "pageOf": "Page {{page}} / {{totalPages}}",
     "loadFailed": "Impossible de charger les tables enregistrées : {{message}}",
     "editViewDefinitionTitle": "Modifier la définition de la vue",
@@ -56,6 +62,7 @@
       "impliedDimensionTitle": "Dimension implicite — « Activer le Group By » est activé pour cette table"
     },
     "derived": "dérivée",
+    "endpointUnread": "Le document d'API de sa source n'a pas pu être lu",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -81,6 +88,8 @@
     "panelRegisterTable": "Enregistrer une table",
     "panelNewView": "Nouvelle vue",
     "panelNewModel": "Nouveau modèle",
+    "panelStarSchema": "Nouveau schéma en étoile",
+    "panelDataVault": "Nouveau Data Vault",
     "history": {
       "badge": "historique",
       "title": "Conserve l'historique : interrogez-le à une date ou tel qu'enregistré (Voyage dans le temps)"

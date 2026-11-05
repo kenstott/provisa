@@ -13,6 +13,7 @@
     "runNow": "Profila ora",
     "viewRuns": "Visualizza esecuzioni di profilo",
     "runDone": "Profilate {{rows}} righe.",
-    "constraints": "Vincoli"
+    "constraints": "Vincoli",
+    "classifications": "Classificazioni"
   }
 }

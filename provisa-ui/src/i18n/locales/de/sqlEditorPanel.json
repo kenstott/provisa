@@ -33,8 +33,9 @@
     "createView": "+ Sicht",
     "requestView": "Sicht anfordern",
     "asOfLabel": "Stand vom",
-    "asOfHint": "Views mit Historie so lesen, wie sie zu diesem Zeitpunkt standen",
+    "asOfHint": "Schreibt as_of an jede Relation, die Versionen führt: Lesen, wie sie zu diesem Zeitpunkt stand",
     "asRecordedLabel": "Erfasst bis",
-    "asRecordedHint": "Views mit Historie so lesen, wie Provisa sie damals erfasste, vor späteren Korrekturen"
+    "asRecordedHint": "Schreibt as_recorded an jede Relation, die Versionen führt: Lesen, wie Provisa sie damals erfasst hatte, vor späteren Korrekturen",
+    "boundParams": "Für den nächsten Lauf gebunden: {{values}}"
   }
 }

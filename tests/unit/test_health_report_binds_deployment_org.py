@@ -62,3 +62,53 @@ def test_a_healthy_report_reads_config_stamps_bound_to_the_deployment_org(monkey
     assert report["dependencies"]["postgres"] == "ok"
     assert seen == ["deploy"]
     assert current_org.get(None) is None
+
+
+class _BusyDb:
+    """A control plane whose every connection is checked out: the checkout gives up as busy."""
+
+    def acquire(self):
+        from provisa.core.database import PoolBusy
+
+        class _Refused:
+            async def __aenter__(self):
+                raise PoolBusy("no control-plane connection freed within 1.0s")
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        return _Refused()
+
+
+@pytest.mark.unbound
+def test_a_busy_control_plane_is_reported_busy_at_once_never_healthy(monkeypatch):
+    """REQ-1900: the probe answers fast and says why. A pool with no free connection is the
+    dependency's state, ``busy``; the report is ``degraded``, and nothing that needs a connection
+    is reported as read."""
+    from provisa.core.database import PoolBusy
+
+    monkeypatch.delenv("PROVISA_LAUNCH_ID", raising=False)
+    monkeypatch.delenv("PROVISA_WORKERS", raising=False)
+
+    async def _busy(*_a):
+        raise PoolBusy("no control-plane connection freed within 1.0s")
+
+    monkeypatch.setattr("provisa.api.model_reload.health", _busy)
+    monkeypatch.setattr("provisa.core.platform_state.nodes.live", _busy)
+    state = SimpleNamespace(org_id="deploy", tenant_db=_BusyDb(), platform_state_db=object())
+
+    report = asyncio.run(health_report_mod.health_report(state))
+
+    assert report["status"] == "degraded"
+    assert report["dependencies"]["postgres"] == "busy"
+    assert report["config"] is None and report["nodes"] is None
+
+
+def test_the_probe_bounds_every_checkout_it_makes():
+    """Each checkout the report makes waits for a free connection only as long as the probe
+    allows (database.checkout_wait), not the 30 s an ordinary request may wait."""
+    from provisa.core import database
+
+    with database.checkout_wait(0.2):
+        assert database._checkout_wait() == 0.2
+    assert database._checkout_wait() is None

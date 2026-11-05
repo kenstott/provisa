@@ -20,7 +20,7 @@ import json
 import struct
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -38,6 +38,16 @@ from provisa.core.statement_warnings import (
 )
 
 BASE = "http://api.test"
+
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as provisa.api.app declares it for a single-tenant state."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
 
 def _endpoint(pagination=None, **kw) -> ApiEndpoint:
@@ -153,13 +163,13 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
     source = SimpleNamespace(type=ApiSourceType.openapi, base_url=BASE, auth=None, headers={})
     endpoint = _endpoint(_offset(max_pages=1))
     with (
-        patch.object(router_integration, "table_exists", lambda conn, loc, t, ttl=None: False),
+        patch.object(router_integration, "table_exists", AsyncMock(return_value=False)),
         patch.object(router_integration, "cache_table_name", cache_table_name),
         patch("provisa.api_source.engine_cache._scope", lambda: "scope"),
     ):
         with collecting() as found:
             first = await router_integration.handle_api_query(
-                endpoint, {}, engine, source=source, loc=loc
+                endpoint, {}, engine, source=source, ttl=300, loc=loc
             )
         assert first.cut is not None and first.from_cache is False
         assert [w.code for w in found] == ["api.answer_cut"]
@@ -167,7 +177,7 @@ async def test_a_cut_request_warns_and_lands_under_a_name_no_later_request_finds
         assert first.cache_table != cache_table_name("api", "pets", {})
         with collecting():
             second = await router_integration.handle_api_query(
-                endpoint, {}, engine, source=source, loc=loc
+                endpoint, {}, engine, source=source, ttl=300, loc=loc
             )
     assert second.from_cache is False and route.call_count == 2  # called again, not a hit
     # The handler fetched and wrote nothing: the statement that asked stores the rows, once.
@@ -257,7 +267,7 @@ def test_pgwire_sends_each_warning_as_a_notice_ahead_of_the_rows_once():
     handler = ProvisaHandler.__new__(ProvisaHandler)
     handler.wfile = io.BytesIO()
     plan = SimpleNamespace(warnings=[_cut_warning()], audit=None)
-    with patch("provisa.pgwire._pipeline.audit_on_drain", lambda plan, it: it):
+    with patch("provisa.pgwire._pipeline.audit_on_drain", lambda plan, it, rows_in=len: it):
         result = ProvisaQueryResult(
             QueryResult(rows=[(1,)], column_names=["id"], column_types=["integer"]),
             "SELECT id FROM pets",

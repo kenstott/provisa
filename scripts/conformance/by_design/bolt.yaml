@@ -1,0 +1,73 @@
+# The Neo4j Python driver's integration tests skipped by design (REQ-2167, amended 2026-10-27
+# and 2026-10-28), never counted as failed: each group quotes the rule of the requirement that
+# excludes it. scripts/conformance/by_design.py. An example that creates its nodes only as setup
+# is adapted over the fixture model (scripts/conformance/bolt/fixtures.py), not excluded: it runs
+# as written and counts, marked on the page with what its setup became.
+
+- kind: adapted
+  group: The examples' graph
+  became: >-
+    The labels and relationship types the examples create are declared in a domain of the job's
+    fixture model that holds them alone: Person, Company and Greeting, KNOWS (Person to Person,
+    with the from property the driver introduction example writes) and WORKS_FOR (Person to
+    Company), each relationship a junction table. The driver's user acts as a role whose domain
+    access is that domain alone, writing it, so each example's MATCH (_) DETACH DELETE _ cleanup
+    empties the examples' graph and nothing else.
+  case: "examples\\.test_(autocommit_transaction|hello_world|pass_bookmarks|read_write_transaction|result_consume|result_retain|session|transaction_function|transaction_metadata_config|transaction_timeout_config)_example::|test_readme::test_should_run_readme$"
+
+- kind: adapted
+  group: Sign-in cost
+  became: >-
+    The test user's password is hashed at the minimum bcrypt cost; reconnect-per-cancel is the
+    driver's behaviour.
+  case: "test_async_cancellation::test_async_cancellation_does_not_leak$"
+
+- group: Digits below the microsecond
+  requirement: REQ-2173
+  decision: >-
+    "Every temporal value, read from a column or built in a query, has microsecond precision,
+    what the engines and their drivers hold; its nanosecond property is its microseconds times
+    1000."
+  # Each example sends a value with nanoseconds (4123 ns, 4 ns) and asserts it comes back whole.
+  # Only that difference is this group's: the answer must be the value sent with its digits below
+  # the microsecond as zeros, so any other difference -- an offset on a local time, say -- stays a
+  # failure.
+  reason: "assert '(?P<a>[^']*?)000(?P<z>[^']*)' == '(?P=a)\\d{3}(?P=z)'|assert '(?P<d>P[^']*T\\d+)S' == '(?P=d)\\.\\d{9}S'"
+  case: "test_temporal_types_example::test_(datetime|time|local_datetime|local_time|duration_example)$"
+
+# The driver's own suite skips these for every server (REQ-2167, amended 2026-10-29): each is
+# skipped by design, its decision citing the suite's unconditional skip (file and line). The
+# database selection example is not here: its skip (tests/conftest.py:158-164,
+# mark_requires_edition) depends on the edition the job declares, not on every server. The job
+# declares enterprise and the example runs (provisa/bolt/databases.py); skipped, it is failed.
+- kind: suite
+  group: Encryption examples the suite skips
+  requirement: REQ-2167
+  decision: >-
+    neo4j-python-driver 6.2.0 (tag at commit c2454236512448d7b55abc6b10e33e2eaae3b8bf): tests/integration/examples/test_config_secure_example.py:55 and
+    test_config_trust_example.py:53 call pytest.skip("re-enable when we can test with
+    encrypted=True on Docker") first, unconditionally, for every server.
+  suite: neo4j-python-driver integration tests
+  evidence: test_config_secure_example.py:55; test_config_trust_example.py:53.
+  case: "^tests\\.integration\\.examples\\.test_config_(secure|trust)_example::test_example$"
+
+- kind: suite
+  group: Kerberos example the suite skips
+  requirement: REQ-2167
+  decision: >-
+    neo4j-python-driver 6.2.0 (tag at commit c2454236512448d7b55abc6b10e33e2eaae3b8bf): tests/integration/examples/test_kerberos_auth_example.py:40 calls
+    pytest.skip("Currently no way to test Kerberos auth") unconditionally, for every server.
+  suite: neo4j-python-driver integration tests
+  evidence: test_kerberos_auth_example.py:40.
+  case: "^tests\\.integration\\.examples\\.test_kerberos_auth_example::test_example$"
+
+- kind: suite
+  group: Service-unavailable example the suite skips
+  requirement: REQ-2167
+  decision: >-
+    neo4j-python-driver 6.2.0 (tag at commit c2454236512448d7b55abc6b10e33e2eaae3b8bf): tests/integration/examples/test_service_unavailable_example.py:56 calls
+    pytest.skip("Fix better error messages for the user. Be able to kill the server.")
+    unconditionally, for every server.
+  suite: neo4j-python-driver integration tests
+  evidence: test_service_unavailable_example.py:56.
+  case: "^tests\\.integration\\.examples\\.test_service_unavailable_example::test_example$"

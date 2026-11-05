@@ -8,6 +8,7 @@
 // files/<source id>/; the answer is the path the source then names.
 
 import { requestFailed, serverMessage } from "../../i18n/serverMessage";
+import { isAssignableDomain } from "../../lib/internalDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -19,7 +20,8 @@ export const DOWNLOAD_TYPES = new Set(["csv", "parquet"]);
 
 /** What a new source's form asks of its table (REQ-2113): set up with it as a draft -- on by
  * default, a single-file source having one table -- in the domain picked, else the only or
- * first one. Nothing for a source whose file is not one CSV or Parquet file. */
+ * first one a table may be put into (never meta or ops, internalDomains.ts). Nothing for a
+ * source whose file is not one CSV or Parquet file. */
 export function draftTable(
   form: { type: string; registerTableDraft?: boolean; tableDomainId?: string | null },
   domains: { id: string }[],
@@ -27,7 +29,8 @@ export function draftTable(
   if (!DOWNLOAD_TYPES.has(form.type)) return { registerTableDraft: false, tableDomainId: null };
   return {
     registerTableDraft: form.registerTableDraft ?? true,
-    tableDomainId: form.tableDomainId ?? domains[0]?.id ?? null,
+    tableDomainId:
+      form.tableDomainId ?? domains.find((d) => isAssignableDomain(d.id))?.id ?? null,
   };
 }
 

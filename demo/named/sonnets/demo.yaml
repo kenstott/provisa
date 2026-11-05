@@ -11,14 +11,14 @@
 # (REQ-2016): its embedding model is a local sentence-transformers model, the vector extra.
 title: Shakespeare's sonnets
 description: >-
-  Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning and grown into
-  a graph: the themes that run through them, and the lines where Shakespeare echoes himself.
+  Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning and grown into a graph that shows the themes running through them and the lines where Shakespeare echoes himself.
 screenshot: card.png
 published: true
+group: data-science
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release whose relationships feed a Qdrant search (REQ-2099), which link_echoes
 # reads as a statement rather than host code (REQ-2134).
-requires_provisa: 0.1.0a495
+requires_provisa: 0.1.0a496
 extras:
 - vector
 # The demo's video: its tagline names what the demo shows Provisa being.

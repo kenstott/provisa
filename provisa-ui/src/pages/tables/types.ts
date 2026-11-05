@@ -25,6 +25,8 @@ export interface ColumnForm {
   /** REQ-2000: the registered model a vector column is an embedding of. */
   embeddingModel?: string | null;
   dataType: string;
+  /** REQ-2171: the subtype of dataType the column registers as; cleared when the type changes. */
+  subtype?: string | null;
   isPrimaryKey: boolean;
   scope: string;
   // REQ-1739: dot-notation JSON extraction path (e.g. "payload.order_id") for an `ingest` push

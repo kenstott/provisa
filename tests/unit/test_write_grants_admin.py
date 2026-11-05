@@ -31,6 +31,14 @@ from provisa.api.admin.types import WriteGrantInput, WritePresetInput
 from provisa.core.database import Database
 from provisa.core.repositories import write_grant as write_grant_repo
 from provisa.core.schema_org import domains, registered_tables, roles, sources, table_columns
+from tests.unit.gate_identity import serve_every_column
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which tables and columns a caller reads is REQ-2152's own
+    tests (test_model_edits_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 @pytest.fixture

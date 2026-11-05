@@ -22,6 +22,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { exportProviderName } from "../lib/exportProviders";
 import { driver, type DriveStep, type Driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import "./tour.css";
@@ -53,7 +54,7 @@ import { completedTopics, markTopicCompleted } from "./tourTopics";
 import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
 import { useAuth } from "../context/AuthContext";
 import { usePolly } from "../context/pollyState";
-import { hasCapability } from "../lib/capabilities";
+import { viewerMeets } from "./viewerMeets";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
 import { useOrgHas } from "../hooks/useOrgHas";
@@ -66,8 +67,11 @@ import {
   TOUR_OFFERED_KEY,
   TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
+import { readBulk, removeBulk, writeBulk } from "../lib/bulkStorage";
+import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
+import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -118,6 +122,7 @@ const NL_BRANCHES_KEY = "nl-branches";
 // Backup of the visitor's own NL state while the tour's canned data is shown;
 // restored verbatim on finish so the tour never clobbers real work.
 const NL_BACKUP_KEY = "provisa_tour_nl_backup";
+const NL_BRANCHES_BACKUP_KEY = "nl-branches-backup";
 
 /**
  * Canned "how many pets per species" result — the six compiled query forms the
@@ -241,16 +246,14 @@ const PREP_ACTIONS: Record<string, () => void> = {
   seedNl() {
     // Snapshot the visitor's NL state once (guard against re-entry via Back).
     if (getStored(NL_BACKUP_KEY) === null) {
-      setStored(
-        NL_BACKUP_KEY,
-        JSON.stringify({
-          question: getStored(NL_QUESTION_KEY),
-          branches: getStored(NL_BRANCHES_KEY),
-        }),
+      setStored(NL_BACKUP_KEY, JSON.stringify({ question: getStored(NL_QUESTION_KEY) }));
+      // Queued ahead of the seed below, so it reads what the visitor had.
+      void readBulk(NL_BRANCHES_KEY).then((branches) =>
+        branches === null ? undefined : writeBulk(NL_BRANCHES_BACKUP_KEY, branches),
       );
     }
     setStored(NL_QUESTION_KEY, NL_DEMO_QUESTION);
-    setStored(NL_BRANCHES_KEY, JSON.stringify(NL_DEMO_BRANCHES));
+    void writeBulk(NL_BRANCHES_KEY, kept(NL_DEMO_QUESTION, NL_DEMO_BRANCHES));
   },
 };
 
@@ -276,16 +279,14 @@ function cleanupPrep(): void {
   } catch {
     /* ignore */
   }
-  const raw = getStored(NL_BACKUP_KEY);
-  if (raw === null) return;
-  const restore = (key: string, value: string | null) =>
-    value === null ? removeStored(key) : setStored(key, value);
-  const { question, branches } = JSON.parse(raw) as {
-    question: string | null;
-    branches: string | null;
-  };
-  restore(NL_QUESTION_KEY, question);
-  restore(NL_BRANCHES_KEY, branches);
+  const backup = getStoredJson<{ question: string | null }>(NL_BACKUP_KEY);
+  if (backup === null) return;
+  if (backup.question === null) removeStored(NL_QUESTION_KEY);
+  else setStored(NL_QUESTION_KEY, backup.question);
+  void readBulk(NL_BRANCHES_BACKUP_KEY).then((branches) => {
+    void (branches === null ? removeBulk(NL_BRANCHES_KEY) : writeBulk(NL_BRANCHES_KEY, branches));
+    void removeBulk(NL_BRANCHES_BACKUP_KEY);
+  });
   removeStored(NL_BACKUP_KEY);
 }
 
@@ -407,7 +408,8 @@ function warmStep(index: number): void {
 export type TourStatus =
   | { kind: "preparing"; resuming: boolean }
   | { kind: "waiting"; step: number }
-  | { kind: "stuck"; step: number }
+  // `reason`: what the page said of a step whose object does not exist (REQ-2052).
+  | { kind: "stuck"; step: number; reason?: string }
   // REQ-2115: the step's own actions running, under its caption, before its popover.
   | { kind: "acting"; step: number; key: string }
   | null;
@@ -434,20 +436,6 @@ interface TourContextValue {
 
 const TourContext = createContext<TourContextValue | null>(null);
 
-/**
- * Resolve when an element matching `selector` is present in the DOM. Rejects
- * after `timeoutMs` so a genuinely missing anchor surfaces as a real error
- * rather than hanging the tour. No silent fallback — a failed wait aborts.
- *
- * The window is generous because each step may navigate to a lazily-loaded
- * route whose chunk is compiled/fetched on first visit; a short cap would abort
- * the whole tour on a cold chunk (observed killing it at the NL step in dev).
- * {@link ANCHOR_WAIT_MS} is sized for a machine under heavy load, where a page's
- * own render and its data round-trip both stretch; the wait is now visible while
- * it runs and recoverable when it expires, so a long one costs the visitor
- * nothing but a spinner.
- */
-const ANCHOR_WAIT_MS = 45000;
 type DriverPopover = NonNullable<DriveStep["popover"]>;
 
 // How long an advance may take before the visitor is told the tour is waiting. Short enough that a
@@ -459,45 +447,10 @@ const WAITING_HINT_MS = 1200;
 // actions open (a modal, a form) is seen whole.
 const ACTION_PACE_MS = 700;
 const ACTING_CLASS = "tour-acting";
-
-function waitForElement(
-  selector: string,
-  timeoutMs = ANCHOR_WAIT_MS,
-  signal?: AbortSignal,
-): Promise<HTMLElement> {
-  const existing = document.querySelector<HTMLElement>(selector);
-  if (existing) return Promise.resolve(existing);
-  // An abort raised before this wait began never fires its event again: without this the observer
-  // would run its whole window against a document the provider has already left.
-  if (signal?.aborted) return Promise.reject(new Error(`Tour: wait for ${selector} abandoned`));
-  return new Promise((resolve, reject) => {
-    const stop = () => {
-      observer.disconnect();
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector<HTMLElement>(selector);
-      if (el) {
-        stop();
-        resolve(el);
-      }
-    });
-    const timer = setTimeout(() => {
-      stop();
-      reject(new Error(`Tour: element not found within ${timeoutMs}ms: ${selector}`));
-    }, timeoutMs);
-    // Without this the observer outlives the step that started it — up to ANCHOR_WAIT_MS of
-    // observing a document the provider has already left.
-    const onAbort = () => {
-      stop();
-      reject(new Error(`Tour: wait for ${selector} abandoned`));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    // Attributes too: a page marks a hand-off answered on an element already there (REQ-2010).
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
-  });
-}
+// The body class while a step waits or is stuck: the popover still up is the step before's, and a
+// status card over it reads as that step's trouble (tour.css hides it). The step's own popover is
+// shown once its anchor is in, the status cleared first.
+const PENDING_CLASS = "tour-step-pending";
 
 export function TourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -511,6 +464,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // Bumped by Retry so the runner effect re-enters the same step index.
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<TourStatus>(null);
+  useEffect(() => {
+    const pending = status?.kind === "waiting" || status?.kind === "stuck";
+    document.body.classList.toggle(PENDING_CLASS, pending);
+    return () => document.body.classList.remove(PENDING_CLASS);
+  }, [status]);
   // Which tour (the core tour or one Deep Dives topic) activeStep belongs to, and whether the
   // Deep Dives menu is open (REQ-1945).
   const [activeScope, setActiveScope] = useState<RunScope | null>(null);
@@ -519,7 +477,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [orgHas, setOrgHas] = useState<OrgHas | null>(null);
   const prefetchTourData = useTourPrefetch();
   const whatTheOrgHas = useOrgHas();
-  const { capabilities, actingRoles } = useAuth();
+  const { capabilities, actingRoles, activeOrgId } = useAuth();
   // REQ-2083: what a step that re-runs an earlier statement runs it as, read when the step runs.
   const actingRolesRef = useRef(actingRoles);
   useEffect(() => {
@@ -576,13 +534,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // step is last — counts against this instead, so a tour with steps dropped is a shorter whole
   // tour rather than one that ends early or numbers past its end.
   const itineraries = useMemo(() => {
-    const meets = (capability: Parameters<typeof hasCapability>[1]) =>
-      hasCapability(capabilities, capability);
+    const meets = viewerMeets(capabilities, activeOrgId ?? null);
     const out = { core: tourItinerary(meets, "core") } as Record<RunScope, number[]>;
     for (const id of TOPIC_IDS) out[id] = tourItinerary(meets, id);
     out.demo = tourItinerary(meets, "demo", allSteps);
     return out;
-  }, [capabilities, allSteps]);
+  }, [capabilities, activeOrgId, allSteps]);
   // The active tour's steps. Everything below that walked "the tour" walks this. A tour starts only
   // once what the org has is read (startTour sets orgHas before the scope), so a running tour always
   // walks the steps its org can show; with no read yet, no tour runs and nothing walks this.
@@ -629,6 +586,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // changes; the visit and attempt whose statement was last handed to an explorer.
   const visitRef = useRef(0);
   const handedRef = useRef<string | null>(null);
+  // The visit and attempt whose step's clickBefore was last clicked: once per visit, as a statement
+  // is handed once, since the runner re-runs a step (a new `t` or `navigate`) over what it opened.
+  const clickedRef = useRef<string | null>(null);
+  // The visit and attempt whose `chooseFirst` has been picked.
+  const chosenRef = useRef<string | null>(null);
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
   const activeStepRef = useRef<number | null>(null);
 
@@ -705,6 +667,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
       clearTimeout(waitingTimer);
     };
     (async () => {
+      // REQ-2052: what the page said of the step's object not existing, once it says so.
+      let absentReason: string | null = null;
       try {
         // Indices only ever advance within range (step 0 has no Back button and
         // the last step calls finish() instead of advancing), so TOUR_STEPS[i]
@@ -729,6 +693,27 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // its predecessor's page. Stepping forward the inherited route already equals
         // currentPathRef, so the equality guard makes this a no-op exactly as before.
         const route = stepRoute(i, allStepsRef.current);
+        // The role the step explains, picked on its page before what it runs is handed over, once
+        // per visit: the picker toggles, and Retry is a new attempt that picks again.
+        const chooseEntry = `${visitRef.current}:${attempt}`;
+        if (step.chooseFirst && chosenRef.current !== chooseEntry) {
+          if (route && route !== `${window.location.pathname}${window.location.search}`) {
+            currentPathRef.current = route;
+            navigate(route);
+            // The route just taken re-renders the provider, which supersedes this run.
+            await nextPaint();
+            if (cancelled) return;
+          }
+          const picker = await waitForElement(step.chooseFirst.open, undefined, abort.signal);
+          if (cancelled) return;
+          picker.click();
+          const option = await waitForElement(step.chooseFirst.option, undefined, abort.signal);
+          if (cancelled) return;
+          chosenRef.current = chooseEntry;
+          option.click();
+          await nextPaint();
+          if (cancelled) return;
+        }
         if (route && step.openQuery) {
           // REQ-2010: a demo step's own statement, handed to its explorer once per visit to the
           // step: a new tab that runs it. This effect also re-runs within a visit when one of its
@@ -745,8 +730,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
               ? await answerValue(step.openQuery.from, actingRolesRef.current)
               : step.openQuery.text;
             if (cancelled) return;
+            // A bound value goes to the explorer as the next statement's values ($1).
+            const handed = step.openQuery.stateKey === "params" ? [text] : text;
             navigate(route, {
-              state: { [step.openQuery.stateKey]: text, autoRun: true },
+              state: { [step.openQuery.stateKey]: handed, autoRun: true },
             });
           }
           await nextPaint();
@@ -810,9 +797,21 @@ export function TourProvider({ children }: { children: ReactNode }) {
           await waitForElement(open.unlessPresent, undefined, abort.signal);
           if (cancelled) return;
         }
-        if (step.clickBefore) {
+        // Once per visit: a step run again (a superseded run, or the runner re-run on a new `t` or
+        // `navigate`) clicked again, and a toggle clicked twice ("+ Source" opens and closes the
+        // type picker) shut what the first click had opened -- the step then waited out its anchor
+        // window on a picker it had closed itself. Retry is a new attempt, and clicks again.
+        const clickEntry = `${visitRef.current}:${attempt}`;
+        if (step.clickBefore && clickedRef.current !== clickEntry) {
           const trigger = await waitForElement(step.clickBefore, undefined, abort.signal);
+          if (cancelled) return;
+          clickedRef.current = clickEntry;
           trigger.click();
+        }
+        // REQ-2052: a step whose object does not exist stops when the page says so, that saying its
+        // reason, rather than waiting out an anchor nothing will draw.
+        if (step.absent) {
+          watchAbsent(step.absent, step.waitMs, abort, (said) => (absentReason = said));
         }
         // REQ-2115: act, then explain. A step entered again finds what it built and only explains.
         if (step.actions && !document.querySelector(step.element)) {
@@ -875,19 +874,22 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const isFirst = pos === 0;
         // A step whose Next picks a role (or environment) changes the rights the itinerary follows,
         // so what comes after it is not the current rights' to say: "back to every role" is not the
-        // end because the analyst may open nothing after it. It goes on through the steps counted,
+        // end because the analyst may open nothing after it. A step that picked one as it opened is
+        // the same: the role is already picked. It goes on through the steps counted,
         // and the runner moves past any the picked rights still deny.
-        const onward = step.chooseOnNext ? counted : steps;
+        const onward = step.chooseOnNext || step.chooseFirst ? counted : steps;
         const isLast = onward.indexOf(i) === onward.length - 1;
         // REQ-2010: a named demo's track ends on a choice -- the Deep Dives menu, or the demo's own
         // landing page -- not on a Done that rolls into another tour.
         const landing = scopeRef.current === "demo" && isLast ? landingRef.current : null;
         const ends = landing !== null;
+        // A provider the copy names is named as a user sees it: "(beta)" while unproven.
+        const copy = { atlan: exportProviderName("atlan", "Atlan", t) };
         const popover: DriverPopover = {
           title: t(`tour.steps.${step.key}.title`),
           description: step.image
-            ? `${t(`tour.steps.${step.key}.description`)}<img class="tour-step-image" src="${step.image}" alt="">`
-            : t(`tour.steps.${step.key}.description`),
+            ? `${t(`tour.steps.${step.key}.description`, copy)}<img class="tour-step-image" src="${step.image}" alt="">`
+            : t(`tour.steps.${step.key}.description`, copy),
           ...(step.image ? { popoverClass: "tour-popover-image" } : {}),
           showButtons: ends
             ? isFirst
@@ -1054,7 +1056,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // hand the choice to the visitor — Retry re-enters the step, Skip moves past it, Exit
         // leaves with the position saved. The tour is not ended and progress is not discarded.
         if (cancelled) return;
-        setStatus({ kind: "stuck", step: i });
+        setStatus(
+          absentReason === null
+            ? { kind: "stuck", step: i }
+            : { kind: "stuck", step: i, reason: absentReason },
+        );
       }
     })();
     return () => {
@@ -1315,7 +1321,7 @@ function TourStatusOverlay({
         : t("tour.status.starting")
       : status.kind === "waiting"
         ? t("tour.status.waiting")
-        : t("tour.status.stuck");
+        : (status.reason ?? t("tour.status.stuck"));
   return (
     <div className="tour-status-overlay" role="status" aria-live="polite">
       <div className="tour-status-card">

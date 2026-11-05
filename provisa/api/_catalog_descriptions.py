@@ -25,6 +25,12 @@ meta tables (their views are registered under it), the view name for the ops rep
 
 from __future__ import annotations
 
+from provisa.api._ontology_quality_views import HUB_MIN_REACHERS
+from provisa.transpiler.metadata_views import (
+    column_descriptions as catalog_column_descriptions,
+    table_descriptions as catalog_table_descriptions,
+)
+
 _TENANT = "Owning org — control-plane rows are isolated per tenant by this column"
 
 _META: dict[str, str] = {
@@ -38,6 +44,8 @@ _META: dict[str, str] = {
     "rls_rules": "Row-level security predicates applied per (table, role) before any query runs",
     "roles": "The role hierarchy queries execute under; a role inherits its parent's grants",
     "roles_domain_access": "Which domains each role may reach — one row per role/domain pair",
+    "roles_parents": "Which roles each role inherits from — one row per role/parent pair",
+    "listed_names": "The names of listed columns in domains the reader does not reach — names only",
     "tracked_webhooks": "HTTP endpoints registered as callable functions in the model",
     "tracked_functions": "Source-native and Provisa-defined functions exposed as callable "
     "commands in the model",
@@ -51,36 +59,64 @@ _META: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-1443
+    "sources": "Every registered source -- its identifier and its type",
+    "dq_rules": "Each data-quality table's rules -- one row per check its contract declares, "
+    "in the order written",
     # REQ-2125
     "data_products": "Every data product — one row per product with its own fields; its domain, "
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
+    # REQ-2188
+    "metric_definitions": "Every governed metric — a named aggregate expression with no grain of its own, "
+    "the roles that read it, and the fact it was registered from",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
-    "products it reaches through relationships, and the relations upstream and downstream of "
-    "its tables in lineage — one row per product, target and kind",
-    # REQ-2129
-    "column_lineage_edges": "The model's column lineage — each column a view or command derives "
-    "from another registered column, naming the view or command",
+    "products it reaches through relationships — one row per product, target and kind",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
+    # REQ-2190
+    "table_details": "Each registered table's catalog entry — its modeling role and history and "
+    "its comment, for a SQL catalog to present",
+    "column_details": "Each registered column's catalog entry — its position in the table, the "
+    "types it is listed as and its comment, for a SQL catalog to present",
+    "table_keys": "Each registered table's primary, unique and foreign keys, one row per column "
+    "of each",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
     # REQ-1584: the business glossary as queryable metadata.
-    "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
+    "_terms": "The business vocabulary — one row per term, with the ref count and the "
     "live flag the export's admission rule computes",
     # REQ-1591
-    "glossary_term_domains": "Each glossary term's domains, by the one rule: its refs' domains "
+    "_domains": "Each glossary term's domains, by the one rule: its refs' domains "
     "while it holds refs, the domains declared for it otherwise",
-    "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
+    "_term_refs": "Each binding of a term to a physical column, resolved to that "
     "column's source, schema, table and domain",
-    # REQ-2130
-    "glossary_term_table_refs": "Each table or view a class term grounds, resolved to that "
-    "table's source, schema and domain",
-    "glossary_term_edges": "The term graph — how terms relate to one another, with both "
-    "endpoint names",
-    "glossary_term_experts": "Who owns or authored each term, for routing a definition question",
+    "_term_edges": "The term graph — how terms relate to one another, with both endpoint names",
+    "_experts": "Who owns or authored each term, for routing a definition question",
+    # REQ-2163
+    "_axioms": "The ontology stated as RDFS, OWL and SKOS triples, one a row: each term's class "
+    "or property kind, its super-classes and super-properties, a property's domain and range, "
+    "and each term's label and definition",
+    "_closure": "Each term with every term it is a kind of, as a class or as a property, "
+    "through one or more kind-of relationships, and itself",
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): ops reports over the glossary, so they say
+    # whose metadata they read as the meta tables do.
+    "ontology_quality": "Ontology quality: the glossary measured from the model, one row per "
+    "domain and one per steward -- the grounded share of in-service terms (final and pending "
+    "approval apart), the approved-and-grounded share, the unresolved RELATED_TO placeholders, "
+    "hops to data and paths through broad hub terms, terms a single approval would make final, "
+    "and undefined terms on paths to data",
+    "ontology_term_quality": "Ontology quality by term: one row per in-service term and domain, "
+    "with its status, grounding, RELATED_TO placeholders, hops to data, the broad hub terms its "
+    "paths to data pass through, the terms whose approval alone makes it grounded, and whether "
+    "it is an undefined term on a path to data. A hub is an in-service term that at least "
+    f"{HUB_MIN_REACHERS} distinct terms are directly a kind, part or valid value of; a path "
+    "passes through it when it stands strictly between the term and the term holding the data",
+    "ontology_placeholders": "Ontology quality placeholders: every RELATED_TO edge (once per "
+    "domain of either term) and every in-service term whose only links are RELATED_TO, each "
+    "linked to the term and to its RELATED_TO review",
 }
 
 _OPS: dict[str, str] = {
@@ -131,6 +167,8 @@ _OPS: dict[str, str] = {
     "the limit, and when it recovered",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
+    "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
+    "fake covers it, and the reason when none does",
 }
 
 # A model reading the catalog took ops.query_audit_log -- its route, status_code and duration_ms
@@ -147,9 +185,11 @@ _OPS_OWN = (
 TABLE_DESCRIPTIONS: dict[str, str] = {
     **{name: text + _META_OWN for name, text in _META.items()},
     **{name: text + _OPS_OWN for name, text in _OPS.items()},
+    **catalog_table_descriptions(_META_OWN),  # REQ-2190
 }
 
 COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
+    **catalog_column_descriptions(),  # REQ-2190
     "registered_tables": {
         "id": "Surrogate key — what relationships, rls_rules, and the audit log reference",
         "source_id": "The registered source this table is read from",
@@ -180,42 +220,78 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # REQ-2130
         "class_term_id": "The glossary term this table's rows are instances of; empty when no "
         "term grounds it",
+        # REQ-2132
+        "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
+        "passed, fail otherwise; empty when it has never run",
+        "latest_run_at": "For a checker table, when its latest scan ran",
+        # REQ-2158
+        "contract": "A data product member's contract: its version, status, terms, service "
+        "levels, the columns it promises and its saved versions, each with its differences from "
+        "the one before; empty for a table in no product",
     },
-    # REQ-2129
-    "column_lineage_edges": {
-        "id": "Edge identifier",
-        "source_relation": "The relation the derivation reads (domain.table)",
-        "source_column": "The column it reads, by its SQL name",
-        "target_relation": "The relation the derivation produces (domain.table)",
-        "target_column": "The column it produces, by its SQL name",
-        "via": "The view (its relation) or the command (its name) that derives the target",
-        "via_kind": "view or command",
-        "source_table_id": "The registered table the source column belongs to",
-        "source_column_name": "The source column's stored name",
-        "target_table_id": "The registered table the target column belongs to",
-        "target_column_name": "The target column's stored name",
-        "source_column_key": "Synthesized column identity (table_id:column_name) of the source",
-        "target_column_key": "Synthesized column identity (table_id:column_name) of the target",
+    # REQ-2190
+    "table_details": {
+        "id": "The registered table",
+        "modeling_role": "The table's star role: fact or dimension, when it has one",
+        "modeling_history": "The history mode of the entity the table was lowered from",
+        "comment": "The table's description, with its modeling role and tags in brackets",
+    },
+    "column_details": {
+        "id": "The column's row in table_columns",
+        "table_id": "Table the column belongs to",
+        "column_name": "Physical column name",
+        "ordinal_position": "The column's position in its table, from 1",
+        "subtype": "The subtype the column was registered as, when it has one",
+        "native_type": "The source's own type for the column, when it records one",
+        "comment": "The column's description, with the column's tags in brackets when it has any",
+    },
+    "table_keys": {
+        "id": "Row identifier: the key and the column's position in it",
+        "key_id": "The key: its table's id times 4096 plus its slot on the table",
+        "kind": "p for a primary key, u for a unique key, f for a foreign key",
+        "key_name": "The name a unique key was declared with",
+        "table_id": "Table the key is on",
+        "schema_name": "The schema that table is queried under",
+        "table_name": "The name that table is queried by",
+        "referenced_table_id": "Table a foreign key references; the key's own table otherwise",
+        "referenced_schema_name": "The schema the referenced table is queried under",
+        "referenced_table_name": "The name the referenced table is queried by",
+        "position": "The column's position in the key, from 1",
+        "column_name": "Physical name of the key's column",
+        "column_sql_name": "The name a statement queries that column by",
+        "referenced_column": "Physical name of the column a foreign key column references",
+        "referenced_column_sql_name": "The name a statement queries that column by",
     },
     # REQ-2126
     "data_product_edges": {
         "id": "Edge identifier: product, kind and target",
         "product_id": "The data product the edge starts from",
-        "kind": "relationship or lineage",
-        "direction": "For a lineage edge, upstream (the product derives from the target) or "
-        "downstream (the target derives from the product); empty for a relationship edge",
+        "kind": "relationship (through tables in no product) or related (one relationship away)",
         "target_product_id": "The other data product the edge reaches, when its end is a member "
         "of one",
         "target_table_id": "The table the edge reaches, when its end is a registered table",
-        "target_relation": "For a lineage edge, the relation it reaches (domain.table)",
-        "direct": "True when one relationship, or one derivation, joins a member to the target",
-        "hops": "The shortest number of relationships or derivations between a member and the "
-        "target",
+        "direct": "True when one relationship joins a member to the target",
+        "hops": "The shortest number of relationships between a member and the target",
         "path_count": "How many paths connect the product to the target",
         "aliases": "The aliases of the relationships on those paths",
         "relationship_ids": "The relationships on those paths",
         "supporting_tables": "Tables in no product that a path runs through",
-        "vias": "For a lineage edge, the views and commands on its paths",
+    },
+    "dq_rules": {
+        "id": "Rule identifier: the table and the check's position in its contract",
+        "table_id": "Data-quality table whose contract declares the check",
+        "domain_id": "Domain of that table",
+        "checker": "Checker dialect the contract is written in: soda or great_expectations",
+        "position": "The check's position in its contract, from 1",
+        "column_name": "Column the check applies to; empty for a dataset-level check",
+        "check_type": "The kind of check",
+        "definition": "The check's arguments, as written in the contract",
+        "tenant_id": _TENANT,
+    },
+    # REQ-1443
+    "sources": {
+        "id": "Source identifier",
+        "type": "The source's type -- the connector it is reached through, or a checker's dialect",
     },
     # REQ-2125
     "data_products": {
@@ -228,12 +304,24 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "limitations": "What the product should not be used for, and its known gaps",
         "usage": "How to use the product",
         "version": "The product's version",
-        "status": "The product's lifecycle status",
-        "sla": "The service level the product is held to",
+        "status": "The product's lifecycle status: draft, live, deprecated or retired",
+        "status_reason": "Why the product was deprecated or retired",
+        "retire_on": "When a deprecated product is planned to retire",
+        "successor_id": "The product that took a retired product's members",
         "support": "Where to get support for the product",
         "support_contact": "Who to contact for support",
-        "publish": "True when the product is published; false while it is a draft",
         "custom_properties": "The product's own named properties",
+        "created_at": "When the product was created",
+    },
+    # REQ-2188
+    "metric_definitions": {
+        "name": "Metric name, unique across the model",
+        "expression": "The aggregate SQL expression over semantic table.column references",
+        "datatype": "The type the expression yields",
+        "description": "What the metric measures",
+        "ai_context": "Definition text written for AI consumers",
+        "visible_to": "Roles that may read the metric",
+        "from_fact": "The fact spec the metric was registered from, when it was",
     },
     "table_columns": {
         "id": "Surrogate key for the column registration",
@@ -243,7 +331,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column node without joining to registered_tables",
         # REQ-1584: the stable column identity the glossary binds to.
         "column_key": "Synthesized column identity (table_id:column_name), the join key from "
-        "glossary_term_refs",
+        "ontology._term_refs",
         "data_type": "Physical type as reflected from the source",
         "is_primary_key": "Whether the column is part of the table's primary key",
         "alias": "Name the column is exposed under, when it differs from the source name",
@@ -258,8 +346,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "is_alternate_key": "Whether the column uniquely identifies a row without being the "
         "primary key",
         "object_fields": "Field definitions for a structured (object) column",
-        "visible_to": "Roles that may select this column; empty means unrestricted outside "
-        "lockdown domains",
+        "visible_to": "Roles that may select this column; empty means no role",
         "tenant_id": _TENANT,
     },
     "domains": {
@@ -284,6 +371,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "function_arg": "Argument passed to the resolving function",
         "alias": "Name the edge is exposed under, when it differs from the target name",
         "graphql_alias": "Name the edge is exposed under in GraphQL, when it differs",
+        "cypher_type": "Cypher relationship type the edge is served under",
+        "graphql_field": "GraphQL field the edge is served under, in the naming convention in force",
         "disable_cypher": "Whether the edge is hidden from Cypher traversal",
         "hide_target_meta": "Whether the target's metadata is withheld from consumers of the edge",
         "same_entity": "Whether the rows the edge joins are the same entity, in two tables one term grounds",
@@ -309,6 +398,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the rule is for, as an access review reads it",
         "action_name": "Tracked function or webhook whose response rows the predicate filters",
         "tag_id": "Tag whose tables the predicate is applied to, beside each table's own rule",
+        # REQ-2188
+        "rights": "What the rule narrows: R reading a row, U updating it, D deleting it",
         # REQ-2094
         "why": "Why the rule is what it is: reason, bases, review-by date, who decided it, when "
         "and on what profile evidence (JSON)",
@@ -317,11 +408,24 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "roles": {
         "id": "Role name — what a caller executes as",
         "description": "What the role is for, as an access review reads it",
-        "parent_role_id": "Role this one inherits grants from",
         "org_id": "Org the role was defined in",
         "capabilities": "Platform capabilities the role holds beyond data access",
         "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
         "tenant_id": _TENANT,
+    },
+    "listed_names": {
+        "id": "The column's identity: its table's id and its name",
+        "listed_domain": "The domain the listed table is in",
+        "table_name": "The listed table's name",
+        "column_name": "The listed column's name",
+        "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
+    },
+    "roles_parents": {
+        "id": "Composite key of the role and a role it inherits from",
+        "role_id": "The role",
+        "parent_role_id": "A role it inherits capabilities and grants from",
+        "position": "Where the parent stands in the role's declared order, from 1",
+        "domain_id": "Constant 'meta' — the domain this catalog view is exposed in",
     },
     "roles_domain_access": {
         "id": "Composite key of the role and the domain it reaches",
@@ -394,7 +498,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_key": "Canonical key of the tagged object, unique across kinds",
         "reason": "Justification recorded with the assignment",
         "expires_on": "Planned end date of the assignment",
-        # REQ-1585: the join key to table_columns and glossary_term_refs; null unless the
+        # REQ-1585: the join key to table_columns and ontology._term_refs; null unless the
         # assignment is on a column.
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
@@ -471,7 +575,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "tenant_id": _TENANT,
     },
     # REQ-1584
-    "glossary_terms": {
+    "_terms": {
         "id": "Term identifier",
         "name": "The term phrase, unique across the glossary",
         "definition": "What the term means; a term without one is a draft, never live",
@@ -483,23 +587,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "ref_count": "How many physical columns the term binds to",
         "is_rooted": "True when the term holds at least one physical ref of its own, to a column "
         "or a whole table",
-        "live": "True when the term is in service, defined, and connected over in-service "
-        "edges to a term holding a physical ref",
-        "status": "draft (not admitted), live (admitted), deprecated (its column went, or a "
-        "curator deprecated it; in service until retired) or retired (out of service)",
+        "status": "Set by people: draft (the default), approved (a steward approved it), "
+        "deprecated (its column went, or a curator deprecated it) or retired (out of service)",
         "status_reason": "Why a curator deprecated or retired the term",
         "retire_on": "The date a deprecated term is retired on, when a curator planned one",
         "tenant_id": _TENANT,
         # REQ-1387
-        "grounded": "True when the term is connected over in-service edges to a term holding a "
-        "physical ref, defined or not",
+        "grounding": "Computed: grounded (some path down to a term holding a physical ref has no "
+        "draft term strictly between), grounded_pending (every such path has one) or "
+        "not_grounded (no path over in-service terms reaches data)",
         "identity_gap": "True when the term grounds several tables that same-entity "
         "relationships do not all join: a curation gap",
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
+        # REQ-2163
+        "is_class": "True when the term is a Class: a table is grounded in it",
+        "is_property": "True when the term is a Property: it is bound to a column",
     },
     # REQ-1591
-    "glossary_term_domains": {
+    "_domains": {
         "id": "Term and domain",
         "term_id": "The term",
         "domain_id": "A domain the term belongs to: the domains of the tables its refs point at "
@@ -508,7 +614,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_refs": {
+    "_term_refs": {
         "id": "Ref identifier",
         "term_id": "Term bound by this ref",
         "table_id": "Table owning the bound column",
@@ -523,19 +629,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_table_refs": {
-        "id": "Grounding identifier",
-        "term_id": "The class term",
-        "table_id": "The table or view whose rows are instances of the term",
-        "source_id": "Source the table belongs to",
-        "schema_name": "Schema of the table",
-        "table_name": "Name of the table",
-        "domain_id": "Domain the table is governed under",
-        "tenant_id": _TENANT,
-        "term_domains": "Synthesized: the term's domains as |a|b| — what its readable-term scope tests; empty "
-        "for a term with no domains",
-    },
-    "glossary_term_edges": {
+    "_term_edges": {
         "id": "Edge identifier",
         "from_term_id": "Term the edge starts at",
         "to_term_id": "Term the edge ends at",
@@ -548,7 +642,37 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "to_term_domains": "Synthesized: the to term's domains as |a|b| — what its readable-term scope tests; empty "
         "for a term with no domains",
     },
-    "glossary_term_experts": {
+    "_axioms": {
+        "id": "The triple: its subject's id, predicate and object",
+        "subject_term_id": "The term the triple is about",
+        "subject": "That term's name; its IRI is its vocabulary IRI",
+        "predicate": "The RDF, RDFS, OWL or SKOS property stated",
+        "object_term_id": "The term the triple points at, when its object is a term",
+        "object": "That term's name",
+        "object_iri": "The object when it is an IRI: an OWL class or an XML Schema datatype",
+        "object_literal": "The object when it is a literal: a label or a definition",
+        "object_table_id": "The registered table whose class is the object, for an rdfs:domain "
+        "of a table a Property term's column binds; its class IRI is built from the table",
+        "subject_domains": "Synthesized: the subject term's domains as |a|b| — what its "
+        "readable-term scope tests",
+        "object_domains": "Synthesized: the object term's domains as |a|b|; empty when the "
+        "object is no term",
+        "tenant_id": _TENANT,
+    },
+    "_closure": {
+        "id": "The pair: its predicate, both terms' ids and its hops",
+        "predicate": "rdfs:subClassOf between Classes, rdfs:subPropertyOf between Properties",
+        "subject_term_id": "The narrower term",
+        "subject": "That term's name",
+        "object_term_id": "The broader term it is a kind of, or itself",
+        "object": "That term's name",
+        "hops": "0 for the term itself, 1 for one or more kind-of relationships",
+        "subject_domains": "Synthesized: the narrower term's domains as |a|b| — what its "
+        "readable-term scope tests",
+        "object_domains": "Synthesized: the broader term's domains as |a|b|",
+        "tenant_id": _TENANT,
+    },
+    "_experts": {
         "id": "Assignment identifier",
         "term_id": "Term this person owns or authored",
         "term_name": "Name of that term",
@@ -871,6 +995,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "last_seen_at": "The latest evaluation that found it still in breach",
         "resolved_at": "When the measure came back within its limit; empty: still open",
     },
+    "sensitive_column_coverage": {
+        "id": "Synthesized column identity (table_id:column_name) of the sensitive column",
+        "table_id": "Table the column belongs to",
+        "table_name": "Name of that table",
+        "domain_id": "Domain the table is governed under",
+        "column_name": "The sensitive column",
+        "tags": "The sensitive tags the column carries, comma-separated",
+        "status": "covered, no_fake, or inadequate (a fake or rule failed an adequacy check)",
+        "reason": "Why the column is not covered: no fake, or each failed check and its finding",
+    },
     "service_level": {
         "id": "last_hour",
         "window_start": "Start of the hour measured",
@@ -881,6 +1015,68 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "p95_ms": "Their 95th-percentile duration, in milliseconds",
         "p99_ms": "Their 99th-percentile duration, in milliseconds",
         "availability_pct": "Percent of them answered without a server error",
+    },
+    "ontology_quality": {
+        "id": "The scope and its domain or steward",
+        "scope": "domain, or steward: what the row counts terms by",
+        "scope_id": "The domain id or the steward role; empty for terms with no domain or no "
+        "steward",
+        "in_service_terms": "Draft and approved terms in scope",
+        "grounded_terms": "Of them, grounded: a path to data with no draft term strictly between",
+        "grounded_pct": "Grounded terms as a percent of the in-service terms",
+        "grounded_pending_terms": "Of them, grounded with the path pending approval: every path "
+        "to data passes through a draft term",
+        "grounded_pending_pct": "Pending-approval terms as a percent of the in-service terms",
+        "approved_terms": "Approved terms in scope",
+        "approved_grounded_terms": "Approved terms that reach data, grounded or pending: the "
+        "terms an agent may use",
+        "approved_grounded_pct": "Approved-and-grounded terms as a percent of the in-service terms",
+        "related_to_edges": "RELATED_TO edges with a term in scope, each counted once",
+        "only_related_to_terms": "Terms not grounded whose only links are RELATED_TO",
+        "avg_hops_to_data": "Mean of the grounded terms' hops to data",
+        "max_hops_to_data": "Most hops to data of any grounded term",
+        "hub_paths": "Term-and-hub pairs: a broad hub term standing strictly between a term and "
+        "its data",
+        "only_through_hub_terms": "Grounded terms every path of which passes through a hub",
+        "pending_finalisable_terms": "Pending-approval terms one approval would make grounded",
+        "undefined_on_path_terms": "Terms with no definition on a path to data, which an agent "
+        "traverses as anonymous hops",
+    },
+    "ontology_term_quality": {
+        "id": "The term and its domain",
+        "term_id": "The term; opens it in the Ontology page",
+        "term_name": "The term's name",
+        "domain_id": "A domain the term is scoped to; empty for an unscoped term, * for the "
+        "enterprise",
+        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "status": "draft or approved, set by people",
+        "grounding": "grounded, grounded_pending or not_grounded, computed from the model",
+        "defined": "True when the term has a definition",
+        "related_to": "RELATED_TO edges the term is on, either end",
+        "only_related_to": "True when the term is not grounded and its only links are RELATED_TO",
+        "hops_to_data": "Fewest kind, part or valid-value steps from the term down to a term "
+        "holding data (synonyms add none); empty when not grounded",
+        "is_hub": "True when the term is a broad hub",
+        "hubs_between": "Hubs standing strictly between the term and its data on some path",
+        "only_through_hub": "True when every path from the term to data passes through a hub",
+        "finalised_by": "For a pending-approval term, the draft terms whose approval alone makes "
+        "it grounded",
+        "undefined_on_path": "True when the term has no definition, reaches data and has a term "
+        "above it, so it lies on a path to data",
+    },
+    "ontology_placeholders": {
+        "id": "The placeholder and its domain",
+        "placeholder": "related_to_edge, or only_related_to for a term whose only links are "
+        "RELATED_TO",
+        "edge_id": "The RELATED_TO edge; empty for a term row",
+        "term_id": "The term (the edge's from end); opens it in the Ontology page",
+        "term_name": "The term's name",
+        "other_term_id": "The edge's other term; opens it in the Ontology page",
+        "other_term_name": "The other term's name",
+        "domain_id": "A domain of either term",
+        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "related_to_review": "The term to review; opens the Ontology page filtered to RELATED_TO "
+        "terms",
     },
     "replica_build_health": {
         "id": "Composite key of the source and the day",

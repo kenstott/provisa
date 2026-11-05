@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Jeton d'API Kaggle",
-    "tokenDescription": "Validé en direct auprès de l'API Kaggle avant le déverrouillage du sélecteur de jeu de données",
+    "tokenDescription": "Vérifié en direct auprès de Kaggle. Conservé comme identifiant de la source et réutilisé à chaque actualisation.",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "Valider le jeton",
     "tokenValid": "Jeton valide",

@@ -37,7 +37,8 @@ def demo_orgs(monkeypatch):
     monkeypatch.setattr(pr, "_ENDPOINTS", {})
     monkeypatch.setattr(pr, "_ENDPOINT_USERS", {})
     closed: list[tuple[str, str]] = []
-    monkeypatch.setattr(pr.ConnectorReplica, "close", lambda self: closed.append(self._key))
+    # The registry stops a server it forgets by retiring its replica (REQ-1824).
+    monkeypatch.setattr(pr.ConnectorReplica, "retire", lambda self: closed.append(self._key))
     return closed
 
 
@@ -78,3 +79,28 @@ def test_a_shared_server_stops_when_the_last_sandbox_reading_it_goes(demo_orgs):
     assert closed == [], "another sandbox still reads it"
     pr.stop_org_servers("sbxb00000000002")
     assert closed == [first._key] and pr._ENDPOINTS == {} and pr._ENDPOINT_USERS == {}
+
+
+def test_a_sandbox_closing_leaves_its_template_the_server_they_share(demo_orgs):
+    """REQ-2006: the template reads the server too, and it was never counted among its users: the
+    last sandbox of files to close stopped it, and the template's view failed every refresh from
+    then on ('Unable to connect to Postgres at host=127.0.0.1 port=5433')."""
+    closed = demo_orgs
+    template = "sbxtplfiles"
+    first = _as(template, pr._endpoint_replica, _drop(V1))
+    assert _as("sbxa00000000001", pr._endpoint_replica, _drop(V1)) is first
+    pr.stop_org_servers("sbxa00000000001")
+    assert closed == [], "its template still reads it"
+    pr.stop_org_servers(template)
+    assert closed == [first._key] and pr._ENDPOINTS == {} and pr._ENDPOINT_USERS == {}
+
+
+def test_a_template_stopping_leaves_the_sandboxes_their_server(demo_orgs):
+    closed = demo_orgs
+    template = "sbxtplfiles"
+    first = _as(template, pr._endpoint_replica, _drop(V1))
+    _as("sbxa00000000001", pr._endpoint_replica, _drop(V1))
+    pr.stop_org_servers(template)
+    assert closed == [], "a sandbox still reads it"
+    pr.stop_org_servers("sbxa00000000001")
+    assert closed == [first._key]

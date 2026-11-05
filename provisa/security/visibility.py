@@ -16,7 +16,7 @@ This module formalizes what schema_gen already does and adds validation.
 
 from __future__ import annotations
 
-from provisa.security.rights import column_served, reaches_domain
+from provisa.security.rights import META_DOMAIN_ID, column_served, reaches_domain
 
 # Requirements: REQ-001, REQ-038, REQ-039, REQ-042, REQ-263, REQ-363
 
@@ -27,6 +27,8 @@ def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, RE
     result = []
     for table in tables:
         reaches = reaches_domain(role["domain_access"], table["domain_id"])
+        if table["domain_id"] == META_DOMAIN_ID and not reaches:
+            continue  # REQ-1132: meta's default tier is read on SQL alone
         visible_cols = [
             c
             for c in table["columns"]
@@ -36,20 +38,3 @@ def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, RE
             continue
         result.append({**table, "columns": visible_cols})
     return result
-
-
-def is_column_visible(  # REQ-039, REQ-263
-    table: dict,
-    column_name: str,
-    role_id: str,
-) -> bool:
-    """Whether a column's own grant names ``role_id`` (its ``visible_to``, literally)."""
-    for col in table.get("columns", []):
-        if col["column_name"] == column_name:
-            return role_id in col["visible_to"]
-    return False
-
-
-def visible_column_names(table: dict, role_id: str) -> set[str]:  # REQ-039, REQ-263
-    """The columns whose own grant names ``role_id`` (their ``visible_to``, literally)."""
-    return {col["column_name"] for col in table.get("columns", []) if role_id in col["visible_to"]}

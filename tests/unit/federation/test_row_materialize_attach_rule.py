@@ -66,6 +66,15 @@ class _NoEngineCalls:
         return SimpleNamespace(column_names=[], rows=[])
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization, as provisa.api.app declares it for a single-tenant state.
+    The API layer says it at import, which these tests do not make."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 @pytest.fixture
 def registry(monkeypatch):
     sources = [
@@ -84,8 +93,15 @@ def registry(monkeypatch):
     async def _tables(state):
         return tables
 
+    ensured: list[str] = []
+
+    async def _ensure(_engine, _backend, _state, _schema, name, _columns):
+        ensured.append(name)  # this stand-in has no store; the probe reads nothing from it
+
     monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _sources)
     monkeypatch.setattr("provisa.federation.registry_view.registered_tables", _tables)
+    monkeypatch.setattr("provisa.federation.query_residency._ensure_row_cache_table", _ensure)
+    return SimpleNamespace(ensured=ensured)
 
 
 def test_the_duckdb_engine_declares_mongodb_attachable_and_neo4j_not():
@@ -110,6 +126,7 @@ def test_a_declared_attach_table_runs_no_key_pushdown(registry):
     sql = 'SELECT o.id FROM "s"."orders" AS o JOIN "s"."order_docs" AS d ON d.id = o.id'
     assert asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None)) == set()
     assert engine.calls == []  # no probe query at all
+    assert registry.ensured == []  # and no replica created for it
 
 
 def test_a_non_attachable_row_materialize_join_still_probes(registry):
@@ -120,6 +137,7 @@ def test_a_non_attachable_row_materialize_join_still_probes(registry):
     sql = f'SELECT o.id FROM "s"."orders" AS o JOIN {_NODE_REPLICA} AS n ON n.id = o.id'
     asyncio.run(pushdown_row_materialize(state, sql, "duckdb", reader_role=None))
     assert len(engine.calls) == 1
+    assert registry.ensured == ["graph__s__order_node"]  # created before the probe read it
 
 
 def test_a_failed_attach_is_an_error_not_a_row_cache_detour(registry):

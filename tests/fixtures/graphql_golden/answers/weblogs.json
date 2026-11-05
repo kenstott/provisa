@@ -1,0 +1,60 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:weblogs/1-slowest-pages-by-path.graphql",
+  "reads": [
+   "shop_access",
+   "shop_db_log"
+  ],
+  "root_field": "s__viewSlowestPagesGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:weblogs/2-slow-statements-by-table.graphql",
+  "reads": [
+   "shop_db_log"
+  ],
+  "root_field": "s__viewRequestSqlGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": false,
+  "origin": "demo:weblogs/3-customers-served-errors-by-region.graphql",
+  "reads": [
+   "shop_access",
+   "shop_db"
+  ],
+  "root_field": "s__viewCustomersWith_5xxGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": false,
+  "origin": "demo:weblogs/4-database-errors-by-page.graphql",
+  "reads": [
+   "shop_access",
+   "shop_db_log"
+  ],
+  "root_field": "s__viewRequestsWithDbErrorsGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": false,
+  "origin": "demo:weblogs/5-viewed-not-bought-by-category.graphql",
+  "reads": [
+   "shop_access",
+   "shop_db"
+  ],
+  "root_field": "s__viewViewedNotBoughtGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": false,
+  "origin": "demo:weblogs/6-statement-times-overall.graphql",
+  "reads": [
+   "shop_db_log"
+  ],
+  "root_field": "s__viewSlowStatementsByTableAggregate"
+ }
+]

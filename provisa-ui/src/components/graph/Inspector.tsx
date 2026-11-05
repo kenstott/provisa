@@ -28,10 +28,9 @@ import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react
 import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
-import { PALETTE, labelColor } from "./graph-model";
-import { getStableNodeId } from "./stableNodeId";
+import { INJECTED_PROPS, PALETTE, labelColor, ownColumnName } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
-import { cypherRelType } from "../../naming";
+import type { CanvasHighlight } from "./canvas/canvas-types";
 import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -45,9 +44,14 @@ interface OverviewData {
 }
 
 interface InspectorProps {
+  /** Why a SPARQL node's properties could not be read, said where they would be listed. */
+  describeError?: string;
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   graphStats?: GraphStats;
   overviewData?: OverviewData;
+  /** The Overview pill picked out in the frame's graph, and how a pill picks one (or clears it). */
+  highlight?: CanvasHighlight | null;
+  onHighlight?: (highlight: CanvasHighlight | null) => void;
   colorOverrides: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
   onClose: () => void;
@@ -56,30 +60,17 @@ interface InspectorProps {
   relationships?: Relationship[];
   /** Save the edge's aliases; the server's refusal of them, or null when saved. */
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
-  pkMap: Record<string, string[]>;
   /** Each node label's registered table, which a node links to. */
   labelToTableId: Record<string, number>;
 }
 
-// The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
-// they don't appear twice (degreeCentrality was the visible duplicate).
-const HIDDEN_PROPS = new Set([
-  "l1Cluster",
-  "l2Cluster",
-  "l3Cluster",
-  "scl1",
-  "scl2",
-  "scl3",
-  "degIn",
-  "degOut",
-  "degTotal",
-  "degreeCentrality",
-]);
-
 export function Inspector({
   selected,
+  describeError,
   graphStats,
   overviewData,
+  highlight = null,
+  onHighlight,
   colorOverrides,
   onColorChange,
   onClose,
@@ -87,7 +78,6 @@ export function Inspector({
   onResizeStart,
   relationships,
   onSaveEdgeAlias,
-  pkMap,
   labelToTableId,
 }: InspectorProps) {
   const { t } = useTranslation();
@@ -106,7 +96,7 @@ export function Inspector({
     const edgeType = (selected.data as GEdge).type;
     // REQ-1586: a junction-backed row is exposed under its nomination, not its alias, so matching
     // on the alias would leave every junction edge without its relationship row here.
-    return relationships.find((r) => cypherRelType(r) === edgeType) ?? null;
+    return relationships.find((r) => r.cypherType === edgeType) ?? null;
   }, [selected, relationships]);
 
   const prevRelId = useRef<number | null>(null);
@@ -127,6 +117,17 @@ export function Inspector({
     setTimeout(() => setCopiedKey(null), 1200);
   }, []);
 
+  // An Overview pill picks out its label's nodes (or its type's edges) in the frame's graph; the
+  // same pill again clears it (GraphCanvas.highlight).
+  const isLit = (kind: CanvasHighlight["kind"], value: string) =>
+    highlight !== null && highlight.kind === kind && highlight.value === value;
+  const pill = (kind: CanvasHighlight["kind"], value: string) => ({
+    component: "button" as const,
+    type: "button" as const,
+    "aria-pressed": isLit(kind, value),
+    "data-testid": `overview-pill-${kind}-${value}`,
+    onClick: () => onHighlight?.(isLit(kind, value) ? null : { kind, value }),
+  });
   const isN = selected !== null && selected.kind === "node";
   const label = selected ? (isN ? selected.data.label : (selected.data as GEdge).type) : "";
   const color = colorOverrides[label] ?? labelColor(label);
@@ -136,23 +137,25 @@ export function Inspector({
   const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
   const domainPrefix = colonIdx > 0 ? nodeLabel.slice(0, colonIdx) : null;
 
-  const stableId = selected && isN ? getStableNodeId(selected.data as GNode, pkMap) : null;
-  const pkCols = selected && isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
-  const idColName = pkCols[0] ?? null;
-
   const propRows: [string, unknown][] = useMemo(() => {
     if (!selected) return [];
     const props = selected.data.properties ?? {};
     if (isN) {
-      const idRow: [string, unknown][] = stableId ? [["<id>", stableId]] : [];
-      const pkEntry: Record<string, unknown> =
-        idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
+      // A node shows its own properties only: its key as the server gives it (`_id`) first, then
+      // its columns by name -- never the drawing's internal id, never a value made up for a column
+      // the row did not carry.
+      const keyRow: [string, unknown][] = "_id" in props ? [["_id", props._id]] : [];
+      // A SPARQL node's own column named as its caption is, saying the same: one row, the column's.
+      const node = selected.data as GNode;
+      const restated = (k: string) =>
+        Object.keys(node.propertyIris ?? {}).some(
+          (column) => ownColumnName(node, column) === k && props[column] === props[k],
+        );
       return [
-        ...idRow,
+        ...keyRow,
         ...Object.entries(props)
-          .filter(([k]) => !HIDDEN_PROPS.has(k))
+          .filter(([k]) => k !== "_id" && !INJECTED_PROPS.has(k) && !restated(k))
           .sort(([a], [b]) => a.localeCompare(b)),
-        ...Object.entries(pkEntry),
       ];
     }
     const e = selected.data as GEdge;
@@ -162,7 +165,7 @@ export function Inspector({
       ["end", e.end],
       ...Object.entries(props).sort(([a], [b]) => a.localeCompare(b)),
     ] as [string, unknown][];
-  }, [selected, isN, stableId, idColName]);
+  }, [selected, isN]);
 
   const handleCopyAll = useCallback(() => {
     const obj = Object.fromEntries(propRows);
@@ -214,8 +217,9 @@ export function Inspector({
                   key={lbl}
                   variant="filled"
                   radius="xl"
-                  className="gf-overview-chip"
+                  className={`gf-overview-chip${isLit("label", lbl) ? " gf-overview-chip--on" : ""}`}
                   style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
+                  {...pill("label", lbl)}
                 >
                   {lbl} ({cnt.toLocaleString()})
                 </Badge>
@@ -235,7 +239,8 @@ export function Inspector({
                   key={type}
                   variant="filled"
                   radius="sm"
-                  className="gf-overview-chip gf-overview-chip--rel"
+                  className={`gf-overview-chip gf-overview-chip--rel${isLit("type", type) ? " gf-overview-chip--on" : ""}`}
+                  {...pill("type", type)}
                 >
                   {type} ({cnt.toLocaleString()})
                 </Badge>
@@ -254,6 +259,14 @@ export function Inspector({
       </div>
     );
   }
+
+  // A column of the node's own class reads by its name (pets:breedName is breedName);
+  // a term, a standard predicate or another class's column as written, and one whose name another
+  // row of the panel already goes by.
+  const propName = (k: string): string => {
+    const name = isN ? ownColumnName(selected.data as GNode, k) : null;
+    return name === null || propRows.some(([r]) => r === name) ? k : name;
+  };
 
   const headerLabel = isN
     ? t("graphInspector.nodeProperties")
@@ -517,6 +530,11 @@ export function Inspector({
             </>
           )}
           <div className="gf-insp-section-label">{t("graphInspector.properties")}</div>
+          {describeError && (
+            <Text size="xs" c="red" role="alert" data-testid="inspector-describe-error">
+              {describeError}
+            </Text>
+          )}
           <Table className="gf-inspector-table">
             <Table.Tbody>
               {propRows.map(([k, v]) => {
@@ -528,8 +546,18 @@ export function Inspector({
                       : String(v);
                 return (
                   <Table.Tr key={k} className="gf-prop-row">
-                    <Table.Td className="gf-prop-key">{k}</Table.Td>
-                    <Table.Td className="gf-prop-val">{vs}</Table.Td>
+                    <Table.Td
+                      className="gf-prop-key"
+                      title={isN ? (selected.data as GNode).propertyIris?.[k] : undefined}
+                    >
+                      {propName(k)}
+                    </Table.Td>
+                    <Table.Td
+                      className="gf-prop-val"
+                      title={isN ? (selected.data as GNode).propertyDatatypes?.[k] : undefined}
+                    >
+                      {vs}
+                    </Table.Td>
                     <Table.Td className="gf-prop-copy-cell">
                       <ActionIcon
                         variant="subtle"

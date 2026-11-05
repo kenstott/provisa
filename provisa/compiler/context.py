@@ -16,17 +16,32 @@ before query compilation. Extracted from sql_gen.py; leaf module.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence  # noqa: F401
+from collections.abc import Callable, Mapping, Sequence  # noqa: F401
 
 from provisa.compiler.naming import (
+    bare_field_name,
     junction_field_name,
     rel_field_name as _rel_field_name,
+    unprefixed_field_name,
     source_to_catalog,
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
+from provisa.compiler.native_subtype import SubtypeColumns
 from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
 from provisa.compiler.sql_where import META_QUERY_NAME
+from provisa.core.ir_types import Subtype
+from provisa.security.rights import (
+    META_DOMAIN_ID,
+    OPS_DOMAIN_ID,
+    SYSTEM_DOMAINS,
+    lists_table,
+    reaches_domain,
+    serves_table,
+    writes_table,
+)
 from provisa.compiler.sql_types import (
+    is_integer_type,
+    is_json_type,
     CompilationContext,
     JoinMeta,
     JunctionMeta,
@@ -131,6 +146,10 @@ def _register_table_in_ctx(
         col_meta = t.column_metadata.get(col_name.lower())
         if col_meta:
             col_info.append((col_name, col_meta.data_type))
+            if is_json_type(col_meta.data_type):
+                ctx.json_columns.add((t.table_id, col_name.lower()))
+            if is_integer_type(col_meta.data_type):
+                ctx.integer_columns.add((t.table_id, col_name.lower()))
     ctx.aggregate_columns[t.table_id] = col_info
 
     # REQ-1319: precompile each role-visible single-table metric into its physical inline
@@ -221,7 +240,9 @@ def _join_field_name(  # REQ-194, REQ-1586
             via_table_name=via_info.table_name,
             cypher_alias=rel.get("alias"),
         )
-    return _rel_field_name(tgt_info.field_name, rel["cardinality"])
+    return _rel_field_name(
+        unprefixed_field_name(tgt_info.field_name, tgt_info.domain_id), rel["cardinality"]
+    )
 
 
 def _build_junction_meta(  # REQ-1586
@@ -278,6 +299,15 @@ def _build_junction_meta(  # REQ-1586
         type_column=type_column,
         type_value=rel.get("via_type_value") or None,
         attributes=attributes,
+        # A type column the table does not expose is no property of the relationship.
+        type_attribute=next(
+            (
+                col.get("alias") or apply_gql_name(col["column_name"], convention)
+                for col in via_info.visible_columns
+                if col["column_name"] == type_column
+            ),
+            None,
+        ),
         label_source=rel["via_label_source"],
         label_fixed=rel.get("alias") or "",
     )
@@ -485,9 +515,8 @@ def _register_ops_synthetic_joins(
     from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
-    _IMPLICIT_DOMAINS = {"meta", "ops"}
     for ops_t in tables:
-        if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
+        if ops_t.domain_id != OPS_DOMAIN_ID:
             continue
         # The link matches the registration's (domain_id, table_name) on the ops row's own pair;
         # a row naming its table otherwise (replica_build_log: source, schema, physical name)
@@ -506,7 +535,7 @@ def _register_ops_synthetic_joins(
             table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
             domain_id=ops_t.domain_id,
         )
-        _base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
+        _base = bare_field_name(ops_t.field_name, ops_t.domain_id)
         join_field = f"_{_base}"
         if meta_rt:
             ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(
@@ -562,14 +591,15 @@ def _nested_columns(
     not only the role's visible ones: what a column is at its source is a fact of the table."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.compiler.schema_gen import SchemaInput
+    from provisa.core.native_types import natively_nested
 
     assert isinstance(si, SchemaInput)
     out: NestedColumns = {}
     for td in si.tables:
         for col in td.get("columns") or []:
             native = col.get("native_type")
-            if not native:
-                continue
+            if not natively_nested(native):
+                continue  # none recorded, or a character column's (REQ-1961)
             key = (
                 td["schema_name"].lower(),
                 (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
@@ -579,6 +609,35 @@ def _nested_columns(
             names = out.setdefault(key, {})
             names[phys.lower()] = nested
             names[(col.get("alias") or apply_sql_name(phys)).lower()] = nested
+    return out
+
+
+def _columns_of_subtypes(
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    physical_map: dict[str, str],
+    kept: Callable[[Subtype], bool],
+) -> SubtypeColumns:
+    """REQ-2171: every registered column whose subtype is ``kept``, keyed like
+    ``_nested_columns``. All registered tables: a column's subtype is a fact of the table."""
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.core.ir_types import SUBTYPES
+
+    assert isinstance(si, SchemaInput)
+    out: SubtypeColumns = {}
+    for td in si.tables:
+        for col in td.get("columns") or []:
+            subtype = col.get("subtype")
+            if not subtype or not kept(SUBTYPES[subtype]):
+                continue
+            key = (
+                td["schema_name"].lower(),
+                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+            )
+            phys = col["column_name"]
+            names = out.setdefault(key, {})
+            names[phys.lower()] = subtype
+            names[(col.get("alias") or apply_sql_name(phys)).lower()] = subtype
     return out
 
 
@@ -592,20 +651,18 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
     to produce the same field_name/type_name mapping.
     """
-    from provisa.compiler.naming import domain_gql_alias
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
     ctx = CompilationContext(role_id=si.role["id"])
 
-    domain_alias_map = {
-        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
-        for d in si.domains
-        if domain_gql_alias(d["id"], d.get("graphql_alias"))
-    }
-    tables = _build_visible_tables(si)
+    from provisa.compiler.naming import domain_alias_map as _domain_alias_map
+
+    domain_alias_map = _domain_alias_map(si.domains)
+    tables = _build_visible_tables(si, for_sql=True)
     if not tables:
         _register_draft_names(si, ctx, domain_alias_map)  # REQ-1921: drafts are named still
+        _register_missing_capabilities(si, ctx, domain_alias_map)  # REQ-1132
         return ctx
     _assign_names(
         tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
@@ -617,8 +674,11 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     for t in tables:
         _register_table_in_ctx(t, ctx, si, physical_map)
 
+    ctx.row_level_tables = si.row_level_tables
     ctx.epoch_columns = _epoch_columns(si, physical_map)
     ctx.nested_columns = _nested_columns(si, physical_map)
+    ctx.subtype_columns = _columns_of_subtypes(si, physical_map, lambda s: s.semantics is not None)
+    ctx.read_columns = _columns_of_subtypes(si, physical_map, lambda s: s.base == "text")
 
     _register_relationship_joins(si, ctx, table_lookup, physical_map)
 
@@ -629,6 +689,8 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     ctx.gql_governed_object_cols = si.gql_governed_object_cols or set()
     ctx.columns_outside_relation = si.columns_outside_relation
     _register_draft_names(si, ctx, domain_alias_map)
+    _register_missing_capabilities(si, ctx, domain_alias_map)
+    _register_listed_only(si, ctx, domain_alias_map)
 
     return ctx
 
@@ -638,14 +700,75 @@ def _register_draft_names(  # REQ-1921
     ctx: CompilationContext,
     domain_alias_map: dict[str, str],
 ) -> None:
-    """Every name a statement could give a draft table this role would otherwise read — its
-    field name (named as ``schema_gen._assign_names`` names a table), table name, alias, and the
-    qualified names a served table answers to (``domain.semantic``, ``domain.table``,
-    ``schema.table``, ``catalog.schema.table``: the one rule in :mod:`provisa.compiler.naming`)
-    — so a statement naming one is refused as draft, not as unknown. A draft
+    """Every name a statement could give a draft table this role would otherwise read, so a
+    statement naming one is refused as draft, not as unknown. A draft
     table in a domain the role does not reach, or with no column it sees, is not named: to that
     role it does not exist, draft or not."""
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.security.visibility import visible_tables
+
+    assert isinstance(si, SchemaInput)
+    role = si.role
+    for row in si.draft_tables:
+        # REQ-2152: a draft is listed to a role served one of its columns, by the one rule
+        # (its domain reach included).
+        if not visible_tables([row], role):
+            continue
+        for said in _names_of_table(si, row, domain_alias_map):
+            ctx.draft_names[said] = row["table_name"]
+
+
+def _register_missing_capabilities(  # REQ-1132
+    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
+    ctx: CompilationContext,
+    domain_alias_map: dict[str, str],
+) -> None:
+    """Every name a statement could give a table of a system domain this role holds no capability
+    for, and ``_meta`` when that is meta: the table is in no schema of the role, so a statement
+    naming one is refused naming the capability, not as unknown."""
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    for row in si.tables:
+        domain = row["domain_id"]
+        if domain not in SYSTEM_DOMAINS or "class_bindings" in row:
+            continue
+        if reaches_domain(si.role["domain_access"], domain):
+            continue
+        if domain == META_DOMAIN_ID:
+            ctx.missing_capability["_meta"] = domain
+        for said in _names_of_table(si, row, domain_alias_map):
+            ctx.missing_capability[said] = domain
+
+
+def _register_listed_only(  # REQ-1132, REQ-2153
+    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
+    ctx: CompilationContext,
+    domain_alias_map: dict[str, str],
+) -> None:
+    """Every name a statement could give a table this role can only list: it is in no schema of
+    the role, so a statement naming one is refused as listed, not as unknown."""
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    for row in si.tables:
+        if not lists_table(row) or serves_table(si.role, row) or writes_table(si.role, row):
+            continue
+        for said in _names_of_table(si, row, domain_alias_map):
+            ctx.listed_only[said] = f"{row['domain_id']}.{row['table_name']}"
+
+
+def _names_of_table(
+    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
+    row: dict,
+    domain_alias_map: dict[str, str],
+) -> set[str]:
+    """Every name a statement could give the table ``row``: its field name (named as
+    ``schema_gen._assign_names`` names a table), table name, alias, and the qualified names a
+    served table answers to (``domain.semantic``, ``domain.table``, ``schema.table``,
+    ``catalog.schema.table``: the one rule in :mod:`provisa.compiler.naming`)."""
     from provisa.compiler.naming import (
+        SYSTEM_SCHEMA_GQL_PREFIX,
         active_gql_convention,
         apply_sql_name,
         domain_to_sql_name,
@@ -653,35 +776,31 @@ def _register_draft_names(  # REQ-1921
         physical_relation_name,
         semantic_relation_names,
         stored_relation_names,
+        system_schema_names,
     )
     from provisa.compiler.schema_gen import SchemaInput
-    from provisa.security.rights import reaches_all_domains
 
     assert isinstance(si, SchemaInput)
-    role = si.role
-    reach = set(role["domain_access"])
-    every = reaches_all_domains(role["domain_access"])
-    for row in si.draft_tables:
-        domain = row["domain_id"]
-        if not every and domain not in reach:
-            continue
-        if not any(not c["visible_to"] or role["id"] in c["visible_to"] for c in row["columns"]):
-            continue
-        name, alias = row["table_name"], row["alias"]
-        dp = f"{domain_to_sql_name(domain)}__"
-        base = name[len(dp) :] if (si.domain_prefix and not alias and name.startswith(dp)) else name
-        field_name = generate_name(
-            base, si.naming_rules, alias=alias, convention=active_gql_convention()
-        )
-        unprefixed = field_name
-        if si.domain_prefix:
-            prefix = domain_alias_map.get(domain) or domain_to_sql_name(domain)
-            if prefix:
-                field_name = f"{prefix}__{field_name}"
-        # Its semantic name, as ``semantic_table_name`` reads a served table's: the alias, else
-        # the field name without its domain prefix.
-        semantic = apply_sql_name(alias or unprefixed)
-        for said in {
+    domain = row["domain_id"]
+    name, alias = row["table_name"], row.get("alias")
+    dp = f"{domain_to_sql_name(domain)}__"
+    base = name[len(dp) :] if (si.domain_prefix and not alias and name.startswith(dp)) else name
+    field_name = generate_name(
+        base, si.naming_rules, alias=alias, convention=active_gql_convention()
+    )
+    unprefixed = field_name
+    if domain in SYSTEM_SCHEMA_GQL_PREFIX:
+        field_name, _type_name = system_schema_names(domain, field_name)
+    elif si.domain_prefix:
+        prefix = domain_alias_map.get(domain) or domain_to_sql_name(domain)
+        if prefix:
+            field_name = f"{prefix}__{field_name}"
+    # Its semantic name, as ``semantic_table_name`` reads a served table's: the alias, else
+    # the field name without its domain prefix.
+    semantic = apply_sql_name(alias or unprefixed)
+    return {
+        said
+        for said in (
             field_name,
             name,
             alias,
@@ -690,9 +809,9 @@ def _register_draft_names(  # REQ-1921
             physical_relation_name(
                 _catalog_of(si, row["source_id"], name), row["schema_name"], name
             ),
-        }:
-            if said:
-                ctx.draft_names[said] = name
+        )
+        if said
+    }
 
 
 # --- AST value extraction ---

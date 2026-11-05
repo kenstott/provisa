@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} está em execução.",
     "toolDoneTooltip": "{{name}} terminou. O resultado foi devolvido ao assistente.",
     "toolErrorTooltip": "{{name}} falhou. O assistente recebeu o erro e pode tentar de novo com outros argumentos.",
-    "roleNoteHelpTitle": "O papel com que esta sessão corre"
+    "roleNoteHelpTitle": "O papel com que esta sessão corre",
+    "toolExplainTooltip": "{{name}} terminou. Clique para ver a instrução enviada e a que rodou.",
+    "explainTitle": "O que a consulta do agente executou",
+    "explainSent": "A instrução que o agente enviou",
+    "explainRan": "A instrução que rodou, governada para {{role}}"
   }
 }

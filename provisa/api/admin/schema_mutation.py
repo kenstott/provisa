@@ -14,13 +14,17 @@ from __future__ import annotations
 
 
 import logging
-import os
 from datetime import date
-from provisa.compiler.naming import SqlAddressTaken
+from provisa.codesource.languages import CODE_SOURCE_TYPES
+from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
+from provisa.api.admin.jdbc_source_admin import (
+    JdbcSourceDetectInput,
+    JdbcSourceDetectionType,
+)
 import strawberry
 from sqlalchemy import select, update
 from strawberry.types.info import Info as StrawberryInfo
@@ -34,6 +38,7 @@ from provisa.core.schema_org import (
 )
 
 if TYPE_CHECKING:
+    from provisa.api.admin.read_rights import DependentsReader
     from provisa.core.database import Connection
 
 from provisa.compiler.sql_types import key_list
@@ -47,6 +52,7 @@ from provisa.api.admin.types import (
     ColumnAliasType,
     CompileQueryInput,
     CompileQueryResult,
+    DataContractInput,
     DataProductInput,
     DomainInput,
     DqDryRunCheckType,
@@ -81,6 +87,7 @@ from provisa.api.admin.schema_helpers import (
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
+    label_clash_result,
     carried,
     load_protection_refusal,
     save_carried_paging,
@@ -89,6 +96,7 @@ from provisa.api.admin._table_settings import (
     invalid_replicate as _invalid_replicate,
     naming_refusal,
     role_ttl_refusal,
+    right_taken,
     row_rule_refusal,
     save_carried_after_store,
     save_naming,
@@ -103,8 +111,10 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     TableTtl,
     landing_ttl_refusal,
     replicate_contradiction_refusal,
+    row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
+from provisa.security.masking import MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -133,10 +143,12 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _remove_view_mv,
     _expand_wikipedia_if_needed,
     google_workspace_refusal,
+    excel_hints_refusal,
     logs_refusal,
     sandbox_destination_refusal,
     download_source_file,
     file_source_path,
+    jdbc_source_refusal,
     google_workspace_organisation_refusal,
     microsoft_365_organisation_refusal,
     microsoft_365_refusal,
@@ -150,48 +162,74 @@ from provisa.api.admin.schema_common import (  # noqa: E402
 )
 
 
-# The port pgwire is served on when nothing says otherwise: what provisa-install.yaml's own
-# dq-checker/dq-soda entries dial.
-_DQ_STANDARD_PGWIRE_PORT = 5439
+async def _table_unread(info: StrawberryInfo, table_id: int) -> MutationResult | None:
+    """A refusal for a table the caller is served no column of, answered as one that does not
+    exist (REQ-2152): the right that changes a table's settings does not reach a table its role
+    cannot read. None when the caller reads it."""
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    scope = catalog_scope(info)
+    if scope.whole:
+        return None
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        served = await served_columns_of(cast("Connection", conn), scope, table_id)
+    if served != set():
+        return None
+    return MutationResult(
+        success=False,
+        message=f"Table {table_id} not found",
+        code="schema.table_not_found",
+        params={"table": table_id},
+    )
 
 
-def _secured() -> bool:
-    """Whether an auth provider secures this deployment: pgwire then checks a password; with
-    none it is in trust mode and asks for none (pgwire/server.py)."""
-    from provisa.api.app import state
+async def _rule_beyond_reads(
+    info: StrawberryInfo, input: Any, targets: list[dict]
+) -> MutationResult | None:
+    """Why a row rule over ``targets`` is refused to a caller who does not read what it names
+    (REQ-2152), or None."""
+    import sqlglot
+    from sqlglot import exp
+    from sqlglot.errors import ParseError
 
-    return state.auth_middleware_active
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
 
-
-def _dq_pgwire_port() -> str:
-    """The pgwire port a data-quality check dials on ``PROVISA_DQ_HOST``.
-
-    This deployment's own pgwire listener when it runs one — the operator setting
-    ``server.pgwire_port`` (REQ-1913). When the listener is off here (port 0), the check is aimed
-    at a host that serves pgwire itself, on the standard port; the default is that design's, the
-    same one the generated dq-checker/dq-soda entries use, not a guess at a missing value.
-    """
-    from provisa.core import settings_registry
-
-    port = settings_registry.value("server.pgwire_port")
-    return str(port if port != 0 else _DQ_STANDARD_PGWIRE_PORT)
-
-
-def checker_mapping() -> dict[str, str]:
-    """The connection a checker source made in the Sources form scans through: this deployment's
-    own pgwire endpoint, with the env-var defaults provisa-install.yaml's dq-checker and dq-soda
-    entries use (REQ-1742, REQ-1443)."""
-    return {
-        "host": os.environ.get("PROVISA_DQ_HOST", "localhost"),
-        "port": _dq_pgwire_port(),
-        "database": "provisa",
-        "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
-        # Under an auth provider, a reference resolved at each scan (dq.scan): unset, the scan
-        # fails naming it. No account's password is assumed. With none, pgwire is in trust mode
-        # and asks for no password, as the shipped dq-checker and dq-soda sources write it.
-        # reference-convention: REQ-1443 -- docs/configuration.md's checker source
-        "password": "${env:PROVISA_DQ_PASSWORD}" if _secured() else "",
-    }
+    scope = catalog_scope(info)
+    if scope.whole:
+        return None
+    try:
+        parsed = sqlglot.parse_one(input.filter_expr)
+    except ParseError:
+        # A predicate that does not parse names no column to judge: the save's own check, which
+        # runs next (validate_rls_predicate), refuses it with the parse reason (REQ-1676).
+        return None
+    named = {c.name for c in parsed.find_all(exp.Column)}
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        for target in targets:
+            served = await served_columns_of(cast("Connection", conn), scope, target["id"])
+            if served is None:
+                continue
+            if not served and not input.domain_id:
+                return MutationResult(
+                    success=False,
+                    message=f"Table not registered: {input.table_id}",
+                    code="schema.table_not_found",
+                    params={"table": input.table_id},
+                )
+            stored = {c["column_name"] for c in target["columns"]}
+            if not (named & stored) <= served:
+                reason = "the filter names a column the acting role cannot read"
+                return MutationResult(
+                    success=False,
+                    message=reason,
+                    code="schema.rls_rule_invalid",
+                    params={"reason": reason},
+                )
+    return None
 
 
 async def _save_relationship_as_caller(
@@ -219,7 +257,7 @@ async def _save_relationship_as_caller(
     # domain is the one being changed. The target is referenced, not altered — its own RLS and
     # masking still apply when the join is traversed. So the gate asks about the SOURCE domain, and
     # an edge whose target lives elsewhere is recorded but flagged for the other domain to review.
-    from provisa.api.admin.capabilities import require_domain
+    from provisa.api.admin.capabilities import require_domain, require_right_in_domains
 
     _pool_g = await _get_pool()
     async with _pool_g.acquire() as _gconn:
@@ -227,7 +265,13 @@ async def _save_relationship_as_caller(
     if _refusal is not None:
         return _refusal
     assert _src_row is not None  # _relationship_tables refuses an unresolved source
+    _beyond = await _relationship_beyond_reads(info, input, _src_row, _tgt_row)  # REQ-2152
+    if _beyond is not None:
+        return _beyond
     try:
+        # REQ-1944: the right is exercised in the domains of the roles that carry it -- a caller
+        # holding create_relationship in finance and reading sales asks for a sales edge.
+        require_right_in_domains(info, "create_relationship", [_src_row["domain_id"]])
         require_domain(info, _src_row["domain_id"])
     except PermissionError:
         if not creating:
@@ -241,6 +285,43 @@ async def _save_relationship_as_caller(
     return await save_relationship(
         input, owner=_owner, needs_review=_cross_domain, creating=creating
     )
+
+
+async def _relationship_beyond_reads(
+    info: StrawberryInfo, input: RelationshipInput, source: dict, target: dict | None
+) -> MutationResult | None:
+    """Why a relationship is refused to a caller who does not read what it joins (REQ-2152), or
+    None: an end table it is served no column of is answered as unregistered, and a join column
+    it is not served -- whether or not the table has it -- is refused naming none."""
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    scope = catalog_scope(info)
+    if scope.whole:
+        return None
+    ends = [("source", input.source_table_id, source, input.source_column)]
+    if target is not None:
+        ends.append(("target", input.target_table_id, target, input.target_column or ""))
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        for end, name, row, columns in ends:
+            served = await served_columns_of(cast("Connection", conn), scope, row["id"])
+            if served is None:
+                continue
+            if not served:
+                return MutationResult(
+                    success=False,
+                    message=f"{end.capitalize()} table {name!r} is not registered",
+                    code=f"schema.relationship_unknown_{end}",
+                    params={"table": name},
+                )
+            if not set(key_list(columns)) <= served:
+                return MutationResult(
+                    success=False,
+                    message="a relationship joins only on columns the acting role can read",
+                    code="schema.relationship_column_beyond_reads",
+                )
+    return None
 
 
 async def _relationship_tables(
@@ -391,19 +472,60 @@ async def _relationship_alias_refusal(
     )
 
 
+async def _change_product_status(
+    info: StrawberryInfo, product_id: str, done: str, change: Any
+) -> MutationResult:  # REQ-1634
+    """One status action on a data product, in one transaction, by the product's domain's writer;
+    a refusal names its code (data_product.status.<code>) and writes nothing."""
+    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability(info, "data_product_rw")
+    identity = getattr(info.context["request"].state, "identity", None)
+    user_id = getattr(identity, "user_id", None)
+    by = None if user_id is None or user_id == "anonymous" else str(user_id)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        conn = cast("Connection", conn)
+        stored = await data_product_repo.get(conn, product_id)
+        if stored is None:
+            return MutationResult(
+                success=False,
+                message=f"Data product {product_id!r} not found",
+                code="schema.data_product_not_found",
+                params={"data_product": product_id},
+            )
+        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
+        try:
+            async with conn.transaction():
+                await change(conn, by)
+        except data_product_repo.StatusRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code=f"data_product.status.{refused.code}",
+                params={"data_product": product_id, **refused.params},
+            )
+    return MutationResult(
+        success=True,
+        message=f"Data product {product_id!r} {done}",
+        code=f"data_product.status.{done}",
+        params={"data_product": product_id},
+    )
+
+
 async def _save_data_product(
     info: StrawberryInfo, input: DataProductInput, *, creating: bool
 ) -> MutationResult:  # REQ-1634
     """A data product saved: a create makes a new one, refusing an id that exists; an update
     changes one, refusing an id that does not. Either refusal names the id and writes nothing."""
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
-    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW.
-    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2188: the role's
+    # U rule, not this gate, says which products it edits (core.model_row_rules).
+    from provisa.api.admin.capabilities import require_right_in_domains
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
-
-    require_capability(info, "data_product_rw")
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -446,13 +568,25 @@ async def _save_data_product(
             limitations=input.limitations,
             usage=input.usage,
             version=input.version,
-            status=input.status,
-            sla=input.sla,
+            # REQ-1634 STATUS: the lifecycle changes only by its actions; an edit keeps it.
+            **(
+                {
+                    "status": stored["status"],
+                    "status_reason": stored["status_reason"],
+                    "retire_on": stored["retire_on"],
+                    "successor": stored["successor_id"],
+                }
+                if stored is not None
+                else {}
+            ),
             support=input.support,
+            support_contact=input.support_contact or None,
             # Absent or null is "no custom properties" (DataProductInput says why).
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
         )
         await data_product_repo.upsert(conn, model)
+    if (None if stored is None else stored["owner_role"]) != model.owner_role:
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     if creating:
         return MutationResult(
             success=True,
@@ -468,6 +602,68 @@ async def _save_data_product(
     )
 
 
+async def _save_data_contract(
+    info: StrawberryInfo, table_id: int, contract: DataContractInput
+) -> MutationResult:  # REQ-2158
+    """A product member's contract replaced, by whoever may curate its product's domain. A change
+    that breaks the stored contract at its version, or a promise the member cannot keep, is
+    refused by name and writes nothing."""
+    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    from provisa.core.data_contracts import ContractRefused
+    from provisa.core.models import DataContract
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import table as table_repo
+
+    require_capability(info, "data_product_rw")
+    try:
+        declared = DataContract.model_validate(
+            {
+                "version": contract.version,
+                "status": contract.status,
+                "description": contract.description,
+                "terms": vars(contract.terms),
+                "sla": [vars(s) for s in contract.sla],
+                "columns": [vars(c) for c in contract.columns],
+            }
+        )
+    except ValueError as invalid:
+        return MutationResult(
+            success=False,
+            message=str(invalid),
+            code="schema.data_contract_invalid",
+            params={"table_id": table_id},
+        )
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        conn = cast("Connection", conn)
+        stored = await table_repo.get(conn, table_id)
+        if stored is None or stored.get("product_id") is None:
+            return MutationResult(
+                success=False,
+                message=f"Table {table_id} is no data product's member",
+                code="schema.data_contract_no_member",
+                params={"table_id": table_id},
+            )
+        product = await data_product_repo.get(conn, stored["product_id"])
+        assert product is not None  # registered_tables.product_id is a foreign key
+        require_right_in_domains(info, "data_product_rw", {product["domain_id"]})
+        try:
+            await data_product_repo.save_contract(conn, table_id, declared)
+        except ContractRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code="schema.data_contract_refused",
+                params={"table_id": table_id},
+            )
+    return MutationResult(
+        success=True,
+        message=f"Contract of table {table_id} saved at version {declared.version}",
+        code="schema.data_contract_saved",
+        params={"table_id": table_id, "version": declared.version},
+    )
+
+
 async def _save_role(
     info: StrawberryInfo, input: RoleInput, *, creating: bool
 ) -> MutationResult:  # REQ-042, REQ-059, REQ-060, REQ-215, REQ-1531
@@ -479,8 +675,18 @@ async def _save_role(
     from provisa.core.models import Role as RoleModel
 
     require_capability(info, "user_management")
+    from provisa.core.db import STANDARD_ROLES
     from provisa.core.models import RoleRateLimit
     from provisa.core.repositories import role as role_repo
+
+    if input.id in STANDARD_ROLES:  # REQ-2155
+        return MutationResult(
+            success=False,
+            message=f"Role {input.id!r} is a standard role. Extend it with a role of your own "
+            "that inherits from it.",
+            code="schema.role_standard_locked",
+            params={"role": input.id},
+        )
 
     # REQ-1682: each constant session value is refused by name for what is wrong with it.
     from provisa.auth.attributes import normalize_name, session_constant_problem
@@ -510,42 +716,59 @@ async def _save_role(
             requests_per_second=rl.requests_per_second,
             max_query_complexity=rl.max_query_complexity,
             max_query_time_ms=rl.max_query_time_ms,
+            # REQ-1174: the role's LLM budget, validated as the model is (amount > 0, a unit).
+            llm_call_cap=_llm_limit(rl.llm_call_cap),
+            llm_windows={
+                w: limit
+                for w in ("hour", "day", "week", "month")
+                if (limit := _llm_limit(getattr(rl.llm_windows, w, None))) is not None
+            },
         )
         if rl is not None
         else None
     )
-    # REQ-1677: the parent must exist, be another role, and not close a cycle.
-    from provisa.security.inheritance import parent_map, parent_problem
+    # REQ-2155: each parent must exist, be another role, be named once and not close a cycle.
+    from provisa.security.inheritance import parent_map, parents_problem
 
-    parent_id = input.parent_role_id or None
+    parents = list(input.parents)
     async with pool.acquire() as conn:
         existing = await role_repo.list_all(cast("Connection", conn))
-    problem = parent_problem(input.id, parent_id, parent_map(existing))
+    problem = parents_problem(input.id, parents, parent_map(existing))
     if problem is not None:
         return MutationResult(
             success=False,
             message=problem,
             code="schema.role_parent_invalid",
-            params={"role": input.id, "parent": parent_id, "reason": problem},
+            params={"role": input.id, "parents": parents, "reason": problem},
         )
     # REQ-042/REQ-1337: the same two refusals the REST surface makes — an unknown capability,
-    # and a platform right (the role's own or its parent chain's) defined by a caller who is
-    # not a platform administrator.
-    from provisa.api.admin._platform_guard import role_definition_problem
-    from provisa.security.inheritance import effective_capabilities, effective_domain_access
+    # and a platform right (the role's own or an ancestor's) defined by a caller who is not a
+    # platform administrator.
+    from provisa.api.admin._platform_guard import role_definition_problem, role_narrowing_problem
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
+    from provisa.security.inheritance import effective_capabilities
 
-    inherited = effective_capabilities(parent_id, existing) if parent_id is not None else []
-    inherited_domains = (
-        effective_domain_access(parent_id, existing) if parent_id is not None else []
-    )
+    inherited = sorted({c for p in parents for c in effective_capabilities(p, existing)})
     definition_problem = role_definition_problem(
         info.context["request"],
         input.capabilities,
         inherited,
         role_id=input.id,
         domain_access=input.domain_access,
-        inherited_domain_access=inherited_domains,
     )
+    if definition_problem is None:  # REQ-2155: a right no parent holds, refused by name
+        async with pool.acquire() as conn:
+            domains = await domain_repo.list_all(cast("Connection", conn))
+        definition_problem = role_narrowing_problem(
+            input.id,
+            parents,
+            input.capabilities,
+            input.domain_access,
+            input.residency_values,
+            existing,
+            domain_tree.parent_map(domains),
+        )
     if definition_problem is not None:
         return MutationResult(
             success=False,
@@ -554,7 +777,7 @@ async def _save_role(
             params={"role": input.id, **definition_problem.params},
         )
     # REQ-1531: a role hands out reach; whoever defines it must hold every domain the
-    # definition adds to what the role reaches — listed or inherited.
+    # definition adds to what the role reaches (its own list: reach is not inherited, REQ-2155).
     from provisa.api.admin.capabilities import require_reach_of_added_domains
 
     held = next((r for r in existing if r["id"] == input.id), None)
@@ -584,13 +807,9 @@ async def _save_role(
     if held is not None:
         # REQ-1531: redefining a role is an act in every domain it reaches now, not only in
         # the ones the change adds.
-        require_right_in_domains(
-            info, "user_management", effective_domain_access(input.id, existing)
-        )
+        require_right_in_domains(info, "user_management", held["domain_access"])
     require_reach_of_added_domains(
-        info,
-        None if held is None else effective_domain_access(input.id, existing),
-        [*input.domain_access, *inherited_domains],
+        info, None if held is None else held["domain_access"], input.domain_access
     )
     model = RoleModel(
         id=input.id,
@@ -598,7 +817,7 @@ async def _save_role(
         capabilities=input.capabilities,
         domain_access=input.domain_access,
         rate_limit=rate_limit,
-        parent_role_id=parent_id,
+        parents=parents,
         residency_values=input.residency_values,  # REQ-1921
         session_vars=session_vars,  # REQ-1682
         inactivity_days=input.inactivity_days,  # REQ-2077
@@ -762,6 +981,12 @@ async def _save_metric(
     from provisa.core.repositories import metric as metric_repo
 
     require_capability(info, "table_registration")
+    from provisa.api.admin.capabilities import acting_role_of
+    from provisa.security.default_grant import default_read_grant
+
+    # REQ-1317: a metric created naming no role is read by the acting role and Viewer; an update
+    # naming none keeps the roles it has (filled in below, from the stored definition).
+    named = None if input.visible_to is None else list(input.visible_to)
     try:
         model = MetricModel(
             name=input.name,
@@ -769,7 +994,9 @@ async def _save_metric(
             datatype=input.datatype,
             description=input.description,
             ai_context=input.ai_context,
-            visible_to=list(input.visible_to),
+            visible_to=named
+            if named is not None
+            else (default_read_grant(acting_role_of(info)) if creating else []),
         )
     except ValueError as e:  # pydantic name validation (snake_case)
         return MutationResult(success=False, message=str(e))
@@ -804,6 +1031,10 @@ async def _save_metric(
                     params={"metric": input.name},
                 )
             require_domains(info, reads | (replaced or set()))
+            if named is None and not creating:
+                stored = await metric_repo.get(cast("Connection", conn), input.name)
+                assert stored is not None  # replaced is not None: the metric exists
+                model = model.model_copy(update={"visible_to": list(stored["visible_to"])})
             await metric_repo.upsert(cast("Connection", conn), model)
             # REQ-1318: every registered view whose view_metrics spec references this
             # metric regenerates its stored view_sql against the UPDATED definition.
@@ -1789,10 +2020,10 @@ def _residency_refusal(
     return None
 
 
-async def _delete_source(id: str) -> MutationResult:
-    """Delete source ``id`` (the deleteSource mutation, its capability already checked)."""
+async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
+    """Delete source ``id`` (the deleteSource mutation, its capability already checked); a
+    refusal names only what ``reader`` may read (REQ-2152)."""
     from provisa.core.repositories import source as source_repo
-    from provisa.api.app import state
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -1802,9 +2033,23 @@ async def _delete_source(id: str) -> MutationResult:
         # the ServiceNow source's deletion too.
         from provisa.openapi.servicenow import companion_id
 
-        _companion = await _delete_source(companion_id(id))
+        _companion = await _delete_source(companion_id(id), reader)
         if not _companion.success and _companion.code != "schema.source_not_found":
             return _companion
+    from provisa.federation.pgwire_replica import deleting
+
+    # REQ-1824: from here until the source is gone, no server is started for it -- an index
+    # walk, an attach pass or a discovery call asking mid-delete would start one after its
+    # server was stopped, and nothing would ever stop that one.
+    with deleting(id):
+        return await _delete_source_row(id, reader, pool)
+
+
+async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> MutationResult:
+    """The deletion of source ``id`` once its companion is gone (``_delete_source``)."""
+    from provisa.core.repositories import source as source_repo
+    from provisa.api.app import state
+
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         # REQ-1695: read the reference before the row goes, so the vault entry it names can be
@@ -1813,10 +2058,14 @@ async def _delete_source(id: str) -> MutationResult:
         try:
             deleted = await source_repo.delete(_conn, id)
         except source_repo.SourceDeleteRefused as refused:
+            from provisa.api.admin.read_rights import refusal
+
+            # REQ-2152: only the dependents the caller may read, never how many.
+            _said, _named = await refusal(_conn, reader, refused)
             # REQ-1918: nothing is removed; every dependent is named.
             return MutationResult(
                 success=False,
-                message=str(refused),
+                message=_said,
                 code=(
                     "schema.source_has_dependents"
                     if refused.reason == "dependents"
@@ -1824,14 +2073,22 @@ async def _delete_source(id: str) -> MutationResult:
                 ),
                 params={
                     "source": id,
-                    "dependents": [d.as_dict() for d in refused.dependents],
+                    "dependents": _named,
                 },
             )
     if deleted:
         assert _existing is not None  # delete reported a row, so get found one
+        # A catalog walk still reading the source ends before its catalog goes: left running,
+        # it failed on the source the org no longer has.
+        # REQ-1824: cancelled, not waited for -- a walk inside an adapter read ends only once
+        # the read answers, minutes on a server still starting.
+        from provisa.discovery.catalog_cache import stop_indexing
+
+        stop_indexing(id)
         state.graphql_remote_sources.pop(id, None)
         # REQ-1730: was never called here at all — see _drop_source_on_engine's own comment for
-        # the exact orphaned-catalog accumulation this closes.
+        # the exact orphaned-catalog accumulation this closes. It blocks this request's own
+        # thread (REQ-1882) while a server stops; no other request waits on it.
         _drop_source_on_engine(state, id)
         state.source_catalogs.pop(id, None)
         from provisa.core import source_uploads
@@ -1843,7 +2100,7 @@ async def _delete_source(id: str) -> MutationResult:
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if _existing["type"] in ("node", "python"):  # REQ-1984, REQ-1993: its workers go
+        if _existing["type"] in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: its workers go
             from provisa.codesource.source import forget
 
             forget(id)
@@ -1859,6 +2116,27 @@ async def _delete_source(id: str) -> MutationResult:
         code="schema.source_not_found",
         params={"source": id},
     )
+
+
+async def _publish_new_source(
+    info: StrawberryInfo, input: SourceInput
+) -> MutationResult | None:  # REQ-2113, REQ-2006
+    """Rebuild the schemas once for a source just created, with its draft table when one was asked
+    for. Registering that table ends in a rebuild of its own, and typing it from the file needs
+    none first: a Save paid for both, the longest steps it has. What keeps the source from being
+    answered as saved is returned, as :func:`_register_draft_table` says it."""
+    if not input.register_table_draft:
+        await _rebuild_schemas()
+        return None
+    try:
+        said = await _register_draft_table(info, input)
+    except BaseException:
+        # The source stands, whatever became of its table.
+        await _rebuild_schemas()
+        raise
+    if said is not None:
+        await _rebuild_schemas()
+    return said
 
 
 async def _register_draft_table(
@@ -1919,6 +2197,19 @@ async def _register_draft_table(
 
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
+    @strawberry.mutation
+    async def detect_jdbc_source(
+        self, info: StrawberryInfo, input: JdbcSourceDetectInput
+    ) -> JdbcSourceDetectionType:  # REQ-2191
+        """Detect, from a JDBC source's form: read-only checks against the connection the
+        form describes, on the active engine. Nothing is saved."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.jdbc_source_admin import detect
+        from provisa.api.app import state
+
+        require_capability(info, "source_registration")
+        return await detect(input, state.federation_engine)
+
     @strawberry.mutation
     async def set_servicenow_api(
         self, info: StrawberryInfo, source_id: str, namespace: str, name: str, added: bool
@@ -2087,7 +2378,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
         return MutationResult(
             success=True,
-            message=f"calendar {input.name!r} v{input.version} saved",
+            message=f"calendar {input.name!r} {input.version} saved",
             code="schema.calendar_saved",
             params={"calendar": input.name, "version": input.version},
         )
@@ -2106,14 +2397,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 removed = await calendar_repo.delete(_conn, name)
             except calendar_repo.CalendarDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(_conn, reader_for(info), refused)
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.calendar_in_use",
                     params={
                         "calendar": name,
-                        "count": len(refused.dependents),
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if removed == 0:
@@ -2166,6 +2460,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal
+        if carried(input.gql_naming_convention):
+            _naming_refusal = naming_refusal(input.gql_naming_convention)
+            if _naming_refusal is not None:
+                return _naming_refusal
 
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
@@ -2236,7 +2534,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     await download_source_file(input)
                     or logs_refusal(input)
                     or file_source_path(input)
-                )  # REQ-1996/1997/2113
+                    or jdbc_source_refusal(input)  # REQ-2191
+                    or excel_hints_refusal(input)
+                )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
                     return _logs_refusal
                 # REQ-2006: a sandbox org's source is checked BEFORE the connection that validates
@@ -2282,16 +2582,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             from provisa.dq.registration import is_checker_source_type
 
             if is_checker_source_type(input.type):
-                # REQ-1742 gap: a checker source (soda/great_expectations) has NO connection
-                # fields in the Sources form (NO_CONNECTION_TYPES, constants.ts) — the checker
-                # doesn't connect to a remote system, it scans an already-registered table
-                # through PROVISA'S OWN pgwire endpoint (dq.runner.run_contract's `connection`
-                # arg). The shipped dq-checker/dq-soda demo sources (config/provisa-install.yaml)
-                # hardcode this mapping by hand; a source created THROUGH THE UI never got it at
-                # all, so its mapping stayed permanently empty and every dry-run/scan against it
-                # raised a raw KeyError('host') the first time run_contract indexed into it.
-                # Same env-var defaults provisa-install.yaml's own dq-checker/dq-soda entries use.
-                _mapping = checker_mapping()
+                from provisa.api.admin._dq_registration import checker_mapping
+
+                # The mapping alone holds the password (#276).
+                _mapping, password_ref = checker_mapping(input, password_ref), ""
         model = SourceModel(
             id=input.id,
             type=SourceTypeEnum(input.type),
@@ -2317,6 +2611,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             download_from=input.download_from,  # REQ-2113
             freshness_gate=input.freshness_gate,  # REQ-860
             cdc=await stored_cdc(info, input),  # REQ-1951
+            gql_naming_convention=(
+                stored_convention(input.gql_naming_convention)
+                if carried(input.gql_naming_convention)
+                else None
+            ),
         )
 
         # REQ-1531: a source with no allowed list is open to every domain, so opening it to a
@@ -2393,16 +2692,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             async with pool.acquire() as _companion_conn:
                 await sync_companion(cast("Connection", _companion_conn), input.id)
-        await _rebuild_schemas()
+        said = await _publish_new_source(info, input)
 
         if input.type == "data_profiler":  # REQ-1934: its schedule fires on the org's scheduler
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if input.register_table_draft:  # REQ-2113
-            refused = await _register_draft_table(info, input)
-            if refused is not None:
-                return refused
+        if said is not None:
+            return said
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} created",
@@ -2435,9 +2732,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
 
+        # The token as typed: a value, or a reference resolved in the org's vault.
+        async with bound_to_request_org():
+            resolved = resolve_secrets(token)
         try:
-            staged_root = await stage_dataset(token, owner, ref)
+            staged_root = await stage_dataset(resolved, owner, ref)
         except UnsupportedKaggleDataset as exc:
             return KaggleStageResultType(
                 success=False, message=str(exc), directory="", suggested_source_id=""
@@ -2455,9 +2757,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def refresh_kaggle_source(  # REQ-1780/1781/1782/1783
-        self, info: StrawberryInfo, source_id: str, token: str
+        self, info: StrawberryInfo, source_id: str
     ) -> MutationResult:
-        """Re-fetch a Kaggle-derived source's dataset in place. stage_dataset's own contract
+        """Re-fetch a Kaggle-derived source's dataset in place, with the source's own token. stage_dataset's own contract
         (downloader.py) is idempotent -- re-running it overwrites each file at the SAME directory
         registerSource already points at.
 
@@ -2468,8 +2770,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         the directory on disk without also evicting that cache would silently keep serving
         whatever schema the server saw at its first attach — the exact bug `stop_endpoint`
         (pgwire_replica.py) was added THIS SESSION to close for delete+recreate; a refresh needs
-        the identical fix. The Kaggle token is deliberately never persisted server-side (REQ-1783)
-        -- the caller re-enters it for this call, same as the original staging step."""
+        the identical fix. The token is the source's credential field as the operator entered it
+        (a value, or a reference they typed), resolved here as at its creation."""
         from datetime import datetime, timezone
         from pathlib import Path
 
@@ -2502,6 +2804,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.not_a_kaggle_source",
                 params={"source": source_id},
             )
+        from provisa.core.secrets import resolve_secrets
+        from provisa.core.secrets_store import bound_to_request_org
+
+        if not row.get("password_ref"):
+            return MutationResult(
+                success=False,
+                message=f"Kaggle dataset {owner}/{ref}: the source holds no Kaggle API token; "
+                "add it on the Sources form, where its token is entered",
+                code="schema.kaggle_token_missing",
+                params={"owner": owner, "ref": ref},
+            )
+        async with bound_to_request_org():
+            token = resolve_secrets(row["password_ref"])
         # REQ-1787: skip the re-download (and the pgwire endpoint teardown it would otherwise
         # force) when Kaggle has nothing newer than what's already on disk -- the staged files'
         # own mtime IS the "last refreshed at" record; no separate timestamp needs to be stored.
@@ -2567,6 +2882,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal
+        if carried(input.gql_naming_convention):
+            _naming_refusal = naming_refusal(input.gql_naming_convention)
+            if _naming_refusal is not None:
+                return _naming_refusal
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -2622,7 +2941,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 (await download_source_file(input) if _fetch else None)
                 or logs_refusal(input)
                 or file_source_path(input)
-            )  # REQ-1996/1997/2113
+                or jdbc_source_refusal(input)  # REQ-2191
+                or excel_hints_refusal(input)
+            )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
                 return _logs_refusal
             # As entered: a value, or a reference the operator typed.
@@ -2670,6 +2991,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 # writing a default over one would change it without anyone choosing to.
                 **{name: existing[name] for name in source_repo.KEPT_ON_FORM_EDIT},
             )
+            if carried(input.gql_naming_convention):
+                model.gql_naming_convention = stored_convention(input.gql_naming_convention)
             if input.allowed_domains is not None:
                 from provisa.api.admin.capabilities import require_reach_of_added_domains
 
@@ -2686,6 +3009,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     .where(sources.c.id == input.id)
                     .values(allowed_domains=input.allowed_domains)
                 )
+
+        if input.type == "quickbooks":
+            from provisa.quickbooks.token import entered_on_save
+
+            # REQ-2197: a refresh token the save changed replaces the one kept for the company.
+            await entered_on_save(
+                input.id,
+                database=input.database,
+                before_mapping=existing["mapping"],
+                mapping=_stored_mapping,
+            )
 
         await restart_source_server(model)
 
@@ -2721,9 +3055,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
         state.source_types[input.id] = input.type
         # REQ-1757: see create_source's identical fix above — was hardcoded "" regardless of type.
-        from provisa.core.source_registry import SOURCE_TO_DIALECT
-
-        state.source_dialects[input.id] = SOURCE_TO_DIALECT.get(input.type, "")
+        # The model's own dialect, as there: a JDBC source's is its own (REQ-2191).
+        state.source_dialects[input.id] = model.dialect or ""
+        # As create_source publishes them: the settings a reader holding only the source's id
+        # reads with its type (connector_pushdown, REQ-2191), as they now are.
+        if model.federation_hints:
+            state.source_federation_hints[input.id] = dict(model.federation_hints)
+        else:
+            state.source_federation_hints.pop(input.id, None)
         if input.allowed_domains is not None:
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 
@@ -2756,6 +3095,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.discovery.catalog_cache import (
             invalidate_source as _invalidate,
             index_source as _index_source,
+            index_task_name,
         )
 
         async def _reindex():
@@ -2773,7 +3113,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # when the request ends).
         from provisa.core.connection_loop import spawn_background
 
-        spawn_background(_reindex(), name=f"catalog-reindex:{input.id}")
+        spawn_background(_reindex(), name=index_task_name("reindex", input.id))
 
         if input.type == "data_profiler":  # REQ-1934: a changed schedule reschedules
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
@@ -2831,7 +3171,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
     async def delete_source(self, info: StrawberryInfo, id: str) -> MutationResult:
         require_capability(info, "source_registration")
-        return await _delete_source(id)
+        from provisa.api.admin.read_rights import reader_for
+
+        return await _delete_source(id, reader_for(info))
 
     @strawberry.mutation
     async def create_domain(
@@ -2903,7 +3245,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.domain_parent_invalid",
                     params={"domain": input.id, "parent": model.parent_domain_id},
                 )
-            await domain_repo.upsert(cast("Connection", conn), model)
+            try:
+                await domain_repo.upsert(cast("Connection", conn), model)
+            except LabelClash as clash:
+                # REQ-572: a label never names both a domain and a table; both are named.
+                return label_clash_result(clash)
         if model.parent_domain_id is not None:
             # REQ-1363: a role that lists the parent reaches the new domain now -- a member scoped
             # to the business unit registers into its new organization without a role edit.
@@ -2927,11 +3273,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await domain_repo.delete(cast("Connection", conn), id)
             except domain_repo.DomainDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1917: a domain is deleted only when nothing refers to it; every
                 # dependent is named and nothing is removed.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code=(
                         "schema.domain_has_dependents"
                         if refused.reason == "dependents"
@@ -2939,7 +3289,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "domain": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -2971,6 +3321,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _save_data_product(info, input, creating=False)
 
     @strawberry.mutation
+    async def save_data_contract(
+        self, info: StrawberryInfo, table_id: int, contract: DataContractInput
+    ) -> MutationResult:  # REQ-2158
+        return await _save_data_contract(info, table_id, contract)
+
+    @strawberry.mutation
     async def delete_data_product(
         self, info: StrawberryInfo, id: str
     ) -> MutationResult:  # REQ-1634
@@ -2989,17 +3345,23 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await data_product_repo.delete(cast("Connection", conn), id)
             except data_product_repo.DataProductDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: a data product is blocked by its members; each is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.data_product_has_dependents",
                     params={
                         "data_product": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
+            if stored is not None and stored["owner_role"]:
+                await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
             return MutationResult(
                 success=True,
                 message=f"Data product {id!r} deleted",
@@ -3011,6 +3373,54 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             message=f"Data product {id!r} not found",
             code="schema.data_product_not_found",
             params={"data_product": id},
+        )
+
+    # REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+
+    @strawberry.mutation
+    async def publish_data_product(self, info: StrawberryInfo, id: str) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info, id, "published", lambda conn, by: data_product_repo.publish(conn, id, by=by)
+        )
+
+    @strawberry.mutation
+    async def deprecate_data_product(
+        self, info: StrawberryInfo, id: str, reason: str, retire_on: date | None = None
+    ) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info,
+            id,
+            "deprecated",
+            lambda conn, by: data_product_repo.deprecate(
+                conn, id, reason=reason, retire_on=retire_on, by=by, today=date.today()
+            ),
+        )
+
+    @strawberry.mutation
+    async def retire_data_product(
+        self, info: StrawberryInfo, id: str, reason: str, successor: str | None = None
+    ) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info,
+            id,
+            "retired",
+            lambda conn, by: data_product_repo.retire(
+                conn, id, reason=reason, successor=successor, by=by
+            ),
+        )
+
+    @strawberry.mutation
+    async def restore_data_product(self, info: StrawberryInfo, id: str) -> MutationResult:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        return await _change_product_status(
+            info, id, "restored", lambda conn, by: data_product_repo.restore(conn, id, by=by)
         )
 
     @strawberry.mutation
@@ -3054,15 +3464,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await tag_repo.delete(cast("Connection", conn), id)
             except tag_repo.TagDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1384: a tag that carries a row filter is not deleted; the filter is named
                 # and nothing is removed.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.tag_has_dependents",
                     params={
                         "tag": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if not deleted:
@@ -3480,14 +3894,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await metric_repo.delete(cast("Connection", conn), name)
             except metric_repo.MetricDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: a view uses it; nothing is removed, each is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.metric_has_dependents",
                     params={
                         "metric": name,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -3575,8 +3993,22 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     try:
                         await apply_dq_registration(_conn, model)
                         # REQ-1934: a profile result table's derivation, and a table's profiler membership.
-                        from provisa.profiler.registration import apply_registration
+                        from provisa.profiler.registration import (
+                            apply_registration,
+                            profile_reach_refusal,
+                        )
+                        from provisa.api.admin.catalog_scope import catalog_scope
+                        from provisa.api.admin.read_rights import serves_every_column
 
+                        _scope = catalog_scope(info)
+
+                        async def _serves_all(table_id: int) -> bool:
+                            return await serves_every_column(_conn, _scope, table_id)
+
+                        # REQ-2152 (Q6a): profiling a table takes reading all of it.
+                        _reach = await profile_reach_refusal(_conn, model, _serves_all)
+                        if _reach is not None:
+                            raise ValueError(_reach)
                         await apply_registration(_conn, model)
                     except ValueError as _dq_err:
                         raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
@@ -3665,6 +4097,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _ttl_refusal is not None:
                         raise TableSaveRefused(_ttl_refusal)
+                    _row_refusal = await row_materialize_save_refusal(  # REQ-1865
+                        _conn,
+                        model.source_id,
+                        model.table_name,
+                        model.row_materialize,
+                        [c.name for c in model.columns if c.is_primary_key],
+                    )
+                    if _row_refusal is not None:
+                        raise TableSaveRefused(_row_refusal)
                     from provisa.api.admin._change_feed import table_change_feed_refusal
 
                     _feed_refusal = await table_change_feed_refusal(  # REQ-1861
@@ -3685,13 +4126,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         raise TableSaveRefused(_glob_refusal)
                     from provisa.api.app import state as _app_state
 
-                    if _app_state.source_types.get(model.source_id) == "athena":
-                        # REQ-1981: its format, from the source, decides the writes it takes.
-                        from provisa.api.admin.introspect import athena_table_format
+                    # REQ-1981: its format, from the source, decides the writes it takes.
+                    from provisa.api.admin.introspect import record_table_format
 
-                        model.table_format = await athena_table_format(
-                            model.source_id, model.schema_name, model.table_name
-                        )
+                    await record_table_format(model, _app_state.source_types.get(model.source_id))
                     if _app_state.source_types.get(model.source_id) == "jira":
                         # REQ-2069: a form's project and issue type, and each column's field, from the
                         # account's form and field lists -- the steward picks a form and its columns.
@@ -3742,15 +4180,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
                         if carried(input.write_grants):
                             model = model.model_copy(update={"write_grants": _carried_grants})
-                        table_id = await table_repo.upsert(_conn, model)
+                        from provisa.api.admin._declared_keys import registration_keys
+
+                        # REQ-2170: the keys its source declares are recorded with the input's.
+                        table_id = await table_repo.upsert(
+                            _conn, model, declared=await registration_keys(model)
+                        )
                     except glossary_repo.TermIsClass as _class:
-                        # REQ-2141: a column named for a class term is not claimed by it.
+                        # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
+                        # the tables the caller reads are named.
+                        from provisa.api.admin.read_rights import reader_for, told_glossary_refusal
+
+                        _said, _tables = await told_glossary_refusal(
+                            _conn, reader_for(info), _class
+                        )
                         raise TableSaveRefused(
                             MutationResult(
                                 success=False,
-                                message=str(_class),
+                                message=_said,
                                 code="glossary.term_is_class",
-                                params={"term": _class.term, "tables": ", ".join(_class.tables)},
+                                params={"term": _class.term, "tables": _tables},
                             )
                         )
                     except table_repo.ViewLoopRefused as _loop:
@@ -3761,6 +4210,35 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 message=str(_loop),
                                 code="schema.view_reads_itself",
                                 params={"view": _loop.loop[0], "loop": _loop.loop},
+                            )
+                        )
+                    except MaskUnreachable as _mask:
+                        # REQ-2059: a mask list holding an entry no reader can reach is not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_mask),
+                                code="schema.mask_unreachable",
+                                params={
+                                    "table": model.table_name,
+                                    "column": _mask.column,
+                                    "entries": _mask.entries,
+                                },
+                            )
+                        )
+                    except table_repo.SubtypeRefused as _sub:
+                        # REQ-2171: a subtype is saved only with the base it is a subtype of.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_sub),
+                                code="schema.subtype_invalid",
+                                params={
+                                    "table": _sub.table_name,
+                                    "column": _sub.column,
+                                    "declared": _sub.declared,
+                                    "type": _sub.data_type,
+                                },
                             )
                         )
                     except table_repo.NumericSizeRefused as _size:
@@ -3778,15 +4256,28 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                             )
                         )
                     except table_repo.ColumnDropRefused as _drop:
-                        # REQ-1918: a column something still refers to is not dropped; each is named.
+                        # REQ-1918: a column something still refers to is not dropped; each is
+                        # named, with only the dependents the caller may read (REQ-2152).
+                        from provisa.api.admin.read_rights import (
+                            column_drop_text,
+                            reader_for,
+                            readable_columns_report,
+                        )
+
+                        _report = await readable_columns_report(
+                            _conn, reader_for(info), _drop.columns
+                        )
                         raise TableSaveRefused(
                             MutationResult(
                                 success=False,
-                                message=str(_drop),
+                                message=column_drop_text(_drop.table_name, _report),
                                 code="schema.column_has_dependents",
-                                params={"table": _drop.table_name, "columns": _drop.report()},
+                                params={"table": _drop.table_name, "columns": _report},
                             )
                         )
+                    except LabelClash as _clash:
+                        # REQ-572: a label never names both a domain and a table; both are named.
+                        raise TableSaveRefused(label_clash_result(_clash))
                     except SqlAddressTaken as _taken:
                         # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                         raise TableSaveRefused(
@@ -3803,8 +4294,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         )
                     assert table_id is not None  # the upsert returns the id it wrote
                     await save_carried_after_store(_conn, input, model, table_id)  # REQ-2109
-                    if model.query_template:
-                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
+                    from provisa.api.admin._query_api_registration import (
+                        is_quickbooks_source,
+                    )
+
+                    if model.query_template or await is_quickbooks_source(_conn, model.source_id):
+                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table
+                        # serves from; REQ-2197: so do a QuickBooks table's edited columns.
                         from provisa.api.admin._query_api_registration import (
                             persist_query_api_registration,
                         )
@@ -3865,6 +4361,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
                     consistency=input.mv_consistency,  # REQ-879
                     preprocess=input.mv_preprocess,  # REQ-957
+                    hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
+                    table_id=table_id,  # REQ-2133
+                    product_id=input.product_id,  # REQ-2133
                     business_key=list(input.business_key),  # REQ-2109
                     valid_time=input.valid_time,  # REQ-2109
                     recorded_time=input.recorded_time,  # REQ-2109
@@ -3921,6 +4420,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # REQ-1531: deleting a registration is a change to the domain that holds it, so it asks the
         # same question register/update ask. The id names the object, so the domain is looked up.
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         from provisa.api.admin.domain_guard import DomainLookupError, require_table_domain
         from provisa.core.repositories import table as table_repo
 
@@ -3938,15 +4440,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             try:
                 deleted = await table_repo.delete(cast("Connection", conn), id)
             except table_repo.TableDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: nothing is removed; every dependent is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.table_has_dependents",
                     params={
                         "table": id,
                         "name": refused.name,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -3983,24 +4489,34 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import role as role_repo
 
         require_capability(info, "user_management")  # REQ-1531: see create_role
-        from provisa.security.inheritance import effective_domain_access
+        from provisa.core.db import STANDARD_ROLES
 
+        if id in STANDARD_ROLES:  # REQ-2155
+            return MutationResult(
+                success=False,
+                message=f"Role {id!r} is a standard role and cannot be deleted",
+                code="schema.role_standard_locked",
+                params={"role": id},
+            )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             existing = await role_repo.list_all(cast("Connection", conn))
-            if any(r["id"] == id for r in existing):
-                # REQ-1531: removing a role is an act in every domain it reaches.
-                require_right_in_domains(
-                    info, "user_management", effective_domain_access(id, existing)
-                )
+            for r in existing:
+                if r["id"] == id:
+                    # REQ-1531: removing a role is an act in every domain it reaches.
+                    require_right_in_domains(info, "user_management", r["domain_access"])
             try:
                 deleted = await role_repo.delete(cast("Connection", conn), id)
             except role_repo.RoleDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(cast("Connection", conn), reader_for(info), refused)
                 # REQ-1918: refused while anything depends on the role, naming each dependent;
                 # and for a role the deployment defines.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code=(
                         "schema.role_has_dependents"
                         if refused.reason == "dependents"
@@ -4008,7 +4524,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     ),
                     params={
                         "role": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -4055,6 +4571,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"id": table_id},
                 )
             await require_table_domain(info, c, table_id)
+            # REQ-2154: neither the acting role's own read nor a column's last reader is taken.
+            from types import SimpleNamespace
+
+            from provisa.api.admin._hiding_guard import grant_edit_refusal
+            from provisa.api.admin.capabilities import acting_role_of
+            from provisa.core.repositories.table import load_columns
+
+            stored_columns = {col["column_name"]: col for col in await load_columns(c, table_id)}
+            left = SimpleNamespace(
+                columns=[
+                    SimpleNamespace(
+                        name=name,
+                        visible_to=[r for r in col.get("visible_to") or () if r != role_id],
+                    )
+                    for name, col in stored_columns.items()
+                ]
+            )
+            kept = grant_edit_refusal(stored_columns, left, acting_role_of(info))
+            if kept is not None:
+                return MutationResult(success=False, message=kept, code="schema.read_grant_kept")
             changed = await grants.revoke_from_table(c, table_id, role_id)
         if changed:
             await _rebuild_schemas()
@@ -4142,7 +4678,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         async with pool.acquire() as conn:
             c = cast("Connection", conn)
             row = await table_repo.get(c, table_id)
-            if row is None:
+            # REQ-2152: a table the caller is served no column of is answered as missing.
+            if row is None or await _table_unread(info, table_id) is not None:
                 return MutationResult(
                     success=False,
                     message=f"Table {table_id} not found",
@@ -4150,6 +4687,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"id": table_id},
                 )
             require_right_in_domains(info, "masking_config", {row["domain_id"]})
+            # REQ-2152: a write grant names only columns the caller is served -- what it cannot
+            # read it cannot grant. Refused naming no column.
+            from provisa.api.admin._table_settings import write_grant_names
+            from provisa.api.admin.catalog_scope import catalog_scope
+            from provisa.api.admin.read_rights import served_columns_of
+
+            served = await served_columns_of(c, catalog_scope(info), table_id)
+            if served is not None and any(not write_grant_names(g) <= served for g in grants):
+                return write_grant_invalid(
+                    "a write grant names a column the acting role cannot read"
+                )
             refusal = await write_grant_roles_refusal(c, grants)
             if refusal is not None:
                 return refusal
@@ -4202,7 +4750,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # is refused with the reason here rather than by the role_id foreign key at insert.
         async with pool.acquire() as _rconn:
             _rule_refusal = await row_rule_refusal(
-                cast("Connection", _rconn), input.role_id, input.description
+                cast("Connection", _rconn), input.role_id, input.description, input.rights
             )
         if _rule_refusal is not None:
             return _rule_refusal
@@ -4235,6 +4783,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             targets = [t for t in registry if t["domain_id"] == input.domain_id]
         else:
             targets = [t for t in registry if (t.get("alias") or t["table_name"]) == input.table_id]
+        # REQ-2152: a row rule is written only over what the caller reads -- a table it is served
+        # no column of is answered as unregistered, and a filter naming a column it is not served
+        # is refused naming none.
+        _unread = await _rule_beyond_reads(info, input, targets)
+        if _unread is not None:
+            return _unread
         problem = validate_rls_predicate(input.filter_expr, targets, registry)
         if problem is not None:
             return MutationResult(
@@ -4250,10 +4804,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             filter=input.filter_expr,
             description=input.description,
             why=input.why,  # REQ-2094
+            rights=input.rights,  # REQ-2188
+            id=input.id,
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model, creating=input.creating)
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -4283,6 +4841,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
         tag_id: Optional[str] = None,
+        id: Optional[int] = None,  # REQ-2188: this rule; none, every rule of the role here
     ) -> MutationResult:  # REQ-1531, REQ-1679, REQ-1384
         from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
@@ -4313,6 +4872,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 require_right_in_domains(
                     info, "masking_config", {await table_domain(cast("Connection", conn), table_id)}
                 )
+        # REQ-2152: a rule on a table the caller is served no column of is answered as missing.
+        if table_id is not None and await _table_unread(info, table_id) is not None:
+            return MutationResult(
+                success=False, message="RLS rule not found", code="schema.rls_rule_not_found"
+            )
+        async with pool.acquire() as conn:
             deleted = await rls_repo.delete(
                 cast("Connection", conn),
                 role_id,
@@ -4320,6 +4885,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 domain_id=domain_id,
                 action_name=action_name,
                 tag_id=tag_id,
+                rule_id=id,
             )
         if deleted:
             # See upsert_rls_rule's matching rebuild — a deleted rule must stop being enforced
@@ -4504,6 +5070,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         pool = await _get_pool()
+        from provisa.api.admin.read_rights import reader_for, relationship_readable
+
+        # REQ-2152: a relationship joining a column the caller is not served is answered as
+        # missing.
+        async with pool.acquire() as conn:
+            _readable = await relationship_readable(cast("Connection", conn), reader_for(info), id)
+        if not _readable:
+            return MutationResult(
+                success=False,
+                message=f"Relationship {id!r} not found",
+                code="schema.relationship_not_found",
+                params={"relationship": id},
+            )
         async with pool.acquire() as conn:
             # REQ-1531: a relationship belongs to the domains of both tables it joins.
             domains = await relationship_domains(cast("Connection", conn), id)
@@ -4523,14 +5102,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             except (TagLossRefused, TermTagRefused) as refused:
                 return _tag_move_refusal(refused)
             except rel_repo.RelationshipDeleteRefused as refused:
+                from provisa.api.admin.read_rights import reader_for, refusal
+
+                # REQ-2152: only the dependents the caller may read, never how many.
+                _said, _named = await refusal(_conn, reader_for(info), refused)
                 # REQ-1918: a published view relies on it; nothing is removed, each is named.
                 return MutationResult(
                     success=False,
-                    message=str(refused),
+                    message=_said,
                     code="schema.relationship_has_dependents",
                     params={
                         "relationship": id,
-                        "dependents": [d.as_dict() for d in refused.dependents],
+                        "dependents": _named,
                     },
                 )
         if deleted:
@@ -4620,6 +5203,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Update cache TTL for a registered table."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         from provisa.core.cache_ttl import cache_ttl_refusal  # REQ-2031
 
         _ttl_err = cache_ttl_refusal(cache_ttl)
@@ -4708,6 +5294,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Full-replace a table's role -> TTL list. Every role must exist, appear once, and carry a
         non-negative TTL; any violation rejects the whole list."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         pool = await _get_pool()
         async with pool.acquire() as conn:
             refusal = await role_ttl_refusal(conn, role_ttl)
@@ -4742,6 +5331,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
 
         require_capability(info, "table_registration")
+
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+
+        if _unread is not None:
+            return _unread
         pool = await _get_pool()
         async with pool.acquire() as conn:
             return await save_table_paging(state, conn, table_id, paging)
@@ -4811,6 +5405,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Set when one table is served from its replica; None = inherit its source's value.
         -1 = never, N > 0 = once it passes N governed statements per interval, 0 = always."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         invalid = _invalid_replicate(replicate)
         if invalid is not None:
             return invalid
@@ -4947,6 +5544,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             require_capability(info, "table_registration", domain_id=row.domain_id)
+            _unread = await _table_unread(info, table_id)  # REQ-2152
+            if _unread is not None:
+                return _unread
             from provisa.core import model_change
 
             model_change.name("update", "table draft", row.table_name)  # REQ-1524
@@ -5100,6 +5700,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         When the EFFECTIVE load_protected is True, enforces the REQ-1141 ≥1-gate rule over the
         effective (table→source) window/cadence/probe."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
@@ -5307,6 +5910,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Update naming convention for a registered table."""
         require_capability(info, "table_registration")
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
         refusal = naming_refusal(gql_naming_convention)
         if refusal is not None:
             return refusal
@@ -5879,6 +6485,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     warnings=r["warnings"],
                     compiled_cypher=r.get("compiled_cypher"),
                     cypher_error=r.get("cypher_error"),
+                    compiled_sparql=r.get("compiled_sparql"),
+                    sparql_error=r.get("sparql_error"),
                 )
             )
         return out
@@ -5991,16 +6599,22 @@ async def _upsert_tag_rls_rule(
                 code="schema.rls_rule_invalid",
                 params={"reason": problem},
             )
-        await rls_repo.upsert(
-            cast("Connection", conn),
-            RLSRuleModel(
-                tag_id=tag_id,
-                role_id=input.role_id,
-                filter=input.filter_expr,
-                description=input.description,
-                why=input.why,  # REQ-2094
-            ),
-        )
+        try:
+            await rls_repo.upsert(
+                cast("Connection", conn),
+                RLSRuleModel(
+                    tag_id=tag_id,
+                    role_id=input.role_id,
+                    filter=input.filter_expr,
+                    description=input.description,
+                    why=input.why,  # REQ-2094
+                    rights=input.rights,  # REQ-2188
+                    id=input.id,
+                ),
+                creating=input.creating,
+            )
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
     await _rebuild_schemas()
     return MutationResult(
         success=True,
@@ -6033,6 +6647,13 @@ async def _upsert_action_rls_rule(
     from provisa.core.models import RLSRule as RLSRuleModel
 
     name = input.action_name or ""
+    if input.rights != ["R"]:  # REQ-2188
+        return MutationResult(
+            success=False,
+            message=f"Action {name!r} takes only an R row rule: its rows are read",
+            code="schema.rls_rule_invalid",
+            params={"reason": "an action's rows are only read"},
+        )
     action = state.tracked_functions.get(name) or (
         getattr(state, "tracked_webhooks", None) or {}
     ).get(name)
@@ -6080,6 +6701,7 @@ async def _upsert_action_rls_rule(
                 description=input.description,
                 why=input.why,  # REQ-2094
             ),
+            creating=input.creating,
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.
@@ -6090,3 +6712,10 @@ async def _upsert_action_rls_rule(
         code="schema.rls_rule_saved_action",
         params={"action": name, "role": input.role_id},
     )
+
+
+def _llm_limit(given: Any) -> Any:  # REQ-1174
+    """An LLM limit input as the role model holds it; None when not given."""
+    from provisa.core.models import LlmLimit
+
+    return None if given is None else LlmLimit(amount=given.amount, unit=given.unit)

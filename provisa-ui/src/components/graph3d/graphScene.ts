@@ -19,8 +19,11 @@ import {
   type SceneTheme,
   type VectorScene,
 } from "../../pages/tables/profile3d/baseScene";
+import { labelFit, loosen, type ViewNode } from "../../pages/tables/profile3d/bestView";
+import { edgeClass } from "./layeredLayout";
+import { hiddenLabels, labelPx, LABEL_FONT_PX } from "./labelSize";
 import type { EdgeKind, GraphData, GraphEdge, GraphNode, NodeType } from "./graphModel";
-import { labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
+import { groundClass, labelClass, nodeLook, type Colour, type Shape } from "./nodeLook";
 
 export type GraphHover = { kind: "node"; id: string } | { kind: "edge"; id: string };
 
@@ -75,6 +78,10 @@ const LABEL_RANK: Record<NodeType, number> = {
   column: 9,
 };
 
+/** A character's width in a label at its resting size: the label font is monospace, a character
+ * 0.6 of the size. */
+const LABEL_CHAR_PX = LABEL_FONT_PX * 0.6;
+
 const SIZE: Record<NodeType, number> = {
   product: 0.75,
   domain: 0.95,
@@ -118,6 +125,7 @@ export class GraphScene extends BaseScene<GraphHover> {
   private world: THREE.Group | null = null;
   private nodes: NodeMesh[] = [];
   private edgeMeshes: EdgeMesh[] = [];
+  private arcs = false;
   private mats: Record<string, THREE.Material> = {};
   /** Each edge material dimmed, for the edges away from what is picked: the same hue, less light. */
   private faded: Record<string, THREE.Material> = {};
@@ -130,7 +138,14 @@ export class GraphScene extends BaseScene<GraphHover> {
   private extentY = 8;
   /** The farthest node from the centre. */
   private reach = 8;
-  private frontal = false;
+  /** REQ-2174: nodes drawn at this share of full size, set against the best view. Labels are
+   * not: they keep a readable size that follows the zoom (labelPx). */
+  private sized = 1;
+  /** The labels' font size last set, in px. */
+  private labelSize = 0;
+  /** How far the 3D camera stood from its target at the resting view (resetView): labels are at
+   * their resting size there. */
+  private restDistance = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -145,9 +160,12 @@ export class GraphScene extends BaseScene<GraphHover> {
   // ---------- public ----------
 
   setData(graph: GraphData, at: Map<string, [number, number, number]>, resetCamera: boolean) {
+    this.invalidate();
     this.graph = graph;
     this.at = at;
+    this.sized = 1;
     this.rebuild();
+    this.fitLabels();
     if (resetCamera) this.resetView(true);
   }
 
@@ -164,52 +182,142 @@ export class GraphScene extends BaseScene<GraphHover> {
   }
 
   setSelected(id: string | null) {
+    this.invalidate();
     this.selected = id;
     this.paint();
   }
 
   setHover(h: GraphHover | null) {
+    this.invalidate();
     if (h?.kind === this.hover?.kind && h?.id === this.hover?.id) return;
     this.hover = h;
     this.paint();
   }
 
-  /** A flat layout (a tree, lineage lanes) is seen from the front; a force layout from above. */
-  setFrontal(on: boolean) {
-    this.frontal = on;
-  }
-
+  /** REQ-2174: the best view, from the distance that fits the whole layout; in 2D, face-on with
+   * the orthographic camera fitted to the layout. */
   resetView(instant = false) {
-    if (this.frontal) {
-      // Back far enough that the whole layout, and a margin round it, fits the field of view.
-      const half = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
-      const fit = Math.max(this.extentY + 2, (this.extentX + 2) / Math.max(this.aspect, 0.5));
-      this.flyTo(new THREE.Vector3(0, 0, fit / half), new THREE.Vector3(0, 0, 0), instant);
-      return;
+    this.invalidate();
+    const view = this.best ?? this.settleView();
+    if (!view) throw new Error("a graph scene always has a view");
+    const centre = new THREE.Vector3(0, 0, 0);
+    if (this.flat) {
+      this.orthoHalf = this.flatFit();
+      this.ortho.zoom = 1;
+      this.fitOrtho();
     }
-    // Back far enough that a sphere round the whole layout, and a margin, fits the narrower of the
-    // field of view's two angles: a fixed multiple of the extent fits a small graph and cuts off
-    // the edges of a large one.
-    const half = THREE.MathUtils.degToRad(this.camera.fov / 2);
-    const across = Math.atan(Math.tan(half) * Math.max(this.aspect, 0.5));
-    const dist = (this.reach + 2) / Math.sin(Math.min(half, across));
-    const from = new THREE.Vector3(0.35, 0.4, 0.85).normalize().multiplyScalar(dist);
-    this.flyTo(from, new THREE.Vector3(0, 0, 0), instant);
+    this.flyTo(view.dir.clone().multiplyScalar(this.fitDistance()), centre, instant, view.up);
+    // Where the camera comes to rest: the orbit controls hold it within their farthest distance.
+    this.restDistance = Math.min(this.fitDistance(), this.controls.maxDistance);
   }
 
   focus(id: string) {
+    this.invalidate();
     const n = this.nodes.find((x) => x.node.id === id);
-    if (!n) return;
+    const view = this.best;
+    if (!n || !view) return;
     const tgt = n.mesh.position.clone();
-    this.flyTo(tgt.clone().add(new THREE.Vector3(3.5, 2.5, 6.5)), tgt, false);
+    this.flyTo(tgt.clone().add(view.dir.clone().multiplyScalar(8)), tgt, false, view.up);
+  }
+
+  /** REQ-2174: in a layered layout the lateral edges are arcs laid over the rank and flow edges. */
+  setArcs(on: boolean) {
+    this.arcs = on;
+    // A layered layout is flat (z = 0): the 3D view faces it, as the 2D one does.
+    this.planar = on;
+  }
+
+  setFlat(on: boolean) {
+    super.setFlat(on);
+    this.settleView();
+  }
+
+  // ---------- best view (REQ-2174) ----------
+
+  protected viewContent(): { nodes: ViewNode[]; edges: [number, number][] } {
+    const perUnit = this.pxPerUnit();
+    const index = new Map(this.nodes.map((n, i) => [n.node.id, i]));
+    return {
+      nodes: this.nodes.map((n) => ({
+        at: n.mesh.position.clone(),
+        radius: n.radius,
+        label: (n.node.label.length * LABEL_CHAR_PX) / perUnit,
+      })),
+      edges: this.graph.edges.flatMap((e) => {
+        const a = index.get(e.a);
+        const b = index.get(e.b);
+        return a === undefined || b === undefined ? [] : [[a, b] as [number, number]];
+      }),
+    };
+  }
+
+  /** How far back the 3D camera stands: far enough that a sphere round the whole layout, and a
+   * margin, fits the narrower of the field of view's two angles. In 2D the distance only keeps
+   * the content in front of the camera. */
+  private fitDistance(): number {
+    const half = THREE.MathUtils.degToRad(this.persp.fov / 2);
+    // Facing a planar layout, far enough that its bounds and a margin fill the frame, as 2D's fit.
+    if (this.planar && !this.flat)
+      return Math.max(
+        (this.extentY + 2) / Math.tan(half),
+        (this.extentX + 2) / (Math.tan(half) * Math.max(this.aspect, 0.5)),
+      );
+    const across = Math.atan(Math.tan(half) * Math.max(this.aspect, 0.5));
+    return (this.reach + 2) / Math.sin(Math.min(half, across));
+  }
+
+  /** Half the 2D camera's height that fits the flat layout and a margin. */
+  private flatFit(): number {
+    return Math.max(this.extentY + 2, (this.extentX + 2) / Math.max(this.aspect, 0.5));
+  }
+
+  /** CSS pixels per world unit at the content, from the resting view's distance. */
+  private pxPerUnit(): number {
+    const height = (this.canvas.parentElement as HTMLElement).clientHeight;
+    const across = this.flat
+      ? 2 * this.flatFit()
+      : 2 * this.fitDistance() * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2));
+    return Math.max(1, height) / across;
+  }
+
+  /** Nodes sized so the smallest gap at the best view holds a label. In 2D the pairs sizing
+   * cannot part are moved apart in the view's plane, and the graph is drawn again from there; in
+   * 3D the layout is left as it is (moving pairs in the view's plane flattens it), and a label
+   * still colliding is hidden (onLabelsPlaced). */
+  private fitLabels() {
+    const view = this.settleView();
+    if (!view) return;
+    const content = this.viewContent();
+    const { scale, crowded } = labelFit(content.nodes, view.dir, view.up);
+    this.sized = scale;
+    if (this.flat && crowded.length > 0) {
+      const moved = loosen(content.nodes, crowded, view.dir, view.up, scale);
+      this.at = new Map(this.nodes.map((n, i) => [n.node.id, moved[i].toArray()]));
+    }
+    this.rebuild();
   }
 
   // ---------- BaseScene ----------
 
-  /** No two labels drawn over each other: a label colliding with one ranked ahead of it is hidden
-   * (its node's full name is in the hover card). The selected and hovered nodes rank first, then
-   * the node types the graph is about, nearest the camera first. */
+  /** How near the camera is, against the resting view: 1 there, 2 at half the distance (in 2D,
+   * the orthographic camera's zoom). */
+  private zoomNow(): number {
+    if (this.flat) return this.ortho.zoom;
+    // Before the first resting view, and with the camera on its target, the resting size.
+    const d = this.camera.position.distanceTo(this.controls.target);
+    return this.restDistance > 0 && d > 0 ? this.restDistance / d : 1;
+  }
+
+  /** Labels at a readable size that follows the zoom (labelPx), never shrunk to fit; no two drawn
+   * over each other: a label colliding with one ranked ahead of it is hidden (its node's full
+   * name is in the hover card). The selected and hovered nodes rank first, then the node types
+   * the graph is about, nearest the camera first. */
   protected onLabelsPlaced() {
+    const px = labelPx(this.zoomNow());
+    if (px !== this.labelSize) {
+      this.labelSize = px;
+      for (const n of this.nodes) n.label.style.fontSize = `${px}px`;
+    }
     const lead = (n: NodeMesh) =>
       n.node.id === this.selected || (this.hover?.kind === "node" && this.hover.id === n.node.id)
         ? -1
@@ -218,19 +326,10 @@ export class GraphScene extends BaseScene<GraphHover> {
       .filter((n) => n.label.style.visibility !== "hidden")
       .map((n) => ({ n, rank: lead(n), d: n.mesh.position.distanceTo(this.camera.position) }))
       .sort((a, b) => a.rank - b.rank || a.d - b.d);
-    const kept: DOMRect[] = [];
-    for (const { n } of ranked) {
-      const r = n.label.getBoundingClientRect();
-      const hit = kept.some(
-        (k) =>
-          r.left < k.right + 2 &&
-          r.right > k.left - 2 &&
-          r.top < k.bottom + 1 &&
-          r.bottom > k.top - 1,
-      );
-      if (hit) n.label.style.visibility = "hidden";
-      else kept.push(r);
-    }
+    const hidden = hiddenLabels(ranked.map(({ n }) => n.label.getBoundingClientRect()));
+    ranked.forEach(({ n }, i) => {
+      if (hidden[i]) n.label.style.visibility = "hidden";
+    });
   }
 
   protected applyTheme() {
@@ -420,6 +519,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       const r = SIZE[node.type];
       const mesh = new THREE.Mesh(geometry(nodeLook(node).shape, r), this.nodeMaterial(node));
       mesh.position.copy(p);
+      mesh.scale.setScalar(this.sized);
       mesh.castShadow = true;
       mesh.userData.node = node.id;
       world.add(mesh);
@@ -430,12 +530,16 @@ export class GraphScene extends BaseScene<GraphHover> {
           "p3d-label p3d-node-label",
           `g3d-label-${node.type}`,
           labelClass(node.status),
+          groundClass(node.grounding),
           node.unlinkedTables ? "g3d-label-unlinked" : "",
         ]
           .filter(Boolean)
           .join(" "),
-        () => mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
+        // Above its node on screen, whichever way the view stands.
+        () =>
+          mesh.position.clone().add(this.camera.up.clone().multiplyScalar(r * this.sized + 0.3)),
       );
+      label.style.fontSize = `${labelPx(this.zoomNow())}px`;
       this.nodes.push({ node, mesh, radius: r, label });
     }
     this.extentX = extentX;
@@ -459,20 +563,35 @@ export class GraphScene extends BaseScene<GraphHover> {
       if (!target) throw new Error(`edge ${e.id} ends at ${e.b}, which is not drawn`);
       const surface = target.radius * target.mesh.scale.x;
       const directed = DIRECTED.has(e.kind);
-      const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
-      const rodMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(thick, thick, rodLen, 6, 1, true),
-        mat,
-      );
-      rodMesh.position.copy(a.clone().add(unit.clone().multiplyScalar(rodLen / 2)));
-      rodMesh.quaternion.setFromUnitVectors(UP, unit);
-      rodMesh.userData.edge = e.id;
-      world.add(rodMesh);
-      const meshes = [rodMesh];
+      const meshes: THREE.Mesh[] = [];
+      // The unit direction the edge arrives along: the chord, or an arc's end tangent.
+      let arrive = unit;
+      if (this.arcs && edgeClass(e) === "lateral") {
+        // A quadratic arc bulging sideways in the layout's plane, clear of the straight rods.
+        const side = new THREE.Vector3(-unit.y, unit.x, 0);
+        const ctrl = a.clone().add(b).multiplyScalar(0.5).add(side.multiplyScalar(len * 0.3));
+        const curve = new THREE.QuadraticBezierCurve3(a.clone(), ctrl, b.clone());
+        arrive = b.clone().sub(ctrl).normalize();
+        const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, thick, 6, false), mat);
+        tube.userData.edge = e.id;
+        world.add(tube);
+        meshes.push(tube);
+      } else {
+        const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
+        const rodMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(thick, thick, rodLen, 6, 1, true),
+          mat,
+        );
+        rodMesh.position.copy(a.clone().add(unit.clone().multiplyScalar(rodLen / 2)));
+        rodMesh.quaternion.setFromUnitVectors(UP, unit);
+        rodMesh.userData.edge = e.id;
+        world.add(rodMesh);
+        meshes.push(rodMesh);
+      }
       if (directed) {
         const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, HEAD, 10), mat);
-        cone.position.copy(b.clone().sub(unit.clone().multiplyScalar(surface + HEAD / 2)));
-        cone.quaternion.setFromUnitVectors(UP, unit);
+        cone.position.copy(b.clone().sub(arrive.clone().multiplyScalar(surface + HEAD / 2)));
+        cone.quaternion.setFromUnitVectors(UP, arrive);
         cone.userData.edge = e.id;
         world.add(cone);
         meshes.push(cone);
@@ -482,6 +601,7 @@ export class GraphScene extends BaseScene<GraphHover> {
     const size = Math.ceil(extent * 2.4);
     this.layFloor(world, size, minY - 1.5, this.mats.grid as THREE.LineBasicMaterial);
     this.fitShadow(extent + 4);
+    this.alignFloor();
     this.paint();
   }
 

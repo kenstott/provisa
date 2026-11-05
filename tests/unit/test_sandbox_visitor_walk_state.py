@@ -36,8 +36,7 @@ def _walk() -> walk_module.Walk:
     walk.sql_role = None
     walk.page = None
     walk.env = None
-    walk.as_of = None
-    walk.as_recorded = None
+    walk.bound = []
     walk.answers = {}
     return walk
 
@@ -79,25 +78,25 @@ def test_an_environment_reaches_every_request_after_it():
     assert walk.headers(sql=False)["x-provisa-env"] == "dev"
 
 
-def test_time_travel_reaches_only_statements():
+def test_a_recorded_time_taken_from_an_answer_is_bound_and_no_request_carries_a_time_header():
+    """REQ-2083: an as_recorded_from step binds an earlier answer's value to the next statement's
+    $1 (its relation's argument, REQ-1163); no request sends a time header."""
     walk = _walk()
-    walk.choose({"key": "a", "as_of": "2026-01-01T00:00:00Z"})
     walk.answers["earlier"] = [{"recorded_at": "2026-02-01T00:00:00Z"}]
     walk.choose(
         {"key": "b", "as_recorded_from": {"step": "earlier", "row": 0, "column": "recorded_at"}}
     )
-    sql = walk.headers(sql=True)
-    assert sql["X-Provisa-As-Of"] == "2026-01-01T00:00:00Z"
-    assert sql["X-Provisa-As-Recorded"] == "2026-02-01T00:00:00Z"
-    other = walk.headers(sql=False)
-    assert "X-Provisa-As-Of" not in other and "X-Provisa-As-Recorded" not in other
+    assert walk.bound == ["2026-02-01T00:00:00Z"]
+    for sql in (True, False):
+        assert not [h for h in walk.headers(sql=sql) if h.lower().startswith("x-provisa-as")]
 
 
 def test_every_published_demo_is_a_parameter():
     names = walk_module.published_demos()
     assert "testdata" in names and "weblogs" in names
     assert "retail" in names  # a regions-tier demo is walked like any other published one
-    assert "banking" not in names  # published: false
+    assert "banking" not in names and "perf" not in names  # published: false
+    assert "groupexposure" in names  # published once its card was taken from its real answer
 
 
 _CLOSE = 'SELECT c.category FROM "provisioning"."view_close_by_category" AS c'
@@ -130,3 +129,24 @@ def test_a_refusal_for_a_view_the_step_does_not_read_fails_it():
 def test_a_refusal_off_the_sql_explorer_fails_the_step():
     with pytest.raises(AssertionError):
         walk_module._answered("close (graphql)", _refused("view_close_by_category"))
+
+
+def test_the_agentdata_tour_runs_a_step_the_walk_can_send(monkeypatch):
+    """The publish gate (demo-bundles.yml) refused agentdata, whose tour is pages and live agent
+    questions: "agentdata's tour runs nothing". Its Connect step opens the explorer's panel, which
+    reads the MCP server's status -- the one request of the tour the walk sends, as the page does."""
+    sent: list[tuple[str, str]] = []
+
+    def answer(method, url, **kwargs):
+        sent.append((method, url))
+        return httpx.Response(200, json={"enabled": True}, request=httpx.Request(method, url))
+
+    monkeypatch.setattr(httpx, "request", answer)
+    walk = _walk()
+    walk.tier = type("Tier", (), {"base_url": "http://tier"})()
+    from pathlib import Path
+
+    directory = Path(walk_module.__file__).resolve().parents[2] / "demo" / "named" / "agentdata"
+    walked = walk.run(directory)
+    assert ("GET", "http://tier/admin/mcp-server") in sent
+    assert any(line.startswith("agentdataConnect ") for line in walked), walked

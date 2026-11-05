@@ -136,7 +136,7 @@ async def test_a_caller_without_the_right_cannot_change_a_sensitive_columns_hidi
         "editor",
         _table(
             _col("email", fake="email()"),
-            _col("deal", masks=[{"to": ["*"], "mask": {"type": "constant"}}]),
+            _col("deal", masks=[{"mask": {"type": "constant"}}]),
         ),
     )
     assert refused is not None and "sensitive_data" in refused

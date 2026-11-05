@@ -34,6 +34,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 
 from provisa.core.environments import PROD
@@ -56,8 +59,37 @@ current_env: ContextVar[str | None] = ContextVar("current_env", default=None)
 
 
 def set_current_org(org_id: str) -> Token[str | None]:
-    """Bind the active org for the current context; returns a reset token."""
+    """Bind the active org for the current context; returns a reset token. Recorded too for the
+    transport answering on this thread (:func:`answering_org`)."""
+    held: _Answering | None = getattr(_answering, "held", None)
+    if held is not None:
+        held.org_id = org_id
     return current_org.set(org_id)
+
+
+class _Answering:
+    """The org a request bound, kept for the transport answering it."""
+
+    org_id: str | None = None
+
+
+_answering = threading.local()
+
+
+@contextmanager
+def answering_org() -> Iterator[_Answering]:
+    """The org the request a transport is answering on this thread binds, held past the binding's
+    own end: an RPC binds its org inside its handler and resets it there, before the transport
+    turns an error the handler raised into what the client is told -- in the model's names of the
+    request's org (REQ-2152). The RPC's work runs on the handler thread (its connection loop is
+    driven there), whatever context it runs in."""
+    held = _Answering()
+    before = getattr(_answering, "held", None)
+    _answering.held = held
+    try:
+        yield held
+    finally:
+        _answering.held = before
 
 
 def reset_current_org(token: Token[str | None]) -> None:
@@ -128,6 +160,11 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
         # REQ-2086: a constant may be a ${env:...} / ${secret:...} reference, resolved here.
         out[str(k)] = resolve_role_constant(str(k), str(v))
     out.update(current_session_vars.get())
+    # REQ-2188: the roles acted as with their ancestors, which the runtime build knows and a
+    # transport binding the request does not. Set over what the transport bound, never a client's.
+    chain = (role or {}).get("acting_chain")
+    if chain:
+        out[ACTING_ROLES_VAR] = ",".join(chain)
     # REQ-1922: where the platform declares regions, ``provisa.region`` is the region of the
     # node answering, so a rule can keep a region's rows in that region. It is the node's fact,
     # not the caller's: set last, over any role constant or request value of that name. With no
@@ -152,6 +189,11 @@ def session_vars_for(role: dict | None) -> dict[str, str]:
 REGION_VAR = "region"
 #: The session variable that names the org a request is served for.
 ORG_VAR = "org"
+#: The session variable that holds the roles the caller acts as, comma-joined: its members for a
+#: meta-role, else the one role, each with its ancestors (REQ-2188): a role holds what its parents
+#: hold, so a rule naming an owner role admits a child of it. A rule reads it with IN
+#: (core.session_terms).
+ACTING_ROLES_VAR = "acting_roles"
 
 
 # The role the request acts as (request.state.role), bound by the surfaces that authenticate a

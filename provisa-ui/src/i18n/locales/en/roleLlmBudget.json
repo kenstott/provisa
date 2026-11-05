@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "LLM budget",
+    "hint": "Tokens, or USD at the model price list. A user acting with several roles is held to the most generous. Blank sets no limit.",
+    "callCap": "Per call",
+    "window_hour": "Per hour",
+    "window_day": "Per day",
+    "window_week": "Per week",
+    "window_month": "Per 30 days",
+    "unit_tokens": "tokens",
+    "unit_usd": "USD",
+    "unitOf": "Unit of {{limit}}",
+    "noLimit": "no limit",
+    "tokens": "{{amount}} tokens",
+    "used": "{{used}} of {{limit}} spent",
+    "freesAt": "room frees at {{at}}"
+  }
+}

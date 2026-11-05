@@ -4,10 +4,10 @@
     "closeTab": "Close {{title}}",
     "newTab": "New query tab",
     "detachedBadge": "detached",
-    "nlPlaceholder": "Ask in plain English — generates SQL…",
+    "nlPlaceholder": "Ask in plain English to generate SQL…",
     "nlStrict": "Strict",
     "nlStrictHint": "Strict: generate via the schema-validated GraphQL compiler (approved joins/aggregates only). Off: direct-SQL generation (more expressive, validated by retry checks only).",
-    "nlCypherBadge": "Cypher available — click to copy",
+    "nlCypherBadge": "Cypher available. Click to copy.",
     "clear": "Clear",
     "generate": "Generate SQL",
     "generating": "Generating…",
@@ -33,8 +33,9 @@
     "createView": "+ View",
     "requestView": "Request View",
     "asOfLabel": "As of",
-    "asOfHint": "Read history-keeping views as they stood at this time",
+    "asOfHint": "Write as_of on each relation that keeps versions: read it as it stood at this time",
     "asRecordedLabel": "As recorded at",
-    "asRecordedHint": "Read history-keeping views as Provisa recorded them then, before later corrections"
+    "asRecordedHint": "Write as_recorded on each relation that keeps versions: read it as Provisa had recorded it then, before later corrections",
+    "boundParams": "Bound to the next run: {{values}}"
   }
 }

@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+from collections.abc import Callable
 
 import jwt
 
@@ -31,13 +32,11 @@ from provisa.core.schema_admin import (
     superadmin_bootstrap,
     user_profiles,
 )
-from provisa.auth.role_grants import in_force as grant_in_force
-from provisa.core.schema_org import user_directory, user_role_assignments
+from provisa.core.schema_org import user_directory
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
     can_act_cross_org as _can_act_cross_org,
-    carries_platform_right as _carries_platform_right,
     capabilities_for_claims as _capabilities_for_claims,
     is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
@@ -45,6 +44,7 @@ from provisa.security.rights import (
 from provisa.otel_compat import get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.security.sni import org_from_host
+from provisa.core.org_forget import on_forget
 
 # Requirements: REQ-120, REQ-125, REQ-273, REQ-1267, REQ-2092
 
@@ -157,6 +157,9 @@ _SKIP_PATHS = {
     # uninitialized — the same class of public fact as the provider name above.
     "/auth/bootstrap-status",
     "/setup/status",
+    # REQ-2006: the limits every demo sandbox runs under, the same on every node of the tier. It
+    # reveals only what the hosted-sandbox page states, so a credential is no reason to read it.
+    "/sandboxes/limits",
     # REQ-594, REQ-1355: the billing entrypoints authenticate by something other than a bearer
     # token and cannot carry one. /billing/webhook is called by Lemon Squeezy, which proves itself
     # with the HMAC-SHA256 X-Signature header verified in the handler (verify_webhook_signature);
@@ -183,6 +186,13 @@ def _loaded_roles() -> dict[str, dict]:  # REQ-1337
     return getattr(state, "roles", {})
 
 
+def _app_state():
+    """The runtime the request is served from (read at call time: the org runtime bound now)."""
+    from provisa.api.app import state
+
+    return state
+
+
 def _loaded_derived_roles() -> list[str]:  # REQ-2057
     """The attributes the bound org declares as derived roles."""
     from provisa.api.app import state
@@ -202,6 +212,13 @@ def _loaded_user_attributes(user_id: str) -> dict[str, str]:  # REQ-1382
 # REQ-1383: (org, environment, user) -> what this process last recorded of the user's provider
 # attributes there. A user's requests after the first cost a dictionary lookup.
 _recorded_idp: dict[tuple[str | None, str | None, str], dict[str, str]] = {}
+
+
+@on_forget(size=lambda: len(_recorded_idp))
+def _forget_recorded_idp(org_id: str) -> None:
+    """A deleted org's users' records go with it (REQ-2006: a sandbox mints one per visitor)."""
+    for key in [k for k in _recorded_idp if k[0] == org_id]:
+        _recorded_idp.pop(key, None)
 
 
 async def _record_idp_attributes(db_pool, identity: AuthIdentity) -> None:  # REQ-1383
@@ -232,15 +249,9 @@ def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337
 
 async def _org_roles(org_id: str) -> dict[str, dict]:  # REQ-1337
     """The roles registry of ``org_id``'s own runtime (prod), built if it is not yet."""
-    from provisa.api.app import ensure_serving_runtime
-    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.auth.held_assignments import org_roles
 
-    await ensure_serving_runtime(org_id, None)
-    token = set_current_org(org_id)
-    try:
-        return _loaded_roles()
-    finally:
-        reset_current_org(token)
+    return await org_roles(org_id, _loaded_roles)
 
 
 async def org_env_capabilities(  # REQ-1573
@@ -268,20 +279,10 @@ async def org_env_capabilities(  # REQ-1573
 
 
 def _dedup_assignments(assignments: list[RoleAssignment]) -> list[RoleAssignment]:
-    """The same (role, domain) pair once, in first-seen order.
+    """The same (role, domain) pair once, in first-seen order (provisa.auth.held_assignments)."""
+    from provisa.auth.held_assignments import dedup
 
-    An assignment set is a set: holding a role in a domain twice grants nothing extra, but it does
-    reach /auth/me, which the UI renders as the role selector.
-    """
-    seen: set[tuple[str, str]] = set()
-    out: list[RoleAssignment] = []
-    for a in assignments:
-        key = (a.role_id, a.domain_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(a)
-    return out
+    return dedup(assignments)
 
 
 def _assignments_to_claims(assignments: list[RoleAssignment]) -> list[str]:
@@ -464,28 +465,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         member's grant is only visible when this runs with THEIR org bound. Applies configured
         default_assignments only when the user has no explicit rows."""
         assert self._db_pool, "no tenant control plane bound for the active org"
+        from provisa.auth.held_assignments import read_assignments
+
         # REQ-2092: what reading the grants in force costs a request
         with _stage(_tracer, "auth.read_assignments", name="assignments", request_only=True):
-            async with self._db_pool.acquire() as conn:
-                result = await conn.execute_core(
-                    select(
-                        user_role_assignments.c.role_id,
-                        user_role_assignments.c.domain_id,
-                    ).where(
-                        user_role_assignments.c.user_id == identity.user_id,
-                        # REQ-2077: an expired grant is not held from the instant it expires.
-                        grant_in_force(),
-                    )
-                )
-                rows = [dict(r._mapping) for r in result.fetchall()]
-        if rows:
-            return [RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows]
-        if self._default_assignments:
-            return [
-                RoleAssignment(role_id=a["role_id"], domain_id=a.get("domain_id", "*"))
-                for a in self._default_assignments
-            ]
-        return []
+            # The one reader every transport's sign-in uses (provisa.auth.held_assignments).
+            return await read_assignments(self._db_pool, identity, self._default_assignments)
 
     async def _served_binding(
         self, request: Request, org_id: str, identity: AuthIdentity | None
@@ -530,20 +515,26 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
     ) -> str:
         """The meta-role acting as ``acting_set`` qualified by the derived roles ``qualifiers``,
         built in the request's org runtime."""
-        from provisa.api.app import state as _app_state
+        from provisa.security.meta_role import ensure_meta_role
+
+        def build() -> str:
+            # A set naming no derived role is built as it always was, from its roles alone.
+            if qualifiers:
+                return ensure_meta_role(_app_state(), acting_set, qualifiers)
+            return ensure_meta_role(_app_state(), acting_set)
+
+        return AuthMiddleware._in_org(org_binding, build)
+
+    @staticmethod
+    def _in_org(org_binding: tuple[str, str | None] | None, build: Callable[[], str]) -> str:
+        """``build()`` run with the request's org (and environment) bound, where the role it
+        resolves is built."""
         from provisa.core.request_context import (
             reset_current_env,
             reset_current_org,
             set_current_env,
             set_current_org,
         )
-        from provisa.security.meta_role import ensure_meta_role
-
-        def build() -> str:
-            # A set naming no derived role is built as it always was, from its roles alone.
-            if qualifiers:
-                return ensure_meta_role(_app_state, acting_set, qualifiers)
-            return ensure_meta_role(_app_state, acting_set)
 
         if org_binding is None:
             return build()
@@ -668,16 +659,17 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 if isinstance(bound, JSONResponse):
                     return bound
                 served = bound
-            if named_derived:
-                try:
-                    unsecured_role = self._meta_role(unsecured_roles, served, named_derived)
-                except PermissionError as refused:
-                    return _deny(request, 403, str(refused))
-            # Several roles: the request acts as their meta-role (security/meta_role.py).
-            elif len(set(unsecured_roles)) > 1:
-                unsecured_role = self._meta_role(unsecured_roles, served)
-            else:
-                unsecured_role = unsecured_roles[0]
+            # One role is that role; several, or any named derived role, act as their meta-role
+            # (security/meta_role.py) -- the one resolver every unsecured transport uses (REQ-1952).
+            from provisa.auth.derived_roles import unsecured_acting_role
+
+            try:
+                unsecured_role = self._in_org(
+                    served,
+                    lambda: unsecured_acting_role(_app_state(), unsecured_roles, held_derived),
+                )
+            except PermissionError as refused:
+                return _deny(request, 403, str(refused))
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
@@ -892,19 +884,16 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # unioned in rather than substituted so the claimant keeps the org_admin seat that carries
         # their data rights in the bootstrap org.
         # REQ-1337: "already holds it" is asked of the cross_org RIGHT, not of the role's name.
-        if bootstrap_claimant and not any(
-            _is_control_plane_role(a.role_id, _loaded_roles()) for a in platform_assignments
-        ):
-            # The right-based test above reads the loaded roles map; before that map is populated the
-            # claimant's own persisted grant does not answer to it, so the union is deduplicated by
-            # (role, domain). /auth/me is the list the UI renders as the role selector, and the same
-            # assignment twice is a repeated option in it.
-            platform_assignments = _dedup_assignments(
-                [
-                    *platform_assignments,
-                    RoleAssignment(role_id=PLATFORM_ADMIN_ROLE, domain_id="*"),
-                ]
-            )
+        # The rule every transport's sign-in applies (provisa.auth.held_assignments.settle).
+        from provisa.auth.held_assignments import settle
+
+        platform_assignments = await settle(
+            platform_assignments,
+            claimant=bootstrap_claimant,
+            org_id=None,
+            root_org_id=self._default_org_id,
+            roles_now=_loaded_roles,
+        )
 
         # Resolve active org
         if not self._multitenancy:
@@ -1154,9 +1143,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 if tenant_roles is None:
                     assert active_org_id is not None  # a tenant org is a bound one (is_tenant_org)
                     tenant_roles = await _org_roles(active_org_id)
-                assignments = [
-                    a for a in assignments if not _carries_platform_right(a.role_id, tenant_roles)
-                ]
+                # The rule every transport's sign-in applies (provisa.auth.held_assignments).
+                assignments = await settle(
+                    assignments,
+                    claimant=False,
+                    org_id=active_org_id,
+                    root_org_id=self._default_org_id,
+                    tenant_roles=tenant_roles,
+                    roles_now=_loaded_roles,
+                )
 
             if named_env is not None and _org_binding is not None:
                 # REQ-1573: the right to be served by the environment the request names, judged by

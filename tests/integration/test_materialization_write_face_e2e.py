@@ -186,8 +186,7 @@ async def test_schedule_drop_expires_the_landed_entry_through_the_engine(
     await land_api_cache(rt, loc, table, _ROWS, _COLS)
 
     # Present before the sweep — the engine sees the landed table through its attach.
-    with rt.isolated_sync() as conn:
-        assert table_exists(conn, loc, table) is True
+    assert await table_exists(rt, loc, table) is True
 
     schedule_drop(rt, loc, table, ttl=1)  # returns at once; the timer fires the drop at 1s
 
@@ -207,8 +206,7 @@ async def test_schedule_drop_expires_the_landed_entry_through_the_engine(
         await pg.close()
     assert exists is False  # TTL sweep really dropped the landed replica
 
-    with rt.isolated_sync() as conn:
-        assert table_exists(conn, loc, table) is False  # and the engine no longer resolves it
+    assert await table_exists(rt, loc, table) is False  # and the engine no longer resolves it
 
 
 if __name__ == "__main__":

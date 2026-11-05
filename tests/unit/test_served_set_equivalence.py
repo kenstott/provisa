@@ -46,10 +46,20 @@ from provisa.compiler.schema_gen import _build_visible_tables
 from provisa.compiler.schema_types import SchemaInput
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context
-from provisa.security.rights import compute_meta_row_scope
+from provisa.security.rights import SYSTEM_DOMAINS, compute_meta_row_scope, lists_table
 from provisa.security.visibility import visible_tables
 
-_LOCKDOWN = {"ops"}
+
+def _field(t: dict) -> str:
+    """A table's root field name, as the schema build names an ops table (REQ-2163: op_)."""
+    from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, system_schema_names
+
+    name = f"t{t['id']}"
+    if t["domain_id"] in SYSTEM_SCHEMA_GQL_PREFIX:
+        return system_schema_names(t["domain_id"], name)[0]
+    return name
+
+
 _IMPLICIT = {"meta"}
 
 
@@ -57,9 +67,10 @@ _IMPLICIT = {"meta"}
 
 
 def _old_grant(role_id: str, domain: str, column: dict) -> bool:
-    """The column rule the schema build and SQL governance each spelled out."""
-    granted = column["visible_to"]
-    return (not granted and domain not in _LOCKDOWN) or "*" in granted or role_id in granted
+    """The column rule the schema build and SQL governance each spelled out, as REQ-2154 states
+    it for all of them: the grant names the role; an empty grant is no role, in every domain."""
+    del domain  # no domain decides a grant (REQ-2159: no lockdown domain)
+    return role_id in column["visible_to"]
 
 
 def _old_schema_served(role: dict, tables: list[dict]) -> dict[int, list[str]]:
@@ -208,8 +219,10 @@ def _multi_domain_model() -> tuple[list[dict], list[dict]]:
 _MODELS = {"demo config": _demo_model(), "multi-domain": _multi_domain_model()}
 # In the demo config every column carries an explicit grant, so the two roles this file adds
 # that reach one domain and are named in no grant lose that domain's tables (18 + 9). No role
-# the demo config itself declares loses a table.
-_REMOVED_PAIRS = {"demo config": 27, "multi-domain": 0}
+# the demo config itself declares loses a table. In the multi-domain model, ``*`` names no role
+# (REQ-2153), so the seller and its meta-role lose ``lookup``, whose one data column only ``*``
+# was granted.
+_REMOVED_PAIRS = {"demo config": 27, "multi-domain": 2}
 _CASES = [
     pytest.param(tables, role, id=f"{model}/{role['id']}")
     for model, (tables, roles) in _MODELS.items()
@@ -260,8 +273,8 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
     ctx.tables = {
         f"t{t['id']}": TableMeta(
             table_id=t["id"],
-            field_name=f"t{t['id']}",
-            type_name=f"T{t['id']}",
+            field_name=_field(t),
+            type_name=_field(t).capitalize(),
             source_id=t["source_id"],
             catalog_name="c",
             schema_name=t["schema_name"],
@@ -279,7 +292,13 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
         visible = gov.visible_columns[table["id"]]
         got = {c["column_name"] for c in table["columns"]} if visible is None else set(visible)
         if "*" in reach or table["domain_id"] in reach:
-            assert got == _old_sql_visible(role, table), table["table_name"]
+            expected = _old_sql_visible(role, table)
+            # By intent: a parameter column is an argument, served with the table's data to a
+            # role served any of it (REQ-1614, REQ-1986), as the schema build serves it.
+            parameters = {c["column_name"] for c in table["columns"] if c.get("native_filter_type")}
+            if expected - parameters:
+                expected |= parameters
+            assert got == expected, table["table_name"]
         else:
             # The one place the old copies disagreed on a role's own answer: SQL governance
             # judged a column by its grant alone, the schema build required reach. The rule
@@ -290,10 +309,15 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
 def _narrowed_meta_scope(role: dict, tables: list[dict]) -> set[int] | None:
     """The catalog row scope as intended: of the tables in a domain the role reaches, those it is
     served at least one column of — the schema build's answer, not domain reach alone."""
-    old = _old_meta_scope(role, tables)
-    if old is None:
-        return None
-    return old & set(_old_schema_served(role, tables))
+    reach = role["domain_access"]
+    listed = {t["id"] for t in tables if lists_table(t)}
+    if "*" in reach:
+        unheld = {t["id"] for t in tables if t["domain_id"] in SYSTEM_DOMAINS - set(reach)}
+        unheld -= set(_old_schema_served(role, tables))
+        return ({t["id"] for t in tables} - unheld) if unheld else None
+    return listed | {t["id"] for t in tables if t["domain_id"] in reach} & set(
+        _old_schema_served(role, tables)
+    )
 
 
 @pytest.mark.parametrize("tables, role", _CASES)
@@ -304,7 +328,10 @@ def test_the_catalog_row_scope_is_the_tables_the_role_is_served(tables, role):
     scope = compute_meta_row_scope(role, tables, [])
     assert scope == _narrowed_meta_scope(role, tables)
     old = _old_meta_scope(role, tables)
-    assert scope is None if old is None else scope <= old, "never wider than it was"
+    # REQ-1132: catalog_read opens meta and not its rows, so a role listing meta narrows too.
+    # REQ-1132: and every role lists what is listed, within reach or not.
+    wider = (scope or set()) - (old or set())
+    assert old is None or all(lists_table(t) for t in tables if t["id"] in wider)
 
 
 def test_how_many_role_table_pairs_the_narrowing_removes():
@@ -349,8 +376,6 @@ def test_the_visibility_helper_now_answers_as_the_schema_build(tables, role):
     }
     assert {i: c for i, c in data.items() if c} == expected
     for table_id, columns in _old_literal_visible(role, tables).items():
-        if by_table[table_id]["domain_id"] in _LOCKDOWN:
-            continue
         assert set(columns) <= listed.get(table_id, set()), by_table[table_id]["table_name"]
 
 
@@ -359,7 +384,7 @@ def test_a_table_granted_wholly_to_other_roles_is_not_in_a_reaching_roles_catalo
     ``payroll`` has its catalog rows. A 1-hop neighbour is still discovered through a
     relationship from a table the role is served."""
     tables = [
-        _table(1, "hr", "staff", [_column("id")]),
+        _table(1, "hr", "staff", [_column("id", ["hr_reader", "payroll_clerk"])]),
         _table(2, "hr", "payroll", [_column("amount", ["payroll_clerk"])]),
     ]
     reader = {"id": "hr_reader", "domain_access": ["hr"], "capabilities": []}

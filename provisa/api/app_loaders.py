@@ -29,7 +29,13 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
-from provisa.security.rights import Capability, reaches_all_domains
+from provisa.security.mutation_authz import command_assigned
+from provisa.security.rights import (
+    SYSTEM_DOMAINS,
+    Capability,
+    lists_data_domain,
+    reaches_all_domains,
+)
 from provisa.compiler.context import build_context
 from provisa.compiler.rls import build_rls_context, org_scoped_signals
 from sqlalchemy import select
@@ -41,6 +47,7 @@ from provisa.core.schema_org import (
 )
 from provisa.core.secrets import resolve_secrets
 from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS  # REQ-884
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS  # REQ-2163
 from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig, Source  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
@@ -50,6 +57,8 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
     from provisa.mv.models import MVDefinition, TableIdentity
 
+from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
+
 log = logging.getLogger(__name__)
 
 # Meta-domain physical table aliasing: the *_meta views shadow the real control-plane
@@ -58,17 +67,12 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "registered_tables": "registered_tables_meta",
     "table_columns": "table_columns_meta",
     "roles": "roles_meta",
-    "glossary_terms": "glossary_terms_meta",  # REQ-1584
-    "glossary_term_refs": "glossary_term_refs_meta",  # REQ-1584
-    "glossary_term_table_refs": "glossary_term_table_refs_meta",  # REQ-2130
-    "glossary_term_edges": "glossary_term_edges_meta",  # REQ-1584
-    "glossary_term_experts": "glossary_term_experts_meta",  # REQ-1584
-    "glossary_term_domains": "glossary_term_domains_meta",  # REQ-1591
     "tracked_webhooks": "tracked_webhooks_meta",
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
+    "sources": "sources_meta",  # REQ-1443: identity and type only
 }
 
 
@@ -390,7 +394,7 @@ async def _build_source_pools_and_enums(
     from provisa.api.app import state
     from provisa.api.data.pgwire_write import start_write_server
     from provisa.executor.drivers.registry import has_driver
-    from provisa.transpiler.router import VIRTUAL_SOURCES
+    from provisa.transpiler.router import CODE_SOURCES, VIRTUAL_SOURCES
     from provisa.compiler.sql_rewrite import FLAT_NAMESPACE_SOURCES
     from provisa.core.secrets_store import bound_to_request_org
 
@@ -420,7 +424,9 @@ async def _build_source_pools_and_enums(
             start_write_server(src)
             _is_flat_file = src.type.value in FLAT_NAMESPACE_SOURCES
             if has_driver(src.type.value) and (
-                src.type.value not in VIRTUAL_SOURCES or _is_flat_file
+                src.type.value not in VIRTUAL_SOURCES
+                or _is_flat_file
+                or src.type.value in CODE_SOURCES  # REQ-2100
             ):
                 resolved_pw = resolve_secrets(src.password)
                 resolved_host = (
@@ -432,6 +438,9 @@ async def _build_source_pools_and_enums(
                 state.source_dsns[src.id] = (
                     resolved_database
                     if _is_flat_file
+                    # REQ-2100: a code source is no database another source can share.
+                    else f"code:{src.id}"
+                    if src.type.value in CODE_SOURCES
                     # REQ-863: one database under one login, never two logins' grants as one.
                     else colocation_key(
                         resolved_host,
@@ -478,6 +487,7 @@ async def _build_source_pools_and_enums(
     from provisa.compiler.enum_detect import build_enum_types
 
     _enum_registry: dict[str, list[str]] = {}
+    _source_enums: dict = {}
     for _src in (*config.sources, *(extra_sources or ())):
         if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
             _driver = state.source_pools.get(_src.id)
@@ -485,7 +495,9 @@ async def _build_source_pools_and_enums(
                 # Swallowing here silently mistypes enum columns — propagate.
                 _reg = await cast(Any, _driver).fetch_enums()
                 _enum_registry.update(_reg)
+                _source_enums.update(await cast(Any, _driver).fetch_source_enums())
     state.pg_enum_types = build_enum_types(_enum_registry)
+    state.pg_source_enums = _source_enums
 
 
 async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-164
@@ -1076,6 +1088,13 @@ async def _graphql_remote_auth(state, src: dict) -> dict | None:
         return {"type": "bearer", "token": secret}
     if auth_type == "basic":
         return {"type": "basic", "username": src["username"], "password": secret}
+    if auth_type == "header":
+        header = (src["federation_hints"] or {}).get("auth_header")
+        if not header:
+            raise ValueError(
+                f"graphql_remote source {src['id']!r}: auth_type 'header' names no auth_header"
+            )
+        return {"type": "header", "header": header, "token": secret}
     raise ValueError(f"graphql_remote source {src['id']!r}: unknown auth_type {auth_type!r}")
 
 
@@ -1126,6 +1145,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             _sources_t.c.username,
                             _sources_t.c.password_ref,
                             _sources_t.c.federation_hints,
+                            _sources_t.c.brand_setup,  # REQ-1923
                             _sources_t.c.mapping,
                         ).where(_sources_t.c.type == "graphql_remote")
                     )
@@ -1231,6 +1251,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     **(
                         {
                             "brand": brand.id,
+                            "setup": dict(src["brand_setup"]),
                             "error_policy": brand.error_policy,
                         }
                         if brand is not None
@@ -1516,11 +1537,12 @@ def _json_list(value: Any) -> list:
 
 
 async def _load_tracked_functions_and_webhooks(  # REQ-042
-    conn: Any, raw_config: dict | None, tables: list[dict]
+    conn: Any, raw_config: dict | None, tables: list[dict], domains: list[dict]
 ) -> tuple[list[dict], list[dict]]:
     """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks.
     ``tables`` are the registered tables this build serves: a statement command's contract is
-    derived against them (REQ-2001)."""
+    derived against them (REQ-2001). ``domains`` are the domains the build's schemas are generated
+    over: a command's GraphQL field is prefixed by its domain's alias among them (REQ-471)."""
     from provisa.api.app import state
 
     assert state.model_db is not None, (
@@ -1558,9 +1580,14 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
             **dict(r),
             "arguments": _json_list(r["arguments"]),
             "visible_to": _json_list(r["visible_to"]),
+            "language_bindings": _json_dict(r["language_bindings"]),  # REQ-2168
         }
         for r in fn_rows
     ]
+    # REQ-2168: the commands Provisa ships (the APOC set), beside the registered ones.
+    from provisa.core.builtin_commands import declared as _builtin_commands
+
+    tracked_functions = [*_builtin_commands(), *tracked_functions]
     # REQ-1942: the commands backed by a source bound to a synthetic store are not defined in a Test
     # (synthetic) environment -- omitted here, the one place every surface's commands come from,
     # and kept by name so a call to one is refused saying why (action_exec.invoke_command).
@@ -1583,6 +1610,11 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # no longer resolves against the model carries why (contract.broken), and a call is refused.
     from provisa.compiler.statement_contract import derive as _derive_contract
 
+    # REQ-2168: a SQL expression function's template was checked for the deployment's engines when
+    # it was saved (actions_router); a source added since is not a reason to refuse the build.
+    for f in tracked_functions:
+        if f["impl_kind"] == "sql_expression":
+            f["binding"] = _json_dict(f["binding"])
     for f in tracked_functions:
         if f["impl_kind"] == "statement":
             f["binding"] = _json_dict(f["binding"])
@@ -1598,21 +1630,24 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
         }
         for r in wh_rows
     ]
+    # REQ-2168: no two commands bound to one name in a language, none shadowing a built-in.
+    from provisa.core.command_bindings import check_names
 
-    # The prefixed alias MUST match the GraphQL field name the schema generator emits, which uses
-    # domain_gql_alias (e.g. pet-store -> "ps"), NOT domain_to_sql_name (-> "pet_store"). Otherwise
+    check_names([*tracked_functions, *tracked_webhooks])
+
+    # The prefixed alias MUST match the GraphQL field name the schema generator emits
+    # (actions_schema), which takes the domain's alias from domain_alias_map over the same domains
+    # (pet-store -> "ps"; orders, whose "o" ops and ontology also compute, -> "orders"). Otherwise
     # _split_action_fields can't find the domain-prefixed field and the command falls through to the
-    # table compiler as an "Unknown root query field" (REQ-1156).
+    # table compiler as an "Unknown mutation field" (REQ-1156, REQ-471).
     from provisa.compiler.naming import apply_convention as _apply_conv
-    from provisa.compiler.naming import domain_gql_alias as _dgql
+    from provisa.compiler.naming import domain_alias_map as _domain_alias_map
+    from provisa.compiler.naming import domain_to_sql_name as _domain_to_sql_name
 
-    _domains_cfg = (raw_config or {}).get("domains", []) or []
-    _alias_stored = {
-        d["id"]: d.get("graphql_alias") for d in _domains_cfg if isinstance(d, dict) and d.get("id")
-    }
+    _aliases = _domain_alias_map(domains)
 
     def _domain_prefix(domain_id: str) -> str:
-        return _dgql(domain_id, _alias_stored.get(domain_id))
+        return _aliases.get(domain_id) or _domain_to_sql_name(domain_id)
 
     _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
     # The GraphQL field name applies the active naming convention to the command name (add_pet ->
@@ -1621,9 +1656,19 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
     # AND the convention-cased GraphQL field name, so every surface's lookup resolves (REQ-1156).
     _conv = (raw_config or {}).get("naming", {}).get("convention", "apollo_graphql")
 
+    from provisa.core.command_bindings import binding_name, offered_name
+
     def _register(target: dict, item: dict) -> None:
         target[item["name"]] = item  # raw registered name — non-GraphQL surfaces
-        gql = _apply_conv(item["name"], _conv)
+        # REQ-2168: a SQL command binding that renames the command is the name a statement calls.
+        sql = offered_name(item, "sql")
+        if sql != item["name"]:
+            target[sql] = item
+        # REQ-2168: the GraphQL field is the command's GraphQL command binding; none if excluded.
+        called = binding_name(item, "graphql")
+        if called is None:
+            return
+        gql = _apply_conv(called, _conv)
         key = (
             f"{_domain_prefix(item['domain_id'])}__{gql}" if _dp and item.get("domain_id") else gql
         )
@@ -1662,6 +1707,9 @@ def schema_input_for(
 ) -> SchemaInput:
     """The schema input for ``role`` from this generation's build inputs (state.role_build_inputs)."""
     from provisa.api.region_ops_views import table_catalogs as region_table_catalogs
+    from provisa.federation.strategy import row_level_tables
+    from provisa.jdbc_source.attach import reach_types
+    from provisa.mv.time_travel import relation_kinds
 
     inputs = state.role_build_inputs
     return SchemaInput(
@@ -1672,6 +1720,18 @@ def schema_input_for(
         role=role,
         domains=inputs["domains"],
         source_types=state.source_types,
+        row_level_tables=frozenset(
+            t["id"]
+            for t in row_level_tables(
+                tables,
+                state.federation_engine,
+                # REQ-2191: a JDBC source attached live is judged as the type its URL names.
+                reach_types(
+                    state.source_types, state.source_federation_hints, state.federation_engine
+                ),
+            )
+        ),  # REQ-1915
+        time_travel=relation_kinds(state, tables),  # REQ-1163
         source_catalogs=state.source_catalogs,
         table_catalogs=region_table_catalogs(),  # REQ-1922
         domain_prefix=inputs["domain_prefix"],
@@ -1689,35 +1749,88 @@ def schema_input_for(
 
 
 def register_role_surface(state: Any, role: dict, rls: Any) -> None:
-    """Build and register one role's data surface: its GraphQL schema, REST path map, compiled
-    context, RLS context and proto, from this generation's build inputs."""
-    from provisa.api.role_surface import RoleSurface, install_surface
+    """Register one role's data surface -- its GraphQL schema, REST path map, compiled context,
+    RLS context and proto -- from this generation's build inputs, built LAZILY: the role is known
+    at once, and its parts are built the first time it is read (api/role_surface.LazySurface).
+    The rebuild then pays for the model-wide parts alone, not every role's compile (REQ-1882)."""
+    from provisa.api.role_surface import LazySurface, install_surface
+
+    runtime = state._active_runtime()
+    inputs = state.role_build_inputs  # this generation's (OrgRuntime.role_build_inputs)
+    install_surface(
+        runtime,
+        role["id"],
+        LazySurface(role["id"], lambda: _build_role_surface(state, runtime, inputs, role, rls)),
+    )
+
+
+def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls: Any) -> Any:
+    """One role's surface, every part built before any of it is served."""
+    from provisa.api.role_surface import RoleSurface
     from provisa.compiler.schema_gen import build_table_path_map
     from provisa.grpc.proto_gen import generate_proto
 
-    inputs = state.role_build_inputs
-    si = schema_input_for(state, role, inputs["tables"], inputs["metrics"])
-    # No swallow: a role missing from state.schemas here is served with a permanently cached
-    # "no schema available" for every request to this org runtime (the build is cache-only-on-
-    # success). Let generate_schema raise so a bad role definition fails the build loudly and
-    # gets fixed at the source, matching generate_proto below.
-    #
-    # Every part is built before any of it is installed, and the role's surface is installed
-    # with ONE assignment (api/role_surface.py): a request on its own thread reads either the
-    # surface this replaces or this one, never the schema of one and the context of the other
-    # (#213). generate_proto is not swallowed either: an unmapped column type is a real gap in
-    # the proto type map, not a reason to silently disable gRPC for the role.
-    ctx = build_context(si)
-    ctx.refusal = state._active_runtime().data_refusal  # REQ-1942
-    ctx.kept = dict(state._active_runtime().kept)  # REQ-1942
-    surface = RoleSurface(
-        schema=generate_schema(si),
-        context=ctx,
-        rls=rls,
-        table_path_map=build_table_path_map(si),
-        proto=generate_proto(si, field_numbers=inputs["field_numbers"]),
-    )
-    install_surface(state._active_runtime(), role["id"], surface)
+    # Built for the runtime that registered it, whoever reads it first: the build reads that
+    # runtime's model through ``state`` -- its org's and its environment's, registered or not yet.
+    from provisa.api.org_runtime import serving
+
+    with serving(runtime):
+        # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
+        reads = bool(role.get("capabilities"))
+        si = schema_input_for(
+            state, role, inputs["tables"] if reads else [], inputs["metrics"] if reads else []
+        )
+        # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
+        # surface holds that failure -- logged as an ERROR naming the role, and raised to every
+        # read of it -- rather than serving a permanently cached "no schema available". An
+        # unmapped column type is a real gap in the proto type map, not a reason to silently
+        # disable gRPC for the role.
+        ctx = build_context(si)
+        ctx.refusal = runtime.data_refusal  # REQ-1942
+        ctx.kept = dict(runtime.kept)  # REQ-1942
+        return RoleSurface(
+            schema=generate_schema(si),
+            context=ctx,
+            rls=rls,
+            table_path_map=build_table_path_map(si),
+            proto=generate_proto(si, field_numbers=inputs["field_numbers"]),
+        )
+
+
+#: How long after a rebuild the background warm-up starts: a burst of changes supersedes it first.
+_WARM_DELAY_S = 2.0
+#: The pause between two roles' builds in the warm-up, so it yields to requests.
+_WARM_PAUSE_S = 0.05
+
+
+def warm_role_surfaces(state: Any) -> None:
+    """After a rebuild, build every role's surface in the background, at low priority: a role
+    whose build fails is found (logged as an ERROR naming it) within seconds of the change, not at
+    someone's first request, and later requests find their role built. A newer rebuild
+    supersedes it: it stops as soon as the runtime's build inputs are no longer the ones it was
+    started for, so a burst of changes queues no warm-up per change."""
+    import asyncio
+
+    from provisa.core.connection_loop import spawn_after
+
+    runtime = state._active_runtime()
+    inputs = runtime.role_build_inputs
+
+    async def _warm() -> None:
+        from provisa.api.role_surface import LazySurface, RoleSurfaceUnbuilt
+
+        for held in list(runtime.surfaces.values()):
+            if runtime.role_build_inputs is not inputs:
+                return  # superseded by a newer rebuild
+            if not isinstance(held, LazySurface) or held.built:
+                continue
+            try:
+                held.resolve()
+            except RoleSurfaceUnbuilt:
+                pass  # held and logged by the surface itself; its requests raise it
+            await asyncio.sleep(_WARM_PAUSE_S)
+
+    spawn_after(_WARM_DELAY_S, _warm(), name=f"warm role surfaces {runtime.org_id}")
 
 
 def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221, REQ-262, REQ-263
@@ -1758,6 +1871,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # What any role's surface is built from, kept so a role made later in this generation — a
     # meta-role (security/meta_role.py) — is built exactly as the stored roles are here.
     from provisa.security.inheritance import role_chains as _role_chains
+    from provisa.security.row_filters import model_write_rules
 
     state.role_build_inputs = {
         # REQ-2058: each stored role with its ancestors -- what a meta-role made later holds.
@@ -1769,6 +1883,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "domain_prefix": domain_prefix,
         "physical_table_map": {
             **_META_TABLE_ALIAS,
+            **ONTOLOGY_TABLE_ALIAS,
             **_OPS_LOG_TABLE_ALIAS,
             **(kafka_physical or {}),
         },
@@ -1783,6 +1898,10 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         "draft_tables": draft_tables,
         "metrics": metrics,
         "rls_rules": rls_rules,
+        # REQ-2188: the U and D rules on model tables, which hold the model store's writes.
+        "model_write_rules": model_write_rules(
+            rls_rules, tables, [r["id"] for r in roles if r.get("owner_held")]
+        ),
         "field_numbers": field_numbers,
     }
 
@@ -1807,6 +1926,8 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         _drop_data_surface(state, gone)
 
     for role in roles:
+        # REQ-2188: what provisa.acting_roles reads for this role (session_vars_for).
+        role["acting_chain"] = list(state.role_build_inputs["role_chains"][role["id"]])
         state.roles[role["id"]] = role
         # REQ-1327: platform_admin is control-plane only and holds zero data capabilities in every
         # org, root included, so it gets NO data surface at all. Generating one produced a schema
@@ -1821,6 +1942,17 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
             _drop_data_surface(state, role["id"])
             continue
+        # REQ-2155: a role with no capabilities can do nothing. A command naming it is its one act,
+        # and its surface holds that and no table (_build_role_surface).
+        if not role.get("capabilities"):
+            inputs = state.role_build_inputs
+            if any(
+                command_assigned(c, role["id"]) for c in [*inputs["functions"], *inputs["webhooks"]]
+            ):
+                register_role_surface(state, role, build_rls_context(rls_rules, role["id"]))
+            else:
+                _drop_data_surface(state, role["id"])
+            continue
         # A role reaches the domains it lists, and one that lists NONE reaches no data: it gets no
         # data surface, on the same terms as the control-plane role above — every surface answers
         # "No schema available for role ...", which is a refusal, rather than a schema with
@@ -1828,7 +1960,9 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # this is the backstop for one that has ended up with none anyway, and it must not take
         # the org's whole build down with it. reaches_all_domains decides the single-domain
         # exemption.
-        if not role["domain_access"] and not reaches_all_domains(role["domain_access"]):
+        if not lists_data_domain(role["domain_access"]) and not reaches_all_domains(
+            role["domain_access"]
+        ):
             _drop_data_surface(state, role["id"])
             continue
         # The ops signals are one store every org's rows land in: every role reads its own org's.
@@ -1852,28 +1986,36 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # role and never answers a request; a view's rows are governed when the view is read.
     _model_role = {
         "id": "__model__",
-        "domain_access": ["*"],
+        "domain_access": ["*", *SYSTEM_DOMAINS],
         # The catalog's governance columns are part of the model a view may read.
         "capabilities": [Capability.VIEW_GOVERNANCE.value],
     }
+    # REQ-2154: every column and metric granted to this one role, by name -- the whole model.
     _model_tables = [
-        {**t, "columns": [{**c, "visible_to": ["*"]} for c in t["columns"]]} for t in tables
+        {**t, "columns": [{**c, "visible_to": [_model_role["id"]]} for c in t["columns"]]}
+        for t in tables
     ]
-    state.view_context = build_context(
-        _schema_input(_model_role, _model_tables, [{**m, "visible_to": []} for m in metrics])
+    _model_input = _schema_input(
+        _model_role, _model_tables, [{**m, "visible_to": [_model_role["id"]]} for m in metrics]
     )
+    state.view_context = build_context(_model_input)
+    from provisa.compiler.schema_gen import build_table_path_map
+
+    state.view_path_map = build_table_path_map(_model_input)
 
     _wire_role = {
         "id": "__wire__",
-        "domain_access": ["*"],
+        "domain_access": ["*", *SYSTEM_DOMAINS],
         "capabilities": sorted({c for r in roles for c in (r.get("capabilities") or [])}),
     }
     _wire_tables = [
-        {**t, "columns": [{**c, "visible_to": []} for c in t["columns"]]} for t in tables
+        {**t, "columns": [{**c, "visible_to": [_wire_role["id"]]} for c in t["columns"]]}
+        for t in tables
     ]
-    _wire_metrics = [{**m, "visible_to": []} for m in metrics]
+    _wire_metrics = [{**m, "visible_to": [_wire_role["id"]]} for m in metrics]
     # REQ-1903: authoritative=True — this is the only call in the build that sees every column of
-    # every table (visible_to=[]), so it's the only one allowed to retire a field number.
+    # every table (each granted to the wire role, REQ-2154), so it's the only one allowed to retire
+    # a field number.
     state.wire_proto = generate_proto(
         _schema_input(_wire_role, _wire_tables, _wire_metrics),
         field_numbers=field_numbers,
@@ -1884,7 +2026,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # exist only now that the contexts are compiled — config load could not check them.
     from types import SimpleNamespace
 
-    from provisa.dq.contract import contract_dataset
+    from provisa.dq.contract import contract_dataset, model_contexts
     from provisa.dq.registration import check_contract_target, is_checker_source_type
 
     checked: dict[int, int] = {}
@@ -1894,9 +2036,12 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
             target = check_contract_target(
                 SimpleNamespace(schema_name=t["schema_name"], table_name=t["table_name"]),
                 contract_dataset(t["dq_contract"], checker),
-                state.contexts,
+                model_contexts(state),
             )
             checked[t["id"]] = target.table_id
+    # Every role's surface is built lazily, on first read; this finds a role that cannot be built
+    # within seconds, in the background, and stops if a newer rebuild supersedes it.
+    warm_role_surfaces(state)
     return checked
 
 
@@ -1919,9 +2064,10 @@ def _setup_approval_hook(st: AppState) -> None:
 
     # Resolve per-table flags to table_ids via the compilation contexts.
     name_to_id: dict[tuple[str, str, str], int] = {}
-    for ctx in st.contexts.values():
-        for meta in ctx.tables.values():
-            name_to_id[(meta.domain_id, meta.schema_name, meta.table_name)] = meta.table_id
+    # The model-wide context: every table, with no role's surface built to read it.
+    model = st.view_context
+    for meta in model.tables.values() if model is not None else []:
+        name_to_id[(meta.domain_id, meta.schema_name, meta.table_name)] = meta.table_id
     table_hooks: dict[int, bool] = {}
     for t in config.tables:
         if not getattr(t, "approval_hook", False):
@@ -1941,6 +2087,8 @@ _META_TABLES = [
     "rls_rules",
     "roles",
     "roles_domain_access",
+    "roles_parents",  # REQ-2155: a role's parents; view-only, like roles_domain_access
+    "listed_names",  # REQ-2153: listed columns' names outside a reader's reach; view-only
     "tracked_webhooks",
     "tracked_functions",
     "tags",  # REQ-1373: the tag registry (system tags unioned in by the view)
@@ -1950,15 +2098,14 @@ _META_TABLES = [
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
-    "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
-    "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
-    "glossary_term_table_refs",  # REQ-2130: term -> table groundings, resolved likewise
-    "glossary_term_edges",  # REQ-1584
-    "glossary_term_experts",  # REQ-1584
-    "glossary_term_domains",  # REQ-1591: each term's domains, by the one rule
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
-    "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
-    "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
+    "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
+    "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
+    "data_product_edges",  # REQ-2126: a product's relationship links; view-only
+    "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
+    # REQ-2190: what a SQL catalog reads: view-only, served to SQL alone.
+    *NEUTRAL_VIEW_NAMES,
+    *CATALOG_VIEW_NAMES,
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped
@@ -1983,7 +2130,6 @@ _RLS_TENANT_TABLES = [
     # ROW LEVEL SECURITY errors on a view.
     "glossary_terms",
     "glossary_term_refs",
-    "glossary_term_table_refs",  # REQ-2130
     "glossary_term_edges",
     "glossary_term_experts",
 ]

@@ -37,6 +37,13 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-1934: the operator's accepted and dismissed constraints are decisions about the
         # model's tables, so they travel with them.
         "profiler_constraints",
+        # REQ-2147: a steward's classification decisions are about the model's columns, as the
+        # constraints are, so they travel with them.
+        "profiler_classifications",
+        # REQ-2189: a saved ERD layout is stored in the model and versions with the environment.
+        "erd_layouts",
+        "erd_layout_domains",
+        "erd_layout_tables",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
@@ -59,7 +66,6 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_terms",
         "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",
-        "glossary_term_table_refs",  # REQ-2130: a table's class term travels with it
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_domains",
@@ -134,6 +140,7 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # own store schema, so their state describes nothing another environment has.
         "replica_state",
         "session_temp_schemas",  # REQ-1926: the schemas sessions hold temporary tables in
+        "graph_sessions",  # REQ-2176: each principal's ephemeral graph session
         "replica_build_log",  # the builds that ended, of those replicas
         # REQ-1923: where this environment's replicas of a mail source were read to.
         "mail_sync_state",
@@ -145,9 +152,23 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "code_source_builds",
         # REQ-2105: what this environment's code sources spent on the LLM service.
         "code_source_llm_usage",
+        # REQ-1174: what this environment's roles spent of their LLM budgets.
+        "role_llm_usage",
         # REQ-2106: what this environment's code sources cached and indexed for themselves.
         "code_source_cache",
         "code_source_vectors",
+        # REQ-2185: its own reference library, embedded by its own vector models; a document
+        # is added to the environment whose assistants draw on it.
+        "reference_documents",
+        "reference_document_domains",
+        "reference_passages",
+        # REQ-2185 (GRAPH RETRIEVAL): its glossary terms' embeddings, by its own vector model,
+        # made again from its own terms wherever they are missing or stale.
+        "glossary_term_vectors",
+        # REQ-2179: the glossary's scans of this environment's library documents and the review
+        # queue of the terms they propose, drafts until a steward decides on them.
+        "glossary_term_scans",
+        "glossary_term_drafts",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
@@ -176,6 +197,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-2132: its own checkers' latest scans.
+        "checker_latest_runs",
+        # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
+        "profiler_sensitive_scans",
+        "profiler_sensitive_hints",
     }
 )
 
@@ -187,7 +213,8 @@ PARTIAL: frozenset[str] = frozenset({"org_settings"})
 #: belonging to one environment. Prefixes rather than exact keys because these are namespaces
 #: (``metadata_export.endpoint``, ``cache.redis_url``), and an exact list would miss the next key
 #: added inside one.
-NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "redirect", "cache")
+#: REQ-2122: ``catalogs`` names the external catalogs and how to sign in to them.
+NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "catalogs", "redirect", "cache")
 
 #: Every table name this module classifies. The test asserts it equals ``schema_org``'s metadata.
 CLASSIFIED: frozenset[str] = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIAL

@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.core.ir_arrow import row_batch
 from provisa.pgwire.server import ProvisaQueryResult
+from tests.unit.pgwire.result_rows import rows_of
 
 
 class _CountingStream:
@@ -42,6 +44,11 @@ class _CountingStream:
         for batch in self._batches:
             self.pulled += 1
             yield batch
+
+    def arrow_batches(self):
+        # REQ-2194: a row engine's batches reach pgwire as Arrow, built at the fetch boundary.
+        for batch in self.batches():
+            yield row_batch(batch, self.column_names, self.column_types)
 
 
 def _stream(**kwargs):
@@ -86,14 +93,13 @@ def test_rows_are_pulled_one_batch_at_a_time_as_the_wire_consumes_them():
     stream = _stream(column_types=["integer", "text"])
     result = ProvisaQueryResult(stream, "SELECT id, name FROM orders")
 
-    rows = result.rows()
-    assert next(rows) == [1, "a"]
+    assert rows_of(result, 1) == [[1, "a"]]
     # The first batch had to be pulled to answer; the two behind it did not.
     assert stream.pulled == 1
-    assert next(rows) == [2, "a".replace("a", "b")]
+    assert rows_of(result, 1) == [[2, "a".replace("a", "b")]]
     assert stream.pulled == 1
 
-    assert next(rows) == [3, "c"]
+    assert rows_of(result, 1) == [[3, "c"]]
     assert stream.pulled == 2
 
 
@@ -102,14 +108,15 @@ def test_a_peeked_batch_is_emitted_rather_than_dropped():
     stream = _stream()
     result = ProvisaQueryResult(stream, "SELECT id, name FROM orders")
 
-    assert list(result.rows()) == [[1, "a"], [2, "b"], [3, "c"], [4, "d"]]
+    assert rows_of(result) == [[1, "a"], [2, "b"], [3, "c"], [4, "d"]]
     assert stream.pulled == 3
 
 
 def test_a_batch_abandoned_mid_way_by_the_clients_own_limit_is_resumed_not_dropped():
-    """REQ-1863 large-result fix: vendor/buenavista's send_data_rows calls .rows() fresh on every
-    Execute and stops pulling from it (abandoning that generator) the instant it has forwarded the
-    client's own requested `limit` for that one Execute — nearly always mid-batch when the engine's
+    """REQ-1863 large-result fix: vendor/buenavista's send_data_rows reads each Execute's `limit`
+    rows from the result's one ResultData, cutting the batch at the limit; the rows past the cut
+    are the next Execute's. Before, it pulled rows from a fresh generator per Execute and stopped
+    pulling the instant it had forwarded the client's own requested `limit` for that one Execute — nearly always mid-batch when the engine's
     internal batch size doesn't evenly divide the client's fetch size. Live-confirmed against a
     real 2,000,000-row scan pulled 10,000 rows at a time (asyncpg's own cursor.fetch(10000)): only
     310,000 rows (31 x 10,000) ever reached the client — the remaining ~1.69M were pulled from the
@@ -124,14 +131,9 @@ def test_a_batch_abandoned_mid_way_by_the_clients_own_limit_is_resumed_not_dropp
     result = ProvisaQueryResult(stream, "SELECT id FROM t")
 
     def _fetch(limit: int) -> list:
-        # Mirrors vendor/buenavista/buenavista/postgres.py's send_data_rows: a FRESH .rows() call
-        # per Execute, stopping (abandoning the generator) as soon as `limit` rows are collected.
-        out = []
-        for row in result.rows():
-            out.append(row)
-            if len(out) >= limit:
-                break
-        return out
+        # Mirrors vendor/buenavista/buenavista/postgres.py's send_data_rows: one Execute's
+        # `limit` rows taken from the result's data.
+        return rows_of(result, limit)
 
     assert _fetch(2) == [[1], [2]]
     assert _fetch(2) == [[3], [4]]
@@ -149,7 +151,7 @@ def test_a_result_with_no_columns_reports_no_results():
 
     assert result.has_results() is False
     assert result.column_count() == 0
-    assert list(result.rows()) == []
+    assert rows_of(result) == []
 
 
 @pytest.mark.parametrize(

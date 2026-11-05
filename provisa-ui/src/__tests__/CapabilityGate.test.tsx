@@ -25,7 +25,7 @@ const authState: {
   loading: boolean;
   capabilities: string[];
   demonstrated: string[];
-  availableRoles: { id: string; capabilities: string[] }[];
+  availableRoles: { id: string; effectiveCapabilities: string[] }[];
   selectRole: typeof selectRole;
 } = {
   loading: false,
@@ -413,9 +413,9 @@ describe("CapabilityGate refusing a page the acting role does not grant (REQ-206
 
   it("offers each held role that grants it, and a click acts as that role", async () => {
     authState.availableRoles = [
-      { id: "analyst", capabilities: ["query_development"] },
-      { id: "org_admin", capabilities: ["user_management", "query_development"] },
-      { id: "people_lead", capabilities: ["user_management"] },
+      { id: "analyst", effectiveCapabilities: ["query_development"] },
+      { id: "org_admin", effectiveCapabilities: ["user_management", "query_development"] },
+      { id: "people_lead", effectiveCapabilities: ["user_management"] },
     ];
     page();
     expect(screen.getByText("Not Authorized")).toBeInTheDocument();
@@ -428,7 +428,7 @@ describe("CapabilityGate refusing a page the acting role does not grant (REQ-206
   });
 
   it("says so when no role the person holds grants it", () => {
-    authState.availableRoles = [{ id: "analyst", capabilities: ["query_development"] }];
+    authState.availableRoles = [{ id: "analyst", effectiveCapabilities: ["query_development"] }];
     page();
     expect(screen.getByTestId("role-switch-none")).toHaveTextContent(
       "None of the roles you hold grants this page.",
@@ -436,7 +436,7 @@ describe("CapabilityGate refusing a page the acting role does not grant (REQ-206
   });
 
   it("offers nothing from a gate that owns no region", () => {
-    authState.availableRoles = [{ id: "org_admin", capabilities: ["user_management"] }];
+    authState.availableRoles = [{ id: "org_admin", effectiveCapabilities: ["user_management"] }];
     render(
       <CapabilityGate capability={"user_management" as Capability}>
         <span>Invite</span>

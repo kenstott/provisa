@@ -68,8 +68,8 @@ def run():
         ("[x IN [1, 2, 3] WHERE x > 1]", [2, 3]),
         ("[x IN [1, 2, 3] | x * 2]", [2, 4, 6]),
         ("reduce(s = 0, x IN [1, 2, 3] | s + x)", 6),
-        # A map's values are JSON-encoded (to_json), as the IR writes a map.
-        ("{a: 1}['a']", "1"),
+        # A map's key read by name is its value, as m.a reads it (openCypher Map2).
+        ("{a: 1}['a']", 1),
     ],
 )
 def test_a_list_function_answers_on_duckdb_as_cypher_defines_it(run, expression, value):

@@ -1,21 +1,27 @@
 # Provisa
 
-**Connect your databases. Query them in 5 minutes with GraphQL, gRPC, SQL or MCP, over any API or protocol.**
+**Connect Postgres, Snowflake and Salesforce. Query with SQL, GraphQL or your AI agent. In 5 minutes.**
 
-Provisa puts one API over all your data. Point it at your databases and business applications, describe how they fit together, and query the joined result over REST, GraphQL, SQL, gRPC, MCP, JSON:API, Arrow Flight, pgwire or Bolt.
+Governed from the first query.
 
-It works because everything comes from a single model: your domains, the relationships between your tables, and the policies on them, across every source. Provisa runs from that model and governs from it, so there's nothing to keep in sync. The registered relationships are the only joins a query may make, and the access policies are compiled into every query plan. Four things follow from the one model:
+---
 
-- **Federation.** 73 connectors reach more than 85 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Query them in SQL, GraphQL or Cypher, over nine protocols.
-- **Metrics.** A metric is a named, governed aggregate. You define it once, and every tool and language that asks for it gets the same definition.
-- **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values, which is what lets it answer questions about your data. A concept stays a draft until it reaches data, directly or through other concepts. The glossary says what a concept is; a metric says how a number is computed.
-- **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol, and every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
+Provisa is a data kernel, a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
 
-You can ask in **GraphQL, Cypher or SQL**, and connect over **pgwire, Bolt, gRPC, REST, Arrow Flight or JDBC**. Every query language is lowered to one intermediate representation, and governance is applied there, once, so a policy can't drift between languages. On the way out, that form is translated into each source's own dialect. A new query language is a new front end on the same core.
+It is built the way an operating system is built. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling, command bindings answer other tools' calls, and clients connect over standard protocols.
 
-Reads and writes both go through it. A query across sources fans out through the federation layer. Writes, and reads from a single source, go straight to that source's driver, governed the same way and typically back in under 100 ms. Arrow Flight columnar streaming is built in.
+The primitives are [sources](docs/sources.md), [tables](docs/configuration.md#tables), [relationships](docs/configuration.md#relationships), [terms](docs/ontology.md), [roles](docs/access-model.md), [capabilities](docs/access-model.md#capabilities), [grants](docs/access-model.md#grants), [scope](docs/access-model.md#scope), [products](docs/data-products.md), and contracts.
 
-The model has a small vocabulary: domains, relationships, roles and policies. That keeps it easy to read and to audit, and you can read the policy set and know what it does. Provisa itself is a light query compiler. It never sits in your data path as a runtime. It turns a request into native queries, routes them and steps aside, which is why the estate stays fast.
+Every language compiles to one IR. Governance is applied there and pushed down into the native query your engine runs.
+
+Provisa compiles each request and hands it to your engine. Results stream back. It scales horizontally and vertically to support your workloads, and the heavy compute is offloaded to your engine.
+
+Four things follow from the one model:
+
+- **Cross-source queries.** 76 source drivers reach more than 200 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Federation is declared in the model; the engine you choose runs it.
+- **Metrics.** A metric is a named, governed aggregate. Define it once, and every tool and language that asks for it gets the same definition.
+- **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values. A concept stays a draft until it reaches data. The glossary says what a concept is; a metric says how a number is computed.
+- **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol. Every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
 
 You can use it in two ways, and they combine:
 
@@ -33,9 +39,9 @@ From a checkout of this repository you can run any demo on your own machine:
 ./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
-A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
+A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. Running from a checkout needs Rust (`cargo`): before the API starts, the start script builds `provisa._encoders`, the Rust encoders pgwire, gRPC and JSON use, with `rust/build-local.sh` when `provisa/_encoders.so` is missing or older than its sources under `rust/`, and stops if `cargo` is missing or the build fails. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
 
-## The federation model
+## The model
 
 Four ideas carry the whole design. Every source is reduced to tables. Every query is reduced to one SQL-like form. Reachability decides what is queried live and what is copied first. And a freshness strategy keeps each copy, and each derived dataset, as current as it needs to be.
 
@@ -43,7 +49,7 @@ Start with the sources. Each one is expressed as a set of two-dimensional tables
 
 Queries get the same treatment. SQL, for all its dialects, is the language of analysis over tables, which makes a SQL-like form the natural common target. So every request, whatever language it arrives in, is lowered to that form first. SQL and GraphQL lower easily. Cypher's paths and graph semantics take real work, but they get there. Because everything passes through one form before anything else happens, governance applies in one place, whatever language the request came in.
 
-With tabular sources and one query form, federation can cover both live querying and warehousing: what a live query engine like Trino does, plus the materialization those engines lean on. **Reachability** ties the two together. For any source, can the engine query it where it is, or does its data have to be copied somewhere queryable first? The answer splits the estate into what's read live and what's copied.
+With tabular sources and one query form, the model covers both live querying and warehousing, which is what a live query engine like Trino does plus the materialization those engines lean on. **Reachability** ties the two together. For any source, can the engine query it where it is, or does its data have to be copied somewhere queryable first? The answer splits the estate into what's read live and what's copied.
 
 Most databases already have some kind of live link: DuckDB's `ATTACH`, PostgreSQL's `postgres_fdw`, Databricks external links. So most databases can act as a federation engine up to a point. None covers everything. Each reaches a particular set of sources and copies the rest, and none says plainly which is which. The model makes reachability explicit, as a defined set of methods per source that say what the engine reaches live and, by elimination, what has to be copied.
 
@@ -51,9 +57,9 @@ That leaves freshness. For each source the engine can't reach, how current does 
 
 Derived datasets fit the same shape: derived tables, aggregates, the output of a transform. They're written in the same form, so lineage comes for free. The path from each system of origin to a final output is the definition that produced it, readable from end to end. Building them asks the freshness question one step further on: does the dataset refresh on a schedule, only once its preconditions are met, continuously, or as a pinned historical snapshot? The choices are the same small set as for a source copy, so a derived dataset's build policy uses the same vocabulary.
 
-Dimensional models follow directly. A star schema's facts and dimensions are derived datasets like any other. A dimension is a conformed, deduplicated projection, and a fact table is a join and aggregate reduced to a grain, each with its own build and freshness policy. Slowly changing dimensions need nothing special: a pinned snapshot is Type 2 history, a scheduled rebuild is Type 1. Because the schema is defined in the model and isn't bound to one warehouse's tables, the same facts and dimensions can be built in Oracle, in Databricks, or left virtual over an MPP engine, without remodeling.
+Dimensional models follow directly. A star schema's facts and dimensions are derived datasets like any other. A dimension is a conformed, deduplicated projection, and a fact table is a join and aggregate reduced to a grain, each with its own build and freshness policy. Slowly changing dimensions need nothing special, since a pinned snapshot is Type 2 history and a scheduled rebuild is Type 1. Because the schema is defined in the model and isn't bound to one warehouse's tables, the same facts and dimensions can be built in Oracle, in Databricks, or left virtual over an MPP engine, without remodeling.
 
-Data Vault fits the same way, a layer earlier. Hubs are deduplicated business-key datasets, links are the registered relationships between them, and satellites are insert-only, time-stamped attribute datasets that keep the history. A satellite is simply a derived dataset on the change-signal strategy: load date plus hashdiff is change capture applied to descriptive attributes, and insert-only history is the pinned-snapshot strategy. Point-in-time and bridge tables are more derived datasets, built for query speed. So a raw vault is a set of derived datasets in the model, and a star schema is a projection off it, both generated and both portable across engines. The methodology stays yours to decide: what becomes a hub, the grain of a satellite, how to split. Once you've decided, the decision lives in the model. No ETL welds it to one warehouse.
+Data Vault fits the same way, a layer earlier. Hubs are deduplicated business-key datasets, links are the registered relationships between them, and satellites are insert-only, time-stamped attribute datasets that keep the history. A satellite is a derived dataset on the change-signal strategy. Its load date plus hashdiff is change capture applied to descriptive attributes, and its insert-only history is the pinned-snapshot strategy. Point-in-time and bridge tables are more derived datasets, built for query speed. So a raw vault is a set of derived datasets in the model, and a star schema is a projection off it, both generated and both portable across engines. You still decide what becomes a hub, the grain of a satellite and how to split. Once you've decided, the decision lives in the model, and no ETL welds it to one warehouse.
 
 You declare both patterns with **two shortcuts** instead of hand-written views. They're the building blocks every star schema and Data Vault use, and they don't commit you to either method:
 
@@ -66,7 +72,7 @@ Each `entity` or `fact` becomes exactly the materialized views, bitemporal setti
 
 Time travel means keeping every version of a row instead of overwriting it, so you can ask what the data was at any past moment. Engines differ a lot in how efficiently they can do that, so Provisa makes it part of the materialized view's **definition**, whatever the storage engine. Declare it once and it works on any store that can hold a materialized view.
 
-What keeps it portable is that it's **append-only**. A version, once written, is never updated or deleted. The usual bitemporal trick of closing a row by writing back a "valid to" date needs an UPDATE, which many engines can't do cheaply, or at all, over a federated store. So every refresh **appends** instead, and which version was in force at a given time is worked out at read time from the log. There are two ways to append:
+What keeps it portable is that it's **append-only**. A version, once written, is never updated or deleted. The usual bitemporal trick of closing a row by writing back a "valid to" date needs an UPDATE, which many engines can't do cheaply, or at all, over a distributed store. So every refresh **appends** instead, and which version was in force at a given time is worked out at read time from the log. There are two ways to append:
 
 - **Snapshot** appends the whole fresh dataset, stamped with the refresh's system time. There's no diffing and it's correct on every engine, but storage grows by a full copy per refresh.
 - **Delta** appends only what changed, plus tombstones for removed keys. The engine works out the delta itself, with anti-joins inside an `INSERT … SELECT`. Provisa never folds it row by row. It's smaller, and it needs an entity key.
@@ -75,26 +81,26 @@ Provisa manages system time, when it recorded a version, this way. Valid time, w
 
 Reading needs no special syntax. A plain query against a bitemporal MV returns the **current** state, rebuilt from the log. To go back in time, send an `X-Provisa-As-Of: <timestamp>` header and the whole query is answered as the estate stood then, the same way on every store. Add `X-Provisa-As-Recorded` to read the data as Provisa had recorded it at a time, so a correction recorded later doesn't change a replay of the past. Turn it on for any materialized view in the admin UI (the **Time Travel** control: off, snapshot or delta, plus an entity key) or over the admin API.
 
-Reachability and freshness together make a general model for federation: a definition of what is live, what is copied, and how fresh each copy stays, independent of what any one engine can reach. The model is portable, so your estate isn't tied to whichever vendor's federation happens to reach the most sources today.
+Reachability and freshness together define what is live, what is copied, and how fresh each copy stays, independent of what any one engine can reach. The model is portable, so your estate isn't tied to whichever vendor's reach happens to cover the most sources today.
 
 ## Features
 
 ### Query Interfaces
 
-These are the languages and structured APIs you write queries in. Each has its own syntax and semantics; governance (RLS, masking, column visibility, relationship enforcement) applies uniformly across all of them regardless of which wire protocol delivers them.
+These are the languages and structured APIs you write queries in. Each has its own syntax and semantics. Governance (RLS, masking, column visibility, relationship enforcement) applies the same way to all of them, whichever wire protocol delivers them.
 
-- **GraphQL** — Per-role schemas with field-level visibility, filtering, cursor-based pagination and aggregate queries (`count`, `sum`, `avg`, `min`, `max`). The schema offers only registered relationships, so every query is structurally valid by construction, and GraphQL is the fastest path to a correct simple query. Apollo APQ is included: queries are hashed and registered on the server, later calls send only the hash over HTTP GET, and responses become CDN-cacheable with no client changes. Lookup tables below a configurable row threshold appear as enum types.
-- **SQL** — Full SQL over federated data, unconstrained and more expressive than GraphQL. Write standard SQL, correlated subqueries included, and it runs across sources unchanged. A single-source query skips the federation layer entirely (under 100 ms).
-- **Cypher** — Graph query language over the same federated schema. Traverse relationships as graph edges; union sources; variable-length paths. Governance applies identically to GraphQL and SQL.
-- **gRPC model API** — A `.proto` generated from the registered schema, with typed query and insert RPCs for each table at the root of a role's schema, and streamed responses. Like GraphQL, it's schema-driven: the registration model is the contract, and protobuf is the wire encoding. It's a full per-table query interface, where Arrow Flight is a columnar streaming transport.
-- **JSON:API** — A structured query API at `/data/jsonapi/{table}`, HTTP-only by design. It supports JSON:API 1.1: sparse fieldsets (`fields[table]=col1,col2`), filter expressions (`filter[field][op]=value`), compound documents (`include=relation`) and sort. It queries one table at a time with a standard filter syntax, so use SQL or GraphQL when you need a general-purpose query language.
-- **Query Language Explorer** — Write a GraphQL query and see live **Semantic SQL** and **Cypher** translations in side panels; copy either or jump directly into the SQL or Graph editor. A practical workflow is to sketch query fragments in GraphQL, then stitch the resulting SQL into complex views or reports.
+- **GraphQL.** Per-role schemas with field-level visibility, filtering, cursor-based pagination and aggregate queries (`count`, `sum`, `avg`, `min`, `max`). The schema offers only registered relationships, so every query is structurally valid by construction, and GraphQL is the fastest path to a correct simple query. Apollo APQ is included. Queries are hashed and registered on the server, later calls send only the hash over HTTP GET, and responses become CDN-cacheable with no client changes. Lookup tables below a configurable row threshold appear as enum types.
+- **SQL.** Full SQL across all sources, unconstrained and more expressive than GraphQL. Write standard SQL, correlated subqueries included, and it runs across sources unchanged. A single-source query routes direct to the driver (under 100 ms).
+- **Cypher.** The graph query language runs over the same model. You can traverse relationships as graph edges, union sources and follow variable-length paths. Governance applies as it does for GraphQL and SQL.
+- **gRPC model API.** A `.proto` generated from the registered schema, with typed query and insert RPCs for each table at the root of a role's schema, and streamed responses. Like GraphQL it's schema-driven, with the registration model as the contract and protobuf as the wire encoding. It's a full per-table query interface, where Arrow Flight is a columnar streaming transport.
+- **JSON:API.** A structured query API at `/data/jsonapi/{table}`, HTTP-only by design. It supports JSON:API 1.1 with sparse fieldsets (`fields[table]=col1,col2`), filter expressions (`filter[field][op]=value`), compound documents (`include=relation`) and sort. It queries one table at a time with a standard filter syntax, so use SQL or GraphQL when you need a general-purpose query language.
+- **Query Language Explorer.** Write a GraphQL query and see live **Semantic SQL** and **Cypher** translations in side panels; copy either or jump directly into the SQL or Graph editor. A practical workflow is to sketch query fragments in GraphQL, then stitch the resulting SQL into complex views or reports.
 
 The Explorer shows a GraphQL query alongside its live SQL and Cypher translations:
 
 ![Query Language Explorer](docs/images/query-explorer.png)
 
-The same federated schema also shows as a live graph, with domain and node labels, relationship types and variable-length traversals:
+The model also shows as a live graph, with domain and node labels, relationship types and variable-length traversals:
 
 ![Graph Visualization](docs/images/graph-view.png)
 
@@ -102,7 +108,7 @@ The same federated schema also shows as a live graph, with domain and node label
 
 These tools help you write queries in the languages above. They aren't query languages themselves.
 
-- **Natural language query** — An NL→SQL/Cypher/GraphQL pipeline that runs on Claude. Describe what you want in plain English, and the pipeline writes a query in the language you choose, with an interactive validation loop before anything runs.
+- **Natural language query.** An NL→SQL/Cypher/GraphQL pipeline that runs on Claude. Describe what you want in plain English, and the pipeline writes a query in the language you choose, with an interactive validation loop before anything runs.
 
 ![Natural Language Query](docs/images/natural-language.png)
 
@@ -110,87 +116,87 @@ These tools help you write queries in the languages above. They aren't query lan
 
 These are the connection protocols. SQL, GraphQL and Cypher ride over them, and the protocol you pick changes neither the query interface nor how governance behaves.
 
-- **pgwire** — Any PostgreSQL client (psql, DBeaver, DataGrip, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. Accepts SQL only. Full governance pipeline applies. `pg_catalog` and `information_schema` answered from an in-memory catalog so schema browsers work without a federation round-trip. TLS optional.
-- **Bolt (Neo4j)** — Any Neo4j client (Neo4j Browser, Bloom, official drivers) connects over the Bolt protocol and runs Cypher against the federated graph. Each role the user holds surfaces as a `provisa_<role>` database. Same governance as every other transport. TLS optional.
-- **Arrow Flight** — High-throughput columnar streaming over gRPC; accepts GraphQL or SQL as the query input. Unbounded result sets, no server-side materialization, no separate infrastructure required.
-- **JDBC** — BI tool integration (Tableau, Power BI, DBeaver).
-- **WebSocket / SSE** — Subscriptions: near-real-time change events; backends: PG native, MongoDB native, CDC, polling. Also exposed over Kafka.
+- **pgwire.** Any PostgreSQL client (psql, DBeaver, DataGrip, asyncpg, SQLAlchemy, pandas `read_sql`) connects on port 5439 as if it were a Postgres server. It accepts SQL only, and the full governance pipeline applies. Provisa answers `pg_catalog` and `information_schema` from an in-memory catalog, so schema browsers work without a catalog round-trip. TLS is optional.
+- **Bolt (Neo4j).** Any Neo4j client (Neo4j Browser, Bloom, official drivers) connects over the Bolt protocol and runs Cypher over the registered schema. Each role the user holds surfaces as a `provisa_<role>` database. Governance is the same as on every other transport, and TLS is optional.
+- **Arrow Flight.** High-throughput columnar streaming over gRPC, with GraphQL or SQL as the query input. Result sets are unbounded, nothing is materialized on the server, and you need no separate infrastructure.
+- **JDBC.** Connects BI tools such as Tableau, Power BI and DBeaver.
+- **WebSocket / SSE.** Subscriptions deliver near-real-time change events, backed by PG native, MongoDB native, CDC or polling. They're also exposed over Kafka.
 
 ### Data Sources
 
-- **73 connectors, 85+ kinds of source** — The larger number counts the hosted PostgreSQL services (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) and the File Crawler's file formats one by one. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
-- **Smart routing** — A single-source query skips federation (under 100 ms). A multi-source query routes through the federation layer, on your own cluster or on the embedded workers.
-- **API sources** — Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Federated joins between API sources and relational sources need no extra setup.
-- **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top
-- **File sources** — CSV, Parquet, and SQLite files as queryable tables; supports local paths and remote object storage (`s3://`, `ftp://`, `sftp://`)
-- **Kaggle datasets** — search Kaggle's public catalog and register a dataset by token-authenticated live search, no manual download; registers as a single file source whose tables are discovered automatically, CSV/Parquet bundles only
-- **Kafka integration** — Topics as read-only tables; query results as Kafka sinks
-- **Scheduled triggers** — Cron and interval triggers (APScheduler) that fire webhooks, mutations, or Kafka sink publishes
-- **Federation performance hints** — SQL-comment routing hints override automatic routing decisions
+- **77 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
+- **Smart routing.** A single-source query routes direct to the driver (under 100 ms). A multi-source query routes through the engine, on your own cluster or on the embedded workers.
+- **API sources.** Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Cross-source joins between API sources and relational sources need no extra setup.
+- **Remote schema introspection.** Point at any GraphQL, OpenAPI or gRPC endpoint, and its documented operations surface as queryable tables, graph nodes and edges with full governance applied on top.
+- **File sources.** CSV, Parquet and SQLite files become queryable tables, from local paths or remote object storage (`s3://`, `ftp://`, `sftp://`).
+- **Kaggle datasets.** Search Kaggle's public catalog by token-authenticated live search and register a dataset with no manual download. It registers as a single file source whose tables are discovered automatically. Only CSV and Parquet bundles are supported.
+- **Kafka integration.** Topics read as read-only tables, and query results can go to Kafka sinks.
+- **Scheduled triggers.** Cron and interval triggers (APScheduler) fire webhooks, mutations or Kafka sink publishes.
+- **Query routing hints.** SQL comments override automatic routing decisions.
 
 ![Data Sources](docs/images/data-sources.png)
 
-Sources, files, and remote endpoints are registered as governed tables from the UI:
+You register sources, files and remote endpoints as governed tables from the UI:
 
 ![Table Registration](docs/images/table-registration.png)
 
 ### Security & Governance
 
-- **Row-level security** — Per-table, per-role WHERE clause injection
-- **Column masking** — Per-column masking (regex, constant, truncate) with role-based bypass
-- **Column presets** — Server-side static or session-variable values injected on insert/update; not exposed in mutation input types
-- **Write permissions** — Per-column mutation access control (`writable_by`)
-- **Inherited roles** — Roles inherit RLS, visibility, and masking from a parent role recursively
-- **Tracked functions & webhooks** — DB functions and outbound webhooks exposed as GraphQL mutations with typed return shapes
-- **ABAC approval hook** — Pre-execution authorization hook; webhook, gRPC, or unix_socket transport; per-table, per-source, or global scope; configurable fallback policy
-- **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
+- **Row-level security.** Provisa injects a WHERE clause per table and per role.
+- **Column masking.** Each column can be masked by regex, constant or truncation, with bypass by role.
+- **Column presets.** The server injects static or session-variable values on insert and update. They don't appear in mutation input types.
+- **Write permissions.** `writable_by` controls mutation access per column.
+- **Inherited roles.** Roles inherit RLS, visibility and masking from a parent role recursively.
+- **Tracked functions & webhooks.** DB functions and outbound webhooks are exposed as GraphQL mutations with typed return shapes.
+- **ABAC approval hook.** A hook authorizes requests before execution. It runs over webhook, gRPC or unix_socket transport, at table, source or global scope, with a configurable fallback policy.
+- **Pluggable auth.** Firebase, Keycloak, OAuth 2.0, or simple auth for testing.
 
 ![Security Roles](docs/images/security-roles.png)
 
 ### Delivery & Performance
 
-- **Materialized views as recorded transforms** — An MV records the transform that produced it: its join shape or SQL, the per-source input signals it was built from (Iceberg snapshot, RDB watermark), and a determinism check at registration. Because the transform is recorded, Provisa can rewrite a query, or part of one, onto a fresh MV without you changing the query. Matching works on join patterns and accepts partial matches, so an MV that covers a subset of the joins still applies, and the remaining joins are kept.
-- **Hot table inlining** — Small frequently-joined lookup tables are inlined as VALUES CTEs directly in the query plan, eliminating cross-source round trips for dimension data
-- **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
-- **Observability as data** — Distributed traces, metrics and logs are collected through OpenTelemetry, compacted into Iceberg on S3 and registered as queryable tables (`traces`, `metrics`, `logs`, `queries`) in the federated schema. Query them with SQL, GraphQL or Cypher beside your business data. Join a `customers` table to `queries`, for instance, to see who ran what and how long it took.
+- **Materialized views as recorded transforms.** An MV records its join shape or SQL, the per-source input signals it was built from (Iceberg snapshot, RDB watermark), and a determinism check at registration. Because the transform is recorded, Provisa can rewrite a query, or part of one, onto a fresh MV without you changing the query. Matching works on join patterns and accepts partial matches, so an MV that covers a subset of the joins still applies, and the remaining joins are kept.
+- **Hot table inlining.** Small, frequently joined lookup tables are inlined as VALUES CTEs in the query plan, which removes cross-source round trips for dimension data.
+- **Query caching.** A Redis result cache is partitioned by role and RLS, and an APQ hash cache is included.
+- **Observability as data.** Distributed traces, metrics and logs are collected through OpenTelemetry, compacted into Iceberg on S3 and registered as queryable tables (`traces`, `metrics`, `logs`, `queries`) in the schema. Query them with SQL, GraphQL or Cypher beside your business data. Join a `customers` table to `queries`, for instance, to see who ran what and how long it took.
 
 ### Administration & Integration
 
-- **Admin API** — GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval
-- **Reports viewer** — `/admin/reports` lists the built-in ops-domain management views and any registered custom reports; requires the `observability` capability
-- **Table preview** — every registered table has a server-paged governed data viewer with pushed-down filters, multi-level group-by, and CSV export
-- **GraphQL Voyager** — Interactive role-scoped schema visualization as an entity-relationship diagram
-- **LLM relationship discovery** — Claude suggests foreign-key candidates.
-- **Python client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy dialect, ADBC support
-- **Data ingestion** — HTTP endpoints for pushing JSON event data into the platform
-- **Hasura v2 / DDN import** — Convert Hasura v2 metadata or DDN supergraph YAML to Provisa config
-- **Apollo Federation** — Expose Provisa as an Apollo Federation v2 subgraph
+- **Admin API.** GraphQL at `/admin/graphql` covers config upload and download, relationship editing and query approval.
+- **Reports viewer.** `/admin/reports` lists the built-in ops-domain management views and any registered custom reports. It requires the `observability` capability.
+- **Table preview.** Every registered table has a server-paged governed data viewer with pushed-down filters, multi-level group-by and CSV export.
+- **GraphQL Voyager.** An interactive, role-scoped view of the schema as an entity-relationship diagram.
+- **LLM relationship discovery.** Claude suggests foreign-key candidates.
+- **Python client.** `pip install provisa-client` gives you GraphQL and SQL results as DataFrames, Arrow Flight results as pyarrow Tables, a SQLAlchemy dialect and ADBC support.
+- **Data ingestion.** HTTP endpoints accept pushed JSON event data.
+- **Hasura v2 / DDN import.** Convert Hasura v2 metadata or DDN supergraph YAML to Provisa config.
+- **Apollo Federation.** Expose Provisa as an Apollo Federation v2 subgraph.
 
-Role-scoped schema visualized as an entity-relationship diagram (GraphQL Voyager):
+GraphQL Voyager draws a role's schema as an entity-relationship diagram:
 
 ![Schema Voyager](docs/images/schema-voyager.png)
 
-Relationships are registered, approved, and enforced as the only legal JOIN paths:
+Relationships are registered, approved and enforced as the only legal JOIN paths:
 
 ![Relationships](docs/images/relationships.png)
 
 ## Security Model
 
-This is where "on the path every query already takes" has to hold up. Provisa applies one layered security model to every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), and no query path goes around it. Coverage comes from the design, so nobody has to remember anything: add a source, a column or a relationship, and every layer applies to it at once, with nothing extra to register.
+Provisa applies one layered security model to every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), and no query path goes around it. Nobody has to remember anything. Add a source, a column or a relationship, and every layer applies to it at once with nothing extra to register.
 
 The layers apply in order, and a request must clear each one before the next is checked.
 
 ### Layer 0 — Introspection filtering
 
-The schema and catalog a role sees hold only the tables in its `domain_access` list and the columns that pass their `visible_to` rules. Anything outside the role's access is invisible from the start: it can't be queried, autocompleted or even inferred to exist. This covers the GraphQL schema, the SQL catalog and the query editor's schema browser.
+The schema and catalog a role sees hold only the tables in its `domain_access` list and the columns that pass their `visible_to` rules. Anything outside the role's access can't be queried, autocompleted or even inferred to exist. This covers the GraphQL schema, the SQL catalog and the query editor's schema browser.
 
 ### Layer 1 — Public access
 
-Tables in domains with no `domain_access` restriction are visible to every authenticated identity, with nothing more to configure. Data that really is public takes no effort.
+Tables in domains with no `domain_access` restriction are visible to every authenticated identity, with nothing more to configure.
 
 ### Layer 2 — Domain access
 
-Each role carries a `domain_access` list of domain IDs, and a query that touches a table outside those domains is refused before it runs. This is the broad ownership boundary: an HR role can't reach finance tables, however the SQL is written.
+Each role carries a `domain_access` list of domain IDs, and a query that touches a table outside those domains is refused before it runs. This is the broad ownership boundary. An HR role can't reach finance tables, however the SQL is written.
 
 ### Layer 3 — Row-level security
 
@@ -206,13 +212,13 @@ Masked columns are refused in `WHERE` and `HAVING` clauses. Otherwise a caller c
 
 ### Relationship governance
 
-In SQL, a JOIN condition must match a registered, approved relationship between the tables, and an unapproved join is refused. Each relationship carries a readable reason and description, which tell people and autonomous agents why the path exists. This is governance policy and not a hard security boundary. Layers 2 to 5 hold whatever the join looks like, so a deliberate workaround exposes nothing the role couldn't reach with two separate queries, and every attempt is logged for audit.
+In SQL, a JOIN condition must match a registered, approved relationship between the tables, and an unapproved join is refused. Each relationship carries a readable reason and description, which tell people and autonomous agents why the path exists. This is governance policy. It isn't a hard security boundary. Layers 2 to 5 hold whatever the join looks like, so a deliberate workaround exposes nothing the role couldn't reach with two separate queries, and every attempt is logged for audit.
 
 No invalid join ever runs on your data. Roles are governed by default, and opting out means deliberately granting the `ignore_relationships` right to a role you trust. An agent's OAuth token maps to a role, so an agent gets the same layers a person does. Data catalogs with a context layer tell an agent what it should do; Provisa enforces what it can do.
 
 ---
 
-These layers compose. A role with domain access, RLS and masked columns has every layer active at once, because each layer is configured on its own and applies to any query that touches a governed object.
+A role with domain access, RLS and masked columns has every layer active at once, because each layer is configured on its own and applies to any query that touches a governed object.
 
 ## Quick Start
 
@@ -286,9 +292,9 @@ See [docs/integrations.md](docs/integrations.md) for Tableau and Power BI setup 
 
 ### PostgreSQL Wire Protocol (pgwire)
 
-Provisa speaks the PostgreSQL wire protocol on port 5439. Any client that can connect to Postgres connects to Provisa, with no driver, no adapter and no change to your existing tools.
+Provisa speaks the PostgreSQL wire protocol on port 5439. Any client that can connect to Postgres connects to Provisa with no driver or adapter and no change to your existing tools.
 
-**The PostgreSQL username selects the Provisa role.** With `provider: none` (trust mode), the password is ignored and any configured role name is accepted as the username — connect as `analyst`, `admin`, or any role to see that role's governed view of the data. With `provider: simple`, the password is bcrypt-validated. Other providers (`firebase`, `keycloak`, `oauth`) are not supported over pgwire.
+**The PostgreSQL username selects the Provisa role.** With `provider: none` (trust mode), the password is ignored and any configured role name is accepted as the username. Connect as `analyst`, `admin` or any other role to see that role's governed view of the data. With `provider: simple`, the password is bcrypt-validated. Other providers (`firebase`, `keycloak`, `oauth`) are not supported over pgwire.
 
 ```bash
 # psql — connect as analyst role
@@ -310,7 +316,7 @@ df = pd.read_sql("SELECT * FROM orders", engine)
 
 Every query runs through the full governance pipeline, so domain access, RLS, masking and the predicate guard apply exactly as they do for GraphQL and REST. Schema browsers (DBeaver, DataGrip, pgAdmin) work with no setup. Provisa answers their `pg_catalog` and `information_schema` queries from an in-memory catalog scoped to the role's domain access, so users see only the tables and columns they may query.
 
-DataGrip browsing the governed schema and its foreign-key diagram over pgwire, with no driver and no adapter:
+Here DataGrip browses the governed schema and its foreign-key diagram over pgwire, with no driver or adapter:
 
 ![Provisa in DataGrip over pgwire](docs/images/pgwire-datagrip.png)
 
@@ -318,9 +324,9 @@ TLS is enabled by setting `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY`. The po
 
 ### Bolt (Neo4j Wire Protocol)
 
-Provisa also speaks the Neo4j **Bolt** protocol, so graph-native tools connect directly and run Cypher against the federated graph. Nothing is exported, and you need no separate graph database. Point **Neo4j Browser** or **Bloom** at Provisa and traverse relationships across sources under the same governance (domain access, RLS, masking).
+Provisa also speaks the Neo4j **Bolt** protocol, so graph-native tools connect directly and run Cypher over the registered schema. Nothing is exported, and you need no separate graph database. Point **Neo4j Browser** or **Bloom** at Provisa and traverse relationships across sources under the same governance (domain access, RLS, masking).
 
-Neo4j Browser runs Cypher against Provisa here. Its node labels, relationship types and property keys all come straight from the registered schema:
+Here Neo4j Browser runs Cypher against Provisa. Its node labels, relationship types and property keys all come from the registered schema:
 
 ![Provisa in Neo4j Browser over Bolt](docs/images/bolt-neo4j-browser.png)
 
@@ -415,24 +421,38 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 
 ## Sizing
 
-Provisa includes a built-in federation engine for multi-source queries. At first launch you choose a RAM budget; Provisa derives the number of local federation workers automatically.
+Provisa includes embedded query workers for multi-source queries. At first launch you choose a RAM budget; Provisa derives the worker count automatically.
 
 | Host RAM | Workers | Typical workload |
 | --- | --- | --- |
 | < 24 GB | 0 | Development, single-source queries, small teams |
 | 24–47 GB | 1 | Small team, moderate cross-source queries |
 | 48–95 GB | 2 | Departmental deployment, mixed BI + notebook usage |
-| 96 GB+ | 4 | Large department, heavy concurrent federation |
+| 96 GB+ | 4 | Large department, heavy concurrent cross-source workloads |
 
 Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`federation_workers: N`) and running `provisa restart`. Set to `0` to run coordination-only (single-node).
 
 ### Scaling beyond a single box
 
-**Horizontal scale-out** — Run several Provisa instances behind a load balancer. Each instance is a complete system. Every instance must point at the same config DB (set `CONFIG_DB_HOST` on the secondary boxes), and they can share one Redis instance (`REDIS_URL`) for a single cache. Most queries spread across instances with no change. A very large cross-source join can outgrow one instance, and then you need a larger box or an external federation cluster.
+**Horizontal scale-out.** Run several Provisa instances behind a load balancer. Each instance is a complete system. Every instance must point at the same config DB (set `CONFIG_DB_HOST` on the secondary boxes), and they can share one Redis instance (`REDIS_URL`) for a single cache. Most queries spread across instances with no change. A very large cross-source join can outgrow one instance, and then you need a larger box or an external engine cluster.
 
-**Shared Redis** — Set `REDIS_URL` on each instance to point at an external Redis. Shared Redis means cache entries from one instance are available to all, improving hit rates across the cluster.
+**Shared Redis.** Set `REDIS_URL` on each instance to point at an external Redis. Cache entries from one instance are then available to all of them, which improves hit rates across the cluster.
 
-**Bring your own federation cluster** — Point Provisa at an existing external federation cluster instead of the embedded workers. Recommended for large-scale or cloud deployments; see [docs/deployment.md](docs/deployment.md) for configuration.
+**Bring your own engine cluster.** Point Provisa at an existing external engine cluster instead of the embedded workers. We recommend this for large-scale or cloud deployments, and [docs/deployment.md](docs/deployment.md) covers the configuration.
+
+## Contributing
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kenstott/provisa?quickstart=1)
+
+Open the repository in the dev container and you can run the tests without any other setup. In VS Code, install the Dev Containers extension and run **Dev Containers: Reopen in Container**. In GitHub, choose **Code → Codespaces → Create codespace**. The container brings the pinned Python, Rust, Go and Node toolchains and Docker for the tests that start their own containers. It is one container: the unit tests run PostgreSQL (with pgvector) embedded, from the pgserver wheel. That wheel has no Linux aarch64 build ([docs/cli.md](docs/cli.md)), so in a local container on Apple silicon the tests that need PostgreSQL cannot start it; Codespaces runs on x86_64 and has it. The first build syncs the Python dependencies, compiles the Rust encoders and installs the UI's packages.
+
+When it finishes, this command runs the unit suite:
+
+```bash
+pytest tests/unit -n auto
+```
+
+For the UI unit tests, run `npm run test:unit` in `provisa-ui`.
 
 ## License
 

@@ -26,28 +26,28 @@
 
 ## 所有数据源 {: #all-sources }
 
-Provisa 注册了 **73** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 73 种；索引即为计数。
+Provisa 注册了 **77** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 77 种；索引即为计数。
 
 | # | 分组 | 数据源类型 |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`、`mysql`、`mariadb`、`singlestore`、`sqlserver`、`oracle`、`duckdb`、`cockroachdb`、`yugabytedb`、`greenplum`、`tidb`、`firebird`、`airport`、`saphana`、`hiveserver2` |
-| 16–24 | [云数据仓库](#cloud-data-warehouses) | `snowflake`、`bigquery`、`databricks`、`redshift`, `athena`、`fabric`、`synapse`、`trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`、`druid`、`exasol`、`elasticsearch`、`pinot` |
-| 30–33 | [数据湖 / 开放表格式](#data-lake-open-table-formats) | `iceberg`、`delta_lake`、`hive`、`hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`、`cosmosdb`、`qdrant`、`cassandra`、`redis` |
-| 39–40 | [代码源](code-sources.md) | `node`, `python` |
-| 41–43 | [流式处理](#streaming) | `kafka`、`websocket`、`rss` |
-| 44 | [推送接收器](#push-receiver) | `ingest` |
-| 45–46 | [图与语义](#graph-semantic) | `neo4j`、`sparql` |
-| 47–51 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
-| 52–53 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
-| 54–61 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365` |
-| 62–67 | [API 数据源](#api-sources) | `openapi`、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
-| 71 | [数据剖析器](#data-profiler) | `data_profiler` |
-| 72 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`、`mysql`、`mariadb`、`singlestore`、`sqlserver`、`oracle`、`duckdb`、`cockroachdb`、`yugabytedb`、`greenplum`、`tidb`、`firebird`、`airport`、`saphana`、`hiveserver2`、`jdbc` |
+| 17–25 | [云数据仓库](#cloud-data-warehouses) | `snowflake`、`bigquery`、`databricks`、`redshift`, `athena`、`fabric`、`synapse`、`trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`、`druid`、`exasol`、`elasticsearch`、`pinot` |
+| 31–34 | [数据湖 / 开放表格式](#data-lake-open-table-formats) | `iceberg`、`delta_lake`、`hive`、`hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`、`cosmosdb`、`qdrant`、`cassandra`、`redis` |
+| 40–42 | [代码源](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [流式处理](#streaming) | `kafka`、`websocket`、`rss` |
+| 46 | [推送接收器](#push-receiver) | `ingest` |
+| 47–48 | [图与语义](#graph-semantic) | `neo4j`、`sparql` |
+| 49–53 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
+| 54–55 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
+| 56–64 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [API 数据源](#api-sources) | `openapi`、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
+| 75 | [数据剖析器](#data-profiler) | `data_profiler` |
+| 76 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
 
 Provisa 支持的每种数据源类型的参考。"Direct driver"（直连驱动）表示单数据源查询直接针对该数据源原生执行（亚 100 毫秒）。"Connector Name"（连接器名称）是当该数据源参与多数据源 JOIN 时所使用的联邦连接器。
 
@@ -1056,6 +1056,8 @@ tables:
 时间安排不需要新字段。`change_signal` 加上 `cache_ttl` 决定轮询频率，`mv_debounce_quiet` 和 `mv_debounce_max_delay` 把上游的一阵变更合并为一次扫描，日历粒度让它周期性运行，`expected_events` 则把扫描推迟到其输入在整个窗口内都已新鲜为止。轮询循环就是扫描调度器。
 
 `outcome` 取 `pass`、`fail`、`warn`、`error` 或 `skipped` 之一。它们本身都不强制执行任何东西。如果需要强制执行，请另行声明：一个 preflight，或一个基于已落地结果的 MV。已落地的观测不必是确定性的，所以这里可以放那些永远无法作为 preflight 关卡的检查，例如异常分数、滑动窗口内的变化，或相对于当前时刻的新鲜度。
+
+物化视图可以用 **检查失败时暂停** 来强制执行其输入上的检查，该选项位于其编辑页的预检旁边。启用后，只要扫描视图某个最近物理输入的任何检查表最近一次运行失败，刷新就会中止，视图保留上一份副本。输入上的每个检查表都计入，无论它被分配给哪个数据产品。中止信息会列出每个失败的检查表及其扫描的输入，并像任何预检中止一样向下游传播。该选项是调用 `provisa_services.dq` 的普通预检代码；**显示代码** 会展示它，你可以把它复制到视图自己的预检中加以修改。如果视图也有自己的预检，只有两者都通过时刷新才会落地。
 
 契约在界面中编写，位于表编辑页面的数据质量面板里，那里的原始契约文本始终是唯一依据。试运行会针对实时表执行契约并显示结果，但不落地。用它来发现数据集名称解析到了意外位置的契约，否则这种契约只会落地全部通过的行。
 

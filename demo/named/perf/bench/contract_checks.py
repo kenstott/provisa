@@ -19,6 +19,7 @@ from contract_joins import _JOIN_KINDS, reachable_joins, transport_targets
 from contract_model import (
     JOIN_TRANSPORTS,
     MAX_LOOKBACK,
+    NO_ROUTE_HINT_LANGUAGES,
     TRANSPORT_LANGUAGE,
     Column,
     Distribution,
@@ -235,10 +236,10 @@ def _check_join_replication(setup: Setup, transport: str, cross_high: int) -> No
 
 
 def _check_route(setup: Setup) -> None:
-    """A transport with no route hint (gRPC, REST, JSON:API) can only read sources whose route
-    mode is `auto`."""
+    """A transport with no route hint (gRPC, REST, JSON:API, SPARQL) can only read sources whose
+    route mode is `auto`."""
     for transport in setup.transports:
-        if TRANSPORT_LANGUAGE[transport] not in ("grpc", "rest", "jsonapi"):
+        if TRANSPORT_LANGUAGE[transport] not in NO_ROUTE_HINT_LANGUAGES:
             continue
         for sid, weight in setup.source_weights(transport).items():
             mode = setup.route_mode(transport, sid).mode

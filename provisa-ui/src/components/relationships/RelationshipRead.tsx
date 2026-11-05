@@ -11,7 +11,7 @@
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type { Relationship } from "../../types/admin";
-import { cypherRelType, domainToSqlName } from "../../naming";
+import { domainToSqlName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
 
 /** A heading over a group of the read view's fields, as the form heads its own. */
@@ -45,7 +45,7 @@ export function RelationshipRead({
   // A junction-backed edge is matched in Cypher by its nomination, not by its alias: the value
   // shown is the type a pattern matches, as the list shows it.
   const cql = r.viaTableName
-    ? or(cypherRelType(r))
+    ? or(r.cypherType)
     : (r.alias ?? (
         <Text span c="dimmed" fs="italic">
           {or(r.computedCypherAlias)}

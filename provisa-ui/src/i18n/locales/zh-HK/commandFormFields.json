@@ -64,6 +64,10 @@
     "outputColumnsTitle": "輸出數據集的欄",
     "addOutputColumn": "+ 新增輸出欄",
     "removeOutputColumn": "移除輸出欄 {{name}}",
-    "datasetColumnPlaceholder": "欄"
+    "datasetColumnPlaceholder": "欄",
+    "bindingTemplate": "SQL 運算式",
+    "bindingTemplateHint": "一個 SQL 運算式。將每個引數寫成 {{placeholder}}；它在呼叫它的查詢中執行。",
+    "argDefault": "引數 {{name}} 的預設值",
+    "argDefaultPlaceholder": "預設值（必填則留空）"
   }
 }

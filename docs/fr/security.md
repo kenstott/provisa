@@ -201,8 +201,8 @@ Chaque colonne a un modèle de permissions qui contrôle l'accès en lecture, en
 | Niveau | Condition | Résultat |
 | ------ | ----------- | -------- |
 | **Masquée à la vue** | Rôle absent de `visible_to` | Colonne absente du schéma et du catalogue |
-| **Masquée** | Rôle dans `visible_to` ; la première entrée de masque qu'il détient a un `mask` | Colonne visible, valeur remplacée en sortie |
-| **Non masquée** | Rôle dans `visible_to` ; la première entrée de masque qu'il détient n'a pas de `mask`, ou il n'en détient aucune | Accès complet en lecture |
+| **Masquée** | Rôle dans `visible_to` ; la première entrée de masque qu'il détient a un `mask`, ou la colonne a des masques et il n'en détient aucune | Colonne visible, valeur remplacée en sortie |
+| **Non masquée** | Rôle dans `visible_to` ; la première entrée de masque qu'il détient n'a pas de `mask`, ou la colonne n'a pas de masque | Accès complet en lecture |
 
 ### Colonnes publiques {: #public-columns }
 
@@ -340,7 +340,9 @@ L'expression de masque est poussée dans la projection SQL SELECT. La base de do
 
 **Un masque couvre tous les noms de la colonne, pas une colonne liée.** Une colonne lue par son alias ou par son nom physique est masquée de la même façon. Un masque ne cache pas une clé qu'une relation approuvée joint à une colonne que le rôle peut voir : la jointure compare les valeurs réelles, donc la colonne liée montre ce que contient la clé masquée. Masquez aussi la colonne liée, ou n'approuvez pas la relation pour ce rôle.
 
-**Aucune entrée détenue signifie non masqué.** Un lecteur qui ne détient aucune entrée lit la colonne non masquée. Terminez une liste par une entrée `*` lorsque chaque lecteur doit recevoir un masque. L'éditeur de colonnes avertit lorsqu'une liste n'a pas d'entrée `*` (`unlisted_unmasked`).
+**Aucune entrée détenue signifie entièrement masqué.** Dès qu'une colonne a un masque, un lecteur qui ne détient aucune entrée la lit entièrement masquée : `****` pour une colonne de texte, `NULL` pour tout autre type. Seule une entrée donne un accès non masqué. Pour que les lecteurs que la liste ne nomme pas lisent sans masque, terminez-la par une entrée explicite sans `to` ni `mask`. Une colonne sans masque n'est pas concernée.
+
+**Une entrée qu'aucun lecteur n'atteint est refusée.** L'enregistrement d'une liste de masques qui en contient une est refusé avec `You have defined a mask that is not reachable: ` suivi des entrées inaccessibles, chacune nommée par ses rôles. Cela vaut pour l'interface d'administration, l'API d'administration et le chargement d'une configuration.
 
 **Refuser par l'ordre.** Une entrée antérieure l'emporte même lorsque le lecteur en détient aussi une ultérieure plus permissive. Pour que les prestataires voient toujours un salaire masqué quels que soient leurs autres rôles, placez l'entrée des prestataires avant l'entrée non masquée. Un rôle accordé ne perd jamais ce que son parent accorde par héritage, mais une entrée de masque placée plus tôt dans la liste s'applique en premier. C'est ainsi que fonctionne la restriction ici.
 

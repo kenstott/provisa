@@ -89,7 +89,6 @@ Python 客戶端版本會自動轉換為 PEP 440 格式：
 - `CVE Audit` 工作流程（`.github/workflows/cve-audit.yml`）在每次推送至 `main`、每個提取要求以及每週，對鎖定的集合執行 `pip-audit`。
 - 發佈時，`provisa` 及 `provisa-client` 的建置各自產生一份 CycloneDX SBOM，並對所發佈的內容執行 `pip-audit`。JDBC 驅動程式以 `grype --fail-on medium` 掃描。任何發現都會令工作失敗，而發佈不會發佈任何內容：PyPI 上傳及 GitHub 發佈都會等待這些工作。SBOM 及 CVE 報告會附加至每個發佈。
 - 桌面安裝程式在發佈執行器上從原始碼建置 `provisa` wheel，並在建置時以 `pip` 解析其相依套件，而不是從 `uv.lock` 解析；發佈 CVE 關卡掃描的是鎖定的集合，而不是安裝程式所內附的相依套件。
-- 有一項已記錄的例外被忽略：PYSEC-2026-4114 / CVE-2026-49265（伺服器端 oauthlib PKCE；Provisa 只在用戶端使用 oauthlib）。
 - `packaging/pypi/requirements-embedded.lock` 是 `provisa[embedded]` 的雜湊固定解析結果，供離線（airgap）鏡像使用（參見 `packaging/pypi/MIRROR-CHECKLIST.md`）。它是手動重新產生的，而不是每次發佈都產生。
 
 ## 所需的存放庫密鑰 {: #required-repository-secrets }

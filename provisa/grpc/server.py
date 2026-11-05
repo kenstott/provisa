@@ -19,24 +19,19 @@ RPC's own :class:`provisa.core.connection_loop.ConnectionLoop` via
 parallel.
 """
 
-# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266, REQ-1882
+# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266, REQ-1882, REQ-1965
 
 from __future__ import annotations
 
 from provisa.api.role_surface import role_surface
 
-from types import SimpleNamespace
-import contextvars
 import functools
 import importlib.util
 import json
 import logging
 import re
 import sys
-from datetime import date, datetime, timedelta
-from typing import TYPE_CHECKING, cast
-
-from dateutil.relativedelta import relativedelta
+from decimal import Decimal
 
 from provisa.federation.execution_auth import plan_authorization
 
@@ -44,19 +39,15 @@ import concurrent.futures
 
 from starlette.exceptions import HTTPException
 import grpc
-from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import DecodeError
-from google.protobuf.message_factory import GetMessageClass
-
-if TYPE_CHECKING:
-    from google.protobuf.timestamp_pb2 import Timestamp
 
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.core import request_deadline
 from provisa.core.request_context import reset_current_org
+from provisa.grpc.auth import org_bound_for_rpc
 from provisa.grpc.descriptor import SERVICE_NAME, bound_descriptor, role_descriptor
 from provisa.core.read_refusal import ReadRefused
-from provisa.core.ir_types import iso8601_duration
+from provisa.executor.result import is_arrow
 
 log = logging.getLogger(__name__)
 
@@ -98,50 +89,95 @@ def _max_concurrent_rpcs() -> int:
     return settings_registry.value("concurrency.grpc_max_concurrent_rpcs")
 
 
-def _proto_value(field, value):
-    """Adapt a driver row value to the proto field's wire type.
+@functools.lru_cache(maxsize=64)
+def _encoder_service(file):
+    """The Rust encoder's reading of a compiled service (REQ-2194): ``file``, a message's
+    FileDescriptor, with every file it imports, as the FileDescriptorSet it was compiled from.
+    Read once per compiled service; a rebuilt service is a new file."""
+    from google.protobuf import descriptor_pb2
 
-    Protobuf assignment is exact-typed: a ``datetime`` into a ``string`` field, or into a
-    ``google.protobuf.Timestamp`` field, raises ``TypeError: bad argument type for built-in
-    operation`` — the whole RPC dies with StatusCode.UNKNOWN. The driver's Python type is decided by
-    the PHYSICAL column (asyncpg hands back ``datetime`` for TIMESTAMP, ``Decimal`` for NUMERIC)
-    while the proto field type comes from the REGISTERED column type, so the two disagree by design
-    on any column whose registration widens or narrows the physical type. Every other transport
-    normalizes at its own serialization boundary (serialize_rows / Arrow / the pgwire encoders);
-    this is gRPC's.
+    from provisa._encoders import grpc as grpc_encoder
 
-    REQ-1884: date/datetime and FieldDescriptor are module-level imports, not per-call — this
-    function runs once per (row, column) on the ENGINE-route streaming path (millions of times
-    for a large scan), and a per-call ``import`` statement still pays a sys.modules lookup +
-    attribute bind every time even when the module is already loaded.
-    """
-    if field.type == FieldDescriptor.TYPE_MESSAGE:
-        if field.message_type.full_name == "google.protobuf.Timestamp":
-            # The class of THIS field's Timestamp: an organisation's service is compiled into a
-            # pool of its own, and its descriptor's `_concrete_class` fails under upb ("error
-            # return without exception set") when that pool was built before this module loaded.
-            ts = cast("Timestamp", GetMessageClass(field.message_type)())
-            ts.FromDatetime(value if isinstance(value, datetime) else datetime.fromisoformat(value))
-            return ts
-        return value
-    if field.type == FieldDescriptor.TYPE_STRING:
-        if isinstance(value, (timedelta, relativedelta)):
-            return iso8601_duration(value)  # an interval's canonical text form, as on every surface
-        return value if isinstance(value, str) else str(value)
-    if field.type in (FieldDescriptor.TYPE_DOUBLE, FieldDescriptor.TYPE_FLOAT):
-        return float(value)
-    if field.type in (
-        FieldDescriptor.TYPE_INT32,
-        FieldDescriptor.TYPE_INT64,
-        FieldDescriptor.TYPE_UINT32,
-        FieldDescriptor.TYPE_UINT64,
-    ):
-        return int(value.toordinal()) if isinstance(value, (date, datetime)) else int(value)
-    if field.type == FieldDescriptor.TYPE_BOOL:
-        return bool(value)
-    if field.type == FieldDescriptor.TYPE_BYTES:
-        return value if isinstance(value, bytes) else str(value).encode()
+    files = descriptor_pb2.FileDescriptorSet()
+    seen: set[str] = set()
+
+    def add(f) -> None:
+        if f.name in seen:
+            return
+        seen.add(f.name)
+        for dependency in f.dependencies:
+            add(dependency)
+        f.CopyToProto(files.file.add())
+
+    add(file)
+    return grpc_encoder.Service(files.SerializeToString())
+
+
+def _proto_number(value: object) -> object:  # object-ok: an aggregate's value
+    """An aggregate's DECIMAL as the proto number its field holds: an int when it is whole and
+    written without a point, else a float. Any other value as it is."""
+    if isinstance(value, Decimal):
+        f = float(value)
+        return int(f) if f == int(f) and "." not in str(value) else f
     return value
+
+
+def _row_encoder(msg_cls, out_cols: list[str], restrictions=None, batch_cls=None, batch_rows=0):
+    """The encoder of one RPC's result (REQ-2194, REQ-1965, REQ-2195): the result in the form it
+    has, the engine's Arrow batches or a row result's rows, in; the serialized ``msg_cls``
+    messages out (``batch_cls`` messages of ``batch_rows`` rows for Query{Type}Batch), each column
+    written to the field ``out_cols`` names and, under a read mask, restricted to its selection
+    (``restrictions``, one per column). provisa._encoders.grpc reads the batches, or each row's
+    cells as they are, and writes the wire; a row result is never built into Arrow first."""
+    from provisa._encoders import grpc as grpc_encoder
+
+    descriptor = msg_cls.DESCRIPTOR
+    return grpc_encoder.Encoder(
+        _encoder_service(descriptor.file),
+        descriptor.full_name,
+        list(out_cols),
+        restrictions,
+        None if batch_cls is None else batch_cls.DESCRIPTOR.full_name,
+        batch_rows,
+    )
+
+
+def _encoded(encoder, result):
+    """``(rows, messages)`` for each batch of ``result`` in the form it has (REQ-2195): an Arrow
+    result's record batches, any other result's row batches; its row count and the messages it
+    completes; last ``(0, ...)``, Query{Type}Batch's partly filled final message."""
+    if is_arrow(result):
+        for batch in result.arrow_batches():
+            yield batch.num_rows, encoder.encode(batch)
+    else:
+        types = _column_types(result)
+        for rows in result.batches():
+            yield len(rows), encoder.encode_rows(rows, types)
+    yield 0, encoder.finish()
+
+
+def _column_types(result) -> list[str | None] | None:
+    """The engine's type name of each of a row result's columns, as the encoder reads them."""
+    if not result.column_types:
+        return None
+    return [None if t is None else str(t) for t in result.column_types]
+
+
+def _nodes_field(row_cls, node_cls, nodes: list) -> bytes:
+    """A group's ``nodes`` (REQ-1405) as its ``{Type}GroupByRow`` message's repeated ``nodes``
+    field, each node a ``{Type}`` message the encoder writes from the node's object: its keys
+    that are fields, a relation (``_build_rel_json_expr``) a nested message from an object
+    (many-to-one) or one per object of a list (one-to-many), every other value as a column's
+    value is written. The nodes come as the JSON a group's nodes column holds."""
+    from provisa._encoders import grpc as grpc_encoder
+
+    field = row_cls.DESCRIPTOR.fields_by_name["nodes"]
+    return grpc_encoder.encode_nodes(
+        _encoder_service(node_cls.DESCRIPTOR.file),
+        node_cls.DESCRIPTOR.full_name,
+        field.number,
+        json.dumps(nodes, ensure_ascii=False, default=str),
+    )
 
 
 def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
@@ -215,7 +251,8 @@ def _rpc_role(metadata: dict) -> str | None:
     On a secured deployment the auth interceptor has already validated the caller's credential and
     derived the role from that identity; it is published on the task and is the only value a handler
     may use, so ``x-provisa-role`` here is the client's request and has no authority. On an
-    unsecured deployment there is no identity to derive from and the metadata role stands.
+    unsecured deployment there is no identity to derive from and the metadata role stands; once
+    the RPC's org is bound, a set it names acts as its meta-role (:meth:`ProvisaServicer._acting`).
     """
     from provisa.grpc.auth import authorized_role
 
@@ -309,12 +346,6 @@ def _streaming(body):
 _HANDLERS_KEPT = 4096
 _REFLECTION_METHOD = ("grpc.reflection.v1alpha.ServerReflection", "ServerReflectionInfo")
 
-# Whether the RPC running in this context had its organisation bound where it was received
-# (ProvisaServicer._received): the handlers' own binding then has nothing to do.
-_org_bound_for_rpc: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    "provisa_grpc_org_bound", default=False
-)
-
 
 class _OrgBoundService(grpc.GenericRpcHandler):
     """The Provisa service and its reflection, served to each caller from the service of the
@@ -352,57 +383,55 @@ class ProvisaServicer:  # REQ-045, REQ-143
             raise RuntimeError("the bound organisation has no gRPC service")
         return found
 
-    async def _resolve_org(self, requested: str | None) -> str | None:
-        """The org this RPC binds: the principal's membership decides, not the metadata (REQ-1337).
-
-        With no validated principal (unsecured deployment) the requested org is all there is, and
-        the caller's own check rejects a missing one."""
-        from provisa.grpc.auth import authenticated_identity
-
-        identity = authenticated_identity()
-        if identity is None:
-            return requested
-        from provisa.api.org_resolve import resolve_session_org
-        from provisa.security.rights import can_act_cross_org, capabilities_for_claims
-
-        caps = capabilities_for_claims(identity.roles or [], self._state.platform_roles)
-        return await resolve_session_org(
-            self._state,
-            user_id=identity.user_id,
-            can_act_any_org=can_act_cross_org(caps),
-            requested_org=requested or None,
-            credential_org=identity.active_org_id,  # REQ-1235
-            named_by="send the x-provisa-org metadata",
-        )
-
     async def _bind_org(self, metadata: dict):
-        """Resolve+build the RPC's org and bind it (REQ-1266, REQ-1337).
+        """Resolve+build the RPC's org and bind it (REQ-1266).
 
-        On a secured deployment the org comes from the validated principal's memberships — the same
-        rule MCP, pgwire and Flight use — so ``x-provisa-org`` is a REQUEST honored only for a
-        principal holding the cross-org right, and a caller cannot name someone else's org. An
-        unsecured deployment has no principal to resolve, so the metadata org stands; under
-        multitenancy it is REQUIRED — a missing org raises ``ValueError`` (the caller aborts) rather
-        than silently binding the default. A single-org deployment binds its one org. Returns the
-        reset token. Each RPC runs in its own context (``provisa.grpc.rpc_scope``), so a plain
-        set/reset isolates the binding."""
+        On a secured deployment the interceptor bound it already, from the validated principal
+        (``grpc.auth``, REQ-1337). An unsecured deployment has no principal to resolve, so the
+        metadata org stands; under multitenancy it is REQUIRED — a missing org raises ``ValueError``
+        (the caller aborts) rather than silently binding the default. A single-org deployment binds
+        its one org. Returns the reset token, or None when there is nothing for the handler to
+        reset. Each RPC runs in its own context (``provisa.grpc.rpc_scope``), so a plain set/reset
+        isolates the binding."""
         from provisa.core.request_context import set_current_org
 
-        if _org_bound_for_rpc.get():
-            # Bound where the RPC was received, before its request could be decoded
-            # (_received): that binding stands for the whole RPC and is reset there.
+        if org_bound_for_rpc.get():
+            # Bound before the handler ran, or where the RPC was received, before its request
+            # could be decoded (_received): that binding stands for the whole RPC.
             return None
         if not getattr(self._state, "multitenancy", False):
             return set_current_org(self._state.org_id)
         raw = metadata.get("x-provisa-org")
-        requested = raw.decode() if isinstance(raw, bytes) else raw
-        org_id = await self._resolve_org(requested)
+        org_id = raw.decode() if isinstance(raw, bytes) else raw
         if not org_id:
             raise ValueError("Missing x-provisa-org metadata")
         from provisa.api.app import ensure_serving_runtime
 
         await ensure_serving_runtime(org_id)
         return set_current_org(org_id)
+
+    async def _acting(self, role_id: str, context) -> str:
+        """The role an RPC acts as, once its org is bound (REQ-1952). Secured, the interceptor
+        resolved it from the identity. Unsecured, ``x-provisa-role`` naming a set of roles, or a
+        declared derived role, acts as its meta-role, built in the bound org -- resolved as the
+        HTTP middleware resolves the header (``unsecured_principal``), and its session variables
+        bound."""
+        from provisa.grpc.auth import authorized_role
+
+        if authorized_role() is not None:
+            return role_id
+        from provisa.auth.derived_roles import unsecured_principal
+        from provisa.core.request_context import set_session_vars
+
+        try:
+            role, session_vars = unsecured_principal(self._state, role_id)
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            raise  # abort ends the RPC by raising; never proceed as an unresolved role
+        # What a row filter reads for this call, as HTTP binds it (a named derived role's
+        # attribute); bound in the RPC's own context, as a secured RPC's principal is.
+        set_session_vars(session_vars)
+        return role
 
     async def _received(self, method: str, raw: bytes, context):
         """Bind the organisation of an RPC that arrived as bytes and decode its request with THAT
@@ -415,19 +444,21 @@ class ProvisaServicer:  # REQ-045, REQ-143
         role_id = _rpc_role(metadata)
         if not role_id:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            raise RuntimeError("abort ends the RPC by raising")
         try:
             org_token = await self._bind_org(metadata)
         except ValueError as exc:
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             raise
-        bound = _org_bound_for_rpc.set(True)
+        bound = org_bound_for_rpc.set(True)
 
         def reset() -> None:
-            _org_bound_for_rpc.reset(bound)
+            org_bound_for_rpc.reset(bound)
             if org_token is not None:
                 reset_current_org(org_token)
 
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             service = self._pb2
             described = service.method(method)
             if described is None or not self._offered(role_id, method):
@@ -484,7 +515,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             request, reset = await self._received(method, raw, context)
             try:
                 async for message in body(request, context):
-                    yield message.SerializeToString()
+                    # a query's rows arrive serialized by the encoder (REQ-2194)
+                    yield message if isinstance(message, bytes) else message.SerializeToString()
             finally:
                 reset()
 
@@ -531,6 +563,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
                 raise
             try:
+                role_id = await self._acting(role_id, context)  # REQ-1952
                 found = role_descriptor(self._state, role_id)
             finally:
                 if token is not None:
@@ -618,15 +651,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
     def _meter_msg(self, msg):
         """Meter one outbound proto message as egress and return it (REQ-1452).
 
-        ``ByteSize()`` is the serialized payload, not the HTTP/2 frame: an approximation missing
-        framing. Must be called inside the handler's org binding.
+        ``ByteSize()`` (a message the encoder wrote: its length) is the serialized payload, not
+        the HTTP/2 frame: an approximation missing framing. Must be called inside the handler's
+        org binding.
         """
         if msg is None:
             return msg
         from provisa.core.request_context import current_org
         from provisa.core.egress import report
 
-        report(current_org.get(), msg.ByteSize())
+        report(current_org.get(), len(msg) if isinstance(msg, bytes) else msg.ByteSize())
         return msg
 
     def _emit_trailing_metadata(
@@ -702,14 +736,17 @@ class ProvisaServicer:  # REQ-045, REQ-143
         proto_gen names each per-command RPC ``Call`` + command_rpc_name(name); match that same
         authority back so ``CallActiveUsers`` resolves to ``active_users``. None if no command matches
         (the handler then aborts NOT_FOUND)."""
+        from provisa.core.command_bindings import binding_name
         from provisa.grpc.proto_gen import command_rpc_name
 
-        for fn_name in [
-            *getattr(self._state, "tracked_functions", {}),
-            *getattr(self._state, "tracked_webhooks", {}),
+        # REQ-2168: an RPC is named for the command's GraphQL command binding.
+        for fn in [
+            *getattr(self._state, "tracked_functions", {}).values(),
+            *getattr(self._state, "tracked_webhooks", {}).values(),
         ]:
-            if command_rpc_name(fn_name) == cmd_pascal:
-                return fn_name
+            called = binding_name(fn, "graphql")
+            if called is not None and command_rpc_name(called) == cmd_pascal:
+                return fn["name"]
         return None
 
     async def _handle_typed_command(self, request, context, cmd_name: str | None, rpc: str):
@@ -733,6 +770,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             state = self._state
             fn = (
                 getattr(state, "tracked_functions", {}).get(cmd_name)
@@ -743,10 +781,12 @@ class ProvisaServicer:  # REQ-045, REQ-143
             if fn is None or cmd_name is None:
                 await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown command: {rpc!r}")
                 return
+            # REQ-2168: an optional argument the call left out takes its default (the executor's).
             args = {
                 a_name: getattr(request, a_name)
                 for arg in (fn.get("arguments") or [])
                 if (a_name := arg.get("name"))
+                and ("default" not in arg or request.HasField(a_name))
             }
             try:
                 rows = await invoke_tracked_function(cmd_name, args, state, role_id)
@@ -788,6 +828,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             from provisa.core.request_context import require_current_org
 
             try:
@@ -825,7 +866,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
         invoke_tracked_function, identical to the GraphQL/SQL/Cypher surfaces."""
         import json
 
-        from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
+        from provisa.api.data.action_exec import (
+            bind_named_args,
+            command_named,
+            invoke_tracked_function,
+        )
 
         metadata = dict(context.invocation_metadata())
         role_id = _rpc_role(metadata)
@@ -838,6 +883,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             state = self._state
             try:
                 given = json.loads(request.args_json) if request.args_json else {}
@@ -854,8 +900,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # Functions and webhooks alike, through the one executor: the command admitted, its
             # arguments bound in declared order (the order the call binds them), not JSON order.
             try:
-                args = bind_named_args(request.name, given, state, role_id)
-                rows = await invoke_tracked_function(request.name, args, state, role_id)
+                # REQ-2168: named by its GraphQL command binding, as the proto names it.
+                name = command_named(state, role_id, "graphql", request.name)
+                args = bind_named_args(name, given, state, role_id)
+                rows = await invoke_tracked_function(name, args, state, role_id)
             except HTTPException as exc:
                 await context.abort(_command_status(exc), str(exc.detail))
                 return
@@ -873,9 +921,9 @@ class ProvisaServicer:  # REQ-045, REQ-143
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
     async def _handle_query(self, request, context, type_name: str, field_name: str):
-        """Lower a proto query request directly to the IR (a semantic SELECT), then run the shared
-        governance → routing → physical pipeline — the same path SQL and Cypher use. gRPC never
-        round-trips through GraphQL (query language → IR → governed IR → plan → physical).
+        """Lower a proto query request to GraphQL text and compile it as every GraphQL-shaped
+        surface does (``query_ir.grpc_table_to_graphql``), then run the compiled statement through
+        the shared governance → routing → physical pipeline. gRPC composes no SQL of its own.
 
         REQ-1266: resolve+bind the RPC's org (x-provisa-org) before routing; the body runs bound so
         every state.X read resolves the org's runtime. The reset is in finally around the stream."""
@@ -890,6 +938,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             async for _m in self._handle_query_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:
@@ -929,6 +978,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             batch_cls = getattr(self._pb2, f"{type_name}Batch", None)
             if batch_cls is None:
                 await context.abort(
@@ -936,31 +986,33 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 )
                 return
             batch_rows = getattr(request, "batch_rows", 0) or _GRPC_BATCH_ROWS
-            rows_buf: list = []
-            async for _m in self._handle_query_bound(request, context, type_name, role_id):
-                rows_buf.append(_m)
-                if len(rows_buf) >= batch_rows:
-                    yield self._meter_msg(batch_cls(rows=rows_buf))
-                    rows_buf = []
-            if rows_buf:
-                yield self._meter_msg(batch_cls(rows=rows_buf))
+            # The encoder writes the {Type}Batch messages itself, batch_rows rows each across
+            # the result's Arrow batches (REQ-2194).
+            async for _m in self._handle_query_bound(
+                request, context, type_name, role_id, batch=(batch_cls, batch_rows)
+            ):
+                yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
                 from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 
-    async def _handle_query_bound(self, request, context, type_name: str, role_id: str):
-        """The routing+execution body of _handle_query, run with the RPC's org already bound."""
+    async def _handle_query_bound(
+        self, request, context, type_name: str, role_id: str, batch: tuple | None = None
+    ):
+        """The routing+execution body of _handle_query, run with the RPC's org already bound:
+        the result's messages, serialized by the encoder from its Arrow batches (REQ-2194).
+        ``batch`` (``({Type}Batch class, rows per message)``) writes Query{Type}Batch's
+        messages instead of one per row."""
         from provisa.grpc.query_ir import (
             FilterError,
-            MaskTree,
             ParameterError,
             ReadMaskError,
-            grpc_table_to_semantic_sql,
+            grpc_table_to_graphql,
             resolve_read_mask,
-            restrict_json,
         )
+        from provisa.api.generated_plan import compile_generated_graphql
         from provisa.pgwire._pipeline import (
             _execute_plan,
             _govern_and_route_compiled,
@@ -970,10 +1022,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
         state = self._state
 
-        if role_id not in state.contexts:
+        surface = role_surface(state, role_id)  # one snapshot: parts of one build
+        if surface is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
             return
-        ctx = state.contexts[role_id]
+        ctx = surface.context
 
         msg_cls = getattr(self._pb2, type_name, None)
         if msg_cls is None:
@@ -981,8 +1034,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             return
         descriptor = msg_cls.DESCRIPTOR
 
-        # IR: lower the request straight to a semantic SELECT (shared with the HTTP gRPC proxy), then
-        # govern → route → physical exactly as the SQL/Cypher transports do.
+        # Lower the request to GraphQL (shared with the HTTP gRPC proxy), compile it as every
+        # GraphQL-shaped surface does, then govern → route → physical.
         filter_msg = request.filter if request.HasField("filter") else None
         # REQ-1986: a table with parameters has a params field; one without has none.
         has_params = "params" in request.DESCRIPTOR.fields_by_name
@@ -995,18 +1048,29 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # name before anything is governed or run.
         try:
             read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
-            semantic = grpc_table_to_semantic_sql(
-                ctx, type_name, request.limit, filter_msg, read_mask, params_msg
+            lowered = grpc_table_to_graphql(
+                ctx,
+                surface.schema,
+                type_name,
+                request.limit,
+                filter_msg,
+                read_mask,
+                params_msg,
+                offset=request.offset or None,
             )
         except (ReadMaskError, FilterError, ParameterError) as exc:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(exc))
             return
-        if semantic is None:
+        if lowered is None:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No table for type {type_name!r}")
             return
-        # REQ-1877: the statement is the request's shape; the filter values and the row limit
-        # travel bound, so a request that differs only in its values reuses the kept governed plan.
-        semantic_sql, bound_params = semantic
+        # REQ-1877: one plan is kept per request shape; the filter values and the row limit are
+        # bound into it, so a request that differs only in its values reuses the kept plans.
+        # The text is built from fields already checked, so the schema accepts it.
+        gql_text, variables = lowered
+        (compiled,) = compile_generated_graphql(
+            state, role_id, surface.schema, ctx, gql_text, variables
+        )
 
         def _norm(s: str) -> str:
             return s.replace("_", "").lower()
@@ -1020,14 +1084,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # REQ-1897: serve_cached — an opted-in request whose entry exists comes back as a
             # Route.CACHE plan read BEFORE routing, which this handler serves below.
             plan = await _govern_and_route_compiled(
-                semantic_sql,
+                compiled.sql,
                 role_id,
-                exec_params=bound_params or None,
+                exec_params=compiled.params or None,
                 state=state,
                 deliver=delivery,
                 cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),
                 serve_cached=True,
-                sdl_joins=False,
+                sdl_joins=True,
             )
         except PermissionError as exc:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
@@ -1039,30 +1103,23 @@ class ProvisaServicer:  # REQ-045, REQ-143
             self._emit_trailing_metadata(context, plan.warnings, redirect=delivered.redirect)
             return
 
-        def _col_fields_for(out_cols: list[str]) -> list[tuple[str, object, MaskTree | None]]:
-            # REQ-1884: resolved once per query, not once per (row, column) — out_cols is fixed
-            # for the life of the result set, so descriptor.fields_by_name.get(col) doesn't need
-            # re-running on every row on the ENGINE-route path (millions of rows for a large scan).
-            # REQ-803: likewise each column's read_mask JSON sub-path selection (None = whole value).
-            selections: list[MaskTree | None] = (
-                read_mask.restrictions(out_cols)
-                if read_mask is not None
-                else [None] * len(out_cols)
-            )
-            return [
-                (col, descriptor.fields_by_name.get(col), selection)
-                for col, selection in zip(out_cols, selections)
-            ]
+        restrictions = read_mask.restrictions if read_mask is not None else None
 
-        def _kwargs_for(col_fields: list[tuple[str, object, MaskTree | None]], row) -> dict:
-            kwargs = {}
-            for i, (col, field, selection) in enumerate(col_fields):
-                if i < len(row) and row[i] is not None:
-                    value = row[i] if selection is None else restrict_json(row[i], selection)
-                    # No field => let msg_cls(**kwargs) raise on the unknown name rather than
-                    # dropping the column silently.
-                    kwargs[col] = _proto_value(field, value) if field is not None else value
-            return kwargs
+        def _encoder_for(column_names):
+            # Result columns are matched to proto fields by the same key (governance may re-case
+            # or alias a column); a column with no field is refused at its first value. REQ-1884:
+            # resolved once per result set; REQ-803: each column's read_mask JSON sub-path
+            # selection (None = whole value) with it.
+            proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+            out_cols = [proto_by_norm.get(_norm(c), c) for c in column_names]
+            batch_cls, batch_rows = batch if batch is not None else (None, 0)
+            return _row_encoder(
+                msg_cls,
+                out_cols,
+                None if restrictions is None else restrictions(out_cols),
+                batch_cls,
+                batch_rows,
+            )
 
         # REQ-1897: answered from the response cache before routing — nothing was lowered,
         # optimized, routed or prepared for residency, and no source is touched. cached_result
@@ -1072,11 +1129,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
             hit = await cached_result(plan, state)
             self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
-            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-            out_cols = [_proto_by_norm.get(_norm(c), c) for c in hit.column_names]
-            col_fields = _col_fields_for(out_cols)
-            for row in hit.rows:
-                yield msg_cls(**_kwargs_for(col_fields, row))
+            try:
+                for _rows, messages in _encoded(_encoder_for(hit.column_names), hit):
+                    for m in messages:
+                        yield m
+            except Exception as exc:
+                # A value the encoder refuses (J502b) is the client's INVALID_ARGUMENT, as on
+                # every streamed route, not an opaque UNKNOWN.
+                await context.abort(_status_for_exception(exc), str(exc))
             return
 
         # ENGINE route streams lazily — the full user result set never materializes (REQ-1215).
@@ -1143,22 +1203,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
             _said = self._emit_trailing_metadata(
                 context, plan.warnings
             )  # REQ-1137: trailing-metadata nag before the row stream
-            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-            out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
-            col_fields = _col_fields_for(out_cols)
-            batch_iter = stream.batches()
             # REQ-074/REQ-1386: this streaming terminal never reaches _execute_plan, so the audit
             # row is written here — after the last batch, or on the way out of a failed drain.
 
             try:
                 _delivered = 0  # query_audit_log.row_count
-                while True:
-                    batch = next(batch_iter, None)
-                    if batch is None:
-                        break
-                    _delivered += len(batch)
-                    for row in batch:
-                        yield msg_cls(**_kwargs_for(col_fields, row))
+                # REQ-2194, REQ-2195: the engine's result, Arrow or rows, straight to the encoder.
+                for rows, messages in _encoded(_encoder_for(stream.column_names), stream):
+                    _delivered += rows
+                    for m in messages:
+                        yield m
             except Exception as exc:
                 # REQ-1044: a stream ended at its tier ceiling is the tier's refusal (402).
                 await finalize_audit(
@@ -1229,9 +1283,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
                         plan.source_id, plan.sql, plan.exec_params or []
                     )
                     _said = self._emit_trailing_metadata(context, plan.warnings)
-                    _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-                    out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
-                    col_fields = _col_fields_for(out_cols)
+                    encoder = _encoder_for(ds.column_names)
+                    types = _column_types(ds)
                     _delivered = 0  # query_audit_log.row_count
                     # The copy an opted-in MISS writes back, held only within the cache's own row
                     # bound: a result past it is still streamed, and is not cached.
@@ -1247,8 +1300,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
                                     _kept = None
                                 else:
                                     _kept.extend(batch)
-                            for row in batch:
-                                yield msg_cls(**_kwargs_for(col_fields, row))
+                            # REQ-2195: the driver's rows, encoded as they are.
+                            for m in encoder.encode_rows(batch, types):
+                                yield m
+                        for m in encoder.finish():
+                            yield m
                     except Exception as exc:
                         await finalize_audit(plan, 500, state)
                         await context.abort(_status_for_exception(exc), str(exc))
@@ -1281,13 +1337,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await settle_cut_at_stream_end(plan, len(result.rows), state)
                 # REQ-1137/REQ-1350: trailing metadata (notice, warnings) before the row stream.
                 self._emit_trailing_metadata(context, plan.warnings)
-                _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-                out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
-                col_fields = _col_fields_for(out_cols)
-
                 try:
-                    for row in result.rows:
-                        yield msg_cls(**_kwargs_for(col_fields, row))
+                    for _rows, messages in _encoded(_encoder_for(result.column_names), result):
+                        for m in messages:
+                            yield m
                 except Exception as exc:
                     await finalize_audit(plan, 500, state)
                     await context.abort(_status_for_exception(exc), str(exc))
@@ -1306,13 +1359,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
         self._emit_trailing_metadata(
             context, plan.warnings
         )  # REQ-1137: trailing-metadata nag before the row stream
-        # Stream rows as proto messages, mapping result column names to proto fields by the same key
-        # (governance may re-case or alias a column).
-        _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-        out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
-        col_fields = _col_fields_for(out_cols)
-        for row in result.rows:
-            yield msg_cls(**_kwargs_for(col_fields, row))
+        try:
+            for _rows, messages in _encoded(_encoder_for(result.column_names), result):
+                for m in messages:
+                    yield m
+        except Exception as exc:
+            # A value the encoder refuses (J502b) is the client's INVALID_ARGUMENT, as on the
+            # streamed routes, not an opaque UNKNOWN.
+            await context.abort(_status_for_exception(exc), str(exc))
 
     # --- REQ-1359: aggregate / group-by protocol parity -----------------------------------------
     # gRPC synthesizes GraphQL query text (query_ir.grpc_table_to_aggregate_graphql_text /
@@ -1333,7 +1387,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
     def _split_agg_columns(self, columns, row) -> tuple[dict, dict]:
         from provisa.grpc.query_ir import split_agg_columns
 
-        return split_agg_columns(columns, row)
+        top, nested = split_agg_columns(columns, row)
+        return (
+            {k: _proto_number(v) for k, v in top.items()},
+            {f: {k: _proto_number(v) for k, v in vs.items()} for f, vs in nested.items()},
+        )
 
     def _build_aggregate_result_message(self, type_name: str, top: dict, nested: dict):
         """Construct a {Type}AggregateResult message from split (top, nested) aggregate values,
@@ -1364,6 +1422,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return None
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             return self._meter_msg(
                 await self._handle_query_aggregate_bound(request, context, type_name, role_id)
             )
@@ -1448,6 +1507,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             await context.abort(grpc.StatusCode.UNAUTHENTICATED, str(exc))
             return
         try:
+            role_id = await self._acting(role_id, context)  # REQ-1952
             async for _m in self._handle_query_group_by_bound(request, context, type_name, role_id):
                 yield self._meter_msg(_m)
         finally:
@@ -1547,106 +1607,35 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if result.redirect is not None:
             return
 
-        from provisa.executor.serialize import _convert_value
+        from provisa.executor.serialize import json_value
         from provisa.grpc.query_ir import split_group_by_columns
 
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
 
-        # REQ-1405: include_nodes routes compiled.nodes_sql through the identical
-        # govern → route → execute pipeline the primary query just used above — the same one
-        # pipeline every surface shares, just a second SQL string GraphQL's own
-        # groupKey/aggregate/nodes shape requires (JSON:API, REST and HTTP GraphQL take this same
-        # seam with a second plan; gRPC just has to type it instead of dropping it into JSON).
-        nodes_by_group_key: dict[tuple, list] = {}
-        row_msg_cls = getattr(self._pb2, type_name, None)
-        nodes_columns = compiled.nodes_columns
-        if (
-            include_nodes
-            and compiled.nodes_sql is not None
-            and nodes_columns is not None
-            and row_msg_cls is not None
-        ):
-            nodes_plan = await _govern_and_route_compiled(
-                compiled.nodes_sql,
-                role_id,
-                exec_params=compiled.nodes_params or None,
-                state=state,
-                cache_hint=cache_hint_from_grpc_metadata(context.invocation_metadata()),  # REQ-544
-                sdl_joins=True,
-            )
-            nodes_result = await _execute_plan(nodes_plan, state)
-            # REQ-1350, REQ-1949: the nodes are a second governed statement of this answer; what
-            # it says about itself (a row limit cut the nodes) is the answer's to carry too, and
-            # the trailing metadata was set before it ran.
-            self._say_late_warnings(
-                context,
-                _said,
-                SimpleNamespace(
-                    warnings=[
-                        *plan.warnings,
-                        *(w for w in nodes_plan.warnings if w not in plan.warnings),
-                    ]
-                ),
-            )
-            join_key_idx = [i for i, c in enumerate(nodes_columns) if c.nested_in == "__join_key__"]
-            output_cols = [(i, c) for i, c in enumerate(nodes_columns) if c.nested_in is None]
-            for node_row in nodes_result.rows:
-                join_key = tuple(_convert_value(node_row[i]) for i in join_key_idx)
-                node_dict = {c.field_name: _convert_value(node_row[i]) for i, c in output_cols}
-                nodes_by_group_key.setdefault(join_key, []).append(
-                    self._dict_row_to_message(row_msg_cls, node_dict)
-                )
+        # REQ-1405: include_nodes reads each group's nodes off its own row -- the one statement
+        # every surface runs holds them as a column (aggregates._nodes_column) -- typed here
+        # instead of left as JSON.
+        from provisa.grpc.query_ir import nodes_index
 
+        row_msg_cls = getattr(self._pb2, type_name, None)
+        at = nodes_index(compiled.columns) if include_nodes and row_msg_cls is not None else None
         for row in result.rows:
             group_key = {c.column: row[i] for c, i in zip(group_key_cols, group_key_idx)}
             agg_row = [row[i] for i in agg_idx]
             top, nested = self._split_agg_columns(agg_cols, agg_row)
             agg_msg = self._build_aggregate_result_message(type_name, top, nested)
-            join_key = tuple(_convert_value(row[i]) for i in group_key_idx)
-            yield row_cls(
-                group_key=json.dumps(group_key, default=str),
-                aggregate=agg_msg,
-                nodes=nodes_by_group_key.get(join_key, []),
+            nodes = (
+                json_value(row[at], compiled.columns[at].field_name, compiled.columns[at].json_text)
+                if at is not None
+                else []
             )
-
-    def _dict_row_to_message(self, msg_cls, d: dict):
-        """Build a ``{Type}`` proto message from a serialize_group_by-style nested dict row
-        (REQ-1405) — the same nested-dict shape ``nodes_sql`` produces for every other transport,
-        just typed instead of left as JSON. Relation columns (``_build_rel_json_expr``) surface as
-        a dict (many-to-one) or list-of-dicts (one-to-many) value keyed by the relation field name;
-        every other value is a scalar assigned via the shared ``_proto_value`` adapter."""
-        descriptor = msg_cls.DESCRIPTOR
-        kwargs = {}
-        nested: dict = {}
-        for key, val in d.items():
-            if val is None:
-                continue
-            field = descriptor.fields_by_name.get(key)
-            if field is None:
-                continue
-            if (
-                field.message_type is not None
-                and field.message_type.full_name != "google.protobuf.Timestamp"
-            ):
-                nested[key] = val
-            else:
-                kwargs[key] = _proto_value(field, val)
-        msg = msg_cls(**kwargs)
-        for key, val in nested.items():
-            field = descriptor.fields_by_name[key]
-            sub_cls = getattr(self._pb2, field.message_type.name, None)
-            if sub_cls is None:
-                continue
-            if field.label == field.LABEL_REPEATED:
-                items = val if isinstance(val, list) else [val]
-                getattr(msg, key).extend(
-                    self._dict_row_to_message(sub_cls, item)
-                    for item in items
-                    if isinstance(item, dict)
-                )
-            elif isinstance(val, dict):
-                getattr(msg, key).CopyFrom(self._dict_row_to_message(sub_cls, val))
-        return msg
+            assert isinstance(nodes, list), "a group's nodes column is a JSON list"
+            group = row_cls(
+                group_key=json.dumps(group_key, default=str), aggregate=agg_msg
+            ).SerializeToString()
+            # The nodes follow as the group's repeated `nodes` field, which the encoder writes:
+            # serialized fields laid end to end are one message (REQ-2194).
+            yield group + _nodes_field(row_cls, row_msg_cls, nodes) if nodes else group
 
 
 def start_grpc_server(

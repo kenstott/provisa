@@ -52,6 +52,7 @@
       "mailboxes_failed": "读取中途失败的邮箱：{{total}} 个。已读取的部分会保留，下次刷新时继续读取。它们是：{{accounts}}",
       "place_not_kept": "此副本已完成，但未能保存其读取到达的位置，因此下一次变更检查将再次请求读取：{{reason}}",
       "indexes_not_planned": "此副本已完整且可读取，但无法规划其索引，因此在重新构建之前将不使用索引读取：{{reason}}",
+      "column_not_landed": "列 {{column}}（{{subtype}}）不在此副本中：{{reader}} 无法将其作为 {{subtype}} 读取，因此已省略，读取该列的请求将被拒绝。",
       "andMore": "{{ids}} 以及另外 {{more}} 封",
       "other": "上次构建的备注:{{code}}"
     },

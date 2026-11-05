@@ -91,6 +91,39 @@ DECLARED: list[Setting] = [
         unit="bytes",
     ),
     Setting(
+        key="graph.depth_limit",
+        card="limits",
+        type="int",
+        effect="live",  # read when a graph query is compiled
+        # REQ-2135: the most hops a variable-length path or property path walks when the query
+        # gives no bound of its own; a SPARQL result cut at it says so. REQ-348: the maximum an
+        # unbounded Cypher path ([*], [*n..], an unbounded shortestPath) takes; a Cypher walk keeps
+        # the trail rule, so the maximum is a safety limit, very large by design (maintainer
+        # 2026-11-03: 1000), and a walk that would go further fails by name. A recursive statement
+        # runs on Trino with max_recursion_depth one past it.
+        req="REQ-2135",
+        env="PROVISA_GRAPH_DEPTH_LIMIT",
+        config_path=("server", "limits", "graph_depth_limit"),
+        default=1000,
+        min=1,
+        unit="hops",
+    ),
+    Setting(
+        key="graph.union_limit",
+        card="limits",
+        type="int",
+        effect="live",  # read when a graph query is compiled
+        # REQ-2135: the most branches a variable predicate's union over the mapped predicates may
+        # have; a query needing more is refused, naming the limit. A query with a LIMIT and no
+        # ORDER BY, DISTINCT or aggregate is allowed ten times it.
+        req="REQ-2135",
+        env="PROVISA_GRAPH_UNION_LIMIT",
+        config_path=("server", "limits", "graph_union_limit"),
+        default=256,
+        min=1,
+        unit="branches",
+    ),
+    Setting(
         key="sources.max_upload_bytes",
         card="limits",
         type="int",
@@ -130,6 +163,19 @@ DECLARED: list[Setting] = [
         default=1_000_000,
         min=1,
         unit="rows",
+    ),
+    # --- A principal's graph session (REQ-2176) ------------------------------------------------
+    # Live: read at each sweep. A graph session unused this long is ended.
+    Setting(
+        key="temp_tables.graph_session_retention_days",
+        card="limits",
+        type="int",
+        effect="live",
+        req="REQ-2176",  # 7: a principal's graph session lasts a week after its last use
+        env="PROVISA_GRAPH_SESSION_RETENTION_DAYS",
+        default=7,
+        min=1,
+        unit="days",
     ),
     Setting(
         key="limits.engine_query_timeout",
@@ -280,17 +326,56 @@ DECLARED: list[Setting] = [
         unit="jobs",
     ),
     Setting(
+        key="codesource.duckdb_memory_mb",
+        card="limits",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the memory a code source's DuckDB answers its statements in, past which it
+        # spills to disk; 1024 holds a large answer's working set on a small host.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_MEMORY_MB",
+        default=1024,
+        min=64,
+        unit="MiB",
+    ),
+    Setting(
+        key="codesource.duckdb_spill_cap_mb",
+        card="limits",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the most a code source's DuckDB spills to disk; a statement that needs more
+        # is refused, naming this setting. 10240 bounds a host's disk use well inside its volume.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_SPILL_CAP_MB",
+        default=10240,
+        min=0,
+        unit="MiB",
+    ),
+    Setting(
+        key="codesource.duckdb_threads",
+        card="concurrency",
+        type="int",
+        effect="live",  # carried with each call to a code host, and kept by the host
+        # REQ-2100: the threads a code source's DuckDB answers its statements on; 4 leaves the
+        # host's other cores to the code itself.
+        req="REQ-2100",
+        env="PROVISA_CODESOURCE_DUCKDB_THREADS",
+        default=4,
+        min=1,
+        unit="threads",
+    ),
+    Setting(
         key="kaggle.api_token",
         card="security",
         type="str",
         effect="live",  # read at each Kaggle search and each staging
         req="REQ-1819",
-        # The default is a reference in a visible, editable field, not a name hidden in code
-        # (maintainer ruling, 2026-10-10: the product resolves what a field holds and makes up
-        # no secret names): an operator who already created a secret of this name keeps
-        # working, and any other value or reference may be typed over it.
-        # reference-convention: REQ-1798 -- the Kaggle token's fixed secret name
-        default="${secret:kaggle_api_token}",
+        # Read only by the assistant's Kaggle tool, which has no form: a Kaggle source holds its own
+        # token in its credential field. Unset unless the operator sets it -- a value or a
+        # reference they type -- and never a secret name nobody created (maintainer ruling: the
+        # product resolves what a field holds and makes up no secret names).
+        default=None,
+        nullable=True,
         credential=True,
     ),
     Setting(
@@ -671,6 +756,20 @@ DECLARED: list[Setting] = [
         env="PROVISA_HOSTNAME",
         config_path=("server", "hostname"),
         default="localhost",
+    ),
+    Setting(
+        key="server.public_url",
+        card="network",
+        type="str",
+        effect="live",  # read when a graph query names a subject by its IRI
+        # REQ-2135: the base of every subject IRI ({public URL}/id/{domain}/{table}/{key}); an IRI
+        # must not change with how a client reaches the server, so it is not derived from the
+        # hostname. Unset, a query whose answer holds a subject IRI is refused, naming it.
+        req="REQ-2135",
+        env="PROVISA_PUBLIC_URL",
+        config_path=("server", "public_url"),
+        default=None,
+        nullable=True,
     ),
     Setting(
         key="server.grpc_port",
@@ -1141,6 +1240,24 @@ DECLARED: list[Setting] = [
         env="PROVISA_ORG_FILES_NODE_ID",
         # The pod's or host's own name, which is the node's.
         default_fn=socket.gethostname,
+        editable=False,
+        readonly_reason="set_by_launcher",
+    ),
+    # REQ-1916 (amended 2026-11-02, "registered nodes when none are declared"): the address a client
+    # reaches THIS node at, recorded in the node list, so a coordinator-served UI can offer the
+    # region's live query and every nodes when the region declares no data addresses. Per node:
+    # server.public_url is the deployment's one IRI base and server.hostname a bare host, neither
+    # an address of one node. Set by the launcher, never stored: a stored value would be the same
+    # on every node. Unset, the node is not offered.
+    Setting(
+        key="server.node_url",
+        card="bootstrap",
+        type="str",
+        effect="restart",  # recorded when the node registers at boot
+        req="REQ-1916",
+        env="PROVISA_NODE_URL",
+        default=None,
+        nullable=True,
         editable=False,
         readonly_reason="set_by_launcher",
     ),

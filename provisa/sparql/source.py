@@ -40,10 +40,15 @@ _REFERENCE = "${"  # a credential reference (provisa.core.secrets), resolved whe
 def sparql_headers() -> dict[str, str]:  # REQ-2138
     """The headers every call to a SPARQL endpoint carries. A public endpoint asks its clients to
     say who they are (Wikidata's User-Agent policy refuses a library's default): Provisa, its
-    version and where to reach it."""
+    version and where to reach it. And the results format its tables are read in, JSON: an
+    endpoint's default is its own (Wikidata answers XML). A CONSTRUCT asks for its own format
+    (reasoning.fetch_slice)."""
     from provisa.core.demo_bundles import running_provisa
 
-    return {"User-Agent": f"Provisa/{running_provisa()} (https://provisa.dev)"}
+    return {
+        "User-Agent": f"Provisa/{running_provisa()} (https://provisa.dev)",
+        "Accept": "application/sparql-results+json",
+    }
 
 
 @dataclass
@@ -187,11 +192,7 @@ async def probe_endpoint(
         data["default-graph-uri"] = cfg.default_graph_uri
     data.update(cfg.extra_params)
 
-    headers = {
-        **sparql_headers(),
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/sparql-results+json",
-    }
+    headers = {**sparql_headers(), "Content-Type": "application/x-www-form-urlencoded"}
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(

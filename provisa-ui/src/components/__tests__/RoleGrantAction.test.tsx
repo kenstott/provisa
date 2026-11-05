@@ -22,7 +22,13 @@ import type { Dependent } from "../../lib/dependents";
 const DEPENDENTS: Dependent[] = [
   { kind: "column", id: 41, name: "orders.amount", via: ["table_columns.visible_to"], table_id: 1 },
   { kind: "column", id: 42, name: "orders.note", via: ["table_columns.writable_by"], table_id: 1 },
-  { kind: "column", id: 51, name: "refunds.reason", via: ["table_columns.visible_to"], table_id: 2 },
+  {
+    kind: "column",
+    id: 51,
+    name: "refunds.reason",
+    via: ["table_columns.visible_to"],
+    table_id: 2,
+  },
   { kind: "metric", id: "revenue", name: "revenue", via: ["metrics.visible_to"] },
   { kind: "command", id: "refund", name: "refund", via: ["tracked_functions.visible_to"] },
   {
@@ -67,7 +73,9 @@ function setup(overrides: Partial<Parameters<typeof RoleGrantAction>[0]> = {}) {
 describe("RoleGrantAction", () => {
   it("offers one table action per table, one per object, one per assignment, none otherwise", () => {
     setup();
-    expect(screen.getAllByRole("button", { name: "Remove this role from this table's grants" })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Remove this role from this table's grants" }),
+    ).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Remove this role's grant" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Remove assignment" })).toHaveLength(1);
   });

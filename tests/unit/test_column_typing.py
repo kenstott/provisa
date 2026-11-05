@@ -41,6 +41,8 @@ _ARRAYS_OF_A_PRIMITIVE = [
     ("Array(Int8)", "clickhouse", 1, "smallint"),
     ("Array(Decimal(18, 2))", "clickhouse", 1, "numeric(18,2)"),
     ("Array(DateTime64(3))", "clickhouse", 1, "timestamp"),
+    # REQ-2171: an element of a subtype (IPv4 is inet) is typed by its base.
+    ("Array(IPv4)", "clickhouse", 1, "text"),
     ("ARRAY<STRING>", "bigquery", 1, "text"),
     ("ARRAY<INT64>", "bigquery", 1, "bigint"),
     ("ARRAY<NUMERIC(10, 2)>", "bigquery", 1, "numeric(10,2)"),
@@ -65,7 +67,7 @@ _PLAIN_JSON = [
     ("Map(String, UInt8)", "clickhouse"),
     ("Nested(a String, b UInt8)", "clickhouse"),
     ("Array(Tuple(String, UInt8))", "clickhouse"),
-    ("Array(IPv4)", "clickhouse"),  # an element with no semantic SQL type
+    ("Array(Nothing)", "clickhouse"),  # an element with no semantic SQL type
     ("STRUCT<a INT64, b ARRAY<STRING>>", "bigquery"),
     ("ARRAY<STRUCT<a INT64>>", "bigquery"),
     ("struct<a:int,b:string>", "databricks"),
@@ -87,7 +89,6 @@ _NOT_NESTED = [
     ("timestamp(3)", "trino"),
     ("varchar(20)", "mysql"),
     ("character varying", "postgresql"),
-    ("Nullable(String)", "clickhouse"),
     ("geography", "snowflake"),
 ]
 
@@ -123,6 +124,11 @@ def test_a_column_that_is_not_natively_nested_carries_none_of_the_three(native, 
     assert typing.data_type == native.strip().lower()
 
 
+def test_a_spelling_naming_no_ir_type_is_text_and_carries_none_of_the_three():
+    # REQ-2171: a spelling no reader knows (ClickHouse's Nullable wrapper) registers as text.
+    assert column_typing("Nullable(String)", "clickhouse") == ColumnTyping("text")
+
+
 @pytest.mark.parametrize("platform", ["postgresql", "greenplum", "yugabytedb", "cockroachdb"])
 def test_a_postgres_family_array_has_depth_one_however_it_is_spelled(platform):
     """PostgreSQL's array type records no dimensions; a declared ``integer[][]`` is an
@@ -155,7 +161,8 @@ def test_a_spelling_only_its_platform_has_registers_as_its_ir_name():
 
     assert column_typing("LONG", "databricks").data_type == "bigint"
     assert column_typing("decimal(10,2)", "databricks").data_type == "decimal(10,2)"
-    assert column_typing("long").data_type == "long"
+    # Without the platform it names no IR type: text (REQ-2171).
+    assert column_typing("long").data_type == "text"
 
 
 def test_oracle_number_is_a_numeric_sized_or_not():

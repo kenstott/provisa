@@ -30,3 +30,14 @@ def test_a_field_that_is_also_an_argument_is_one_parameter():
 
     assert missing_parameters(columns, {}, lambda _c: False) == ["id"]
     assert missing_parameters(columns, {"id": 3}, lambda _c: False) == []
+
+
+def test_an_argument_spelled_unlike_its_field_is_one_parameter_named_by_its_column():
+    """#297: the field ``breed_name`` is also the argument ``breedName`` (its ``_nf_`` column); the
+    refusal read "requires the parameter(s) ['breed_name', 'breedName']"."""
+    field, argument = _param("breed_name"), _param("_nf_breedName")
+
+    assert missing_parameters([field, argument], {}, lambda _c: False) == ["breed_name"]
+    assert missing_parameters([argument, field], {}, lambda _c: False) == ["breed_name"]
+    assert missing_parameters([argument], {}, lambda _c: False) == ["breedName"]
+    assert missing_parameters([field, argument], {"breedName": "pug"}, lambda _c: False) == []

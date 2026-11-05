@@ -23,7 +23,7 @@ vi.mock("../../../hooks/useAdminQueries", () => ({
   useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
   useUpsertMetric: () => ({ upsertMetric: vi.fn() }),
 }));
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "org_admin" } }) }));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "org_admin" }) }));
 
 const table = (name: string) => ({
   name,

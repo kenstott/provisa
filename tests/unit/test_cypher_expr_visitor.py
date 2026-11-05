@@ -30,8 +30,44 @@ class _FakeCtx:
     def property_is_table_column(self, obj, name):
         return True  # every property here is a plain column of the variable's table
 
+    def property_type(self, obj, name):
+        return None  # no registered types: comparisons are not type-checked here
+
     def resolve_parameter(self, name):
         return exp.Placeholder(this=name)
+
+    def temporal_kind(self, expr):
+        return None  # no temporal values in scope here
+
+    def temporal_zone(self, expr):
+        return None
+
+    def is_text(self, expr):
+        return False
+
+    def is_list(self, expr):
+        return False
+
+    def is_json_value(self, expr):
+        return False
+
+    def is_json_property(self, expr):
+        return False
+
+    def graph_kind(self, name):
+        return None  # no pattern variables in scope here
+
+    def element_list_kind(self, expr):
+        return None  # no list of collected graph elements in scope here
+
+    def is_null(self, expr):
+        return getattr(expr, "kind", None) == "null"
+
+    def is_bound(self, name):
+        return True  # every variable an expression here reads is bound
+
+    def given_value(self, expr):
+        return False, None
 
     def resolve_function(self, name, args, *, distinct):
         return exp.Anonymous(this=name, expressions=args)
@@ -79,13 +115,17 @@ class TestStringPredicates:
         assert _sql("n.name STARTS WITH 'A'") == 'STARTS_WITH("n"."name", \'A\')'
 
     def test_ends_with(self):
-        assert _sql("n.name ENDS WITH 'z'") == "(\"n\".\"name\" LIKE CONCAT('%', 'z'))"
+        # The value's own characters: a % or _ in it is no LIKE wildcard.
+        assert _sql("n.name ENDS WITH 'z'") == (
+            '(SUBSTR("n"."name", LENGTH("n"."name") - (LENGTH(\'z\') - 1)) = \'z\')'
+        )
 
     def test_contains(self):
         assert _sql("n.name CONTAINS 'x'") == '(STRPOS("n"."name", \'x\') > 0)'
 
     def test_regex(self):
-        assert _sql("n.name =~ '.*'") == 'REGEXP_LIKE("n"."name", \'.*\')'
+        # Cypher's =~ matches the whole string.
+        assert _sql("n.name =~ '.*'") == 'REGEXP_LIKE("n"."name", \'^(?:.*)$\')'
 
     def test_in_list(self):
         assert _sql("n.x IN [1, 2, 3]") == '"n"."x" IN (1, 2, 3)'
@@ -113,8 +153,10 @@ class TestListFunctions:
         assert "ALL_MATCH(" in _sql("all(x IN n.l WHERE x > 0)").upper()
 
     def test_quantifier_single(self):
+        # Three-valued: a second true is false, otherwise a null predicate value answers null.
         out = _sql("single(x IN n.l WHERE x > 0)").upper()
-        assert "CARDINALITY(FILTER(" in out and out.endswith("= 1")
+        assert out.startswith("CASE WHEN CARDINALITY(FILTER(") and "> 1 THEN FALSE" in out
+        assert "ANY_MATCH(" in out and "IS NULL) THEN NULL" in out and out.endswith("= 1 END")
 
     def test_reduce(self):
         out = _sql("reduce(s = 0, x IN n.nums | s + x)").upper()

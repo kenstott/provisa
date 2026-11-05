@@ -38,8 +38,13 @@ export const ENTERPRISE_DOMAIN = "*";
 export const GLOSSARY_EXPERT_KINDS = ["expert", "author"] as const;
 export type GlossaryExpertKind = (typeof GLOSSARY_EXPERT_KINDS)[number];
 
-/** A term's lifecycle (REQ-2144): draft until admitted, live, deprecated, retired. */
-export type TermStatus = "draft" | "live" | "deprecated" | "retired";
+/** A term's status (REQ-1387, REQ-2144), set by people: draft (the default), approved (a
+ * steward's choice, which needs a definition), deprecated or retired. */
+export type TermStatus = "draft" | "approved" | "deprecated" | "retired";
+
+/** A term's grounding (REQ-1387), computed and never set: it looks down the term's paths to data.
+ * grounded_pending: every path down has a term not yet approved between it and the data. */
+export type TermGrounding = "grounded" | "grounded_pending" | "not_grounded";
 
 export interface GlossaryTermSummary {
   id: number;
@@ -48,6 +53,8 @@ export interface GlossaryTermSummary {
   is_abstract: boolean;
   deprecated: boolean;
   ref_count: number;
+  // REQ-1387 (RELATED_TO HOLDS THE PLACE): the RELATED_TO edges the term is on, either end.
+  related_to: number;
   // REQ-2130: the tables the term grounds (as a class term).
   table_count: number;
   // REQ-2130/2141: grounded in several tables that same-entity relationships do not all join.
@@ -56,14 +63,11 @@ export interface GlossaryTermSummary {
   // Curator soft delete: the term keeps its refs but no consuming surface binds it —
   // agent term search skips it and metadata export withholds it.
   retired: boolean;
-  // Server-computed admission: in service, defined, and connected to a term holding a
-  // physical ref. Only live terms reach an agent or a downstream catalog; anything else is
-  // a proposal. Groundedness is a property of the term graph, so it is not derivable here.
-  live: boolean;
-  // Server-computed, structural only (ignores definition): true when the term has a path,
-  // over in-service terms, to one holding a physical ref. An abstract term with no path is
-  // dangling — it names no data, regardless of whether it carries a definition.
-  grounded: boolean;
+  // REQ-1387: server-computed from the term graph, never derivable here.
+  grounding: TermGrounding;
+  // REQ-1387: an agent sees the term by name (approved on a path to data, or a defined draft on
+  // a path holding an approved term).
+  agent_visible: boolean;
   // REQ-1591: a rooted term's domains are DERIVED from its refs' tables, an abstract term's are
   // DECLARED. Empty means unscoped — reachable by any glossary-right holder.
   domains: string[];
@@ -71,7 +75,7 @@ export interface GlossaryTermSummary {
   findings: number;
   status: TermStatus;
   // REQ-2144: why it was deprecated or retired, who said so, and a deprecation's planned
-  // retirement; none on a draft or a live term.
+  // retirement; none on a draft or an approved term.
   status_reason: string | null;
   status_by: string | null;
   retire_on: string | null;
@@ -105,6 +109,8 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   experts: GlossaryExpert[];
   // REQ-2145: the tags on the term (pii), which every column it holds carries.
   tags: { tag_id: string; reason: string | null }[];
+  // REQ-1387: for a grounded_pending term, the drafts whose approval alone grounds it.
+  pending_on: { term_id: number; name: string }[];
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table
@@ -114,7 +120,8 @@ export interface RelatedGlossaryTerm {
   name: string;
   definition: string | null;
   is_abstract: boolean;
-  live: boolean;
+  status: TermStatus;
+  grounding: TermGrounding;
   domains: string[];
 }
 
@@ -151,8 +158,16 @@ export async function fetchRelatedGlossaryTerms(
   return res.json();
 }
 
+/** The term asked for does not exist (or not for this viewer): a remembered one is dropped. */
+export class GlossaryTermGone extends Error {
+  constructor(termId: number) {
+    super(`Glossary term ${termId} not found`);
+  }
+}
+
 export async function fetchGlossaryTerm(termId: number): Promise<GlossaryTermDetail> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`);
+  if (res.status === 404) throw new GlossaryTermGone(termId);
   if (!res.ok) throw new Error(requestFailed("fetchGlossaryTerm", res.status));
   return res.json();
 }
@@ -217,7 +232,110 @@ export async function generateAllGlossaryDefinitions(): Promise<{ generated: num
   return res.json();
 }
 
-export async function generateGlossaryRelationships(): Promise<{ added: number }> {
+// REQ-1387 (THE SHAPES THAT RESOLVE A RELATED PAIR): the one-term shapes, tightest first, that would
+// turn a RELATED_TO pair into grounding edges; the assistant names candidates, the curator chooses.
+export const RESOLVE_SHAPES = [
+  "component_type",
+  "specialisation",
+  "common_whole",
+  "common_genus",
+  "common_enumeration",
+] as const;
+export type ResolveShape = (typeof RESOLVE_SHAPES)[number];
+
+/** A RELATED_TO the assistant added, with the shapes that may resolve it. */
+export interface RelatedToReview {
+  from_term_id: number;
+  from: string;
+  to_term_id: number;
+  to: string;
+  resolve: { shape: ResolveShape; candidates: string[] }[];
+}
+
+/** A shape's two edges between the pair (x, y) and the new term ``n``, as stored: from, to, type. */
+export function shapeEdges<T>(
+  shape: ResolveShape,
+  x: T,
+  y: T,
+  n: T,
+): { from: T; to: T; rel_type: GlossaryRelType }[] {
+  switch (shape) {
+    case "component_type":
+      return [
+        { from: x, to: n, rel_type: "KIND_OF" },
+        { from: n, to: y, rel_type: "PART_OF" },
+      ];
+    case "specialisation":
+      return [
+        { from: x, to: n, rel_type: "PART_OF" },
+        { from: n, to: y, rel_type: "KIND_OF" },
+      ];
+    case "common_whole":
+      return [
+        { from: x, to: n, rel_type: "PART_OF" },
+        { from: y, to: n, rel_type: "PART_OF" },
+      ];
+    case "common_genus":
+      return [
+        { from: x, to: n, rel_type: "KIND_OF" },
+        { from: y, to: n, rel_type: "KIND_OF" },
+      ];
+    case "common_enumeration":
+      return [
+        { from: x, to: n, rel_type: "VALID_VALUE_OF" },
+        { from: y, to: n, rel_type: "VALID_VALUE_OF" },
+      ];
+  }
+}
+
+/** Candidate names for the term that would resolve one RELATED_TO pair (REQ-1387): the model
+ * names them, shape by shape; nothing is written. */
+export async function suggestResolvingTerms(
+  fromTermId: number,
+  toTermId: number,
+): Promise<{ resolve: { shape: ResolveShape; candidates: string[] }[] }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/relationships/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from_term_id: fromTermId, to_term_id: toTermId }),
+  });
+  if (!res.ok) throw await mutationError(res, "suggestResolvingTerms");
+  return res.json();
+}
+
+// Where the guidance on building a glossary that grounds lives: the type tests, RELATED_TO as the
+// placeholder, and the shapes that resolve a pair. Served by the app's own docs site, so an
+// air-gapped install reaches it too.
+export const GROUNDING_GUIDE_URL = "/docs-site/ontology/#building-a-glossary-that-grounds";
+
+/** The grounding types' order in the picker: these connect a term to data, so they come first. */
+export const GROUNDING_REL_TYPES: readonly GlossaryRelType[] = [
+  "KIND_OF",
+  "PART_OF",
+  "VALID_VALUE_OF",
+];
+
+/** Picker order: the grounding types first, RELATED_TO last, the rest between as declared. */
+export function orderRelTypes(types: readonly GlossaryRelType[]): GlossaryRelType[] {
+  const rank = (rt: GlossaryRelType) =>
+    GROUNDING_REL_TYPES.includes(rt) ? 0 : rt === "RELATED_TO" ? 2 : 1;
+  return [...types].sort((a, b) => rank(a) - rank(b));
+}
+
+/** Only RELATED_TO links, and not grounded: the term may want an intermediate term (REQ-1387). */
+export function onlyRelatedTo(t: GlossaryTermDetail): boolean {
+  const edges = [...t.edges_out, ...t.edges_in];
+  return (
+    t.grounding === "not_grounded" &&
+    edges.length > 0 &&
+    edges.every((e) => e.rel_type === "RELATED_TO")
+  );
+}
+
+export async function generateGlossaryRelationships(): Promise<{
+  added: number;
+  review: RelatedToReview[];
+}> {
   const res = await fetch(`${API_BASE}/admin/glossary/relationships/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -304,6 +422,21 @@ export async function removeGlossaryEdge(
   if (!res.ok) throw await mutationError(res, "removeGlossaryEdge");
 }
 
+// REQ-1592: the people a term can be attributed to, the author/expert picker's roster. The
+// glossary's own, under glossary_rw: the team page's /admin/orgs/{id}/members is user management,
+// which a curator need not hold.
+export interface AttributablePerson {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+}
+
+export async function listAttributablePeople(): Promise<AttributablePerson[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/people`);
+  if (!res.ok) throw new Error(requestFailed("listAttributablePeople", res.status));
+  return res.json();
+}
+
 export async function addGlossaryExpert(
   termId: number,
   userId: string,
@@ -342,7 +475,9 @@ export type FindingKind =
   | "class_and_attribute"
   | "tag_wrong_kind"
   | "retirement_blocked"
-  | "no_data";
+  | "no_data"
+  | "approved_not_grounded"
+  | "path_pending";
 
 export interface GlossaryFinding {
   kind: FindingKind;
@@ -407,8 +542,7 @@ export async function retireGlossaryTerm(
   return res.json();
 }
 
-/** Deprecate a live term (REQ-2144): it stays in service until ``retire_on``, if given, when it
- * is retired. */
+/** Deprecate an approved term (REQ-2144): it is retired on ``retire_on``, if given. */
 export async function deprecateGlossaryTerm(
   termId: number,
   body: { reason: string; retire_on: string | null },
@@ -439,6 +573,35 @@ export async function fetchAppliedHistory(termId: number): Promise<AppliedHistor
     throw new Error(serverMessage(data, requestFailed("fetchAppliedHistory", res.status)));
   }
   if (!res.ok) throw await mutationError(res, "fetchAppliedHistory");
+  return res.json();
+}
+
+/** A term's grounding (REQ-1387), as the model graded it. */
+export type TermGrade = "grounded" | "grounded_pending" | "not_grounded";
+
+/** One term whose grounding moved since the previous period (REQ-1386). A grade is null where the
+ * model did not hold the term; ``term_id`` is null once no term has the name. */
+export interface OntologyDriftTerm {
+  name: string;
+  before: TermGrade | null;
+  after: TermGrade | null;
+  change: "lost" | "gained" | "new";
+  term_id: number | null;
+}
+
+/** The Ontology quality report's drift (REQ-1386). ``has_history`` false means the branch holds no
+ * commit by the cutoff: ``base``, ``terms`` and ``counts`` are null, which is not zero drift. */
+export interface OntologyDrift {
+  has_history: boolean;
+  cutoff: string;
+  base: { sha: string; committed_at: string } | null;
+  terms: OntologyDriftTerm[] | null;
+  counts: { lost: number; gained: number; new: number } | null;
+}
+
+export async function fetchOntologyDrift(): Promise<OntologyDrift> {
+  const res = await fetch(`${API_BASE}/admin/glossary/drift`);
+  if (!res.ok) throw await mutationError(res, "fetchOntologyDrift");
   return res.json();
 }
 
@@ -479,4 +642,76 @@ export type TermRole = "class" | "property" | "concept";
 export function termRole(t: { table_count: number; ref_count: number }): TermRole {
   if (t.table_count > 0) return "class";
   return t.ref_count > 0 ? "property" : "concept";
+}
+
+/** Approve a draft term (REQ-1387): it needs a definition. */
+export async function approveGlossaryTerm(termId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/approve`, {
+    method: "POST",
+  });
+  if (!res.ok) throw await mutationError(res, "approveGlossaryTerm");
+}
+
+export interface TermRef {
+  term_id: number;
+  name: string;
+}
+
+/** The defined, grounded drafts the caller may approve together (REQ-2144). */
+export async function listApprovableTerms(): Promise<TermRef[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/approvable`);
+  if (!res.ok) throw await mutationError(res, "listApprovableTerms");
+  return res.json();
+}
+
+export async function bulkApproveTerms(termIds: number[]): Promise<{ approved: number[] }> {
+  const res = await fetch(`${API_BASE}/admin/glossary/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ term_ids: termIds }),
+  });
+  if (!res.ok) throw await mutationError(res, "bulkApproveTerms");
+  return res.json();
+}
+
+/** The steward actions whose impact is previewed (REQ-2144). */
+export type ImpactAction = "approve" | "retire" | "bind";
+
+/** What an action would change, changing nothing (REQ-2144). */
+export interface TermImpact {
+  action: ImpactAction;
+  term_id: number;
+  term: string;
+  becomes_grounded: TermRef[];
+  becomes_pending: TermRef[];
+  becomes_not_grounded: TermRef[];
+  tables_gained: number;
+  tables_lost: number;
+}
+
+export async function previewTermImpact(
+  termId: number,
+  action: ImpactAction,
+  extra: { successor?: number | null; table_id?: number; column_name?: string } = {},
+): Promise<TermImpact> {
+  const params = new URLSearchParams({ action });
+  if (extra.successor != null) params.set("successor", String(extra.successor));
+  if (extra.table_id != null) params.set("table_id", String(extra.table_id));
+  if (extra.column_name != null) params.set("column_name", extra.column_name);
+  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/impact?${params}`);
+  if (!res.ok) throw await mutationError(res, "previewTermImpact");
+  return res.json();
+}
+
+/** The stewardship summary (REQ-2144). */
+export interface StewardshipSummary {
+  agent_visible: (TermRef & { status: TermStatus })[];
+  waiting_on_one_approval: (TermRef & { approve: TermRef[] })[];
+  approved_not_grounded: TermRef[];
+}
+
+export async function fetchStewardshipSummary(): Promise<StewardshipSummary> {
+  const res = await fetch(`${API_BASE}/admin/glossary/stewardship`);
+  if (!res.ok) throw await mutationError(res, "fetchStewardshipSummary");
+  return res.json();
 }

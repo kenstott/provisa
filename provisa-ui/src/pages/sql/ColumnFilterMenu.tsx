@@ -12,6 +12,7 @@
 // the distinct values the grid holds (with counts and a search box). The header's box keeps the
 // quick syntax; this is the structured way to the same filters.
 
+import { columnLabel } from "../../lib/columnKeys";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FormFooter } from "../../components/form/FormLayout";
@@ -129,13 +130,13 @@ export function ColumnFilterMenu({
       shadow="md"
     >
       <Popover.Target>
-        <Tip text={t("columnFilter.open", { column: col })} named>
+        <Tip text={t("columnFilter.open", { column: columnLabel(col) })} named>
           <ActionIcon
             variant="subtle"
             data-active={current ? "true" : undefined}
             size="xs"
             className="th-filter-btn"
-            aria-label={t("columnFilter.open", { column: col })}
+            aria-label={t("columnFilter.open", { column: columnLabel(col) })}
             data-testid={`${id}-btn`}
             onClick={(e) => {
               // A controlled Popover does not toggle itself from its target.

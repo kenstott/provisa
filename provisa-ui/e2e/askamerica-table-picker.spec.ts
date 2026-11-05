@@ -25,6 +25,7 @@
 // of source-to-query-special-cases.spec.ts (FREE_ASKAMERICA_KEY in the root .env).
 
 import { test, expect } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 import {
   discoveredColumnCount,
   openRegisterForm,
@@ -40,6 +41,20 @@ const PICKER_FILLS_MS = 90_000;
 test.describe("AskAmerica: the Register Table pickers", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
+  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
+  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
+  // outcome.
+  let created: string | undefined;
+  test.afterEach(async ({ page }) => {
+    if (created === undefined) return;
+    const id = created;
+    created = undefined;
+    await deleteSourceAndItsTables(async (query, variables) => {
+      const res = await page.request.post("/admin/graphql", { data: { query, variables } });
+      return res.json();
+    }, id);
+  });
+
   test("schemas are the source's, tables and columns are read from the adapter at once", async ({
     page,
   }) => {
@@ -50,6 +65,7 @@ test.describe("AskAmerica: the Register Table pickers", () => {
     );
     test.setTimeout(5 * 60_000);
     const sourceId = `e2e_aa_picker_${Date.now()}`;
+    created = sourceId;
 
     // 1. The Sources form offers the subjects the server states, and the source is saved with one.
     await openSourcesForm(page);

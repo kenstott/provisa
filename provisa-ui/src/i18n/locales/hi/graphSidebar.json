@@ -4,10 +4,17 @@
     "tabHistory": "इतिहास",
     "tabFavorites": "पसंदीदा",
     "tabExport": "Neo4j में निर्यात करें",
+    "tabExportSparql": "RDF या SPARQL परिणाम निर्यात करें",
     "domainLabels": "डोमेन लेबल",
     "nodeLabels": "नोड लेबल",
     "relationshipTypes": "संबंध प्रकार",
     "propertyKeys": "गुण कुंजियाँ",
+    "session": "सत्र",
+    "sessionFailed": "सत्र पढ़ा नहीं जा सका: {{error}}",
+    "sessionEmpty": "इस सत्र में कुछ नहीं बनाया गया।",
+    "sessionClear": "सत्र साफ़ करें",
+    "sessionLabelTip": "सत्र में {{nodes}} नोड, {{tagged}} मॉडल नोड टैग किए गए",
+    "sessionTypeTip": "सत्र में {{count}} संबंध",
     "loading": "लोड हो रहा है…",
     "noLabelsFound": "कोई लेबल नहीं मिला",
     "noRelTypesFound": "कोई संबंध प्रकार नहीं मिला",
@@ -30,6 +37,8 @@
     "tabSettings": "दृश्य सेटिंग्स",
     "maxNodes": "अधिकतम नोड",
     "maxNodesHint": "एक क्वेरी द्वारा बनाए जाने वाले अधिकतम नोड",
-    "notCounted": "गिना नहीं गया: {{list}}"
+    "notCounted": "गिना नहीं गया: {{list}}",
+    "countsFailed": "गिनती उपलब्ध नहीं: {{error}}",
+    "schemaFailed": "स्कीमा उपलब्ध नहीं: {{error}}"
   }
 }

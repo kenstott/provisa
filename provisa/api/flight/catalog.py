@@ -29,6 +29,7 @@ from dataclasses import dataclass
 import pyarrow as pa
 import pyarrow.flight as flight
 
+from provisa.security.rights import SQL_CATALOG_TABLES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment, tags_by_object
 
 log = logging.getLogger(__name__)
@@ -76,12 +77,12 @@ def role_visibility(state, role_id: str) -> dict[int, set[str]]:
 
 
 def role_sees_metric(state, role_id: str, metric) -> bool:
-    """Whether ``role_id`` may see ``metric`` (its ``visible_to``; ``*`` is every role). A
-    meta-role sees what any of its members sees."""
+    """Whether ``role_id`` may see ``metric``: its ``visible_to`` names the role (REQ-2153: an
+    empty list and ``*`` name none). A meta-role sees what any of its members sees."""
     from provisa.security.meta_role import acting_roles
 
     granted = metric.visible_to
-    return "*" in granted or any(r in granted for r in acting_roles(state, role_id))
+    return any(r in granted for r in acting_roles(state, role_id))
 
 
 def build_catalog_tables(
@@ -132,6 +133,8 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
         (r["tag_id"], r["object_type"], r["table_id"], r["column_name"]) for r in tag_rows
     )
 
+    # REQ-2190: the catalog's own views are no table of it.
+    rows = [r for r in rows if (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES]
     named = {row["id"]: (row["domain_id"], row["table_name"]) for row in rows}
     # A column is listed under the name SQL reads it by, so a name taken from the catalog can be
     # written into a query: the role's compiled context has it for every column the role is
@@ -215,22 +218,12 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
 def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, REQ-128
     """Build catalog tables using in-memory compilation contexts.
 
-    This is faster than querying PG and works in test scenarios.
-    Iterates over all role contexts and merges the broadest view.
+    This is faster than querying PG and works in test scenarios. It reads the model-wide
+    context, the broadest view there is, so no role's surface is built to answer it.
     """
-    # Find the role with the broadest access
-    best_role_id = None
-    best_count = -1
-    for role_id, ctx in state.contexts.items():
-        count = len(getattr(ctx, "table_map", {}))
-        if count > best_count:
-            best_count = count
-            best_role_id = role_id
-
-    if best_role_id is None:
+    ctx = state.view_context
+    if ctx is None:
         return []
-
-    ctx = state.contexts[best_role_id]
     table_map = getattr(ctx, "table_map", {})
     # REQ-1415: the model's tag assignments, as the rebuild hydrated them into its config.
     table_tags, column_tags = tags_by_object(

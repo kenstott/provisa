@@ -1,0 +1,47 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "groupexposure" (start-ui-install.sh --demo groupexposure; REQ-1858). This file is its one
+# start point: `docker compose up -d` brings up its database.
+#
+#   postgres  the bank's database: its counterparties, their facilities and its Tier 1 capital,
+#             written by db/init.sql, with the role Provisa reads it as (db/reader.sql).
+#
+# The Wikidata tables have no container: they are landed from Wikidata's query service when the
+# bundle is built.
+#
+# Port: 27832 the database; it can be moved by its variable.
+x-demo-labels: &demo-labels
+  com.provisa.demo: groupexposure
+name: provisa-demo-groupexposure
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: groupexposure
+    ports:
+      - "127.0.0.1:${GROUPEXPOSURE_PG_PORT:-27832}:5432"
+    volumes:
+      - groupexposure_pg:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d groupexposure"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  groupexposure_pg:

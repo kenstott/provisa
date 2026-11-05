@@ -456,7 +456,7 @@ def given_create_order_tracked_function(shared_data: dict) -> None:
             ],
             "returns": "provisa.public.orders",
             "return_schema": "[]",
-            "visible_to": [],
+            "visible_to": ["alice", "bob", "ops"],  # every role here: a grant names its roles
             "kind": "mutation",
         }
     }
@@ -545,7 +545,7 @@ def then_excluded_function_not_visible(shared_data: dict) -> None:
             f"but got names={names!r}"
         )
         assert "createOrder" in names, (
-            "createOrder should be visible (visible_to=[]) to all roles including alice"
+            "createOrder should be visible (visible_to names every role) to alice"
         )
 
         ops_fns = dict(shared_data["tracked_functions"])

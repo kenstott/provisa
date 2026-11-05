@@ -39,8 +39,8 @@ break the claim above.
 
 Sources splits on a `kind` discriminator above `type`:
 
-- `kind = relational` — the existing ~35 `SourceType` connectors.
-- `kind = documents` — a document folder, whose "type" is a URI scheme
+- `kind = relational`: the existing ~35 `SourceType` connectors.
+- `kind = documents`: a document folder, whose "type" is a URI scheme
   (`file` / `s3` / `ftp` / `sftp` / `hdfs`), not a connector.
 
 They go in a **separate `document_sources` table** sharing the id namespace with
@@ -213,10 +213,10 @@ names, identifiers and codes.
 
 ### Three modes
 
-- **`vector_first`** (default) — similarity seeds, expansions widen.
-- **`graph_first`** — `RelationshipIndex` traversal drives, vector reranks. For
+- **`vector_first`** (default): similarity seeds, expansions widen.
+- **`graph_first`.** `RelationshipIndex` traversal drives, vector reranks. For
   questions about how things connect rather than what mentions a term.
-- **`global`** — searches community-summary chunks only. With
+- **`global`.** Searches community-summary chunks only. With
   `map_reduce_global_context` (map an LLM over each community summary, score,
   reduce to the top) this answers corpus-wide sensemaking: "what themes run
   through these documents." **The semantic layer cannot answer this class of
@@ -241,7 +241,7 @@ the entity lane is over-expanding.
 ### LLM namespace routing, subordinate to entitlement
 
 `namespace_filter_llm_fn` / `domain_filter_llm_fn` ask an LLM to pick relevant
-namespaces from their descriptions, which chonk reports as the highest-leverage
+namespaces from their descriptions, which chonk reports as the highest-value
 accuracy lever on a cross-domain corpus. Provisa already computes domain
 descriptions (`provisa/api/mcp/tools.py:62`).
 
@@ -270,17 +270,17 @@ search box. Every one resolves namespaces from the caller's domains, denies on
 empty, and goes through the same `require_role` / `_role_domains` path as the
 relational tools. None accepts a namespace argument from the caller.
 
-- **`search_documents`** — cohort search. Exposes `k`, `query_text` (BM25 lane),
+- **`search_documents`.** Cohort search. Exposes `k`, `query_text` (BM25 lane),
   and `mode`. Returns chunks with their provenance dimension.
-- **`explore_topics`** — `mode="global"` plus `map_reduce_global_context`.
+- **`explore_topics`.** `mode="global"` plus `map_reduce_global_context`
   Corpus-wide themes. The tool with no relational equivalent.
-- **`trace_connections`** — `mode="graph_first"`. How entities relate, rather
+- **`trace_connections`.** `mode="graph_first"`. How entities relate, rather
   than what mentions them.
-- **`document_context`** — `assemble_graph_context` for a query: entities,
+- **`document_context`.** `assemble_graph_context` for a query: entities,
   relationships, community reports and source text within a token budget.
-- **`search_entities`** — matched entities and the chunks they appear in.
-- **`list_documents`** — documents in reach, with version state.
-- **`index_status`** — last build, staleness, per-namespace document counts.
+- **`search_entities`.** Matched entities and the chunks they appear in.
+- **`list_documents`.** Documents in reach, with version state.
+- **`index_status`.** Last build, staleness, per-namespace document counts.
 
 Two things to carry into the tool descriptions rather than lose: chonk's
 docstrings contain calibrated agent guidance (issue one atomic sub-query per

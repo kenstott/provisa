@@ -31,7 +31,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from provisa.federation import replica_state
-from provisa.federation.data_replicator import BuildOutcome, Progress, data_replicator
+from provisa.federation.data_replicator import (
+    BuildOutcome,
+    Progress,
+    data_replicator,
+    not_landed_notes,
+)
 from provisa.federation.replica_runner import ReplicaRunner, engine_job_key
 from provisa.federation.data_replicator import Method, SourceCaps, SourceRead, TargetLoad
 from provisa.federation.replica_errors import BuildFailure
@@ -342,6 +347,7 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
                 source, address, args.columns, args.pk_columns, landing_filter=args.landing_filter
             ),
             built_columns=[[name, ir_type] for name, ir_type in args.columns],
+            notes=(*outcome.notes, *not_landed_notes(args.not_landed)),  # REQ-2171
         )
 
 
@@ -395,6 +401,7 @@ async def _build_by_pipeline(
             source, address, args.columns, args.pk_columns, landing_filter=args.landing_filter
         ),
         built_columns=[[name, ir_type] for name, ir_type in args.columns],
+        notes=(*outcome.notes, *not_landed_notes(args.not_landed)),  # REQ-2171
     )
 
 
@@ -1008,10 +1015,13 @@ async def plan_indexes(state: Any, key: ReplicaKey, landed_at: datetime) -> None
 
 
 async def build_indexes(state: Any, item: Any) -> None:
-    """REQ-2015: build the indexes ``item`` names on the standing replica."""
+    """REQ-2015: build the indexes ``item`` names on the standing replica or materialized view."""
     from provisa.federation import replica_indexes
 
-    _source, _table, _address, indexer = await _indexed_replica(state, item.key)
+    if item.address is not None:
+        indexer = state.federation_engine.view_indexer(*item.address)
+    else:
+        _source, _table, _address, indexer = await _indexed_replica(state, item.key)
     if indexer is None:
         return
     await replica_indexes.build_due(state.tenant_db, item, indexer)
@@ -1077,6 +1087,11 @@ def wire_replica_runner(scheduler: Any, *, state: Any, platform_url: str) -> Non
     org_id = require_current_org()
     env = active_env()
     runner = make_runner(state, org_id, platform_url)
+    replaced = _runners.get((org_id, env))
+    if replaced is not None:
+        # A re-applied config: the runner it replaces starts nothing more. A build of its still
+        # running would otherwise chain into a pass of a runner shutdown no longer reaches.
+        replaced.stop()
     _runners[(org_id, env)] = runner
 
     async def _pass() -> None:
@@ -1126,6 +1141,7 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     from provisa.federation.replica_converge import whole_copy
     from provisa.federation.replica_routing import owns_replica
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     engine = state.federation_engine
     source = {s.id: s for s in await registered_sources(state)}.get(source_id)
@@ -1139,7 +1155,7 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     if never_expires(table, source):
         return False  # REQ-2031: landed once; a change at its source is never read again
     served_from_replica = table.id in state.replica_routes.floored or not engine_attaches(
-        engine, source.type.value
+        engine, reach_type(source, engine)
     )
     if not (served_from_replica and whole_copy(source, table, engine)):
         return False

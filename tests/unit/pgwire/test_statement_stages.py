@@ -27,6 +27,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from provisa.executor.result import QueryResult as EngineResult
+from provisa.mv.time_travel import Travel
+from tests.unit.pgwire.result_rows import rows_of
 
 
 def _governed(stamp: str, generation=("boot", 3)):
@@ -45,6 +47,7 @@ def _governed(stamp: str, generation=("boot", 3)):
         governed_semantic="SELECT 1",
         schema_generation=generation,
         stamp=stamp,
+        travel=Travel(),
     )
 
 
@@ -184,7 +187,7 @@ def test_a_described_statements_rows_are_encoded_to_the_described_shape():
         ("d", BVType.TIMESTAMP),
         ("z", BVType.INTEGER),
     ]
-    (row,) = list(qr.rows())
+    (row,) = rows_of(qr)
     assert row == [2.5, 7, datetime.datetime(2026, 1, 2), None]
     assert isinstance(row[0], float)
 

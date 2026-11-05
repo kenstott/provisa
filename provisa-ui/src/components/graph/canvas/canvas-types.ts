@@ -48,13 +48,30 @@ export interface CanvasProps {
   onToggleParentsBatch: (nodeKeys: string[], circular?: boolean) => void;
   showingParentsCircular: Set<string>;
   onToggleParentsCircular: (nodeKey: string) => void;
+  /** A node's expansion is its own (a SPARQL DESCRIBE): offered on every node, as one action. */
+  describable?: boolean;
+  /** A node the viewer moved (a SPARQL frame merges what is said of it). */
+  onNodeDragged?: (nodeKey: string) => void;
+  /** A node let go on top of another. */
+  onNodeDroppedOnNode?: (dragged: GNode, under: GNode) => void;
+  /** A new drawing keeps the nodes it shares with the last where they were, and lays out only the
+   *  new ones around them (a SPARQL frame's drawing grows as triples merge into it). */
+  keepPositions?: boolean;
   onCyReady?: (cy: CyInstance | null) => void;
   clusterLevel: ClusterLevel;
   /** A view a navigation asked for (Polly's navigate): its layout, and whether every group starts
    *  collapsed. Applied once per ``seq``, after which the viewer's own changes stand. */
   requestedView?: { layout?: LayoutMode; collapseGroups?: boolean; seq: number };
   hullSvgRef?: React.Ref<SVGSVGElement>;
-  isExpanded?: boolean;
+  /** Every node of a label, or every edge of a type, picked out (an Overview pill): those stand
+   *  out and the rest dim. A click on the canvas's background asks for it to be cleared. */
+  highlight?: CanvasHighlight | null;
+  onClearHighlight?: () => void;
+}
+
+export interface CanvasHighlight {
+  kind: "label" | "type";
+  value: string;
 }
 
 export type LayoutMode = "force" | "hierarchy";

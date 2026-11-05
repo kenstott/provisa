@@ -156,6 +156,18 @@ def test_two_tables_combined_outside_a_relationship_are_refused(shape):
     assert said, shape
 
 
+def test_a_trail_check_a_client_writes_is_held_to_the_rule():
+    """Only a walk's trail check the graph compiler wrote is exempt (provisa.compiler.walk_checks):
+    the same shape written by a client relates its rows by a non-equality and is refused."""
+    said = _v002(
+        "WITH RECURSIVE w AS (SELECT c.id, '|' || CAST(c.id AS TEXT) || '|' AS trail "
+        "FROM customers c UNION ALL SELECT v.id, w.trail || CAST(v.id AS TEXT) || '|' "
+        "FROM w JOIN visits v ON v.customer_id = w.id "
+        "WHERE POSITION('|' || CAST(v.id AS TEXT) || '|' IN w.trail) = 0) SELECT * FROM w"
+    )
+    assert said
+
+
 @pytest.mark.parametrize("shape", list(_OUTSIDE))
 def test_a_role_that_may_ignore_relationships_is_not_held_to_them(shape):
     assert _v002(_OUTSIDE[shape], bypass_relationship_guard=True) == []
@@ -170,9 +182,6 @@ def test_the_refusal_says_how_the_tables_are_related_outside_a_relationship():
         "explicit_on",
         "comma_where",
         "on_true_where",
-        "cte",
-        "cte_renamed",
-        "derived_table",
         "in_subquery",
         "not_in_subquery",
         "exists",
@@ -182,6 +191,16 @@ def test_the_refusal_says_how_the_tables_are_related_outside_a_relationship():
         "using",
     ):
         assert _v002(_OUTSIDE[shape]) == [unregistered], shape
+    # A side read through a CTE or a derived table: the condition as written, and what it reads.
+    for shape, written, side in (
+        ("cte", "w.region = c.region", "w.region"),
+        ("cte_renamed", "w.r = c.region", "w.r"),
+        ("derived_table", "w.region = c.region", "w.region"),
+    ):
+        assert _v002(_OUTSIDE[shape]) == [
+            f"Invalid JOIN: {written} ({side} reads orders.region) — no approved relationship "
+            "exists between orders.region and customers.region"
+        ], shape
     # NATURAL pairs every column the two tables share: id and region, neither a relationship.
     assert sorted(_v002(_OUTSIDE["natural"])) == sorted(
         [unregistered, unregistered.replace("region", "id")]
@@ -685,6 +704,15 @@ _NEVER = {
     "product": "SELECT x.id FROM {a} x CROSS JOIN {b} y",
 }
 _ONE = {"a": "customers", "b": "customers"}
+
+
+def _pairs(said: str, left: str, right: str) -> bool:
+    """Whether a refusal names the pairing of ``left`` with ``right``: as the condition itself
+    where both sides name their tables, or what a side read through a CTE or a derived table
+    reads (the condition then reads as the statement writes it)."""
+    return f"{left} = {right}" in said or f"between {left} and {right}" in said
+
+
 _TWO = {"a": "orders", "b": "customers"}
 
 
@@ -704,7 +732,7 @@ def test_a_table_joined_to_itself_on_its_whole_primary_key_is_the_same_row(shape
     registered key only, and on the whole of it."""
     sql = _SAME_ROW[shape].format(**_ONE)
     assert _refused(sql) == []
-    assert any("customers.id = customers.id" in said for said in _refused(sql, tables=[]))
+    assert any(_pairs(said, "customers.id", "customers.id") for said in _refused(sql, tables=[]))
     # A key registered on another column exempts nothing here, nor does part of a key.
     assert _refused(sql, tables=[_keyed(2, "name")])
     assert _refused(sql, tables=[_keyed(2, "id", "region")])
@@ -723,7 +751,7 @@ def test_a_second_copy_of_a_table_brought_out_needs_a_relationship_to_itself(sha
     other -- refused, and passing once the table has that relationship registered to itself."""
     sql = _SECOND_COPY[shape].format(**_ONE)
     refused = _refused(sql)
-    assert refused and "customers.region = customers.region" in refused[0], refused
+    assert refused and _pairs(refused[0], "customers.region", "customers.region"), refused
     assert _refused(sql, self_related=True) == []
     assert _refused(_SECOND_COPY[shape].format(**_TWO), self_related=True)
 
@@ -887,3 +915,96 @@ def test_a_union_of_every_table_with_its_columns_named_is_checked_in_linear_time
     ratio = _select_items_read(monkeypatch, 60) / _select_items_read(monkeypatch, 30)
     # Measured: cubic 7.8x, now 3.96x.
     assert ratio < 5, ratio
+
+
+@pytest.mark.parametrize(
+    ("sql", "written", "side"),
+    [
+        (
+            "SELECT c.name, (SELECT COUNT(*) FROM (SELECT region FROM orders) breed_sub "
+            "WHERE breed_sub.region = c.region) AS n FROM customers c",
+            "breed_sub.region = c.region",
+            "breed_sub.region",
+        ),
+        (
+            "SELECT c.name FROM customers c "
+            "WHERE c.region IN (SELECT w.region FROM (SELECT region FROM orders) w)",
+            "c.region IN (SELECT w.region FROM (SELECT region FROM orders) AS w)",
+            "w.region",
+        ),
+    ],
+    ids=["correlated_scalar_over_a_derived_table", "in_over_a_derived_table"],
+)
+def test_a_side_read_through_a_derived_table_is_named_as_written(sql, written, side):
+    """REQ-603: the refusal names the condition as the statement writes it, and what the side
+    read through a derived table reads -- in a correlated subquery and an IN as in a join."""
+    assert _v002(sql) == [
+        f"Invalid JOIN: {written} ({side} reads orders.region) — no approved relationship "
+        "exists between orders.region and customers.region"
+    ]
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["c.id = v.customer_id", "v.customer_id = c.id"],
+    ids=["as_registered", "reversed"],
+)
+def test_a_relationship_s_join_is_accepted_whichever_way_round_it_is_written(condition):
+    """REQ-603: customers.id -> visits.customer_id is registered once; the join is the same
+    pairing written either way round, and either table may be the one joined to the other."""
+    for sql in (
+        f"SELECT v.id FROM visits v JOIN customers c ON {condition}",
+        f"SELECT c.name FROM customers c JOIN visits v ON {condition}",
+    ):
+        assert _v002(sql) == [], sql
+
+
+# --- a pattern of unions over tables no registered table is ---------------------------------------
+
+
+def _hops(arms: int, hops: int, table: str) -> str:
+    """``hops`` derived tables joined, each a UNION of ``arms`` reads of ``table``: the shape of a
+    graph session's pattern of unlabelled hops."""
+    union = " UNION ALL ".join(f"SELECT {i} AS k, x.id AS id FROM {table} x" for i in range(arms))
+    joined = f"SELECT h0.id FROM ({union}) h0"
+    for n in range(1, hops):
+        joined += f" JOIN ({union}) h{n} ON h{n}.id = h{n - 1}.id"
+    return joined
+
+
+def test_branches_reading_no_registered_table_are_one_alternative():
+    # TCK WithWhere2 [1], MatchWhere2 [1]: a session's tables are no registered table, so each
+    # union arm is the same empty alternative, and the guard enumerated arms ** hops of them in
+    # Python, past the request's 60 s, while the SQL itself takes milliseconds.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(_hops(3, 4, "session_table"), read="postgres")
+    resolver = _Resolver(lambda _table: None, lambda _table_id: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 1
+
+
+def test_a_pattern_of_many_unions_is_judged_at_once():
+    # 6 ** 7 alternatives (279936) before they were one.
+    assert _v002(_hops(6, 7, "session_table")) == []
+
+
+def test_branches_of_registered_tables_stay_alternatives():
+    # Different instances are different choices: each is still judged, and combining orders with
+    # customers on no relationship is still refused through a union.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(
+        "SELECT * FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u", read="postgres"
+    )
+    resolver = _Resolver(lambda table: {"orders": 1, "visits": 3}[table.name], lambda _i: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 2
+    assert _v002(
+        "SELECT u.id FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u "
+        "JOIN customers c ON TRUE"
+    )

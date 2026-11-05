@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { CapabilityNames } from "../../pages/security/CapabilityNames";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -94,29 +95,37 @@ export function RolesTab({ orgId }: RolesTabProps) {
                   </Table.Td>
                 ) : (
                   <>
-                    <Table.Td>{role.capabilities.join(", ")}</Table.Td>
+                    <Table.Td>
+                      <CapabilityNames
+                        capabilities={role.capabilities}
+                        regions={role.residencyValues}
+                      />
+                    </Table.Td>
                     <Table.Td data-testid={`role-domains-${role.id}`}>
                       {/* A role reaches the domains it lists; an empty list is none, not all. */}
                       {role.domain_access.join(", ") || t("rolesTab.noDomains")}
                     </Table.Td>
                     <Table.Td>
-                      <ConfirmDialog
-                        title={t("rolesTab.deleteRoleTitle", { roleId: role.id })}
-                        consequence={t("rolesTab.deleteRoleConsequence")}
-                        onConfirm={() => handleDeleteOrgRole(role.id)}
-                      >
-                        {(open) => (
-                          <ActionIcon
-                            variant="subtle"
-                            color="red"
-                            aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
-                            data-testid={`delete-role-${role.id}`}
-                            onClick={open}
-                          >
-                            <Trash2 size={14} />
-                          </ActionIcon>
-                        )}
-                      </ConfirmDialog>
+                      {/* REQ-2155: a standard role is Provisa's and locked; it is never deleted. */}
+                      {!role.standard && (
+                        <ConfirmDialog
+                          title={t("rolesTab.deleteRoleTitle", { roleId: role.id })}
+                          consequence={t("rolesTab.deleteRoleConsequence")}
+                          onConfirm={() => handleDeleteOrgRole(role.id)}
+                        >
+                          {(open) => (
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              aria-label={t("rolesTab.deleteRole", { roleId: role.id })}
+                              data-testid={`delete-role-${role.id}`}
+                              onClick={open}
+                            >
+                              <Trash2 size={14} />
+                            </ActionIcon>
+                          )}
+                        </ConfirmDialog>
+                      )}
                     </Table.Td>
                   </>
                 )}

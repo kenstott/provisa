@@ -57,6 +57,7 @@ async def _read(params: dict) -> httpx.Request:
             params,
             _Engine(),
             source=ApiSource(id="petstore", type="openapi", base_url=BASE),
+            ttl=300,
             loc=CacheLocation("mat_store", "org_default_api_cache", "relational"),
         )
     assert result.rows == [{"id": 1, "status": "sold"}]

@@ -22,6 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.federation import engine as engine_module
 from provisa.federation.engine import _ENGINE_BUILDERS, build_engine
 from provisa.federation.replica_address import (
     AmbiguousReplica,
@@ -54,6 +55,8 @@ _ENGINES = sorted(_ENGINE_BUILDERS)
 def engine(request, monkeypatch):
     # a generic engine reads its URL when it is built; none is dialled here
     monkeypatch.setenv("PROVISA_ENGINE_URL", "mssql://user:secret@engine-host/warehouse")
+    # Whether a kind's dialect extra is installed is not what this asks (test_engine_extras.py does).
+    monkeypatch.setattr(engine_module, "require_engine_extra", lambda kind: None)
     built = build_engine(request.param)
     monkeypatch.setattr(type(built), "materialize_store", lambda _self: "postgresql:///store")
     return built
@@ -117,6 +120,19 @@ def test_a_replica_name_stays_within_the_identifier_limit_and_stays_distinct():
     assert len(long_a.encode()) <= 63 and len(long_b.encode()) <= 63
     assert long_a != long_b
     assert replica_table_name("s", "public", "t") == "s__public__t"
+
+
+def test_a_replica_name_is_lower_case_and_names_differing_in_case_stay_distinct():
+    """Trino folds every name to lower case: Oracle's schema ``SYSTEM`` named a store table Trino
+    could not reach ("Table '...replicas.ora__system__zoned_rep' does not exist")."""
+    oracle = replica_table_name("ora", "SYSTEM", "zoned_rep")
+    assert oracle == oracle.lower() and oracle.startswith("ora__system__zoned_rep__")
+    assert replica_table_name("pg", "public", "Orders") != replica_table_name(
+        "pg", "public", "orders"
+    )
+    assert replica_table_name("pg", "public", "orders") == "pg__public__orders"
+    long_upper = replica_table_name("ora", "SYSTEM", "A" * 70)
+    assert len(long_upper.encode()) <= 63 and long_upper == long_upper.lower()
 
 
 def test_an_export_view_is_outside_the_registered_address_and_both_read_schemas():
@@ -236,6 +252,10 @@ class _Backend:
 
     def transpile_physical(self, pg_sql: str) -> str:
         return f"<engine dialect> {pg_sql}"
+
+    def exact_reads(self, state, physical_sql: str) -> str:
+        del state
+        return physical_sql  # an engine whose reads keep a source's values as they are
 
 
 def _runtime(routes: ReplicaRoutes | None, engine_name: str = "trino"):

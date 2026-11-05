@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} פועל.",
     "toolDoneTooltip": "{{name}} הסתיים. התוצאה הועברה לעוזר.",
     "toolErrorTooltip": "{{name}} נכשל. העוזר קיבל את השגיאה ויכול לנסות שוב עם ארגומנטים אחרים.",
-    "roleNoteHelpTitle": "התפקיד שבו רצה ההפעלה הזו"
+    "roleNoteHelpTitle": "התפקיד שבו רצה ההפעלה הזו",
+    "toolExplainTooltip": "{{name}} הסתיים. לחצו כדי לראות את המשפט שנשלח ואת זה שרץ.",
+    "explainTitle": "מה הריצה השאילתה של הסוכן",
+    "explainSent": "המשפט שהסוכן שלח",
+    "explainRan": "המשפט שרץ, מנוהל עבור {{role}}"
   }
 }

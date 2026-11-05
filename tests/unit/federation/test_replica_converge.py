@@ -11,6 +11,7 @@ replicas the model no longer declares. No save or delete path asks for either.""
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -34,7 +35,10 @@ from provisa.federation.replica_state import RetryPolicy
 pytestmark = pytest.mark.unit
 
 STORE = "store-a"
-ORG = "org1"
+# PostgreSQL advisory locks are held server-wide, not per database, and every xdist worker's
+# control plane is a database on one server: each worker process names an org of its own, or a
+# replica lock another worker's test holds reads here as another build's.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 COLUMNS = [("id", "bigint"), ("name", "text")]
 
 
@@ -483,8 +487,8 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
 
     platform = {
         "regions": [
-            {"id": "eu", "address": "https://eu.example.com"},
-            {"id": "us", "address": "https://us.example.com"},
+            {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+            {"id": "us", "description": "The us region", "purposes": ["residency"]},
         ]
     }
     was = process_region._region
@@ -503,8 +507,8 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 

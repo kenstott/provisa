@@ -44,7 +44,7 @@ import copy
 import hashlib
 import json
 import pathlib
-import unittest.mock as mock
+from types import SimpleNamespace
 
 import pytest
 from pytest_bdd import given, when, then, parsers, scenarios
@@ -58,7 +58,6 @@ from provisa.api_source.engine_cache import (
     table_known_live,
     _TABLE_EXISTS_CACHE,
 )
-from provisa.executor.session import EngineSession
 
 # Reaches a Trino coordinator: the CI side (tests/local_platform.py).
 pytestmark = [pytest.mark.requires_trino]
@@ -308,19 +307,16 @@ def _build_req318_cache_key(source_id: str, operation_path: str, native_args: di
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-def _make_fake_trino_conn(table_name: str, loc: CacheLocation, ttl: int) -> mock.MagicMock:
-    """Return a mock RAW Trino dbapi connection that simulates a live cache table.
+def _make_fake_store_engine() -> SimpleNamespace:
+    """An engine whose store holds the cache table: ``table_exists`` asks the engine's
+    ``landed_table_exists`` (the store's own catalog), and ``asked`` records each question."""
+    asked: list[tuple[str, str]] = []
 
-    engine_cache takes the ``isolated_sync()`` session surface, not a raw dbapi connection, so
-    steps wrap this in a real ``EngineSession`` — that way the probe assertions below observe the
-    cursor calls the production wrapper actually makes, instead of restating its contract."""
-    conn = mock.MagicMock()
-    cur = mock.MagicMock()
-    conn.cursor.return_value = cur
-    cur.execute.return_value = None
-    # fetchall returns one row to simulate SELECT 1 FROM ... LIMIT 1 succeeding
-    cur.fetchall.return_value = [(1,)]
-    return conn
+    async def landed_table_exists(*, schema: str, table: str) -> bool:
+        asked.append((schema, table))
+        return True
+
+    return SimpleNamespace(asked=asked, landed_table_exists=landed_table_exists)
 
 
 # ---------------------------------------------------------------------------
@@ -1170,22 +1166,19 @@ def given_get_result_cached_in_trino(shared_data):
 
     # First access: a live probe of the engine's store records the table as live in the
     # in-process TTL cache (real table_exists behaviour on a cache miss).
-    conn = _make_fake_trino_conn(table_name, loc, _REQ318_TTL)
+    store = _make_fake_store_engine()
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
-    assert (
-        table_exists(EngineSession(conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL) is True
-    )
-    assert conn.cursor.called, "first access must probe the engine's store (cache miss)"
+    assert asyncio.run(table_exists(store, loc, table_name, ttl=_REQ318_TTL)) is True
+    assert store.asked, "first access must ask the engine's store (cache miss)"
 
     shared_data["loc"] = loc
     shared_data["table_name"] = table_name
-    shared_data["probe_conn"] = conn
+    shared_data["probe_store"] = store
 
 
 @when("the same query with identical args is issued within TTL")
 def when_same_query_issued_within_ttl(shared_data):
     """Re-issue the identical query; recompute the cache key from identical args."""
-    loc: CacheLocation = shared_data["loc"]
     # Recomputing the cache table name from identical args yields the same table.
     recomputed = cache_table_name(
         _REQ318_SOURCE_ID, _REQ318_OPERATION_PATH, dict(_REQ318_NATIVE_ARGS)
@@ -1194,7 +1187,7 @@ def when_same_query_issued_within_ttl(shared_data):
         "identical args must resolve to the identical cache table"
     )
     # A fresh connection stands in for the second request path.
-    shared_data["second_conn"] = _make_fake_trino_conn(recomputed, loc, _REQ318_TTL)
+    shared_data["second_store"] = _make_fake_store_engine()
 
 
 @then("results are served from the engine's store with zero upstream REST calls")
@@ -1202,17 +1195,14 @@ def then_served_from_trino_zero_rest(shared_data):
     """Assert the second call is a cache hit — no probe of the store, no REST fetch."""
     loc: CacheLocation = shared_data["loc"]
     table_name: str = shared_data["table_name"]
-    second_conn: mock.MagicMock = shared_data["second_conn"]
+    second_store: SimpleNamespace = shared_data["second_store"]
 
     # Within TTL the in-process cache confirms the table is live without any probe.
     assert table_known_live(loc, table_name) is True
 
     # table_exists returns True from cache without touching the connection.
-    assert (
-        table_exists(EngineSession(second_conn, dialect="trino"), loc, table_name, ttl=_REQ318_TTL)
-        is True
-    )
-    assert not second_conn.cursor.called, "cache hit must not probe the store (zero upstream calls)"
+    assert asyncio.run(table_exists(second_store, loc, table_name, ttl=_REQ318_TTL)) is True
+    assert not second_store.asked, "cache hit must not ask the store (zero upstream calls)"
 
 
 # ---------------------------------------------------------------------------

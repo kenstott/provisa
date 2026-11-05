@@ -8,63 +8,46 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1573: who holds the two environment rights, asserted at the seed.
+"""REQ-1573 (amended by REQ-2155): who holds the two environment rights, asserted at the standard
+roles.
 
 ``environment_management`` is creating or deleting an environment and reaching the environments
-admin surface; ``environment_switch`` is being served by one other than prod. org_admin and
-developer hold both, analyst and modeler hold neither, and the three places that say so — the
-Capability enum, the Python seed, and schema.sql — have to agree or a deployment gets a right its
-UI does not gate on.
+admin surface; ``environment_switch`` is being served by one other than prod. org_admin holds both;
+developer, and so modeler, holds environment_switch alone; analyst holds neither.
 """
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
 import pytest
 
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.security.rights import Capability
 
 _RIGHTS = {"environment_management", "environment_switch"}
-_SCHEMA_SQL = Path(__file__).resolve().parents[2] / "provisa" / "core" / "schema.sql"
 
 
 def _seeded(role_id: str) -> set[str]:
-    return set(next(caps for rid, caps in _SEED_ROLES if rid == role_id))
+    return set(STANDARD_ROLE_RIGHTS[role_id])
 
 
-def _schema_sql_seeded(role_id: str) -> set[str]:
-    sql = _SCHEMA_SQL.read_text()
-    start = sql.index(f"    '{role_id}',")
-    block = sql[start : sql.index("ON CONFLICT", start)]
-    return set(re.findall(r'"([a-z_]+)"', block[block.index("'[") : block.index("]'")]))
+def test_org_admin_holds_both_rights():
+    assert _RIGHTS <= _seeded("org_admin")
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "developer"])
-def test_the_working_roles_hold_both_rights(role_id: str):
-    assert _RIGHTS <= _seeded(role_id)
-    assert _RIGHTS <= _schema_sql_seeded(role_id)
+@pytest.mark.parametrize("role_id", ["developer", "modeler"])
+def test_a_builder_switches_but_never_manages(role_id: str):
+    assert "environment_switch" in _seeded(role_id)
+    assert "environment_management" not in _seeded(role_id)
 
 
-@pytest.mark.parametrize("role_id", ["analyst", "modeler"])
-def test_a_reader_holds_neither(role_id: str):
-    # The default the user asked for: an analyst works in prod, and nothing about switching
-    # environments arrives with a role whose subject is querying the model.
-    assert not (_RIGHTS & _seeded(role_id))
-    assert not (_RIGHTS & _schema_sql_seeded(role_id))
+def test_a_reader_holds_neither():
+    # An analyst works in prod, and nothing about switching environments arrives with a role whose
+    # subject is querying the model.
+    assert not (_RIGHTS & _seeded("analyst"))
 
 
 def test_both_rights_are_real_capabilities():
     assert _RIGHTS <= {c.value for c in Capability}
-
-
-@pytest.mark.parametrize("role_id", ["org_admin", "developer", "analyst", "modeler"])
-def test_the_python_seed_and_schema_sql_say_the_same_thing(role_id: str):
-    # Two seeds exist because two planes are created two ways (portable and PG); a right present in
-    # one and absent from the other is a deployment where the gate depends on how it was installed.
-    assert _seeded(role_id) & _RIGHTS == _schema_sql_seeded(role_id) & _RIGHTS
 
 
 class TestEnvGateCapabilities:

@@ -18,7 +18,7 @@ Covers untested catalog tables and rewrite functions:
 - pg_catalog.pg_auth_members (empty stub)
 - pg_catalog.pg_tables (populated from context)
 - pg_catalog.pg_stat_user_tables (empty stub)
-- pg_catalog.pg_statio_user_tables (same internal table, empty)
+- pg_catalog.pg_statio_user_tables (its own columns, empty)
 - pg_table_is_visible() rewrite → TRUE
 - pg_has_role() rewrite → TRUE
 - current_setting() function
@@ -34,6 +34,8 @@ from unittest.mock import MagicMock, patch
 import asyncpg
 import pytest
 import pytest_asyncio
+
+from provisa.pgwire.catalog_pg17_procs import DESCRIPTIONS, PROCS, SYSTEM_INDEXES
 
 from provisa.pgwire.catalog import answer, classify
 from provisa.pgwire.catalog_populate import _build_catalog_db
@@ -301,13 +303,15 @@ def test_pg_table_is_visible_executes_true():
     ctx = _make_ctx_with_tables()
     state = _make_state(ctx)
     result = answer(
-        "SELECT pg_table_is_visible(c.oid) FROM pg_catalog.pg_class c",
+        "SELECT n.nspname, pg_table_is_visible(c.oid) FROM pg_catalog.pg_class c "
+        "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace",
         "alice",
         state,
     )
-    # dogs table → one pg_class row → one result row containing True
-    assert len(result.rows) >= 1
-    assert all(r[0] is True for r in result.rows)
+    # As search_path sees them (REQ-2167, amended 2026-11-03): pg_catalog's and public's (dogs),
+    # never information_schema's.
+    visible = {(schema, seen) for schema, seen in result.rows}
+    assert visible == {("pg_catalog", True), ("public", True), ("information_schema", False)}
 
 
 # ── pg_has_role() executes TRUE against real pg_roles row ───────────────────
@@ -316,13 +320,19 @@ def test_pg_table_is_visible_executes_true():
 def test_pg_has_role_executes_true():
     state = _make_state()
     result = answer(
-        "SELECT pg_has_role(r.rolname, 'public', 'USAGE') FROM pg_catalog.pg_roles r",
+        "SELECT pg_has_role(r.rolname, r.rolname, 'USAGE') FROM pg_catalog.pg_roles r",
         "alice",
         state,
     )
-    # pg_roles has the current role plus standard PG system roles — all return True
+    # pg_roles has the current role plus PostgreSQL's predefined roles: each holds itself.
     assert len(result.rows) >= 1
     assert all(row[0] is True for row in result.rows)
+
+
+def test_pg_has_role_refuses_a_role_name_no_role_has():
+    # As PostgreSQL 17 refuses it: "public" is no role.
+    with pytest.raises(Exception, match='role "public" does not exist'):
+        answer("SELECT pg_has_role('pg_monitor', 'public', 'USAGE')", "alice", _make_state())
 
 
 # ── pg_get_constraintdef() answers each constraint's definition ──────────────
@@ -353,9 +363,10 @@ def test_pg_get_indexdef_executes_null():
         "alice",
         state,
     )
-    # PK on dogs → one index row; pg_get_indexdef is a stub returning NULL
+    # PK on dogs → one index row; position 0 is the whole definition (metadata_functions)
     assert len(result.rows) >= 1
-    assert all(r[0] is None for r in result.rows)
+    # The catalogs' own indexes too, some of which are not unique.
+    assert all(r[0].startswith(("CREATE UNIQUE INDEX", "CREATE INDEX")) for r in result.rows)
 
 
 # ── current_setting() ───────────────────────────────────────────────────────
@@ -399,28 +410,36 @@ def test_answer_information_schema_views():
 def test_answer_pg_description():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_description", "alice", state)
-    assert result.rows == []
+    # A model with no comment lists the descriptions of what PostgreSQL 17 ships alone.
+    assert len(result.rows) == len(DESCRIPTIONS)
     assert "description" in result.column_names
 
 
 def test_answer_pg_index():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_index", "alice", state)
-    assert result.rows == []
+    # A model with no key lists the indexes on PostgreSQL 17's catalogs alone.
+    assert len(result.rows) == len(SYSTEM_INDEXES)
     assert "indexrelid" in result.column_names
 
 
 def test_answer_pg_proc():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_proc", "alice", state)
-    assert result.rows == []
+    # A model with no tracked function lists the functions PostgreSQL 17 ships alone.
+    assert len(result.rows) == len(PROCS)
     assert "proname" in result.column_names
 
 
 def test_answer_pg_auth_members():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_auth_members", "alice", state)
-    assert result.rows == []
+    # A model with no role hierarchy lists PostgreSQL 17's own memberships alone: pg_monitor's.
+    assert sorted(result.rows) == [
+        (10226, 3374, 3373, 10, False, True, True),
+        (10227, 3375, 3373, 10, False, True, True),
+        (10228, 3377, 3373, 10, False, True, True),
+    ]
     assert "roleid" in result.column_names
 
 
@@ -501,7 +520,7 @@ async def test_wire_pg_description_queryable(pgwire_server_p4, mock_state_p4):
         )
         rows = await conn.fetch("SELECT * FROM pg_catalog.pg_description")
         await conn.close()
-    assert rows == []
+    assert len(rows) == len(DESCRIPTIONS)  # what PostgreSQL 17 ships
 
 
 @pytest.mark.asyncio
@@ -517,7 +536,7 @@ async def test_wire_pg_index_queryable(pgwire_server_p4, mock_state_p4):
         )
         rows = await conn.fetch("SELECT * FROM pg_catalog.pg_index")
         await conn.close()
-    assert rows == []
+    assert len(rows) == len(SYSTEM_INDEXES)  # the indexes on PostgreSQL 17's catalogs
 
 
 @pytest.mark.asyncio
@@ -533,7 +552,7 @@ async def test_wire_pg_proc_queryable(pgwire_server_p4, mock_state_p4):
         )
         rows = await conn.fetch("SELECT * FROM pg_catalog.pg_proc")
         await conn.close()
-    assert rows == []
+    assert len(rows) == len(PROCS)  # what PostgreSQL 17 ships
 
 
 @pytest.mark.asyncio

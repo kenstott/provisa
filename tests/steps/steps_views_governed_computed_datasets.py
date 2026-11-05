@@ -82,11 +82,11 @@ def _role(role_id: str) -> dict:
 
 # Columns common to both the view and the equivalent table.
 # `email` is masked / restricted to the `admin` role via visible_to;
-# `id` and `region` are visible to all roles (empty visible_to).
+# `id` and `region` are granted to both roles.
 _COLUMNS = [
-    {"column_name": "id", "visible_to": []},
+    {"column_name": "id", "visible_to": ["admin", "analyst"]},
     {"column_name": "email", "visible_to": ["admin"]},
-    {"column_name": "region", "visible_to": []},
+    {"column_name": "region", "visible_to": ["admin", "analyst"]},
 ]
 
 _COLUMN_TYPES = {

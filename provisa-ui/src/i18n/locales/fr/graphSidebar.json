@@ -4,10 +4,17 @@
     "tabHistory": "Historique",
     "tabFavorites": "Favoris",
     "tabExport": "Exporter vers Neo4j",
+    "tabExportSparql": "Exporter en RDF ou en résultats SPARQL",
     "domainLabels": "Étiquettes de domaine",
     "nodeLabels": "Étiquettes de nœuds",
     "relationshipTypes": "Types de relations",
     "propertyKeys": "Clés de propriété",
+    "session": "Session",
+    "sessionFailed": "Impossible de lire la session : {{error}}",
+    "sessionEmpty": "Rien n'a été créé dans cette session.",
+    "sessionClear": "Effacer la session",
+    "sessionLabelTip": "{{nodes}} nœuds dans la session, {{tagged}} nœuds du modèle étiquetés",
+    "sessionTypeTip": "{{count}} relations dans la session",
     "loading": "Chargement…",
     "noLabelsFound": "Aucune étiquette trouvée",
     "noRelTypesFound": "Aucun type de relation trouvé",
@@ -30,6 +37,8 @@
     "tabSettings": "Paramètres d'affichage",
     "maxNodes": "Nœuds max.",
     "maxNodesHint": "Nombre maximal de nœuds dessinés par une requête",
-    "notCounted": "Non compté : {{list}}"
+    "notCounted": "Non compté : {{list}}",
+    "countsFailed": "Comptages indisponibles : {{error}}",
+    "schemaFailed": "Schéma indisponible : {{error}}"
   }
 }

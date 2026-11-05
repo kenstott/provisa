@@ -103,9 +103,9 @@ class BuildClaim:
         return self._try_advisory(_REPLICA_LOCK_CLASS, replica_lock_name(org_id, key))
 
     def try_indexes(self, org_id: str, key: ReplicaKey) -> bool:
-        """Take the lock of one replica's index builds (REQ-2015), if no process holds it. Not
-        the build's lock: a landing never waits on its indexes, and the indexes of the landing
-        it replaced stop when they see it."""
+        """Take the lock of one replica's or materialized view's index builds (REQ-2015), if no
+        process holds it. Not the build's lock: a landing never waits on its indexes, and the
+        indexes of the landing it replaced stop when they see it."""
         return self._try_advisory(_INDEX_LOCK_CLASS, replica_lock_name(org_id, key))
 
     def release_replica(self, org_id: str, key: ReplicaKey) -> None:
@@ -123,9 +123,13 @@ class BuildClaim:
             conn, self._conn = self._conn, None
             engine, self._engine = self._engine, None
             if conn is not None:
+                # Released on the session first: ending it frees them too, but only once the
+                # server has ended the backend, which closing does not wait for -- a pass started
+                # at once would find them still held.
+                conn.execute(text("SELECT pg_advisory_unlock_all()"))
                 conn.close()
             if engine is not None:
-                engine.dispose()  # ends the session: the server frees its advisory locks
+                engine.dispose()  # ends the session
 
 
 class BuildLocks:

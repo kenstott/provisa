@@ -18,9 +18,16 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
+// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
+vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   // Spread the real module so the enum constants stay real; replace the fetchers.
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the expert/author picker is fed by the org's roster, not by typing a user id.
+  listAttributablePeople: vi.fn(async () => [
+    { user_id: "u1", email: "ada@acme.test", display_name: "Ada Lovelace" },
+    { user_id: "u2", email: "grace@acme.test", display_name: "" },
+  ]),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   createGlossaryTerm: vi.fn(),
@@ -124,26 +131,6 @@ vi.mock("../context/AuthContext", () => ({
   }),
 }));
 
-// REQ-1592: the expert/author picker is fed by the org's roster, not by typing a user id.
-vi.mock("../api/admin", () => ({
-  fetchOrgMembers: vi.fn(async () => [
-    {
-      user_id: "u1",
-      email: "ada@acme.test",
-      display_name: "Ada Lovelace",
-      provider: "local",
-      is_org_admin: false,
-    },
-    {
-      user_id: "u2",
-      email: "grace@acme.test",
-      display_name: "",
-      provider: "local",
-      is_org_admin: false,
-    },
-  ]),
-}));
-
 import {
   addGlossaryEdge,
   addGlossaryExpert,
@@ -194,15 +181,16 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 const CHURN: GlossaryTermSummary = {
@@ -214,15 +202,16 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 const MARGIN: GlossaryTermSummary = {
@@ -234,6 +223,7 @@ const MARGIN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "deprecated",
   status_reason: null,
@@ -241,8 +231,9 @@ const MARGIN: GlossaryTermSummary = {
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  // A deprecated term breaks the chain (REQ-1387).
+  grounding: "not_grounded",
+  agent_visible: false,
   domains: [],
 };
 // Abstract with no edge chain to a rooted term -- the dangling case (grounded: false).
@@ -255,6 +246,7 @@ const DANGLING: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "draft",
   status_reason: null,
@@ -262,8 +254,8 @@ const DANGLING: GlossaryTermSummary = {
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: false,
-  grounded: false,
+  grounding: "not_grounded",
+  agent_visible: false,
   domains: [],
 };
 
@@ -284,6 +276,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_in: [],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
+  pending_on: [],
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -293,6 +286,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
   experts: [],
   tags: [],
+  pending_on: [],
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -303,6 +297,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   edges_in: [],
   experts: [],
   tags: [],
+  pending_on: [],
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
@@ -364,8 +359,8 @@ describe("GlossaryTab", () => {
 
     // A concept names no column: its role says so, and no count is shown.
     const churn = screen.getByTestId("glossary-item-2");
-    expect(within(churn).getByTestId("glossary-role-2")).toHaveTextContent(
-      t("glossaryTab.role_concept"),
+    expect(within(churn).getByRole("img", { name: t("glossaryTab.role_concept") })).toBe(
+      within(churn).getByTestId("glossary-role-2"),
     );
     expect(within(churn).queryByText("Abstract")).toBeNull();
 
@@ -380,7 +375,7 @@ describe("GlossaryTab", () => {
   it("badges a draft term Draft in the list", async () => {
     mockList.mockResolvedValue([REVENUE, DANGLING]);
     render(<GlossaryTab />);
-    expect(await screen.findByTestId("glossary-status-4")).toHaveTextContent(
+    expect(await screen.findByTestId("glossary-status-4")).toHaveAccessibleName(
       t("glossaryTab.status_draft"),
     );
   });
@@ -461,7 +456,7 @@ describe("GlossaryTab", () => {
     const orphan = screen.getByTestId("glossary-item-4");
     const badge = within(orphan).getByTestId("glossary-role-4");
     expect(badge).toHaveAttribute("data-dangling", "true");
-    expect(badge).toHaveTextContent(t("glossaryTab.role_concept"));
+    expect(badge).toHaveAccessibleName(t("glossaryTab.role_concept"));
   });
 
   it("explains what the glossary is for next to the add button", async () => {
@@ -512,13 +507,13 @@ describe("GlossaryTab", () => {
     mockList.mockResolvedValue([{ ...REVENUE, findings: 1 }, CHURN]);
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-2");
-    expect(screen.getByTestId("glossary-review-1")).toHaveTextContent(t("glossaryTab.toReview"));
+    expect(screen.getByTestId("glossary-review-1")).toHaveAccessibleName(t("glossaryTab.toReview"));
     fireEvent.click(screen.getByTestId("glossary-to-review-only"));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-2")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
   });
 
-  it("passes the search text and the deprecated toggle to the list endpoint", async () => {
+  it("passes the search text to the list endpoint and always fetches deprecated terms", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 
@@ -527,10 +522,8 @@ describe("GlossaryTab", () => {
     await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", true, null));
     await waitFor(() => expect(screen.queryByTestId("glossary-item-3")).toBeNull());
     expect(screen.getByTestId("glossary-item-1")).toBeInTheDocument();
-
-    mockList.mockResolvedValue([REVENUE, CHURN]);
-    fireEvent.click(screen.getByTestId("glossary-show-deprecated"));
-    await waitFor(() => expect(mockList).toHaveBeenCalledWith("rev", false, null));
+    expect(mockList).not.toHaveBeenCalledWith(expect.anything(), false, expect.anything());
+    expect(screen.queryByTestId("glossary-show-deprecated")).toBeNull();
   });
 
   it("reads every value of the term, under the form's labels", async () => {
@@ -553,6 +546,8 @@ describe("GlossaryTab", () => {
       ["Role", "Concept"],
       // Deprecated by its last column leaving: no one gave a reason or a date.
       ["Status", "Deprecated"],
+      // REQ-1387: computed, beside the status a person set.
+      ["Grounding", "Not grounded"],
       ["Reason", "—"],
       ["By", "—"],
       ["Planned retirement", "—"],
@@ -632,18 +627,23 @@ describe("GlossaryTab", () => {
 
     const listbox = await openSelect("glossary-edge-rel-select");
     const options = within(listbox).getAllByRole("option", { hidden: true });
-    expect(options.map((o) => o.textContent)).toEqual([
-      t("glossaryTab.rel_KIND_OF"),
-      t("glossaryTab.rel_RELATED_TO"),
-      t("glossaryTab.rel_PART_OF"),
-      t("glossaryTab.rel_SYNONYM_OF"),
-      t("glossaryTab.rel_VALID_VALUE_OF"),
-      t("glossaryTab.rel_DERIVED_FROM"),
-      t("glossaryTab.rel_REPLACES"),
-      t("glossaryTab.rel_PREFERRED_TERM_FOR"),
-      t("glossaryTab.rel_TRANSLATION_OF"),
-      t("glossaryTab.rel_ANTONYM_OF"),
+    // Exactly the closed set, the grounding types first and RELATED_TO last (REQ-1387); each
+    // option reads its label, then its test where it has one.
+    expect(options.map((o) => o.getAttribute("value"))).toEqual([
+      "KIND_OF",
+      "PART_OF",
+      "VALID_VALUE_OF",
+      "SYNONYM_OF",
+      "DERIVED_FROM",
+      "REPLACES",
+      "PREFERRED_TERM_FOR",
+      "TRANSLATION_OF",
+      "ANTONYM_OF",
+      "RELATED_TO",
     ]);
+    for (const o of options) {
+      expect(o.textContent?.startsWith(t(`glossaryTab.rel_${o.getAttribute("value")}`))).toBe(true);
+    }
   });
 
   it("adds and removes relationships in the form, sent on Save", async () => {
@@ -675,16 +675,21 @@ describe("GlossaryTab", () => {
     await screen.findByTestId("glossary-edge-in-1-RELATED_TO");
     expect(screen.getByTestId("glossary-delete-btn")).toBeDisabled();
 
-    // Margin has neither refs nor relationships: delete is enabled, and a server 400 lands in
-    // the error alert.
+    // Margin has neither refs nor relationships: delete is enabled, and a server 400 is said in
+    // the detail, which stays open and unlocked (REQ-2198).
     fireEvent.click(screen.getByTestId("glossary-item-3"));
     await waitFor(() => expect(screen.getByTestId("glossary-delete-btn")).toBeEnabled());
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     mockDelete.mockRejectedValue(new Error("term 3 still has refs"));
 
     fireEvent.click(screen.getByTestId("glossary-delete-btn"));
+    fireEvent.click(await screen.findByTestId("glossary-delete-confirm-confirm"));
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(3));
-    expect(await screen.findByTestId("glossary-error")).toHaveTextContent("term 3 still has refs");
+    expect(await screen.findByTestId("glossary-delete-btn-problem")).toHaveTextContent(
+      t("common.deleteFailed", { reason: "term 3 still has refs" }),
+    );
+    expect(screen.getByTestId("panel-delete-lock")).not.toBeDisabled();
+    expect(screen.getByTestId("glossary-delete-btn")).toBeEnabled();
+    expect(screen.getByTestId("glossary-item-3")).not.toHaveAttribute("data-deleting");
   });
 
   it("sets export exclusion in the form, sent on Save", async () => {
@@ -719,12 +724,14 @@ describe("GlossaryTab", () => {
         order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByTestId("glossary-generate-menu")).toHaveAccessibleName("Generate with AI");
-    // Its two drafts are items of the menu, in this order, and nowhere else on the page.
+    // Its drafts are items of the menu, in this order, and nowhere else on the page: finding terms
+    // in a document (REQ-2179), then relationships and definitions.
     expect(screen.queryByTestId("glossary-bulk-relationships-btn")).toBeNull();
     fireEvent.click(screen.getByTestId("glossary-generate-menu"));
     const menu = await screen.findByRole("menu");
     // Mantine's items are not exposed by role in jsdom (mantine-menu-test-pattern): read them in place.
     expect([...menu.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent)).toEqual([
+      "Find terms",
       "Relationships",
       "Definitions",
     ]);
@@ -1073,7 +1080,7 @@ describe("GlossaryTab", () => {
   });
 
   it("bulk-generates relationships and shows a count notification", async () => {
-    mockBulkRelationships.mockResolvedValue({ added: 1 });
+    mockBulkRelationships.mockResolvedValue({ added: 1, review: [] });
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 

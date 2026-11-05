@@ -15,7 +15,7 @@
 # REQ-250, REQ-251, REQ-281, REQ-369, REQ-370, REQ-393, REQ-399, REQ-400, REQ-415, REQ-419, REQ-421
 
 import re
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
@@ -76,6 +76,9 @@ class SourceType(str, Enum):
     # DuckDB engine; motherduck attaches a remote cloud database on the pg engine.
     motherduck = "motherduck"
     saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
+    # REQ-2191: a database with no named type, reached at its own SQLAlchemy URL and written in the
+    # SQL dialect its admin chose (provisa/jdbc_source).
+    jdbc = "jdbc"
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"
     yugabytedb = "yugabytedb"
@@ -124,10 +127,11 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993): the organisation's own functions, run in a sandboxed worker; their
-    # tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+    # worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
+    go = "go"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -161,6 +165,9 @@ class SourceType(str, Enum):
     sharepoint = "sharepoint"
     salesforce = "salesforce"
     servicenow = "servicenow"  # REQ-1954: read through the instance's Table API
+    # REQ-2197: QuickBooks Online, its Accounting API entities read through the query endpoint
+    # (simple conditions pushed into its query language) and landed.
+    quickbooks = "quickbooks"
     jira = "jira"  # REQ-2069: Jira Cloud, read through its Calcite adapter (JQL pushed down)
     cloudops = "cloudops"  # REQ-1947: Azure / AWS / GCP resource inventory, read only
     splunk = "splunk"
@@ -357,9 +364,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         return stored_convention(v)
 
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
-    # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
-    # through for backward compatibility but are deprecated.
+    # vocabulary), translated to the engine session props at query time. Only that vocabulary reaches
+    # the session: every other key is a setting its connector or driver reads from here.
     federation_hints: dict[str, str] = Field(default_factory=dict)
+    # REQ-1923: the values a branded source's setup was given besides its credential, by the
+    # brand's setup field names (Shopify: store, api_version; provisa.graphql_remote.brands
+    # Brand.setup). Empty for a source of no brand, or a brand whose setup asks for nothing.
+    brand_setup: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
@@ -422,6 +433,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             data = {**data, "change_signal": source_change_signal(stype, data.get("change_signal"))}
         return data
 
+    @classmethod
+    def settings_view(
+        cls, source_id: str, source_type: str, federation_hints: dict[str, str]
+    ) -> "Source":  # REQ-2191
+        """The source as a runtime's per-source maps hold it -- its id, type and settings -- for a
+        reader that holds only those (``FederationEngine.connector_pushdown``). Not validated
+        again: it was when the source was saved."""
+        return cls.model_construct(
+            id=source_id, type=SourceType(source_type), federation_hints=dict(federation_hints)
+        )
+
     @property
     def connector(self) -> str | None:
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
@@ -433,7 +455,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     @property
     def dialect(self) -> str | None:
-        """SQLGlot dialect name, or None for NoSQL sources."""
+        """SQLGlot dialect name, or None for NoSQL sources. A JDBC source's is the one its
+        admin chose (REQ-2191)."""
+        if self.type == SourceType.jdbc:
+            from provisa.jdbc_source.settings import SQL_DIALECT
+
+            return self.federation_hints.get(SQL_DIALECT) or None
         return SOURCE_TO_DIALECT.get(self.type.value)
 
     @property
@@ -450,17 +477,24 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # duplicate-key race when two concurrent queries register the same anonymous composite type.
         if st in _PG_WIRE_TYPES:
             return f"jdbc:postgresql://{h}:{po}/{self.database}?autosave=conservative"
-        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own.
+        # MySQL-wire RDBs (mysql + tidb) use the MySQL JDBC driver; mariadb keeps its own. Neither
+        # names a database: Trino's MySQL and MariaDB connectors read each database as a schema and
+        # refuse a URL that names one ("Database (catalog) must not be specified in JDBC URL").
         if st in _MYSQL_WIRE_TYPES:
-            return f"jdbc:mysql://{h}:{po}/{self.database}"
+            return f"jdbc:mysql://{h}:{po}"
+        if st == "mariadb":
+            return f"jdbc:mariadb://{h}:{po}"
         # Druid is queried through its Avatica endpoint on the broker (Trino's druid connector wraps
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
             return f"jdbc:avatica:remote:url=http://{h}:{po}/druid/v2/sql/avatica/"
+        # ClickHouse: Trino's connector speaks the JDBC driver over the HTTP interface, which is the
+        # port a clickhouse source declares (8123 when it names none).
+        if st == "clickhouse":
+            return f"jdbc:clickhouse://{h}:{po or 8123}/{self.database}"
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
-            "mariadb": "jdbc:mariadb",
             "redshift": "jdbc:redshift",
             "exasol": "jdbc:exa",
         }
@@ -526,7 +560,11 @@ class Domain(BaseModel):  # REQ-471, REQ-609
         return data
 
 
-class DataProduct(BaseModel):  # REQ-1634, REQ-1660
+#: A data product's lifecycle (REQ-1634 STATUS): every state is asserted by an action.
+DATA_PRODUCT_STATUSES = ("draft", "live", "deprecated", "retired")
+
+
+class DataProduct(BaseModel):  # REQ-1634
     id: str
     domain_id: str  # required FK — a data product has exactly one owning domain
     name: str
@@ -538,19 +576,145 @@ class DataProduct(BaseModel):  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
-    # Prose, not structured: a product spans multiple member tables and a structured SLA
-    # can't unambiguously say which member it describes.
-    sla: str | None = None
+    # REQ-1634 STATUS: draft until published (live); deprecated stays in service until retired.
+    # ``status_reason`` is why it was deprecated or retired; ``retire_on`` the planned retirement
+    # of a deprecated product; ``successor`` the product its members moved to on retirement.
+    status: Literal["draft", "live", "deprecated", "retired"] = "draft"
+    status_reason: str | None = None
+    retire_on: date | None = None
+    successor: str | None = None
+    # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
-    # REQ-1635: Horizon Catalog organization listings default to DRAFT (PUBLISH = FALSE) so a new
-    # listing doesn't surface org-wide before it's reviewed; set true to publish it immediately.
-    publish: bool = False
     custom_properties: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _status_fields_fit(self) -> "DataProduct":
+        if self.status in ("deprecated", "retired") and not (self.status_reason or "").strip():
+            raise ValueError(f"a {self.status} data product states its reason (status_reason)")
+        if self.retire_on is not None and self.status != "deprecated":
+            raise ValueError("retire_on is the planned retirement of a deprecated data product")
+        if self.successor is not None and self.status != "retired":
+            raise ValueError("successor is the data product a retired one's members moved to")
+        return self
+
+
+#: REQ-2158: the states of an ODCS contract.
+CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
+#: REQ-2158: the version a member's contract is created at, as a draft.
+FIRST_CONTRACT_VERSION = "0.1.0"
+
+
+class ContractColumn(BaseModel):  # REQ-2158
+    """A column an output port promises: the member's column, of the type it is stored as."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    description: str | None = None
+    required: bool = False  # ODCS: the column is never null
+
+
+class ContractSlaProperty(BaseModel):  # REQ-2158
+    """One declared ODCS service-level property (availability, retention, ...). Freshness is
+    not declared here: it is the member's declared freshness, read when the contract is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    property: str = Field(min_length=1)
+    value: str | int | float | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+class ContractTerms(BaseModel):  # REQ-2158
+    model_config = ConfigDict(extra="forbid")
+
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
+
+
+class ContractCheck(BaseModel):  # REQ-2158
+    """One check the product promised on the member, as a contract version saved it: promises are
+    read live, so what a version promised is kept with it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    column: str | None = None  # None: a check of the table
+    severity: Literal["fail", "warn"] = "fail"
+    definition: str = ""
+
+
+class ContractChange(BaseModel):  # REQ-2158
+    """One difference of a contract version from the one before it. ``breaking``: it can break a
+    consumer (provisa.core.contract_versions)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[
+        "field_added",
+        "field_removed",
+        "field_renamed",
+        "field_type_changed",
+        "field_required",
+        "field_optional",
+        "field_described",
+        "sla_added",
+        "sla_removed",
+        "sla_changed",
+        "check_added",
+        "check_removed",
+        "check_changed",
+        "description_changed",
+        "terms_changed",
+    ]
+    subject: str = Field(min_length=1)
+    before: str | None = None
+    after: str | None = None
+    breaking: bool = False
+
+
+class DataContract(BaseModel):  # REQ-2158
+    """A data product member's ODCS contract: its output port, versioned on its own. Its promises
+    are the checks the product owns on the member (REQ-2157), read when the contract is."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    status: Literal["proposed", "draft", "active", "deprecated", "retired"] = "draft"
+    description: str | None = None
+    terms: ContractTerms = Field(default_factory=ContractTerms)
+    sla: list[ContractSlaProperty] = Field(default_factory=list)
+    columns: list[ContractColumn] = Field(default_factory=list)
+    # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
+    # every later version (data_contracts.for_save).
+    created_at: datetime | None = None
+    # Every saved version, oldest first, the last this one (contract_versions.recorded). The
+    # store's record, as created_at is: a save replaces whatever it declares here.
+    versions: list["ContractVersion"] = Field(default_factory=list)
+
+
+class ContractVersion(BaseModel):  # REQ-2158
+    """A saved version of a contract: what it was, what it promised, how it differs from the one
+    before it, and when and by whom it was saved. ``saved_by`` None is the system (a configuration
+    load, a boot), as model_change.actor() says."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract: DataContract
+    checks: list[ContractCheck] = Field(default_factory=list)
+    changes: list[ContractChange] = Field(default_factory=list)
+    saved_at: datetime
+    saved_by: str | None = None
+
+
+DataContract.model_rebuild()
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -600,9 +764,8 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
     A config-declared term holds no column refs of its own, so ``domains`` (required,
     non-empty) is the only thing that scopes it — see ``create_abstract_term``'s docstring for
     why an unscoped term is a governance gap. Until it grounds something it is a Concept, and
-    otherwise inert — the live/approved admission rule requires it be *grounded*, reachable by
-    an edge from a term that does hold a column ref — so ``edges`` is how config connects it to
-    the concrete terms it actually means. Whether it is abstract is derived, never declared
+    otherwise inert — it reaches data only through an edge to a term that does hold a column
+    ref — so ``edges`` is how config connects it to the concrete terms it actually means. Whether it is abstract is derived, never declared
     (REQ-2141).
     """
 
@@ -610,7 +773,10 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
     definition: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
-    # REQ-2144: the asserted parts of its status, one at most; draft and live are computed.
+    # REQ-1387, REQ-2144: its status, set by people. ``approve`` approves it (it needs a
+    # definition), and only an approved term is deprecated; of deprecate, retire and restore one
+    # at most.
+    approve: bool = False
     deprecate: GlossaryTermDeprecation | None = None
     retire: GlossaryTermRetirement | None = None
     restore: bool = False
@@ -621,6 +787,13 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
             raise ValueError(
                 f"glossary term {self.name!r} states more than one of deprecate, retire and restore"
             )
+        if self.approve and (self.retire is not None or self.restore):
+            raise ValueError(
+                f"glossary term {self.name!r} states approve with retire or restore; approve goes "
+                "alone or with deprecate"
+            )
+        if self.approve and not (self.definition or "").strip():
+            raise ValueError(f"glossary term {self.name!r} is approved, which needs a definition")
         return self
 
     @model_validator(mode="before")
@@ -877,7 +1050,7 @@ class TagAssignment(BaseModel):  # REQ-1377
     relationship_id: str | None = None
     # Commands (tracked functions/webhooks) are identified by their registered name.
     command_name: str | None = None
-    product_id: str | None = None  # REQ-1660: explicit data-product-level tag
+    product_id: str | None = None  # REQ-1634: explicit data-product-level tag
     # Why this tag is on this object; required for 'deprecated' (system semantic).
     reason: str | None = None
     # ISO date the assignment stops being intended — for 'deprecated', the planned removal
@@ -1007,16 +1180,28 @@ class Mask(BaseModel):  # REQ-038, REQ-040, REQ-2059
         return self
 
 
-class MaskEntry(BaseModel):  # REQ-2059
+class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
     """One entry of a column's ordered mask list: the readers it is for (grant entries, as
-    ``visible_to`` takes them, composites included; ``"*"`` is everyone) and the mask they read
-    the column through, or none (``mask`` None: unmasked). A reader reads the column through the
-    first entry it holds; a reader holding none reads it unmasked."""
+    ``visible_to`` takes them, composites included) and the mask they read the column through, or
+    none (``mask`` None: unmasked). A reader reads the column through the first entry it holds; a
+    reader holding none reads it completely masked, so unmasked is only ever given by an entry.
+    An entry with no ``to`` (None) is for every other reader: it is the list's last entry, at most
+    one per list."""
 
-    to: list[str]
+    to: list[str] | None = None
     mask: Mask | None = None
     # REQ-2094: why this entry is what it is (provisa.judgments.why); optional.
     why: dict[str, Any] | None = None
+
+    @field_validator("to")
+    @classmethod
+    def _star_is_no_reader(cls, value: list[str] | None) -> list[str] | None:  # REQ-2153
+        if value is not None and "*" in value:
+            raise ValueError(
+                "'*' names no reader; the last entry of a mask list, with no 'to', is for every "
+                "other reader"
+            )
+        return value
 
 
 class ObjectField(BaseModel):
@@ -1048,7 +1233,9 @@ class Column(
     # "query_param" (an OpenAPI operation), "graphql_arg" (a remote GraphQL field's argument),
     # "grpc_input" (a gRPC request's field), "query_arg" (an argument of the table's native
     # query: a MongoDB pipeline, a Cosmos DB query), "partition_key" (a Cosmos DB container's
-    # partition key, REQ-1982).
+    # partition key, REQ-1982), "column_value" (a real column of the table, given by equality,
+    # that narrows the read to the rows having that value: a JDBC source's floor,
+    # REQ-2191).
     native_filter_type: str | None = None
     # Whether the source cannot be read without a value for this parameter, as the source's own
     # description says (an OpenAPI path parameter or one marked required, a GraphQL argument
@@ -1059,6 +1246,7 @@ class Column(
     # require it. The parameter is required when either says so.
     required_by_steward: bool = False
     is_primary_key: bool = False  # user-designated PK (informational, not enforced)
+    not_null: bool = False  # REQ-2190: its source declares it NOT NULL, recorded at registration
     is_foreign_key: bool = False  # derived from relationships (source_column side)
     is_alternate_key: bool = (
         False  # derived from relationships (target_column when PK already exists)
@@ -1069,7 +1257,7 @@ class Column(
     # relationship, not data (graphql_remote/relation_columns.py).
     gql_object_type: str | None = None
     gql_is_list: bool = False
-    scope: str = "domain"  # "domain" | "public" | "restricted" (core/column_scope.py, REQ-1959)
+    scope: str = "domain"  # "domain" | "listed" | "public" | "own-domain" (core/column_scope.py)
 
     @model_validator(mode="before")
     @classmethod
@@ -1080,6 +1268,18 @@ class Column(
                 "'write_grants' (role, operation, columns, rows, check, presets)"
             )
         return data
+
+    @model_validator(mode="after")
+    def _every_other_reader_is_last(self) -> "Column":  # REQ-2153
+        # The entry for every other reader matches any reader, so one before the end would leave
+        # every entry after it unreached.
+        open_ended = [i for i, e in enumerate(self.masks) if e.to is None]
+        if open_ended and open_ended != [len(self.masks) - 1]:
+            raise ValueError(
+                f"column {self.name!r}: the mask entry with no 'to' is for every other reader, "
+                "so it is the list's last entry, and the only one"
+            )
+        return self
 
     @model_validator(mode="after")
     def _embedding_is_not_masked(self) -> "Column":  # REQ-652
@@ -1151,6 +1351,9 @@ class Column(
     # Whose spelling native_type is: the source's kind, or the engine's when the engine listed
     # the column. A value is cast into the native type only on that platform.
     native_platform: str | None = None
+    # REQ-2171: the subtype of data_type the column registers as (inet, money, ...). A data_type
+    # that names a subtype is stored as its base carrying it.
+    subtype: str | None = None
     # REQ-1494: the column's kind of fake, as the operator writes it ("categories((a, b))",
     # "bool(.8)", "email()"), and whether it is stable -- the same on every engine. Checked against
     # the rest of the table by provisa.fakes.checks.check_table.
@@ -1370,7 +1573,8 @@ class Metric(BaseModel):  # REQ-1317
     # REQ-1319: definition text written for AI consumers; projected into MCP tool output,
     # GraphQL introspection docs, pg_description, and Ossie ai_context.
     ai_context: str | None = None
-    visible_to: list[str] = Field(default_factory=lambda: ["*"])
+    # REQ-1317: the roles that read the metric; none named is no role.
+    visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
 
@@ -1511,6 +1715,9 @@ class Table(
     # observed target is DERIVED from this text rather than declared beside it (REQ-939); the
     # results columns are the shipped schema and are replaced at parse, not authored.
     dq_contract: str | None = None
+    # REQ-1443 clause 10: the contract's checks, parsed once at registration
+    # (provisa.dq.registration.derive_checker_table) and stored, so the meta domain serves them.
+    dq_rules: list[dict] | None = None
     # REQ-1934: the Data Profiler source this table is a member of. A table belongs to at most one
     # profiler; the profiler's schedule profiles it and its result relations carry its history.
     profiler_source_id: str | None = None
@@ -1598,6 +1805,10 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
+    # REQ-2133: Hold on failing checks -- a built-in preflight that holds a refresh while a checker
+    # scanning one of the view's nearest physical inputs failed its latest run; combined with
+    # mv_preprocess, the refresh lands only if both continue.
+    mv_hold_on_failing_checks: bool = False
     # REQ-2109: the bitemporal declaration of a table or a view, all three or none. business_key
     # names the columns identifying the same thing across versions; valid_time the column holding
     # the date the business gives the record (when it was agreed, booked or took effect);
@@ -1614,6 +1825,9 @@ class Table(
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
+    # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
+    # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
+    contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.
@@ -1848,17 +2062,23 @@ class Table(
 
     @model_validator(mode="after")
     def _validate_row_materialize(self) -> "Table":
+        if (problem := self.row_materialize_problem()) is not None:
+            raise ValueError(problem)
+        return self
+
+    def row_materialize_problem(self) -> str | None:
+        """Why this table may not be row-materialized by its own fields, or None (REQ-1865)."""
         # REQ-1865: row_materialize requires a declared, trusted primary key (constraint 5) — a
         # declared PK is never runtime-verified for uniqueness, same trust level as data_type.
         if not self.row_materialize:
-            return self
+            return None
         if not any(c.is_primary_key for c in self.columns):
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize requires at least one "
                 "is_primary_key column"
             )
         if self.materialize:
-            raise ValueError(
+            return (
                 f"table {self.table_name!r}: row_materialize and materialize (view_sql CTAS) "
                 "are mutually exclusive — a table is either whole-table-materialized or "
                 "row-materialized, never both"
@@ -1868,7 +2088,7 @@ class Table(
         # registration already combines table.cache_ttl or source.cache_ttl:
         # provisa/core/config_loader.py's _validate_row_materialize, and
         # provisa/federation/residency.py's resolve_landing_args callers.
-        return self
+        return None
 
 
 class HotTablesConfig(BaseModel):  # REQ-544
@@ -1966,6 +2186,13 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
         return "junction" if self.via_table else "direct"
 
 
+class LlmLimit(BaseModel):  # REQ-1174
+    """An LLM spend limit: an amount of tokens, or of USD at ``polly.model_prices`` (REQ-2012)."""
+
+    amount: float = Field(gt=0)
+    unit: Literal["tokens", "usd"]
+
+
 class RoleRateLimit(BaseModel):
     """Per-role rate limits (REQ-369) and query limits (REQ-1174). None = unlimited for that
     dimension.
@@ -1982,6 +2209,13 @@ class RoleRateLimit(BaseModel):
     max_flight_streams: int | None = None
     max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
+    # REQ-1174 (amended 2026-10-27): the most one Polly turn or LLM service call may use, and the
+    # rolling windows (hour, day, week, month) the role's LLM spend is held to
+    # (security.llm_budget). None / absent: no limit.
+    llm_call_cap: LlmLimit | None = None
+    llm_windows: dict[Literal["hour", "day", "week", "month"], LlmLimit] = Field(
+        default_factory=dict
+    )
 
 
 def required_description(kind: str, owner: str, value: str) -> str:  # REQ-2080, REQ-2081
@@ -2000,7 +2234,9 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
-    parent_role_id: str | None = None  # inherit capabilities + domain_access from parent
+    # REQ-2155: the roles this one inherits from, in order; what it holds is what it is given
+    # intersected with the union of what they hold (security.inheritance.effective_rights).
+    parents: list[str] = Field(default_factory=list)
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
@@ -2037,59 +2273,15 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
         return out
 
 
-def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042
-    """Flatten inherited role hierarchy: merge parent capabilities + domain_access.
-
-    Returns new Role objects with inherited permissions merged in.
+def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042, REQ-2155
+    """Flatten the inherited role hierarchy: each role with what it holds, its rights intersected
+    with the union of its parents', and each property (max_rows, session values) set by the
+    nearest ancestor that declares it -- the one resolution the runtime build applies
+    (security.inheritance.flatten_role_dicts). Refuses an inheritance cycle by name (REQ-1677).
     """
-    by_id = {r.id: r for r in roles}
-    cache: dict[str, tuple[set[str], set[str], int | None, dict[str, str]]] = {}
-    # REQ-1677: a cycle would recurse forever; refuse it by name.
-    from provisa.security.inheritance import role_chain
+    from provisa.security.inheritance import flatten_role_dicts
 
-    parents = {r.id: r.parent_role_id for r in roles}
-    for r in roles:
-        role_chain(r.id, parents)
-
-    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None, dict[str, str]]:
-        if role_id in cache:
-            return cache[role_id]
-        role = by_id[role_id]
-        caps = set(role.capabilities)
-        domains = set(role.domain_access)
-        max_rows = role.max_rows
-        session_vars = dict(role.session_vars)
-        if role.parent_role_id and role.parent_role_id in by_id:
-            p_caps, p_domains, p_max_rows, p_session_vars = _resolve(role.parent_role_id)
-            caps.update(p_caps)
-            domains.update(p_domains)
-            # Ceiling: child inherits parent's when unset; most restrictive wins when both set.
-            if max_rows is None:
-                max_rows = p_max_rows
-            elif p_max_rows is not None:
-                max_rows = min(max_rows, p_max_rows)
-            # REQ-1682: the ancestors' constants underneath, the role's own over them.
-            session_vars = {**p_session_vars, **session_vars}
-        cache[role_id] = (caps, domains, max_rows, session_vars)
-        return caps, domains, max_rows, session_vars
-
-    result: list[Role] = []
-    for r in roles:
-        caps, domains, max_rows, session_vars = _resolve(r.id)
-        result.append(
-            Role(
-                id=r.id,
-                description=r.description,
-                capabilities=sorted(caps),
-                domain_access=["*"] if "*" in domains else sorted(domains),
-                parent_role_id=r.parent_role_id,
-                relationship_guard=r.relationship_guard,
-                max_rows=max_rows,
-                rate_limit=r.rate_limit,
-                session_vars=session_vars,  # REQ-1682
-            )
-        )
-    return result
+    return [Role(**r) for r in flatten_role_dicts([r.model_dump() for r in roles])]
 
 
 class DerivedRole(BaseModel):  # REQ-2057, REQ-2078, REQ-2080
@@ -2128,6 +2320,31 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     filter: str
     # REQ-2081: what the rule is for, as an access review reads it. Required, as a role's is.
     description: str
+    # REQ-2188: the rights this one predicate narrows: R reading a row, U updating it, D deleting
+    # it. A rule only narrows: the role's R or RW on the model is the ceiling, and U or D on a role
+    # with only R does nothing. Each right is in at most one rule of a role on a target.
+    rights: list[str] = Field(default_factory=lambda: ["R"])
+    # The stored rule a save replaces. None: the rule of this target and role holding exactly
+    # these rights, or a new one.
+    id: int | None = None
+
+    @field_validator("rights", mode="before")
+    @classmethod
+    def _rights(cls, value: Any) -> list[str]:  # REQ-2188
+        held = list(value)
+        unknown = [r for r in held if r not in ("R", "U", "D")]
+        if unknown or not held:
+            raise ValueError(f"A row rule's rights are some of R, U and D, not {value!r}")
+        return [r for r in ("R", "U", "D") if r in held]
+
+    @model_validator(mode="after")
+    def _action_rule_reads(self) -> "RLSRule":  # REQ-2188
+        if self.action_name and self.rights != ["R"]:
+            raise ValueError(
+                f"The row rule for {self.role_id!r} on action {self.action_name!r} has rights "
+                f"{self.rights!r}: an action's rows are read, so it takes only R"
+            )
+        return self
 
     @field_validator("description")
     @classmethod
@@ -2186,6 +2403,22 @@ class FunctionArgument(BaseModel):
     # a column_value scalar. This is the per-DATASET contract; the output dataset's contract is
     # Function.return_schema. The dataset is what carries the contract, not the command.
     columns: list[DatasetColumn] | None = None
+    # REQ-2168: the value a call that omits the argument passes. Declared or not, as written:
+    # an argument that declares none is required (``default`` absent from the stored argument);
+    # ``default: null`` is a declared default of null.
+    default: Any = None
+
+    @model_validator(mode="after")
+    def _default_fits_the_type(self) -> "FunctionArgument":  # REQ-2168
+        if "default" in self.model_fields_set:
+            from provisa.core.argument_defaults import check_default
+
+            check_default(self.name, self.type, self.default)
+        return self
+
+    def stored(self) -> dict:
+        """The argument as stored: ``default`` only when it declares one."""
+        return self.model_dump(exclude=None if "default" in self.model_fields_set else {"default"})
 
 
 class InlineType(BaseModel):
@@ -2196,6 +2429,27 @@ class InlineType(BaseModel):
     # REQ-1679: per-column governance of the webhook's response — see DatasetColumn.
     visible_to: list[str] | None = None
     masks: list[MaskEntry] = Field(default_factory=list)  # REQ-2059, as a table column's
+
+
+class CommandBinding(BaseModel):  # REQ-2168
+    """A command's name in one language: renamed by ``name``, or left out by ``exclude``. A
+    language a command declares nothing for offers it under its generated name."""
+
+    name: str | None = None
+    exclude: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _a_name_or_left_out(self) -> "CommandBinding":
+        if self.exclude and self.name is not None:
+            raise ValueError(
+                f"a command binding either names the command ({self.name!r}) or excludes it, "
+                "not both"
+            )
+        if self.name is not None and not self.name.strip():
+            raise ValueError("a command binding's name is empty")
+        return self
 
 
 class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
@@ -2253,8 +2507,47 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # "schema.table", where it is known. After a call, what is held of that table's rows stops
     # being served, as after any write to it.
     writes_table: str | None = None
+    # REQ-2168: the command's name per language (sql, cypher, graphql, rest, mcp, sparql). A
+    # language left out offers it under its generated name; SQL cannot be excluded.
+    language_bindings: dict[str, CommandBinding] = Field(default_factory=dict)
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _command_bindings_name_known_languages(self) -> "Function":  # REQ-2168
+        from provisa.core.command_bindings import check_declared
+
+        check_declared(self.name, {k: v.model_dump() for k, v in self.language_bindings.items()})
+        return self
+
+    @model_validator(mode="after")
+    def _void_names_no_return(self) -> "Function":  # REQ-2001
+        """A command declaring no outputs (``output_columns: []``) is VOID: it names no return."""
+        from provisa.core.void_command import check
+
+        check(self.name, self.output_columns, self.returns, self.return_schema)
+        return self
+
+    @model_validator(mode="after")
+    def _builtin_names_a_builtin(self) -> "Function":  # REQ-2168
+        if self.impl_kind == "builtin":
+            from provisa.core.builtin_commands import check
+
+            check(self.name, self.binding)
+        return self
+
+    @model_validator(mode="after")
+    def _sql_expression_is_a_query_template(self) -> "Function":  # REQ-2168
+        """A function declared as a SQL expression is a query, its binding one PostgreSQL-dialect
+        expression naming each of its arguments as {name} and nothing else."""
+        if self.impl_kind != "sql_expression":
+            return self
+        if self.kind != "query":
+            raise ValueError(f"function {self.name!r}: a sql_expression function is a query")
+        from provisa.core.sql_expression import parse_template
+
+        parse_template(self.name, self.binding, [a.name for a in self.arguments])
+        return self
 
     @model_validator(mode="after")
     def _source_query_is_a_reading_native_query(self) -> "Function":  # REQ-1988
@@ -2266,7 +2559,7 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
             raise ValueError(f"command {self.name!r}: a source_query command is a query")
         from provisa.mongodb.native_query import check_command
 
-        check_command(self.name, self.binding, [a.model_dump() for a in self.arguments])
+        check_command(self.name, self.binding, [a.stored() for a in self.arguments])
         return self
 
     @model_validator(mode="after")
@@ -2628,11 +2921,38 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
         return value if value.strip() else DEFAULT_UI_ORIGIN
 
 
-class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
-    """One external catalog an org's governance metadata is published to.
+# The fields of a catalog connection: where the catalog is and how to sign in to it (REQ-2122).
+# Export and import both read a catalog through one connection, so these live on the connection,
+# and an export target names its catalog instead of holding them.
+_CATALOG_CONNECTION_FIELDS = (
+    "id",
+    "provider",
+    "endpoint",
+    "api_key",
+    "token",
+    "auth_mode",
+    "username",
+    "entra_tenant_id",
+    "entra_client_id",
+    "entra_client_secret",
+    "google_service_account_json",
+    "gcp_project",
+    "gcp_location",
+    "aws_region",
+    "datazone_domain_id",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "timeout_seconds",
+)
 
-    id: the target's name within the org, unique there; its catalog bindings are kept under it,
-        so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
+
+class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
+    """What an export provider is built from: one catalog's connection with the export's own
+    settings for it (REQ-2122). Never stored: :meth:`CatalogConnection.export_target` builds it
+    from the stored catalog and the export's :class:`CatalogExport` for it.
+
+    id: the catalog's name within the org, unique there; its catalog bindings are kept under it,
+        so two catalogs of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
         "datahub", "atlan", "collibra", "snowflake_horizon", "dataplex", "purview" (the Data
@@ -2653,6 +2973,9 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         requests (REQ-2118).
     delta_share: whether a unity_catalog target also publishes each product as a Delta Share
         (REQ-2117).
+    domains: the domains whose tables and data products this catalog is published (REQ-2122).
+    role: the role the catalog is published as: it is sent exactly what that role reads
+        (REQ-2152, ruling Q1). None until the export names one, and then nothing is published to it.
     """
 
     id: str
@@ -2675,6 +2998,8 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
     aws_secret_access_key: SecretStr = SecretStr("")
     delta_share: bool = False
     timeout_seconds: int = 30
+    domains: list[str] = Field(default_factory=list)
+    role: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -2685,58 +3010,142 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
 
     @model_validator(mode="after")
     def _validate_endpoint(self) -> "MetadataExportTarget":
-        # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
-        # failing at publish time names a connection. REQ-1635: snowflake_horizon is
-        # engine-native — it opens its own connection off configured_engine_url() rather than a
-        # remote catalog's endpoint, so endpoint is not a setting this provider has.
-        # REQ-2118: datazone signs AWS requests to its region's own service address.
-        if (
-            self.provider not in ("snowflake_horizon", "datazone", "unity_catalog")
-            and not self.endpoint
-        ):
-            raise ValueError(f"metadata export target {self.id!r} has no endpoint")
-        # REQ-2118: a DataZone data product lives in a domain, owned by a project, in a region.
-        if self.provider == "datazone" and not (
-            self.aws_region and self.datazone_domain_id and self.datazone_project_id
-        ):
-            raise ValueError(
-                f"metadata export target {self.id!r} needs the AWS region, the DataZone domain "
-                "and the project that owns its data products"
-            )
-        # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
-        if self.provider == "purview" and self.auth_mode != "entra":
-            raise ValueError(
-                f"metadata export target {self.id!r} signs in to Purview with Microsoft Entra"
-            )
-        # REQ-2118: a Dataplex data product lives in a project and a location.
-        if self.provider == "dataplex" and not (self.gcp_project and self.gcp_location):
-            raise ValueError(
-                f"metadata export target {self.id!r} needs the GCP project and location its "
-                "data products are kept in"
-            )
+        _check_catalog_connection(self)
         return self
 
 
-class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
+def _check_catalog_connection(catalog: Any) -> None:  # REQ-1068, REQ-2118, REQ-2122
+    """Refuse a connection that cannot reach its catalog, naming the setting it lacks."""
+    # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
+    # failing at publish time names a connection. REQ-1635: snowflake_horizon is
+    # engine-native — it opens its own connection off configured_engine_url() rather than a
+    # remote catalog's endpoint, so endpoint is not a setting this provider has.
+    # REQ-2118: datazone signs AWS requests to its region's own service address.
+    if (
+        catalog.provider not in ("snowflake_horizon", "datazone", "unity_catalog")
+        and not catalog.endpoint
+    ):
+        raise ValueError(f"catalog {catalog.id!r} has no endpoint")
+    # REQ-2118: DataZone's assets live in a domain, in a region.
+    if catalog.provider == "datazone" and not (catalog.aws_region and catalog.datazone_domain_id):
+        raise ValueError(f"catalog {catalog.id!r} needs the AWS region and the DataZone domain")
+    # REQ-2118: Purview's Unified Catalog is reached with the tenant's Entra credentials.
+    if catalog.provider == "purview" and catalog.auth_mode != "entra":
+        raise ValueError(f"catalog {catalog.id!r} signs in to Purview with Microsoft Entra")
+    # REQ-2118: a Dataplex data product lives in a project and a location.
+    if catalog.provider == "dataplex" and not (catalog.gcp_project and catalog.gcp_location):
+        raise ValueError(
+            f"catalog {catalog.id!r} needs the GCP project and location its data products are "
+            "kept in"
+        )
+
+
+class CatalogConnection(BaseModel):  # REQ-2122
+    """One external catalog an org connects to once, for export and import alike.
+
+    Its fields are :class:`MetadataExportTarget`'s connection fields (``_CATALOG_CONNECTION_FIELDS``),
+    each held as entered and resolved at use. ``domains`` are the domains that work with it: their
+    tables offer only their catalogs, and their tables and data products publish to them. A
+    connection serves at least one domain.
+    """
+
+    id: str
+    provider: str
+    endpoint: str = ""
+    api_key: SecretStr = SecretStr("")
+    token: SecretStr = SecretStr("")
+    auth_mode: str = "api_key"
+    username: str = ""
+    entra_tenant_id: str = ""
+    entra_client_id: str = ""
+    entra_client_secret: SecretStr = SecretStr("")
+    google_service_account_json: SecretStr = SecretStr("")
+    gcp_project: str = ""
+    gcp_location: str = ""
+    aws_region: str = ""
+    datazone_domain_id: str = ""
+    aws_access_key_id: SecretStr = SecretStr("")
+    aws_secret_access_key: SecretStr = SecretStr("")
+    timeout_seconds: int = 30
+    domains: list[str]
+
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, v: str) -> str:
+        if not _SAFE_ID_PATTERN.match(v):
+            raise ValueError(f"a catalog's id is a name like 'catalog-1', not {v!r}")
+        return v
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CatalogConnection":
+        if not self.domains:
+            raise ValueError(f"catalog {self.id!r} is assigned to no domain")
+        _check_catalog_connection(self)
+        return self
+
+    def export_target(self, export: "CatalogExport") -> MetadataExportTarget:
+        """The export provider's settings for this catalog: its connection and ``export``."""
+        return MetadataExportTarget(
+            **{name: getattr(self, name) for name in _CATALOG_CONNECTION_FIELDS},
+            datazone_project_id=export.datazone_project_id,
+            delta_share=export.delta_share,
+            domains=list(self.domains),
+            role=export.role,
+        )
+
+
+class CatalogsConfig(BaseModel):  # REQ-2122
+    """The org's catalog connections, each held once (the Catalogs panel)."""
+
+    catalogs: list[CatalogConnection] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_ids(self) -> "CatalogsConfig":
+        ids = [c.id for c in self.catalogs]
+        repeated = sorted({i for i in ids if ids.count(i) > 1})
+        if repeated:
+            raise ValueError(f"catalogs named twice: {', '.join(repeated)}")
+        return self
+
+    def by_id(self) -> dict[str, CatalogConnection]:
+        return {c.id: c for c in self.catalogs}
+
+
+class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
+    """The export to one catalog: the catalog it names, and its export settings alone.
+
+    datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
+    delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
+        (REQ-2117).
+    role: the role the catalog is published as -- it is sent exactly what that role reads
+        (REQ-2152, ruling Q1); a publish refuses an export that names none.
+    """
+
+    catalog: str
+    datazone_project_id: str = ""
+    delta_share: bool = False
+    role: str | None = None
+
+
+class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
     """Outbound publication of governance metadata to external catalogs.
 
-    Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
-    design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
-    as the source of truth.
+    Per-org, premium-gated (REQ-1073).
 
-    targets: every catalog the org publishes to; one publish reaches each (REQ-2118).
+    targets: the catalogs the org publishes to, each named by its id in the Catalogs panel with
+        its export settings; one publish reaches each (REQ-2118, REQ-2122).
     reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
         dropped events (REQ-1072). Empty disables the reconcile and leaves only the
         event-driven path.
     """
 
     enabled: bool = False
-    targets: list[MetadataExportTarget] = Field(default_factory=list)
+    targets: list[CatalogExport] = Field(default_factory=list)
     reconcile_cron: str = "0 * * * *"
 
     @model_validator(mode="after")
     def _validate_targets(self) -> "MetadataExportConfig":
-        ids = [t.id for t in self.targets]
+        ids = [t.catalog for t in self.targets]
         repeated = sorted({i for i in ids if ids.count(i) > 1})
         if repeated:
             raise ValueError(f"metadata export targets named twice: {', '.join(repeated)}")
@@ -2744,6 +3153,27 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
         if self.enabled and not self.targets:
             raise ValueError("metadata_export.enabled is true but no target is configured")
         return self
+
+    def export_targets(self, catalogs: CatalogsConfig) -> list[MetadataExportTarget]:
+        """Each target as its provider is built from: the named catalog with its export settings.
+        A target naming no catalog of the org is refused by name (REQ-2122)."""
+        known = catalogs.by_id()
+        missing = sorted(t.catalog for t in self.targets if t.catalog not in known)
+        if missing:
+            raise ValueError(
+                f"metadata export targets name no catalog of the org: {', '.join(missing)}"
+            )
+        targets = [known[t.catalog].export_target(t) for t in self.targets]
+        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
+        unowned = sorted(
+            t.id for t in targets if t.provider == "datazone" and not t.datazone_project_id
+        )
+        if unowned:
+            raise ValueError(
+                f"the export to {', '.join(unowned)} needs the DataZone project that owns its "
+                "data products"
+            )
+        return targets
 
 
 class SubsystemTracesConfig(BaseModel):  # REQ-1432
@@ -2830,6 +3260,25 @@ class OtelConfig(BaseModel):  # REQ-545
     subsystem_traces: SubsystemTracesConfig = SubsystemTracesConfig()  # REQ-1432
 
 
+class FederationConfig(BaseModel):  # REQ-259
+    """Provisa as an Apollo Federation v2 subgraph. A supergraph cannot pass its caller's
+    identity, so the subgraph is an endpoint with a declared role: the router authenticates as an
+    ordinary client acting as ``role``, and everything it fetches -- ``_entities`` included -- is
+    governed as that role. Disabled by default."""
+
+    enabled: bool = False
+    subgraph_name: str = "provisa"
+    role: str | None = None
+
+    @model_validator(mode="after")
+    def _enabled_names_its_role(self) -> "FederationConfig":
+        if self.enabled and not self.role:
+            raise ValueError(
+                "federation is enabled with no role: name the role the subgraph serves as"
+            )
+        return self
+
+
 class GraphQLRemoteConfig(BaseModel):
     max_object_depth: int = 5
     max_list_depth: int = 2
@@ -2887,6 +3336,9 @@ class AIModelsConfig(BaseModel):  # REQ-464
     # REQ-1794: the right-hand chat assistant panel's model (provisa/api/mcp/chat.py
     # _resolve_model() falls back to this same default when unconfigured).
     mcp_chat: str | dict = "claude-opus-4-8"
+    # REQ-2179: no default. A scan reads a whole document, so a model is chosen for it, and until
+    # one is a scan is refused saying so (provisa/term_finding/model.py).
+    glossary_term_finding: str | dict = ""
 
 
 class NlConfig(BaseModel):  # REQ-464
@@ -3111,6 +3563,15 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
+class ReferenceLibraryConfig(BaseModel):  # REQ-2185
+    """The reference library's retrieval setting, as an org holds it (org setting
+    ``reference_library``): the passages nearest a question, or the glossary walk's as well."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    retrieval: Literal["passage", "graph"] = "passage"
+
+
 #: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
 STORED_MODEL = "stored_model"
 
@@ -3190,6 +3651,8 @@ class ProvisaConfig(BaseModel):
     # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
+    # REQ-2185: the reference library's retrieval setting, passage or graph.
+    reference_library: ReferenceLibraryConfig = Field(default_factory=ReferenceLibraryConfig)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
@@ -3208,8 +3671,11 @@ class ProvisaConfig(BaseModel):
     row_materialize: RowMaterializeConfig = Field(default_factory=RowMaterializeConfig)  # REQ-1865
     observability: OtelConfig = Field(default_factory=OtelConfig)
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
+    # REQ-2122: the catalogs the org connects to once, for export and import.
+    catalogs: list[CatalogConnection] = Field(default_factory=list)
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
+    federation: FederationConfig = Field(default_factory=FederationConfig)  # REQ-259
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     ai_endpoints: list[AiEndpointConfig] = Field(default_factory=list)  # REQ-1790
     nl: NlConfig = Field(default_factory=NlConfig)
@@ -3309,9 +3775,10 @@ class ProvisaConfig(BaseModel):
     def _roles_list_a_domain(self, info: ValidationInfo) -> "ProvisaConfig":
         """A role is always one or more domains, or all (``rights.role_domain_problem``).
 
-        Judged on the role's effective list — its own plus what a parent IN THIS CONFIG hands
-        down. An empty list reads no data, so it fails the load naming the role rather than
-        loading a role that silently reaches nothing.
+        An empty list reads no data, so it fails the load naming the role rather than loading a
+        role that silently reaches nothing. A role with parents is held to the form's rule: a
+        right no parent holds fails the load by name (REQ-2155), judged where every parent is a
+        role of this config or a standard role.
 
         A configuration a file or an apply gives is judged here. The model the store already holds
         (``STORED_MODEL`` in the validation context, ``config_loader.parse_store_raw``) is not: the
@@ -3322,25 +3789,49 @@ class ProvisaConfig(BaseModel):
         """
         if (info.context or {}).get(STORED_MODEL):
             return self
+        from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+        from provisa.security import domain_tree
+        from provisa.security.inheritance import parent_map, right_not_in_parents, role_chain
         from provisa.security.rights import role_domain_problem
 
-        by_id = {r.id: r for r in self.roles}
+        rows = {
+            **{r.id: r.model_dump() for r in self.roles},
+            **{r["id"]: r for r in standard_role_dicts()},
+        }
+        domain_parents = domain_tree.parent_map(d.model_dump() for d in self.domains)
+        parents = parent_map(rows.values())
         for role in self.roles:
-            # Walk the parent chain here rather than through flatten_roles: that refuses an
-            # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
-            # where the roles are flattened. A cycle simply ends this walk.
-            capabilities: set[str] = set()
-            domains: set[str] = set()
-            seen: set[str] = set()
-            current: Role | None = role
-            while current is not None and current.id not in seen:
-                seen.add(current.id)
-                capabilities.update(current.capabilities)
-                domains.update(current.domain_access)
-                current = by_id.get(current.parent_role_id) if current.parent_role_id else None
-            problem = role_domain_problem(role.id, capabilities, domains)
+            problem = role_domain_problem(role.id, role.capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
+            if role.id in STANDARD_ROLES:
+                continue
+            try:
+                chain = role_chain(role.id, parents)
+            except ValueError:
+                continue  # a cycle has its own rule and error, where roles flatten (REQ-1677)
+            if not set(chain) <= set(rows):
+                continue
+            refused = right_not_in_parents(
+                role.id,
+                role.parents,
+                role.capabilities,
+                role.domain_access,
+                role.residency_values,
+                [rows[rid] for rid in chain],
+                domain_parents,
+            )
+            if refused is not None:
+                kind, right, why = refused
+                raise ValueError(f"Role {role.id!r} cannot hold {kind} {right!r}: {why}")
+        return self
+
+    @model_validator(mode="after")
+    def _federation_serves_as_a_role_of_this_config(self) -> "ProvisaConfig":
+        # REQ-259: the subgraph's declared role is one this config defines.
+        role = self.federation.role
+        if self.federation.enabled and role not in {r.id for r in self.roles}:
+            raise ValueError(f"federation.role {role!r} is not a role of this configuration")
         return self
 
     @model_validator(mode="after")

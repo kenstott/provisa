@@ -145,15 +145,15 @@ def test_json_api_answers_the_family_in_its_own_error_format():
 
 def test_the_neo4j_endpoint_answers_the_family_in_its_own_error_format():
     """503 with the refusal's message, not "Execution failed: …" as a 400."""
-    from provisa.api.rest.neo4j_compat_router import _read_refused
+    from provisa.api.rest.neo4j_compat_router import _refused
 
-    response = _read_refused(ReplicaBuildFailed(_TABLE, _REASON))
+    response = _refused(ReplicaBuildFailed(_TABLE, _REASON))
     assert response.status_code == 503
     (error,) = json.loads(response.body)["errors"]
     assert _TABLE in error["message"] and _REASON in error["message"]
     assert not error["message"].startswith("Execution failed")
     source = (Path(provisa.__file__).parent / "api/rest/neo4j_compat_router.py").read_text()
-    assert source.count("except ReadRefused as exc:") == 2  # governance, and execution
+    assert source.count("except (ReadRefused, ApiError) as exc:") == 2  # governance, execution
 
 
 def test_a_table_profile_has_no_catch_all_for_a_refusal_to_fall_into():

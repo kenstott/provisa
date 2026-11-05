@@ -39,15 +39,7 @@ function features(plan, region, tenureMonths, loginsPerMonth, tickets) {
   ];
 }
 
-export function churn_risk_js(
-  customer_id,
-  plan,
-  region,
-  tenure_months,
-  logins_per_month,
-  tickets,
-  as_of,
-) {
+export function churn_risk_js({ customer_id, plan, region, tenure_months, logins_per_month, tickets, as_of }) {
   const row = features(plan, region, tenure_months, logins_per_month, tickets);
   const z = row.reduce((sum, x, i) => sum + x * MODEL.coefficients[i], MODEL.intercept);
   const score = 1 / (1 + Math.exp(-z));

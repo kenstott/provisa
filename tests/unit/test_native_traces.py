@@ -249,7 +249,7 @@ def test_compaction_merges_each_days_small_files_and_keeps_every_row(tmp_path):
     con = _engine(root)
     _land(root, {"2026-10-16": 5, "2026-10-17": 3})
     before = sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall())
-    assert nt.compact(root) == 8
+    assert nt.compact(root, grace_s=0) == 8
     after = sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall())
     assert after == before
     files = _files(root)
@@ -267,7 +267,7 @@ def test_compaction_rolls_a_day_into_files_of_the_target_size(tmp_path):
         os.path.join(root, "_date=2026-10-17", _files(root)["_date=2026-10-17"][0])
     )
     # A target of about two batches' bytes: the six rows roll into three files.
-    nt.compact(root, target_bytes=2 * one + 1)
+    nt.compact(root, target_bytes=2 * one + 1, grace_s=0)
     names = _files(root)["_date=2026-10-17"]
     assert len(names) == 3
     rows = [
@@ -279,16 +279,97 @@ def test_compaction_rolls_a_day_into_files_of_the_target_size(tmp_path):
 def test_compaction_leaves_full_files_and_a_lone_file_as_they_are(tmp_path):
     root = str(tmp_path / "traces")
     _land(root, {"2026-10-17": 1})
-    assert nt.compact(root) == 0
+    assert nt.compact(root, grace_s=0) == 0
     assert len(_files(root)["_date=2026-10-17"]) == 1
     _land(root, {"2026-10-17": 1})
     # Both files are at least the target: neither is small, nothing is merged.
-    assert nt.compact(root, target_bytes=1) == 0
+    assert nt.compact(root, target_bytes=1, grace_s=0) == 0
     assert len(_files(root)["_date=2026-10-17"]) == 2
 
 
+def _trace_ids(root: str) -> list[str]:
+    return sorted(r["trace_id"] for r in nt._landed(root).to_pylist())
+
+
+def test_compactions_racing_on_one_folder_keep_each_row_once(tmp_path):
+    # Every process of a host that shares a telemetry folder compacts it each minute. Two that
+    # merged the same files both wrote their merged copy, and every row was then there twice:
+    # four servers sharing one folder multiplied a day's rows minute by minute.
+    from concurrent.futures import ThreadPoolExecutor
+
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 40})
+    before = _trace_ids(root)
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(lambda _: nt.compact(root, grace_s=0), range(8)))
+    assert _trace_ids(root) == before
+
+
+def test_a_folder_another_process_is_compacting_is_left_to_it(tmp_path):
+    from pathlib import Path
+
+    from provisa.core.host_lock import FileLock
+
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 3})
+    held = FileLock(Path(root) / nt.COMPACT_LOCK)
+    assert held.try_acquire()
+    try:
+        assert nt.compact(root, grace_s=0) == 0
+        assert len(_files(root)["_date=2026-10-17"]) == 3
+    finally:
+        held.release()
+    assert nt.compact(root, grace_s=0) == 3
+
+
+def test_compaction_holds_one_input_file_of_arrow_at_a_time(tmp_path):
+    # A day's small files were read into one Arrow table before any was written: the whole day,
+    # in every process that compacted it. Each input is now written as it is read.
+    import gc
+
+    import pyarrow as pa
+
+    root = str(tmp_path / "traces")
+    folder = tmp_path / "traces" / "_date=2026-10-17"
+    _land(root, {"2026-10-17": 1})
+    template = nt._landed(root).to_pylist()[0]
+    for f in folder.iterdir():
+        f.unlink()
+    for n in range(20):
+        rows = [dict(template, trace_id=f"{n}-{i}", span_attributes="x" * 4096) for i in range(256)]
+        pq.write_table(
+            pa.Table.from_pylist(rows, schema=nt.TRACES_SCHEMA),
+            str(folder / f"batch-{n:02d}.parquet"),
+        )
+    one = pq.ParquetFile(str(folder / "batch-00.parquet")).read().nbytes
+    before = _trace_ids(root)
+    default = pa.default_memory_pool()
+    pool = pa.proxy_memory_pool(default)
+    pa.set_memory_pool(pool)
+    try:
+        assert nt.compact(root, grace_s=0) == 20
+    finally:
+        gc.collect()
+        pa.set_memory_pool(default)
+    assert pool.max_memory() < 3 * one
+    assert _trace_ids(root) == before
+
+
+def test_a_pass_an_input_fails_leaves_the_day_as_it_was(tmp_path):
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-17": 6})
+    before = _files(root)
+    one = os.path.getsize(os.path.join(root, "_date=2026-10-17", before["_date=2026-10-17"][0]))
+    with open(os.path.join(root, "_date=2026-10-17", before["_date=2026-10-17"][4]), "wb") as f:
+        f.write(b"not parquet")
+    # A target of two inputs: the first two are rolled into a file before the bad one is read.
+    with pytest.raises(Exception, match="Parquet"):
+        nt.compact(root, target_bytes=2 * one + 1, grace_s=0)
+    assert _files(root) == before
+
+
 def test_with_no_folder_compaction_has_nothing_to_do(tmp_path):
-    assert nt.compact(str(tmp_path / "absent")) == 0
+    assert nt.compact(str(tmp_path / "absent"), grace_s=0) == 0
 
 
 def test_the_process_lands_traces_only_while_the_engine_reads_them(monkeypatch, tmp_path):
@@ -357,5 +438,45 @@ def test_a_read_after_compaction_lists_the_folder_again(tmp_path):
     con = _engine(root)
     _land(root, {"2026-10-23": 3})
     before = sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall())
-    assert nt.compact(root) == 3
+    assert nt.compact(root, grace_s=0) == 3
     assert sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall()) == before
+
+
+def test_a_merged_batch_is_kept_while_a_read_could_hold_its_listing(tmp_path):
+    """A read lists the folder and then opens each file: compaction keeps each batch it merged in
+    place for the grace, so a listing taken before it still opens every file, and the view reads
+    each row once meanwhile. The first compaction after the grace removes them."""
+    root = str(tmp_path / "traces")
+    con = _engine(root)
+    _land(root, {"2026-10-23": 3})
+    before = sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall())
+    day = os.path.join(root, "_date=2026-10-23")
+    listed = sorted(os.path.join(day, n) for n in os.listdir(day) if n.endswith(".parquet"))
+
+    clock = [1000.0]
+    assert nt.compact(root, grace_s=60, clock=lambda: clock[0]) == 0
+    # The read that listed the batches before compaction opens every one of them.
+    paths = ", ".join(f"'{p}'" for p in listed)
+    assert con.execute(f"SELECT count(*) FROM read_parquet([{paths}])").fetchone() == (3,)
+    # Each row once, though each is in its batch and in the merged file.
+    assert sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall()) == before
+    names = [n for n in _files(root)["_date=2026-10-23"] if n.endswith(".parquet")]
+    assert len([n for n in names if n.startswith("rolled-")]) == 1 and len(names) == 4
+
+    # Within the grace a second compaction neither removes the batches nor merges them again.
+    clock[0] = 1059.0
+    assert nt.compact(root, grace_s=60, clock=lambda: clock[0]) == 0
+    assert len([n for n in _files(root)["_date=2026-10-23"] if n.endswith(".parquet")]) == 4
+    clock[0] = 1061.0
+    assert nt.compact(root, grace_s=60, clock=lambda: clock[0]) == 3
+    assert [n[:7] for n in _files(root)["_date=2026-10-23"]] == ["rolled-"]
+    assert sorted(con.execute("SELECT trace_id FROM otel.signals.traces").fetchall()) == before
+    assert not os.path.exists(os.path.join(day, nt.MERGED_FILE))
+
+
+def test_refresh_records_are_read_once_while_their_batches_are_kept(tmp_path):
+    root = str(tmp_path / "traces")
+    _land(root, {"2026-10-23": 3})
+    rows = len(nt._landed(root))
+    nt.compact(root, grace_s=60)
+    assert len(nt._landed(root)) == rows

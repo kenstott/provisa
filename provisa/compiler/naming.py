@@ -148,6 +148,15 @@ def junction_field_name(  # REQ-1586
     return rel_field_name(re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_"), cardinality)
 
 
+def ontology_name(term_name: str) -> str | None:  # REQ-2163
+    """The name a term gives its Class table or its Property column in the ontology schema: its
+    words, lower-cased and joined by underscores ("customer account" is ``customer_account``).
+    None when the term's name gives no identifier (no letters, or a digit first), since it can name
+    no table or column."""
+    name = re.sub(r"[^A-Za-z0-9]+", "_", term_name).strip("_").lower()
+    return name if re.fullmatch(r"[a-z][a-z0-9_]*", name) else None
+
+
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase.
 
@@ -231,6 +240,32 @@ def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-4
     return acronym.lower() if acronym else domain_id[0].lower()
 
 
+def domain_alias_map(domains: list[dict]) -> dict[str, str]:  # REQ-471
+    """Each domain's alias (:func:`domain_gql_alias`), every one its own: a computed alias another
+    domain's alias also is is the domain's own name instead, so no domain's tables are named, typed
+    or grouped as another's. A stored alias is the domain's, as written. A system schema
+    (ontology, ops) is named in the SDL by its own prefix (``SYSTEM_SCHEMA_GQL_PREFIX``, REQ-2163),
+    never by an alias, so its computed alias is its own name and takes no model domain's: opioids
+    keeps "o" beside ops."""
+    aliases = {d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias")) for d in domains}
+    system = {
+        d["id"]
+        for d in domains
+        if d["id"] in SYSTEM_SCHEMA_GQL_PREFIX and not d.get("graphql_alias")
+    }
+    taken = [a for domain_id, a in aliases.items() if a and domain_id not in system]
+    return {
+        d["id"]: (
+            domain_to_sql_name(d["id"])
+            if d["id"] in system
+            or (not d.get("graphql_alias") and taken.count(aliases[d["id"]]) > 1)
+            else aliases[d["id"]]
+        )
+        for d in domains
+        if aliases[d["id"]]
+    }
+
+
 @functools.lru_cache(maxsize=16384)
 def _to_snake_case(name: str) -> str:
     """Convert camelCase or PascalCase to snake_case."""
@@ -296,6 +331,13 @@ def table_id_of(table: Any, table_map: Mapping[str, int]) -> int | None:
         found = table_map.get(f"{table.db}.{table.name}")
         if found is not None:
             return found
+        return table_map.get(table.name)
+    from provisa.compiler import temp_tables
+
+    if table.name in temp_tables.names():
+        # REQ-615: the session's own temporary table, ahead of a model table of its name -- as
+        # PostgreSQL's pg_temp comes first, and as the validator reads it.
+        return None
     return table_map.get(table.name)
 
 
@@ -436,6 +478,11 @@ def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:  # REQ-4
 
 def active_gql_convention() -> str:  # REQ-471
     return _gql_convention
+
+
+def active_sql_form() -> str:  # REQ-2190
+    """The output form of the SQL convention in force, as :func:`_canonical_convention` names it."""
+    return _canonical_convention(_sql_convention)
 
 
 _GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
@@ -584,6 +631,96 @@ def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194, REQ-1933
             f"Check naming rule configuration."
         )
     return result
+
+
+class LabelClash(ValueError):  # REQ-572
+    """A table's Cypher label is a domain's. A label never means both: a statement naming it
+    could be reading the table or the domain's tables."""
+
+    def __init__(self, label: str, domain_id: str, table: str) -> None:
+        self.label = label
+        self.domain_id = domain_id
+        self.table = table
+        super().__init__(
+            f"Table {table} and domain {domain_id!r} would both have the Cypher label {label}. "
+            "A label never names both a domain and a table: give the table an alias, or name the "
+            "domain differently."
+        )
+
+
+def refuse_label_clash(
+    tables: "list[dict]", domain_ids: "list[str]", naming_rules: list[dict]
+) -> None:  # REQ-572
+    """Raise :class:`LabelClash` for the first table whose Cypher label is one of the domains'.
+    Each table carries ``source_id``, ``schema_name``, ``table_name`` and ``alias`` (and may carry
+    ``gql_naming_convention``)."""
+    by_label = {domain_cypher_label(d): d for d in domain_ids if d}
+    for t in tables:
+        label = table_cypher_label(
+            t["table_name"], t.get("alias"), naming_rules, t.get("gql_naming_convention")
+        )
+        if label in by_label:
+            raise LabelClash(
+                label, by_label[label], f"{t['source_id']}.{t['schema_name']}.{t['table_name']}"
+            )
+
+
+def table_cypher_label(
+    table_name: str, alias: str | None, naming_rules: list[dict], convention: str | None = None
+) -> str:  # REQ-572
+    """The Cypher label a table answers to, without its domain: its GraphQL field name
+    (:func:`generate_name`) in the label convention, the part after a domain qualifier when the
+    name carries one -- as the label map derives it (``gql.label_map._split_cypher_labels``)."""
+    field = generate_name(
+        table_name, naming_rules, alias=alias, convention=convention or active_gql_convention()
+    )
+    return apply_cql_label(field.split("__", 1)[1] if "__" in field else field)
+
+
+def domain_cypher_label(domain_id: str) -> str:  # REQ-572
+    """The Cypher label a domain answers to (``gql.label_map``: the domain part of a label)."""
+    return apply_cql_label(domain_id)
+
+
+#: REQ-2163 (amended 2026-10-27): the prefix every root field and type a generated system schema
+#: gives carries in the GraphQL SDL, whether or not domains prefix their fields, so neither schema
+#: ever shares a name with a model table's field or type. Its Cypher labels and SQL relations are
+#: unprefixed.
+SYSTEM_SCHEMA_GQL_PREFIX: dict[str, str] = {"ontology": "on", "ops": "op"}
+
+
+def system_schema_names(domain_id: str, field_name: str) -> tuple[str, str]:  # REQ-2163
+    """The root field and type names of a ``domain_id`` system schema's table whose own field name
+    is ``field_name``: ``on_terms`` and ``ON_Terms``, its prefix upper-cased in the type as a
+    domain's is (``M__RegisteredTables``)."""
+    prefix = SYSTEM_SCHEMA_GQL_PREFIX[domain_id]
+    return f"{prefix}_{field_name}", f"{prefix.upper()}_{to_type_name(field_name)}"
+
+
+def unprefixed_field_name(field_name: str, domain_id: str) -> str:  # REQ-2163
+    """A table's field name without its system schema's SDL prefix (``on_terms`` is ``terms``);
+    any other domain's field name as it is."""
+    prefix = SYSTEM_SCHEMA_GQL_PREFIX.get(domain_id)
+    if prefix is None:
+        return field_name
+    if not field_name.startswith(f"{prefix}_"):
+        raise ValueError(f"the {domain_id} table field {field_name!r} lacks its prefix {prefix}_")
+    return field_name[len(prefix) + 1 :]
+
+
+def bare_field_name(field_name: str, domain_id: str) -> str:  # REQ-471, REQ-2163
+    """A table's root field name without its domain's prefix (``sa__orders`` is ``orders``) or its
+    system schema's (``on_terms`` is ``terms``)."""
+    if domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+        return unprefixed_field_name(field_name, domain_id)
+    return field_name.split("__", 1)[1] if "__" in field_name else field_name
+
+
+def table_type_name(field_name: str, domain_id: str) -> str:  # REQ-471, REQ-2163
+    """The GraphQL type name of the ``domain_id`` table whose root field is ``field_name``."""
+    if domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+        return system_schema_names(domain_id, unprefixed_field_name(field_name, domain_id))[1]
+    return to_type_name(field_name)
 
 
 def to_type_name(field_name: str) -> str:  # REQ-471

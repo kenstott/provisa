@@ -21,7 +21,7 @@ means an unrecognized API path can never silently masquerade as an HTML 200, and
 SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 """
 
-# Requirements: REQ-057, REQ-058, REQ-559
+# Requirements: REQ-057, REQ-058, REQ-559, REQ-1916
 
 import importlib.util
 import json
@@ -44,6 +44,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from provisa import sandbox_wake
+from provisa.api.query_gate import QueryUiGate
 
 # REQ-1127: the pip wheel embeds the precompiled React UI at provisa/_ui/ so the delivery is
 # self-contained (no npm/Node at runtime). Prefer that packaged directory; fall back to the
@@ -74,27 +75,47 @@ _API_VERIFY = not API_BASE_URL.startswith("https://")
 # open a demo, is proxied there. Unset, there is no sandbox tier, and the API refuses a sandbox org
 # by name.
 SANDBOX_API_URL = os.environ.get("PROVISA_SANDBOX_API_URL")
-# REQ-2068: the regions sandbox tier, which serves the demos whose models select regions
-# (PROVISA_SANDBOX_REGIONS_DEMOS, by name) and their sandboxes (an ``sbxr`` id).
-SANDBOX_REGIONS_API_URL = os.environ.get("PROVISA_SANDBOX_REGIONS_API_URL")
-SANDBOX_REGIONS_DEMOS = frozenset(
-    name for name in os.environ.get("PROVISA_SANDBOX_REGIONS_DEMOS", "").split(",") if name
-)
+# REQ-2068: the regions sandbox tier, which serves the demos whose models select regions and their
+# sandboxes (an ``sbxr`` id). It runs a node per visitor region: PROVISA_SANDBOX_REGIONS_NODES
+# names each node's API by its region (``us=https://...,warehouse=https://...``), and
+# PROVISA_SANDBOX_REGIONS_DEMOS each demo's node (``retail=us,banking=warehouse``).
+
+
+def _pairs(name: str) -> dict[str, str]:
+    """``key=value`` pairs, comma-separated, from environment variable ``name``."""
+    raw = os.environ.get(name, "")
+    return dict(pair.split("=", 1) for pair in raw.split(",") if pair)
+
+
+SANDBOX_REGIONS_NODES = _pairs("PROVISA_SANDBOX_REGIONS_NODES")
+SANDBOX_REGIONS_DEMOS = _pairs("PROVISA_SANDBOX_REGIONS_DEMOS")
 #: The API paths a demo sandbox is opened by (provisa/api/demo_sandbox_router.py): a visitor's,
 #: with no sign-in, and a signed-in person's own.
 DEMO_OPEN_PREFIXES = ("public/demos/", "sandboxes/")
 
 
-async def _sandbox_starting(instance: str) -> Response:
-    """The sandbox tier's VM refused the connection: it is powered off (it stops itself when no
-    sandbox has been used for a while) or still starting. It is started, and the visitor told to
-    come back; a VM that cannot be started is a 502 naming why, in the log."""
+async def _sandbox_starting(instance: str, base: str) -> Response:
+    """The sandbox tier at ``base`` refused the connection: its VM is powered off (it stops itself
+    when no sandbox has been used for a while) or still starting. It is started, and the visitor
+    told to come back; a VM that cannot be started is a 502 naming why, in the log, and a tier
+    that has refused for longer than a cold start takes has failed, and is said to have."""
     try:
         found = await sandbox_wake.wake(instance)
     except (httpx.HTTPError, RuntimeError):
         _log.exception("the sandbox tier's VM could not be started")
         return HTMLResponse("API unavailable", status_code=502)
     _log.warning("sandbox tier unreachable; its VM was %s", found)
+    refusing = sandbox_wake.refused(base, found)
+    if refusing >= sandbox_wake.FAILED_AFTER_S:
+        _log.error("sandbox tier %s has refused connections for %.0fs", base, refusing)
+        return JSONResponse(
+            {
+                "detail": "The demo server could not be started. Try again later.",
+                "code": "sandbox.failed_to_start",
+                "params": {},
+            },
+            status_code=503,
+        )
     return JSONResponse(
         {
             "detail": "The demo server is starting. Try again in a minute or two.",
@@ -104,6 +125,16 @@ async def _sandbox_starting(instance: str) -> Response:
         status_code=503,
         headers={"Retry-After": "60"},
     )
+
+
+class RegionUnrouted(Exception):  # REQ-2068
+    """A regions sandbox, or a regions demo, whose region no regions-tier node serves
+    (PROVISA_SANDBOX_REGIONS_NODES names none for it). Refused by name: the ordinary sandbox tier
+    holds neither."""
+
+    def __init__(self, region: str, what: str) -> None:
+        self.region = region
+        super().__init__(f"No regions-tier node serves region {region!r} ({what})")
 
 
 def api_base_for(full_path: str, headers: Mapping[str, str]) -> str:
@@ -116,24 +147,36 @@ def api_base_for(full_path: str, headers: Mapping[str, str]) -> str:
     from provisa.security.sni import org_from_host
 
     org = org_from_host(headers.get("host")) or headers.get("x-org-provisa")
-    if SANDBOX_REGIONS_API_URL is not None and _regions_tier(full_path, org):
-        return SANDBOX_REGIONS_API_URL
+    node = _regions_node(full_path, org)
+    if node is not None:
+        return node
     if full_path.startswith(DEMO_OPEN_PREFIXES) or (org is not None and is_sandbox_tier_org(org)):
         return SANDBOX_API_URL
     return API_BASE_URL
 
 
-def _regions_tier(full_path: str, org: str | None) -> bool:
-    """Whether the regions sandbox tier serves this request: one of its sandboxes, or opening one
-    of its demos (``public/demos/<name>``, ``sandboxes/<name>``)."""
-    from provisa.core.org_ids import is_regions_sandbox
+def _regions_node(full_path: str, org: str | None) -> str | None:
+    """The regions-tier node that serves this request, or None when the regions tier does not: one
+    of its sandboxes, by the region its id names, or opening one of its demos
+    (``public/demos/<name>``, ``sandboxes/<name>``), by the demo's node. A demo
+    PROVISA_SANDBOX_REGIONS_DEMOS does not name is not the regions tier's. A region no node serves
+    is refused (:class:`RegionUnrouted`)."""
+    from provisa.core.org_ids import regions_sandbox_region
 
-    if org is not None and is_regions_sandbox(org):
-        return True
-    for prefix in DEMO_OPEN_PREFIXES:
-        if full_path.startswith(prefix):
-            return full_path[len(prefix) :].split("/", 1)[0] in SANDBOX_REGIONS_DEMOS
-    return False
+    region = None if org is None else regions_sandbox_region(org)
+    what = f"sandbox {org}"
+    if region is None:
+        for prefix in DEMO_OPEN_PREFIXES:
+            if full_path.startswith(prefix):
+                demo = full_path[len(prefix) :].split("/", 1)[0]
+                if demo in SANDBOX_REGIONS_DEMOS:
+                    region, what = SANDBOX_REGIONS_DEMOS[demo], f"demo {demo}"
+                break
+    if region is None:
+        return None
+    if region not in SANDBOX_REGIONS_NODES:
+        raise RegionUnrouted(region, what)
+    return SANDBOX_REGIONS_NODES[region]
 
 
 # Upstream read budget for the proxy leg. A request that outlives it is reported as a 504
@@ -251,6 +294,19 @@ logging.getLogger("uvicorn.access").addFilter(_NoSignInQuery())
 # Disable this proxy app's own Swagger so /docs falls through to the SPA (the API's
 # Swagger lives at /data/openapi/docs, reachable through the proxy).
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+def _ui_address() -> str | None:
+    """The address the UI is served at (``mail.base_url``), for a query node's refusal. The UI
+    server runs in the API's process (``provisa run``), which holds the loaded config."""
+    from provisa.api.app import state
+
+    return state.config.mail.base_url if state.config is not None else None
+
+
+# REQ-1916 (amended 2026-11-02): only a coordinator or an every-mode node serves the UI; this whole
+# server is UI, so on a query node every path is refused, naming where the UI is.
+app.add_middleware(QueryUiGate, refuses=lambda _path: True, ui_address=_ui_address)
 
 assets_dir = STATIC_DIR / "assets"
 if assets_dir.is_dir():
@@ -378,7 +434,18 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
         return FileResponse(index, headers={"Cache-Control": "no-store"})
 
     # ── API proxy — forward to the provisa API, surfacing its real status ─────
-    base = api_base_for(full_path, request.headers)
+    try:
+        base = api_base_for(full_path, request.headers)
+    except RegionUnrouted as exc:  # REQ-2068
+        _log.error("%s: %s %s", exc, request.method, full_path)
+        return JSONResponse(
+            {
+                "detail": str(exc),
+                "code": "sandbox.region_unrouted",
+                "params": {"region": exc.region},
+            },
+            status_code=502,
+        )
     target = f"{base}/{full_path}"
     if request.url.query:
         target = f"{target}?{request.url.query}"
@@ -410,13 +477,23 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
                 ),
                 stream=True,
             )
+            sandbox_wake.answered(base)
             if not upstream.headers.get("content-type", "").startswith("text/event-stream"):
                 await upstream.aread()
-        except httpx.ConnectError:
-            # Both sandbox tiers run on the sandbox VM (REQ-2068).
-            sandbox = base in (SANDBOX_API_URL, SANDBOX_REGIONS_API_URL)
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as exc:
+            # Refused, or accepted and dropped unanswered: a deploy recreating the API's container
+            # drops the requests under way there, and left unhandled that escaped as a bare ASGI
+            # 500. Both sandbox tiers run on the sandbox VM (REQ-2068).
+            if not isinstance(exc, httpx.ConnectError):
+                _log.error(
+                    "upstream dropped the request (%s): %s %s",
+                    type(exc).__name__,
+                    request.method,
+                    target,
+                )
+            sandbox = base == SANDBOX_API_URL or base in SANDBOX_REGIONS_NODES.values()
             if sandbox and sandbox_wake.SANDBOX_INSTANCE is not None:
-                return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE)
+                return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE, base)
             return HTMLResponse("API unavailable", status_code=502)
         except httpx.TimeoutException as exc:
             # The upstream accepted the connection but did not finish in the budget. Left

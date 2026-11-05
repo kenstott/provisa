@@ -272,7 +272,15 @@ def test_a_fraction_keeps_the_vocabulary_of_a_fixed_column(con):
 
 def test_closure_is_refused_naming_the_missing_parent():
     with pytest.raises(DatasetRefused, match="'purchases' refers to 'customers'"):
-        check_closure({2: "purchases"}, {1: "customers", 2: "purchases"}, _EDGES)
+        check_closure(
+            {2: "purchases"}, {1: "customers", 2: "purchases"}, _EDGES, told=lambda _t: True
+        )
+    # REQ-2152: a parent its reader is not served is not named.
+    with pytest.raises(DatasetRefused, match="refers to a table outside your grants") as refused:
+        check_closure(
+            {2: "purchases"}, {1: "customers", 2: "purchases"}, _EDGES, told=lambda t: t != 1
+        )
+    assert "customers" not in str(refused.value)
     with pytest.raises(DatasetRefused, match="refers to 'customers'"):
         plan_tables(
             [_purchases()], _EDGES, seed=1, names=_NAMES, count_rows=_count, measure=_unmeasured

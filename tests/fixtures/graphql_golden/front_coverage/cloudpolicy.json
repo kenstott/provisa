@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:cloudpolicy/1-open-review.graphql",
+  "root_field": "c__viewDailyReview"
+ }
+]

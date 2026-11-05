@@ -52,6 +52,8 @@ def expandable_joins(
                 continue
             if language == "cypher" and not (j.cypher_rel and tables[child].has("cypher")):
                 continue
+            if language == "sparql" and not (j.sparql_rel and tables[child].has("sparql")):
+                continue
             pc, cc = (j.left_column, j.right_column) if forward else (j.right_column, j.left_column)
             klass = setup.join_class(parent, child) if kind == "cross" else None
             if replication is not None and klass != replication:
@@ -68,6 +70,7 @@ def expandable_joins(
                     j.graphql_field,
                     j.cypher_rel,
                     klass,
+                    sparql_rel=j.sparql_rel,
                 )
             )
     return out

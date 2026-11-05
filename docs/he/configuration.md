@@ -952,25 +952,35 @@ views:
 
 גרסה בתוקף מהזמן שלה ועד הזמן של הגרסה הבאה. מחיקה נכנסת לתוקף כש-Provisa רושמת אותה.
 
-**קריאה.** קריאה רגילה מחזירה את הגרסה של כל מפתח שתקפה עכשיו. הכותרת `X-Provisa-As-Of` קוראת ברגע מסוים או לאורך טווח, הנתון כמרווח ISO 8601 בצורת `start/end`:
+**קריאה.** קריאה פשוטה מחזירה את הגרסה של כל מפתח שבתוקף עכשיו. כדי לקרוא זמן אחר, תנו ליחס את הארגומנט `as_of` משלו במקום שבו ההצהרה נוקבת בו, נקודת זמן או טווח שניתן כמרווח ISO 8601 `start/end`:
 
-```
-X-Provisa-As-Of: 2026-03-01T00:00:00
-X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
-```
-
-רגע מחזיר את הגרסה של כל מפתח שהייתה תקפה אז. טווח מחזיר כל גרסה שהייתה תקפה בנקודה כלשהי בתוכו, שורה לכל גרסה.
-
-**כפי שנרשם.** תיקון שנרשם מאוחר יותר משנה את מה שתצוגה אומרת על העבר: הגרסה שבתוקף ב-30 בספטמבר היא הגרסה המתוקנת מרגע שהתיקון נרשם. כדי לקרוא את התצוגה כפי ש-Provisa רשם אותה בזמן מסוים, לפני כל תיקון מאוחר יותר, הוסיפו `X-Provisa-As-Recorded`, זמן ISO 8601 אחד:
-
-```
-X-Provisa-As-Of: 2026-09-30T12:00:00
-X-Provisa-As-Recorded: 2026-10-01T00:00:00
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-03-01T00:00:00') AS e
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-01-01T00:00:00/2026-04-01T00:00:00') AS e
 ```
 
-כל גרסה שנרשמה אחרי הזמן הזה נשארת בחוץ, וה-as-of בוחר אז את הגרסה שהייתה בתוקף בזמן שלו. עם `X-Provisa-As-Recorded` לבדו, הקריאה מחזירה את הגרסה של כל מפתח שהייתה בתוקף לפי מה שנרשם אז. הוא מקבל נקודת זמן אחת, לא טווח; טווח או ערך פגום נדחים עם HTTP 400 (`data.invalid_as_recorded`).
+נקודת זמן מחזירה את הגרסה של כל מפתח שהייתה בתוקף אז. טווח מחזיר כל גרסה שהייתה בתוקף בזמן כלשהו בתוכו, שורה לכל גרסה.
 
-שני הזמנים מגיעים ל-Provisa גם בלי הכותרות. זמן ה-as-of הוא הארגומנט `as_of` של `resolve` (GraphQL, gRPC, MCP), פרמטר השאילתה `as_of` ב-REST והאפשרות `as_of` של כרטיס Arrow Flight, וטווח שמועבר ל-`resolve` מחזיר את ה-`versions` של השורה במקום את ה-`row` שלה. זמן ה-as-recorded הוא הארגומנט `as_recorded` של `resolve`, פרמטר השאילתה `as_recorded` ב-REST והאפשרות `as_recorded` של כרטיס Arrow Flight. רשומת הביקורת של כל הצהרה שומרת את שני הזמנים שבהם היא קראה, `as_of` ו-`as_recorded`. הרשאות, מסכות וכללי שורה חלים כמו בכל קריאה. ערך as-of פגום, או טווח שסופו אינו אחרי תחילתו, נדחים עם HTTP 400 (`data.invalid_as_of`).
+**כפי שנרשם.** תיקון שנרשם מאוחר יותר משנה את מה שתצוגה אומרת על העבר: הגרסה שבתוקף ב-30 בספטמבר היא המתוקנת ברגע שהתיקון נרשם. כדי לקרוא את התצוגה כפי ש-Provisa רשמה אותה בזמן מסוים, לפני כל תיקון מאוחר יותר, הוסיפו `as_recorded`, נקודת זמן אחת ב-ISO 8601:
+
+```sql
+SELECT * FROM "banking"."view_eod_totals"(as_of => '2026-09-30T12:00:00', as_recorded => '2026-10-01T00:00:00') AS e
+```
+
+כל גרסה שנרשמה אחרי אותו זמן נשארת בחוץ, וה-as-of בוחר אז את הגרסה שבתוקף בזמן שלו. עם `as_recorded` לבדו, הקריאה מחזירה את הגרסה של כל מפתח שבתוקף כפי שנרשם אז. הוא מקבל נקודת זמן אחת, לא טווח.
+
+**היכן הארגומנטים.** כל הפניה נושאת את הזמן שלה, כך שהצהרה אחת יכולה לקרוא תצוגה בשני זמנים דרך שתי הפניות, והפניה ללא ארגומנטים קוראת את המצב הנוכחי. זמן יכול להיות גם ערך מאוגד, `(as_recorded => $1)`, כשהערך נשלח ב-`params` של הבקשה. רק יחס ששומר את גרסאותיו מקבל את הארגומנטים: טבלה או תצוגה עם היסטוריה, וטבלת Iceberg או Delta, שנעה לפי ה-snapshots שלה ולכן מקבלת רק `as_recorded` (ה-snapshot שהיה בתוקף באותו זמן). כל יחס אחר, זמן פגום, טווח שניתן ל-`as_recorded` או `as_of` על טבלת Iceberg או Delta נדחים עם HTTP 400, תוך ציון שם היחס.
+
+אותם שני שמות הם הארגומנטים של שדה היחס ב-GraphQL, בשדות שורש ובשדה קשר שהיעד שלו שומר את גרסאותיו, כך ששני כינויים יכולים לקרוא תצוגה אחת בשני זמנים:
+
+```graphql
+{
+  reported: view_eod_totals(as_recorded: "2026-10-01T17:00:00") { branch net_movement }
+  restated: view_eod_totals(as_recorded: "2026-10-12T17:00:00") { branch net_movement }
+}
+```
+
+REST מקבל אותם כפרמטרי השאילתה `as_of` ו-`as_recorded` של נקודת הקצה של הטבלה, וכלי ה-MCP `describe_table` אומר אילו ארגומנטים טבלה מקבלת. גם השדה `resolve` של הדומיין `meta` (GraphQL, REST ו-MCP) מקבל `as_of` ו-`as_recorded`, וטווח שניתן לו מחזיר את ה-`versions` של השורה במקום ה-`row` שלה; וכך גם קריאת ה-gRPC `Resolve`. כרטיס Arrow Flight מקבל אותם כאפשרויות `as_of` ו-`as_recorded` שלו, וסשן pgwire קובע ברירת מחדל להצהרות שהוא מריץ עם `SET provisa.as_of` ו-`SET provisa.as_recorded`, שהארגומנטים של הפניה עצמה גוברים עליה. הבוררים "As of" ו-"As recorded at" של סייר ה-SQL כותבים את הארגומנטים לתוך ההצהרה. רשומת הביקורת של כל הצהרה שומרת את הזמן שבו קראה, `as_of` ו-`as_recorded`, כשקראה בזמן אחד. הרשאות, מסכות וכללי שורה חלים כמו בכל קריאה.
 
 כל תצוגה עם היסטוריה מחזירה שלוש עמודות נוספות, המוענקות כמו עמודת זמן המקור שלה (אחרת עמודת המפתח הראשונה):
 
@@ -1548,10 +1558,7 @@ Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקו
 | `singlestore` | SingleStore | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `vertica` | Vertica | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `exasol` | Exasol | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
-| `teradata` | Teradata Vantage | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `saphana` | SAP HANA | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
-| `sapase` | SAP ASE (Sybase) | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
-| `sqlanywhere` | SAP SQL Anywhere | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `monetdb` | MonetDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `firebird` | Firebird | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `sqlalchemy` | מסד נתונים רלציוני אחר (לפי כתובת חיבור) | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
@@ -1652,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 מאגר המימוש ברירת מחדל `TENANT_DATABASE_URL`.
 
-#### מנועי מסדי נתונים יחסיים (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) ו-`sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### מנועי מסדי נתונים יחסיים (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) ו-`sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 מפתח אחד לכל מסד נתונים יחסי הניתן לכתובת ברשת, כולם על אותו runtime land-only (ללא פדרציה למקורות חיצוניים): כל מקור נוחת (lands) לתוך המאגר ונשאל שם. המפתח בוחר את מסד הנתונים; `PROVISA_ENGINE_URL` נושא את ה-DSN שהדיאלקט שלו מצפה לו. `sqlalchemy` הוא הכל-כולל למסד נתונים ללא מפתח משלו. מאגרים מוטמעי-קובץ (SQLite, Access) אינם מוצעים, כי השרת חייב להיות ניתן להשגה ברשת.
 
@@ -1732,6 +1739,7 @@ sources:
 | `TRINO_HOST` | `localhost` | מארח coordinator של Trino |
 | `TRINO_PORT` | `8080` | פורט HTTP של coordinator‏ Trino |
 | `PROVISA_ENGINE_FILES_GID` | `1000` | הקבוצה שבה Trino קורא את קובצי הסוד שלו (הגדרות ה-SASL של מקור Kafka, מפתח הלקוח של שרת קוד) כש-Provisa רץ לא כ-root ולא כמשתמש של Trino, כמו אפליקציה מקומית לצד הקונטיינר של Trino. המשתמש של Provisa חייב להיות חבר בה, אחרת הקובץ נדחה בשמו. |
+| `PROVISA_PG_ENGINE_FILES_GID` | `999` | אותו דבר, עבור השרת של מנוע Postgres שקורא את מפתח הלקוח של שרת קוד |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | נתיב ל-JSON מפתח service-account של GCP (מנוע/מקור BigQuery) |
 | `GOOGLE_CLOUD_PROJECT` | — | פרויקט GCP ברירת מחדל (BigQuery; נדרס על ידי URL) |
 | `FABRIC_SQL_SERVER` | — | נקודת קצה SQL של Fabric Warehouse (חלופה ל-`PROVISA_ENGINE_URL`) |

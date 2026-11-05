@@ -11,6 +11,7 @@ table a build is about to replace, and a build never starts under a delta."""
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import pytest
 
@@ -20,7 +21,10 @@ from provisa.federation.replica_locks import BuildLocks, replica_write_lock
 
 pytestmark = pytest.mark.unit
 
-ORG = "org1"
+# PostgreSQL advisory locks are held server-wide, not per database, and every xdist worker's
+# control plane is a database on one server: each worker process names an org of its own, or a
+# replica lock another worker's test holds reads here as another build's.
+ORG = f"org1{uuid.uuid4().hex[:8]}"
 KEY = ("src", "public", "orders")
 
 

@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "How to write a good question",
-    "guideDesc": "This tool generates queries directly from your schema — it does not reason over free-form text or general knowledge. Phrase your question as a composition of the tables, fields, and relationships that exist in your data.",
+    "guideDesc": "This tool generates queries from your schema. It does not reason over free-form text or general knowledge, so phrase your question in terms of the tables, fields, and relationships in your data.",
     "guideRuleNames": "Use the names of your entities, not synonyms ({{entity}}, not {{synonym}})",
     "guideRuleFilters": "Specify filters, groupings, and aggregations the way you would in a query",
     "guideRuleSchema": "If a field or relationship is not in your schema, it cannot be queried",
@@ -21,10 +21,11 @@
     "noRowsReturned": "No rows returned",
     "showingRows": "Showing {{shown}} of {{total}} rows",
     "strictMode": "Strict",
-    "strictModeTooltip": "All generation based strictly on GraphQL expression: GraphQL is generated first and validated against the schema, then compiled to SQL, then to Cypher. Off: SQL and GraphQL are generated independently and Cypher is derived from the SQL result.",
+    "strictModeTooltip": "All generation based strictly on GraphQL expression: GraphQL is generated first and validated against the schema, then compiled to SQL, then to Cypher. Off: SQL, GraphQL and Cypher are each generated independently as the closest query to the question.",
+    "strictLocked": "This role may only use approved relationships",
     "questionTooltip": "Ask in plain English using your own table, column, and relationship names. Enter submits; Shift+Enter adds a line.",
-    "generateTooltip": "Generate a query for every surface — GraphQL, SQL, and Cypher — from this question, using the schema your current role can see.",
-    "mcpChatTooltip": "Hand this question to the MCP assistant, which explores the catalog and runs the query for you instead of only generating it.",
+    "generateTooltip": "Generates GraphQL, SQL, and Cypher queries from this question, using the schema your current role can see.",
+    "mcpChatTooltip": "Sends this question to the MCP assistant, which explores the catalog and runs the query for you.",
     "questionHelpTitle": "Asking the question",
     "strictHelpTitle": "Strict generation",
     "generateHelpTitle": "What Generate produces",

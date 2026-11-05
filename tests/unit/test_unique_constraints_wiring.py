@@ -58,6 +58,7 @@ def _input(**over):
         push_debounce_max_delay=5.0,
         mv_consistency="shared",
         mv_preprocess=None,  # REQ-957
+        mv_hold_on_failing_checks=False,  # REQ-2133
         business_key=[],  # REQ-2109
         valid_time=None,  # REQ-2109
         recorded_time=None,  # REQ-2109

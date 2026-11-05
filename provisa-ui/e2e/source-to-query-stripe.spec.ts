@@ -18,8 +18,6 @@
 // as source-to-query-cloud-warehouse.spec.ts's seed and teardown. They are created three to a
 // run and read two to a page, so the read follows Stripe's paging to its end.
 
-import type { Page } from "@playwright/test";
-
 import { test, expect } from "./coverage";
 import {
   expectDiscoveredColumns,
@@ -45,15 +43,6 @@ async function stripe(method: "POST" | "DELETE", path: string, form?: Record<str
   const body = await res.json();
   if (!res.ok) throw new Error(`Stripe ${method} ${path}: ${res.status} ${JSON.stringify(body)}`);
   return body as { id: string };
-}
-
-/** Set the page size of the table being registered, in the Paging section the form proposes. */
-async function setPageSize(page: Page, size: number) {
-  const paging = page.getByTestId("paging-field");
-  await expect(paging.getByRole("textbox", { name: "Starts-after parameter" })).toBeVisible({
-    timeout: 30000,
-  });
-  await paging.getByRole("textbox", { name: "Page size", exact: true }).fill(String(size));
 }
 
 test.describe("Stripe through the UI (REQ-1923)", () => {
@@ -103,8 +92,11 @@ test.describe("Stripe through the UI (REQ-1923)", () => {
     await openRegisterForm(page, sourceId, domain);
     await pickSchemaAndTable(page, "openapi", "GetCustomers");
     await expectDiscoveredColumns(page, ["id"]);
-    await setPageSize(page, 2);
-    const registered = await submitRegisterAndExpectListed(page, sourceId);
+    // The paging the spec proposes is carried into the editor's Load section: the page size is set
+    // there before the one Save.
+    const registered = await submitRegisterAndExpectListed(page, sourceId, undefined, "", {
+      pageSize: 2,
+    });
 
     // 3. SQL page -- the three customers of this run, read from Stripe two to a page.
     const rows = await runSqlOnPage(

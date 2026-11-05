@@ -26,10 +26,24 @@ import {
 import { Tip } from "../Tip";
 import { getStored, setStored } from "../../lib/browserStorage";
 
+/** What a class's menu is opened on, as a right click on its pill does. */
+export type OpenClassMenu = (
+  e: React.MouseEvent,
+  target: Omit<ContextMenuState, "x" | "y">,
+) => void;
+
+/** What a relationship's menu is opened on, as a right click on its pill does. */
+export type OpenRelMenu = (e: React.MouseEvent, type: string) => void;
+
+/** What the drawing computes of every node, so a label of any kind can be sized by them. */
+const GRAPH_DEGREES = ["degIn", "degOut", "degTotal", "degreeCentrality"];
+
 interface SidebarProps {
   schemaNodeLabels: SchemaNodeLabel[];
   schemaRels: SchemaRel[];
   schemaLoading: boolean;
+  /** Why /data/graph-schema gave no schema; shown where its labels and types go. */
+  schemaError?: string | null;
   history: string[];
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
@@ -48,7 +62,9 @@ interface SidebarProps {
   onSizeMultiplierChange: (label: string, multiplier: number) => void;
   onRelLineChange: (type: string, override: RelLineOverride) => void;
   numericPropsByLabel: Record<string, string[]>;
-  onNeo4jExport?: () => void;
+  /** The tab's own language's export: Neo4j for Cypher, RDF and SPARQL results for SPARQL. */
+  onExport?: () => void;
+  exportLabel?: string;
   width: number;
   onWidthChange: (w: number) => void;
   highlightedLabel?: string | null;
@@ -61,8 +77,15 @@ interface SidebarProps {
   onPropertyKeyClick?: (key: string) => void;
   /** What /data/graph-counts said; null until it has. */
   counts?: GraphCounts | null;
+  /** Why /data/graph-counts gave no counts; shown where the counts go. */
+  countsError?: string | null;
   maxNodes: number;
   onMaxNodesChange: (n: number) => void;
+  /** A second vocabulary's panel (SPARQL's) in place of Cypher's labels, types and keys, given what
+   *  opens the menu a label pill's right click opens on Cypher's. */
+  vocabulary?: (openClassMenu: OpenClassMenu, openRelMenu: OpenRelMenu) => React.ReactNode;
+  /** The user's graph session (REQ-2176), listed beside the model's labels and types. */
+  session?: React.ReactNode;
 }
 
 const NUMERIC_TYPES = new Set([
@@ -87,6 +110,7 @@ export function Sidebar({
   schemaNodeLabels,
   schemaRels,
   schemaLoading,
+  schemaError = null,
   history,
   colorOverrides,
   sizeOverrides,
@@ -105,7 +129,8 @@ export function Sidebar({
   onSizeMultiplierChange,
   onRelLineChange,
   numericPropsByLabel,
-  onNeo4jExport,
+  onExport,
+  exportLabel,
   width,
   onWidthChange,
   highlightedLabel,
@@ -117,8 +142,11 @@ export function Sidebar({
   propertyKeys = [],
   onPropertyKeyClick,
   counts = null,
+  countsError = null,
   maxNodes,
   onMaxNodesChange,
+  vocabulary,
+  session,
 }: SidebarProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<"db" | "history" | "favorites" | "settings">("db");
@@ -247,10 +275,7 @@ export function Sidebar({
           ...numericFromSchema,
           ...numericFromPropertyTypes,
           ...numericFromData,
-          "degIn",
-          "degOut",
-          "degTotal",
-          "degreeCentrality",
+          ...GRAPH_DEGREES,
         ]),
       ];
       setContextMenu({
@@ -264,6 +289,16 @@ export function Sidebar({
     },
     [numericPropsByLabel],
   );
+
+  const openClassMenu = useCallback<OpenClassMenu>((e, target) => {
+    e.preventDefault();
+    setContextMenu({
+      ...target,
+      x: e.clientX,
+      y: e.clientY,
+      numericProperties: [...target.numericProperties, ...GRAPH_DEGREES],
+    });
+  }, []);
 
   const handleRelRightClick = useCallback((e: React.MouseEvent, type: string) => {
     e.preventDefault();
@@ -333,14 +368,14 @@ export function Sidebar({
             </button>
           </Tip>
         </Tip>
-        {onNeo4jExport && (
-          <Tip text={t("graphSidebar.tabExport")}>
-            <Tip text={t("graphSidebar.tabExport")} named>
+        {onExport && exportLabel && (
+          <Tip text={exportLabel}>
+            <Tip text={exportLabel} named>
               <button
                 type="button"
                 className="graph-sidebar-tab"
-                onClick={onNeo4jExport}
-                aria-label={t("graphSidebar.tabExport")}
+                onClick={onExport}
+                aria-label={exportLabel}
                 data-testid="graph-sidebar-tab-export"
               >
                 <ExportIcon size={15} />
@@ -351,7 +386,9 @@ export function Sidebar({
       </div>
 
       <div className="graph-sidebar-body">
-        {section === "db" && (
+        {/* REQ-2135: SPARQL's vocabulary, where Cypher's labels and types are. */}
+        {section === "db" && vocabulary?.(openClassMenu, handleRelRightClick)}
+        {section === "db" && !vocabulary && (
           <>
             {!schemaLoading &&
               (() => {
@@ -385,10 +422,7 @@ export function Sidebar({
                                       ...schemaNodeLabels
                                         .filter((n) => n.domainLabel === lbl)
                                         .flatMap((n) => numericPropsByLabel[n.tableLabel] ?? []),
-                                      "degIn",
-                                      "degOut",
-                                      "degTotal",
-                                      "degreeCentrality",
+                                      ...GRAPH_DEGREES,
                                     ]),
                                   ];
                                   setContextMenu({
@@ -430,10 +464,23 @@ export function Sidebar({
               {!nodeLabelsCollapsed &&
                 (schemaLoading ? (
                   <div className="graph-schema-empty">{t("graphSidebar.loading")}</div>
+                ) : schemaError !== null ? (
+                  <div className="graph-schema-empty" role="alert" data-testid="graph-schema-error">
+                    {t("graphSidebar.schemaFailed", { error: schemaError })}
+                  </div>
                 ) : schemaNodeLabels.length === 0 ? (
                   <div className="graph-schema-empty">{t("graphSidebar.noLabelsFound")}</div>
                 ) : (
                   <div className="graph-label-list">
+                    {countsError !== null && (
+                      <div
+                        className="graph-schema-empty"
+                        role="alert"
+                        data-testid="graph-counts-error"
+                      >
+                        {t("graphSidebar.countsFailed", { error: countsError })}
+                      </div>
+                    )}
                     <div className="graph-label-item">
                       <Tip
                         text={uncounted(counts?.label_counts) ?? t("graphSidebar.matchAllNodes")}
@@ -445,7 +492,12 @@ export function Sidebar({
                           data-testid="graph-all-nodes"
                         >
                           *(
-                          {counts === null ? schemaNodeLabels.length : total(counts.node_count)})
+                          {countsError !== null
+                            ? "?"
+                            : counts === null
+                              ? schemaNodeLabels.length
+                              : total(counts.node_count)}
+                          )
                         </button>
                       </Tip>
                     </div>
@@ -472,6 +524,7 @@ export function Sidebar({
                                 className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
                                 style={{ background: color }}
                                 draggable
+                                data-testid={`graph-label-${compoundLabel}`}
                                 onDragStart={(e) =>
                                   e.dataTransfer.setData("text/x-provisa-label", compoundLabel)
                                 }
@@ -609,6 +662,10 @@ export function Sidebar({
               {!relTypesCollapsed &&
                 (schemaLoading ? (
                   <div className="graph-schema-empty">{t("graphSidebar.loading")}</div>
+                ) : schemaError !== null ? (
+                  <div className="graph-schema-empty" role="alert">
+                    {t("graphSidebar.schemaFailed", { error: schemaError })}
+                  </div>
                 ) : schemaRels.length === 0 ? (
                   <div className="graph-schema-empty">{t("graphSidebar.noRelTypesFound")}</div>
                 ) : (
@@ -631,7 +688,12 @@ export function Sidebar({
                               data-testid="graph-all-rels"
                             >
                               *(
-                              {counts === null ? uniqueRels.length : total(counts.rel_count)})
+                              {countsError !== null
+                                ? "?"
+                                : counts === null
+                                  ? uniqueRels.length
+                                  : total(counts.rel_count)}
+                              )
                             </button>
                           </Tip>
                         </div>,
@@ -746,6 +808,7 @@ export function Sidebar({
                 ))}
             </div>
 
+            {session}
             {propertyKeys.length > 0 && (
               <div className="graph-schema-section">
                 <button

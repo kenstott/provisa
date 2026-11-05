@@ -62,11 +62,11 @@ export const TABLES_SURFACE: CapabilityRequirement = {
  * when one of those roles reaches every domain.
  */
 export function hidingDomains(
-  roles: { capabilities: string[]; domain_access: string[] }[],
+  roles: { effectiveCapabilities: string[]; domain_access: string[] }[],
 ): Set<string> | null {
   const out = new Set<string>();
   for (const role of roles) {
-    if (!role.capabilities.some((c) => (HIDING_RIGHTS as string[]).includes(c))) continue;
+    if (!role.effectiveCapabilities.some((c) => (HIDING_RIGHTS as string[]).includes(c))) continue;
     if (role.domain_access.includes("*")) return null;
     for (const d of role.domain_access) out.add(d);
   }

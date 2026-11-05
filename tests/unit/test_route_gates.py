@@ -30,7 +30,7 @@ _TYPES = {
     "vec": "qdrant",
     "odd": "nosuchdb",
 }
-_DIALECTS = {"pg": "postgres", "pg2": "postgres", "api": "", "py": "", "vec": "qdrant"}
+_DIALECTS = {"pg": "postgres", "pg2": "postgres", "api": "", "py": "duckdb", "vec": "qdrant"}
 
 
 def _route(sources, statement="SELECT a FROM t", **kw):
@@ -76,13 +76,12 @@ def test_dialect_supports():
     assert landed.reason == "landed: dialect_supports: source 'odd' cannot run EXISTS"
 
 
-def test_a_source_sent_no_sql_is_not_judged_by_a_dialect():
-    # A code or API source's access path is its function or its API caller: a construct no SQL
-    # dialect is asked to run does not land it at dialect_supports.
+def test_an_api_source_is_not_judged_by_a_dialect():
+    # An API source's access path is its API caller: a construct no SQL dialect is asked to run
+    # does not land it at dialect_supports.
     grouped = "SELECT region, count(*) FROM t GROUP BY region"
-    for sid in ("py", "api"):
-        reason = _route({sid}, grouped).reason
-        assert reason.startswith("landed: trusted_to_answer: incomplete dataset from "), reason
+    reason = _route({"api"}, grouped).reason
+    assert reason.startswith("landed: trusted_to_answer: incomplete dataset from "), reason
 
 
 def test_access_path():
@@ -181,3 +180,9 @@ def test_every_api_source_lands_for_want_of_a_capability_not_a_driver():
         assert decision.reason == "landed: trusted_to_answer: incomplete dataset from s", (
             source_type
         )
+
+
+def test_no_source_is_not_one_source():
+    decision = _route(set())
+    assert decision.route == Route.ENGINE
+    assert decision.reason == "landed: one_source: reads no source"

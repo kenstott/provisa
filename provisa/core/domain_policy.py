@@ -35,7 +35,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-_SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
+#: Provisa's own domains, which hold its catalog, operations and ontology rather than a model's
+#: data (provisa-ui/src/lib/internalDomains.ts names the same).
+INTERNAL_DOMAIN_IDS = ("meta", "ops", "ontology")
+_SYSTEM_DOMAIN_IDS = ["", *INTERNAL_DOMAIN_IDS]
 
 
 @dataclass

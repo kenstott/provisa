@@ -1,6 +1,6 @@
 # Environments
 
-An environment is a named copy of an organization's governed model. Physically, the copy is a separate PostgreSQL schema: a real schema, with no discriminator column and no prefix. So every existing repository query is correct inside an environment without being rewritten, and a forgotten predicate can't let one environment's rows be read from another.
+An environment is a named copy of an organization's governed model. Physically, the copy is a separate PostgreSQL schema, a real schema with no discriminator column and no prefix. So every existing repository query is correct inside an environment without being rewritten, and a forgotten predicate can't let one environment's rows be read from another.
 
 Every organization starts with one environment named `prod`. It cannot be deleted or renamed.
 A request that names no environment is served by `prod`; a request naming a nonexistent environment
@@ -38,7 +38,7 @@ environment's own answer.
 Bindings are the columns that say where a source actually points: `host`, `port`, `database`, `username` and the rest. They never travel in a copy. An environment that hasn't been bound is marked `unbound` instead of left blank, because an empty host isn't the same as no host, and the connection builder would read it as `localhost:5432`.
 
 An environment created as anything but Unbound copies each source's connection from its parent,
-exactly as the parent wrote it: a `${secret:...}` or `${env:...}` reference is copied as that
+exactly as the parent wrote it. A `${secret:...}` or `${env:...}` reference is copied as that
 reference, never resolved. After creation the copy is the environment's own row, editable on the
 Sources page, and nothing is resolved through the parent when the environment's runtime is built.
 Each source's `binding` says where its connection came from: `copied`, `own` (given in this
@@ -48,7 +48,7 @@ again. A merge or deploy carries no connections, so a source it introduces arriv
 
 ## The git projection
 
-Every write to the model commits the result to the environment's git branch. Deploying a tree takes an explicit call: a merged pull request on the git host doesn't deploy itself.
+Every write to the model commits the result to the environment's git branch. Deploying a tree takes an explicit call. A merged pull request on the git host doesn't deploy itself.
 
 Each entity gets one file. The path is the entity's `provisa://` address with the scheme and org stripped: `provisa://acme/sales/tables/Order` becomes `sales/tables/Order.yaml`. Sources land in `sources/`, commands in `commands/` and metrics in `metrics/`. Child rows that cascade from a parent (columns, relationships, RLS rules) are written inside the parent's file, without files of their own.
 
@@ -94,12 +94,12 @@ A pull is refused when the two lines have **diverged**, meaning each holds commi
 
 ## History
 
-Every deploy moves the environment's cursor forward along its own commit line. An undo steps back one commit, and a redo steps forward again toward where the undo started. Neither removes a commit: stepping back adds a position and leaves history as it is.
+Every deploy moves the environment's cursor forward along its own commit line. An undo steps back one commit, and a redo steps forward again toward where the undo started. Neither removes a commit. Stepping back adds a position and leaves history as it is.
 
 A branch is seeded at the tip of the environment it was created from, so an undo stops at that
 seeding point and does not walk onto the parent environment's commits.
 
-The `can_undo` and `can_redo` flags come with the environments list response. Both report `false` when the projection doesn't hold the commit the control plane names, a state the design allows and calls **drifted**. A node whose repository store never received a particular commit still lists its environments; only the history answers change.
+The `can_undo` and `can_redo` flags come with the environments list response. Both report `false` when the projection doesn't hold the commit the model store names, a state the design allows and calls **drifted**. A node whose repository store never received a particular commit still lists its environments; only the history answers change.
 
 ## Authorization
 
@@ -120,7 +120,7 @@ any environment other than production.
 
 ### Environment owner authority
 
-Creating an environment is the only way a read-only member gains model-editing rights. Inside an environment they created, the creator holds the `developer` role's capabilities, minus the data rights (`write`, `full_results`, `usage`): rights to build the model, without rights to the data.
+Creating an environment is the only way a read-only member gains model-editing rights. Inside an environment they created, the creator holds the `developer` role's capabilities, minus the data rights (`write`, `full_results`, `usage`), which gives rights to build the model without rights to the data.
 
 The grant is derived from `environments.created_by` at authorization time, never written into a
 grant table. Deleting the environment removes it in the same act.
@@ -138,7 +138,7 @@ when requested; it is proposed, and someone other than the requester must approv
 A merge request is a stored row, and no confirmation dialog stands in for it. The approver is by definition someone other than the requester and isn't there at the moment of the request. A confirmation that vanishes would force approval inside the requester's session, which is exactly the arrangement the rule forbids.
 
 The request row carries the merge report alongside the requester's message. Staleness is derived
-at read time, never stored: re-planning at read time and comparing against the stored report is
+at read time, never stored, because re-planning at read time and comparing against the stored report is
 the only version that cannot be wrong. A stale request must be re-requested. The requester cannot
 approve their own request.
 
@@ -182,7 +182,7 @@ provisa env deploy --org acme --env prod --ref "origin/main" \
 
 ## See also
 
-- [Deployment](deployment.md) — how to stand up the control plane environments connect to
-- [Commands](commands.md) — tracked functions and webhooks that appear in each environment's tree
-- [Building test environments](test-data.md) — profile production, declare fakes, generate synthetic data for a non-production environment
-- [Fake methods](fake-methods.md) — every kind of fake and every method a column can declare
+- [Deployment](deployment.md): how to stand up the control plane environments connect to
+- [Commands](commands.md): tracked functions and webhooks that appear in each environment's tree
+- [Building test environments](test-data.md): profile production, declare fakes, generate synthetic data for a non-production environment
+- [Fake methods](fake-methods.md): every kind of fake and every method a column can declare

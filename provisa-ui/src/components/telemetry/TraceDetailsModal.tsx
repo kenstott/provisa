@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Divider, Group, Loader, Modal, Stack, Table, Text } from "@mantine/core";
 import { runSql } from "../../api/admin";
+import { useAuth } from "../../context/AuthContext";
 import { formatTelemetryValue, traceDetailSql, type TelemetryIdKind } from "./traceDetails";
 
 interface TraceDetailsModalProps {
@@ -25,6 +26,8 @@ interface TraceDetailsModalProps {
 /** Every column of every matching span, attribute maps included. */
 export function TraceDetailsModal({ kind, id, onClose }: TraceDetailsModalProps) {
   const { t, i18n } = useTranslation();
+  // REQ-1620: the spans are read as the selected roles, the "Role: All" set included.
+  const { actingRoles } = useAuth();
   // The result carries the id it was fetched for, so a switch to another id
   // retires the previous rows by comparison at render time instead of by an
   // extra render pass that clears state at the top of the effect.
@@ -37,7 +40,8 @@ export function TraceDetailsModal({ kind, id, onClose }: TraceDetailsModalProps)
   const key = `${kind}:${id}`;
   useEffect(() => {
     let cancelled = false;
-    runSql(traceDetailSql(kind, id))
+    if (actingRoles === null) return;
+    runSql(traceDetailSql(kind, id), actingRoles)
       .then((r) => {
         if (cancelled) return;
         setLoaded({
@@ -54,7 +58,7 @@ export function TraceDetailsModal({ kind, id, onClose }: TraceDetailsModalProps)
     return () => {
       cancelled = true;
     };
-  }, [kind, id]);
+  }, [kind, id, actingRoles]);
   // A detail landed in the results store is there, not here: said as such, not shown as empty.
   const loadedNow = loaded?.key === key ? loaded : null;
   const current =

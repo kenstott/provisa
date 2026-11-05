@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import i18n from "../i18n";
+import i18n, { loadCatalog } from "../i18n";
 
 const hierarchy = (lng: string): string[] =>
   (
@@ -68,13 +68,13 @@ describe("REQ-1342 language selection", () => {
     expect(hierarchy("is-IS")).toEqual(["en"]);
   });
 
-  it("ships every catalog it claims to support", () => {
+  it("ships every catalog it claims to support", async () => {
     const supported = (i18n.options.supportedLngs as string[]).filter((l) => l !== "cimode");
-    const shipped = Object.keys(i18n.options.resources ?? {});
 
     expect(supported.length).toBeGreaterThan(0);
     for (const lng of supported) {
-      expect(shipped).toContain(lng);
+      // Each is loaded only for a session in that language, so each is loaded here.
+      expect(Object.keys(await loadCatalog(lng)).length, lng).toBeGreaterThan(0);
     }
   });
 });

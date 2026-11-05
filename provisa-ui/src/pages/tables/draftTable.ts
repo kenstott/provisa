@@ -39,6 +39,8 @@ export interface Registration {
 interface ColumnInput {
   name: string;
   dataType?: string;
+  /** REQ-2171: the subtype of dataType the column registers as. */
+  subtype?: string;
   visibleTo?: string[];
   masks?: MaskEntry[];
   alias?: string;
@@ -72,6 +74,7 @@ function draftColumn(c: ColumnInput, i: number): TableColumn {
     computedGqlAlias: c.alias || c.name,
     description: c.description ?? null,
     dataType: c.dataType ?? null,
+    subtype: c.subtype ?? null,
     nativeFilterType: c.nativeFilterType ?? null,
     nativeFilterRequired: c.nativeFilterRequired ?? null,
     requiredBySteward: c.requiredBySteward ?? false,
@@ -111,12 +114,14 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     replicate: null,
     region: str(i.region),
     draft: true,
+    rowMaterialize: false, // REQ-1865: chosen on the Load and timeliness tab
     loadProtected: null,
     offPeakWindow: null,
     offPeakTz: null,
     refreshPolicySummary: null,
     gqlNamingConvention: null,
     graphqlFieldName: null,
+    timeTravel: null,
     dqDataset: null,
     qualityCheckers: [],
     watermarkColumn: str(i.watermarkColumn),
@@ -127,6 +132,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     writeGrants: [],
     uniqueConstraints: (i.uniqueConstraints as RegisteredTable["uniqueConstraints"]) ?? [],
     apiEndpoint: null,
+    apiEndpointError: null,
     viewSql: str(i.viewSql),
     dqContract: str(i.dqContract),
     profilerSourceId: null,
@@ -141,6 +147,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
+    mvHoldOnFailingChecks: false,
     businessKey: [],
     validTime: null,
     recordedTime: null,

@@ -36,6 +36,13 @@ def _flight_health(port: int) -> dict:
         client.close()
 
 
+def _loaded(report: dict) -> bool:
+    """Whether the answering worker holds all it stores: a worker is ready, and answers, while it
+    is still loading the model (run 40139104347: /health read 970 of 1059 loaded, the action
+    then 1059)."""
+    return all(part["loaded"] == part["stored"] for part in report["config"].values())
+
+
 def _beat_free(report: dict) -> dict:
     """The report without each node's ``last_seen``: a node beats every 15 s (HEARTBEAT in
     provisa/core/platform_state/nodes.py), so two reads a beat apart differ there and nowhere
@@ -59,20 +66,34 @@ def test_flight_healthcheck_reports_what_http_health_reports():
         # counts, and writes its node row (its first beat), which is what /health lists; the two
         # land apart (suite 38198316000: two ready, one node). Read /health once every worker has
         # done both (bounded), not at the log line.
+        # A worker answers while it is still loading the model, and each read is a fresh
+        # connection answered by either worker: each answer is read until it says every part is
+        # loaded, so a lagging worker on either side is waited out, however connections hash.
         deadline = time.monotonic() + 60
         http = boot.health()
         while (
-            http is None or http["workers"]["ready"] < _WORKERS or len(http["nodes"]) < _WORKERS
-        ) and time.monotonic() < deadline:
+            not (
+                http is not None
+                and http["workers"]["ready"] == _WORKERS
+                and len(http["nodes"]) == _WORKERS
+                and _loaded(http)
+            )
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.5)
             http = boot.health()
         assert http is not None
         assert http["workers"] == {"ready": _WORKERS, "expected": _WORKERS}
         assert len(http["nodes"]) == _WORKERS, http["nodes"]
+        assert _loaded(http), http["config"]
         # Fresh connections, so the action is answered by whichever worker the kernel hands
         # each one to: every answer is the launch's health, as /health's is.
         for _ in range(12):
-            assert _beat_free(_flight_health(boot.ports["flight"])) == _beat_free(http)
+            flight = _flight_health(boot.ports["flight"])
+            while not _loaded(flight) and time.monotonic() < deadline:
+                time.sleep(0.5)
+                flight = _flight_health(boot.ports["flight"])
+            assert _beat_free(flight) == _beat_free(http)
         client = fl.connect(f"grpc://127.0.0.1:{boot.ports['flight']}")
         try:
             assert [a.type for a in client.list_actions()] == ["healthcheck"]

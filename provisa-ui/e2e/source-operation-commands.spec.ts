@@ -73,8 +73,12 @@ test("REQ-1924: a source's write operations are offered, and adding the source r
   expect(offered).not.toContain("getInventory"); // a GET is a table, not a command
 
   const actions = await request.get(`${BACKEND_URL}/admin/actions`, { headers: ADMIN });
-  const fns = (await actions.json()).functions as { sourceId: string }[];
-  expect(fns.filter((f) => f.sourceId === "petstore-api")).toEqual([]);
+  const fns = (await actions.json()).functions as { sourceId: string; functionName: string }[];
+  // The install config declares one operation as a command, add_pet (addPet, REQ-2134); no other
+  // offered operation is registered by adding the source.
+  expect(fns.filter((f) => f.sourceId === "petstore-api").map((f) => f.functionName)).toEqual([
+    "addPet",
+  ]);
 });
 
 test("REQ-1924: a registered operation is called with a JSON object and reaches the remote unchanged", async ({

@@ -14,12 +14,12 @@ One real server, one table of four orders in two regions, three roles:
 
 * ``org_admin`` — no row filter: every order;
 * ``east_only`` — ``region = 'east'``: exactly org_admin's east orders;
-* ``analyst`` — ``region = current_setting('provisa.user_region')``: the session variable is
+* ``regional`` — ``region = current_setting('provisa.user_region')``: the session variable is
   bound per request (REQ-1682); bound nowhere it resolves to NULL and the filter matches no row.
 
 Each transport is read as each role and the assertion is on the rows that came back, never on a
 status code: a filtered role must not see the unfiltered table on any way in, and a read as the
-unbound analyst right after a read that returned rows must still be empty (no kept plan and no
+unbound regional role right after a read that returned rows must still be empty (no kept plan and no
 cached result carries one role's rows to another)."""
 
 # Requirements: REQ-1682, REQ-041
@@ -42,7 +42,7 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_ROLES = ["org_admin", "analyst", "east_only"]
+_ROLES = ["org_admin", "regional", "east_only"]
 _EAST = {1, 3}
 _ALL = {1, 2, 3, 4}
 
@@ -210,20 +210,28 @@ def server():
         pg_port=_PG_PORT,
         extra_config={
             "tables": [orders],
+            # REQ-2155: the session-variable rule is a role of the test's own. On the standard
+            # analyst every role that inherits from it (org_admin among them) would read through it.
             "roles": base["roles"]
             + [
+                {
+                    "id": "regional",
+                    "description": "Test role.",
+                    "capabilities": ["query_development"],
+                    "domain_access": ["*"],
+                },
                 {
                     "id": "east_only",
                     "description": "Test role.",
                     "capabilities": ["query_development"],
                     "domain_access": ["*"],
-                }
+                },
             ],
             "rls_rules": [
                 {
                     "description": "Test rule.",
                     "table_id": "orders",
-                    "role_id": "analyst",
+                    "role_id": "regional",
                     "filter": "region = current_setting('provisa.user_region')",
                 },
                 {
@@ -254,22 +262,22 @@ def test_each_role_gets_exactly_its_filtered_rows(server, transport):
     read = _TRANSPORTS[transport]
     assert read(server, "org_admin") == _ALL
     assert read(server, "east_only") == _EAST  # exactly org_admin's east orders
-    assert read(server, "analyst") == set()  # the variable is bound nowhere: no row
+    assert read(server, "regional") == set()  # the variable is bound nowhere: no row
 
 
 @pytest.mark.parametrize("transport", list(_TRANSPORTS))
 def test_an_unbound_analyst_stays_empty_after_reads_that_returned_rows(server, transport):
     read = _TRANSPORTS[transport]
     assert read(server, "org_admin") == _ALL
-    assert read(server, "analyst") == set()
+    assert read(server, "regional") == set()
     assert read(server, "east_only") == _EAST
-    assert read(server, "analyst") == set()
+    assert read(server, "regional") == set()
 
 
 @pytest.mark.parametrize("transport", _HEADER_BOUND)
 def test_a_region_bound_for_one_request_filters_that_request_only(server, transport):
     read = _TRANSPORTS[transport]
     bound = {"x-provisa-session-user_region": "east"}
-    assert read(server, "analyst", bound) == _EAST
-    assert read(server, "analyst") == set()
-    assert read(server, "analyst", {"x-provisa-session-user_region": "west"}) == _ALL - _EAST
+    assert read(server, "regional", bound) == _EAST
+    assert read(server, "regional") == set()
+    assert read(server, "regional", {"x-provisa-session-user_region": "west"}) == _ALL - _EAST

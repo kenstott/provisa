@@ -246,9 +246,11 @@ def test_the_customer_reads_their_own_orders_in_the_apps_query(server):
 
 
 def test_the_analyst_reads_every_order_and_no_email(server):
-    [row] = query(server, 'SELECT COUNT(*) AS n FROM "shop"."orders"', "analyst")
+    [row] = query(server, 'SELECT COUNT(*) AS n FROM "shop"."orders"', "shop_analyst")
     assert row["n"] == 3000
-    emails = [r["email"] for r in query(server, 'SELECT email FROM "shop"."customers"', "analyst")]
+    emails = [
+        r["email"] for r in query(server, 'SELECT email FROM "shop"."customers"', "shop_analyst")
+    ]
     assert len(emails) > 0
     assert all(e.startswith("***@") for e in emails), emails[:5]
     [admin] = query(server, f'SELECT email FROM "shop"."customers" WHERE id = {_CUSTOMER}')

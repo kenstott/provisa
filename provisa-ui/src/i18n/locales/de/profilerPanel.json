@@ -13,6 +13,7 @@
     "runNow": "Profil jetzt erstellen",
     "viewRuns": "Profilläufe anzeigen",
     "runDone": "{{rows}} Zeilen profiliert.",
-    "constraints": "Constraints"
+    "constraints": "Constraints",
+    "classifications": "Klassifizierungen"
   }
 }

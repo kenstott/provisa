@@ -28,6 +28,7 @@ import re
 import socket
 import subprocess
 import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -66,7 +67,8 @@ def _api(srv, method: str, path: str, **kw) -> httpx.Response:
 
 @pytest.fixture(scope="module")
 def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
-    """The source's image, built through the API, loaded and run; its port and pairing code."""
+    """The source's image, built through the API, loaded and run; its port, its pairing code, its
+    image and its container's name."""
     started = _api(server, "POST", "/builds", json={"arch": _ARCH, "download": True})
     assert started.status_code == 200, started.text
     build = started.json()
@@ -116,10 +118,18 @@ def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
         assert pairing is not None, subprocess.run(
             ["docker", "logs", name], capture_output=True, text=True
         )
-        yield port, pairing
+        yield port, pairing, build["image_ref"], name
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         subprocess.run(["docker", "rmi", "-f", build["image_ref"]], capture_output=True)
+
+
+def _container_log(name: str) -> str:
+    shown = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
+    state = subprocess.run(
+        ["docker", "inspect", "--format", "{{json .State}}", name], capture_output=True, text=True
+    )
+    return f"{shown.stdout}{shown.stderr}\nstate: {state.stdout or state.stderr}"
 
 
 def _usd(srv) -> list[dict]:
@@ -131,7 +141,7 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
     code_source,  # noqa: F811
     remote_host,
 ):
-    port, pairing = remote_host
+    port, pairing, _image, name = remote_host
     on_server = _usd(server)
     connected = _api(
         server,
@@ -139,7 +149,9 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
         "/connect",
         json={"host": "127.0.0.1", "port": port, "pairing_code": pairing},
     )
-    assert connected.status_code == 200, connected.text
+    # The host's own log beside the server's answer: CI keeps neither the isolated server's log
+    # nor the container's.
+    assert connected.status_code == 200, (connected.text, _container_log(name))
     assert connected.json()["mode"] == "built"
     assert _usd(server) == on_server  # the same rows, served by the container
     status = _api(server, "GET", "/host").json()
@@ -154,3 +166,62 @@ def test_a_built_source_is_read_from_its_remote_host_and_back_on_the_server_in_d
     assert again.status_code == 400
     assert _api(server, "POST", "/dev").json() == {"mode": "dev"}
     assert _usd(server) == on_server
+
+
+# REQ-2100: what the image's DuckDB is given to spill to, and the statement that fills it.
+_SPILL_FILLS = """
+import os, sys
+sys.path.insert(0, sys.argv[1])
+sys.path.insert(1, os.environ["PROVISA_FRONT_LIB"])  # the image's own DuckDB, sqlglot and Arrow
+import pyarrow as pa
+import residual
+residual.configure(memory_mb=128, threads=1, spill_cap_mb=10240, spill_dir="/var/lib/provisa-spill")
+schema = pa.schema([("s", pa.utf8())])
+def batches():
+    for _ in range(400):
+        yield pa.RecordBatch.from_arrays([pa.array([os.urandom(48).hex() for _ in range(10000)])], schema=schema)
+try:
+    for _ in residual.answer("SELECT s FROM t ORDER BY s DESC", "duckdb", "t", pa.RecordBatchReader.from_batches(schema, batches())):
+        pass
+except residual.SpillCapped as refused:
+    print("REFUSED", refused)
+    sys.exit(0)
+print("ANSWERED")
+sys.exit(1)
+"""
+
+
+def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_cap(remote_host):
+    """REQ-2100: the image spills to a volume of its own the operator sizes to the cap. Run with
+    that volume a 16 MiB tmpfs (docker's own --tmpfs, no privilege), a sort that needs more is
+    refused naming codesource.duckdb_spill_cap_mb, never answered short."""
+    _port, _pairing, image, _name = remote_host
+    config = json.loads(
+        subprocess.run(
+            ["docker", "inspect", "--format", "{{json .Config}}", image],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )
+    python, front = config["Entrypoint"][0], config["Entrypoint"][2]
+    run = subprocess.run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--tmpfs",
+            "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
+            "--entrypoint",
+            python,
+            image,
+            "-c",
+            _SPILL_FILLS,
+            str(Path(front).parent),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "REFUSED" in run.stdout and "codesource.duckdb_spill_cap_mb" in run.stdout, run.stdout

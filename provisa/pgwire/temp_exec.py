@@ -76,14 +76,20 @@ _DECLARED: dict[str, str] = {
     "timestamptz": "timestamptz",  # REQ-2050
     "text": "text",
     "varchar": "text",
+    "bytea": "bytea",
+    "uuid": "uuid",
+    "json": "json",
+    "jsonb": "json",
 }
+# The SERIAL types: a bigint column whose omitted value is the table's next (TempTable.serials).
+_SERIAL = frozenset({"serial", "smallserial", "bigserial"})
 _DECIMAL = re.compile(r"(?:decimal|numeric)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\Z")
 
 
 def _unsupported(name: str, kind: str) -> ValueError:
     return ValueError(
         f"temporary table column {name!r}: type {kind} is not supported. A column is one of "
-        f"{', '.join(sorted(set(_DECLARED)))}, or DECIMAL(precision, scale)"
+        f"{', '.join(sorted(set(_DECLARED) | _SERIAL))}, or DECIMAL(precision, scale)"
     )
 
 
@@ -95,11 +101,12 @@ def landed_type(name: str, declared: str) -> str:
     if decimal is not None:
         return f"numeric({int(decimal[1])},{int(decimal[2])})"
     base = spelled.split("(", 1)[0].strip()
+    if base in _SERIAL:
+        return "bigint"
     if base in ("decimal", "numeric"):
-        raise ValueError(
-            f"temporary table column {name!r}: give {declared} its precision and scale, as "
-            f"DECIMAL(precision, scale)"
-        )
+        # A numeric with no precision: sized from its values each time the table lands
+        # (_landed_decimal), as PostgreSQL holds each value at its own scale.
+        return "numeric"
     if base not in _DECLARED:
         raise _unsupported(name, declared)
     return _DECLARED[base]
@@ -111,15 +118,27 @@ def _arrow(landed: str) -> Any:
     decimal = _DECIMAL.match(landed)
     if decimal is not None:
         return pa.decimal128(int(decimal[1]), int(decimal[2]))
-    return {
-        "bigint": pa.int64(),
-        "double": pa.float64(),
-        "boolean": pa.bool_(),
-        "date": pa.date32(),
-        "timestamp": pa.timestamp("us"),
-        "timestamptz": pa.timestamp("us", tz="UTC"),
-        "text": pa.string(),
-    }[landed]
+    return (
+        {
+            "bigint": pa.int64(),
+            "double": pa.float64(),
+            "boolean": pa.bool_(),
+            "date": pa.date32(),
+            "timestamp": pa.timestamp("us"),
+            "timestamptz": pa.timestamp("us", tz="UTC"),
+            "text": pa.string(),
+            "bytea": pa.binary(),
+            "uuid": pa.string(),
+            "json": pa.string(),
+            # REQ-2176: a session's ephemeral table also holds times, durations (as the text the
+            # store reads), times with their offset (likewise) and lists of one element type.
+            "time": pa.time64("us"),
+            "interval": pa.string(),
+            "zoned_time": pa.string(),
+        }[landed]
+        if not landed.startswith("list<")
+        else pa.list_(_arrow(landed[5:-1]))
+    )
 
 
 def inferred_type(name: str, values: list[Any]) -> str:
@@ -151,6 +170,101 @@ def inferred_type(name: str, values: list[Any]) -> str:
     raise _unsupported(name, str(kind))
 
 
+def _bytea(value: Any) -> Any:
+    """A bytea value given as text, read as PostgreSQL's bytea input reads it: ``\\x`` then hex
+    digits, else the text's own bytes with ``\\\\`` for one backslash and ``\\nnn`` an octal
+    byte."""
+    if not isinstance(value, str):
+        return value
+    if value.startswith("\\x"):
+        return bytes.fromhex(value[2:])
+    out = bytearray()
+    i = 0
+    while i < len(value):
+        if value[i] == "\\" and value[i + 1 : i + 2] == "\\":
+            out.append(0x5C)
+            i += 2
+        elif value[i] == "\\" and len(value) >= i + 4 and value[i + 1 : i + 4].isdigit():
+            out.append(int(value[i + 1 : i + 4], 8))
+            i += 4
+        elif value[i] == "\\":
+            raise ValueError(f"invalid input syntax for type bytea: {value!r}")
+        else:
+            out.extend(value[i].encode("utf-8"))
+            i += 1
+    return bytes(out)
+
+
+# The precision an unsized numeric lands with: the widest every store holds exactly.
+_UNSIZED_PRECISION = 38
+
+
+def _landed_decimal(values: list[Any]) -> str:
+    """The decimal an unsized numeric column lands as: precision 38, the largest scale among
+    ``values``. A value with more digits than 38 is refused by the batch, never rounded."""
+    scales = [-v.as_tuple().exponent for v in values if v is not None]
+    return f"numeric({_UNSIZED_PRECISION},{max([0, *scales])})"
+
+
+def _as_landed(name: str, landed: str, value: Any) -> Any:
+    """``value`` as its column's landed type holds it: a value given as text (a string literal in
+    the statement) read by the type, a UUID by its text, a JSON document by its text."""
+    import json
+    import uuid
+
+    if value is None:
+        return None
+    if landed == "uuid":
+        return str(value if isinstance(value, uuid.UUID) else uuid.UUID(str(value)))
+    if landed == "json":
+        return value if isinstance(value, str) else json.dumps(value)
+    if landed in ("interval", "zoned_time"):
+        return _as_text(landed, value)
+    if landed[5:-1] in ("interval", "zoned_time") and landed.startswith("list<"):
+        # A list of them holds each as its text likewise (REQ-2176).
+        return [None if v is None else _as_text(landed[5:-1], v) for v in value]
+    if isinstance(value, str) and landed != "text":
+        try:
+            return _from_copy_text(name, landed, value)
+        except ValueError as exc:
+            raise ValueError(
+                f"temporary table column {name!r} is {landed}; a value given for it is not: "
+                f"{exc.__cause__ or exc}"
+            ) from exc
+    from decimal import ROUND_HALF_UP, Decimal
+
+    if landed == "numeric" or _DECIMAL.match(landed):
+        return value if isinstance(value, Decimal) else Decimal(str(value))
+    # PostgreSQL's assignment casts of a number into the column's type: a numeric literal into a
+    # double, and into an integer rounded half away from zero.
+    if landed == "double" and isinstance(value, (Decimal, int)) and not isinstance(value, bool):
+        return float(value)
+    if landed == "bigint" and isinstance(value, (Decimal, float)):
+        return int(Decimal(str(value)).to_integral_value(ROUND_HALF_UP))
+    return value
+
+
+def _as_text(landed: str, value: Any) -> str:
+    """A duration or a time with its offset as the text the store reads it from (REQ-2176)."""
+    import datetime
+
+    if isinstance(value, str):
+        return value
+    if landed == "zoned_time" and isinstance(value, datetime.time):
+        return value.isoformat()
+    if landed == "interval":
+        from provisa.gql.temporal import Duration
+
+        if isinstance(value, Duration):
+            months, days, micros = value.months, value.days, value.micros
+        elif isinstance(value, datetime.timedelta):
+            months, days, micros = 0, value.days, value.seconds * 1_000_000 + value.microseconds
+        else:  # an interval the store hands back (Arrow's month_day_nano)
+            months, days, micros = value.months, value.days, value.nanoseconds // 1000
+        return f"{months} months {days} days {micros} microseconds"
+    raise ValueError(f"a {landed} column holds no {type(value).__name__}")
+
+
 def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
     """``rows`` as one Arrow batch of ``columns``, each (name, landed type). A value that is not
     of its column's type fails here, naming the column: none is stored as another type."""
@@ -158,13 +272,20 @@ def _batch(columns: list[tuple[str, str]], rows: list[tuple]) -> Any:
 
     arrays = {}
     for i, (name, landed) in enumerate(columns):
+        values = [_as_landed(name, landed, r[i]) for r in rows]
+        if landed == "numeric":
+            landed = _landed_decimal(values)
         try:
-            arrays[name] = pa.array([r[i] for r in rows], _arrow(landed))
+            arrays[name] = pa.array(values, _arrow(landed))
         except (pa.ArrowInvalid, pa.ArrowTypeError) as exc:
             raise ValueError(
                 f"temporary table column {name!r} is {landed}; a value given for it is not: {exc}"
             ) from exc
     return pa.RecordBatch.from_pydict(arrays)
+
+
+class TempTableLimit(ValueError):
+    """A table past a session's bound (REQ-1926): refused by name, on every surface."""
 
 
 def _within_tables(session: TempSession, name: str) -> None:
@@ -173,7 +294,7 @@ def _within_tables(session: TempSession, name: str) -> None:
 
     limit = int(settings_registry.value("temp_tables.max_per_session"))
     if len(session.tables) >= limit:
-        raise ValueError(
+        raise TempTableLimit(
             f"temporary table {name!r}: this session holds {len(session.tables)} temporary "
             f"table(s), the most one may hold (temp_tables.max_per_session = {limit}); drop one "
             f"first"
@@ -187,7 +308,7 @@ def _within_rows(name: str, rows: int) -> None:
 
     limit = int(settings_registry.value("temp_tables.max_rows"))
     if rows > limit:
-        raise ValueError(
+        raise TempTableLimit(
             f"temporary table {name!r} would hold {rows} rows, more than one may "
             f"(temp_tables.max_rows = {limit})"
         )
@@ -201,6 +322,13 @@ async def _land(state: Any, session: TempSession, name: str, batch: Any, columns
     from provisa.federation.residency import LandingArgs
     from provisa.synthetic.run import _LandedRows
 
+    # An unsized numeric lands as the decimal its batch holds (_landed_decimal).
+    columns = [
+        (c, f"numeric({batch.schema.field(c).type.precision},{batch.schema.field(c).type.scale})")
+        if landed == "numeric"
+        else (c, landed)
+        for c, landed in columns
+    ]
     backend = state.federation_engine.engine.backend
     party = StoreReadingEngine(backend, state)
     target = backend.replica_target(
@@ -215,14 +343,123 @@ async def _land(state: Any, session: TempSession, name: str, batch: Any, columns
     async def progress(rows: int) -> None:
         del rows  # a session's own table reports nothing
 
-    if not session.stored:
+    if not session.stored and not session.kept:
         # Recorded before anything is written, so a schema the store holds is one the keeper
-        # can drop when the session is gone without ending (provisa.pgwire.temp_keeper).
+        # can drop when the session is gone without ending (provisa.pgwire.temp_keeper). A kept
+        # session's schema is its own sweep's (REQ-2176).
         from provisa.pgwire.temp_keeper import note_stored
 
         await note_stored(state, session, _schema(session))
     await data_replicator(_LandedRows(batch), target, party, batch_rows=BATCH_ROWS).run(progress)
     session.stored = True
+
+
+# -- a session table written in place (REQ-2176) ---------------------------------------------------
+
+
+def in_place(state: Any) -> Any:
+    """The serving engine's face for writing a session's tables in place
+    (:class:`provisa.federation.session_rows.SessionRows`), or None: its store has none, and a
+    session table is landed again whole on every change."""
+    return state.federation_engine.engine.backend.session_rows(state)
+
+
+async def _held_count(state: Any, session: TempSession, name: str) -> int:
+    at = await _store_address(state, session, name)
+    _, rows = await asyncio.to_thread(_system_rows, state, f"SELECT count(*) FROM {at}", name)
+    return int(rows[0][0])
+
+
+async def keyed_rows(
+    state: Any,
+    session: TempSession,
+    name: str,
+    column: str,
+    values: list[Any],
+    columns: tuple[str, ...],
+) -> list[tuple]:
+    """``columns`` of the rows of the session's table ``name`` whose ``column`` is one of
+    ``values``: read by the key, not the table whole."""
+    from provisa.compiler.sql_literals import sql_literal
+
+    at = await _store_address(state, session, name)
+    listed = ", ".join(sql_literal(v, "postgres") for v in values)
+    selected = ", ".join(_quoted(c) for c in columns)
+    sql = f"SELECT {selected} FROM {at} WHERE {_quoted(column)} IN ({listed})"
+    _, rows = await asyncio.to_thread(_system_rows, state, sql, name)
+    return rows
+
+
+async def append(
+    state: Any,
+    session: TempSession,
+    name: str,
+    rows: list[tuple],
+    writer: Any,
+) -> None:
+    """Add ``rows`` (in the table's columns' order) to the session's table ``name`` in place,
+    within the session's rows."""
+    table = session.tables[name]
+    _within_rows(name, await _held_count(state, session, name) + len(rows))
+    await writer.insert(_schema(session), name, table.columns, _batch(table.columns, rows))
+
+
+async def delete_keys(
+    session: TempSession, name: str, key_columns: tuple[str, ...], keys: list[tuple], writer: Any
+) -> None:
+    """Remove the rows of the session's table ``name`` whose ``key_columns`` hold one of
+    ``keys``."""
+    if keys:
+        await writer.delete(_schema(session), name, key_columns, keys)
+
+
+async def alter(
+    session: TempSession,
+    name: str,
+    changes: list[tuple[str, str, str]],
+    columns: list[tuple[str, str]],
+    writer: Any,
+) -> None:
+    """Make ``changes`` (ephemeral.types.alteration) to the session's table ``name`` in place, so
+    it has ``columns``."""
+    for change, column, kind in changes:
+        # The type as a landing of the table lands it (reland takes the same columns).
+        if change == "add":
+            await writer.add_column(_schema(session), name, column, kind)
+        else:
+            await writer.retype(_schema(session), name, column, kind)
+    if changes:
+        # A new shape: what a statement kept for the session no longer holds.
+        session.tables[name] = TempTable(name, columns)
+        session.generation += 1
+
+
+async def index(session: TempSession, name: str, key_columns: tuple[str, ...], writer: Any) -> None:
+    """Index the session's table ``name`` on its key, as each landing of it is."""
+    await writer.index(_schema(session), name, key_columns)
+
+
+async def lookup_index(
+    session: TempSession, name: str, columns: tuple[str, ...], writer: Any
+) -> None:
+    """Index the session's table ``name`` on ``columns`` a read looks its rows up by."""
+    await writer.lookup_index(_schema(session), name, columns)
+
+
+async def drop_lookup_index(
+    session: TempSession, name: str, columns: tuple[str, ...], writer: Any
+) -> None:
+    """Drop the index :func:`lookup_index` made on the session's table ``name`` on ``columns``
+    (REQ-2176: DROP INDEX of a session index)."""
+    await writer.drop_lookup_index(_schema(session), name, columns)
+
+
+def _next_serial(table: TempTable, column: str) -> int | None:
+    """The value an INSERT omitting ``column`` gives it: a SERIAL's next, else NULL."""
+    if column not in table.serials:
+        return None
+    table.serials[column] += 1
+    return table.serials[column]
 
 
 async def apply(
@@ -244,8 +481,14 @@ async def apply(
         return QueryResult(rows=[], column_names=[], rowcount=0)
     if action.kind == "create":
         _within_tables(session, name)
+        serials: dict[str, int] = {}
         if action.columns is not None:
             columns = [(c, landed_type(c, declared)) for c, declared in action.columns]
+            serials = {
+                c: 0
+                for c, declared in action.columns
+                if declared.lower().split("(", 1)[0].strip() in _SERIAL
+            }
             rows: list[tuple] = []
         else:
             rows = list(result.rows)
@@ -255,7 +498,7 @@ async def apply(
             ]
         _within_rows(name, len(rows))
         await _land(state, session, name, _batch(columns, rows), columns)
-        session.tables[name] = TempTable(name, columns)
+        session.tables[name] = TempTable(name, columns, serials)
         session.generation += 1
         return QueryResult(rows=[], column_names=[], rowcount=len(rows))
     table = session.tables[name]
@@ -271,7 +514,10 @@ async def apply(
         _, held = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
         position = {c: i for i, c in enumerate(named)}
         added = [
-            tuple(r[position[c]] if c in position else None for c, _ in table.columns)
+            tuple(
+                r[position[c]] if c in position else _next_serial(table, c)
+                for c, _ in table.columns
+            )
             for r in result.rows
         ]
         _within_rows(name, len(held) + len(added))
@@ -288,6 +534,37 @@ async def apply(
     return QueryResult(rows=[], column_names=[], rowcount=len(before) - len(after))
 
 
+async def reland(
+    state: Any,
+    session: TempSession,
+    name: str,
+    columns: list[tuple[str, str]],
+    rows: list[tuple],
+) -> None:
+    """Land the session's table ``name`` again whole, as ``columns`` holding ``rows`` (REQ-2176):
+    created on its first landing, its shape changed where ``columns`` differ. The caller builds
+    ``rows`` from what the table holds (:func:`held_rows`)."""
+    table = session.tables.get(name)
+    if table is None:
+        _within_tables(session, name)
+    _within_rows(name, len(rows))
+    await _land(state, session, name, _batch(columns, rows), columns)
+    if table is None or table.columns != columns:
+        # A new table or a new shape: what a statement kept for the session no longer holds.
+        session.tables[name] = TempTable(name, columns)
+        session.generation += 1
+
+
+async def held_rows(state: Any, session: TempSession, name: str) -> list[tuple]:
+    """The rows the session's table ``name`` holds now, in its columns' order; none before it is
+    first landed."""
+    if name not in session.tables:
+        return []
+    at = await _store_address(state, session, name)
+    _, rows = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
+    return rows
+
+
 async def end(session: TempSession, state: Any) -> None:
     """The session is over: its temporary tables go with it."""
     if session.stored:
@@ -296,6 +573,115 @@ async def end(session: TempSession, state: Any) -> None:
 
         schema = _schema(session)
         await drop_temp_schema(state.federation_engine.engine.materialize_store(), schema)
-        await note_ended(state, session, schema)
+        if not session.kept:  # REQ-2176: a kept session's schema was never the keeper's
+            await note_ended(state, session, schema)
     session.tables.clear()
+    session.extensions.clear()
     session.stored = False
+
+
+# --- COPY FROM STDIN into a session's temporary table (REQ-615) ----------------------------------
+
+_TRUE_TEXT = frozenset({"t", "true", "y", "yes", "on", "1"})
+_FALSE_TEXT = frozenset({"f", "false", "n", "no", "off", "0"})
+_PG_EPOCH = (
+    946684800  # 2000-01-01 00:00:00 UTC in Unix seconds: COPY binary dates and times count from it
+)
+
+
+def _from_copy_text(name: str, landed: str, text: str | None) -> Any:
+    """A COPY text or csv field of column ``name`` as the value its landed type holds."""
+    import datetime
+    from decimal import Decimal, InvalidOperation
+
+    if text is None:
+        return None
+    try:
+        if landed == "bigint":
+            return int(text)
+        if landed == "double":
+            return float(text)
+        if landed == "boolean":
+            word = text.strip().lower()
+            if word in _TRUE_TEXT or word in _FALSE_TEXT:
+                return word in _TRUE_TEXT
+            raise ValueError(text)
+        if landed == "date":
+            return datetime.date.fromisoformat(text)
+        if landed in ("timestamp", "timestamptz"):
+            return datetime.datetime.fromisoformat(text)
+        if landed == "bytea":
+            return _bytea(text)
+        if landed == "numeric" or _DECIMAL.match(landed):
+            return Decimal(text)
+    except (ValueError, InvalidOperation) as exc:
+        raise ValueError(f"COPY: column {name!r} is {landed}; {text!r} is not one: {exc}") from exc
+    return text
+
+
+def _from_copy_binary(name: str, landed: str, raw: bytes | None) -> Any:
+    """A COPY binary field of column ``name`` -- PostgreSQL's send form of the type the client
+    wrote it as -- as the value its landed type holds."""
+    import datetime
+    import struct
+
+    if raw is None:
+        return None
+    if landed == "bigint" and len(raw) in (2, 4, 8):
+        return int.from_bytes(raw, "big", signed=True)
+    if landed == "double" and len(raw) in (4, 8):
+        return struct.unpack("!f" if len(raw) == 4 else "!d", raw)[0]
+    if landed == "boolean" and len(raw) == 1:
+        return raw != b"\x00"
+    if landed == "text":
+        return raw.decode("utf-8")
+    if landed == "bytea":
+        return raw
+    if landed == "date" and len(raw) == 4:
+        days = int.from_bytes(raw, "big", signed=True)
+        return datetime.date(2000, 1, 1) + datetime.timedelta(days=days)
+    if landed in ("timestamp", "timestamptz") and len(raw) == 8:
+        micros = int.from_bytes(raw, "big", signed=True)
+        tz = datetime.timezone.utc if landed == "timestamptz" else None
+        return datetime.datetime(2000, 1, 1, tzinfo=tz) + datetime.timedelta(microseconds=micros)
+    raise ValueError(
+        f"COPY: column {name!r} is {landed}; a {len(raw)}-byte binary field is not one COPY "
+        "binary reads into it"
+    )
+
+
+async def copy_into(
+    session: TempSession,
+    name: str,
+    columns: list[str] | None,
+    rows: list[list],
+    state: Any,
+    *,
+    binary: bool,
+) -> int:
+    """Land ``rows`` -- COPY fields, text or binary -- into the session's temporary table
+    ``name``: each named column (every column when ``columns`` is None) takes its field, a
+    SERIAL left out its next value. A row of the wrong width or a field its column's type does
+    not read is refused; nothing is landed then. The count of rows landed."""
+    table = session.tables[name]
+    landed_of = dict(table.columns)
+    named = columns if columns is not None else [c for c, _ in table.columns]
+    unknown = [c for c in named if c not in landed_of]
+    if unknown:
+        raise ValueError(f"COPY {name}: no column {unknown[0]!r}")
+    convert = _from_copy_binary if binary else _from_copy_text
+    typed: list[dict[str, Any]] = []
+    for row in rows:
+        if len(row) != len(named):
+            raise ValueError(
+                f"COPY {name}: a row has {len(row)} field(s), {len(named)} column(s) are copied"
+            )
+        typed.append({c: convert(c, landed_of[c], v) for c, v in zip(named, row, strict=True)})
+    at = await _store_address(state, session, name)
+    _, held = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
+    added = [
+        tuple(r[c] if c in r else _next_serial(table, c) for c, _ in table.columns) for r in typed
+    ]
+    _within_rows(name, len(held) + len(added))
+    await _land(state, session, name, _batch(table.columns, [*held, *added]), table.columns)
+    return len(added)

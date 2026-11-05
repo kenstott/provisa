@@ -256,18 +256,24 @@ class AnswerNotJson(BuildFailure, ValueError):
 
     code = "replication.answer_not_json"
 
-    def __init__(self, cause: str, before_byte: int, table: str | None = None) -> None:
+    def __init__(
+        self, cause: str, before_byte: int, table: str | None = None, content_type: str = ""
+    ) -> None:
         self.cause = cause
         self.before_byte = before_byte
+        # The answer's Content-Type, as its response named it (an XML results page, an HTML error
+        # page): what the answer is, without quoting it. Empty until the spool that read it says.
+        kind = content_type or "no Content-Type"
         self.params = {
             "table": table or "",
             "cause": cause,
+            "content_type": kind,
             "kib": _PARSE_BYTES // 1024,
             "before_byte": before_byte,
         }
         of = f" read for the replica of {table}" if table else ""
         super().__init__(
-            f"the answer{of} is not valid JSON: {cause} "
+            f"the answer{of} is not valid JSON: [{kind}] {cause} "
             f"(in the {_PARSE_BYTES // 1024} KiB before byte {before_byte} of the answer)"
         )
 
@@ -335,11 +341,15 @@ class SpooledDocumentSource:
         directory = self._directory if self._directory is not None else spool_directory()
         limit = self._limit if self._limit is not None else spool_limit()
 
+        # The Content-Type of the answer being parsed, for a refusal of it.
+        received: dict[str, str] = {}
+
         @contextmanager
         def spooled(send: Callable[[], AbstractContextManager[Any]]) -> Iterator[IO[bytes]]:
             with SpoolFile(directory, table=self._table, limit=limit) as spool:
                 with send() as response:
                     spool.receive(response)
+                    received["content_type"] = response.headers.get("content-type", "")
                 yield spool.reader()
 
         batch: list[dict] = []
@@ -351,7 +361,9 @@ class SpooledDocumentSource:
                     batch = []
         except AnswerNotJson as exc:
             # Named for the table, so the build's recorded error says what and where.
-            raise AnswerNotJson(exc.cause, exc.before_byte, self._table) from None
+            raise AnswerNotJson(
+                exc.cause, exc.before_byte, self._table, received["content_type"]
+            ) from None
         if batch:
             yield batch
 

@@ -26,28 +26,28 @@ Jede Abfrage läuft am Ende über die Federation-Engine, und genau das lässt je
 
 ## Alle Quellen {: #all-sources }
 
-Provisa registriert **73** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 73 ab; der Index ist die Zählung.
+Provisa registriert **77** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 77 ab; der Index ist die Zählung.
 
 | # | Gruppe | Quelltypen |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Cloud-Data-Warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data-Lake / offene Tabellenformate](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Code-Quellen](code-sources.md) | `node`, `python` |
-| 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Push-Empfänger](#push-receiver) | `ingest` |
-| 45–46 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [API-Quellen](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [Data-Profiler](#data-profiler) | `data_profiler` |
-| 72 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [Cloud-Data-Warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data-Lake / offene Tabellenformate](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [Code-Quellen](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Push-Empfänger](#push-receiver) | `ingest` |
+| 47–48 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [API-Quellen](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Data-Profiler](#data-profiler) | `data_profiler` |
+| 76 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
 
 Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms). „Connector-Name" ist der föderierte Connector, der verwendet wird, wenn die Quelle an Mehrquellen-JOINs teilnimmt.
 
@@ -1062,6 +1062,8 @@ Aus diesem Text leitet die Registrierung vier Dinge ab:
 Für das Timing braucht es keine neuen Felder. `change_signal` plus `cache_ttl` legen fest, wie oft abgefragt wird, `mv_debounce_quiet` und `mv_debounce_max_delay` fassen einen Schwall vorgelagerter Änderungen zu einem Scan zusammen, ein Kalenderraster macht ihn periodisch, und `expected_events` hält den Scan zurück, bis seine Eingaben über das Fenster aktuell sind. Die Poll-Schleife ist der Scan-Scheduler.
 
 `outcome` ist einer der Werte `pass`, `fail`, `warn`, `error` oder `skipped`. Keiner davon setzt von sich aus etwas durch. Wenn Sie Durchsetzung wollen, deklarieren Sie sie getrennt: als Preflight oder als MV über die gelandeten Ergebnisse. Eine gelandete Beobachtung muss nicht deterministisch sein, also sind hier Prüfungen in Ordnung, die nie einen Preflight steuern könnten, etwa ein Anomalie-Score, eine Veränderung über ein gleitendes Fenster oder Aktualität gemessen an jetzt.
+
+Eine materialisierte Sicht kann die Prüfungen ihrer Eingaben mit **Bei fehlschlagenden Prüfungen anhalten** durchsetzen, auf ihrer Bearbeitungsseite neben ihrer Vorabprüfung. Eine Aktualisierung wird dann abgebrochen, und die Sicht behält ihre vorherige Kopie, wenn der letzte Lauf einer Prüftabelle, die eine der nächsten physischen Eingaben der Sicht prüft, fehlgeschlagen ist. Jede Prüftabelle auf einer Eingabe zählt, gleich welchem Datenprodukt sie zugeordnet ist. Der Abbruch nennt jede fehlgeschlagene Prüftabelle und die Eingabe, die sie prüft, und wird wie jeder Abbruch einer Vorabprüfung nach unten weitergegeben. Die Option ist gewöhnlicher Code einer Vorabprüfung, der `provisa_services.dq` aufruft; **Code anzeigen** zeigt ihn, und Sie können ihn in die eigene Vorabprüfung der Sicht kopieren, um ihn zu ändern. Hat die Sicht auch eine eigene Vorabprüfung, wird die Aktualisierung nur übernommen, wenn beide fortfahren.
 
 Sie schreiben den Vertrag in der UI, im Data-Quality-Panel der Bearbeitungsseite der Tabelle, und der rohe Vertragstext dort ist immer die maßgebliche Quelle. Ein Probelauf führt den Vertrag gegen die Live-Tabelle aus und zeigt die Ergebnisse, ohne sie zu landen. Damit fangen Sie einen Vertrag ab, dessen Datasetname unerwartet aufgelöst wurde und der sonst nur bestandene Zeilen landen würde.
 

@@ -376,6 +376,7 @@ def results(
             "dependence_rows": None,
             "network_rows": None,
             "dependence_attempts": None,
+            "classification_attempts": None,
             "duration_ms": 0,
             "status": "succeeded",
             "error": None,

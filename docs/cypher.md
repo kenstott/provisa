@@ -28,7 +28,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 | Pattern | Status | Notes |
 | --------- | -------- | ------- |
-| `(n)` — unlabeled node | ✓ | UNION ALL over all known types |
+| `(n)` (unlabeled node) | ✓ | UNION ALL over all known types |
 | `(n:Label)` | ✓ | Maps to the registered table for that GraphQL type |
 | `(n:Label {prop: val})` | ✓ | Inline property filter becomes WHERE |
 | `(a)-[:TYPE]->(b)` | ✓ | Directed, single hop |
@@ -36,6 +36,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `(a)-[]->(b)` | ✓ | Any directed relationship a→b; UNION ALL if multiple types match |
 | `(a)-[]-(b)` | ✓ | Bidirectional; expands to UNION ALL of all forward and backward relationships |
 | `(a)-[:TYPE*..N]->(b)` | ✓ | Variable-length with upper bound; recursive CTE for self-referential, flat JOIN otherwise |
+| `(a)-[:TYPE*]->(b)`, `[*n..]` | ✓ | Variable-length with no upper bound; walks up to the maximum depth (see below) |
 | `(a)-[]->(b)-[]->(c)` | ✓ | Multi-hop chained JOINs |
 | `(n:DomainLabel)` | ✓ | Domain label → UNION ALL subquery over all types in the domain |
 | `(n:A\|B)` | ✓ | Label alternation → ad-hoc domain injected into label map; UNION ALL over matching types |
@@ -74,7 +75,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | Syntax | SQL mapping |
 | -------- | ------------ |
 | `n { .prop1, .prop2 }` | `MAP(ARRAY['prop1','prop2'], ARRAY[n."prop1",n."prop2"])` |
-| `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])` — expanded from schema |
+| `n { .* }` | `MAP(ARRAY[all props...], ARRAY[n."col",...])`, expanded from schema |
 | `n { .*, extra: expr }` | All schema props plus named key; combined MAP |
 | `n { key: expr }` | `MAP(ARRAY['key'], ARRAY[expr])` |
 
@@ -180,16 +181,23 @@ Cypher supports three write patterns through the `/data/cypher` endpoint, execut
 
 Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. The response body carries an `affected_rows` count.
 
-A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
+A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it, the name GraphQL and SQL read it by, in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
+
+A name that is no property of the label is null wherever it is read (`WHERE`, `RETURN`, `ORDER BY`, any expression), as a missing property is in Neo4j. A column the label does not publish (a governed object column) or the role may not see reads the same way, as null with no sign that it exists. A write is never silent. `CREATE` or `SET` of such a name is refused with `<Label> has no property <name>`.
+
+Every node has one built-in property, `_id`, which is its key. It is the key column's value, or for a compound key the node's identity, `Label|v1|v2` (each key column in key order, a `|` or `\` in a value escaped by a `\`). `_id` works in `WHERE`, `RETURN` and `ORDER BY`, and every returned model node carries it among its properties. A node a graph session created has no key a statement wrote. It is answered with the properties it was given (`CREATE (:X {prop: 42})` returns `(:X {prop: 42})`), and its `_id` is the session's own handle on it. Where a source's own `_id` column is the key, as a MongoDB collection's is, the built-in reads the same value.
 
 Rules:
 
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. New labels or types cannot be created through Cypher.
 - Every write is gated on the target table's write grants: the role needs the `write` right and a grant for the operation, and the columns written must be in the grant. A role without them is rejected at compile time.
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time.
-- Relationships cannot be written: they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge.
+- A relationship backed by a foreign key or by columns on one of its end tables is read-only. Writing one is refused by name.
+- A relationship backed by a registered junction table is writable as an edge. `CREATE (a)-[:TYPE]->(b)` inserts the junction row when both ends are already matched in the statement; `DELETE` of such an edge deletes that row; `SET` of its properties updates it. The write is governed exactly like any other write on the junction table: write grants, row rules, masks and the role's admission all apply. A relationship type the model does not register, or one registered between other labels than the two nodes it joins, is refused by name. Both end nodes must be matched in the same statement; a relationship write never creates its end nodes.
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload).
-- `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time.
+- `MERGE` rewrites to MATCH then CREATE under the same write rules above. It is a governed model write when the result label names exactly one model table, and ephemeral otherwise.
+- `DETACH DELETE` of a model node is governed when its label names exactly one model table and each relationship it detaches is a registered junction row. A foreign-key relationship cannot be detached and is refused by name.
+- `REMOVE n:Label` takes a session label off a node. `REMOVE` of a model node's properties is refused.
 
 ---
 
@@ -197,8 +205,8 @@ Rules:
 
 Cypher reaches the same governed pipeline over two transports:
 
-- **HTTP** — `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. Registered commands are also callable here via `CALL fn(args) YIELD col1, col2`, and positional args map to the command's declared argument names in order.
-- **Bolt** — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. Registered commands are callable with `CALL command(args)`, and positional args map to declared argument names in order; `CALL dbms.*` / `CALL db.*` procedures take precedence.
+- **HTTP.** `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. Registered commands are also callable here via `CALL fn(args) YIELD col1, col2`, and positional args map to the command's declared argument names in order.
+- **Bolt.** A Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. Registered commands are callable with `CALL command(args)`, and positional args map to declared argument names in order; `CALL dbms.*` / `CALL db.*` procedures take precedence.
 
 ### Graph Analytics
 
@@ -206,17 +214,89 @@ Cypher reaches the same governed pipeline over two transports:
 
 ---
 
+## Graph Session
+
+Each principal has one session graph, shared by its Bolt connections, HTTP Cypher requests and MCP calls. Within that session you can create nodes and relationships that exist only in the session, visible to that principal alone, and read them beside your governed model data in the same query.
+
+### Creating ephemeral nodes
+
+A `CREATE` that names a label the model does not register produces an ephemeral node. Labels follow the same `Domain:Table` convention as model nodes, with one reserved domain, `Session`:
+
+```cypher
+CREATE (:Session:Note {text: 'follow up tomorrow'})
+CREATE (:Note {text: 'draft'})           -- resolves to Session:Note
+```
+
+The first free label in a `CREATE` becomes the node's storage table in the session domain. Each further label is a tag: it goes in a session `node_labels` table so `MATCH (n:Tag)` finds the node and `labels(n)` lists all its labels. A `CREATE` naming a domain label is refused by name; session nodes never join a governed domain.
+
+A `CREATE` naming exactly one model table and no free labels is a governed model write, as before.
+
+### Creating ephemeral relationships
+
+An ephemeral relationship may carry any type name. When its type name matches a registered junction type and both end nodes are matched model nodes, it is a governed junction write (see §Writes). Every other relationship, with one end ephemeral or a type the model does not register, is session-scoped.
+
+```cypher
+MATCH (c:Customer {id: 42})
+CREATE (n:Note {text: 'call back'})
+CREATE (c)-[:HAS_NOTE]->(n)
+```
+
+The `Customer` row is governed; the `Note` and `HAS_NOTE` are session-only.
+
+### Reading session data beside governed data
+
+A `MATCH` on a label with session matches expands to include those matches alongside the model's rows, under the role's governance. Labels with no session matches compile exactly as before, and nothing changes for a session that holds no ephemeral objects.
+
+```cypher
+MATCH (c:Customer)-[:HAS_NOTE]->(n:Note) RETURN c.name, n.text
+```
+
+If the session holds `Note` nodes, this returns model customers joined to their session notes. The governed `Customer` rows are read under the role's row rules and masks as always.
+
+`labels(n)` on a model node returns its `Domain:Table` plus any session tags you added with `SET n:Tag`. On an ephemeral node it returns the labels the `CREATE` gave it.
+
+### Adding and removing labels on live nodes
+
+`SET n:Label` adds a label to any node in the session. On a model node it records a session tag; the model itself is not changed. `REMOVE n:Label` removes a session tag from a model node, or any label from an ephemeral node. Label writes on model nodes end with the session.
+
+### Session scope
+
+The session belongs to the principal on every surface: Bolt, HTTP Cypher and MCP. It is stored per principal and kept for `temp_tables.graph_session_retention_days` after its last use. It ends when the principal clears it, when the principal's rights change, or when the retention expires.
+
+A SQL temporary table belongs to its own connection and is not part of the graph session; only the graph session is shared across a principal's connections.
+
+### Clearing the session
+
+Clear the session from the Cypher page (`DELETE /data/cypher/session`) or through the MCP tool. Bolt has no procedure for it.
+
+---
+
 ## Limitations
 
 ### Design constraints
 
-1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. See §Writes above. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. APOC procedures are also rejected.
+1. **Write clauses supported:**
+   - `CREATE`
+   - `MATCH … SET`
+   - `MATCH … DELETE`
+   - `MERGE`
+   - `DETACH DELETE`
 
-2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema: it's an edge here and a table everywhere else.
+   Each executes as a governed table write. `MERGE` runs MATCH then CREATE under the same write rules. `DETACH DELETE` is governed when the node has an exact model target and each detached relationship is a registered junction. `REMOVE n:Label` removes a session label; `REMOVE` of a model node's properties is refused. APOC procedures are not supported.
+
+2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema, because it's an edge here and a table everywhere else.
 
 3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward and backward UNION ALL of every matching directed relationship in the model. Every relationship in the model has a direction, and the bidirectional syntax is sugar that expands to both. The extra branches are emitted at the outermost query level. A later MATCH pattern in the same query isn't duplicated across the branches, which limits bidirectional patterns in a query with several MATCH clauses.
 
-4. **Recursive paths require a bound.** Variable-length patterns (`[*]`) must include an upper bound (e.g. `[*..10]`). Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.
+4. **An unbounded path stops at the maximum depth.** A variable-length pattern with no upper bound (`[*]`, `[*2..]`, or an unbounded `shortestPath`) walks up to the maximum depth, 1000 hops by default. A walk never takes the same relationship twice in one path, so on a finite graph it ends on its own. The limit is a safety net. A walk that reaches it and could still go on fails with `variable-length path exceeded the maximum depth 1000`; you never get a silently cut answer. Write an upper bound (`[*..10]`) when you know how deep the data goes.
+
+   The maximum is the operator setting `server.limits.graph_depth_limit` (environment variable `PROVISA_GRAPH_DEPTH_LIMIT`). It takes effect for the next query, and SPARQL property paths share it.
+
+   ```yaml
+   server:
+     limits:
+       graph_depth_limit: 200
+   ```
 
 ### Behaviour notes
 

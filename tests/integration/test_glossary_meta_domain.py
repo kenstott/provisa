@@ -11,7 +11,7 @@
 """REQ-1584, REQ-1585: the glossary and the tag graph as queryable meta-domain views.
 
 Real PG, real catalog registration, the real view DDL the startup seed installs. The
-questions the views exist to answer are asked in SQL: does the recursive `live` flag agree
+questions the views exist to answer are asked in SQL: does the recursive `grounding` agree
 with the Python admission rule it restates, does the synthesized column_key resolve a term
 to its column, is a retired term returned with its flag rather than withheld, and does a
 term reach the governance tags on the columns it binds.
@@ -25,6 +25,7 @@ import pytest
 import pytest_asyncio
 
 from provisa.api._meta_views import _META_TABLE_VIEWS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.startup_seed import _adapt_view_ddl
 from provisa.core import domain_policy
 from provisa.core.config_loader import apply_config, parse_config_dict
@@ -40,11 +41,11 @@ _VIEWS = (
     "table_columns",
     "tag_assignments",
     # First of the glossary views: the others read each term's domains from it (REQ-1593).
-    "glossary_term_domains",
-    "glossary_terms",
-    "glossary_term_refs",
-    "glossary_term_edges",
-    "glossary_term_experts",
+    "_domains",
+    "_terms",
+    "_term_refs",
+    "_term_edges",
+    "_experts",
 )
 
 
@@ -138,7 +139,7 @@ def _config(tables: dict) -> dict:
 async def _setup(conn, tables: dict) -> None:
     await apply_config(parse_config_dict(_config(tables)), conn)
     for tbl in _VIEWS:
-        await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[tbl]))
+        await conn.execute(_adapt_view_ddl({**_META_TABLE_VIEWS, **ONTOLOGY_TABLE_VIEWS}[tbl]))
 
 
 async def _terms(conn) -> dict[str, dict]:
@@ -146,30 +147,36 @@ async def _terms(conn) -> dict[str, dict]:
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_live_flag_agrees_with_the_python_admission_rule(tenant_db):
-    """The recursive CTE restates live_term_ids; it must not approximate it."""
+async def test_grounding_agrees_with_the_python_rule(tenant_db):
+    """The recursive CTEs restate term_grounding (REQ-1387); they must not approximate it."""
     async with tenant_db.acquire() as conn:
         await _setup(conn, {"orders": ["cust_id", "order_dt"]})
         terms = await _terms(conn)
-        # defined + rooted -> live; the abstract term reaches data only through it.
+        # the abstract term reaches data through the rooted one; a second one only through it.
+        # A KIND_OF edge runs from the narrower term to the broader one, and grounding looks down
+        # from broader to narrower (REQ-1387, DOWN IS FROM BROADER TO NARROWER).
         await glossary_repo.set_definition(conn, terms["customer"]["id"], "A buying party.")
         abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.set_definition(conn, abstract, "Anyone we transact with.")
-        await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
-        # defined but grounded in nothing, and rooted but undefined: neither is live.
+        await glossary_repo.add_edge(conn, terms["customer"]["id"], abstract, "KIND_OF")
+        top = await glossary_repo.create_abstract_term(
+            conn, "counterparty", definition="The other side.", domains=set()
+        )
+        await glossary_repo.approve_term(conn, top, by=None)
+        await glossary_repo.add_edge(conn, abstract, top, "KIND_OF")
+        # grounded in nothing
         floating = await glossary_repo.create_abstract_term(conn, "ambition", domains=set())
         await glossary_repo.set_definition(conn, floating, "Wired to no column.")
 
-        expected = await glossary_repo.live_ids(conn)
-        rows = await conn.fetch("SELECT id, name, live FROM glossary_terms_meta")
+        expected = await glossary_repo.grounding(conn)
+        rows = await conn.fetch("SELECT id, name, grounding FROM _terms_ontology")
 
-    from_view = {r["id"] for r in rows if r["live"]}
+    assert {r["id"]: r["grounding"] for r in rows} == expected
     by_name = {r["name"]: r for r in rows}
-    assert from_view == expected
-    assert by_name["customer"]["live"] is True
-    assert by_name["party"]["live"] is True  # grounded transitively over the edge
-    assert by_name["ambition"]["live"] is False  # defined, but grounded in nothing
-    assert by_name["order date"]["live"] is False  # rooted, but undefined
+    assert by_name["customer"]["grounding"] == "grounded"
+    assert by_name["party"]["grounding"] == "grounded"  # nothing strictly between
+    assert by_name["counterparty"]["grounding"] == "grounded_pending"  # draft party between
+    assert by_name["ambition"]["grounding"] == "not_grounded"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -180,8 +187,8 @@ async def test_column_key_resolves_a_ref_to_its_column_and_address(tenant_db):
             """
             SELECT t.name AS term, r.table_name, r.schema_name, r.source_id, r.domain_id,
                    c.column_name, c.data_type
-            FROM glossary_term_refs_meta r
-            JOIN glossary_terms_meta t ON t.id = r.term_id
+            FROM _term_refs_ontology r
+            JOIN _terms_ontology t ON t.id = r.term_id
             JOIN table_columns_meta c ON c.column_key = r.column_key
             """
         )
@@ -207,13 +214,13 @@ async def test_retired_and_export_excluded_terms_are_flagged_not_withheld(tenant
         rows = {
             r["name"]: r
             for r in await conn.fetch(
-                "SELECT name, retired, export_excluded, live FROM glossary_terms_meta"
+                "SELECT name, retired, export_excluded, grounding FROM _terms_ontology"
             )
         }
     assert set(rows) == {"customer", "order date", "client"}
     assert rows["customer"]["retired"] is True
     assert rows["client"]["retired"] is False
-    assert rows["customer"]["live"] is False  # out of service, so not admitted
+    assert rows["customer"]["grounding"] == "not_grounded"  # out of service
     assert rows["order date"]["export_excluded"] is True
 
 
@@ -225,12 +232,8 @@ async def test_edges_and_experts_carry_their_endpoint_names(tenant_db):
         abstract = await glossary_repo.create_abstract_term(conn, "party", domains=set())
         await glossary_repo.add_edge(conn, abstract, terms["customer"]["id"], "KIND_OF")
         await glossary_repo.add_expert(conn, abstract, "dana", kind="author")
-        edges = await conn.fetch(
-            "SELECT from_term, to_term, rel_type FROM glossary_term_edges_meta"
-        )
-        experts = await conn.fetch(
-            "SELECT term_name, user_id, kind FROM glossary_term_experts_meta"
-        )
+        edges = await conn.fetch("SELECT from_term, to_term, rel_type FROM _term_edges_ontology")
+        experts = await conn.fetch("SELECT term_name, user_id, kind FROM _experts_ontology")
     assert [(e["from_term"], e["to_term"], e["rel_type"]) for e in edges] == [
         ("party", "customer", "KIND_OF")
     ]
@@ -265,8 +268,8 @@ async def test_a_term_reaches_the_tags_on_the_columns_it_binds(tenant_db):
         rows = await conn.fetch(
             """
             SELECT t.name AS term, a.tag_id, a.column_name
-            FROM glossary_terms_meta t
-            JOIN glossary_term_refs_meta r ON r.term_id = t.id
+            FROM _terms_ontology t
+            JOIN _term_refs_ontology r ON r.term_id = t.id
             JOIN tag_assignments_meta a ON a.column_key = r.column_key
             ORDER BY t.name, a.tag_id
             """

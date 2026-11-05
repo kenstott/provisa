@@ -12,7 +12,6 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Text } from "@mantine/core";
 import type { Relationship } from "../../types/admin";
-import { cypherRelType } from "../../naming";
 import { relationshipTargetLabel } from "./relationship-types";
 import { TagControl } from "../TagControl";
 import { ListRow } from "../list/ListTable";
@@ -58,8 +57,8 @@ export function RelationshipRow({
         {domainsEnabled && (
           <td style={{ whiteSpace: "nowrap" }}>{r.sourceDomainId || t("relationshipRow.none")}</td>
         )}
-        <td style={{ whiteSpace: "nowrap" }}>
-          <Group gap="0.4rem" wrap="nowrap">
+        <td>
+          <Group gap="0.4rem" wrap="wrap">
             {r.autoSuggested && (
               <Badge
                 title={t("relationshipRow.autoTrackedTitle")}
@@ -103,7 +102,7 @@ export function RelationshipRow({
                 {/* REQ-1586: a junction-backed edge is exposed under its nomination, not its
                     alias, so the row shows the type a Cypher pattern actually matches. */}
                 {r.viaTableName
-                  ? (cypherRelType(r) ?? t("relationshipRow.none"))
+                  ? (r.cypherType ?? t("relationshipRow.none"))
                   : (r.alias ?? (
                       <Text span c="dimmed" fs="italic">
                         {r.computedCypherAlias ?? t("relationshipRow.none")}

@@ -107,7 +107,7 @@ function Editor({ initial, seen }: { initial: MaskEntry[]; seen?: (m: MaskEntry[
 
 const report = (over: object = {}) => ({
   unreachable: [],
-  unlisted_unmasked: false,
+  refusal: null,
   applies: null,
   patterns: [],
   ...over,
@@ -122,7 +122,7 @@ beforeEach(() => {
 
 describe("the list's helpers", () => {
   it("starts a list with one entry for everyone, masked to NULL", () => {
-    expect(newMaskList()).toEqual([{ to: ["*"], mask: { type: "constant", value: null } }]);
+    expect(newMaskList()).toEqual([{ to: null, mask: { type: "constant", value: null } }]);
   });
 
   it("adds an entry before the final entry for everyone", () => {
@@ -139,7 +139,7 @@ describe("the list's helpers", () => {
       { to: ["a"], mask: null },
       { to: ["b"], mask: null },
     ];
-    expect(moved(list, 0, 1).map((e) => e.to[0])).toEqual(["b", "a"]);
+    expect(moved(list, 0, 1).map((e) => e.to?.[0])).toEqual(["b", "a"]);
     expect(moved(list, 0, -1)).toBe(list);
   });
 
@@ -186,11 +186,30 @@ describe("MaskListEditor", () => {
     expect(screen.queryByTestId("mask-list-unreachable-0")).toBeNull();
   });
 
-  it("warns when readers it does not name read the column unmasked", async () => {
-    checkMasks.mockResolvedValue(report({ unlisted_unmasked: true }));
+  it("shows the refusal the server answers for the list", async () => {
+    const message = "You have defined a mask that is not reachable: [contractor]";
+    checkMasks.mockResolvedValue(
+      report({
+        refusal: {
+          code: "schema.mask_unreachable",
+          message,
+          params: { entries: "[contractor]" },
+        },
+      }),
+    );
     render(<Editor initial={[{ to: ["contractor"], mask: { type: "constant", value: null } }]} />);
-    expect(await screen.findByTestId("mask-list-unlisted")).toHaveTextContent(
-      "Readers this list does not name see the column unmasked.",
+    expect(await screen.findByTestId("mask-list-refusal")).toHaveTextContent(message);
+  });
+
+  it("says a reader no entry applies to reads the column completely masked", async () => {
+    render(<Editor initial={[{ to: ["contractor"], mask: null }]} />);
+    await waitFor(() => expect(checkMasks).toHaveBeenCalled());
+    checkMasks.mockResolvedValue(report({ applies: null }));
+    const input = screen.getByRole("textbox", { name: "Check access" });
+    fireEvent.change(input, { target: { value: "analyst" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(await screen.findByTestId("mask-list-applies")).toHaveTextContent(
+      "No entry applies: completely masked",
     );
   });
 
@@ -215,13 +234,13 @@ describe("MaskListEditor", () => {
     fireEvent.change(value, { target: { value: "0" } });
     expect(seen).toHaveBeenLastCalledWith([
       { to: ["analyst"], mask: null },
-      { to: ["*"], mask: { type: "constant", value: 0 } },
+      { to: null, mask: { type: "constant", value: 0 } },
     ]);
   });
 });
 
 describe("a regex entry's common masks and the universal dialect", () => {
-  const REGEX: MaskEntry[] = [{ to: ["*"], mask: { type: "regex", pattern: "", replace: "" } }];
+  const REGEX: MaskEntry[] = [{ to: null, mask: { type: "regex", pattern: "", replace: "" } }];
   const field = (name: "pattern" | "replace") =>
     screen.getByTestId(`mask-list-regex-0-${name}`).querySelector("input") ??
     (screen.getByTestId(`mask-list-regex-0-${name}`) as HTMLInputElement);
@@ -275,7 +294,7 @@ describe("a regex entry's common masks and the universal dialect", () => {
     );
     render(
       <Editor
-        initial={[{ to: ["*"], mask: { type: "regex", pattern: "^.*(?=.{4})", replace: "*" } }]}
+        initial={[{ to: null, mask: { type: "regex", pattern: "^.*(?=.{4})", replace: "*" } }]}
       />,
     );
     expect(
@@ -286,7 +305,7 @@ describe("a regex entry's common masks and the universal dialect", () => {
 
   it("says quietly that a pattern the server passes works on every engine", async () => {
     render(
-      <Editor initial={[{ to: ["*"], mask: { type: "regex", pattern: "[0-9]", replace: "*" } }]} />,
+      <Editor initial={[{ to: null, mask: { type: "regex", pattern: "[0-9]", replace: "*" } }]} />,
     );
     expect(await screen.findByTestId("mask-list-regex-0-universal")).toHaveTextContent(
       "Works on every engine",
@@ -309,7 +328,7 @@ describe("a regex entry's common masks and the universal dialect", () => {
       }),
     );
     render(
-      <Editor initial={[{ to: ["*"], mask: { type: "regex", pattern: "a|ab", replace: "*" } }]} />,
+      <Editor initial={[{ to: null, mask: { type: "regex", pattern: "a|ab", replace: "*" } }]} />,
     );
     expect(await screen.findByTestId("mask-list-regex-0-warning")).toHaveTextContent(
       "alternatives that can match the same text",

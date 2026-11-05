@@ -25,7 +25,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 import {
   discoveredColumnCount,
   DOMAIN,
@@ -54,6 +55,18 @@ const SUBDIR_TABLE = "subdir__extra";
 const UNSUPPORTED_STEMS = ["events", "config"];
 
 let fixtureDir: string;
+// The source this run added: removed with its tables after the run, so the table it registers
+// ("customers" in DOMAIN) is not left to clash with another spec registering that name.
+let addedSource: string | null = null;
+
+async function gql(query: string, variables: Record<string, unknown> = {}) {
+  const res = await fetch(`${BACKEND_URL}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  return res.json();
+}
 
 test.describe("file connector: every recognized format is discoverable, columned, queryable (REQ-1690)", () => {
   test.beforeAll(() => {
@@ -61,7 +74,8 @@ test.describe("file connector: every recognized format is discoverable, columned
     execFileSync(PYTHON, [MAKE_FIXTURES, fixtureDir], { encoding: "utf8" });
   });
 
-  test.afterAll(() => {
+  test.afterAll(async () => {
+    if (addedSource) await deleteSourceAndItsTables(gql, addedSource);
     if (fixtureDir) fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
 
@@ -72,6 +86,7 @@ test.describe("file connector: every recognized format is discoverable, columned
 
     const stamp = Date.now();
     const sourceId = `e2e_multi_format_${stamp}`;
+    addedSource = sourceId;
     const schemaName = sourceId.replace(/-/g, "_"); // pgwire_replica.schema_name()'s convention
 
     // ── 1. Add the files source, pointed at the plain directory (not a glob) ─────────────────
@@ -103,9 +118,10 @@ test.describe("file connector: every recognized format is discoverable, columned
       .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
 
     for (const name of NATIVE_TABLES) {
-      expect(discovered, `expected native table "${name}", discovered: ${discovered.join(", ")}`).toContain(
-        name,
-      );
+      expect(
+        discovered,
+        `expected native table "${name}", discovered: ${discovered.join(", ")}`,
+      ).toContain(name);
     }
     expect(
       discovered,

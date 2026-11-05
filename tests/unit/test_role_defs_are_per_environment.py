@@ -25,7 +25,7 @@ from fastapi import Request
 
 from provisa.api.admin import roles_router
 from provisa.api.errors import ApiError
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.core.env_authority import ENVIRONMENT_OWNER_CAPABILITIES
 
 pytestmark = pytest.mark.asyncio
@@ -67,7 +67,7 @@ class _Conn:
                         "domain_access": ["*"],
                         "residency_values": [],  # REQ-1921: the router selects it
                         "org_id": None,  # seeded from the template, in THIS environment's schema
-                        "parent_role_id": None,  # REQ-1677: the router selects it
+                        "parents": [],  # REQ-1677: the router selects it
                     }
                 )
             )
@@ -108,37 +108,39 @@ def _request() -> Request:
 
 
 class TestALaneRedefinesItsOwnRoles:
-    @pytest.mark.parametrize("role_id", ["developer", "analyst", "modeler"])
-    async def test_a_seeded_role_can_be_narrowed_in_this_environment(self, wired, role_id):
-        # REQ-1539: "developer can be unrestricted in dev and hold zero data rights in prod" is only
-        # true if this call succeeds — the row is this environment's own copy, and no merge, load or
-        # checkout carries it anywhere else.
-        conn = wired(role_id)
+    async def test_an_org_role_can_be_narrowed_in_this_environment(self, wired):
+        # REQ-1539: an environment's roles are its own copy; no merge, load or checkout carries an
+        # edit made here anywhere else. REQ-2155: the roles an org narrows per environment are its
+        # own -- children of the standard roles.
+        conn = wired("lane_developer")
         answer = await roles_router.update_role(
-            role_id, roles_router.UpdateRoleBody(capabilities=[]), _request()
+            "lane_developer", roles_router.UpdateRoleBody(capabilities=[]), _request()
         )
         assert answer["capabilities"] == []
         assert conn.writes  # it really was written, not reported
 
     async def test_what_is_not_named_is_left_alone(self, wired):
-        wired("developer")
+        wired("lane_developer")
         answer = await roles_router.update_role(
-            "developer", roles_router.UpdateRoleBody(capabilities=["usage"]), _request()
+            "lane_developer", roles_router.UpdateRoleBody(capabilities=["usage"]), _request()
         )
         assert answer["domain_access"] == ["*"]
 
 
-class TestTheRoleThatAdministersIsNotEditable:
-    @pytest.mark.parametrize("role_id", ["org_admin", "platform_admin"])
-    async def test_narrowing_the_administrator_is_refused(self, wired, role_id):
-        # These carry user_management itself: an org_admin who narrowed their own role would leave
-        # the environment with nobody able to undo it.
+class TestAStandardRoleIsNotEditable:
+    @pytest.mark.parametrize(
+        "role_id", ["developer", "analyst", "modeler", "org_admin", "platform_admin"]
+    )
+    async def test_editing_a_standard_role_is_refused(self, wired, role_id):
+        # REQ-2155: a standard role is Provisa's in every environment; an org extends it with a
+        # child role. org_admin and platform_admin carry user_management themselves, so narrowing
+        # them would leave the environment with nobody able to undo it as well.
         conn = wired(role_id)
         with pytest.raises(ApiError) as exc:
             await roles_router.update_role(
                 role_id, roles_router.UpdateRoleBody(capabilities=[]), _request()
             )
-        assert exc.value.code == "roles.cannot_modify_administrative"
+        assert exc.value.code == "roles.standard_locked"
         assert conn.writes == []
 
 
@@ -148,4 +150,4 @@ class TestInheritingDoesNotConferTheAbilityToRedefine:
         # role endpoint requires user_management, which developer does not hold — so a person who
         # inherited an environment's role definitions cannot rewrite them there or anywhere.
         assert "user_management" not in ENVIRONMENT_OWNER_CAPABILITIES
-        assert "user_management" not in dict(_SEED_ROLES)["developer"]
+        assert "user_management" not in STANDARD_ROLE_RIGHTS["developer"]

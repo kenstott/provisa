@@ -25,15 +25,13 @@ export interface Neighbourhood {
   tableEnteredBy: EdgeKind;
 }
 
-/** The Ontology View's: two hops -- a match, what it touches, and what those touch. */
-export const ONTOLOGY_NEIGHBOURHOOD: Neighbourhood = {
+/** Every graph's, the Ontology View's and a product's alike: two hops -- a match, what it touches,
+ * and what those touch. */
+export const NEIGHBOURHOOD: Neighbourhood = {
   depth: 2,
   stopAt: ["product", "domain"],
   tableEnteredBy: "member",
 };
-
-/** The product graph's: a product's whole part, to its other products and domains. */
-export const PRODUCT_NEIGHBOURHOOD: Neighbourhood = { ...ONTOLOGY_NEIGHBOURHOOD, depth: Infinity };
 
 /** The most nodes a graph draws; past it the count is said instead. */
 export const NODE_BUDGET = 500;

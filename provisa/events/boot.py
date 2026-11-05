@@ -448,7 +448,12 @@ def specs_from_config(
             sorted(extract_inputs(mv.sql, "postgres")) if getattr(mv, "sql", None) else []
         )
         preprocess = make_streams_evaluator(
-            engine, getattr(mv, "preprocess", None), preflight_inputs
+            engine,
+            getattr(mv, "preprocess", None),
+            preflight_inputs,
+            product_id=mv.product_id,
+            hold=mv.hold_on_failing_checks,  # REQ-2133
+            table_id=mv.table_id,
         )
         specs.append(
             NodeSpec(

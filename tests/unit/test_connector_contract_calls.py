@@ -30,7 +30,16 @@ from provisa.source_adapters.grpc_remote_contract import call_method
 
 @pytest.mark.parametrize(
     "source_type",
-    ["openapi", "graphql_api", "grpc_api", "sparql", "neo4j", "graphql_remote", "grpc_remote"],
+    [
+        "openapi",
+        "graphql_api",
+        "grpc_api",
+        "sparql",
+        "neo4j",
+        "quickbooks",
+        "graphql_remote",
+        "grpc_remote",
+    ],
 )
 async def test_every_non_sql_connector_plans_no_complete_dataset(source_type):
     read = Read(table={"table_name": "t", "source_id": "s"}, name="t", statement="", source_id="s")

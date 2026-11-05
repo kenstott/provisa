@@ -1,0 +1,629 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# The APOC calls Cypher tools and agent frameworks make, shipped as command declarations on the
+# command-binding mechanism (REQ-2168). Each is bound in Cypher to its APOC name and offered in SQL
+# under its own name (SQL cannot be excluded); it is excluded from GraphQL, REST, MCP and SPARQL.
+# Each is granted to viewer, the standard role every data role inherits (REQ-2155), and sits in the
+# meta domain every role reaches; an operator changes the grant as any other. The introspection procedures are built-ins answered from the acting role's label map; the
+# functions are SQL expression templates, transpiled per engine so they push down with the query.
+functions:
+- name: apoc_meta_data
+  description: 'The graph''s schema as APOC''s apoc.meta.data answers it: one row per node property, relationship
+    and relationship property the acting role reads.'
+  domain_id: meta
+  kind: query
+  impl_kind: builtin
+  source_id: ''
+  function_name: apoc_meta_data
+  returns: ''
+  binding:
+    callable: apoc.meta.data
+  arguments:
+  - name: config
+    type: json
+    default: {}
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.meta.data
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_meta_schema
+  description: 'The graph''s schema as APOC''s apoc.meta.schema answers it: one map of each label and
+    relationship type the acting role reads.'
+  domain_id: meta
+  kind: query
+  impl_kind: builtin
+  source_id: ''
+  function_name: apoc_meta_schema
+  returns: ''
+  binding:
+    callable: apoc.meta.schema
+  arguments:
+  - name: config
+    type: json
+    default: {}
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.meta.schema
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_schema_nodes
+  description: The graph's node indexes and constraints as APOC answers them; a Provisa graph declares
+    none.
+  domain_id: meta
+  kind: query
+  impl_kind: builtin
+  source_id: ''
+  function_name: apoc_schema_nodes
+  returns: ''
+  binding:
+    callable: apoc.schema.nodes
+  arguments: []
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.schema.nodes
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_text_join
+  description: Joins a list of strings with a delimiter.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_text_join
+  returns: ''
+  binding:
+    sql: array_to_string({list}, {delimiter})
+  arguments:
+  - name: list
+    type: json
+  - name: delimiter
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.text.join
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_text_capitalize
+  description: The text with its first letter upper-cased.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_text_capitalize
+  returns: ''
+  binding:
+    sql: upper(substr({text}, 1, 1)) || substr({text}, 2)
+  arguments:
+  - name: text
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.text.capitalize
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_text_decapitalize
+  description: The text with its first letter lower-cased.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_text_decapitalize
+  returns: ''
+  binding:
+    sql: lower(substr({text}, 1, 1)) || substr({text}, 2)
+  arguments:
+  - name: text
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.text.decapitalize
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_text_lpad
+  description: The text padded on the left to count characters.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_text_lpad
+  returns: ''
+  binding:
+    sql: lpad({text}, {count}, {delim})
+  arguments:
+  - name: text
+    type: json
+  - name: count
+    type: json
+  - name: delim
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.text.lpad
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_text_rpad
+  description: The text padded on the right to count characters.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_text_rpad
+  returns: ''
+  binding:
+    sql: rpad({text}, {count}, {delim})
+  arguments:
+  - name: text
+    type: json
+  - name: count
+    type: json
+  - name: delim
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.text.rpad
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_text_index_of
+  description: The 0-based position of lookup in the text, -1 when absent.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_text_index_of
+  returns: ''
+  binding:
+    sql: strpos({text}, {lookup}) - 1
+  arguments:
+  - name: text
+    type: json
+  - name: lookup
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.text.indexOf
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_sum
+  description: The sum of a list of numbers.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_sum
+  returns: ''
+  binding:
+    sql: array_sum({coll})
+  arguments:
+  - name: coll
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.sum
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_max
+  description: The largest value of a list.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_max
+  returns: ''
+  binding:
+    sql: array_max({values})
+  arguments:
+  - name: values
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.max
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_min
+  description: The smallest value of a list.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_min
+  returns: ''
+  binding:
+    sql: array_min({values})
+  arguments:
+  - name: values
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.min
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_contains
+  description: Whether a list holds the value.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_contains
+  returns: ''
+  binding:
+    sql: array_contains({coll}, {value})
+  arguments:
+  - name: coll
+    type: json
+  - name: value
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.contains
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_to_set
+  description: The list without repeated values.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_to_set
+  returns: ''
+  binding:
+    sql: array_distinct({coll})
+  arguments:
+  - name: coll
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.toSet
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_union
+  description: The distinct values of two lists.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_union
+  returns: ''
+  binding:
+    sql: array_distinct(array_cat({first}, {second}))
+  arguments:
+  - name: first
+    type: json
+  - name: second
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.union
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_coll_flatten
+  description: A list of lists as one list.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_coll_flatten
+  returns: ''
+  binding:
+    sql: flatten({coll})
+  arguments:
+  - name: coll
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.coll.flatten
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_map_from_lists
+  description: A map from a list of keys and a list of values.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_map_from_lists
+  returns: ''
+  binding:
+    sql: MAP({keys}, {values})
+  arguments:
+  - name: keys
+    type: json
+  - name: values
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.map.fromLists
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_date_current_timestamp
+  description: The current time in milliseconds since the epoch.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_date_current_timestamp
+  returns: ''
+  binding:
+    sql: CAST(extract(epoch FROM current_timestamp) * 1000 AS BIGINT)
+  arguments: []
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.date.currentTimestamp
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_convert_to_string
+  description: The value as a string.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_convert_to_string
+  returns: ''
+  binding:
+    sql: CAST({value} AS VARCHAR)
+  arguments:
+  - name: value
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.convert.toString
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_convert_to_integer
+  description: The value as an integer.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_convert_to_integer
+  returns: ''
+  binding:
+    sql: CAST({value} AS BIGINT)
+  arguments:
+  - name: value
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.convert.toInteger
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_convert_to_float
+  description: The value as a float.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_convert_to_float
+  returns: ''
+  binding:
+    sql: CAST({value} AS DOUBLE PRECISION)
+  arguments:
+  - name: value
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.convert.toFloat
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_convert_to_boolean
+  description: The value as a boolean.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_convert_to_boolean
+  returns: ''
+  binding:
+    sql: CAST({value} AS BOOLEAN)
+  arguments:
+  - name: value
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.convert.toBoolean
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true
+- name: apoc_convert_to_json
+  description: The value as JSON text.
+  domain_id: meta
+  kind: query
+  impl_kind: sql_expression
+  source_id: ''
+  function_name: apoc_convert_to_json
+  returns: ''
+  binding:
+    sql: CAST(to_json({value}) AS VARCHAR)
+  arguments:
+  - name: value
+    type: json
+  visible_to:
+  - viewer
+  language_bindings:
+    cypher:
+      name: apoc.convert.toJson
+    graphql:
+      exclude: true
+    rest:
+      exclude: true
+    mcp:
+      exclude: true
+    sparql:
+      exclude: true

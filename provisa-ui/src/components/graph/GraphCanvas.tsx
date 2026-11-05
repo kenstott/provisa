@@ -18,6 +18,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react
 import { useTranslation } from "react-i18next";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
+import { LITERAL_LABEL } from "./sparql";
 import {
   buildClusterElements,
   buildClusterMetaEdges,
@@ -25,7 +26,7 @@ import {
   clusterIds,
   type ClusterLevel,
 } from "./graph-clusters";
-import { buildGraphStylesheet } from "./graph-stylesheet";
+import { buildGraphStylesheet, nodeCaption } from "./graph-stylesheet";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -37,7 +38,15 @@ import type {
 import cytoscape from "cytoscape";
 import "./canvas/cytoscape-extensions";
 import type { CanvasProps, NodeRingMenuState } from "./canvas/canvas-types";
-import { computeLabelSizeRanges, applyNodeSize, resolveNodeLabel } from "./canvas/canvas-helpers";
+import { applyHighlight } from "./canvas/highlight";
+import {
+  computeLabelSizeRanges,
+  applyNodeSize,
+  holdDrawing,
+  nodeUnder,
+  restoreDrawing,
+  type HeldDrawing,
+} from "./canvas/canvas-helpers";
 import { HullSvgOverlay } from "./canvas/HullSvgOverlay";
 import { CanvasControls } from "./canvas/CanvasControls";
 import { NodeRingMenuOverlay } from "./canvas/NodeRingMenuOverlay";
@@ -66,18 +75,25 @@ export function GraphCanvas({
   showingParents,
   onToggleParentsBatch,
   showingParentsCircular,
+  describable = false,
+  onNodeDragged,
+  onNodeDroppedOnNode,
+  keepPositions = false,
   onCyReady,
   clusterLevel,
   requestedView,
   hullSvgRef,
-  isExpanded,
   note,
+  highlight = null,
+  onClearHighlight,
 }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   // Latest-value ref mirrors: cytoscape's imperative style/layout callbacks read
   // these refs (not closures) so they always see current prop values without
   // rebuilding the graph. Writing them during render is the standard mirror pattern.
+  const clearHighlightRef = useRef(onClearHighlight);
+  clearHighlightRef.current = onClearHighlight;
   const colorOverridesRef = useRef(colorOverrides);
   colorOverridesRef.current = colorOverrides;
   const sizeOverridesRef = useRef(sizeOverrides);
@@ -90,6 +106,16 @@ export function GraphCanvas({
   sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
+  const nodeDraggedRef = useRef(onNodeDragged);
+  nodeDraggedRef.current = onNodeDragged;
+  const nodeDroppedRef = useRef(onNodeDroppedOnNode);
+  nodeDroppedRef.current = onNodeDroppedOnNode;
+  const keepPositionsRef = useRef(keepPositions);
+  keepPositionsRef.current = keepPositions;
+  // Where the last drawing's nodes stood, for a drawing that keeps them (keepPositions).
+  const heldDrawingRef = useRef<HeldDrawing | null>(null);
+  // Whether this drawing's nodes stand where a layout (or a held drawing) put them.
+  const laidOutRef = useRef(false);
   // Track nodes that the user has manually dragged; these stay anchored during re-layout
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
@@ -186,7 +212,6 @@ export function GraphCanvas({
     clusterLevelRef,
     sizeByPropertyRef,
     colorOverridesRef,
-    labelPropertyRef,
     sizeMultiplierRef,
     sizeOverridesRef,
     computeHullsRef,
@@ -445,7 +470,8 @@ export function GraphCanvas({
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
-      userZoomingEnabled: false,
+      // The wheel over a graph zooms it, centred at the pointer, in a frame collapsed or expanded.
+      userZoomingEnabled: true,
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
          cytoscape() returns the library's own Core type; we cast through any to our local CyInstance shim which models only the subset of the API this component uses */
     }) as any as CyInstance;
@@ -496,6 +522,7 @@ export function GraphCanvas({
     });
     cy.on("tap", (evt) => {
       if (evt.target === cy) {
+        clearHighlightRef.current?.();
         onSelect(null);
         setNodeCtxMenu(null);
         setNodeRingMenu(null);
@@ -514,17 +541,38 @@ export function GraphCanvas({
     });
     cy.on("mouseover", "node", (evt) => {
       evt.target.addClass("hovered");
+      // The full caption, where the circle's own was scaled down or cut short; a resource's IRI;
+      // a literal's datatype beside its value.
+      const el = cy.container();
+      const gn = evt.target.data("_node") as GNode | undefined;
+      const caption = nodeCaption(gn, evt.target.data("label"), labelPropertyRef.current);
+      if (el)
+        el.title =
+          typeof gn?.properties.iri === "string"
+            ? gn.properties.iri
+            : gn?.label === LITERAL_LABEL && typeof gn.properties.datatype === "string"
+              ? `${caption} · ${gn.properties.datatype}`
+              : caption;
     });
     cy.on("mouseout", "node", (evt) => {
       evt.target.removeClass("hovered");
+      const el = cy.container();
+      if (el) el.title = "";
     });
     cy.on("mouseover", "edge", (evt) => {
       evt.target.addClass("hovered");
+      // A SPARQL edge's predicate, whole.
+      const iri = (evt.target.data("_edge") as GEdge | undefined)?.properties.iri;
+      const el = cy.container();
+      if (el && typeof iri === "string") el.title = iri;
     });
     cy.on("mouseout", "edge", (evt) => {
       evt.target.removeClass("hovered");
+      const el = cy.container();
+      if (el) el.title = "";
     });
     cy.on("layoutstop", () => {
+      laidOutRef.current = true;
       if (pendingNudgesRef.current === 0) computeHulls();
     });
     cy.on("viewport", computeHulls);
@@ -541,21 +589,42 @@ export function GraphCanvas({
       const after = evt.target.position();
       grabPositions.delete(id);
       if (!before || (Math.abs(after.x - before.x) < 1 && Math.abs(after.y - before.y) < 1)) return;
+      // Before the nudge moves either of them.
+      const dragged = evt.target.data("_node") as GNode | undefined;
+      const under = nodeUnder(cy, evt.target);
       anchoredRef.current.add(id);
       evt.target.addClass("pinned");
-      pendingNudgesRef.current = 2;
-      pendingNudgeFreeNodesRef.current = undefined;
-      nudgeLayoutRef.current();
+      // A drawing that keeps its nodes leaves the rest where they stand.
+      if (!keepPositionsRef.current) {
+        pendingNudgesRef.current = 2;
+        pendingNudgeFreeNodesRef.current = undefined;
+        nudgeLayoutRef.current();
+      }
+      nodeDraggedRef.current?.(id);
+      if (dragged && under) nodeDroppedRef.current?.(dragged, under);
     });
 
     portEdgesAddedRef.current = false;
     cyRef.current = cy;
     onCyReady?.(cy);
-    anchoredRef.current = new Set();
+    const held = keepPositionsRef.current ? heldDrawingRef.current : null;
+    // A drawing that keeps its nodes keeps the ones the viewer pinned where they were put.
+    anchoredRef.current = new Set(
+      held ? [...anchoredRef.current].filter((id) => cy.$id(id).length > 0) : [],
+    );
     activeLayoutRef.current = null;
     layoutRunningRef.current = false;
-    if (els.length > 0) runLayout();
+    laidOutRef.current = false;
+    if (held && clusterLevel === "none") {
+      // The nudge places what is new, and styles the rest as a layout does.
+      const fresh = restoreDrawing(cy, held, edgeDistanceRef.current);
+      laidOutRef.current = true;
+      nudgeLayout(fresh, fresh.size > 0);
+    } else if (els.length > 0) runLayout();
     return () => {
+      // A drawing whose first layout never finished has nowhere to keep; one nudged since has.
+      heldDrawingRef.current =
+        keepPositionsRef.current && laidOutRef.current ? holdDrawing(cy) : null;
       cyRef.current = null;
       activeLayoutRef.current = null;
       onCyReady?.(null);
@@ -579,6 +648,16 @@ export function GraphCanvas({
   // whatever pixel size it was born with, clipping or floating in dead space as the window resizes
   // or the panel it sits in reflows. Watches the container directly rather than re-subscribing per
   // cy instance: containerRef's DOM node outlives every rebuild the effect above performs.
+  // The wheel over the canvas is the graph's (cytoscape zooms on it): it never also scrolls the
+  // page or the results under it. Non-passive, so the default can be cancelled.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const keep = (e: WheelEvent) => e.preventDefault();
+    el.addEventListener("wheel", keep, { passive: false });
+    return () => el.removeEventListener("wheel", keep);
+  }, []);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -760,11 +839,8 @@ export function GraphCanvas({
     if (!cy) return;
     cy.batch(() => {
       cy.nodes().forEach((node) => {
-        const n = node.data("_node") as GNode | undefined;
-        if (!n) return;
-        const prop = labelPropertyRef.current[n.label];
-        const txt = prop ? String(n.properties[prop] ?? n.id) : resolveNodeLabel(n);
-        node.style("label", txt);
+        // Back to the stylesheet's caption, which reads the label property and places the text.
+        node.removeStyle("label");
       });
     });
   }, [labelProperty]);
@@ -782,10 +858,13 @@ export function GraphCanvas({
     });
   }, [relLineOverrides]);
 
+  // An Overview pill's highlight (CanvasProps.highlight): its label's nodes, or its type's edges and
+  // their ends, stand out; everything else dims. Re-applied as the drawing changes.
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- userZoomingEnabled is a runtime cytoscape method not present on the typed Core surface
-    (cyRef.current as any)?.userZoomingEnabled(!!isExpanded);
-  }, [isExpanded]);
+    const cy = cyRef.current;
+    if (!cy) return;
+    applyHighlight(cy, highlight);
+  }, [highlight, nodes, edges, overlayNodes, overlayEdges]);
 
   return (
     <div
@@ -842,6 +921,7 @@ export function GraphCanvas({
           menuRef={menuRef}
           nodes={nodes}
           overlayNodes={overlayNodes}
+          describable={describable}
           pkMap={pkMap}
           labelToTableLabel={labelToTableLabel}
           relationships={relationships}

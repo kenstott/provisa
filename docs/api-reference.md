@@ -49,6 +49,8 @@ Execute a GraphQL query or mutation.
 
 The request runs as its acting role: the authenticated user's role, or in dev mode (no auth) the `X-Provisa-Role` header, `org_admin` when the header is absent. The `role` field in the body does not select a role. If it is present it must equal the acting role; a different value returns `400` with code `data.role_mismatch`, naming both roles. The same rule applies to `POST /data/sql`, `POST /data/query` and `POST /query/nl`.
 
+**GraphQL over HTTP.** The endpoint follows the GraphQL-over-HTTP specification. It also answers `GET /data/graphql`, with `query`, `operationName`, `variables` and `extensions` URL-encoded (`variables` and `extensions` as JSON strings); a mutation sent with `GET` returns `405`. A request whose `Accept` lists `application/graphql-response+json` before `application/json` is answered with that media type; every other request is answered with `application/json`. A request that is not a GraphQL request returns `400`: no body, a body that is not a JSON object, or a parameter of the wrong JSON type (`query` and `operationName` are strings, `variables` and `extensions` are objects). A document that does not parse or validate, or whose variables do not coerce, is answered with its `errors` and no `data`: status `200` under `application/json`, and `400` under `application/graphql-response+json` or when `Accept` asks for a file format such as CSV.
+
 The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 
 ```json
@@ -59,14 +61,14 @@ The `extensions` field supports the Automatic Persisted Query (APQ) protocol:
 
 **Headers:**
 
-- `X-Provisa-Role` — the role to run as (dev mode); with auth, a role request honored only when assigned to the user
-- `Accept` — response format (see Content Negotiation)
-- `Authorization` — `Bearer <token>` when auth is enabled
-- `X-Provisa-Redirect-Format` — MIME type for S3 redirect output
-- `X-Provisa-Redirect-Threshold` — row count above which redirect triggers
-- `X-Provisa-Redirect` — `true` to force redirect unconditionally
+- `X-Provisa-Role`: the role to run as (dev mode); with auth, a role request honored only when assigned to the user
+- `Accept`: response format (see Content Negotiation)
+- `Authorization`: `Bearer <token>` when auth is enabled
+- `X-Provisa-Redirect-Format`: MIME type for S3 redirect output
+- `X-Provisa-Redirect-Threshold`: row count above which redirect triggers
+- `X-Provisa-Redirect`: `true` to force redirect unconditionally
 
-**Response cache:** opt-in per request with the `@cached` operation directive (`query @cached(ttl: 60) { ... }`, `ttl` optional); the same directive applies to GraphQL sent over Arrow Flight. Cypher opts in with a `// @provisa cache=true` or `// @provisa cache_ttl=N` line, gRPC with `x-provisa-cache: true` or `x-provisa-cache-ttl: N` call metadata. Without it the request neither reads nor writes the response cache. The `X-Provisa-Cache` response header reports `HIT` or `MISS`. See [Cache](configuration.md#per-request-opt-in).
+**Response cache:** opt-in per request with the `@cached` operation directive (`query @cached(ttl: 60) { ... }`, `ttl` optional); the same directive applies to GraphQL sent over Arrow Flight. Cypher opts in with a `// @provisa cache=true` or `// @provisa cache_ttl=N` line, SPARQL (`/data/sparql`) with a `# @provisa cache=true` or `# @provisa cache_ttl=N` line, gRPC with `x-provisa-cache: true` or `x-provisa-cache-ttl: N` call metadata. Without it the request neither reads nor writes the response cache. The `X-Provisa-Cache` response header reports `HIT` or `MISS`. See [Cache](configuration.md#per-request-opt-in).
 
 #### Response cache request headers
 
@@ -141,7 +143,7 @@ Multi-root queries run each root field independently. Fields below the redirect 
 - `X-Provisa-Cache: HIT|MISS`
 - `X-Provisa-Cache-Age: <seconds>` (on HIT)
 
-**Required capabilities:** `QUERY_DEVELOPMENT` for all requests including introspection.
+**Required capabilities.** `QUERY_DEVELOPMENT` for all requests including introspection.
 
 ---
 
@@ -163,8 +165,8 @@ Results above a configured row threshold (or when `X-Provisa-Redirect: true`) ar
 
 | Redirect Format | Written by | Memory |
 | --- | --- | --- |
-| `application/vnd.apache.parquet` | federated CTAS | None — data never passes through Provisa |
-| `application/x-orc` | federated CTAS | None — data never passes through Provisa |
+| `application/vnd.apache.parquet` | federated CTAS | None; data never passes through Provisa |
+| `application/x-orc` | federated CTAS | None; data never passes through Provisa |
 | `application/json` | Provisa | Memory-bound |
 | `application/x-ndjson` | Provisa | Memory-bound |
 | `text/csv` | Provisa | Memory-bound |
@@ -207,7 +209,7 @@ The values are bound when the statement runs, by the engine or the source's driv
 
 Governance violations on `POST /data/sql` return HTTP 403.
 
-**Response:** Same format as `/data/graphql` (JSON rows by default, content-negotiated via `Accept`).
+**Response.** Same format as `/data/graphql` (JSON rows by default, content-negotiated via `Accept`).
 
 ---
 
@@ -236,7 +238,7 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 Explain or analyze a SQL statement through the governed pipeline.
 
-The endpoint wraps the **governed** SQL in the dialect's EXPLAIN syntax: the statement that actually runs under the caller's role, after RLS and masking. So the plan you see is for the authorized version of the query, not the raw input.
+The endpoint wraps the **governed** SQL in the dialect's EXPLAIN syntax, which is the statement that runs under the caller's role after RLS and masking. The plan you see is for the authorized version of the query. It isn't the plan of the raw input.
 
 **Request body:**
 
@@ -250,7 +252,7 @@ The endpoint wraps the **governed** SQL in the dialect's EXPLAIN syntax: the sta
 
 Set `analyze: true` to run EXPLAIN ANALYZE. The query executes and the plan carries real row counts and timings. Not every dialect supports ANALYZE; see the table in [Query plans and statistics](engines.md#query-plans-and-statistics).
 
-**Response:** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
+**Response.** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
 
 `400` when the dialect has no EXPLAIN support, or `analyze: true` is requested on a dialect that does not support it (e.g. SQLite).
 
@@ -272,7 +274,7 @@ Possible values:
 
 | State | Meaning |
 | --- | --- |
-| `always-on` | Desktop, self-hosted, or BYO coordinator — no lifecycle management |
+| `always-on` | Desktop, self-hosted, or BYO coordinator; no lifecycle management |
 | `ready` | Shard is up and accepting queries |
 | `starting` | Cold-start in progress |
 | `stopped` | Shard is scaled to zero |
@@ -285,7 +287,7 @@ Trigger an engine wake without running a query.
 
 Returns `202 Accepted` immediately, and the wake runs in the background. Use it when you want the engine ready before the first query arrives, for example from a scheduler that runs queries a few minutes later.
 
-**Response:** `202 Accepted`, body `{"started": true}`
+**Response.** `202 Accepted`, body `{"started": true}`
 
 ---
 
@@ -295,12 +297,12 @@ Auto-generated plain REST endpoint for every registered table. The query string 
 
 **Query parameters:**
 
-- `limit` — max rows (≥ 1)
-- `offset` — skip rows (≥ 0)
-- `fields` — comma-separated field names as the GraphQL schema spells them, camelCase under the default naming convention, e.g. `?fields=orderId,amount` (defaults to all scalar fields). `filter` and `orderBy` field names follow the same spelling. JSON:API takes the physical column name instead (`fields[orders]=order_id`).
-- `filter` — JSON array of `{"field", "comparator", "value"}` filter objects. A value is read as its column's type, so `"100"` on a number column compares as 100; a value its column's type cannot hold returns `400`.
-- `orderBy` — JSON array of `{"field", "direction"}` sort objects
-- `params` — the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`. A table registered over an API, or a query table, has a parameter for each input its source takes. A read that leaves out a required parameter returns `400` naming it, as does a name the table has no parameter for. Each value is checked against its parameter's type.
+- `limit`: max rows (≥ 1)
+- `offset`: skip rows (≥ 0)
+- `fields`: comma-separated field names as the GraphQL schema spells them, camelCase under the default naming convention, e.g. `?fields=orderId,amount` (defaults to all scalar fields). `filter` and `orderBy` field names follow the same spelling. JSON:API takes the physical column name instead (`fields[orders]=order_id`).
+- `filter`: JSON array of `{"field", "comparator", "value"}` filter objects. A value is read as its column's type, so `"100"` on a number column compares as 100; a value its column's type cannot hold returns `400`.
+- `orderBy`: JSON array of `{"field", "direction"}` sort objects
+- `params`: the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`. A table registered over an API, or a query table, has a parameter for each input its source takes. A read that leaves out a required parameter returns `400` naming it, as does a name the table has no parameter for. Each value is checked against its parameter's type.
 
 Filter values and parameter values travel beside the GraphQL text the endpoint builds, as variables, so a value containing a quote is compared as written.
 
@@ -326,17 +328,17 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 
 **Query parameters:**
 
-- `fields[<type>]` — sparse fieldsets, e.g. `?fields[orders]=amount`. Names are the physical column names, e.g. `fields[orders]=order_id`, as are `filter[...]`, `sort` and the emitted attribute keys. REST takes the GraphQL spelling instead (`fields=orderId`).
-- `filter[<col>]` / `filter[<col>][<op>]` — e.g. `?filter[region]=US`, `?filter[amount][gt]=100`. A value is read as its column's type; a value the type cannot hold returns `400`.
-- `params` — the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`, as on the REST endpoint. A missing required parameter returns `400` naming it; an unknown name or a value of the wrong type returns `400` with `source.parameter` set to `params`. Pagination links keep the parameter.
-- `sort` — comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
-- `page[number]` / `page[size]` — pagination
-- `page[total]` — `true` counts the rows the filter matches and returns `meta.total` and `links.last`. Without it the response carries `links.self`, `links.first`, `links.prev` and `links.next` only, and the database runs no count. Any value other than `true` or `false` returns `400`. Links in a response keep the parameter.
-- `aggregate` — comma-separated aggregate functions to run instead of row retrieval: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Use `?aggregate=count,sum` to request a subset. Aggregate responses return `data: null` with results in `meta.aggregate`.
-- `groupBy` — comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see.
-- `includeNodes` — `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details.
+- `fields[<type>]`: sparse fieldsets, e.g. `?fields[orders]=amount`. Names are the physical column names, e.g. `fields[orders]=order_id`, as are `filter[...]`, `sort` and the emitted attribute keys. REST takes the GraphQL spelling instead (`fields=orderId`).
+- `filter[<col>]` / `filter[<col>][<op>]`: e.g. `?filter[region]=US`, `?filter[amount][gt]=100`. A value is read as its column's type; a value the type cannot hold returns `400`.
+- `params`: the table's parameters as one JSON object keyed by parameter name, e.g. `?params={"region":"EU"}`, as on the REST endpoint. A missing required parameter returns `400` naming it; an unknown name or a value of the wrong type returns `400` with `source.parameter` set to `params`. Pagination links keep the parameter.
+- `sort`: comma-separated, `-` prefix for descending, e.g. `?sort=-created_at,amount`
+- `page[number]` / `page[size]`: pagination
+- `page[total]`: `true` counts the rows the filter matches and returns `meta.total` and `links.last`. Without it the response carries `links.self`, `links.first`, `links.prev` and `links.next` only, and the database runs no count. Any value other than `true` or `false` returns `400`. Links in a response keep the parameter.
+- `aggregate`: comma-separated aggregate functions to run instead of row retrieval: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. Use `?aggregate=count,sum` to request a subset. Aggregate responses return `data: null` with results in `meta.aggregate`.
+- `groupBy`: comma-separated column names; used with `?aggregate=` to group results. Only columns in the table's `DistinctOnColumn` enum are valid; the server returns `400` for any column the role cannot see.
+- `includeNodes`: `true` to include base-table scalar columns (and joined dimension scalars named in `include=`) inside each group row's `nodes` array. Required when an NL group-by query also requests dimension details.
 
-- `include` — comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`: each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
+- `include`: comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`. Each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
 
 Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` is its table's primary key: the key column's value, or for a composite key its columns' values in key order joined by `:` (order 7's line 2 of a table keyed `(order_id, line)` is `7:2`). A `:` or `\` inside a value is escaped with `\`. A table with no declared primary key uses its `id` column; a table with neither returns `400`, as does an `include` that reaches one. Errors follow the JSON:API error object shape.
 
@@ -346,12 +348,12 @@ Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` 
 
 The JSON:API explorer page (`/app/jsonapi`) is a browser UI over these endpoints. Select a table from the domain-grouped list, then configure:
 
-- **Fields** — choose which columns to include (sparse fieldset); leave all unchecked to request every column
-- **Relationships** — select FK-derived relationship names to sideload via `?include=`
-- **Filter** — field, operator (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`), and value
-- **Sort** — one field, ascending or descending
-- **Aggregate** — pick group-by columns from the server-validated list, then check one or more aggregate functions; when group-by columns are selected, an "Include nodes" checkbox appends base-table scalar columns to each row
-- **Page size** — resources per page, with first/prev/next/last navigation
+- **Fields.** Choose which columns to include (sparse fieldset); leave all unchecked to request every column.
+- **Relationships.** Select FK-derived relationship names to sideload via `?include=`
+- **Filter.** Field, operator (`eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`), and value.
+- **Sort.** One field, ascending or descending.
+- **Aggregate.** Pick group-by columns from the server-validated list, then check one or more aggregate functions; when group-by columns are selected, an "Include nodes" checkbox appends base-table scalar columns to each row.
+- **Page size.** Resources per page, with first/prev/next/last navigation.
 
 Results render in a formatted summary view (resource cards with clickable relationship anchors) or a raw JSON tab. The live request URL is shown and can be copied. Table selection and page size persist across sessions in `localStorage`.
 
@@ -373,8 +375,8 @@ Returns `{"job_id": "<id>"}`. Exceeding the per-role NL rate limit returns `429`
 
 **Retrieve the result:**
 
-- `GET /query/nl/{job_id}` — poll. Returns the job document.
-- `GET /query/nl/{job_id}/stream` — SSE. One `branch` event per generation target as it completes, then a `done` event.
+- `GET /query/nl/{job_id}`: poll. Returns the job document.
+- `GET /query/nl/{job_id}/stream`: SSE. One `branch` event per generation target as it completes, then a `done` event.
 
 Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated through the compiler and refined on error. The prompt is scoped to the role's visible schema. The result document keys each branch by target:
 
@@ -408,7 +410,7 @@ Return the GraphQL SDL for a role's schema.
 
 **Query parameters:**
 
-- `domain` — comma-separated domain IDs. When set, the response is filtered to the named domain(s) and tables reachable from them.
+- `domain`: comma-separated domain IDs. When set, the response is filtered to the named domain(s) and tables reachable from them.
 
 **Response:** `text/plain` GraphQL SDL.
 
@@ -420,7 +422,7 @@ Return GraphQL introspection JSON, optionally domain-filtered.
 
 **Headers:** `X-Provisa-Role: <role_id>` (required)
 
-**Query parameters:** `domain` — comma-separated domain IDs.
+**Query parameters.** `domain` takes comma-separated domain IDs.
 
 **Response:** `application/json` introspection result.
 
@@ -430,7 +432,7 @@ Return GraphQL introspection JSON, optionally domain-filtered.
 
 Return the graph view of the role's schema: node labels and their relationship types, for Cypher/graph clients. Includes `pk_columns` per node label so callers can determine primary-key columns.
 
-**Response:** `application/json` with `node_labels` (each carrying `pk`/`pk_columns`) and `relationship_types`.
+**Response.** `application/json` with `node_labels` (each carrying `pk`/`pk_columns`) and `relationship_types`.
 
 Each relationship type also carries `junction_table_name` and `properties`. On a junction-backed edge, the first names the associative table it traverses, and the second lists that table's columns readable as `r.attr` and filterable in `WHERE`. On a foreign-key-backed edge the name is `null` and the property list is empty, which is how a client tells the two apart. The junction table itself is never a node label. It is the edge, so it has no pill in a graph client and no row in `node_labels`.
 
@@ -458,7 +460,7 @@ Return the current schema version string. Combines a per-boot nonce with a rebui
 
 Return the catalog of the role the request runs as: the tables that role is served, as the Arrow Flight listing gives them.
 
-**Response:** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`. `schema` is the table's Arrow schema in the Arrow IPC encoding: each column under the name SQL reads it by, with its registered type, its description, and its key metadata (`primary_key`, `references`) in the field metadata. Commands and metrics are not listed.
+**Response.** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`. `schema` is the table's Arrow schema in the Arrow IPC encoding: each column under the name SQL reads it by, with its registered type, its description, and its key metadata (`primary_key`, `references`) in the field metadata. Commands and metrics are not listed.
 
 The role is the one the auth layer established (`X-Provisa-Role` may request a held role, or a comma-separated set). A deployment with no auth provider lists the whole catalog, as the Flight listing does. The JDBC driver reads this route when the Flight port is unreachable.
 
@@ -486,7 +488,7 @@ Server-Sent Events stream for real-time change notifications from a table.
 
 Notification delivery uses a pluggable provider chosen per source type: PostgreSQL sources use `LISTEN/NOTIFY` (via asyncpg), MongoDB sources use Change Streams (`collection.watch()`), and Kafka sources use consumer groups. Each provider implements a common async watch interface. RLS filtering and schema validation apply regardless of provider. WebSocket and RSS sources are also supported.
 
-**Header — `X-Provisa-Sink`:** Set to a Kafka target (e.g. `kafka://broker:9092/topic`) to redirect change events to a Kafka sink instead of the SSE response. The server launches a sink consumer and returns `202 Accepted` rather than an open stream.
+**`X-Provisa-Sink` header.** Set it to a Kafka target (e.g. `kafka://broker:9092/topic`) to redirect change events to a Kafka sink instead of the SSE response. The server launches a sink consumer and returns `202 Accepted`, so no stream stays open.
 
 ### `POST /data/sources/{source_id}/signal`
 
@@ -528,7 +530,7 @@ On reload failure: `{"success": false, "message": "<error>"}`.
 
 Download the model as it stands, written as a configuration file. It holds the deployment file's settings, with every model section read from the model store: stores, regions, sources, domains, roles, data products, glossary terms, tables and their columns, relationships, metrics, tags and their assignments, row filters, commands, webhooks, scheduled triggers and naming rules. Applied to an empty model store, the file builds the same model. What the deployment seeds into every store (the built-in sources and their tables, the system domains, `org_admin` and `platform_admin`) is left out.
 
-**Query parameter:** `sections` (optional) — a comma-separated list of model sections, e.g. `sources,tables`. Only those sections are written; an unknown name answers 400 `settings.export_unknown_section`.
+**Query parameter.** `sections` (optional) is a comma-separated list of model sections, e.g. `sources,tables`. Only those sections are written; an unknown name answers 400 `settings.export_unknown_section`.
 
 The endpoint is open in every deployment to a caller with the deployment-settings right; the Configuration File section of the admin page exposes it as **Export Model**.
 
@@ -614,8 +616,8 @@ Updatable fields per section:
 - `redirect`: `enabled`, `threshold`, `default_format`, `ttl`
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
-- `naming`: `domain_prefix`, `convention` — writes to config file and triggers schema reload
-- `relationships`: `auto_track_fk` — governs foreign-key tracking only. A junction-backed relationship is declared on the table registration and is never inferred, so this setting does not reach it.
+- `naming`: `domain_prefix`, `convention`. Writes to the config file and triggers a schema reload.
+- `relationships`: `auto_track_fk`. Governs foreign-key tracking only. A junction-backed relationship is declared on the table registration and is never inferred, so this setting does not reach it.
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **Response:**
@@ -646,7 +648,7 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
 }
 ```
 
-API keys are never sent back: `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
+API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -725,7 +727,7 @@ The switch removes nothing. It is refused with `409` and code `settings.domain_p
 
 Return up to N recent completed spans from the in-memory span buffer.
 
-**Query parameters:** `limit` (default 50, max 200)
+**Query parameters.** `limit` (default 50, max 200)
 
 **Response:** `{"traces": [...]}`
 
@@ -745,7 +747,7 @@ Hot-reload a named catalog in the federation engine coordinator via its REST API
 
 Restart the federation engine container (single-node dev only).
 
-**Query parameters:** `container` (defaults to `QUERY_ENGINE_CONTAINER` env var, then `"trino"`)
+**Query parameters.** `container` (defaults to `QUERY_ENGINE_CONTAINER` env var, then `"trino"`)
 
 ---
 
@@ -766,7 +768,7 @@ Trigger relationship discovery. Always runs FK introspection from the federation
 
 `scope` must be one of `"table"`, `"domain"`, `"cross-domain"`. For `"table"` scope, `table_id` (integer) is required. For `"domain"` scope, `domain_id` is required.
 
-**Response:** `{"candidates_found": 12, "stored_ids": [1, 2, 3, ...]}`
+**Response.** `{"candidates_found": 12, "stored_ids": [1, 2, 3, ...]}`
 
 #### `GET /admin/discover/candidates`
 
@@ -782,7 +784,7 @@ Accept a candidate and register it as a relationship.
 
 Reject a candidate.
 
-**Request body:** `{"reason": "Not a real join"}`
+**Request body.** `{"reason": "Not a real join"}`
 
 #### `GET /admin/discover/candidates/rejected/count`
 
@@ -870,7 +872,7 @@ Set or rotate the org's at-rest encryption key.
 
 Leave out `key_b64` to have Provisa generate a key. That's the safest choice, since the key never shows up in a clipboard or a request log. Supplying `key_b64` brings your own key.
 
-Rotation adds a new active entry to the key ring and retains the old one, so data written under the previous key remains readable. Rotation is not re-encryption. There is no delete endpoint: retiring the last key would make every wrapped payload unreadable.
+Rotation adds a new active entry to the key ring and retains the old one, so data written under the previous key remains readable. Rotation is not re-encryption. There is no delete endpoint, because retiring the last key would make every wrapped payload unreadable.
 
 The live ring is rebound in the same call, so the next encrypted write uses the new key immediately.
 
@@ -923,7 +925,7 @@ Load a previously previewed config into the acting org.
 
 An import is an explicit one-time seed of the acting org's model store, the same apply as `PUT /admin/config`: it adds and updates what the imported config declares through the model store, guards and versions included, and removes nothing it does not mention. There is no `replace` field. The engine catalogs of the sources it declares, the org's pools and its schemas are rebuilt before the response returns.
 
-**Response:** `{"summary": {...}}` — the counts of what the imported config declares.
+**Response.** `{"summary": {...}}` holds the counts of what the imported config declares.
 
 ---
 
@@ -941,7 +943,7 @@ Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.ossi
 
 Download the governed catalog as a dbt `sources.yml`, as one role is served it.
 
-**Query parameter:** `role` — a role the caller holds, or any role for the holder of `access_config`.
+**Query parameter.** `role` is a role the caller holds, or any role for the holder of `access_config`.
 
 Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.sources.yml`. An unknown role is a `404` with code `dbt_sources.unknown_role`. See [integrations](integrations.md#dbt-sources-file) for what the file contains.
 
@@ -949,7 +951,7 @@ Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.sour
 
 Parse an Ossie YAML or JSON document and return proposed table and relationship registrations.
 
-**Request body:** Raw Ossie YAML or JSON. Format is auto-detected.
+**Request body.** Raw Ossie YAML or JSON. Format is auto-detected.
 
 **Response:**
 
@@ -1021,9 +1023,9 @@ Register a tracked function (command).
 | --- | --- | --- |
 | `name` | Yes | Unique command name |
 | `kind` | Yes | `"query"` → GraphQL Query field; `"mutation"` → Mutation field |
-| `implKind` | No | How the command runs — see table below (default `source_procedure`) |
+| `implKind` | No | How the command runs (see table below; default `source_procedure`) |
 | `binding` | No | `implKind`-specific connection details (JSON object) |
-| `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}` — makes the command set-returning on every surface |
+| `returnSchema` | No | JSON Schema `{type:"array", items:{type:"object", properties:{...}}}`; makes the command set-returning on every surface |
 | `arguments` | No | `[{name, type}]` argument definitions; positional order matters for SQL and Bolt callers |
 | `visibleTo` | No | Role IDs the command is assigned to (empty: every role). A `mutation` also needs the `write` right |
 | `domainId` | No | Domain for GraphQL placement and access control |
@@ -1279,8 +1281,8 @@ The gRPC server starts when the model loaded at startup defines a gRPC service. 
 
 When a table has `enable_aggregates` set, the generated proto includes two additional RPCs alongside `Query{TypeName}`:
 
-- **`Query{TypeName}Aggregate`** — returns aggregate scalars for the table (`count`; `sum`, `avg`, `stddev`, `variance` per numeric column; `min`, `max` per comparable column)
-- **`Query{TypeName}GroupBy`** — returns one row per group key with aggregate sub-fields and, optionally, base-table scalars and joined-dimension rows in a `nodes` field
+- **`Query{TypeName}Aggregate`.** Returns aggregate scalars for the table (`count`; `sum`, `avg`, `stddev`, `variance` per numeric column; `min`, `max` per comparable column)
+- **`Query{TypeName}GroupBy`.** Returns one row per group key with aggregate sub-fields and, optionally, base-table scalars and joined-dimension rows in a `nodes` field.
 
 Both go through the same compiler aggregate pipeline as GraphQL's `{field}_aggregate` and `{field}_group_by` root fields, so there's no separate aggregate implementation.
 
@@ -1298,7 +1300,7 @@ The Provisa JDBC driver (`provisa-jdbc-<release>.jar`) exposes the semantic cata
 
 Domains map to JDBC schemas. Tables use their registered aliases. Columns use aliases and surface descriptions as `REMARKS`. Standard metadata methods (`getPrimaryKeys`, `getImportedKeys`, `getExportedKeys`) expose semantic relationships as PK/FK metadata.
 
-**SQL support:** `SELECT * FROM <alias> [WHERE col = 'value']`.
+**SQL support.** `SELECT * FROM <alias> [WHERE col = 'value']`.
 
 The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via `ArrowStreamReader`, bounded to one record batch in memory.
 
@@ -1360,7 +1362,7 @@ Key columns don't take a normalized term. Every column of a primary key puts its
 
 Terms are **derived from semantic-layer membership**. The table repository is the one write path: it reconciles a table's columns on every save, and settles the terms a deletion leaves without refs.
 
-**When a column is added:** Provisa looks up its term by name. If the term exists, the column gets a ref to it, and a term deprecated by losing its last column is revived. If no term exists yet, a draft one is created.
+**When a column is added.** Provisa looks up its term by name. If the term exists, the column gets a ref to it, and a term deprecated by losing its last column is revived. If no term exists yet, a draft one is created.
 
 **When a column departs** (a schema change or a table removal), its ref is deleted and the term is **settled**. An uncurated term with no refs left is removed with its edges. A curated term (one with a definition, an edge, an expert, a tag or a retirement) is deprecated and kept, and so is any term whose removal would leave a Concept with no path to data.
 
@@ -1372,8 +1374,8 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/admin/glossary/terms` | List terms, each with its `status` and `findings` count. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
-| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, status, physical refs, typed edges, experts, tags |
+| `GET` | `/admin/glossary/terms` | List terms, each with its `status`, its `grounding`, `agent_visible` and its `findings` count. Query params: `q` (name/definition search), `include_deprecated` (default `true`) |
+| `GET` | `/admin/glossary/terms/{term_id}` | Get term detail: definition, status, grounding, physical refs, typed edges, experts, tags, and for a `grounded_pending` term the drafts whose approval grounds it (`pending_on`) |
 | `POST` | `/admin/glossary/terms` | Create a Concept, a term with no columns or tables |
 | `PATCH` | `/admin/glossary/terms/{term_id}` | Rename, set the definition, set a Concept's domains, or toggle export exclusion |
 | `DELETE` | `/admin/glossary/terms/{term_id}` | Delete a term that holds no columns |
@@ -1381,7 +1383,12 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 | `GET` | `/admin/glossary/terms/{term_id}/tables` | List the tables a Class grounds |
 | `POST` | `/admin/glossary/terms/{term_id}/tables` | Ground a table on the term, making it the table's Class |
 | `DELETE` | `/admin/glossary/terms/{term_id}/tables/{table_id}` | Unground a table; its keys return to its proposed Class |
-| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Deprecate a live term |
+| `POST` | `/admin/glossary/terms/{term_id}/approve` | Approve a draft term; it needs a definition |
+| `GET` | `/admin/glossary/approvable` | The defined, grounded drafts you may approve together |
+| `POST` | `/admin/glossary/approve` | Approve several such drafts together: `{"term_ids": [...]}`. One that isn't such a draft refuses the batch |
+| `GET` | `/admin/glossary/terms/{term_id}/impact` | What `action` (`approve`, `retire` with `successor`, or `bind` with `table_id` and optional `column_name`) would change, changing nothing |
+| `GET` | `/admin/glossary/stewardship` | The terms agents can see, the `grounded_pending` terms each waiting on one approval, and the approved terms that reach no data |
+| `POST` | `/admin/glossary/terms/{term_id}/deprecate` | Deprecate an approved term |
 | `POST` | `/admin/glossary/terms/{term_id}/retire` | Retire a term, moving its columns or tables to a successor |
 | `POST` | `/admin/glossary/terms/{term_id}/restore` | Clear a retirement or a curator's deprecation |
 | `GET` | `/admin/glossary/terms/{term_id}/applied-history` | A retired term's columns and tables as of the commit before its retirement |
@@ -1390,8 +1397,9 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Remove an edge (query params: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Tag a user as an expert or author for a term |
 | `DELETE` | `/admin/glossary/terms/{term_id}/experts/{user_id}` | Remove a user's expert/author designation |
-| `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model — returns text only, nothing persists until saved |
-| `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none — never overwrites human-authored text |
+| `GET` | `/admin/glossary/people` | The org's members a term can name as expert or author: `user_id`, `email`, `display_name`. Takes `glossary_rw`, not `user_management` |
+| `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model; returns text only, and nothing persists until saved |
+| `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none; never overwrites human-authored text |
 | `POST` | `/admin/glossary/relationships/generate` | Propose and persist typed edges across the whole glossary using the org's AI model |
 
 A term's role is derived from what it grounds and is never set. A `PATCH` or create that sets `is_abstract` is refused (`glossary.abstract_is_derived`).
@@ -1444,7 +1452,7 @@ Deleting a term that still holds columns returns `400 glossary.invalid`, naming 
 {"reason": "Superseded by net revenue", "retire_on": "2026-12-31"}
 ```
 
-`reason` is required. `retire_on` is optional and can't be in the past; on that date the org's scheduler retires the term. Only a live term can be deprecated.
+`reason` is required. `retire_on` is optional and can't be in the past; on that date the org's scheduler retires the term. Only an approved term can be deprecated.
 
 **`POST /admin/glossary/terms/{term_id}/retire` body:**
 
@@ -1475,7 +1483,7 @@ Deleting a term that still holds columns returns `400 glossary.invalid`, naming 
 
 The kinds are `unlinked_tables`, `class_and_attribute`, `tag_wrong_kind`, `retirement_blocked` and `no_data`. A term with no findings is left out, and a plain draft is not a finding. The endpoint reports and changes nothing.
 
-**`PATCH /admin/glossary/terms/{term_id}` — `export_excluded` field:**
+**`PATCH /admin/glossary/terms/{term_id}`, `export_excluded` field:**
 
 ```json
 {"export_excluded": true}
@@ -1501,7 +1509,7 @@ Response:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write: unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently. Re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms.
+Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write. Unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently. Re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms.
 
 Response:
 
@@ -1509,7 +1517,7 @@ Response:
 {"added": 5}
 ```
 
-`added` is the number of edges written. An edge that already existed still counts: the upsert succeeds, but the edge's data doesn't change.
+`added` is the number of edges written. An edge that already existed still counts. The upsert succeeds, but the edge's data doesn't change.
 
 ### MCP `search_terms` Tool
 
@@ -1517,7 +1525,7 @@ Response:
 search_terms(query, role=None, limit=25)
 ```
 
-Searches term names and definitions with a case-insensitive substring match, up to `limit` results. Each result is the full term detail: `name`, `definition`, `is_abstract`, `deprecated`, physical refs (with `source_id`, `schema_name`, `table_name`, `column_name`), typed edges, and expert assignments.
+Searches term names and definitions with a case-insensitive substring match, up to `limit` results, among the terms an agent may see: approved terms on a path to data, and defined drafts on a path that holds an approved term. Each result has `name`, `definition`, `status` (`approved` or `draft`), `grounding` (`grounded` or `grounded_pending`), physical refs (with `source_id`, `schema_name`, `table_name`, `column_name`), `bindings`, `experts`, `domains` and `paths`. Each path runs from the term down to the first term holding a binding. A step is a named term, `{term_id, name, status}`, or an undefined term as an anonymous `{hop}`, distinct per term; the data end also lists its `bindings`.
 
 Use `search_terms` before writing SQL to find every physical field that represents a concept by name. For example, searching `"order date"` returns the term and all `order_dt`, `orderDate`, `ORDER_DATE` columns across every registered table.
 
@@ -1543,7 +1551,7 @@ Each tool takes a dataset defined by `sql` and runs it through the same governed
 
 The engine computes what it can over every row the role reads: `describe`'s counts, distinct counts, means, standard deviations, minimums and maximums, and each group's `n`, mean and variance for `compare`. A fitted model, `describe`'s quantiles and top values read at most `mcp.stats_max_rows` rows (Admin → Settings → Limits; 100,000 by default). Every answer that reads rows gives `rows_read`, `row_cap` and `truncated`, and a role's own row limit is reported under `warnings` as it is for `run_sql`.
 
-Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default. Access control is what limits what an agent can learn. To keep identities out of an agent's reach, grant its role only the columns that identify no one; a role that can read a column can aggregate it, and aggregates over small groups can still identify individuals. See [Security](security.md#statistics-over-mcp).
+Stats tools return only results, so the rows behind an analysis never enter the model's context. That is data minimization by default. Access control is what limits what an agent can learn. To keep identities out of an agent's reach, grant its role only the columns that identify no one; a role that can read a column can aggregate it, and aggregates over small groups can still identify individuals. See [Security](security.md#statistics-over-mcp).
 
 ### Metadata Export
 
@@ -1551,11 +1559,11 @@ The glossary term graph is included in every `MetadataSnapshot` built by `build_
 
 The export applies the same filters as the rest of the snapshot:
 
-- Only live terms publish: in service, defined, and connected to a term whose column or table publishes.
-- A column publishes when it passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld). A term whose refs are all withheld this way isn't grounded for export.
-- A Concept publishes when it reaches a published term through the relationship graph.
+- Only approved terms publish, each with its grounding (`grounded`, `grounded_pending` or `not_grounded`), judged on the columns and tables that publish.
+- A column publishes when it passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld). A term whose refs are all withheld this way is withheld with them.
+- An approved Concept publishes with its grounding, `not_grounded` when it reaches no published term.
 - A term marked `export_excluded` is withheld outright.
-- A deprecated term publishes with its `status`, `status_reason` and `retire_on`, for each catalog to map to its own deprecation marker.
+- An approved term a curator deprecated since publishes with its `status`, `status_reason` and `retire_on`, for each catalog to map to its own deprecation marker.
 - An edge between two terms publishes only when both endpoint terms publish.
 
 Every vendor adapter publishes the term graph natively, into a glossary container that Provisa owns and creates idempotently, and never into an existing catalog glossary:
@@ -1568,7 +1576,7 @@ Every vendor adapter publishes the term graph natively, into a glossary containe
 | OpenMetadata | Provisa glossary via `/v1/glossaries` | fqn-keyed PUT, renames PATCH-rebind by stored UUID | KIND_OF → native parent hierarchy, SYNONYM_OF → `synonyms`, others → `relatedTerms` | `entityStatus` |
 | Collibra | Glossary-type domain "Provisa Glossary" | Business Term assets via the Import API | native Business Term relation types | asset status |
 
-What counts is the binding, not the name. Each published term's vendor id is recorded in `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa changes or deletes a glossary item on the vendor side only when it holds that binding, or when the item lives in the container Provisa created. A glossary item with no Provisa binding came from the external system and is never touched. Updates read and merge, so fields a steward added to Provisa's own terms survive, and nothing is deleted when a term leaves the snapshot. Steward assignments of terms to assets stay with the external system: no adapter writes them (publishing assignments authored in Provisa is a separate follow-on). On Collibra in particular, the Import API replaces what it's sent, and safety rests on containment: the payload names only assets inside the Provisa glossary domain and relations only between Provisa terms, so steward glossaries and their relations are out of reach.
+What counts is the binding. A matching name means nothing. Each published term's vendor id is recorded in `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa changes or deletes a glossary item on the vendor side only when it holds that binding, or when the item lives in the container Provisa created. A glossary item with no Provisa binding came from the external system and is never touched. Updates read and merge, so fields a steward added to Provisa's own terms survive, and nothing is deleted when a term leaves the snapshot. Each term carries its role (class, property or concept) as a property of the term: `provisaRole` in DataHub's custom properties, an OpenMetadata custom property, the term's additional attributes in Atlas, Purview and Atlan, and the `Provisa Role` attribute in Collibra. In DataHub the org's Provisa node has a child node for each role, named Classes, Properties and Concepts. OpenMetadata has no glossary node other than a term, so each role is a group term holding the role's top-level terms, and a term with a `KIND_OF` parent stays beneath that parent. Provisa also assigns each term to the data it means. A class term is assigned to the published tables it grounds, a property term to its published columns, and a concept to nothing. Each assignment is written as the catalog's own automated one and attributed to Provisa: an `Automated` label in OpenMetadata, a term association attributed to Provisa's actor in DataHub, a semantic assignment whose source is Provisa in Atlas and Atlan, and a relation created by Provisa's user in Collibra. Provisa adds and withdraws only those, so an assignment a steward made is never removed or duplicated. An assignment is not withdrawn because a request failed. On Collibra the assignments go through the relations API rather than the Import API, because the import would replace a steward's relations of the same type. On Collibra in particular, the Import API replaces what it's sent, and safety rests on containment. The payload names only assets inside the Provisa glossary domain and relations only between Provisa terms, so steward glossaries and their relations are out of reach.
 
 ---
 
@@ -1651,7 +1659,7 @@ Deleting a product clears `product_id` from every member table, removing their m
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `id` | `String` | Yes | Machine-readable stable identifier, e.g. `customer_360` |
-| `domain_id` | `String` | Yes | Owning domain. Member tables must share this `domain_id` — mismatches are rejected at save time |
+| `domain_id` | `String` | Yes | Owning domain. Member tables must share this `domain_id`; mismatches are rejected at save time |
 | `name` | `String` | Yes | Display name |
 | `owner_role` | `String` | No | Role accountable for this product; distinct from the domain steward |
 | `team_role` | `String` | No | Role whose holders maintain this product day-to-day; resolves to individuals |
@@ -1660,7 +1668,7 @@ Deleting a product clears `product_id` from every member table, removing their m
 | `usage` | `String` | No | How to consume this product |
 | `version` | `String` | No | e.g. `1.2.0` |
 | `status` | `String` | No | e.g. `proposed`, `active`, `deprecated`, `retired` |
-| `sla` | `String` | No | Service-level commitments; prose — a product spans multiple tables and structured SLA cannot unambiguously name which member it describes |
+| `sla` | `String` | No | Service-level commitments as prose, because a product spans multiple tables and a structured SLA cannot unambiguously name which member it describes |
 | `support` | `String` | No | Free-text support guidance |
 | `custom_properties` | `JSON` | No | Arbitrary key-value metadata not covered by the standard fields |
 
@@ -1689,11 +1697,11 @@ A product with no exported members gets no snapshot entry, because a listing wit
 
 | Target | Data product representation |
 | --- | --- |
-| Snowflake Horizon | Each product becomes a `SHARE` over its member tables' physical addresses, wrapped in an internal `CREATE ORGANIZATION LISTING` — a native Horizon Catalog Data Product. `publish=true` takes the listing live immediately; otherwise it lands as DRAFT. |
+| Snowflake Horizon | Each product becomes a `SHARE` over its member tables' physical addresses, wrapped in an internal `CREATE ORGANIZATION LISTING`, a native Horizon Catalog Data Product. `publish=true` takes the listing live immediately; otherwise it lands as DRAFT. |
 | BigQuery Dataplex | Each product becomes an Analytics Hub listing via `/v1/dataProducts`. |
 | OpenMetadata | Each product becomes a native `DataProduct` entity (`/api/v1/dataProducts`), with domain-derived ownership. |
 | DataHub | Each product becomes a native `dataProduct` entity (`urn:li:dataProduct:...`) with its own `dataProductProperties`/ownership aspects. |
 | Collibra | Each product becomes an asset of a `Data Product` community type, related to its member tables via a `Data Product groups Table` relation. |
-| Atlan | Published as a custom `DataProduct` typedef guess — Atlan has no documented stable type name for this concept, so the mapping is best-effort. |
-| Apache Atlas | Published as a custom `provisa_data_product` typedef with a `provisa_data_product_members` relation — Atlas has no native data-product entity type. |
+| Atlan | Published as a custom `DataProduct` typedef guess. Atlan has no documented stable type name for this concept, so the mapping is best-effort. |
+| Apache Atlas | Published as a custom `provisa_data_product` typedef with a `provisa_data_product_members` relation, because Atlas has no native data-product entity type. |
 | OpenLineage | No entity of its own; member tables carry a `provisa_data_product` custom facet naming the owning product. |

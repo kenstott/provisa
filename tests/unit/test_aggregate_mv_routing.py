@@ -67,3 +67,48 @@ def test_a_row_filter_or_a_mask_on_anything_else_leaves_the_table():
 def test_a_view_over_another_catalogs_table_of_the_same_name_does_not_answer():
     other = _rollup(_VIEW_SQL.replace('"sales_pg"', '"crm_pg"'))
     assert _answer(f'SELECT SUM("amount") FROM {_ORDERS}', other) is None
+
+
+def test_a_view_never_answers_its_own_build():
+    """Its build is its own definition: answered by the view, it would read back what the view
+    held, and an empty first build would keep it empty (the quality demo's gold, REQ-2051)."""
+    view = _rollup()
+    assert reinject(_VIEW_SQL, [view], CompilationContext()) is not None
+    assert reinject(_VIEW_SQL, [view], CompilationContext(), exclude=view.id) is None
+
+
+def test_another_fresh_view_still_answers_a_build():
+    """Only the view being built is left out: another that answers its definition still does."""
+    other = MVDefinition(
+        id="orders_by_region_copy",
+        source_tables=["orders"],
+        target_catalog="mat",
+        target_schema="mv",
+        target_table="orders_by_region_copy",
+        sql=_VIEW_SQL,
+        status=MVStatus.FRESH,
+    )
+    hit = reinject(_VIEW_SQL, [_rollup(), other], CompilationContext(), exclude="orders_by_region")
+    assert hit is not None and hit.mv.id == "orders_by_region_copy"
+    assert '"mat"."mv"."orders_by_region_copy"' in hit.sql
+
+
+async def test_a_build_is_planned_as_the_build_of_its_view(monkeypatch):
+    """Every build path plans through governed_build._governed_plan, which names the view."""
+    from types import SimpleNamespace
+
+    from provisa.mv import governed_build
+    from provisa.transpiler.router import Route
+
+    seen: dict = {}
+
+    async def _route(sql, role_id, **how):
+        seen.update(how, sql=sql)
+        return SimpleNamespace(route=Route.ENGINE, exec_params=None)
+
+    monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route", _route)
+    monkeypatch.setattr("provisa.core.region_admin.session_vars", lambda state: {})
+    view = _rollup()
+    view.semantic_sql = _VIEW_SQL
+    await governed_build._governed_plan(SimpleNamespace(), view)
+    assert (seen["sql"], seen["building"]) == (_VIEW_SQL, "orders_by_region")

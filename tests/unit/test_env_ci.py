@@ -224,7 +224,7 @@ class TestNothingChangedIsNotAnEvent:
 
         monkeypatch.setattr("provisa.core.env_store.get_env", _get_env)
         monkeypatch.setattr(env_repo, "project", _model)
-        monkeypatch.setattr(env_repo, "dump", lambda _model: MODEL)
+        monkeypatch.setattr(env_repo, "dump_reusing", lambda _model, _last: (MODEL, {}))
         first = await env_repo.write_through(None, None, ORG, "prod", "org_acme", "one", None)
         second = await env_repo.write_through(None, None, ORG, "prod", "org_acme", "two", None)
         assert first is not None

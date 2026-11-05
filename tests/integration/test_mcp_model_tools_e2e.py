@@ -33,7 +33,7 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_ROLES = ["org_admin", "analyst", "steward"]
+_ROLES = ["org_admin", "itest_analyst", "steward"]
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +45,14 @@ def server():
         {"name": "region", "data_type": "varchar", "visible_to": _ROLES},
         {"name": "email", "data_type": "varchar", "visible_to": _ROLES},
     ]
-    reads = ["query_development", "full_results"]
+    reads = [
+        "catalog_read",
+        "data_product_read",
+        "glossary_read",
+        "query_development",
+        "usage",
+        "full_results",
+    ]
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,
@@ -55,7 +62,8 @@ def server():
             # org_admin is reserved (REQ-1349): a config may not define it.
             "roles": [
                 {
-                    "id": "analyst",
+                    "id": "itest_analyst",
+                    "parents": ["developer"],
                     "description": "Test role.",
                     "capabilities": reads,
                     "domain_access": ["*"],
@@ -114,7 +122,7 @@ def _orders_id(boot) -> int:
 
 def test_a_role_without_table_registration_is_refused_by_name(server):
     is_error, text = _call(
-        server, "find_table_id", {"domain": "sales", "table": "orders", "role": "analyst"}
+        server, "find_table_id", {"domain": "sales", "table": "orders", "role": "itest_analyst"}
     )
     assert is_error and "Missing capability: 'table_registration'" in text, text
 

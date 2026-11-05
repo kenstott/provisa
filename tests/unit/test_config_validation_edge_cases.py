@@ -401,22 +401,22 @@ class TestColumnPresetFields:
 
 
 class TestRoleSelfReference:
-    """Role.parent_role_id is str | None with no self-reference guard in the model.
+    """Role.parents has no self-reference guard in the model (REQ-2155).
 
-    Pydantic will parse a role whose parent_role_id equals its own id without
-    error. flatten_roles() refuses the cycle by name (REQ-1677).
+    Pydantic will parse a role that names itself as a parent without error.
+    flatten_roles() refuses the cycle by name (REQ-1677).
     """
 
     def test_self_referencing_parent_role_parses_without_error(self):
-        """Pydantic accepts parent_role_id == id (no circular-ref validator)."""
+        """Pydantic accepts a role naming itself as a parent (no circular-ref validator)."""
         role = Role(
             id="admin",
             description="Test role.",
             capabilities=["admin"],
             domain_access=["*"],
-            parent_role_id="admin",  # points to itself
+            parents=["admin"],  # points to itself
         )
-        assert role.parent_role_id == role.id
+        assert role.parents == [role.id]
 
     def test_self_referencing_role_via_parse_config_dict_parses(self):
         data = _minimal_config(
@@ -426,12 +426,12 @@ class TestRoleSelfReference:
                     "description": "Test role.",
                     "capabilities": ["read"],
                     "domain_access": ["d1"],
-                    "parent_role_id": "loop-role",
+                    "parents": ["loop-role"],
                 }
             ]
         )
         config = parse_config_dict(data)
-        assert config.roles[0].parent_role_id == "loop-role"
+        assert config.roles[0].parents == ["loop-role"]
 
     def test_flatten_roles_with_self_reference_is_refused(self):  # REQ-1677
         """flatten_roles() names the cycle instead of recursing into it."""
@@ -440,7 +440,7 @@ class TestRoleSelfReference:
             description="Test role.",
             capabilities=["read"],
             domain_access=["d1"],
-            parent_role_id="loop",
+            parents=["loop"],
         )
         with pytest.raises(ValueError, match="cycle at 'loop'"):
             flatten_roles([role])

@@ -92,8 +92,11 @@ class MetricDeleteRefused(Exception):
     def __init__(self, name: str, dependents: list[Dependent]) -> None:
         self.name = name
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Metric {name!r} is still used by"
         named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
-        super().__init__(f"Metric {name!r} is still used by: {named}")
+        super().__init__(f"{self.lead}: {named}")
 
 
 async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317, REQ-1918

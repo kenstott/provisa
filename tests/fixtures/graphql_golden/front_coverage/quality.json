@@ -1,0 +1,27 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:quality/1-checks-that-admitted-silver.graphql",
+  "root_field": "s__viewSilver"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:quality/2-what-the-bad-batch-failed-on.graphql",
+  "root_field": "s__viewDqResults"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:quality/3-every-batch-and-its-outcome.graphql",
+  "root_field": "s__viewDqResultsGroupBy"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:quality/4-batches-landed-in-bronze.graphql",
+  "root_field": "s__bronzeGroupBy"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:quality/5-gold-revenue-by-product.graphql",
+  "root_field": "s__viewGold"
+ }
+]

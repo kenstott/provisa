@@ -83,7 +83,9 @@ export function SummaryMultiSelect({
     ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
     : options;
   return (
-    <Combobox store={combobox} onOptionSubmit={toggle} withinPortal>
+    // The list is as wide as its longest option (a served relationship type can outrun the
+    // input), so no option's mark is squeezed out.
+    <Combobox store={combobox} onOptionSubmit={toggle} withinPortal width="max-content">
       <Combobox.Target>
         <InputBase
           component="button"
@@ -102,7 +104,15 @@ export function SummaryMultiSelect({
           aria-label={label}
           data-testid={testId}
         >
-          {summary ?? <span className="g3d-placeholder">{prefix ?? label}</span>}
+          {/* One line, whatever the summary's length: what does not fit ends in an ellipsis, and
+              the whole summary is its tooltip. */}
+          {summary !== null ? (
+            <span className="g3d-summary" title={summary}>
+              {summary}
+            </span>
+          ) : (
+            <span className="g3d-placeholder g3d-summary">{prefix ?? label}</span>
+          )}
         </InputBase>
       </Combobox.Target>
       <Combobox.Dropdown>
@@ -126,9 +136,9 @@ export function SummaryMultiSelect({
               <Tip text={o.hint} position="right">
                 <Group gap={6} wrap="nowrap">
                   {value.includes(o.value) ? (
-                    <CheckIcon size={10} />
+                    <CheckIcon size={10} style={{ flex: "none" }} />
                   ) : (
-                    <span style={{ width: 10 }} />
+                    <span style={{ width: 10, flex: "none" }} />
                   )}
                   <span>{o.label}</span>
                 </Group>

@@ -85,8 +85,8 @@ def test_sa_type_maps_and_raises():
     assert build_table("mat", "t", COLUMNS).c["status"].type.__class__ is Text
     # a length qualifier is stripped
     assert _sa_type("varchar(255)").__name__ == "Text"
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        _sa_type("geography")
+    # REQ-2171: a type naming none of the IR's lands as text.
+    assert _sa_type("hierarchyid").__name__ == "Text"
 
 
 @pytest.mark.asyncio

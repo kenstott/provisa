@@ -39,6 +39,7 @@
     "kind_joint_counts": "Effectifs conjoints",
     "kind_constraints": "Contraintes proposées",
     "kind_constraint_checks": "Contrôles des contraintes",
+    "kind_classifications": "Classifications",
     "kind_terrain": "Terrain",
     "kind_relationsMap": "Relations",
     "kind_jointCloud": "Nuage conjoint",

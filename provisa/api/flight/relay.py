@@ -25,13 +25,13 @@ client and the Flight server — the relay holds no key — and every Flight RPC
 with a ticket included, works unchanged.
 
 THREADS (REQ-1882). A relayed connection has two threads, one per direction, each blocked in
-``recv`` or ``sendall`` with the GIL released. They are transport plumbing below the request, the
-same role the front loop plays for HTTP ("accepts connections and relays I/O"): no request runs
-on them. The Flight handler thread pyarrow gives the RPC still runs the whole request — auth,
-governance, execution and the result stream — exactly as it did when the client's socket reached
-the Flight server directly. A blocking copy per direction is also what gives backpressure for
-free: a client that reads slowly fills its socket, ``sendall`` blocks, and the relay stops reading
-from the Flight server.
+``recv`` or in waiting for room to send (``select``) with the GIL released. They are transport
+plumbing below the request, the same role the front loop plays for HTTP ("accepts connections and
+relays I/O"): no request runs on them. The Flight handler thread pyarrow gives the RPC still runs
+the whole request — auth, governance, execution and the result stream — exactly as it did when
+the client's socket reached the Flight server directly. A blocking copy per direction is also
+what gives backpressure for free: a client that reads slowly fills its socket, the copy waits for
+room to send, and the relay stops reading from the Flight server.
 """
 
 # Requirements: REQ-1900, REQ-1882
@@ -40,9 +40,12 @@ from __future__ import annotations
 
 import errno
 import logging
+import select
 import socket
+import sys
 import threading
 import time
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +56,26 @@ _UPSTREAM_CONNECT_TIMEOUT = 5.0
 _ACCEPT_POLL_SECONDS = 0.5
 # How long a copy waits before sending again when the host has no buffer space (ENOBUFS).
 _NO_BUFFER_SPACE_WAIT = 0.005
+# The most one send gives the kernel: XNU's sosendmaxchain, the largest it builds as one chain.
+_SEND_CHUNK = 65536
+# REQ-1900: macOS lets a socket's send low-water mark be set (Linux does not), and needs it: see
+# _bound_sends.
+_SETS_SEND_LOW_WATER = sys.platform == "darwin"
+
+
+def serve_in_background(server: Any) -> threading.Thread:
+    """Hold a pyarrow Flight server's thread until ``server.shutdown()``: it is listening from its
+    construction, and the thread only keeps it company.
+
+    Never ``server.serve()``: that hands the server to Arrow's signal handling, which keeps ONE
+    running server for the whole process (a static). A SIGINT then stops that server, not
+    uvicorn's lifespan; and when any server's ``serve()`` returns, its signal thread stops
+    whichever server ``serve()``d last -- a worker runs two (Flight and airport), and a stopped
+    one leaves its relay answering every connection with a reset. ``wait()`` blocks the same way
+    without any of it."""
+    thread = threading.Thread(target=server.wait, daemon=True)
+    thread.start()
+    return thread
 
 
 class FlightRelay:
@@ -139,6 +162,7 @@ class FlightRelay:
         upstream.settimeout(None)
         for sock in (client, upstream):
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            _bound_sends(sock)
         if not self._track(client, upstream):
             client.close()
             upstream.close()
@@ -165,19 +189,50 @@ def _shutdown(sock: socket.socket) -> None:
             raise
 
 
-def _send_all(sink: socket.socket, data: memoryview) -> None:
-    """Send all of ``data``, waiting out a host that has no buffer space for it at this moment.
+def _bound_sends(sock: socket.socket) -> None:
+    """Make ``sock`` report writable only once a whole :data:`_SEND_CHUNK` fits in its send
+    buffer (its low-water mark), where the kernel allows it. See :func:`_send_all` for why."""
+    if not _SETS_SEND_LOW_WATER:
+        return
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDLOWAT, _SEND_CHUNK)
+    taken = sock.getsockopt(socket.SOL_SOCKET, socket.SO_SNDLOWAT)
+    if taken != _SEND_CHUNK:
+        # XNU caps the mark at the send buffer's size: a smaller buffer would let a send be
+        # built as two chains, which is what _send_all exists to prevent.
+        raise RuntimeError(
+            f"flight relay: the send low-water mark is {taken}, not {_SEND_CHUNK}: the socket's "
+            "send buffer is smaller than one relayed send"
+        )
 
-    ``send`` on macOS (and the BSDs) fails with ENOBUFS while the host's network buffers are
-    exhausted -- twelve large streams relayed at once over loopback do it. It is a condition that
-    passes, not the connection ending; treated as the end, as any other socket error is, the
-    relay dropped a healthy connection and the client saw "Socket closed". ``sendall`` cannot be
-    used: when it fails it does not say how much it sent, so the rest could not be resent. Each
-    ``send`` says what it took; nothing is sent twice and nothing is skipped."""
+
+def _wait_writable(sock: socket.socket) -> None:
+    """Block until ``sock`` is writable (on macOS: has room for a whole send, _bound_sends), or
+    has failed -- the send that follows then says how."""
+    select.select([], [sock], [])
+
+
+def _send_all(sink: socket.socket, data: memoryview) -> None:
+    """Send all of ``data``, each byte once.
+
+    ``send`` on macOS fails with ENOBUFS while the host's network buffers are exhausted --
+    twelve large streams relayed at once over loopback do it. It is a condition that passes, not
+    the connection ending: it is waited out. But XNU builds a send as chains of at most 64 KB
+    (sosendmaxchain) and queues each before building the next; when a later chain finds no
+    buffers, the send reports ENOBUFS and NOT what the earlier chains queued (sendit keeps a
+    partial count only for EINTR, ERESTART and EWOULDBLOCK). A sender that then sends the rest
+    again sends those bytes twice, and the client's HTTP/2 stream is broken. So each send is one
+    chain into room it already has: the relay waits until the socket has room for
+    :data:`_SEND_CHUNK` bytes (its low-water mark, _bound_sends; room only grows meanwhile, this
+    thread being the socket's one sender), then sends at most that much without blocking. It is
+    queued whole or not at all, and a refusal sends nothing twice. ``sendall`` cannot be used: it
+    blocks, and a failed one does not say how much it sent."""
     sent = 0
     while sent < len(data):
+        _wait_writable(sink)
         try:
-            sent += sink.send(data[sent:])
+            sent += sink.send(data[sent : sent + _SEND_CHUNK], socket.MSG_DONTWAIT)
+        except BlockingIOError:
+            continue  # no room after all (Linux reports writable below a whole send): wait again
         except OSError as exc:
             if exc.errno != errno.ENOBUFS:
                 raise

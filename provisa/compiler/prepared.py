@@ -18,7 +18,7 @@ its schema, compiled once at boot). This module caches exactly that gap and noth
 SCOPE, deliberately narrow: this cache covers ONLY the localize-check (REQ-1159) and
 metric-expansion (REQ-1317) structural work `_govern_and_route_planned`
 (provisa/pgwire/_pipeline.py) does before it ever calls into governance. It does NOT touch, cache,
-or shortcut `build_governance_context`/`validate_sql`/`apply_governance`/`decide_route` (masking,
+or shortcut `role_governance`/`validate_sql`/`apply_governance`/`decide_route` (masking,
 RLS, relationship-guard, or routing) — those already run once per call for every surface,
 including GraphQL, and are confirmed cheap (GraphQL's own ~17ms total includes them); there is no
 performance case for touching them, only risk. They keep running in full, on every call,
@@ -337,6 +337,12 @@ async def prepare_front_end(
     # that creates, alters or drops a relation is refused here, as soon as its kind is known and
     # before any of the pipeline's work on it.
     refuse_definition(parsed_input)
+    # REQ-2168: each SQL expression function the role may use is its template from here on, so
+    # the shape cached, the statement governed and the SQL routed are the expanded one.
+    from provisa.compiler.sql_expression_expand import expand
+
+    if expand(parsed_input, raw_sql, role_id, state):
+        raw_sql = parsed_input.sql(dialect="postgres")
     shape_digest = _shape_digest_from_tree(parsed_input)
     key = _cache_key(shape_digest, role_id, generation)
 

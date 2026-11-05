@@ -34,10 +34,10 @@ from provisa.security.rights import reaches_all_domains, reaches_domain
 
 CACHE: dict[str, Any] = {
     "tables": [
-        {"id": 1, "domain_id": "sales", "name": "orders"},
-        {"id": 2, "domain_id": "finance", "name": "ledger"},
-        {"id": 3, "domain_id": "meta", "name": "registered_tables_meta"},
-        {"id": 4, "domain_id": "ops", "name": "queries"},
+        {"id": 1, "domain_id": "sales", "name": "orders", "source_id": "pg"},
+        {"id": 2, "domain_id": "finance", "name": "ledger", "source_id": "pg"},
+        {"id": 3, "domain_id": "meta", "name": "registered_tables_meta", "source_id": "pg"},
+        {"id": 4, "domain_id": "ops", "name": "queries", "source_id": "pg"},
     ],
     "relationships": [],
     "column_types": {},
@@ -203,3 +203,5 @@ def test_the_domain_schema_is_generated_with_the_roles_own_scope(monkeypatch, he
     assert si.role["domain_access"] == held
     # The requested domain chose the roots; nothing else.
     assert si.root_table_ids == {1}
+    # ...and its commands and meta's resolver are offered only for the domains asked for.
+    assert si.root_domain_ids == {"sales"}

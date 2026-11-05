@@ -56,7 +56,52 @@ before connecting.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
+
 from provisa.federation import fabric_capacity as _product
+
+# States in which the capacity was brought up by someone other than the test about to use it.
+_ALREADY_RUNNING = ("Active", "Resuming")
+
+
+def _require_configured() -> None:
+    if not _product.capacity_configured():
+        raise RuntimeError(
+            "FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME are not set — the fabric lane resumes "
+            "its capacity before connecting (see this module's docstring)"
+        )
+
+
+def capacity_state() -> str:
+    """The lane's capacity state as ARM reports it (Active, Paused, Resuming, ...)."""
+    _require_configured()
+    with _product._client() as client:
+        return _product._locate(client)[1]
+
+
+@contextmanager
+def capacity_resumed() -> Generator[None, None, None]:
+    """The lane's capacity Active for the block, and paused again after it however the block ends
+    (REQ-254: a test pauses the compute it resumes) -- if the block resumed it.
+
+    Wrap everything that can resume the capacity: the Fabric engine resumes it itself on connect
+    (REQ-1775), so constructing an ``MssqlWarehouseRuntime`` belongs inside the block too.
+
+    The state is read before anything else: a capacity already Active or Resuming was brought up
+    by someone else (another lane, an operator), and pausing it would take it from under them, so
+    it is left as it was found (REQ-254 covers only what the test resumed). The lane's own
+    always-run step (integration-suite-lanes.yml, warehouse job) pauses it whatever happened."""
+    found = capacity_state()
+    try:
+        ensure_capacity_resumed()
+        yield
+    finally:
+        if found in _ALREADY_RUNNING:
+            # REQ-254: the test did not resume it; leave it running as it was found.
+            print(f"Fabric capacity was {found} before the test: left running", flush=True)
+        else:
+            ensure_capacity_paused()
 
 
 def ensure_capacity_resumed() -> None:
@@ -71,18 +116,17 @@ def ensure_capacity_resumed() -> None:
 
 
 def suspend_capacity() -> None:
-    """Pause the lane's capacity on Fabric test teardown so it stops billing. A failed pause leaves
-    billable compute running, so it fails the teardown loudly rather than being logged away."""
-    if not _product.capacity_configured():
-        raise RuntimeError(
-            "FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME are not set — the fabric lane cannot pause "
-            "its capacity on teardown (see this module's docstring)"
-        )
-    _product.suspend_capacity()
+    """Pause the lane's capacity on Fabric test teardown so it stops billing. Suspended only from
+    Active: a capacity still settling from the resume is waited out first, one already paused is
+    left so (``ensure_capacity_paused``). A failed pause leaves billable compute running, so it
+    fails the teardown loudly rather than being logged away."""
+    ensure_capacity_paused()
 
 
 _PAUSED_STATES = ("Paused", "Suspended")
-_PAUSE_TIMEOUT_S = 600.0
+# Fabric's own pause of a capacity has run past ten minutes (run 40115205350: still "Pausing"
+# after 600 s, "Paused" soon after); twice that before the lane says it may be billing.
+_PAUSE_TIMEOUT_S = 1200.0
 _PAUSE_POLL_S = 10.0
 
 
@@ -94,7 +138,10 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
     every state but Active -- which says nothing about whether compute is billing (run
     38050265191 reported "NOT paused" on such a refusal without knowing). So the state is read:
     paused is done; Active is suspended; anything else is waited out. Raises if the capacity is
-    not paused within the bound -- then it may be billing, and the caller must say so."""
+    not paused within the bound -- then it may be billing, and the caller must say so.
+
+    The state found, then each change, is printed with the seconds since the first read: the lane's
+    log is where how long a pause takes is read from (the bound is sized from it)."""
     import time
 
     sleep = sleep or time.sleep
@@ -106,7 +153,9 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
         )
     with _product._client() as client:
         url, state = _product._locate(client)
-        deadline = clock() + _PAUSE_TIMEOUT_S
+        start = clock()
+        deadline = start + _PAUSE_TIMEOUT_S
+        print(f"Fabric capacity: {state} at 0s", flush=True)
         suspend_sent = False
         while True:
             if state in _PAUSED_STATES:
@@ -125,4 +174,6 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
                     "it may be billing"
                 )
             sleep(_PAUSE_POLL_S)
-            state = _product._state(client, url)
+            was, state = state, _product._state(client, url)
+            if state != was:
+                print(f"Fabric capacity: {was} -> {state} at {clock() - start:.0f}s", flush=True)

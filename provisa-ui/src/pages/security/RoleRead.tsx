@@ -12,6 +12,8 @@ import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type { Role } from "../../types/auth";
 import { DetailFields } from "../../components/detail/DetailFields";
+import { CapabilityNames } from "./CapabilityNames";
+import { LlmBudgetRead } from "./LlmBudget";
 
 /**
  * Every value of a role, read-only, under the labels its form gives them. An empty value is
@@ -32,9 +34,13 @@ export function RoleRead({ role: r }: { role: Role }) {
           { label: t("securityPage.roleId"), value: r.id },
           // REQ-2080: what the role is for.
           { label: t("securityPage.roleDescription"), value: r.description },
-          { label: t("securityPage.capabilities"), value: list(r.capabilities) },
-          { label: t("securityPage.demonstrated"), value: list(r.demonstrated) },
-          { label: t("residencyGrant.values"), value: list(r.residencyValues) },
+          {
+            label: t("securityPage.capabilities"),
+            value:
+              r.capabilities.length > 0 ? (
+                <CapabilityNames capabilities={r.capabilities} regions={r.residencyValues} />
+              ) : null,
+          },
           {
             label: t("securityPage.domainAccess"),
             value:
@@ -44,9 +50,19 @@ export function RoleRead({ role: r }: { role: Role }) {
           },
           {
             label: t("securityPage.parentRole"),
-            value: r.parentRoleId,
+            value: list(r.parents),
             testId: `role-parent-${r.id}`,
           },
+          // REQ-2155: Provisa's own, extended with child roles and never edited. Said only of one.
+          ...(r.standard
+            ? [
+                {
+                  label: t("securityPage.standardRole"),
+                  value: t("securityPage.standardRoleNote"),
+                  testId: `role-standard-${r.id}`,
+                },
+              ]
+            : []),
           {
             // REQ-1682: the role's own constant session values, one to a line.
             label: t("roleSessionValues.label"),
@@ -85,6 +101,7 @@ export function RoleRead({ role: r }: { role: Role }) {
           },
         ]}
       />
+      <LlmBudgetRead role={r} />
     </div>
   );
 }

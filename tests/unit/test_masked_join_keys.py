@@ -48,7 +48,7 @@ def _table(table_id: int, name: str, columns: list[str]) -> dict:
         "domain_id": "shop",
         "schema_name": "public",
         "table_name": name,
-        "columns": [{"column_name": c, "visible_to": []} for c in columns],
+        "columns": [{"column_name": c, "visible_to": ["customer"]} for c in columns],
         "write_ops": [],
         "write_returns_rows": False,
         "write_refused_forms": [],

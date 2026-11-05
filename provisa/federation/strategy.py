@@ -36,6 +36,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector import Mechanism
 from provisa.federation.engine import UnreachableSource
 
@@ -67,6 +68,29 @@ def engine_attaches(engine: Any, source_type: str) -> bool:
     )  # ATTACH_* or SCAN — read live in place, never landed (REQ-951)
 
 
+def row_level_tables(tables: list[dict], engine: Any, source_types: dict[str, str]) -> list[dict]:
+    """The tables replicated ROW BY ROW on ``engine`` (REQ-1865): the flag is set AND the engine
+    cannot attach the table's source. Elsewhere the engine reads the table in place."""
+    return [
+        t
+        for t in tables
+        if t.get("row_materialize") and not engine_attaches(engine, source_types[t["source_id"]])
+    ]
+
+
+def read_through_its_server(engine: Any, source_type: str) -> bool:
+    """Whether a source of ``source_type`` is read through its bundled connector server on
+    ``engine``: a pgwire-replica type the engine lands through that server, or attaches through
+    it (``Connector.served_by_bundle``). Trino reads files and Splunk with connectors of its own."""
+    from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
+
+    if source_type not in PGWIRE_REPLICA_TYPES:
+        return False
+    if not engine_attaches(engine, source_type):
+        return True
+    return engine.connector_for(source_type).served_by_bundle
+
+
 class Strategy(str, Enum):  # REQ-826
     VIRTUAL = "virtual"
     SCAN = "scan"
@@ -93,8 +117,8 @@ _MATERIALIZE_ONLY = frozenset(
         "grpc_remote",
         "mongodb",
         "cosmosdb",  # REQ-1982: no engine reaches it; read by its SDK and landed
-        "node",  # REQ-1984: a function's rows, read in its worker and landed
-        "python",  # REQ-1993: the same, for a Python function
+        # REQ-1984, REQ-1993, REQ-2200: a function's rows, read in its worker and landed
+        *CODE_SOURCE_TYPES,
         "cassandra",
         "redis",
         "elasticsearch",
@@ -106,6 +130,7 @@ _MATERIALIZE_ONLY = frozenset(
         "microsoft_365",  # REQ-1923: read by its loader and landed
         "logs",  # REQ-1996: read by its loader and landed
         "sparql",
+        "quickbooks",  # REQ-2197: read through its query endpoint and landed
         "neo4j",
         "splunk",
         "sharepoint",
@@ -176,7 +201,10 @@ def federate(
     known-large, is promoted to MATERIALIZED (see promote.should_promote). Both must be
     supplied to arm promotion; absent them, resolution is capability-only as before.
     """
-    source_type = source.type.value
+    from provisa.jdbc_source.attach import reach_type
+
+    # REQ-2191: a JDBC source attached live here is reached as the built-in type its URL names.
+    source_type = reach_type(source, engine)
     # REQ-1867: a source that asks to be read in place gets the engine's opt-in reach for its type
     # (refused by name when there is none); any other source gets its type's reach.
     if engine.asks_in_place(source):

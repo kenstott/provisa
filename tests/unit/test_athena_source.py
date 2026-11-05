@@ -180,9 +180,9 @@ def test_a_selected_tables_columns_are_its_own_then_its_partition_keys(client):
     }
 
 
-def test_a_column_type_with_no_ir_type_is_refused_by_name():
-    with pytest.raises(ValueError, match="unknown SQL type 'hyperloglog' for platform 'athena'"):
-        athena.ir_type("hyperloglog")
+def test_a_column_type_with_no_ir_type_is_text():
+    # REQ-2171: registration never fails on a source type; one naming none of the IR's is text.
+    assert athena.ir_type("hyperloglog") == "text"
 
 
 def test_the_credential_is_the_sources_and_half_a_pair_is_refused():
@@ -224,3 +224,81 @@ def test_a_write_to_athena_returns_no_rows():
     from provisa.executor.write_capability import table_write_returns_rows
 
     assert table_write_returns_rows(_table("iceberg"), "athena", None, source_path=None) is False
+
+
+# -- the format recorded at registration (REQ-1981) ---------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_registration_records_an_athena_tables_format_from_the_source(monkeypatch):
+    from provisa.api.admin import introspect
+    from provisa.core.models import Table
+
+    seen = []
+
+    async def fake_format(source_id, schema_name, table_name):
+        seen.append((source_id, schema_name, table_name))
+        return "iceberg"
+
+    monkeypatch.setattr(introspect, "athena_table_format", fake_format)
+    model = Table(source_id="lake", domain_id="d", schema_name="db", table_name="notes", columns=[])
+    await introspect.record_table_format(model, "athena")
+    assert model.table_format == "iceberg"
+    assert seen == [("lake", "db", "notes")]
+
+
+@pytest.mark.asyncio
+async def test_registration_records_no_format_for_another_source_type(monkeypatch):
+    from provisa.api.admin import introspect
+    from provisa.core.models import Table
+
+    async def refuse(*_a):
+        raise AssertionError("the source is not asked for a format")
+
+    monkeypatch.setattr(introspect, "athena_table_format", refuse)
+    model = Table(source_id="pg", domain_id="d", schema_name="s", table_name="t", columns=[])
+    await introspect.record_table_format(model, "postgresql")
+    assert model.table_format is None
+
+
+def test_register_table_records_the_format_as_update_table_does():
+    import inspect
+
+    from provisa.api.admin import schema_mutation, schema_mutation_ops
+
+    assert "record_table_format" in inspect.getsource(schema_mutation_ops.register_table)
+    assert "record_table_format" in inspect.getsource(schema_mutation.Mutation.update_table)
+
+
+def test_a_hive_tables_merge_is_refused_naming_merge_not_update():
+    import sqlglot
+
+    from provisa.compiler.write_admission import WriteFormNotSupported, admit_write
+
+    gov = _hive_gov()
+    tree = sqlglot.parse_one(
+        "MERGE INTO sf.account AS t USING (SELECT '1' AS id) AS s ON t.id = s.id "
+        "WHEN MATCHED THEN UPDATE SET name = 'x'",
+        read="postgres",
+    )
+    with pytest.raises(WriteFormNotSupported, match="MERGE") as refused:
+        admit_write(tree, gov)
+    assert refused.value.form == "merge"
+
+
+def _hive_gov():
+    from provisa.compiler.stage2 import GovernanceContext
+    from provisa.executor.write_capability import table_write_ops, table_write_refused_forms
+
+    table = _table("hive")
+    gov = GovernanceContext()
+    gov.role_id = "writer"
+    gov.can_write = True
+    gov.table_map = {"account": 1, "sf.account": 1}
+    gov.all_columns = {1: [("id", "varchar"), ("name", "varchar")]}
+    gov.write_ops = {1: table_write_ops(table, "athena", None, source_path=None)}
+    gov.write_returns_rows = {1: False}
+    gov.write_refused_forms = {
+        1: table_write_refused_forms(table, "athena", None, source_path=None)
+    }
+    return gov

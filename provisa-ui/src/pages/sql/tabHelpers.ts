@@ -10,10 +10,11 @@
 
 import { SQL_QUERY_KEY, NL_PROMPT_KEY, TABS_KEY, tabSqlKey, tabNlKey } from "./types";
 import type { SqlTab } from "./types";
-import { getStored, setStored } from "../../lib/browserStorage";
+import { getStored, getStoredJson, setStored } from "../../lib/browserStorage";
+import { uuid } from "../../lib/uuid";
 
 export function newTabId(): string {
-  return crypto?.randomUUID?.() ?? `tab-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  return uuid();
 }
 
 export function emptyTab(id: string, title: string, sqlText = "", nlText = ""): SqlTab {
@@ -31,13 +32,10 @@ export function emptyTab(id: string, title: string, sqlText = "", nlText = ""): 
 
 /** Load tab metadata + per-tab sql/nl from localStorage. Results hydrate later from IndexedDB. */
 export function loadTabsMeta(): { tabs: SqlTab[]; activeId: string } {
-  let meta: { tabs: { id: string; title: string; detached?: boolean }[]; activeId: string } | null =
-    null;
-  try {
-    meta = JSON.parse(getStored(TABS_KEY) ?? "null");
-  } catch {
-    meta = null;
-  }
+  const meta = getStoredJson<{
+    tabs: { id: string; title: string; detached?: boolean }[];
+    activeId: string;
+  }>(TABS_KEY);
   if (!meta || !meta.tabs?.length) {
     // Migrate legacy single-doc query/prompt into the first tab.
     const id = newTabId();
@@ -49,25 +47,21 @@ export function loadTabsMeta(): { tabs: SqlTab[]; activeId: string } {
     ...emptyTab(m.id, m.title, getStored(tabSqlKey(m.id)) ?? "", getStored(tabNlKey(m.id)) ?? ""),
     detached: m.detached === true,
   }));
-  const activeId = tabs.some((t) => t.id === meta!.activeId) ? meta.activeId : tabs[0].id;
+  const activeId = tabs.some((t) => t.id === meta.activeId) ? meta.activeId : tabs[0].id;
   return { tabs, activeId };
 }
 
 export function persistTabsMeta(tabs: SqlTab[], activeId: string) {
-  try {
-    setStored(
-      TABS_KEY,
-      JSON.stringify({
-        tabs: tabs.map((t) => ({ id: t.id, title: t.title, detached: t.detached === true })),
-        activeId,
-      }),
-    );
-    for (const t of tabs) {
-      setStored(tabSqlKey(t.id), t.sqlText);
-      setStored(tabNlKey(t.id), t.nlText);
-    }
-  } catch {
-    /* quota */
+  setStored(
+    TABS_KEY,
+    JSON.stringify({
+      tabs: tabs.map((t) => ({ id: t.id, title: t.title, detached: t.detached === true })),
+      activeId,
+    }),
+  );
+  for (const t of tabs) {
+    setStored(tabSqlKey(t.id), t.sqlText);
+    setStored(tabNlKey(t.id), t.nlText);
   }
 }
 

@@ -205,6 +205,25 @@ class NativeEngineBackend(EngineBackend):
     # renders each value as a literal of the engine's dialect instead.
     _cache_bind_placeholder: str | None = None
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """The engine driver's errors (REQ-778): those that mean the engine is not reachable, then
+        those that mean it refused the statement (a value it cannot convert, a name it does not
+        know). The driver is imported here, the one place it is needed for this."""
+        return (), ()
+
+    def classify_error(self, exc: Exception) -> str | None:
+        """``"connection"`` (503) or ``"query"`` (400, cypher.engine_refused) by the driver's own
+        errors, a lost engine read first (a driver's connection error may share a base with its
+        statement errors); None for an error the driver did not raise."""
+        connection, query = self._driver_errors()
+        if isinstance(exc, connection):
+            return "connection"
+        if isinstance(exc, query):
+            return "query"
+        return None
+
     def __init__(self, engine: Any) -> None:
         super().__init__(engine)
         self._runtime: Any = None
@@ -444,6 +463,7 @@ class NativeEngineBackend(EngineBackend):
         from provisa.core.operator_floor import floor_setting
         from provisa.core.request_context import current_org
         from provisa.core.secrets import resolve_secrets
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         complete = True
         # What this org's registry refused for a declared reason (_OrgWalk.refused).
@@ -484,7 +504,8 @@ class NativeEngineBackend(EngineBackend):
                     # REQ-2031: a cache_ttl that never expires keeps the source's tables on their
                     # replica (replica_routing.table_floor), as replicate does.
                     cache_ttl=_rs_dict["cache_ttl"],
-                    federation_hints={},
+                    # REQ-2191: a JDBC source's settings decide whether it attaches, and as what.
+                    federation_hints=dict(_rs_dict.get("federation_hints") or {}),
                     # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
                     # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
                     # above (REQ-1746) already documents and fixes for a different connector
@@ -517,7 +538,7 @@ class NativeEngineBackend(EngineBackend):
         native = {
             (t["source_id"], t["schema_name"], t["table_name"])
             for t in (getattr(state, "tables", None) or [])
-            if is_native_read(t, _types)
+            if is_native_read(t, _types, state)
         }
 
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
@@ -563,6 +584,11 @@ class NativeEngineBackend(EngineBackend):
             tried.add(key)
             if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
                 return
+            # REQ-2191: a JDBC source attached live here is attached as the built-in type its URL
+            # names, through that type's own connector.
+            named = attach_type(src, self.engine)
+            if named is not None:
+                src = attach_view(src, named)
             # Only a source the engine reads LIVE in place (attach/scan) is attached here. A
             # FETCH/DIRECT source (API/push adapter or native driver -- openapi, graphql_remote,
             # the dq sources) is read from its replica or the API cache, never attached, so the
@@ -791,6 +817,22 @@ class NativeEngineBackend(EngineBackend):
         return reconciled
 
     # -- store write face --------------------------------------------------
+
+    async def landed_table_exists(self, state: Any, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed, asked where it lands: an engine whose write
+        face is its own runtime (``select_write_face`` ENGINE_NATIVE) answers from its own store's
+        catalog, and must -- a runtime that lands and cannot say what it landed raises; any other
+        face is the base store's catalog."""
+        from sqlalchemy import make_url
+
+        from provisa.federation.materialization import WriteFace, select_write_face
+
+        backend_type = make_url(self.engine.materialize_store()).get_backend_name()
+        if select_write_face(self.engine, backend_type) is WriteFace.ENGINE_NATIVE:
+            runtime = self._runtime_for(state)
+            if hasattr(runtime, "land_table"):
+                return await runtime.landed_table_exists(schema=schema, table=table)
+        return await super().landed_table_exists(state, schema=schema, table=table)
 
     async def analyze_landed_table(
         self, state: Any, *, catalog: str | None, schema: str, table: str

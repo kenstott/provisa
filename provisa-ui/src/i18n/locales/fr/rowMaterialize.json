@@ -1,0 +1,6 @@
+{
+  "rowMaterialize": {
+    "label": "Répliquer ligne par ligne",
+    "help": "Ne conserver que les lignes demandées par les instructions : chacune est récupérée depuis la source par sa clé primaire et conservée pendant le Cache TTL, au lieu d'une copie de toute la table. Nécessite une colonne de clé primaire et une source qui récupère les lignes par clé."
+  }
+}

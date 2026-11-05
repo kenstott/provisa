@@ -5,7 +5,7 @@ Provisa can convert existing Hasura metadata into a Provisa `config.yaml`, prese
 ## Interactive import (Admin → Import Hasura Config)
 
 The admin surface runs the same converters, so an import needs no shell access and no config file
-round-trip. Requires the `org_settings` capability; the import lands in the organization the
+round-trip. It requires the `org_settings` capability, and the import lands in the organization the
 session is acting in.
 
 1. **Upload.** Choose a zipped Hasura v2 metadata directory, a zipped DDN project, a consolidated
@@ -102,9 +102,9 @@ The preview returns the three parts as lists. The command-line converter prints 
 | Object and array relationship | carried | An approved relationship (`many-to-one` for object, `one-to-many` for array) whose GraphQL field is the Hasura relationship name. See below for the cases that differ. |
 | Select permission | carried | Column grants (`visible_to`) and a row rule. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.hasura_user_id')`, which the request binds at query time from the identity's claims or the member's attributes. A Hasura session variable keeps its own name; `provisa.user_id` stays the signed-in identity. |
 | Row rule through a relationship | carried | An `EXISTS` subquery over the related table. |
-| Insert, update and delete permission | carried | Write grants on the table: one per role and operation. `columns` become the grant's columns, `filter` its `rows`, `check` its `check`, and `set` its presets. |
-| Inherited role of one role | carried | That role as `parent_role_id`. |
-| Inherited role of several roles | mapped | A role holding the union of their grants, written out: a Provisa role has one parent. |
+| Insert, update and delete permission | carried | Write grants on the table, one per role and operation. `columns` become the grant's columns, `filter` its `rows`, `check` its `check`, and `set` its presets. |
+| Inherited role of one role | carried | That role in `parents`. |
+| Inherited role of several roles | mapped | A role holding the union of their grants, written out, because a Provisa role has one parent. |
 | Computed field | redo | A column of a view over the table. |
 | Tracked function | carried | A command; see below. Otherwise redo. |
 | Action | mapped | A command calling the action's handler. |
@@ -129,15 +129,15 @@ Write grant details:
 Command details:
 
 - **Tracked function.** The export names the function and the roles that call it, not its arguments or what it returns. The preview reads both from the database's catalog and registers a command whose signature it found. When the source is not reached, is not PostgreSQL, or the function is missing, overloaded, or returns rows of a table the import does not register, the function goes to redo. The command-line converter never reaches a database, so every tracked function it finds goes to redo.
-- **Action.** The command calls the action's handler as a `POST`. A `{{VAR}}` in the handler URL is written `${env:VAR}` and resolved when the command is called. The command is visible to the roles the action's permissions name, or to `org_admin` alone when it names none. An asynchronous action is warned: its command waits for the handler's answer. A return type whose fields the export does not carry is warned.
-- **Event trigger.** The trigger fires on every change to the table, once per batch of changes, and posts the table and the changed rows. It does not fire per row with old and new values. A Hasura trigger on fewer than all three operations is warned, since the Provisa trigger fires on all of them. Retries are not carried: a Hasura trigger with `num_retries` is warned, because a Provisa trigger calls once. Retry in the handler if a missed call matters.
+- **Action.** The command calls the action's handler as a `POST`. A `{{VAR}}` in the handler URL is written `${env:VAR}` and resolved when the command is called. The command is visible to the roles the action's permissions name, or to `org_admin` alone when it names none. An asynchronous action is warned, because its command waits for the handler's answer. A return type whose fields the export does not carry is warned.
+- **Event trigger.** The trigger fires on every change to the table, once per batch of changes, and posts the table and the changed rows. It does not fire per row with old and new values. A Hasura trigger on fewer than all three operations is warned, since the Provisa trigger fires on all of them. Retries are not carried. A Hasura trigger with `num_retries` is warned, because a Provisa trigger calls once. Retry in the handler if a missed call matters.
 - **Cron trigger.** The cron expression, URL, payload and enabled flag carry over. Retries are not carried and are warned the same way.
 
 A consolidated document also holds sections the converter has no target for: `query_collections`, `allowlist`, `rest_endpoints`, `network` and `opentelemetry`. When one is present, the report lists it under redo. The directory reader never opens their files.
 
 ### Connections and domains on the import tab
 
-A connection the export spells out converts as written. When the export reads a database URL from an environment variable (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), the variable's value is not in the export, so the conversion does not guess one. The source is registered with empty connection fields, and the report says to redo it: enter the source's host, port, database, user and password in the import's source settings and convert again. Only the fields you change travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has.
+A connection the export spells out converts as written. When the export reads a database URL from an environment variable (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), the variable's value is not in the export, so the conversion does not guess one. The source is registered with empty connection fields, and the report says to redo it. Enter the source's host, port, database, user and password in the import's source settings and convert again. Only the fields you change travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has.
 
 ### Types come from the source at preview
 
@@ -145,7 +145,7 @@ A Hasura export names columns without types, and a tracked table with no permiss
 
 ### Limitations
 
-- **Computed fields** are redone by hand: the export names the database function but does not define it. Add it as a column of a view over the table, or compute it in the app.
+- **Computed fields** are redone by hand, because the export names the database function but does not define it. Add it as a column of a view over the table, or compute it in the app.
 - **Remote schemas** land as tables from the role permission SDLs. A remote schema with no permissions lands nothing, since the export carries no other statement of its shape.
 - **Tracked functions** need the database at preview time to read their signature; offline, they are redone on the Commands page.
 - **Event and cron trigger retries** are not carried.

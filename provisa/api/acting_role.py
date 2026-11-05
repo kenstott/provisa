@@ -28,6 +28,7 @@ than the one it asked for. Before this rule a body role was silently ignored on 
 
 from __future__ import annotations
 
+from pydantic import BaseModel
 from starlette.requests import Request
 
 from provisa.api.errors import ApiError
@@ -46,7 +47,7 @@ def acting_role(
     established = getattr(request.state, "role", None) or header_role
     if established is None:
         return body_role or body_default
-    if body_role is not None and body_role != established:
+    if body_role is not None and body_role != established and not _same_set(body_role, header_role):
         raise ApiError(
             400,
             "data.role_mismatch",
@@ -57,6 +58,19 @@ def acting_role(
             acting_role=established,
         )
     return established
+
+
+def _same_set(body_role: str, header_role: str | None) -> bool:  # REQ-1952
+    """The body names the roles the header named, in any order. The header's set is what the
+    acting role was resolved from (one role, or the meta-role of a set), so the body names that
+    same role."""
+    if header_role is None:
+        return False
+
+    def names(role: str) -> set[str]:
+        return {r.strip() for r in role.split(",") if r.strip()}
+
+    return names(body_role) == names(header_role)
 
 
 def held_role(request: Request, role_id: str) -> str:  # REQ-273
@@ -199,6 +213,6 @@ def header_role(request: Request, x_provisa_role: str | None, x_role: str | None
     return established
 
 
-def sent_role(body: object) -> str | None:
+def sent_role(body: BaseModel) -> str | None:
     """The ``role`` a request body carried, or None when the client did not send the field."""
-    return getattr(body, "role") if "role" in body.model_fields_set else None  # type: ignore[attr-defined]
+    return getattr(body, "role") if "role" in body.model_fields_set else None

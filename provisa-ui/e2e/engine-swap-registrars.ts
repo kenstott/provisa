@@ -16,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { expect } from "./coverage";
+import { WAREHOUSE_SCHEMA } from "./cloud-warehouse";
 import type { Page } from "./coverage";
 import {
   E2E_MONGO_PORT,
@@ -27,6 +28,7 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   submitRegisterAndExpectListed,
+  fillCheckerConnection,
   submitSourceAndExpectListed,
   FORM_FIELD,
   setSourceCacheTtl,
@@ -403,7 +405,7 @@ export function registerFiles(): (page: Page) => Promise<Registration> {
 /** soda / great_expectations (REQ-1730): data-quality checkers, not conventional data sources —
  * per source-to-query-special-cases.spec.ts's own REQ-1742 investigation, a checker source has no
  * remote table of its own to register+SELECT from; it connects back through Provisa's OWN pgwire
- * endpoint (schema_mutation.py's create_source auto-fills that mapping for a checker type) and
+ * endpoint, whose connection the Sources form takes as any database's (#276), and
  * scans an ALREADY-governed table via a dq_contract. This registrar therefore first registers a
  * small csv scan target (the exact registerSingleFile shape, inlined here for direct access to
  * the compiled table name), then registers the checker source against it, adds one dataset-scope
@@ -445,6 +447,7 @@ function registerDqChecker(
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption(checkerType);
+    await fillCheckerConnection(page);
     await submitSwapSource(page, sourceId);
 
     // 3. Register Table form: no schema/table picker for a checker, only the DQ contract panel.
@@ -575,7 +578,7 @@ export async function registerSnowflake(page: Page): Promise<Registration> {
   await page.getByTestId("sources-id-input").fill(sourceId);
   await page.getByTestId("sources-type-select").selectOption("snowflake");
   await page.getByLabel(/Account URL/).fill(process.env.SNOWFLAKE_ACCOUNT!);
-  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA_UI_E2E");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(WAREHOUSE_SCHEMA.toUpperCase());
   await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
   await page.getByRole("textbox", { name: "Authentication" }).click();
   await page.getByRole("option", { name: "Username / Password", exact: true }).click();
@@ -632,7 +635,7 @@ export async function registerFabric(page: Page): Promise<Registration> {
   await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
   await expectDiscoveredColumns(page, ["id"], 120000);
   await expectDiscoveredColumns(page, ["name"]);
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
@@ -676,7 +679,7 @@ export async function registerDatabricks(page: Page): Promise<Registration> {
   await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
   await expectDiscoveredColumns(page, ["id"], 120000);
   await expectDiscoveredColumns(page, ["name"]);
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);
@@ -713,7 +716,7 @@ export async function registerBigquery(page: Page): Promise<Registration> {
   await submitSwapSource(page, sourceId);
 
   await openRegisterForm(page, sourceId);
-  await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+  await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
   await expectDiscoveredColumns(page, ["id"], 120000);
   await expectDiscoveredColumns(page, ["name"]);
   const registered = await submitRegisterAndExpectListed(page, sourceId, SWAP_REGISTER_TIMEOUT_MS);

@@ -4,10 +4,17 @@
     "tabHistory": "Cronologia",
     "tabFavorites": "Preferiti",
     "tabExport": "Esporta in Neo4j",
+    "tabExportSparql": "Esporta RDF o risultati SPARQL",
     "domainLabels": "Etichette di dominio",
     "nodeLabels": "Etichette dei nodi",
     "relationshipTypes": "Tipi di relazione",
     "propertyKeys": "Chiavi delle proprietà",
+    "session": "Sessione",
+    "sessionFailed": "Impossibile leggere la sessione: {{error}}",
+    "sessionEmpty": "Nulla è stato creato in questa sessione.",
+    "sessionClear": "Cancella sessione",
+    "sessionLabelTip": "{{nodes}} nodi nella sessione, {{tagged}} nodi del modello etichettati",
+    "sessionTypeTip": "{{count}} relazioni nella sessione",
     "loading": "Caricamento…",
     "noLabelsFound": "Nessuna etichetta trovata",
     "noRelTypesFound": "Nessun tipo di relazione trovato",
@@ -30,6 +37,8 @@
     "tabSettings": "Impostazioni di visualizzazione",
     "maxNodes": "Nodi max",
     "maxNodesHint": "Numero massimo di nodi disegnati da una query",
-    "notCounted": "Non conteggiato: {{list}}"
+    "notCounted": "Non conteggiato: {{list}}",
+    "countsFailed": "Conteggi non disponibili: {{error}}",
+    "schemaFailed": "Schema non disponibile: {{error}}"
   }
 }

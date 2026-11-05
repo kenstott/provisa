@@ -79,7 +79,7 @@ async def uses(conn: "Connection", attribute: str) -> list[Dependent]:
     ).fetchall():
         if any(names_it(e, attribute) for e in visible_to or []):
             note("column", key, "table_columns.visible_to")
-        if any(names_it(e, attribute) for m in masks or [] for e in m["to"]):
+        if any(names_it(e, attribute) for m in masks or [] for e in m.get("to") or ()):
             note("column", key, "table_columns.masks")
     for table, kind in (
         (metrics, "metric"),

@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:retail/1-group-customers.graphql",
+  "root_field": "r__viewGroupCustomers"
+ }
+]

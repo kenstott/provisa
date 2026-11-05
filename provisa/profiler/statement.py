@@ -365,6 +365,38 @@ def _base_sql(table: str, base_cols: list[str], sample: Sample) -> str:
     return f"{select} WHERE RANDOM() < {sample.fraction!r}"
 
 
+def classification_sql(table: str, columns: list[ColumnSpec], sample: Sample, limit: int) -> str:
+    """Up to ``limit`` rows of ``columns``, as text, drawn at random from the run's sample, whose
+    values the classification kinds are tested against (REQ-2147), each row with the count of the
+    rows the sample held (``SAMPLE_ROWS``, counted before the limit): what the statement read of
+    the source. The values are tested in memory and never stored."""
+    inner = _base_sql(
+        table, [f"{read_column('t', c)} AS {_ident(c.name)}" for c in columns], sample
+    )
+    cols = ", ".join(f"CAST(s.{_ident(c.name)} AS VARCHAR) AS {_ident(c.name)}" for c in columns)
+    return (
+        f"SELECT {cols}, COUNT(*) OVER () AS {_ident(SAMPLE_ROWS)} FROM ({inner}) s "
+        f"ORDER BY RANDOM() LIMIT {int(limit)}"
+    )
+
+
+#: The classification statement's column holding the rows its sample held.
+SAMPLE_ROWS = "__sample_rows"
+
+
+def parse_classification_result(
+    names: list[str], rows: list[tuple], columns: list[ColumnSpec]
+) -> tuple[dict[str, list[str | None]], int]:
+    """Each column's sampled values, by its name, and the rows the sample held (0 when it held
+    none, so the statement answered no row)."""
+    index = {n: i for i, n in enumerate(names)}
+    values = {
+        c.name: [None if r[index[c.name]] is None else str(r[index[c.name]]) for r in rows]
+        for c in columns
+    }
+    return values, int(rows[0][index[SAMPLE_ROWS]]) if rows else 0
+
+
 def profile_sql(
     table: str,
     columns: list[ColumnSpec],

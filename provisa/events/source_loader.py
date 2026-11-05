@@ -74,6 +74,8 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # connector for either type (trino_connectors.py has no entry).
         "neo4j",
         "sparql",
+        # REQ-2197: a QuickBooks table's rows come from the company's query endpoint.
+        "quickbooks",
         # REQ-1982: Cosmos DB documents are read through its SDK (provisa/cosmosdb/loader.py); no
         # engine reaches it.
         "cosmosdb",
@@ -108,26 +110,35 @@ AdapterLoader = Any  # Callable[[source, table], Awaitable[list[dict]]] — a pe
 AdapterKeyedLoader = Any
 
 
-def _projection(table: Any, dialect_of: Callable[[], str | None]) -> str:
+def _projection(
+    table: Any,
+    dialect_of: Callable[[], str | None],
+    source: Any,
+    platform_of: Callable[[], str | None],
+) -> str:
     """The select list that reads ``table``'s rows from its source (REQ-1965): ``*`` for a table
-    with no natively nested column -- the table as it is, and the dialect is not asked for --
-    otherwise each column by name, a natively array, struct or map one as the JSON the backend
-    that runs the read produces (``native_json.source_projection``)."""
+    with no natively nested or subtyped column -- the table as it is, and the dialect is not
+    asked for -- otherwise each column by name, a natively array, struct or map one as the JSON
+    the backend that runs the read produces, a subtyped one in its subtype's own form, and one
+    no reader can land in that form left out (REQ-2171, ``native_json.source_projection``).
+    ``platform_of`` gives the engine's dialect, the other reader of a SQL source."""
     from provisa.federation.commit_time import SOURCE_COMMITTED_AT
+    from provisa.federation.residency import not_landed
 
     # REQ-1163: the commit time is the landing's, never a column of the source.
     own = [c for c in table.columns if c.name != SOURCE_COMMITTED_AT]
-    if not any(getattr(c, "native_type", None) for c in own):
+    if not any(getattr(c, "native_type", None) or getattr(c, "subtype", None) for c in own):
         return "*"
+    left_out = frozenset(name for name, _subtype, _reader in not_landed(source, own, platform_of()))
     from provisa.transpiler.native_json import source_projection
 
     dialect = dialect_of()
     if not dialect:
         raise ValueError(
-            f"{table.schema_name}.{table.table_name} has a natively nested column and its source "
-            "has no SQL dialect to read it as JSON in"
+            f"{table.schema_name}.{table.table_name} has a natively nested or subtyped column "
+            "and its source has no SQL dialect to read it in"
         )
-    return source_projection(own, dialect)
+    return source_projection(own, dialect, left_out)
 
 
 _COMMITTED = "source_committed_at"  # federation/commit_time.SOURCE_COMMITTED_AT
@@ -147,7 +158,7 @@ async def engine_table_rows(engine: Any, source: Any, table: Any) -> list[dict]:
     catalog = source_to_catalog(source.id)
     ref = f'"{catalog}"."{table.schema_name}"."{table.table_name}"'
     # REQ-1965: a natively array/struct/map column is landed as JSON the engine produces.
-    projection = _projection(table, lambda: engine.dialect)
+    projection = _projection(table, lambda: engine.dialect, source, lambda: engine.dialect)
     sql = f"SELECT {projection} FROM {ref}"
     if not engine.engine.catalog_qualified:
         # An engine whose SQL names no catalog (pg: PostgreSQL has no cross-database reference)
@@ -183,14 +194,15 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
 
     from provisa.core.operator_floor import floor_setting
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        if floor_setting(source) is None and engine_attaches(engine, _source_type(source)):
+        if floor_setting(source) is None and engine_attaches(engine, reach_type(source, engine)):
             return await engine_table_rows(engine, source, table)
         dialect = state.source_dialects[source.id] or None
         relation = direct_relation(table, dialect)
         # REQ-1965: a natively array/struct/map column is landed as JSON the source produces.
-        projection = _projection(table, lambda: dialect)
+        projection = _projection(table, lambda: dialect, source, lambda: engine.dialect)
         sql = f"SELECT {projection} FROM {relation}"
         result = await engine.execute_native(state.source_pools, source.id, sql, [])
         return [dict(zip(result.column_names, row)) for row in result.rows]
@@ -282,6 +294,7 @@ class SourceRowLoader:
             self._adapter_loaders.get(stype)
             or _floored_file_loader(source, stype)
             or _floored_server_loader(source, stype)
+            or _floored_mongodb_loader(source, stype)
         )
         if loader is not None:
             return await loader(source, table)
@@ -304,7 +317,8 @@ class SourceRowLoader:
           cursor or Arrow stream where its client has one, else whole, as a single document.
         - A floored csv or parquet source, which no engine attaches, is read from its file
           (:func:`_floored_file_loader`); a floored source served by its own pgwire server, through
-          that server (:func:`_floored_server_loader`).
+          that server (:func:`_floored_server_loader`); a floored MongoDB source, over its driver
+          (:func:`_floored_mongodb_loader`).
         - Any other type is read by the engine, which streams Arrow batches; where the engine
           attaches the source in place it is also declared engine-reachable.
 
@@ -324,6 +338,7 @@ class SourceRowLoader:
             EngineTableSource,
         )
         from provisa.federation.strategy import engine_attaches
+        from provisa.jdbc_source.attach import reach_type
 
         stype = _source_type(source)
         pools = getattr(state, "source_pools", None)
@@ -341,7 +356,7 @@ class SourceRowLoader:
                 # whatever the engine: an engine's attach of the table cannot see its xmin.
                 dialect = state.source_dialects[source.id] or None
                 relation = direct_relation(table, dialect)
-                projection = f"{_projection(table, lambda: dialect)}, {source_expression(source)}"
+                projection = f"{_projection(table, lambda: dialect, source, lambda: self._engine.dialect)}, {source_expression(source)}"
                 sql = f"SELECT {projection} FROM {relation}{landing_where(table, lambda: dialect)}"
                 return DirectTableSource(
                     lambda: open_direct_stream(pools, source.id, sql, []), columns
@@ -357,7 +372,7 @@ class SourceRowLoader:
             dialect = state.source_dialects[source.id] or None
             relation = direct_relation(table, dialect)
             # REQ-1965: a natively array/struct/map column is copied as JSON the source produces.
-            projection = _projection(table, lambda: dialect)
+            projection = _projection(table, lambda: dialect, source, lambda: self._engine.dialect)
             if carries:
                 # A copy of the row has no change event to take a commit time from: empty.
                 projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
@@ -367,6 +382,7 @@ class SourceRowLoader:
             self._adapter_loaders.get(stype)
             or _floored_file_loader(source, stype)
             or _floored_server_loader(source, stype)
+            or _floored_mongodb_loader(source, stype)
         )
         if (
             loader is not None
@@ -392,14 +408,16 @@ class SourceRowLoader:
                 f"is wired (source {source.id!r})"
             )
         ref = f'"{source_to_catalog(source.id)}"."{table.schema_name}"."{table.table_name}"'
-        projection = _projection(table, lambda: self._engine.dialect)
+        projection = _projection(
+            table, lambda: self._engine.dialect, source, lambda: self._engine.dialect
+        )
         if carries:
             # Read through the engine, the row's commit time is out of sight: empty (REQ-1163).
             projection += f", CAST(NULL AS TIMESTAMP) AS {_COMMITTED}"
         return EngineTableSource(
             self._engine,
             ref,
-            in_place=engine_attaches(self._engine, stype),
+            in_place=engine_attaches(self._engine, reach_type(source, self._engine)),
             projection=projection,
             where=landing_where(table, lambda: self._engine.dialect),  # REQ-2062
         )
@@ -456,7 +474,9 @@ class SourceRowLoader:
 
             rule = sqlglot.parse_one(admit, read="postgres").sql(dialect=self._engine.dialect)
             where = f"({where}) AND ({rule})"
-        projection = _projection(table, lambda: self._engine.dialect)  # REQ-1965
+        projection = _projection(
+            table, lambda: self._engine.dialect, source, self._engine.dialect
+        )  # REQ-1965
         result = await self._engine.execute_engine(
             f"SELECT {projection} FROM {ref} WHERE {where}",
             authorization=system_auth("source row load"),
@@ -691,9 +711,9 @@ def _duckdb_extension_scratch_read(connector_details: dict, select_sql: str) -> 
     than re-deriving the ATTACH DSN here) means this can never drift from what the live federation
     engine actually runs. One-shot: opened, queried, closed — never shared with the app's own
     engine connection, so this can run regardless of which engine is currently active."""
-    import duckdb
+    from provisa.core import engine_memory
 
-    conn = duckdb.connect(":memory:")
+    conn = engine_memory.connect()
     try:
         _scratch_attach(conn, connector_details)
         cursor = conn.execute(select_sql)
@@ -708,9 +728,9 @@ def _duckdb_extension_scratch_batches(
 ) -> Any:  # REQ-1915
     """:func:`_duckdb_extension_scratch_read` a batch at a time: the same throwaway connection,
     its cursor fetched ``batch_rows`` rows per step, closed when the iteration ends."""
-    import duckdb
+    from provisa.core import engine_memory
 
-    conn = duckdb.connect(":memory:")
+    conn = engine_memory.connect()
     try:
         _scratch_attach(conn, connector_details)
         cursor = conn.execute(select_sql)
@@ -757,6 +777,20 @@ def _floored_server_loader(source: Any, stype: str) -> AdapterLoader | None:
     if stype not in PGWIRE_REPLICA_TYPES or floor_setting(source) is None:
         return None
     return load_through_server
+
+
+def _floored_mongodb_loader(source: Any, stype: str) -> AdapterLoader | None:
+    """The reader of a MongoDB source the operator floors, None for any other.
+
+    A floored source has no live attach on any engine (REQ-1912), so an engine that attaches
+    MongoDB in place (DuckDB) has no catalog of it to read; its rows are read over its driver, as
+    on an engine with no MongoDB connector (:func:`make_mongodb_loader`, REQ-1730). A source that
+    is not floored keeps the engine's read of its attach."""
+    from provisa.core.operator_floor import floor_setting
+
+    if stype != "mongodb" or floor_setting(source) is None:
+        return None
+    return make_mongodb_loader()
 
 
 def make_file_loader(source_type: str) -> AdapterLoader:
@@ -1451,6 +1485,16 @@ def _integer_runs(values: list[int]) -> tuple[list[tuple[int, int]], list[int]]:
     return runs, singles
 
 
+def _mongodb_columns(table: Any) -> list[tuple[str, str]]:
+    """The table's registered data columns as (name, document path): a column with no ``path``
+    is the document field of its own name."""
+    return [
+        (c.name, c.path or c.name)
+        for c in table.columns
+        if getattr(c, "native_filter_type", None) is None
+    ]
+
+
 def make_mongodb_loader() -> AdapterLoader:
     """Build the MongoDB row-fetch (REQ-1730): the table's registered data columns, projected from
     ``<database>.<collection>`` over pymongo and landed like any other fetched source. Wired only on
@@ -1473,10 +1517,10 @@ def make_mongodb_loader() -> AdapterLoader:
             return await asyncio.to_thread(
                 lambda: [r for b in whole_batches(conn, database, table, 1000) for r in b]
             )
-        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
+        columns = _mongodb_columns(table)
+        if not columns:
             return []
-        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, names)
+        return await asyncio.to_thread(fetch_rows, conn, database, table.table_name, columns)
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import BlockingCursorSource
@@ -1491,11 +1535,10 @@ def make_mongodb_loader() -> AdapterLoader:
             return BlockingCursorSource(
                 lambda batch_rows: whole_batches(conn, database, table, batch_rows), columns
             )
-        names = [name for name, _ in columns]
+        paths = dict(_mongodb_columns(table))
+        read = [(name, paths[name]) for name, _ in columns]
         return BlockingCursorSource(
-            lambda batch_rows: iter_row_batches(
-                conn, database, table.table_name, names, batch_rows
-            ),
+            lambda batch_rows: iter_row_batches(conn, database, table.table_name, read, batch_rows),
             columns,
         )
 
@@ -1515,11 +1558,11 @@ def make_mongodb_keyed_loader() -> AdapterKeyedLoader:
             return []
         conn = MongoConnection.from_source(source)
         database = getattr(source, "database", None) or table.schema_name
-        names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
-        if not names:
+        columns = _mongodb_columns(table)
+        if not columns:
             return []
         return await asyncio.to_thread(
-            fetch_rows_by_keys, conn, database, table.table_name, names, pk_columns, keys
+            fetch_rows_by_keys, conn, database, table.table_name, columns, pk_columns, keys
         )
 
     return _load
@@ -1802,7 +1845,127 @@ def make_grpc_remote_loader(grpc_sources: dict[str, Any]) -> AdapterLoader:  # R
     return _load
 
 
-def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> AdapterLoader:
+def _graphql_remote_registration(
+    gql_sources: dict[str, Any], source: Any, table: Any
+) -> tuple[dict, dict]:
+    """``table``'s registration in ``state.graphql_remote_sources``: its source's, and its own
+    (by ``sql_name``). A table with none raises :class:`UnsupportedSourceFetch`."""
+    from provisa.compiler.naming import apply_sql_name
+
+    normalised = apply_sql_name(table.table_name)
+    for reg in gql_sources.values():
+        for tbl in reg.get("tables", []):
+            if tbl.get("sql_name") in (table.table_name, normalised):
+                return reg, tbl
+    raise UnsupportedSourceFetch(
+        f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
+        f"registration in graphql_remote_sources"
+    )
+
+
+def _graphql_remote_request(gql_sources: dict[str, Any], source: Any, table: Any) -> dict:
+    """The remote call for ``table``: url, auth, field name and column selections."""
+    from provisa.compiler.naming import apply_gql_name, apply_sql_name
+    from provisa.graphql_remote.executor import NO_POLICY
+
+    reg, tbl = _graphql_remote_registration(gql_sources, source, table)
+
+    # The store lands under the semantic sql name; the remote keys the field by its GraphQL
+    # name. Both derive from the naming authority. When they differ, emit a GraphQL alias
+    # ``<sql_name>: <gqlField>`` so the outbound field matches the remote AND the response comes
+    # back keyed by the sql name the store expects; when they coincide, the bare field.
+    # gql_selection (nested object path) still wins.
+    def _selection(c: dict) -> str:
+        if c.get("gql_selection"):
+            return c["gql_selection"]
+        sql_name = apply_sql_name(c["name"])
+        gql_field = apply_gql_name(c["name"])
+        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
+
+    return {
+        "url": reg["url"],
+        "auth": reg.get("auth"),
+        "field_name": tbl.get("field_name") or tbl["name"],
+        "columns": [_selection(c) for c in tbl.get("columns", [])],
+        "rows_path": tbl.get("rows_path"),
+        "error_policy": reg.get("error_policy") or NO_POLICY,
+        # REQ-2061: the table's fixed arguments, sent on every read of it.
+        "variables": dict(tbl.get("arguments") or {}) or None,
+        "required_args": [
+            *(tbl.get("required_args") or []),
+            *(tbl.get("optional_args") or []),
+        ]
+        or None,
+    }
+
+
+def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1865
+    """The ``load_keys`` counterpart to :func:`make_graphql_remote_loader`: the rows of a list of
+    keys in one request, through the field the table's spec names for its key
+    (``graphql_remote.by_keys``) -- ``where: {<key>: {_in: [...]}}`` on the table's own field, or
+    a field taking the list of IDs. A table is row-materialized only where it has such a field
+    (refused at registration otherwise), so a table without one is a defect here, raised by
+    name. The registration is looked up in state at each read."""
+    from provisa.graphql_remote.by_keys import BY_KEYS, WHERE_IN
+
+    async def _load(
+        source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
+    ) -> list[dict]:
+        from provisa.graphql_remote.executor import execute_remote
+
+        if not keys:
+            return []
+        gql_sources = state.graphql_remote_sources
+        _reg, tbl = _graphql_remote_registration(gql_sources, source, table)
+        request = _graphql_remote_request(gql_sources, source, table)
+        (key,) = pk_columns
+        fetch = (tbl.get(BY_KEYS) or {}).get(key)
+        if fetch is None:
+            raise UnsupportedSourceFetch(
+                f"graphql_remote source {source.id!r} table {table.table_name!r}: its remote "
+                f"schema has no field returning its rows for a list of {key!r}"
+            )
+        values = [k[0] for k in keys]
+        columns = request["columns"]
+        if fetch["style"] == WHERE_IN:
+            # The table's own field, with its fixed arguments and the filter on the key.
+            variables = {
+                **(request["variables"] or {}),
+                fetch["arg"]: {fetch["key"]: {"_in": values}},
+            }
+            fixed = [a for a in request["required_args"] or [] if a["name"] in variables]
+            rows_path = request["rows_path"]
+        else:
+            variables = {fetch["arg"]: values}
+            fixed = []
+            rows_path = None
+            if fetch["on"] is not None:
+                # The field returns an interface or union: the table's fields are its type's.
+                columns = [f"... on {fetch['on']} {{ {' '.join(columns)} }}"]
+        answer = await execute_remote(
+            request["url"],
+            request["auth"],
+            fetch["field"],
+            columns,
+            variables=variables,
+            required_args=[
+                *(a for a in fixed if a["name"] != fetch["arg"]),
+                {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
+            ],
+            rows_path=rows_path,
+            # A connection is read at the page size its registration priced.
+            limit=state.config.graphql_remote.max_list_items if rows_path else None,
+            error_policy=request["error_policy"],
+        )
+        # A list of IDs answers null for an ID it does not know.
+        return [row for row in answer.rows if row is not None]
+
+    return _load
+
+
+def make_graphql_remote_loader(
+    gql_sources: dict[str, Any], max_rows: int, page_size: int
+) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1811,51 +1974,11 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
     ``gql_sources`` maps source_id → a registration dict (``url``, ``auth``, ``tables``); each table
     carries its ``field_name``/``sql_name`` and ``columns`` (a column's ``gql_selection`` overrides
     its name for nested object fields). A table with no matching registration raises
-    :class:`UnsupportedSourceFetch`."""
+    :class:`UnsupportedSourceFetch`. ``page_size``: the rows a page of a connection table asks
+    for -- ``graphql_remote.max_list_items``, the size its registration priced its query at."""
 
     def _request(source: Any, table: Any) -> dict:
-        """The remote call for ``table``: url, auth, field name and column selections."""
-        from provisa.compiler.naming import apply_gql_name, apply_sql_name
-        from provisa.graphql_remote.executor import NO_POLICY
-
-        normalised = apply_sql_name(table.table_name)
-        for reg in gql_sources.values():
-            for tbl in reg.get("tables", []):
-                if tbl.get("sql_name") in (table.table_name, normalised):
-                    cols = tbl.get("columns", [])
-
-                    # The store lands under the semantic sql name; the remote keys the field by its
-                    # GraphQL name. Both derive from the naming authority. When they differ, emit a
-                    # GraphQL alias ``<sql_name>: <gqlField>`` so the outbound field matches the remote
-                    # AND the response comes back keyed by the sql name the store expects; when they
-                    # coincide, the bare field. gql_selection (nested object path) still wins.
-                    def _selection(c: dict) -> str:
-                        if c.get("gql_selection"):
-                            return c["gql_selection"]
-                        sql_name = apply_sql_name(c["name"])
-                        gql_field = apply_gql_name(c["name"])
-                        return gql_field if sql_name == gql_field else f"{sql_name}: {gql_field}"
-
-                    col_selections = [_selection(c) for c in cols]
-                    return {
-                        "url": reg["url"],
-                        "auth": reg.get("auth"),
-                        "field_name": tbl.get("field_name") or tbl["name"],
-                        "columns": col_selections,
-                        "rows_path": tbl.get("rows_path"),
-                        "error_policy": reg.get("error_policy") or NO_POLICY,
-                        # REQ-2061: the table's fixed arguments, sent on every read of it.
-                        "variables": dict(tbl.get("arguments") or {}) or None,
-                        "required_args": [
-                            *(tbl.get("required_args") or []),
-                            *(tbl.get("optional_args") or []),
-                        ]
-                        or None,
-                    }
-        raise UnsupportedSourceFetch(
-            f"graphql_remote source {source.id!r} table {table.table_name!r}: no matching "
-            f"registration in graphql_remote_sources"
-        )
+        return _graphql_remote_request(gql_sources, source, table)
 
     def _pages(source: Any, table: Any) -> Any:
         """A connection table's whole collection, page by page; a read reaching max_rows with
@@ -1872,6 +1995,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
             request["columns"],
             request["rows_path"],
             table=f"{source.id}.{table.table_name}",
+            page_size=page_size,
             # REQ-318: the table's own bound where it set one (registry row), else the operator's.
             max_rows=connection_max_rows(table.pagination, max_rows),
             error_policy=request["error_policy"],

@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { useState, useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Settings } from "lucide-react";
 import {
   ActionIcon,
   Alert,
@@ -40,7 +41,7 @@ import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
-import { domainGqlAlias } from "../types/admin";
+import { domainAliasMap, domainGqlAlias } from "../types/admin";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
@@ -57,16 +58,25 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
+import { CatalogsTab } from "../components/admin/CatalogsTab";
+import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
+import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { EmailTab } from "../components/admin/EmailTab";
+import { OrgRegionsTab } from "../components/admin/OrgRegionsTab"; // REQ-1922
+import { PlatformRegionsTab } from "../components/admin/PlatformRegionsTab"; // REQ-1922
 import { SettingsCatalogPanel } from "../components/admin/SettingField";
-import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
+import {
+  ApolloSubgraphCard,
+  DomainModeCard,
+  NamingConventionsCard,
+} from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -87,6 +97,8 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/email": "Email", // REQ-1576: the mail transport platform messages go out through
   "/admin/maintenance": "Maintenance", // REQ-1466: the scheduled-downtime banner
   "/admin/deployment-settings": "Deployment settings", // REQ-1913: every operator setting
+  "/admin/platform": "Platform", // REQ-1922: the platform's regions
+  "/admin/regions": "Regions", // REQ-1922: the org's stores and regions
   "/admin/billing": "Billing", // REQ-1469: plan, current bill, next charge
   "/admin/system-health": "Dashboard",
   // REQ-1008: MCP status is read-only deployment health, so it sits on the dashboard rather than
@@ -97,9 +109,12 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
+  "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
+  "/admin/reference-library": "Reference library", // REQ-2185: the documents assistants draw on
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
+  "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
@@ -162,7 +177,7 @@ export function AdminPage() {
   // Apollo hooks for cache-and-network queries and mutations
   const { sources, loading: sourcesLoading } = useSources();
   const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
-  const { tables, loading: tablesLoading } = useTables();
+  const { tables, loading: tablesLoading } = useTables({ columns: false });
   const { relationships, loading: relsLoading } = useRelationships();
   const { rlsRules, loading: rlsLoading } = useRLSRules();
   const { roles } = useRoles();
@@ -215,6 +230,8 @@ export function AdminPage() {
 
   // REQ-1940: sort and group are the shared list mechanism.
   const assignable = new Set(assignableDomainIds(domains.map((d) => d.id)));
+  // REQ-471: each domain's alias as its root fields are named, every one its own.
+  const aliases = domainAliasMap(domains);
   const userDomains = domains.filter((d) => assignable.has(d.id));
   const domainColumns: ListColumn<(typeof domains)[number]>[] = [
     { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
@@ -223,7 +240,7 @@ export function AdminPage() {
       label: t("adminPage.colDescription"),
       sortValue: (d) => d.description ?? "",
     },
-    { key: "alias", label: t("adminPage.colGqlAlias"), sortValue: (d) => domainGqlAlias(d) },
+    { key: "alias", label: t("adminPage.colGqlAlias"), sortValue: (d) => aliases[d.id] },
     {
       key: "parent",
       label: t("adminPage.colParentDomain"),
@@ -309,14 +326,16 @@ export function AdminPage() {
   // `main` already provides (the same `page-sticky-head` pattern the sticky-header list
   // pages use) instead of the plain block-flow the other admin tabs render into.
   const isGlossary = activeTab === "Glossary";
+  // The reference library's list and detail panel fill to the bottom of the viewport as well.
+  const fills = isGlossary || activeTab === "Reference library";
 
   return (
-    <div className={isGlossary ? "page page-sticky-head" : "page"}>
+    <div className={fills ? "page page-sticky-head" : "page"}>
       {activeTab !== "Glossary" && (
-        <Title order={2} mb="md">
+        <PageTitle icon={Settings} mb="md">
           {/* Reads as a breadcrumb: the area, then the section within it. */}
           {t("adminPage.title")} — {heading}
-        </Title>
+        </PageTitle>
       )}
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
@@ -324,7 +343,7 @@ export function AdminPage() {
       <Stack
         gap="lg"
         data-tour="admin-content"
-        style={isGlossary ? { flex: 1, minHeight: 0 } : undefined}
+        style={fills ? { flex: 1, minHeight: 0 } : undefined}
       >
         {activeTab === "Dashboard" && (
           <>
@@ -356,6 +375,10 @@ export function AdminPage() {
 
         {activeTab === "Environments" && <EnvironmentsTab />}
 
+        {activeTab === "Platform" && <PlatformRegionsTab />}
+
+        {activeTab === "Regions" && <OrgRegionsTab />}
+
         {activeTab === "Domains" && (
           <>
             {/* REQ-1349: the org's domain mode is set HERE, not on Overview — this is the tab whose
@@ -370,6 +393,7 @@ export function AdminPage() {
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                   <DomainModeCard onApplied={() => refetchDomains()} />
                   <NamingConventionsCard />
+                  <ApolloSubgraphCard />
                 </SimpleGrid>
               </CollapsibleItem>
             </Collapsibles>
@@ -481,7 +505,7 @@ export function AdminPage() {
                               <Table.Td>{d.description || "—"}</Table.Td>
                               <Table.Td>
                                 <Text c="dimmed" ff="monospace" fz="sm">
-                                  {domainGqlAlias(d)}
+                                  {aliases[d.id]}
                                 </Text>
                               </Table.Td>
                               <Table.Td>{d.parentDomainId || "—"}</Table.Td>
@@ -564,9 +588,12 @@ export function AdminPage() {
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
+        {activeTab === "Catalogs" && <CatalogsTab />}
+        {activeTab === "Reference library" && <ReferenceLibraryTab />}
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
+        {activeTab === "Classification" && <ClassificationKindsTab />}
         {activeTab === "Reports" && <ReportsTab />}
         {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>

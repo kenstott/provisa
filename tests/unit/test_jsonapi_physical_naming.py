@@ -35,14 +35,42 @@ from tests.role_state import with_surfaces
 
 _HEADERS = {"accept": "application/vnd.api+json", "X-Provisa-Role": "org_admin"}
 
-# One inquiries row joined to its pet — the shape serialize_rows produces, keyed as the *schema*
-# exposes it, which is exactly what the handler has to translate back.
+# One inquiries row joined to its pet, keyed as the *schema* exposes it (each compiled column's
+# field), which is exactly what the handler has to translate back. The engine is stubbed: the
+# Rust encoder is handed a batch of this row, one column per compiled column (``_batches``).
 _GQL_ROW = {
     "id": 1,
     "userId": 7,
     "petId": 2,
     "pet": {"id": 2, "name": "Rex", "breedName": "Poodle"},
 }
+
+
+def _batches(columns, row: dict) -> list:
+    """``row`` as the engine's one-row batch for ``columns``: each column the value at its
+    (nested_in, field); a JSON column's value as its JSON text."""
+    import json
+
+    import pyarrow as pa
+
+    def value(c):
+        holder = row if c.nested_in is None else (row.get(c.nested_in) or {})
+        v = holder.get(c.field_name)
+        return json.dumps(v) if c.json and v is not None and not isinstance(v, str) else v
+
+    return [pa.record_batch({f"c{i}": pa.array([value(c)]) for i, c in enumerate(columns)})]
+
+
+def _engine_answers(monkeypatch, name: str, row: dict | None) -> None:
+    """The JSON:API encoder ``name`` is handed ``row`` (no row for None) as the engine's batch."""
+    from provisa.executor import json_encoders
+
+    real = getattr(json_encoders, name)
+
+    def encode(batches, columns, *args, **kwargs):
+        return real([] if row is None else _batches(columns, row), columns, *args, **kwargs)
+
+    monkeypatch.setattr(json_encoders, name, encode)
 
 
 def _col(name: str, data_type: str = "varchar(100)") -> ColumnMetadata:
@@ -62,9 +90,9 @@ def _schema_input() -> SchemaInput:
                 "enable_aggregates": True,
                 "enable_group_by": True,
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
-                    {"column_name": "user_id", "visible_to": []},
-                    {"column_name": "pet_id", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["org_admin"]},
+                    {"column_name": "user_id", "visible_to": ["org_admin"]},
+                    {"column_name": "pet_id", "visible_to": ["org_admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
@@ -79,9 +107,9 @@ def _schema_input() -> SchemaInput:
                 "enable_aggregates": True,
                 "enable_group_by": True,
                 "columns": [
-                    {"column_name": "id", "visible_to": []},
-                    {"column_name": "name", "visible_to": []},
-                    {"column_name": "breed_name", "visible_to": []},
+                    {"column_name": "id", "visible_to": ["org_admin"]},
+                    {"column_name": "name", "visible_to": ["org_admin"]},
+                    {"column_name": "breed_name", "visible_to": ["org_admin"]},
                 ],
                 "write_ops": ["delete", "insert", "update"],
                 "write_returns_rows": True,
@@ -172,14 +200,9 @@ def client(monkeypatch):
         result.rows = [[1]] if plan._is_count else [[]]
         return result
 
-    def _fake_serialize(rows, columns, table):
-        # The engine result is stubbed, so the serialized shape is supplied directly — keyed as
-        # the GraphQL schema exposes it, which is what the handler must translate back.
-        return {"data": {table: [dict(_GQL_ROW)]}}
-
     monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
     monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
-    monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
+    _engine_answers(monkeypatch, "jsonapi", dict(_GQL_ROW))
     # The middleware reads the bound org's declared claim types from its runtime (REQ-2057); no
     # org runtime is built here, and none declares any.
     monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
@@ -308,20 +331,12 @@ async def test_group_by_keys_come_back_physically_named(client, monkeypatch):
     """``groupKey`` is keyed by the ``by:`` argument this handler synthesized, which went through
     the GQL convention — so it needs translating back exactly as ``nodes`` does."""
 
-    def _fake_group_by(rows, columns, node_rows, node_columns, root_field):
-        return {
-            "data": {
-                root_field: [
-                    {
-                        "groupKey": {"userId": 7},
-                        "aggregate": {"count": 3},
-                        "nodes": [dict(_GQL_ROW)],
-                    }
-                ]
-            }
-        }
-
-    monkeypatch.setattr("provisa.executor.serialize.serialize_group_by", _fake_group_by)
+    # A group's row carries its nodes, a JSON column of its own row (aggregates._nodes_column).
+    _engine_answers(
+        monkeypatch,
+        "jsonapi_group_by",
+        {"groupKey": {"userId": 7}, "aggregate": {"count": 3}, "nodes": [dict(_GQL_ROW)]},
+    )
     async with client as c:
         r = await c.get(
             "/data/jsonapi/pet-store/inquiries",
@@ -339,10 +354,7 @@ async def test_group_by_keys_come_back_physically_named(client, monkeypatch):
 async def test_a_group_by_is_sorted_by_its_group_keys_only(client, monkeypatch):
     """REQ-2007: a group-by's sort orders by its group keys; a field it does not group by is
     refused, named physically, before anything runs."""
-    monkeypatch.setattr(
-        "provisa.executor.serialize.serialize_group_by",
-        lambda rows, columns, node_rows, node_columns, root_field: {"data": {root_field: []}},
-    )
+    _engine_answers(monkeypatch, "jsonapi_group_by", None)
     async with client as c:
         refused = await c.get(
             "/data/jsonapi/pet-store/inquiries",

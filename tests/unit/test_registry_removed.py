@@ -45,10 +45,24 @@ class TestNoGovernanceReadsRegistry:
 
 
 class TestGpqExecutionPathsGone:
-    def test_cypher_query_id_returns_410(self):
+    async def test_cypher_query_id_returns_410(self):
+        """Executing an approved query by its id is gone: no route to it remains, and a request
+        naming one is answered 410 under its code, before anything is parsed or read."""
+        import json
+        from unittest.mock import MagicMock
+
+        from provisa.api.rest.cypher_router import CypherRequest, cypher_query
+
         src = (PROVISA / "api" / "rest" / "cypher_router.py").read_text()
         assert "_route_approved_query" not in src
-        assert "status_code=410" in src
+        response = await cypher_query(
+            CypherRequest(query="MATCH (n) RETURN n LIMIT 1"),
+            MagicMock(),
+            query_id="some-id",
+            x_provisa_stats=None,
+        )
+        assert response.status_code == 410
+        assert json.loads(bytes(response.body))["code"] == "cypher.query_id_removed"
 
     def test_sse_query_id_routes_to_live_engine(self):
         src = (PROVISA / "api" / "data" / "subscribe.py").read_text()

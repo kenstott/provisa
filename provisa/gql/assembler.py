@@ -20,12 +20,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids, rel_ids
-from provisa.gql.translator_types import GraphVarKind
+from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind, PathDepthExceeded
 
 
 class CypherAssemblyError(Exception):
@@ -55,6 +55,65 @@ class Edge:  # REQ-350
 class Path:  # REQ-350
     nodes: list[Node]
     edges: list[Edge]
+
+
+def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
+    """The rows of a SPARQL statement without the cut column. When a property path bounded by the
+    depth limit was cut there, the statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
+    plan's own list (``of_plan``) and the request's collector, or the collector alone where the
+    rows came from no one plan. A statement with no such path carries no cut column."""
+    cut = False
+    out: list[dict] = []
+    for row in rows:
+        key = next((k for k in row if k.lower() == CUT_COLUMN), None)
+        if key is None:
+            out.append(row)
+            continue
+        cut = cut or bool(row[key])
+        out.append({k: v for k, v in row.items() if k != key})
+    if cut:
+        from provisa.core import settings_registry
+        from provisa.core.statement_warnings import ServerWarning, tell, warn
+
+        limit = settings_registry.value("graph.depth_limit")
+        warning = ServerWarning(
+            code="statement.path_cut",
+            params={"limit": limit},
+            message=(
+                f"A path with no upper bound was cut at the graph depth limit of {limit} "
+                "hops: paths longer than that are missing from the answer."
+            ),
+        )
+        if of_plan is None:
+            warn(warning)
+        else:
+            tell(warning, of_plan)
+    return out
+
+
+def take_overrun(rows: list[dict]) -> list[dict]:  # REQ-348
+    """The rows of a Cypher statement without the cut column. A Cypher walk with no upper bound
+    takes the maximum depth (graph.depth_limit); one that reached it and could still go on fails
+    by name (:class:`PathDepthExceeded`), never answered cut short."""
+    out: list[dict] = []
+    for row in rows:
+        key = next((k for k in row if k.lower() == CUT_COLUMN), None)
+        if key is None:
+            out.append(row)
+            continue
+        if row[key]:
+            from provisa.core import settings_registry
+
+            raise PathDepthExceeded(settings_registry.value("graph.depth_limit"))
+        out.append({k: v for k, v in row.items() if k != key})
+    return out
+
+
+def answered_columns(column_names: list[str]) -> list[str]:
+    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
+    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135). The
+    same on every Cypher surface: what a read of no rows names (Bolt's fields, HTTP's columns)."""
+    return [c for c in column_names if c != CUT_COLUMN]
 
 
 def assemble_rows(  # REQ-349, REQ-350
@@ -94,22 +153,93 @@ def _assemble_row(row: dict, graph_vars: dict[str, GraphVarKind]) -> dict:
     return result
 
 
+def _json_maps(col: str, value: Any) -> Any:
+    """REQ-345: a map literal's answer, its values decoded from the JSON each was encoded to --
+    whether the engine hands the map back as a map (DuckDB, Trino) or as its JSON text
+    (Snowflake), alone or in a list."""
+    try:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, list):
+            return [None if v is None else _json_maps(col, v) for v in value]
+        if isinstance(value, dict):
+            return {k: json.loads(v) if isinstance(v, str) else v for k, v in value.items()}
+    except json.JSONDecodeError as exc:
+        raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
+    raise CypherAssemblyError(f"Unexpected map column value type for {col!r}: {type(value)}")
+
+
+def _json_list(col: str, value: Any) -> Any:
+    """A list literal of values of several types, each decoded from the JSON it was encoded to --
+    whether the engine hands the list back as a list or as its JSON text."""
+    try:
+        if isinstance(value, str):
+            value = json.loads(value)
+        if isinstance(value, list):
+            return [json.loads(v) if isinstance(v, str) else v for v in value]
+    except json.JSONDecodeError as exc:
+        raise CypherAssemblyError(f"Malformed JSON in list column {col!r}: {exc}") from exc
+    raise CypherAssemblyError(f"Unexpected list column value type for {col!r}: {type(value)}")
+
+
 def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if value is None:
         return None
-    if kind == GraphVarKind.MAP:
+    if kind == GraphVarKind.JSON_MAP:
+        return _json_maps(col, value)
+    if kind == GraphVarKind.JSON_LIST:
+        return _json_list(col, value)
+    if kind == GraphVarKind.JSON_VALUE:
+        try:
+            return json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError as exc:
+            raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
+    if kind == GraphVarKind.PROPERTIES:
+        try:
+            held = json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError as exc:
+            raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
+        if not isinstance(held, dict):
+            raise CypherAssemblyError(f"properties() in {col!r} is no map: {held!r}")
+        return {k: v for k, v in held.items() if v is not None}
+    if kind == GraphVarKind.DURATION:  # REQ-2173
+        from provisa.gql.temporal import Duration
+
+        months, days, micros = (int(v) for v in value)
+        return Duration(months, days, micros)
+    if kind == GraphVarKind.DURATION_LIST:  # REQ-2173
+        from provisa.gql.temporal import Duration
+
+        # A null item's parts are each null.
+        return [None if item[0] is None else Duration(*(int(v) for v in item)) for item in value]
+    if kind == GraphVarKind.POINT:
+        from provisa.gql.spatial import returned
+
+        return returned(list(value))
+    if kind == GraphVarKind.ZONED:  # REQ-2173
+        from provisa.gql.temporal import zoned_value
+
+        instant, zone = value
+        return zoned_value(int(instant), str(zone))
+    if kind in (GraphVarKind.MAP, GraphVarKind.TERM):
         # REQ-1991: a declared object column; an engine hands it back as JSON text or decoded.
+        # REQ-2135: an RDF term likewise, its IRI built from it by the answer's writer.
         if isinstance(value, str):
             try:
                 return json.loads(value)
             except json.JSONDecodeError as exc:
                 raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
         return value
+    data: Any
     try:
         if isinstance(value, str):
             data = json.loads(value)
         elif isinstance(value, dict):
             data = value
+        elif isinstance(value, list) and kind in (GraphVarKind.NODE, GraphVarKind.EDGE):
+            # A list of nodes or relationships the engine hands back as a list of JSON values (a
+            # session walk's, REQ-751), each its text or decoded.
+            data = [json.loads(v) if isinstance(v, str) else v for v in value]
         else:
             raise CypherAssemblyError(
                 f"Unexpected graph column value type for {col!r}: {type(value)}"
@@ -119,11 +249,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
 
     if kind == GraphVarKind.NODE:
         if isinstance(data, list):
-            return [_parse_node(n) for n in data if isinstance(n, dict)]
+            return _present([_parse_node(n) for n in data if isinstance(n, dict)])
         return _parse_node(data)
     if kind == GraphVarKind.EDGE:
         if isinstance(data, list):
-            return [_parse_edge(e) for e in data if isinstance(e, dict)]
+            return _present([_parse_edge(e) for e in data if isinstance(e, dict)])
         return _parse_edge(data)
     if kind == GraphVarKind.PASSTHROUGH:
         # Auto-detect: edge JSON has 'type' + ('identity' or 'startNode'); node JSON has 'label'
@@ -132,10 +262,12 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return _parse_node(data)
     if kind == GraphVarKind.PATH:
         if "nodes" in data and "edges" in data:
-            return Path(
-                nodes=[_parse_node(n) for n in data["nodes"]],
-                edges=[_parse_edge(e) for e in data["edges"]],
-            )
+            nodes = [_parse_node(n) for n in data["nodes"]]
+            edges = [_parse_edge(e) for e in data["edges"]]
+            # A path through a node or relationship that is null is no path: null.
+            if any(n is None for n in nodes) or any(e is None for e in edges):
+                return None
+            return Path(nodes=_present(nodes), edges=_present(edges))
         # Flat-JOIN path: {start, end, length} — build stub path
         start_id = str(data.get("start", ""))
         end_id = str(data.get("end", ""))
@@ -144,7 +276,19 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return Path(nodes=[start_node, end_node], edges=[])
 
 
-def _parse_node(data: dict) -> Node:
+_T = TypeVar("_T")
+
+
+def _present(items: list[_T | None]) -> list[_T]:
+    """The items that are something: an OPTIONAL MATCH that matched nothing adds no element."""
+    return [i for i in items if i is not None]
+
+
+def _parse_node(data: dict) -> Node | None:
+    """A node, or None when its key is null: an OPTIONAL MATCH that matched nothing gives null, as
+    Neo4j does, never a node of nulls."""
+    if data.get("id") is None:
+        return None
     raw_props = (
         data["properties"]
         if "properties" in data and isinstance(data["properties"], dict)
@@ -158,30 +302,33 @@ def _parse_node(data: dict) -> Node:
     )
 
 
-def _parse_edge(data: dict) -> Edge:
+def _end_of(data: dict, keys: tuple[str, str], id_key: str | None) -> dict | None:
+    """One end of an edge as a node's JSON: its node object, or a stub of its id (an edge carrying
+    only ``start``/``end``, or a legacy edge naming its end by id). None when the end is null."""
+    raw = data.get(keys[0]) or data.get(keys[1])
+    if isinstance(raw, dict):
+        return raw
+    ident = data.get(id_key) if id_key is not None else raw
+    if ident is None:
+        return None
+    return {"id": str(ident), "label": "", "properties": {}}
+
+
+def _parse_edge(data: dict) -> Edge | None:
     # Support both Neo4j format (identity/start/end) and legacy format (id/startNode/endNode).
     has_neo4j = "identity" in data
-    if has_neo4j:
-        edge_id = str(data.get("identity", ""))
-        start_raw = data.get("startNode") or data.get("start_node") or {}
-        end_raw = data.get("endNode") or data.get("end_node") or {}
-        if not isinstance(start_raw, dict):
-            start_raw = {"id": str(data.get("start", "")), "label": "", "properties": {}}
-        if not isinstance(end_raw, dict):
-            end_raw = {"id": str(data.get("end", "")), "label": "", "properties": {}}
-    else:
-        edge_id = str(data.get("id", ""))
-        start_raw = data.get("startNode") or data.get("start_node") or {}
-        end_raw = data.get("endNode") or data.get("end_node") or {}
-        if not isinstance(start_raw, dict):
-            start_raw = {"id": str(start_raw), "label": "", "properties": {}}
-        if not isinstance(end_raw, dict):
-            end_raw = {"id": str(end_raw), "label": "", "properties": {}}
+    edge_id = str(data.get("identity", "")) if has_neo4j else str(data.get("id", ""))
+    start_raw = _end_of(data, ("startNode", "start_node"), "start" if has_neo4j else None)
+    end_raw = _end_of(data, ("endNode", "end_node"), "end" if has_neo4j else None)
+    start_node = _parse_node(start_raw) if start_raw is not None else None
+    end_node = _parse_node(end_raw) if end_raw is not None else None
+    if start_node is None or end_node is None:
+        return None  # a relationship with a null end is null (an OPTIONAL MATCH matched nothing)
     return Edge(
         id=edge_id,
         type=str(data.get("type", "")),
-        start_node=_parse_node(start_raw),
-        end_node=_parse_node(end_raw),
+        start_node=start_node,
+        end_node=end_node,
         properties=data["properties"]
         if "properties" in data and isinstance(data["properties"], dict)
         else {
@@ -257,12 +404,16 @@ def _assemble_with_paths(
 
                     # Extract nodes and edges arrays from path data
                     if "nodes" in data and "edges" in data:
-                        nodes.extend(_parse_node(n) for n in data["nodes"])
-                        edges.extend(_parse_edge(e) for e in data["edges"])
+                        found = [_parse_node(n) for n in data["nodes"]]
+                        found_edges = [_parse_edge(e) for e in data["edges"]]
                     elif "id" in data and "label" in data:
-                        nodes.append(_parse_node(data))
+                        found, found_edges = [_parse_node(data)], []
                     elif "id" in data and "type" in data:
-                        edges.append(_parse_edge(data))
+                        found, found_edges = [], [_parse_edge(data)]
+                    else:
+                        continue
+                    nodes.extend(_present(found))
+                    edges.extend(_present(found_edges))
 
             path_result[col] = Path(nodes=nodes, edges=edges)
 
@@ -329,10 +480,11 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
             if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
                 new_v["end"] = id_map[new_v["end"]]
             return new_v
-        if "nodes" in v and "edges" in v:
-            # Path dict — recurse into both lists so node IDs get replaced.
-            return {k: _apply_id_map(val, id_map) for k, val in v.items()}
-        return v
+        if "label" in v and "properties" in v:
+            return v
+        # A path, or a map holding nodes ({node1: n, rel: r}): each value's node IDs are
+        # replaced, so two nodes a map holds are never one id (0) to the client.
+        return {k: _apply_id_map(val, id_map) for k, val in v.items()}
     if isinstance(v, list):
         return [_apply_id_map(item, id_map) for item in v]
     return v
@@ -450,10 +602,15 @@ async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> Non
         serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}
 
 
-def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
-    """Recursively convert Node/Edge/Path to JSON-serializable dicts."""
+def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, REQ-350
+    """Recursively convert Node/Edge/Path to JSON-serializable dicts. A temporal value is
+    written as Cypher writes it, unless ``keep_values`` (Bolt, which sends it as its own
+    structure, REQ-2173)."""
     import datetime
     from decimal import Decimal
+
+    from provisa.gql.spatial import Point
+    from provisa.gql.temporal import Duration
 
     if isinstance(obj, Node):
         return {
@@ -480,13 +637,19 @@ def to_serializable(obj: Any) -> Any:  # REQ-349, REQ-350
             "edges": [to_serializable(e) for e in obj.edges],
         }
     if isinstance(obj, dict):
-        return {k: to_serializable(v) for k, v in obj.items()}
+        return {k: to_serializable(v, keep_values=keep_values) for k, v in obj.items()}
     if isinstance(obj, list):
-        return [to_serializable(i) for i in obj]
-    if isinstance(obj, datetime.datetime):
-        return obj.isoformat()
-    if isinstance(obj, datetime.date):
-        return obj.isoformat()
+        return [to_serializable(i, keep_values=keep_values) for i in obj]
+    if keep_values and isinstance(obj, (datetime.date, datetime.time, Duration, Point)):
+        return obj
+    if isinstance(obj, Point):
+        return obj.as_map()
+    if isinstance(obj, Duration):  # REQ-2173: as Cypher writes it
+        return obj.iso()
+    if isinstance(obj, (datetime.date, datetime.time)):  # REQ-2173: as Cypher writes it
+        from provisa.gql.temporal import cypher_text
+
+        return cypher_text(obj)
     if isinstance(obj, Decimal):
         return float(obj)
     return obj

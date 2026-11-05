@@ -63,6 +63,11 @@ jobs:
           name: provisa-ui-dist
           path: provisa-ui/dist/
 
+      # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
+      - name: Install the Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.95.0 --profile minimal
+
       - name: Build installer (native tier, Inno Setup)
         shell: pwsh
         env:

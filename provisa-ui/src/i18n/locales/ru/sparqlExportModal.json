@@ -1,0 +1,19 @@
+{
+  "sparqlExportModal": {
+    "title": "Экспорт SPARQL",
+    "result": "Результат",
+    "format": "Формат",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "Результаты SPARQL (JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "Скачать",
+    "close": "Закрыть",
+    "empty": "Выполните запрос, чтобы экспортировать его результат.",
+    "unnamedEdges": "Рёбра этого графа не называют предикат, поэтому в нём нет триплетов для записи в RDF."
+  }
+}

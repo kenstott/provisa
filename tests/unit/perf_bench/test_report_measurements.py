@@ -318,7 +318,7 @@ def test_a_response_without_stats_is_an_error() -> None:
 
 
 def test_the_stats_header_profile_covers_http_transports_only() -> None:
-    assert measurements.PROFILE_TRANSPORTS == ("graphql", "data_sql", "cypher_http")
+    assert measurements.PROFILE_TRANSPORTS == ("graphql", "data_sql", "cypher_http", "sparql")
 
 
 def test_profile_sends_the_header_and_aggregates(tmp_path: Path) -> None:

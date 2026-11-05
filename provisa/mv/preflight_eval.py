@@ -38,7 +38,7 @@ from provisa.federation.execution_auth import system_auth
 
 from provisa.mv.preflight import Verdict, run_preflight
 from provisa.mv.preflight_sql import _quoted_from, translate
-from provisa.mv.preprocess import compile_preprocess
+from provisa.mv.preflight_services import compile_check
 from provisa.processors.arrow import rows_of
 
 
@@ -65,15 +65,25 @@ async def _open_input_streams(engine: Any, input_nodes: Iterable[str]) -> dict[s
 
 
 async def evaluate_streams(
-    engine: Any, source: str | None, input_nodes: Iterable[str], ctx: Any
+    engine: Any,
+    source: str | None,
+    input_nodes: Iterable[str],
+    ctx: Any,
+    *,
+    product_id: str | None = None,
+    hold: bool = False,
+    table_id: int | None = None,
 ) -> Verdict | None:
     """Evaluate a preflight check over per-input Arrow streams (REQ-1165). ``None`` when no check.
 
     SQL-expressible → engine-side count probe over the named input node. Otherwise → open a lazy
     Arrow stream per input and run the compiled hook against the ``{node: rows}`` dict. The Arrow
     path REQUIRES ARROW_STREAM and fails loud when the engine does not advertise it."""
+    held = await _hold_on_failing_checks(ctx, hold, table_id, source, product_id)
+    if held is not None and not held.is_continue:
+        return held
     if source is None or not source.strip():
-        return None
+        return held
     sqlpf = translate(source)
     if sqlpf is not None:
         # REQ-1912: the probe counts the input where the engine reads it.
@@ -84,26 +94,62 @@ async def evaluate_streams(
     from provisa.federation.runtime import EngineCapability  # noqa: PLC0415
 
     engine.require(EngineCapability.ARROW_STREAM)  # fail loud — never materialize the whole input
-    fn = compile_preprocess(source)
+    # REQ-2133: a check that imports provisa_services runs with them bound, dq relating checkers
+    # to the view's product.
+    fn = compile_check(source, subject=f"view {ctx.node}", product_id=product_id)
     streams = await _open_input_streams(engine, input_nodes)
     return await run_preflight(fn, streams, ctx)
 
 
+async def _hold_on_failing_checks(
+    ctx: Any, hold: bool, table_id: int | None, source: str | None, product_id: str | None
+) -> Verdict | None:
+    """REQ-2133: the view's Hold on failing checks verdict (None when the option is off), run before
+    its own preflight -- the refresh lands only if both continue. A view whose check asks dq is given
+    its nearest physical inputs on ``ctx`` whichever check asks."""
+    from provisa.mv import hold_checks
+    from provisa.mv.preprocess import uses_services
+
+    if table_id is not None and (hold or uses_services(source)):
+        ctx.nearest_inputs = await hold_checks.nearest_inputs(table_id)
+    if not hold:
+        return None
+    if table_id is None:
+        raise ValueError(
+            f"view {ctx.node} holds on failing checks, but it is no registered view table, so it "
+            "has no inputs to check"
+        )
+    check = compile_check(hold_checks.SOURCE, subject=f"view {ctx.node}", product_id=product_id)
+    return await run_preflight(check, {}, ctx)
+
+
 def make_streams_evaluator(
-    engine: Any, source: str | None, input_nodes: Iterable[str]
+    engine: Any,
+    source: str | None,
+    input_nodes: Iterable[str],
+    *,
+    product_id: str | None = None,
+    hold: bool = False,
+    table_id: int | None = None,
 ) -> Callable[[Any, Any], Awaitable[Verdict | None]] | None:
     """Bind a preflight evaluator for the event loop (REQ-1165). ``None`` when the node declares no
     check. Fails LOUD at wiring when the check needs streaming (not SQL-expressible) and the engine
     lacks ARROW_STREAM — a streaming preflight on a non-streaming engine is rejected at boot.
 
     The returned callable has the gate signature ``(rows, ctx) -> Verdict | None``; ``rows`` (the
-    produced OUTPUT) is ignored — a preflight's subject is its INPUTS, streamed, not the output."""
-    if source is None or not source.strip():
+    produced OUTPUT) is ignored — a preflight's subject is its INPUTS, streamed, not the output.
+    A view that holds on failing checks (REQ-2133) is checked with no preflight of its own."""
+    if (source is None or not source.strip()) and not hold:
         return None
     from provisa.federation.runtime import EngineCapability  # noqa: PLC0415
 
     nodes = tuple(input_nodes)
-    if _requires_stream(source) and not engine.supports(EngineCapability.ARROW_STREAM):
+    if (
+        source is not None
+        and source.strip()
+        and _requires_stream(source)
+        and not engine.supports(EngineCapability.ARROW_STREAM)
+    ):
         raise ValueError(
             f"preflight check requires ARROW_STREAM but engine {getattr(engine, 'name', '?')!r} "
             f"does not advertise it (there is no materialize fallback)"
@@ -111,7 +157,9 @@ def make_streams_evaluator(
 
     async def _eval(rows: Any, ctx: Any) -> Verdict | None:
         del rows  # the gate streams inputs; the produced output is not its subject
-        return await evaluate_streams(engine, source, nodes, ctx)
+        return await evaluate_streams(
+            engine, source, nodes, ctx, product_id=product_id, hold=hold, table_id=table_id
+        )
 
     return _eval
 
@@ -127,7 +175,7 @@ def make_rows_evaluator(
     authoring shape as an MV check."""
     if source is None or not source.strip():
         return None
-    fn = compile_preprocess(source)
+    fn = compile_check(source, subject=f"table {node}")
 
     async def _eval(rows: Any, ctx: Any) -> Verdict | None:
         return await run_preflight(fn, {node: rows}, ctx)

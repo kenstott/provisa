@@ -40,6 +40,7 @@ from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import (
     data_products,
     domains,
+    glossary_terms,
     registered_tables,
     roles,
     sources,
@@ -85,6 +86,7 @@ def _prepare_sync():
                 sources,
                 domains,
                 data_products,  # REQ-1634: registered_tables.product_id FKs it
+                glossary_terms,  # REQ-2130: registered_tables.class_term_id FKs it
                 registered_tables,
                 table_columns,
                 user_directory,  # REQ-1439: every authenticated request upserts it

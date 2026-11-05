@@ -143,11 +143,14 @@ def request_variables(  # REQ-1986
     field_name: str,
     where: dict[str, dict[str, Any]],
     params: dict[str, Any] | None = None,
+    travel: dict[str, str] | None = None,
 ) -> RequestVariables:
-    """The request's filter (``where``) and parameters (``params``, by argument name) as variables
-    of root field ``field_name``, each declared with the type of the argument it fills.
+    """The request's filter (``where``), parameters (``params``, by argument name) and time travel
+    (``travel``: ``as_of`` / ``as_recorded``, REQ-1163) as variables of root field ``field_name``,
+    each declared with the type of the argument it fills.
 
-    A parameter must be a native argument of the field; any other name is refused naming it."""
+    A parameter must be a native argument of the field; any other name is refused naming it. A
+    time the field's relation does not travel by is refused naming the field."""
     query_type = schema.query_type
     root = query_type.fields.get(field_name) if query_type is not None else None
     if root is None:
@@ -170,6 +173,22 @@ def request_variables(  # REQ-1986
         values[arg_name] = _coerced(value, arg.type, f"parameter {name!r}")
         declarations.append(f"${arg_name}: {arg.type}")
         arguments.append(f"{arg_name}: ${arg_name}")
+    for name, value in (travel or {}).items():
+        travel_arg = root.args.get(name)
+        if travel_arg is None:
+            raise RequestRefused(
+                f"{field_name} takes no {name}: as_of and as_recorded apply to bitemporal tables "
+                "and views, and as_recorded to Iceberg and Delta tables"
+            )
+        from provisa.mv.bitemporal import parse_as_of, parse_as_recorded
+
+        try:
+            (parse_as_of if name == "as_of" else parse_as_recorded)(value)
+        except ValueError as err:
+            raise RequestRefused(f"invalid {name}: {err}") from err
+        values[name] = value
+        declarations.append(f"${name}: {travel_arg.type}")
+        arguments.append(f"{name}: ${name}")
     return RequestVariables(tuple(declarations), tuple(arguments), values)
 
 

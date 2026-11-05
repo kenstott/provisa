@@ -16,8 +16,9 @@ of a role's domain list, each showing the three cases side by side: ``[]`` reach
 (``naming.use_domains: false``) is the one exemption and is decided in one function, so each
 reader is also shown honouring it.
 
-A column's ``visible_to=[]`` is a different list with the opposite reading (visible to every
-role) and is unchanged; the tables here use it so that domain scope is the only thing deciding.
+A column's ``visible_to`` is a different list: the roles it names read the column, and an empty
+one is no role (REQ-2154). The tables here grant every test role, so that domain scope is the only
+thing deciding.
 
 A missing role is an error, never a default: every entry point that takes the acting role raises
 when it is not there.
@@ -39,6 +40,7 @@ from provisa.compiler.stage2 import GovernanceContext, build_governance_context
 from provisa.core import domain_policy
 from provisa.security.rights import (
     META_DOMAIN_ID,
+    SYSTEM_DOMAINS,
     UnknownRoleError,
     compute_meta_row_scope,
     effective_domain_access_role,
@@ -51,12 +53,24 @@ DOMAIN_OF = {SALES: "sales", FINANCE: "finance", META: META_DOMAIN_ID, OPS: "ops
 NAME_OF = {SALES: "orders", FINANCE: "ledger", META: "registered_tables_meta", OPS: "queries"}
 
 # The root field each table gets (GraphQL Query field and proto Query message alike).
-ROOT_OF = {SALES: "orders", FINANCE: "ledger", META: "registeredTablesMeta", OPS: "queries"}
+ROOT_OF = {SALES: "orders", FINANCE: "ledger", META: "registeredTablesMeta", OPS: "op_queries"}
 
 CASES = [
     pytest.param([], set(), id="empty-reaches-nothing"),
-    pytest.param(["*"], {"sales", "finance", META_DOMAIN_ID, "ops"}, id="wildcard-reaches-all"),
+    # "*" is every data domain; a system domain is listed where flattening adds it for its
+    # capability (test_system_domains_reach.py).
+    pytest.param(["*"], {"sales", "finance"}, id="wildcard-reaches-every-data-domain"),
+    pytest.param(
+        ["*", META_DOMAIN_ID, "ops"],
+        {"sales", "finance", META_DOMAIN_ID, "ops"},
+        id="wildcard-holding-the-capabilities-reaches-all",
+    ),
     pytest.param(["sales"], {"sales"}, id="listed-reaches-only-itself"),
+    pytest.param(
+        ["sales", META_DOMAIN_ID],
+        {"sales", META_DOMAIN_ID},
+        id="listed-holding-catalog-read-reaches-the-catalog",
+    ),
 ]
 
 
@@ -69,9 +83,12 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
     }
 
 
+# Every role these tests act as: the tables grant them all, so domain scope alone decides.
+TEST_ROLES = ["r", "s", "a", "b", "newrole", "sales_reader", "finance_reader", "cataloguer"]
+
+
 def _tables() -> list[dict]:
-    """One table per domain. ``visible_to=[]`` (every role) on the data columns; ``ops`` is a
-    lockdown domain, so its column names the role explicitly."""
+    """One table per domain, its data column granted to every test role."""
     return [
         {
             "id": tid,
@@ -82,7 +99,7 @@ def _tables() -> list[dict]:
             "columns": [
                 {
                     "column_name": "id",
-                    "visible_to": ["r"] if tid == OPS else [],
+                    "visible_to": list(TEST_ROLES),
                     "native_filter_type": None,
                 }
             ],
@@ -111,16 +128,20 @@ def _schema_input(role: dict) -> SchemaInput:
 def _ctx() -> CompilationContext:
     ctx = CompilationContext()
     for tid, domain in DOMAIN_OF.items():
-        ctx.tables[NAME_OF[tid]] = TableMeta(
+        # REQ-2163: the ops table's field carries the ops schema's SDL prefix, as the build names it.
+        field = ROOT_OF[tid] if tid == OPS else NAME_OF[tid]
+        ctx.tables[field] = TableMeta(
             table_id=tid,
-            field_name=NAME_OF[tid],
-            type_name=NAME_OF[tid].title(),
+            field_name=field,
+            type_name=field.title(),
             source_id="pg",
             catalog_name="pg",
             schema_name="public",
             table_name=NAME_OF[tid],
             domain_id=domain,
         )
+        # Each table's one column, as the tables above have it: a graph node is identified by it.
+        ctx.aggregate_columns[tid] = [("id", "integer")]
     return ctx
 
 
@@ -140,9 +161,7 @@ def single_domain(monkeypatch):
 @pytest.mark.parametrize("held,reached", CASES)
 def test_the_roles_schema_holds_only_the_domains_it_lists(multi_domain, held, reached):
     domains = {t.domain_id for t in _build_visible_tables(_schema_input(_role(held)))}
-    # meta is an implicit TRAVERSAL domain: its tables stay in a schema as targets, never as
-    # roots (asserted on the root fields below), so it is set aside here.
-    assert domains - {META_DOMAIN_ID} == reached - {META_DOMAIN_ID}
+    assert domains == reached
 
 
 @pytest.mark.parametrize("held,reached", CASES)
@@ -166,12 +185,13 @@ def test_the_roles_root_fields_are_only_the_domains_it_lists(multi_domain, held,
 
 
 def test_single_domain_mode_shows_every_table_whatever_the_list(single_domain):
+    # Every data table: a system domain is its capability's in this mode too (REQ-1132).
     domains = {t.domain_id for t in _build_visible_tables(_schema_input(_role([])))}
-    assert domains == set(DOMAIN_OF.values())
+    assert domains == {"sales", "finance"}
 
 
-def test_a_columns_empty_visible_to_still_means_every_role(multi_domain):
-    # The other list: visible_to=[] on a column is visible to every role that reaches the table.
+def test_a_columns_grant_decides_who_within_reach(multi_domain):
+    # The other list: a column's grant names who reads it within the table's domain.
     (info,) = [
         t for t in _build_visible_tables(_schema_input(_role(["sales"]))) if t.domain_id == "sales"
     ]
@@ -219,8 +239,10 @@ def test_v001_is_not_a_gate_in_single_domain_mode(single_domain):
     "held,scope",
     [
         pytest.param([], set(), id="empty-sees-no-catalog-rows"),
-        pytest.param(["*"], None, id="wildcard-sees-the-whole-catalog"),
-        pytest.param([META_DOMAIN_ID], None, id="meta-grant-sees-the-whole-catalog"),
+        pytest.param(["*"], {SALES, FINANCE}, id="wildcard-sees-every-data-table"),
+        pytest.param(["*", META_DOMAIN_ID], {SALES, FINANCE, META}, id="wildcard-holding-meta"),
+        pytest.param(["*", *SYSTEM_DOMAINS], None, id="every-domain-sees-the-whole-catalog"),
+        pytest.param(["sales", META_DOMAIN_ID], {SALES, META}, id="catalog-read-opens-no-rows"),
         pytest.param(["sales"], {SALES}, id="listed-sees-its-own-tables"),
     ],
 )
@@ -244,8 +266,8 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
     assert gov.rls_rules[100] == "id IN (-1)"
 
 
-def test_single_domain_mode_sees_the_whole_catalog(single_domain):
-    assert compute_meta_row_scope(_role([]), _tables(), []) is None
+def test_single_domain_mode_sees_every_data_table(single_domain):
+    assert compute_meta_row_scope(_role([]), _tables(), []) == {SALES, FINANCE}
 
 
 # --- security.visibility.visible_tables ----------------------------------------------------------
@@ -265,7 +287,12 @@ def test_visible_tables_follow_the_roles_list(multi_domain, held, reached):
 
 @pytest.mark.parametrize(
     "held,meta_is_a_root",
-    [(["sales"], False), (["sales", META_DOMAIN_ID], True), (["*"], True)],
+    [
+        (["sales"], False),
+        (["sales", META_DOMAIN_ID], True),
+        (["*"], False),
+        (["*", META_DOMAIN_ID], True),
+    ],
 )
 def test_the_proto_query_message_roots_follow_the_roles_list(multi_domain, held, meta_is_a_root):
     from provisa.grpc.proto_gen import generate_proto
@@ -289,7 +316,13 @@ def test_a_role_listing_no_domain_has_no_proto_roots(multi_domain):
 
 @pytest.mark.parametrize(
     "held,meta_is_a_match_root",
-    [([], False), (["sales"], False), ([META_DOMAIN_ID], True), (["*"], True)],
+    [
+        ([], False),
+        (["sales"], False),
+        ([META_DOMAIN_ID], True),
+        (["*"], False),
+        (["*", META_DOMAIN_ID], True),
+    ],
 )
 def test_the_catalog_is_a_match_root_only_for_a_role_that_reaches_it(
     multi_domain, held, meta_is_a_match_root
@@ -298,8 +331,8 @@ def test_the_catalog_is_a_match_root_only_for_a_role_that_reaches_it(
 
     lm = CypherLabelMap.from_schema(_ctx(), domain_access=held)
     meta_nodes = [n for n in lm.nodes.values() if n.domain_id == META_DOMAIN_ID]
-    assert meta_nodes, "the fixture has a meta table"
-    assert all(n.traversal_only != meta_is_a_match_root for n in meta_nodes)
+    assert bool(meta_nodes) == meta_is_a_match_root
+    assert not any(n.traversal_only for n in meta_nodes)
 
 
 def test_a_label_map_is_never_built_without_the_acting_roles_list():
@@ -325,7 +358,12 @@ def test_role_all_is_the_union_and_an_all_empty_union_is_none(multi_domain, list
     from provisa.security import meta_role
 
     roles = {
-        f"r{i}": {"id": f"r{i}", "description": "Test role.", "domain_access": lst}
+        f"r{i}": {
+            "id": f"r{i}",
+            "description": "Test role.",
+            "domain_access": lst,
+            "own_domain_access": lst,  # REQ-2153: a built role carries it
+        }
         for i, lst in enumerate(lists)
     }
     # "Role: All" acts as the set's meta-role: its domain_access is the union.

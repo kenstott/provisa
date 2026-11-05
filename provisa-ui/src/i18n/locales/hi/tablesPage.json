@@ -11,8 +11,12 @@
     "addViewTitle": "SQL एक्सप्लोरर में नया व्यू बनाएँ",
     "model": "+ मॉडल",
     "modelTitle": "एंटिटी या फ़ैक्ट मॉडल करें (स्टार स्कीमा / Data Vault)",
+    "modelMenu": "मॉडलिंग का तरीका चुनें",
+    "modelEntityFact": "एंटिटी/फ़ैक्ट",
+    "modelStarSchema": "स्टार स्कीमा",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "वर्कबुक",
-    "reportXlsxTitle": "समीक्षा के लिए मॉडल को स्प्रेडशीट के रूप में डाउनलोड करें — स्रोत, टेबल, कॉलम, संबंध, व्यू, मेट्रिक्स, मटीरियलाइज़्ड व्यू और ऑन्टोलॉजी शब्द, हर एक के लिए एक शीट",
+    "reportXlsxTitle": "समीक्षा के लिए मॉडल को स्प्रेडशीट के रूप में डाउनलोड करें — स्रोत, टेबल, कॉलम, संबंध, व्यू, मेट्रिक्स, मटीरियलाइज़्ड व्यू, ऑन्टोलॉजी, डेटा प्रोडक्ट, डेटा अनुबंध, डेटा गुणवत्ता और डेटा प्रोफ़ाइल, हर एक के लिए एक शीट",
     "viewErd": "ERD देखें",
     "colSource": "स्रोत",
     "colDomain": "डोमेन",
@@ -46,6 +50,8 @@
     "nextPage": "अगला पेज",
     "firstPage": "पहला पेज",
     "lastPage": "अंतिम पेज",
+    "listedElsewhere": "अन्य डोमेन में सूचीबद्ध",
+    "listedElsewhereHint": "वे नाम जो अन्य डोमेन सूचीबद्ध करते हैं। उन्हें पढ़ने के लिए उस डोमेन से पहुँच माँगें।",
     "pageOf": "पेज {{page}} / {{totalPages}}",
     "loadFailed": "पंजीकृत टेबलें लोड नहीं हो सकीं: {{message}}",
     "editViewDefinitionTitle": "व्यू परिभाषा संपादित करें",
@@ -56,6 +62,7 @@
       "impliedDimensionTitle": "अंतर्निहित डाइमेंशन — इस टेबल के लिए 'Group By सक्षम करें' चालू है"
     },
     "derived": "व्युत्पन्न",
+    "endpointUnread": "इसके स्रोत का API दस्तावेज़ पढ़ा नहीं जा सका",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -81,6 +88,8 @@
     "panelRegisterTable": "तालिका पंजीकृत करें",
     "panelNewView": "नया व्यू",
     "panelNewModel": "नया मॉडल",
+    "panelStarSchema": "नया स्टार स्कीमा",
+    "panelDataVault": "नया Data Vault",
     "history": {
       "badge": "इतिहास",
       "title": "इतिहास रखता है: इसे किसी तारीख के अनुसार या जैसा दर्ज था वैसा क्वेरी करें (टाइम ट्रैवल)"

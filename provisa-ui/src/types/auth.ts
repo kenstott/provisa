@@ -18,7 +18,6 @@ export type Capability =
   | "approve_view"
   | "full_results"
   | "usage"
-  | "read_restricted"
   | "approve_relationship"
   | "create_view"
   | "column_grant"
@@ -41,6 +40,9 @@ export type Capability =
   // reaching the environments admin surface; `environment_switch` is being served by one other than
   // prod. org_admin and developer carry both; analyst and modeler carry neither.
   | "environment_management"
+  // REQ-2155: manage the environments the caller owns (create one, becoming its owner; delete one
+  // it owns) -- a developer's; `environment_management` manages any.
+  | "environment_owned_management"
   | "environment_switch"
   // REQ-1942: changing an environment's data choices; org_admin alone.
   | "environment_data"
@@ -51,6 +53,8 @@ export type Capability =
   // page renders read-only without it. A curator is granted both.
   | "glossary_read"
   | "glossary_rw"
+  // REQ-1132: reads the meta domain, as `glossary_read` does ontology and `observability` ops.
+  | "catalog_read"
   // REQ-1921: set, change or remove where data lives, for the region values the grant lists.
   // Exists only when the platform declares regions.
   | "data_residency"
@@ -60,15 +64,36 @@ export type Capability =
   // carries `glossary_read` and `glossary_rw` as well.
   | "org_glossary_rw"
   // REQ-1634: data products' two rights. `data_product_read` opens the surface — org_admin,
-  // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
-  // same footing as `table_registration`: org_admin only.
+  // analyst, developer, and modeler all hold it. `data_product_rw` is org_admin's and, REQ-2188,
+  // comes with being named in a product's Owner field, held to that product by a row rule.
   | "data_product_read"
-  | "data_product_rw";
+  | "data_product_rw"
+  // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
+  // checks, expectations and promises -- so managing checks needs no table registration.
+  | "dq_read"
+  | "dq_rw"
+  | "ignore_relationships"
+  | "write"
+  | "no_aggregations";
+
+/** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */
+export interface LlmLimit {
+  amount: number;
+  unit: "tokens" | "usd";
+}
+
+/** REQ-1174: the rolling windows a role's LLM spend is held to. */
+export const LLM_WINDOWS = ["hour", "day", "week", "month"] as const;
+export type LlmWindow = (typeof LLM_WINDOWS)[number];
 
 export interface RoleRateLimit {
   requestsPerSecond: number | null;
   maxQueryComplexity: number | null;
   maxQueryTimeMs: number | null;
+  /** REQ-1174: the most one Polly turn or LLM service call may use. */
+  llmCallCap?: LlmLimit | null;
+  /** REQ-1174: null when the role sets no window; a window not set is null. */
+  llmWindows?: Partial<Record<LlmWindow, LlmLimit | null>> | null;
 }
 
 /** REQ-1682: one of a role's constant session values. */
@@ -83,6 +108,12 @@ export interface Role {
    *  definition is withheld: it explains, it grants nothing. */
   description: string;
   capabilities: Capability[];
+  /** REQ-2155: what the role holds: what it is given of what its parents hold. A caller's rights
+   *  are the union of this over the roles it acts as. */
+  effectiveCapabilities: Capability[];
+  /** REQ-2155: the data domains and regions it holds, what its children may be given. */
+  effectiveDomains?: string[];
+  effectiveResidencyValues?: string[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
    * badged as belonging to the production system. A role defined by subtraction (the sandbox,
@@ -92,7 +123,11 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
-  parentRoleId?: string | null; // REQ-1677: the role this one inherits from
+  /** REQ-2155: the roles this one inherits from, in order; it holds what it is given of what they
+   *  hold. */
+  parents?: string[];
+  /** REQ-2155: a standard role is Provisa's and locked -- extended with child roles, never edited. */
+  standard?: boolean;
   /** REQ-1921: with data_residency, the region values its grant covers (regions, "no_region"). */
   residencyValues?: string[];
   /** REQ-1682: the role's own constant session values, what its row rules read when the request

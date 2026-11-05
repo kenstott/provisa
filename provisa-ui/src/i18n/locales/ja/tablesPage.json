@@ -11,8 +11,12 @@
     "addViewTitle": "SQLエクスプローラーで新しいビューを作成",
     "model": "+ モデル",
     "modelTitle": "エンティティまたはファクトをモデリング（スタースキーマ / Data Vault）",
+    "modelMenu": "モデリング方法を選択",
+    "modelEntityFact": "エンティティ/ファクト",
+    "modelStarSchema": "スタースキーマ",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "ワークブック",
-    "reportXlsxTitle": "レビュー用に、モデルをスプレッドシートとしてダウンロードします。ソース、テーブル、カラム、リレーションシップ、ビュー、メトリクス、マテリアライズドビュー、オントロジーの用語を、それぞれ 1 シートで収録します",
+    "reportXlsxTitle": "レビュー用に、モデルをスプレッドシートとしてダウンロードします。ソース、テーブル、カラム、リレーションシップ、ビュー、メトリクス、マテリアライズドビュー、オントロジー、データプロダクト、データコントラクト、データ品質、データプロファイルを、それぞれ 1 シートで収録します",
     "viewErd": "ERDを表示",
     "colSource": "ソース",
     "colDomain": "ドメイン",
@@ -46,6 +50,8 @@
     "nextPage": "次のページ",
     "firstPage": "最初のページ",
     "lastPage": "最後のページ",
+    "listedElsewhere": "他のドメインで一覧表示",
+    "listedElsewhereHint": "他のドメインが一覧表示している名前です。読むにはそのドメインにアクセスを依頼してください。",
     "pageOf": "ページ {{page}} / {{totalPages}}",
     "loadFailed": "登録済みテーブルを読み込めませんでした: {{message}}",
     "editViewDefinitionTitle": "ビュー定義を編集",
@@ -56,6 +62,7 @@
       "impliedDimensionTitle": "暗黙のディメンション — このテーブルで「Group Byを有効化」がオンです"
     },
     "derived": "派生",
+    "endpointUnread": "ソースの API ドキュメントを読み取れませんでした",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -81,6 +88,8 @@
     "panelRegisterTable": "テーブルを登録",
     "panelNewView": "新しいビュー",
     "panelNewModel": "新しいモデル",
+    "panelStarSchema": "新しいスタースキーマ",
+    "panelDataVault": "新しい Data Vault",
     "history": {
       "badge": "履歴",
       "title": "履歴を保持: 時点指定または記録時点指定でクエリできます（タイムトラベル）"

@@ -31,10 +31,21 @@ _SNOWFLAKE = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD")
 _BIGQUERY = ("GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS")
 
 
+@pytest.fixture
+def snowflake_warehouse_left_as_found():
+    """The test's statement resumes the Snowflake warehouse if it is suspended; it is suspended
+    again after the test however it ends, unless it was running before (REQ-254)."""
+    pytest.importorskip("snowflake.connector", reason="snowflake-connector-python not installed")
+    from tests.integration.snowflake_warehouse import warehouse_in_use
+
+    with warehouse_in_use(os.environ.get("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH")):
+        yield
+
+
 @pytest.mark.skipif(
     not all(os.environ.get(v) for v in _SNOWFLAKE), reason=f"not set: {unset(*_SNOWFLAKE)}"
 )
-async def test_snowflake_timestamp_tz_and_ltz():
+async def test_snowflake_timestamp_tz_and_ltz(snowflake_warehouse_left_as_found):  # noqa: ARG001 -- holds the warehouse
     pytest.importorskip("snowflake.connector", reason="snowflake-connector-python not installed")
     from provisa.executor.pool import SourcePool
 

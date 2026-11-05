@@ -1,0 +1,80 @@
+/* AssemblingCube: --t runs 0 to 1 over one cycle; a cube at start --s drops for a tenth of it. */
+@property --t {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
+.assembling-cube {
+  display: inline-flex;
+}
+
+.ac {
+  overflow: visible;
+}
+
+.ac-top {
+  fill: var(--mantine-color-brand-3);
+}
+.ac-left {
+  fill: var(--mantine-color-brand-6);
+}
+.ac-right {
+  fill: var(--mantine-color-brand-8);
+}
+
+.ac-cube {
+  --d: clamp(0, calc((var(--s) + 0.1 - var(--t)) / 0.1), 1);
+  opacity: calc(1 - var(--d));
+  transform: translateY(calc(var(--d) * -3px));
+}
+
+.ac--moving {
+  animation:
+    ac-time 3.6s linear infinite,
+    ac-reset 3.6s linear infinite;
+}
+
+.ac--still {
+  --t: 1;
+  animation: ac-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes ac-time {
+  from {
+    --t: 0;
+  }
+  to {
+    --t: 1;
+  }
+}
+
+/* Held whole, then faded out before the next cycle drops it in again. */
+@keyframes ac-reset {
+  0%,
+  88% {
+    opacity: 1;
+  }
+  96%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes ac-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+/* The same when the hook has not yet read the preference (its first render). */
+@media (prefers-reduced-motion: reduce) {
+  .ac--moving {
+    --t: 1;
+    animation: ac-pulse 2.4s ease-in-out infinite;
+  }
+}

@@ -681,6 +681,7 @@ class TestTrackedFunctions:
             function_name="process_order",
             returns="sales-pg.public.orders",
             arguments=[FunctionArgument(name="order_id", type="Int")],
+            visible_to=["admin"],
         )
         mutation_fields = build_function_mutations(
             functions=[func],
@@ -732,6 +733,7 @@ class TestTrackedFunctions:
                 InlineType(name="success", type="Boolean"),
                 InlineType(name="message", type="String"),
             ],
+            visible_to=["admin"],
         )
         mutation_fields = build_function_mutations(
             functions=[],

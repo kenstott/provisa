@@ -85,6 +85,16 @@ class SourceCdcConfigType:  # REQ-824
 class SourceType:  # REQ-012
     id: str
     type: str
+
+    @strawberry.field
+    def row_fetch_by_keys(self) -> bool:  # REQ-1865
+        """Whether this source's type fetches rows by primary key, so a table of it may be
+        replicated row by row (core.source_registry). For a type whose fetch is each table's
+        own (a remote GraphQL source), whether a table may have one: its save says."""
+        from provisa.core.source_registry import supports_row_fetch_by_keys
+
+        return supports_row_fetch_by_keys(self.type)
+
     # The fields that locate or authenticate to the source are null for a caller without
     # source_registration (see _row_mappers._source_from_row).
     host: str | None
@@ -163,6 +173,53 @@ class DomainType:  # REQ-533, REQ-609
 
 
 @strawberry.type
+class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
+    domain_id: str
+    table_name: str
+    column_names: list[str]
+
+
+@strawberry.type
+class ContractColumnType:  # REQ-2158
+    name: str
+    type: str
+    description: str | None = None
+    required: bool = False
+
+
+@strawberry.type
+class ContractSlaPropertyType:  # REQ-2158
+    property: str
+    value: JsonScalar | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+@strawberry.type
+class ContractTermsType:  # REQ-2158
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None
+
+
+@strawberry.type
+class DataContractType:  # REQ-2158
+    """A product member's contract, its output port: what it promises, at its own version."""
+
+    table_id: int
+    source_id: str
+    schema_name: str
+    table_name: str
+    contract_id: str
+    version: str
+    status: str
+    description: str | None
+    terms: ContractTermsType
+    sla: list[ContractSlaPropertyType]
+    columns: list[ContractColumnType]
+
+
+@strawberry.type
 class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
@@ -173,10 +230,36 @@ class DataProductType:  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
-    sla: str | None = None
     support: str | None = None
+    # REQ-1635: the support contact (email or URL) a catalog listing requires.
+    support_contact: str | None = None
     custom_properties: JsonScalar
+    # REQ-2118: when the product was created (ISO 8601), its ODPS productCreatedTs; read-only.
+    created_at: str
+    contracts: list[DataContractType] = strawberry.field(default_factory=list)  # REQ-2158
+    # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
+    status: str = "draft"
+    status_reason: str | None = None
+    retire_on: str | None = None  # ISO date: a deprecated product's planned retirement
+    status_by: str | None = None
+    status_at: str | None = None
+    successor_id: str | None = None
+    successor_name: str | None = None
+    findings: int = 0  # REQ-2146: how many To Review findings the product has
+
+
+@strawberry.type
+class DataProductFindingType:  # REQ-2146
+    kind: str
+    code: str
+    message: str
+    params: JsonScalar
+
+
+@strawberry.type
+class DataProductFindingsType:  # REQ-2146
+    product_id: str
+    findings: list[DataProductFindingType]
 
 
 @strawberry.type
@@ -350,10 +433,11 @@ def _dq_dataset_of(table_id: int) -> str | None:
     from provisa.api.app import state
     from provisa.dq.contract import meta_dataset
 
-    for ctx in state.contexts.values():
-        for meta in ctx.tables.values():
-            if meta.table_id == table_id:
-                return meta_dataset(meta)
+    # The model-wide context: every table, with no role's surface built to read it.
+    ctx = state.view_context
+    for meta in ctx.tables.values() if ctx is not None else []:
+        if meta.table_id == table_id:
+            return meta_dataset(meta)
     return None
 
 
@@ -386,6 +470,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
     draft: bool  # REQ-1921: out of service until its domain's owners release it
+    row_materialize: bool  # REQ-1865: replicated row by row, fetched by key as statements ask
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
     off_peak_tz: str | None  # REQ-1141: per-table window zone override
@@ -398,6 +483,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         default_factory=list
     )  # REQ-1093
     api_endpoint: str | None = None
+    # Why the table's OpenAPI source names no endpoint: its document could not be read.
+    api_endpoint_error: str | None = None
     # REQ-1907: operator-set role -> TTL seconds (effective = max(cache_ttl, ttl)); empty = none.
     role_ttl: list[RoleTtlType] = strawberry.field(default_factory=list)
     # REQ-318: what reads the table page by page ("endpoint" | "connection"), null when nothing
@@ -437,6 +524,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     # REQ-2109: the bitemporal declaration, all three or none.
     business_key: list[str] = strawberry.field(default_factory=list)
     valid_time: str | None = None
@@ -475,6 +563,22 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         return await summarize_table_policy(self)
 
     @strawberry.field
+    def time_travel(self) -> str | None:  # REQ-1163
+        """How the relation travels in time: "bitemporal" (it takes as_of and as_recorded),
+        "snapshot" (an Iceberg or Delta table: as_recorded alone), or null (it keeps no versions).
+        The SQL explorer's time pickers write the arguments on exactly these relations."""
+        from provisa.api.app import state
+        from provisa.mv.time_travel import relation_kinds
+
+        row = {
+            "id": self.id,
+            "source_id": self.source_id,
+            "table_name": self.table_name,
+            "view_sql": self.view_sql,
+        }
+        return relation_kinds(state, [row]).get(self.id)
+
+    @strawberry.field
     def graphql_field_name(self) -> str | None:  # REQ-1634: GraphQL Queries panel
         """This table's root query field name in the compiled data-plane GraphQL schema, so the
         Data Product GraphQL Queries panel can build a runnable example query without duplicating
@@ -487,37 +591,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         )
 
     @strawberry.field
-    async def product_id(self) -> str | None:  # REQ-1634, REQ-1443 clause 10
-        """The data product this table belongs to. A checker table (one carrying a dq_contract —
-        registration admits a contract on no other source type) inherits the product of the table
-        its contract scans, resolved through the compiled contexts the same way dq_dataset is;
-        registration refuses a stored product_id on it, so the row's own column is never the
-        answer there. Every other table answers with its own row."""
-        if self.dq_contract is None:
-            return self.stored_product_id
-        from sqlalchemy import select
-
-        from provisa.api.app import state
-        from provisa.core.schema_org import registered_tables
-        from provisa.dq.contract import contract_dataset, resolve_contract_target
-
-        checker = state.source_types[self.source_id]
-        meta = resolve_contract_target(contract_dataset(self.dq_contract, checker), state.contexts)
-        if state.model_db is None:
-            raise RuntimeError("tenant database not connected")
-        async with state.model_db.acquire() as conn:
-            res = await conn.execute_core(
-                select(registered_tables.c.product_id).where(
-                    registered_tables.c.id == meta.table_id
-                )
-            )
-            row = res.fetchone()
-        if row is None:
-            raise ValueError(
-                f"contract target table {meta.table_id} for {self.schema_name}.{self.table_name} "
-                f"is not registered"
-            )
-        return row._mapping["product_id"]
+    def product_id(self) -> str | None:  # REQ-1634, REQ-1443 PRODUCT ASSIGNMENT
+        """The data product this table is assigned to. A checker table's is its own, as any
+        member's is: the product whose owner controls the check."""
+        return self.stored_product_id
 
     @strawberry.field
     def dq_dataset(self) -> str | None:  # REQ-1443
@@ -554,7 +631,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
                 scan_time=c["scan_time"].isoformat() if c["scan_time"] else None,
             )
             for c in found
-            if scope.lists_table(c["table_id"], c["domain_id"])
+            if scope.lists_table(c["table_id"])
         ]
 
 
@@ -569,7 +646,7 @@ class MaskSpecType:  # REQ-2059: how a mask entry masks the value
 
 @strawberry.type
 class MaskEntryType:  # REQ-2059: one entry of a column's ordered mask list
-    to: list[str]  # grant entries, composites included; "*" is everyone
+    to: list[str] | None = None  # grant entries, composites included; None: every other reader
     mask: MaskSpecType | None = None  # None: the readers it is for read the column unmasked
     why: JsonScalar | None = None  # REQ-2094: why the entry is what it is
 
@@ -585,7 +662,7 @@ class MaskSpecInput:  # REQ-2059
 
 @strawberry.input
 class MaskEntryInput:  # REQ-2059
-    to: list[str]
+    to: list[str] | None = None  # None: every other reader, the list's last entry (REQ-2153)
     mask: MaskSpecInput | None = None
     why: JsonScalar | None = None  # REQ-2094: the reason, purpose, bases and review-by date given
 
@@ -594,7 +671,7 @@ def mask_entry_types(masks: list[dict]) -> list[MaskEntryType]:
     """A stored mask list (REQ-2059) as the admin API answers it."""
     return [
         MaskEntryType(
-            to=list(e["to"]),
+            to=None if e.get("to") is None else list(e["to"]),
             mask=None if e["mask"] is None else MaskSpecType(**e["mask"]),
             why=e.get("why"),
         )
@@ -606,7 +683,7 @@ def mask_entries_of(masks: list[MaskEntryInput]) -> list[dict]:
     """A mask list as sent (REQ-2059), as the model takes it."""
     return [
         {
-            "to": list(e.to),
+            "to": None if e.to is None else list(e.to),
             "mask": None
             if e.mask is None
             else {
@@ -635,6 +712,8 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     computed_gql_alias: str  # REQ-1634: this column's field name in the compiled GraphQL schema
     description: str | None
     data_type: str | None = None
+    # REQ-2171: the subtype the column was registered as; data_type is its base.
+    subtype: str | None = None
     native_filter_type: str | None = None
     # Whether the source requires a value for this parameter; None where it is not recorded.
     native_filter_required: bool | None = None
@@ -722,6 +801,9 @@ class AvailableTableType:  # REQ-533
     paging_kind: str | None = None
     pagination: PagingType | None = None
     paging_ceiling_rows: int | None = None  # graphql_remote.max_rows, for a connection table
+    # REQ-1986: the parameters a read of it must give (path parameters, required arguments), by
+    # the name a caller gives each; the picker lists a table with any apart, as a lookup.
+    required_parameters: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -783,6 +865,9 @@ class AvailableColumnType:  # REQ-533
     name: str
     data_type: str
     comment: str | None
+    # REQ-2171: the subtype the column registers as, shown with its base (data_type); sent back
+    # with the column it describes.
+    subtype: str | None = None
     native_filter_type: str | None = None
     # Whether the source requires a value for this parameter; None where it is not recorded.
     native_filter_required: bool | None = None
@@ -816,6 +901,9 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     alias: str | None = None
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
+    # REQ-351, REQ-1586: the Cypher type the server serves this edge as, its stored effective name
+    # (core.relationship_names). A client reads it; none derives it.
+    cypher_type: str | None = None
     disable_cypher: bool = False
     # REQ-2141: the rows this edge joins are the same entity.
     same_entity: bool = False
@@ -849,12 +937,33 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
 
 
 @strawberry.type
+class LlmLimitType:  # REQ-1174
+    """An LLM spend limit: an amount of tokens, or of USD at polly.model_prices."""
+
+    amount: float
+    unit: str  # tokens | usd
+
+
+@strawberry.type
+class LlmWindowsType:  # REQ-1174
+    """The rolling windows a role's LLM spend is held to; None: that window is not set."""
+
+    hour: LlmLimitType | None = None
+    day: LlmLimitType | None = None
+    week: LlmLimitType | None = None
+    month: LlmLimitType | None = None
+
+
+@strawberry.type
 class RoleRateLimitType:  # REQ-1174
-    """Per-role rate + query-complexity limits (None = unlimited on that dimension)."""
+    """Per-role rate + query-complexity limits (None = unlimited on that dimension), and the
+    role's LLM budget: its per-call cap and rolling windows."""
 
     requests_per_second: int | None = None
     max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
+    llm_call_cap: LlmLimitType | None = None
+    llm_windows: LlmWindowsType | None = None
 
 
 @strawberry.type
@@ -874,8 +983,16 @@ class RoleType:  # REQ-042
     capabilities: list[str] | None
     domain_access: list[str] | None
     demonstrated: list[str] | None = strawberry.field(default_factory=list)  # REQ-1602
+    # REQ-2155: what the role holds -- its own capabilities and every ancestor's; null as
+    # capabilities is. The client builds the caller's rights from it.
+    effective_capabilities: list[str] | None = None
+    # REQ-2155: the data domains and regions it holds, what its children may be given.
+    effective_domains: list[str] | None = None
+    effective_residency_values: list[str] | None = None
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
-    parent_role_id: str | None = None  # REQ-1677
+    parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155
+    # REQ-2155: a standard role is Provisa's and locked: extended with child roles, never edited.
+    standard: bool = False
     # REQ-1921: with data_residency, the region values its grant covers; null as capabilities is.
     residency_values: list[str] | None = strawberry.field(default_factory=list)
     # REQ-1682: the role's own constant session values, by name; null as capabilities is.
@@ -902,6 +1019,8 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     action_name: str | None = None  # REQ-1679
     tag_id: str | None = None  # REQ-1384: the rule applies to every table carrying this tag
     why: JsonScalar | None = None  # REQ-2094: reason, bases, review_on; who decided it and when
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
 
 
 # --- Input types for mutations ---
@@ -972,6 +1091,10 @@ class SourceInput:  # REQ-012
     cache_enabled: bool = True
     cache_ttl: int | None = None
     replicate: int | None = None  # REQ-826: None = Default; -1 never, N hot, 0 always
+    # REQ-2109's rule for a source: the naming convention, which also has a mutation of its own
+    # (updateSourceNaming), travels with the source, so the form's save is one mutation and one
+    # schema rebuild. Left out (UNSET), a create inherits and an update keeps the stored one.
+    gql_naming_convention: str | None = strawberry.UNSET
     # REQ-1921: the region the admin form starts this source's new tables in (None = the
     # connected one). Ignored by updateSource: it changes through setSourceRegion.
     region: str | None = None
@@ -996,7 +1119,7 @@ class DomainInput:  # REQ-533, REQ-609
 
 
 @strawberry.input
-class DataProductInput:  # REQ-1634, REQ-1660
+class DataProductInput:  # REQ-1634
     id: str
     domain_id: str
     name: str
@@ -1006,13 +1129,46 @@ class DataProductInput:  # REQ-1634, REQ-1660
     limitations: str = ""
     usage: str = ""
     version: str | None = None
-    status: str | None = None
-    sla: str | None = None
     support: str | None = None
+    # REQ-1635: the support contact (email or URL) a catalog listing requires.
+    support_contact: str | None = None
     # Nullable, default null: a default of `{}` on the JSON scalar cannot be printed as a GraphQL
     # default value, and the standard introspection query (which asks every input's defaultValue)
     # then answered with an error. Absent or null means no custom properties.
     custom_properties: JsonScalar | None = None
+
+
+@strawberry.input
+class ContractColumnInput:  # REQ-2158
+    name: str
+    type: str
+    description: str | None = None
+    required: bool = False
+
+
+@strawberry.input
+class ContractSlaPropertyInput:  # REQ-2158
+    property: str
+    value: JsonScalar | None = None
+    unit: str | None = None
+    description: str | None = None
+
+
+@strawberry.input
+class ContractTermsInput:  # REQ-2158
+    usage: str | None = None
+    limitations: str | None = None
+    notice_period: str | None = None
+
+
+@strawberry.input
+class DataContractInput:  # REQ-2158
+    version: str
+    status: str
+    description: str | None = None
+    terms: ContractTermsInput
+    sla: list[ContractSlaPropertyInput]
+    columns: list[ContractColumnInput]
 
 
 @strawberry.input
@@ -1071,6 +1227,8 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     # a manually-defined column (a non-SQL source the engine can't introspect); the landing write
     # face maps IR → the store's physical type. Null when the type is filled by introspection.
     data_type: str | None = None
+    # REQ-2171: the subtype of data_type the column registers as, when it has one.
+    subtype: str | None = None
     # REQ-1739: dot-notation JSON extraction path (e.g. "payload.order_id") for an `ingest` push
     # source's per-column mapping. Mirrors the core Column model's own `path` field
     # (provisa/core/models.py) and provisa/ingest/router.py's `_extract_row`, which already reads
@@ -1199,6 +1357,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     # REQ-1907: the table's own landing Cache TTL; null: none of its own (the source's applies).
     # Left out, a registration has none and an update keeps the stored one.
     cache_ttl: int | None = strawberry.UNSET
+    # REQ-1865: replicated row by row, fetched by primary key as statements name the rows. Left
+    # out, a registration is not and an update keeps what the table has.
+    row_materialize: bool | None = strawberry.UNSET
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
@@ -1211,6 +1372,7 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
         "shared"  # REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     )
     mv_preprocess: str | None = None  # REQ-957: inline preprocess(rows, ctx) hook source
+    mv_hold_on_failing_checks: bool = False  # REQ-2133: built-in preflight on failing checks
     # REQ-2109: the bitemporal declaration, all three or none.
     business_key: list[str] = strawberry.field(default_factory=list)
     valid_time: str | None = None
@@ -1306,6 +1468,8 @@ class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a 
     valid_time: str | None = None
     recorded_time: str | None = None
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.input
@@ -1329,6 +1493,8 @@ class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggrega
     measures: list[MeasureInput] = strawberry.field(default_factory=list)
     dimensions: list[DimRefInput] = strawberry.field(default_factory=list)
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.type
@@ -1520,7 +1686,7 @@ class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bou
     description: str | None = None
     ai_context: str | None = None  # REQ-1319: definition text for AI consumers
     # Null for a caller without view_governance (REQ-1134, REQ-1958).
-    visible_to: list[str] | None = strawberry.field(default_factory=lambda: ["*"])
+    visible_to: list[str] | None = None
     from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
 
 
@@ -1531,7 +1697,22 @@ class MetricInput:  # REQ-1317
     datatype: str | None = None
     description: str | None = None
     ai_context: str | None = None  # REQ-1319
-    visible_to: list[str] = strawberry.field(default_factory=lambda: ["*"])
+    # REQ-1317: None at create is the acting role and Viewer; the roles named otherwise.
+    visible_to: list[str] | None = None
+
+
+@strawberry.input
+class LlmLimitInput:  # REQ-1174
+    amount: float
+    unit: str  # tokens | usd
+
+
+@strawberry.input
+class LlmWindowsInput:  # REQ-1174
+    hour: LlmLimitInput | None = None
+    day: LlmLimitInput | None = None
+    week: LlmLimitInput | None = None
+    month: LlmLimitInput | None = None
 
 
 @strawberry.input
@@ -1539,6 +1720,8 @@ class RoleRateLimitInput:  # REQ-1174
     requests_per_second: int | None = None
     max_query_complexity: int | None = None
     max_query_time_ms: int | None = None
+    llm_call_cap: LlmLimitInput | None = None
+    llm_windows: LlmWindowsInput | None = None
 
 
 @strawberry.input
@@ -1554,7 +1737,7 @@ class RoleInput:  # REQ-042
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimitInput | None = None  # REQ-1174
-    parent_role_id: str | None = None  # REQ-1677
+    parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155: in declared order
     # REQ-1921: with data_residency, the region values its grant covers (regions, "no_region").
     residency_values: list[str] = strawberry.field(default_factory=list)
     # REQ-1682: the role's own constant session values; the whole set, as the form holds it.
@@ -1597,6 +1780,11 @@ class RLSRuleInput:  # REQ-041, REQ-402
     description: str = ""  # REQ-2081: required; an empty one is refused
     # REQ-2094: reason, bases and review_on given; left out, the stored ones stand.
     why: JsonScalar | None = None
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
+    id: int | None = None  # the rule this save edits; None: a new rule, or its rights' own
+    # REQ-2188: a person adding a rule: it replaces no rule of the same rights, it is refused.
+    creating: bool = False
 
 
 @strawberry.type
@@ -1770,15 +1958,19 @@ class MaterializeStoreInfoType:
 
 @strawberry.type
 class ProtocolHealthType:
-    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt).
+    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt), or of a query
+    surface on the HTTP listener (SPARQL, GraphQL, Cypher, REST, JSON:API).
 
     ``status`` is one of "running" | "down" | "disabled". "disabled" means the protocol was
-    never started (no bound port); "down"/"running" come from a TCP-connect liveness probe.
+    never started (no bound port) or its routes are not mounted; "down"/"running" come from a
+    TCP-connect liveness probe, or for an HTTP surface from its routes being mounted. A listener
+    has a ``port``, an HTTP surface a ``path``.
     """
 
     name: str
     status: str
     port: int | None
+    path: str | None = None
 
 
 @strawberry.type
@@ -1886,6 +2078,8 @@ class CompileQueryResult:  # REQ-262, REQ-263, REQ-267
     warnings: list[str]
     compiled_cypher: str | None
     cypher_error: str | None
+    compiled_sparql: str | None
+    sparql_error: str | None
 
 
 @strawberry.input

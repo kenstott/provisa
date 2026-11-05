@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "Aplica-se a",
+      "check": "Verificação",
+      "details": "Detalhes",
+      "result": "Último resultado"
+    },
+    "level": {
+      "table": "Tabela",
+      "row": "Linha"
+    },
+    "check": {
+      "notNull": "Não nulo",
+      "unique": "Único",
+      "allowedValues": "Valores permitidos",
+      "pattern": "Correspondência de padrão",
+      "valueRange": "Intervalo de valores",
+      "textLength": "Comprimento do texto",
+      "average": "Intervalo da média",
+      "distinctCount": "Valores distintos",
+      "rowCount": "Contagem de linhas",
+      "columnOrder": "Ordem das colunas",
+      "unexpectedRows": "Sem linhas inesperadas",
+      "missing": "Sem valores ausentes",
+      "valid": "Valores válidos",
+      "duplicate": "Sem duplicados",
+      "aggregate": "Agregado",
+      "freshness": "Atualização",
+      "failedRows": "Sem linhas com falha"
+    },
+    "threshold": {
+      "eq": "Deve ser {{value}}",
+      "ne": "Não deve ser {{value}}",
+      "gt": "Maior que {{value}}",
+      "gte": "Pelo menos {{value}}",
+      "lt": "Menor que {{value}}",
+      "lte": "No máximo {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "De {{min}} a {{max}}",
+      "atLeast": "Pelo menos {{value}}",
+      "atMost": "No máximo {{value}}",
+      "oneOf": "Um de {{values}}",
+      "matches": "Corresponde a {{pattern}}",
+      "greater": "{{a}} maior que {{b}}",
+      "orEqual": "{{a}} pelo menos {{b}}",
+      "query": "Linhas inesperadas: {{query}}",
+      "expression": "Linhas com falha: {{expression}}",
+      "mostly": "Pelo menos {{percent}}% das linhas",
+      "alsoMissing": "Também ausente: {{values}}",
+      "minLength": "Pelo menos {{value}} caracteres",
+      "maxLength": "No máximo {{value}} caracteres"
+    },
+    "aggregate": {
+      "avg": "Média",
+      "sum": "Soma",
+      "min": "Mínimo",
+      "max": "Máximo",
+      "minLength": "Menor comprimento",
+      "maxLength": "Maior comprimento",
+      "avgLength": "Comprimento médio"
+    }
+  }
+}

@@ -131,7 +131,7 @@ workload:
 
 The contract format is defined by `setup_contract.py` and `contract_parse.py`; an invalid contract is refused with a message that names the field. The `workload` weights must sum to 1, and each transport they name must be one the contract runs.
 
-Describe the requests as they really are. The guide sizes exactly the requests this contract generates: the sizing draws them from the same seeded generator a run uses.
+Describe the requests as they really are. The guide sizes exactly the requests this contract generates, because the sizing draws them from the same seeded generator a run uses.
 
 ## Run it
 
@@ -148,7 +148,7 @@ Run the baseline contract once. The run asks the deployment what each transport 
 
 ### Measuring the server's CPU from another host
 
-Run the load generator on its own machine when you can: then it takes no cores from the server. To measure the server's CPU from there, start `server_cpu_agent.py` on the server's host and give the run its URL instead of `--server-pid`:
+Run the load generator on its own machine when you can, so that it takes no cores from the server. To measure the server's CPU from there, start `server_cpu_agent.py` on the server's host and give the run its URL instead of `--server-pid`:
 
 ```bash
 # on the server's host, from demo/named/perf/bench
@@ -161,7 +161,7 @@ Run the load generator on its own machine when you can: then it takes no cores f
 
 The agent answers one figure, the same one `--server-pid` reads: `GET /` returns `{"pid": ..., "cpu_seconds": ...}`, the cumulative CPU seconds of the server process and its workers. Every other path answers 404, and every other method is refused. Give a run one of `--server-pid` or `--server-cpu-url`, never both.
 
-`--listen` is required: the agent has no default address. Bind it to a private address that only the load generator can reach, never a public interface, and stop it (Ctrl+C) when the runs are done.
+`--listen` is required, because the agent has no default address. Bind it to a private address that only the load generator can reach, never a public interface, and stop it (Ctrl+C) when the runs are done.
 
 ### 2. Plan the runs
 
@@ -196,11 +196,11 @@ Each manifest entry names its contract file. Run each one into `results/sizing/r
   --server-pid "$PROVISA_PID" --output-dir results/sizing/results/graphql.sales-pg.filters.1
 ```
 
-From another host, use `--server-cpu-url` in place of `--server-pid`. A worker run restarts the server, so its process id changes: restart the agent with the new `--pid` too.
+From another host, use `--server-cpu-url` in place of `--server-pid`. A worker run restarts the server, so its process id changes. Restart the agent with the new `--pid` too.
 
 Add `--apply-replication` to every run whose manifest entry has `"apply_replication": true` (the replication runs and the cross-source join runs). It sets the replication the run's contract declares and restores it afterwards.
 
-Every run carries a `server_env` in the manifest: the server must be running with it. A knob run's is its engine, `{"PROVISA_ENGINE": "duckdb"}`; run all of one engine's runs, then restart the server with the next. A worker run's adds its workers and in-flight bound, for example `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` is the number of worker processes and `PROVISA_REQUEST_THREADS` sets `concurrency.request_threads`, the in-flight requests each worker runs at once. Wait until every worker is serving (`/health` reports `workers.ready` of `workers.expected`) before you start the run.
+Every run carries a `server_env` in the manifest, and the server must be running with it. A knob run's is its engine, `{"PROVISA_ENGINE": "duckdb"}`; run all of one engine's runs, then restart the server with the next. A worker run's adds its workers and in-flight bound, for example `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`. `PROVISA_WORKERS` is the number of worker processes and `PROVISA_REQUEST_THREADS` sets `concurrency.request_threads`, the in-flight requests each worker runs at once. Wait until every worker is serving (`/health` reports `workers.ready` of `workers.expected`) before you start the run.
 
 ### 4. Build the report
 
@@ -245,7 +245,74 @@ The capacity factor is the requests per second one physical core delivers, times
 
 ### What a request costs
 
-For each engine, transport and source, side by side: the base cost of an uncached request, the cost each field, filter, row and join adds, and how well the model fits the measurements (R², 1 is a perfect fit). A cross-source join has three costs, by how its two ends are read: both live, both from replicas, or one of each. A dash means the runs did not vary that knob. Where the engine runs as a server of its own, a second table gives the engine's CPU the same way: a request the engine serves, such as a cross-source join, shows its engine time there. Use these figures to see what a change in your requests would cost before you make it: two more fields on every request add twice the per-field cost.
+For each engine, transport and source, side by side: the base cost of an uncached request, the cost each field, filter, row and join adds, and how well the model fits the measurements (R², 1 is a perfect fit). A cross-source join has three costs, by how its two ends are read: both live, both from replicas, or one of each. A dash means the runs did not vary that knob. Where the engine runs as a server of its own, a second table gives the engine's CPU the same way, so a request the engine serves, such as a cross-source join, shows its engine time there. Use these figures to see what a change in your requests would cost before you make it. Two more fields on every request, for example, add twice the per-field cost.
+
+### What Provisa's features add to a query
+
+#### Paid once per query shape
+
+Provisa checks and rewrites a statement before any source sees it. It checks the tables and columns the role may read (domain reach, scope, `visible_to`), puts the role's row rules and masks into the statement, and expands views and metrics. Those results are kept. A repeat of the same shape skips the work.
+
+The shape is the statement with every literal blanked, so two statements that differ only in a value share one entry. A prepared statement keeps its `$1` placeholders and binds values later, so every execution of it reuses the entry. So does paging with a new offset value. The key also carries the role, the schema version and the server's boot generation and, for the validation result, the person. The governed plan that a repeat reuses is keyed by statement text and session variables instead, so bind values through placeholders.
+
+A change to the schema, a row rule, a mask or a role throws the entries away. Each bumps the schema version. A kept plan also lapses when any governance object it was built from is replaced, and when the default row limit or the security mode changes.
+
+The route Provisa picks (your source directly, or the federation engine) is cached too, per shape, role, schema version, boot generation and replica state, for 60 seconds by default. Four cases skip that cache and decide again on every call:
+
+- the request carries a route hint;
+- the statement names an API-backed table, because that table's cache and hot-table state change between calls;
+- a materialized view answers the statement;
+- the statement reads the catalog.
+
+Materialized-view matching is not in the once-per-shape work. It runs on every call, because it depends on whether the view is fresh at that moment.
+
+#### Paid on every execution, by the database
+
+The row rules and masks Provisa put in are ordinary SQL that your source or the engine runs on every execution. Their cost depends on how the rule is written, which Provisa cannot know.
+
+#### Views
+
+A view is expanded inline during the once-per-shape work. It costs about what the same SQL written by hand costs. Some databases precompute a view; in Provisa that is a materialized view, covered below. Secure views in some warehouses block optimizations on the SQL beneath them. The expanded form does not.
+
+#### Whether the query stays optimizable
+
+Provisa puts the role's row rule into the `WHERE` of each `SELECT` that reads the table, appended to the query's own conditions. Both reach the source as plain predicates, so filters are pushed down as far as their text allows. A mask is different. Provisa replaces the masked column with the mask expression wherever the statement mentions it, including `WHERE`, `JOIN ON` and `GROUP BY`. A filter or join on a masked column therefore compares the expression, and an index on the column cannot serve it.
+
+Provisa runs a statement on its source directly only when it passes every one of these checks, in order. The first failed check sends the statement to the federation engine, and the route's reason names it:
+
+| Check | Fails when |
+|-------|------------|
+| one source | the statement reads more than one source, unless they share one database and one login |
+| dialect | the source's dialect cannot write a construct in the statement, including JSON path access and a SQL-expression function it cannot write |
+| access path | the source type has no direct driver (MongoDB, Cassandra, Redis, Neo4j, SQLite, JDBC, lakehouse, Kafka and a few others) |
+| not forced | an operator floor puts a table on a replica, the statement reads faked columns, or one of the reasons below applies |
+| complete dataset | the source has a proxy and it cannot plan the read as the table's complete dataset |
+
+"Not forced" also fails when a materialized view answers the statement, when the statement reads landed rows, and when a source has no direct connection on the node serving the request. A `route=engine` hint sends it to the engine without the checks. A `route=direct` hint tries them and is ignored, with the reason, when one fails.
+
+On the engine route the engine runs the statement over rows it has landed or reads through a connector. The measured tables above price a cross-source join that way.
+
+One case refuses instead of reading a source whole. A live-only source (today, Qdrant) has no replica. When the engine answers a statement over one, it reads that table's part live and hands the rows over. The part is the table's columns, the conditions that touch that table alone (its row rules among them), and a similarity ordering with its `LIMIT` when the table is read alone in its `SELECT`. A part with no condition and no top-k would read the whole table, a replica by another name. Provisa refuses it and names the table. Add a condition on the table, or a `LIMIT` with a similarity ordering.
+
+#### Materialized views
+
+Provisa matches a view after governance, on the statement that already carries the role's row rules and masks. The view's own grants are not consulted. A view gives speed without changing what a role sees.
+
+For a join view, a row rule or mask on a column the view keeps is carried onto the view's column. One on a column the view does not keep leaves the statement on the base tables, so that role pays the full price while another role reads the view. Design a view to keep every column your row rules reference. An answer from a view also takes the engine route, because the view is stored where the engine reads it.
+
+An aggregate view answers only an exact re-aggregation. The query reads one table. It groups by a subset of the view's grouping columns, and reads outside its aggregates only those columns. It asks only for aggregates the view's stored measures re-aggregate: `SUM`, `COUNT`, `MIN`, `MAX`, and `AVG` when the view stores both the sum and the count. A query using `AVG` over a view without a stored sum and count, `COUNT(DISTINCT ...)` or an aggregate of an aggregate is answered from the base tables.
+
+#### Other features
+
+| Feature | What it adds | Where it runs | Effect on routing |
+|---------|--------------|---------------|-------------------|
+| Fakes | a computed value in place of the column | the serving engine | forces the engine route |
+| SQL-expression functions | the function's template, put into the statement before governance | wherever the statement runs, so it pushes down with it | engine route only when the source's dialect cannot write it |
+| JSON path columns | a path extraction | wherever the statement runs | engine route when the source's dialect cannot run path access |
+| Cross-source joins | a join of two sources | the engine | engine route; see the measured join tables above |
+| Similarity search on a live-only source | an ordering by `cosine_similarity` with a `LIMIT` | the source, for that statement | needed to avoid the whole-table refusal when no condition applies |
+| Response cache | an answer kept from an earlier request that opted in | Provisa | answered before any route is chosen |
+| Row limit | a `LIMIT` at the role's row limit, and a cap on each nested list | the source or engine, with the rest of the statement | none |
 
 ### The response-cache opt-in
 

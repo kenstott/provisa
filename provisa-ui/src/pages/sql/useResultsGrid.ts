@@ -13,6 +13,7 @@
 // column widths, clipboard copy, and column profiling. File exports live in
 // ResultsGrid — REQ-1444 reads past the page, which this hook cannot do.
 
+import { columnLabel } from "../../lib/columnKeys";
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { CHAR_PX, COL_MAX, COL_MIN, PAGE_SIZE } from "./types";
 import type { ColumnProfile } from "./types";
@@ -27,7 +28,7 @@ import {
   type ColumnKind,
   type FilterSpec,
 } from "./columnFilter";
-import { getStored, setStored } from "../../lib/browserStorage";
+import { getStoredJson, setStored } from "../../lib/browserStorage";
 
 /** A group header row (collapsible) or a data row, in render order. */
 export type GridItem =
@@ -99,11 +100,7 @@ interface PersistedGridChoices {
 
 function loadChoices(storageKey: string | undefined): PersistedGridChoices {
   if (!storageKey) return {};
-  try {
-    return JSON.parse(getStored(`provisa.grid.${storageKey}`) ?? "{}");
-  } catch {
-    return {};
-  }
+  return getStoredJson<PersistedGridChoices>(`provisa.grid.${storageKey}`) ?? {};
 }
 
 export function useResultsGrid(
@@ -369,7 +366,7 @@ export function useResultsGrid(
   }, []);
 
   const handleCopyResults = useCallback(() => {
-    const lines = [displayColumns.join("\t")];
+    const lines = [displayColumns.map(columnLabel).join("\t")];
     for (const row of displayRows)
       lines.push(displayColumns.map((c) => (row[c] == null ? "" : String(row[c]))).join("\t"));
     navigator.clipboard.writeText(lines.join("\n")).then(() => {
@@ -416,7 +413,8 @@ export function useResultsGrid(
   }, [resultRows, baseColumns]);
 
   const handleDownloadProfile = useCallback(() => {
-    const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
+    const named = profile.map((p) => ({ ...p, col: columnLabel(p.col) }));
+    const blob = new Blob([JSON.stringify(named, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

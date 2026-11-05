@@ -182,9 +182,6 @@ def assert_materialized_strategy_and_data_loaded(shared_data: dict) -> None:
 
 @then("the router does not attempt a live/VIRTUAL route")
 def assert_router_does_not_attempt_virtual(shared_data: dict) -> None:
-    # Verify: the router, given the MATERIALIZED strategy, must NOT select DIRECT or TRINO live.
-    # We simulate the router decision: if federate() says MATERIALIZED, the router must
-    # not attempt a live route for this source type.
     from provisa.transpiler.router import Route, decide_route
 
     strategy = shared_data["federation_result"].strategy
@@ -193,8 +190,8 @@ def assert_router_does_not_attempt_virtual(shared_data: dict) -> None:
         "Precondition: strategy must be MATERIALIZED for this assertion"
     )
 
-    # The router receives the materialized table reference, not the raw openapi source.
-    # For openapi sources, decide_route should return API (not VIRTUAL/TRINO live).
+    # REQ-863: an API source answers directly only a read its connector plans as the complete
+    # dataset; otherwise its rows are landed and the engine reads them -- never the live source.
     decision = decide_route(
         sources={"openapi_orders"},
         source_types={"openapi_orders": "openapi"},
@@ -202,14 +199,8 @@ def assert_router_does_not_attempt_virtual(shared_data: dict) -> None:
         operator_floor={},
         statement="SELECT 1",
     )
-    # The router routes openapi to API route — NOT to TRINO live connector.
-    assert decision.route != Route.ENGINE, (
-        f"Router must not use live TRINO route for MATERIALIZED openapi source; got {decision.route}"
-    )
-    # And not direct RDBMS either.
-    assert decision.route != Route.DIRECT, (
-        f"Router must not use DIRECT route for MATERIALIZED openapi source; got {decision.route}"
-    )
+    assert decision.route == Route.ENGINE, decision
+    assert decision.reason.startswith("landed: trusted_to_answer:"), decision.reason
 
 
 # ---------------------------------------------------------------------------

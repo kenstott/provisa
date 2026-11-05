@@ -29,12 +29,20 @@ from provisa.security import meta_role
 from provisa.security.meta_role import ensure_meta_role, meta_role_id
 from tests.unit.test_empty_domain_access_reaches_nothing import _built_roles
 
-_A = {"id": "a", "description": "Test role.", "capabilities": ["usage"], "domain_access": ["sales"]}
+# REQ-2153: a built role carries its own domain access beside its reach.
+_A = {
+    "id": "a",
+    "description": "Test role.",
+    "capabilities": ["usage"],
+    "domain_access": ["sales"],
+    "own_domain_access": ["sales"],
+}
 _B = {
     "id": "b",
     "description": "Test role.",
     "capabilities": ["usage"],
     "domain_access": ["finance"],
+    "own_domain_access": ["finance"],
 }
 _META = meta_role_id(["a", "b"])
 
@@ -133,7 +141,8 @@ def test_a_rebuilds_masking_rules_carry_the_meta_roles_masks():
     state = SimpleNamespace(
         meta_roles={_META: ("a", "b"), "meta:a+gone": ("a", "gone")}, meta_qualifiers={}
     )
-    masked_to_all = [{"to": ["*"], "mask": {"type": "constant", "value": "MASKED"}}]
+    # REQ-2153: the last entry, with no ``to``, is for every other reader.
+    masked_to_all = [{"to": None, "mask": {"type": "constant", "value": "MASKED"}}]
     unmasked_to_b = [{"to": ["b"], "mask": None}, *masked_to_all]
     masked = [
         (1, "ssn", masked_to_all, "varchar"),

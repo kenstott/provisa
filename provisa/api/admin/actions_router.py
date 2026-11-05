@@ -36,6 +36,8 @@ def _args_to_ui(raw: list[dict] | None) -> list[dict]:
         arg = {"name": a["name"], "type": a["type"], "argKind": a.get("arg_kind", "column_value")}
         if a.get("columns"):  # REQ-1159: per-dataset input column contract
             arg["columns"] = a["columns"]
+        if "default" in a:  # REQ-2168: left out of a call, the argument takes it
+            arg["default"] = a["default"]
         out.append(arg)
     return out
 
@@ -52,6 +54,8 @@ def _args_from_ui(raw: list[dict]) -> list[dict]:
         cols = a.get("columns")  # REQ-1159: per-dataset input column contract [{name,type}]
         if cols:
             norm["columns"] = cols
+        if "default" in a:  # REQ-2168
+            norm["default"] = a["default"]
         out.append(norm)
     return out
 
@@ -77,6 +81,7 @@ def _row_to_function(row: dict) -> dict:
         "materialize": bool(row.get("materialize", False)),
         "requiresApproval": bool(row.get("requires_approval", False)),  # REQ-1924
         "writesTable": row.get("writes_table"),  # REQ-1924, REQ-871
+        "languageBindings": row.get("language_bindings") or {},  # REQ-2168
     }
 
 
@@ -157,6 +162,8 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     materialize: bool = False
     requiresApproval: bool = False  # REQ-1924
     writesTable: str | None = None  # REQ-1924, REQ-871: "schema.table" of the table it writes
+    # REQ-2168: the command's name per language {language: {name?, exclude?}}.
+    languageBindings: dict[str, dict] = {}
 
 
 class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
@@ -267,6 +274,63 @@ def _as_statement(body: FunctionInput) -> None:  # REQ-2001
     body.kind = found.kind
     body.writesTable = found.writes
     body.functionName = body.functionName or body.name
+
+
+def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
+    """The command's bindings and, for a SQL expression function, its template, as they will be
+    served: no binding another command or a built-in holds in its language (refused naming both),
+    and the template written for every engine of the deployment (refused naming the engine)."""
+    from provisa.api.app import state
+    from provisa.core.builtin_commands import BuiltinRefused, check as check_builtin
+    from provisa.core.command_bindings import CommandBindingRefused, check_declared, check_names
+    from provisa.core.sql_expression import (
+        SqlExpressionRefused,
+        check_for_engines,
+        deployment_dialects,
+    )
+
+    saved = {
+        "name": body.name,
+        "impl_kind": body.implKind,
+        "language_bindings": body.languageBindings,
+    }
+    served = {
+        c["name"]: c
+        for pool in (state.tracked_functions, state.tracked_webhooks)
+        for c in pool.values()
+        if c["name"] != body.name
+    }
+    from pydantic import ValidationError
+
+    from provisa.core.models import FunctionArgument
+
+    try:
+        # REQ-2168: each argument's default is a value of its type (the update path writes the
+        # arguments as sent, so they are read through the model here).
+        for a in _args_from_ui(body.arguments):
+            FunctionArgument(**a)
+    except ValidationError as exc:
+        raise ApiError(
+            422, "actions.argument_default_refused", str(exc.errors()[0]["msg"]), name=body.name
+        ) from exc
+    try:
+        check_declared(body.name, body.languageBindings)
+        check_names([*served.values(), saved])
+        if body.implKind == "builtin":
+            check_builtin(body.name, body.binding)
+        if body.implKind == "sql_expression":
+            if body.kind != "query":
+                raise SqlExpressionRefused(
+                    f"function {body.name!r}: a sql_expression function is a query"
+                )
+            check_for_engines(
+                body.name,
+                body.binding,
+                [a["name"] for a in body.arguments],
+                deployment_dialects(state),
+            )
+    except (CommandBindingRefused, SqlExpressionRefused, BuiltinRefused) as exc:
+        raise ApiError(422, "actions.command_binding_refused", str(exc), name=body.name) from exc
 
 
 def _check_written_table(body: FunctionInput) -> None:
@@ -381,6 +445,15 @@ async def reclassify_webhook(request: Request, name: str, body: KindInput):  # R
     return await _reclassify(request, tracked_webhooks, name, body.kind)
 
 
+def _created_grant(request: Request, named: list[str]) -> list[str]:  # REQ-2154
+    """Who a command being created reaches: the roles it names, or, naming none, the role
+    registering it and Viewer -- the registration grant a table or a metric is created with."""
+    from provisa.api.admin.capabilities import acting_role_of_request
+    from provisa.security.default_grant import default_read_grant
+
+    return list(named) if named else default_read_grant(acting_role_of_request(request))
+
+
 @router.post("/functions")
 async def create_function(
     request: Request,
@@ -392,9 +465,10 @@ async def create_function(
     await _as_source_operation(body)
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
-    from provisa.core.models import DatasetColumn, Function, FunctionArgument
+    from provisa.core.models import CommandBinding, DatasetColumn, Function, FunctionArgument
     from provisa.core.repositories import function as function_repo
 
     if state.model_db is None:
@@ -407,7 +481,7 @@ async def create_function(
         function_name=body.functionName,
         returns=body.returns,
         arguments=[FunctionArgument(**a) for a in _args_from_ui(body.arguments)],
-        visible_to=body.visibleTo,
+        visible_to=_created_grant(request, body.visibleTo),
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
@@ -417,6 +491,9 @@ async def create_function(
         materialize=body.materialize,
         requires_approval=body.requiresApproval,  # REQ-1924
         writes_table=body.writesTable,  # REQ-1924, REQ-871
+        language_bindings={  # REQ-2168
+            k: CommandBinding(**v) for k, v in body.languageBindings.items()
+        },
         # REQ-1159: the wire model carries the raw [{name,type}] the UI posts (the update path
         # below writes it straight into a JSON column); the domain model wants the typed contract.
         output_columns=(
@@ -428,6 +505,7 @@ async def create_function(
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.model_db.acquire() as _conn:
         await _refuse_taken_name(_conn, tracked_functions, body.name, "function")
+        await _refuse_unreachable_mask(_conn, body.outputColumns)
         # REQ-870: re-registering a stored command read-safe is a reclassification.
         await _require_reclassification(
             request, _conn, tracked_functions, body.name, body.kind, body.domainId
@@ -452,6 +530,7 @@ async def update_function(
     await _as_source_operation(body)
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
 
@@ -466,6 +545,7 @@ async def update_function(
         await _require_reclassification(
             request, conn, tracked_functions, name, body.kind, body.domainId
         )
+        await _refuse_unreachable_mask(conn, body.outputColumns)
         if body.productId is not None:
             # REQ-1634: same domain-membership gate as function_repo.upsert_function; the
             # update path writes tracked_functions directly and must not bypass it.
@@ -504,6 +584,7 @@ async def update_function(
                 materialize=body.materialize,
                 requires_approval=body.requiresApproval,  # REQ-1924
                 writes_table=body.writesTable,  # REQ-1924, REQ-871
+                language_bindings=body.languageBindings,  # REQ-2168
                 updated_at=func.now(),
             )
         )
@@ -516,6 +597,24 @@ async def update_function(
 
     await _rebuild_schemas()
     return {"success": True, "name": name}
+
+
+async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  # REQ-2059
+    """A contract column's mask list holding an entry no reader can reach is not saved (422)."""
+    from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+    from provisa.security.masking import MaskUnreachable
+
+    lists = {c["name"]: c.get("masks") or [] for c in columns or []}
+    try:
+        await refuse_unreachable_masks(conn, lists)
+    except MaskUnreachable as refused:
+        raise ApiError(
+            422,
+            "actions.mask_unreachable",
+            str(refused),
+            entries=refused.entries,
+            column=refused.column,
+        ) from None
 
 
 async def _refuse_taken_name(conn, table, name: str, kind: str) -> None:
@@ -585,6 +684,7 @@ async def create_webhook(
 
     async with state.model_db.acquire() as conn:
         await _refuse_taken_name(conn, tracked_webhooks, body.name, "webhook")
+        await _refuse_unreachable_mask(conn, body.inlineReturnType)
         # REQ-870: re-registering a stored webhook read-safe is a reclassification.
         await _require_reclassification(
             request, conn, tracked_webhooks, body.name, body.kind, body.domainId
@@ -599,7 +699,7 @@ async def create_webhook(
                 "returns": body.returns,
                 "inline_return_type": body.inlineReturnType,
                 "arguments": body.arguments,
-                "visible_to": body.visibleTo,
+                "visible_to": _created_grant(request, body.visibleTo),
                 "domain_id": body.domainId,
                 "description": body.description,
                 "kind": body.kind,
@@ -667,6 +767,7 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
         await _require_reclassification(
             request, conn, tracked_webhooks, name, body.kind, body.domainId
         )
+        await _refuse_unreachable_mask(conn, body.inlineReturnType)
         result = await conn.execute_core(
             update(tracked_webhooks)
             .where(tracked_webhooks.c.name == name)

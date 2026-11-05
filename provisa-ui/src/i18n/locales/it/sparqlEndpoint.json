@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Endpoint",
+    "copyEndpoint": "Copia l'URL dell'endpoint",
+    "prefixes_one": "{{count}} prefisso",
+    "prefixes_other": "{{count}} prefissi",
+    "prefixName": "Prefisso",
+    "namespace": "Spazio dei nomi",
+    "removePrefix": "Rimuovi prefisso",
+    "invalidPrefix": "Solo lettere, cifre, - e _",
+    "addHint": "Compila l'ultima riga per aggiungere un prefisso. I prefissi nominano i termini nei risultati e nelle query delle pillole; una query viene eseguita così come è scritta.",
+    "restore": "Ripristina prefissi"
+  }
+}

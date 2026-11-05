@@ -17,6 +17,9 @@ worker is the remote host, dialled again with backoff when it stops answering.""
 
 from __future__ import annotations
 
+import hashlib
+import ssl
+
 import os
 import subprocess
 import sys
@@ -162,6 +165,7 @@ def host(tmp_path):
             front.__file__,
             str(port),
             str(tmp_path / "state"),
+            str(tmp_path / "spill"),
             str(names),
             *[sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"],
         ],
@@ -241,6 +245,38 @@ async def test_connecting_the_host_switches_the_source_to_built_mode(host, wired
     assert remote_host["exports"] == ["orders", "summary", "tags"]
     assert manifest_from_json(remote_host["manifest"]) == _MANIFEST
     assert wired["saved"] == built
+
+
+async def test_connecting_dials_the_host_to_pair_and_to_check_and_no_more(host, wired, monkeypatch):
+    # An engine attaching the host verifies it by its certificate (REQ-2100): it is read on the
+    # pairing dial, so the source is not dialled a third time for it.
+    port, pairing, hashed = host
+    wired["give"](hashed)
+    dials = []
+    dial = remote._dial
+    checking = []
+
+    def counted(*args, **kwargs):
+        dials.append("check" if checking else "other")
+        return dial(*args, **kwargs)
+
+    check = remote_sources._check
+
+    def counted_check(*args, **kwargs):
+        # The check's own connections (a remote worker opens as many as it serves calls on).
+        checking.append(True)
+        try:
+            return check(*args, **kwargs)
+        finally:
+            checking.pop()
+
+    monkeypatch.setattr(remote, "_dial", counted)
+    monkeypatch.setattr(remote_sources, "_check", counted_check)
+    built = await remote_sources.connect(None, "shop", "127.0.0.1", port, pairing)
+    der = ssl.PEM_cert_to_DER_cert(built["remote"]["certificate"])
+    assert hashlib.sha256(der).hexdigest() == built["remote"]["pin"]
+    assert dials.count("other") == 1  # the pairing dial: none for the certificate
+    assert "check" in dials
 
 
 async def test_a_host_running_other_code_is_refused_naming_both_hashes(host, wired):

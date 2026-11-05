@@ -285,6 +285,7 @@ function CombinedSqlPanel({
 }) {
   const [copied, setCopied] = useState(false);
   const [sqlExpanded, setSqlExpanded] = useState(true);
+  const navigate = useNavigate();
   const sqlExtensions = useMemo(() => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping], []);
   const cmTheme = useMantineColorScheme().colorScheme === "dark" ? oneDark : undefined;
   const combined = compiledList
@@ -357,6 +358,31 @@ function CombinedSqlPanel({
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                 </svg>
               )}
+            </button>
+          </Tip>
+          {/* The whole query's semantic SQL, opened on the SQL page, as the Cypher panel opens
+              its Cypher on the Graph page. */}
+          <Tip text="Open in SQL" named>
+            <button
+              className="provisa-tools-copy"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate("/sql", { state: { sql: combined, autoRun: true } });
+              }}
+              aria-label="Open in SQL"
+              data-testid="provisa-tools-open-sql"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
             </button>
           </Tip>
           <span className="provisa-tools-chevron">{sqlExpanded ? "▾" : "▸"}</span>

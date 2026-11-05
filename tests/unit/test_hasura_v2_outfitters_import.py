@@ -145,12 +145,42 @@ def test_the_converted_rules_validate_against_the_model(converted):
 # --- roles ------------------------------------------------------------------------------------
 
 
+def test_every_imported_role_is_a_subset_of_its_parents(converted):
+    """REQ-2155: an import is held to the rule a hand-written config is."""
+    from provisa.core.db import standard_role_dicts
+    from provisa.security.inheritance import right_not_in_parents
+
+    config, _collector = converted
+    rows = [*standard_role_dicts(), *(r.model_dump() for r in config.roles)]
+    for role in config.roles:
+        assert (
+            right_not_in_parents(
+                role.id,
+                role.parents,
+                role.capabilities,
+                role.domain_access,
+                role.residency_values,
+                rows,
+                {},
+            )
+            is None
+        )
+
+
+def test_an_imported_role_holds_what_viewer_does_and_reads_no_standard_roles_grants(converted):
+    """REQ-2155: it holds what it is given, and no standard role stands above it."""
+    config, _collector = converted
+    role = next(r for r in config.roles if not r.parents)
+    assert {"glossary_read", "data_product_read"} <= set(role.capabilities)
+    assert "catalog_read" not in role.capabilities
+
+
 def test_an_inherited_role_of_several_roles_holds_the_union_of_their_rights(converted):
     """Hasura's support_lead inherits support and analyst; it reads what either reads, and its
     rows are the OR of theirs -- none here, support reading orders unfiltered."""
     config, collector = converted
     lead = next(r for r in config.roles if r.id == "support_lead")
-    assert lead.parent_role_id is None
+    assert lead.parents == []  # written out as the union; it holds what it is given (REQ-2155)
     customers = _table(config, "customers")
     visible = {c.name for c in customers.columns if "support_lead" in c.visible_to}
     assert {"email", "sf_account_id", "created_at"} <= visible

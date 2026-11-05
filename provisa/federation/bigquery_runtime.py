@@ -145,6 +145,31 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
 
         self._client.create_dataset(bigquery.Dataset(f"{self._project}.{dataset}"), exists_ok=True)
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether the table ``schema.table`` of the project exists, from the region's own
+        listing (``region-<location>.INFORMATION_SCHEMA.TABLES``): it answers for a dataset that
+        does not exist yet as for a table, with no row, where a dataset's own listing would fail.
+        Absent is False; a listing that cannot be read raises."""
+        import asyncio
+
+        from google.cloud import bigquery
+
+        sql = (
+            f"SELECT 1 FROM `{self._project}`.`region-{self._location.lower()}`"
+            ".INFORMATION_SCHEMA.TABLES WHERE table_schema = @schema AND table_name = @table"
+        )
+        cfg = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("schema", "STRING", schema),
+                bigquery.ScalarQueryParameter("table", "STRING", table),
+            ]
+        )
+
+        def _run() -> bool:
+            return any(True for _ in self._client.query(sql, job_config=cfg).result())
+
+        return await asyncio.to_thread(_run)
+
     async def land_table(
         self,
         *,

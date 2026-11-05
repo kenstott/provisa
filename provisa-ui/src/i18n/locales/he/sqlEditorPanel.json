@@ -33,8 +33,9 @@
     "createView": "+ View",
     "requestView": "בקשת View",
     "asOfLabel": "נכון ל",
-    "asOfHint": "קריאת תצוגות עם היסטוריה כפי שהיו בזמן הזה",
+    "asOfHint": "כותב as_of על כל יחס ששומר גרסאות: לקרוא אותו כפי שהיה בזמן הזה",
     "asRecordedLabel": "כפי שנרשם ב",
-    "asRecordedHint": "קריאת תצוגות עם היסטוריה כפי ש-Provisa רשמה אותן אז, לפני תיקונים מאוחרים"
+    "asRecordedHint": "כותב as_recorded על כל יחס ששומר גרסאות: לקרוא אותו כפי ש-Provisa רשמה אותו אז, לפני תיקונים מאוחרים יותר",
+    "boundParams": "מאוגד להרצה הבאה: {{values}}"
   }
 }

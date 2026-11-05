@@ -15,17 +15,22 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
-import { edgesOf, type GraphData, type NodeType } from "./graphModel";
+import type { GraphData, LayoutKind, NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
+import { GroundIcon } from "../GroundIcon";
 import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
+import { hoverBody } from "./hoverBody";
+import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
 
 export interface StageState {
   graph: GraphData;
   at: Map<string, [number, number, number]>;
   /** Changes when the graph is laid out afresh (a preset), so the camera is reset to fit it. */
   frame: number;
-  /** A flat layout (tree, lanes) is seen from the front. */
-  frontal: boolean;
+  /** REQ-2174: drawn in 2D -- laid out flat, through a face-on orthographic camera. */
+  flat: boolean;
+  /** REQ-2174: laid out in layers, where lateral edges are drawn as arcs over the rest. */
+  layout: LayoutKind;
   selected: string | null;
   setSelected: (id: string) => void;
   hover: GraphHover | null;
@@ -55,12 +60,15 @@ export function GraphStage({
   command,
   exportName,
   testId,
+  bare = false,
 }: {
   s: StageState;
   command: CameraCommand | null;
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
+  /** A glance only (a card): no export or hint (Stage3D). */
+  bare?: boolean;
 }) {
   const { t } = useTranslation();
   const [tip, setTip] = useState<{ h: GraphHover; x: number; y: number } | null>(null);
@@ -86,7 +94,8 @@ export function GraphStage({
           },
           theme,
         );
-        sc.setFrontal(latest.current.frontal);
+        sc.setFlat(latest.current.flat);
+        sc.setArcs(latest.current.layout === "layered");
         sc.setGrid(latest.current.grid);
         sc.setData(latest.current.graph, latest.current.at, true);
         return sc;
@@ -96,16 +105,25 @@ export function GraphStage({
     graph: GraphData;
     at: Map<string, [number, number, number]>;
     frame: number;
+    flat: boolean;
+    layout: LayoutKind;
   } | null>(null);
   useEffect(() => {
     if (!scene) return;
     const was = drawn.current;
-    drawn.current = { graph: s.graph, at: s.at, frame: s.frame };
+    drawn.current = { graph: s.graph, at: s.at, frame: s.frame, flat: s.flat, layout: s.layout };
     // A new graph, or the same graph laid out anew (the attraction moved), is drawn again.
     if (was === null || (was.graph === s.graph && was.at === s.at)) return;
-    scene.setFrontal(s.frontal);
-    scene.setData(s.graph, s.at, was.frame !== s.frame);
-  }, [scene, s.graph, s.at, s.frame, s.frontal]);
+    // Into or out of 2D the layout changes too, and the camera is reset to the new one.
+    scene.setFlat(s.flat);
+    scene.setArcs(s.layout === "layered");
+    // A new layout kind (Force to Layered) is fitted afresh too: it faces another way.
+    scene.setData(
+      s.graph,
+      s.at,
+      was.frame !== s.frame || was.flat !== s.flat || was.layout !== s.layout,
+    );
+  }, [scene, s.graph, s.at, s.frame, s.flat, s.layout]);
   useEffect(() => scene?.setSelected(s.selected), [scene, s.selected]);
   useEffect(() => scene?.setHover(s.hover), [scene, s.hover]);
   useEffect(() => scene?.setRotate(s.rotate), [scene, s.rotate]);
@@ -116,35 +134,7 @@ export function GraphStage({
     else if (command.target != null) scene.focus(command.target);
   }, [scene, command]);
 
-  let body = null;
-  if (tip?.h.kind === "node") {
-    const node = s.graph.nodes.find((n) => n.id === tip.h.id);
-    if (node) {
-      body = (
-        <>
-          <b>{node.label}</b>
-          <span>{t(kindKey(node))}</span>
-          <span className="p3d-num">
-            {t("graph3d.tipLinks", { count: edgesOf(s.graph, node.id).length })}
-          </span>
-        </>
-      );
-    }
-  } else if (tip?.h.kind === "edge") {
-    const e = s.graph.edges.find((x) => x.id === tip.h.id);
-    if (e) {
-      const name = (id: string) => s.graph.nodes.find((n) => n.id === id)?.label ?? id;
-      body = (
-        <>
-          <b>{`${name(e.a)} → ${name(e.b)}`}</b>
-          <span>{e.label ?? t(`graph3d.edge_${e.kind}`)}</span>
-          {(e.paths ?? 1) > 1 && (
-            <span className="p3d-num">{t("graph3d.paths", { count: e.paths })}</span>
-          )}
-        </>
-      );
-    }
-  }
+  const body = tip ? hoverBody(s.graph, tip.h, t) : null;
 
   return (
     <Stage3D
@@ -158,6 +148,8 @@ export function GraphStage({
       exportable={scene}
       exportName={exportName}
       testId={testId}
+      bare={bare}
+      flat={s.flat}
       legend={<GraphLegend graph={s.graph} />}
     />
   );
@@ -165,7 +157,7 @@ export function GraphStage({
 
 /** Each look the graph draws -- a shape for the kind, a colour for the variant -- and, where terms
  * carry a status, the four styles a term's name takes. */
-function GraphLegend({ graph }: { graph: GraphData }) {
+export function GraphLegend({ graph }: { graph: GraphData }) {
   const { t } = useTranslation();
   const looks = new Map<string, { type: NodeType; name: string } & Look>();
   for (const type of LEGEND)
@@ -179,22 +171,37 @@ function GraphLegend({ graph }: { graph: GraphData }) {
   const statuses = graph.nodes.some((n) => n.status !== undefined);
   return (
     <>
-      {[...looks.entries()].map(([key, l]) => (
-        <span key={key} data-testid={`legend-${key}`}>
-          <i
-            className={`g3d-shape g3d-shape-${l.shape}`}
-            // A ring's colour is its border; every other shape is filled.
-            style={
-              l.shape === "torus"
-                ? { borderColor: `var(--p3d-${l.colour})` }
-                : { background: `var(--p3d-${l.colour})` }
-            }
-          />
-          {t(l.name)}
-        </span>
-      ))}
+      {[...looks.entries()].map(([key, l]) => {
+        // A solid seen as a polygon is clipped to its outline, which an export paints too.
+        const outline = GLYPH_OUTLINE[l.shape];
+        return (
+          <span key={key} data-testid={`legend-${key}`}>
+            <i
+              className={`g3d-shape g3d-shape-${l.shape}`}
+              data-glyph={outline ? glyphPoints(outline) : undefined}
+              // A ring's colour is its border; every other shape is filled.
+              style={
+                l.shape === "torus"
+                  ? { borderColor: `var(--p3d-${l.colour})` }
+                  : {
+                      background: `var(--p3d-${l.colour})`,
+                      ...(outline ? { clipPath: glyphClip(outline) } : {}),
+                    }
+              }
+            />
+            {t(l.name)}
+          </span>
+        );
+      })}
+      {graph.nodes.some((n) => n.grounding !== undefined) &&
+        (["grounded", "grounded_pending"] as const).map((g) => (
+          <span key={g} data-testid={`legend-grounding-${g}`}>
+            <GroundIcon state={g} size={14} style={{ verticalAlign: "middle" }} />
+            {t(`graph3d.grounding_${g}`)}
+          </span>
+        ))}
       {statuses &&
-        (["live", "draft", "deprecated", "retired"] as const).map((st) => (
+        (["approved", "draft", "deprecated", "retired"] as const).map((st) => (
           <span
             key={st}
             className={`g3d-legend-status ${labelClass(st)}`.trim()}

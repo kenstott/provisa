@@ -13,26 +13,46 @@ import { Checkbox, Group, Text } from "@mantine/core";
 import { alsoReached } from "../../lib/domainTree";
 import type { TreeDomain } from "../../lib/domainTree";
 import { FormField } from "../../components/form/FormLayout";
+import { Tip } from "../../components/Tip";
 import type { Capability } from "../../types/auth";
 
+// Every right a role may be given but data_residency, which its own control carries, with what it
+// covers (components/admin/ResidencyGrant). A platform right is defined by a platform administrator.
 const ALL_CAPABILITIES: Capability[] = [
+  "catalog_read",
+  "glossary_read",
+  "data_product_read",
+  "usage",
+  "query_development",
+  "full_results",
+  "write",
+  "no_aggregations",
+  "create_view",
+  "approve_view",
+  "create_relationship",
+  "approve_relationship",
+  "ignore_relationships",
   "source_registration",
   "table_registration",
-  "create_relationship",
   "access_config",
-  "query_development",
-  "approve_view",
-  "full_results",
-  "usage",
-  "read_restricted",
-  "approve_relationship",
-  "create_view",
   "column_grant",
-  "user_management",
   "masking_config",
-  // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
-  "glossary_read",
+  "sensitive_data",
+  "view_governance",
+  "user_management",
   "glossary_rw",
+  "org_glossary_rw",
+  "data_product_rw",
+  "dq_read",
+  "dq_rw",
+  "org_settings",
+  "observability",
+  "environment_switch",
+  "environment_owned_management",
+  "environment_management",
+  "environment_data",
+  "platform_settings",
+  "cross_org",
 ];
 
 /**
@@ -73,27 +93,44 @@ export function SubtreeNote({ listed, domains }: { listed: string[]; domains: Tr
 
 export function CapabilityGrid({
   value,
+  held,
   onToggle,
   label,
 }: {
   value: Capability[];
+  /** What the role's parents hold; null for a role with none. Anything else is shown disabled. */
+  held: ReadonlySet<string> | null;
   onToggle: (cap: Capability) => void;
   label: string;
 }) {
+  const { t } = useTranslation();
   return (
     // One labelled set of ticks, a line of the role form to itself.
     <FormField size="full">
       <Checkbox.Group label={label} value={value} data-testid="capability-grid">
         <Group gap="sm" mt="xs" style={{ rowGap: "0.35rem" }}>
-          {ALL_CAPABILITIES.map((cap) => (
-            <Checkbox
-              key={cap}
-              label={cap}
-              checked={value.includes(cap)}
-              onChange={() => onToggle(cap)}
-              size="sm"
-            />
-          ))}
+          {ALL_CAPABILITIES.map((cap) => {
+            const offered = held === null || held.has(cap);
+            return (
+              <Tip
+                key={cap}
+                text={offered ? t(`capabilityHelp.${cap}`) : t("capabilityHelp.notHeldByParent")}
+              >
+                {/* A disabled input takes no pointer events, so the hint is on what holds it. */}
+                <span data-testid={`capability-tick-${cap}`}>
+                  <Checkbox
+                    label={cap}
+                    // The group reads a box's state off its value.
+                    value={cap}
+                    checked={value.includes(cap)}
+                    disabled={!offered}
+                    onChange={() => onToggle(cap)}
+                    size="sm"
+                  />
+                </span>
+              </Tip>
+            );
+          })}
         </Group>
       </Checkbox.Group>
     </FormField>

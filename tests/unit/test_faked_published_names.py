@@ -49,8 +49,8 @@ TABLES = [
         "schema_name": "sales",
         "table_name": "customers",
         "columns": [
-            {"column_name": "id", "visible_to": []},
-            {"column_name": "email", "visible_to": [], "alias": "mail"},
+            {"column_name": "id", "visible_to": ["tester"]},
+            {"column_name": "email", "visible_to": ["tester"], "alias": "mail"},
         ],
         "write_ops": [],
         "write_returns_rows": False,

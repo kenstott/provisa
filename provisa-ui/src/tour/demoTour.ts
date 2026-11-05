@@ -17,7 +17,9 @@
 import type { Capability } from "../types/auth";
 import type { ExampleQuery } from "../api/setup";
 import type { TourStep } from "./tourSteps";
+import type { UiAction } from "../mcp/uiActions";
 import { runSql } from "../api/admin";
+import { documentMark } from "../lib/documentMark";
 import type { TourPrerequisites } from "./tourPrerequisites";
 
 /** REQ-2013: a demo's track needs the sources and tables its steps show. */
@@ -75,7 +77,8 @@ export interface DemoTourStepDef {
   /** A registered table, as `<source id>.<table name>`: its row on the Tables page. */
   table?: string;
   /** With `table`: its detail panel opened on a section, and in Columns on a tab, as
-   *  `<section>[.<tab>]` (`columns.testing`: each column's fake). */
+   *  `<section>[.<tab>]` (`columns.testing`: each column's fake); in Identity, on one field
+   *  (`identity.region`: the table's home region). */
   open?: string;
   /** With `table` and `open: quality`: one graph of the table's latest profile run, drawn in its
    *  View Profile Runs window (`terrain`, `relationsMap`, `jointCloud`, `driftStrata`). The tour
@@ -83,6 +86,11 @@ export interface DemoTourStepDef {
   graph?: ProfileGraph;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
+  /** REQ-1922: a region of the platform, by id: its row on the Platform page, its row (its engine
+   *  and stores) on Admin > Regions, or its tab on Admin > Federation (picked, its engine shown). */
+  region?: string;
+  /** REQ-1922: the legend of region purposes, on the Platform page or Admin > Regions. */
+  purposes?: true;
   /** A scheduled trigger, by id: its row on the Triggers page. */
   trigger?: string;
   /** An example query of the demo, by name: opened in a new GraphiQL tab and run. */
@@ -107,18 +115,29 @@ export interface DemoTourStepDef {
   term?: string;
   /** A data product, by id: opened on the Data Products page, its members and lineage shown. */
   product?: string;
-  /** A role (or "all"): shown in the SQL explorer's run-as picker, picked on Next. */
+  /** REQ-2201: a document's public address, given to the glossary's Find terms: the tour opens
+   *  the dialog, types the address, starts a scan and cancels it, then explains the stopped scan.
+   *  A scan reads for minutes; the one done ahead is opened by a `scan` step. With `domains`, the
+   *  domains the scan's terms are curated in, chosen before it starts: a demo in domains names
+   *  them, as Find terms refuses a scan in none. */
+  find_terms?: string | { url: string; domains: string[] };
+  /** REQ-2201: the scan of the document at this address done ahead (the demo's setup.yaml scans it
+   *  when its bundle is built): opened from Find terms' list, its candidate terms shown. */
+  scan?: string;
+  /** REQ-2201: a reference library document, by the address it was read from: its row on the
+   *  Reference library page. */
+  library?: string;
+  /** A report, by its table name: opened on the Reports page, its rows shown. */
+  report?: string;
+  /** A role (or "all"): shown in its picker (the SQL explorer's run-as on /sql, else the header's)
+   *  and picked on Next. Beside `example`, `sql` or `mcp`, picked as the step opens, and what the
+   *  step names runs as it. */
   role?: string;
-  /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as of" picker: the statements after
-   *  it read bitemporal views as of it. */
-  as_of?: string;
-  /** REQ-1163: a time, ISO 8601, set in the SQL explorer's "as recorded at" picker: the
-   *  statements after it read bitemporal views as Provisa had recorded them then. */
-  as_recorded?: string;
-  /** REQ-2083: the "as recorded at" time taken from the answer of an earlier `sql` step of the
-   *  tour, row `row` (0-based) and column `column`, when this step runs: a recording time Provisa
-   *  stamped, which no tour can know in advance. The earlier step's statement is run again as it
-   *  ran then (its role and time travel). */
+  /** REQ-2083: a time taken from the answer of an earlier `sql` step of the tour, row `row`
+   *  (0-based) and column `column`, when this step runs -- a recording time Provisa stamped, which
+   *  no tour can know in advance -- and bound to the next statement's $1, which names it as a
+   *  relation's argument (`(as_recorded => $1)`, REQ-1163). The earlier step's statement is run
+   *  again as it ran then (its role). */
   as_recorded_from?: { step: string; row: number; column: string };
   /** An environment of the model (REQ-2053): shown in the header's environment switcher, picked
    *  on Next, so the steps after it read that environment. */
@@ -126,6 +145,15 @@ export interface DemoTourStepDef {
   /** REQ-2084: the demo's notebook (notebook.ipynb): its cells added to the Notebook tab's open
    *  notebook and run there, in the visitor's browser. */
   notebook?: true;
+  /** REQ-2172: a question handed to the MCP explorer: its agent answers it live, as the role the
+   *  header acts as, its tool calls shown as they run. */
+  mcp?: string;
+  /** REQ-2172: the explain of the last run_sql call the explorer's agent made: the statement it
+   *  sent and the one that ran, governed for the role. */
+  mcp_explain?: true;
+  /** REQ-2172: the explorer's Connect Claude Desktop panel, opened: the same server, for the
+   *  visitor's own agent. */
+  mcp_connect?: true;
   /** A question for Polly: the panel opens on it and its stored `answer`, as an exchange. */
   polly?: string;
   /** REQ-2012: Polly's answer to `polly`, stored when the demo's template was built. */
@@ -141,6 +169,35 @@ export interface DemoTourStepDef {
 
 /** View Profile Runs' close button: a graph step leaves the window as it found it. */
 const PROFILE_RUNS_CLOSE = '[data-testid="profile-runs-modal"] .mantine-Modal-close';
+/** View Profile Runs on a table with no run: a graph step has nothing to draw (REQ-2052). */
+const PROFILE_RUNS_NONE = '[data-testid="profile-runs-none"]';
+
+/** A Mantine modal's close button: an explain step leaves the explorer as it found it. */
+const MODAL_CLOSE = ".mantine-Modal-close";
+
+/** The glossary's Find terms (REQ-2179): its window, the scan open in it, and its close button,
+ *  which a find_terms or scan step presses on leaving, so each step opens the window afresh. */
+const FIND_TERMS_DIALOG = '[data-testid="find-terms-dialog"]';
+const FIND_TERMS_QUEUE = '[data-testid="find-terms-queue"]';
+const FIND_TERMS_CLOSE = `${FIND_TERMS_DIALOG} .mantine-Modal-close`;
+/** The glossary's menu that offers Find terms, and its item. */
+const GLOSSARY_GENERATE_MENU = "glossary-generate-menu";
+const GLOSSARY_FIND_TERMS = "glossary-find-terms-btn";
+
+/** Find terms opened from the glossary's menu, each click waiting for what it opens. */
+const OPEN_FIND_TERMS = [
+  {
+    click: `[data-testid="${GLOSSARY_GENERATE_MENU}"]`,
+    unlessPresent: `${FIND_TERMS_DIALOG}, [data-testid="${GLOSSARY_FIND_TERMS}"]`,
+  },
+  { click: `[data-testid="${GLOSSARY_FIND_TERMS}"]`, unlessPresent: FIND_TERMS_DIALOG },
+];
+
+/** A scan of the document at `url` that has ended `status`: its row in Find terms' list and the
+ *  scan open in the window both carry these. */
+function scanOf(url: string, status: "done" | "failed"): string {
+  return `[data-scan-source="${documentMark(url)}"][data-scan-status="${status}"]`;
+}
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
@@ -157,6 +214,23 @@ const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-gr
 // A statement refused, as the explorer shows it: the provisioning close read outside its view's
 // load window is refused by design, and its step shows the refusal rather than ending the tour.
 const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
+// A statement run and answered with no rows: the page's "No results." of a tab not yet run is not
+// this. A demo's statements answer rows, so the step stops, saying so (REQ-2052).
+const SQL_RESULT_EMPTY = '[data-testid="sql-results-empty"][data-answered]';
+
+const RELATIONSHIPS_PAGE = "/relationships";
+
+/** REQ-1922: a region's anchor on each page that lists regions: the platform's, the org's (its
+ *  engine and stores) and Federation's tab per region, which the org's engine page shares. */
+const REGION_ANCHORS: Record<string, (id: string) => string> = {
+  "/admin/platform": (id) => `[data-testid="platform-region-row-${id}"]`,
+  "/admin/regions": (id) => `[data-testid="org-region-row-${id}"]`,
+  "/admin/federation-engine": (id) => `[data-testid="federation-region-tab-${id}"]`,
+  "/admin/org-engine": (id) => `[data-testid="federation-region-tab-${id}"]`,
+};
+/** The pages that show the legend of region purposes under their list of regions. */
+const PURPOSES_PAGES = ["/admin/platform", "/admin/regions"];
+const FEDERATION_PAGES = ["/admin/federation-engine", "/admin/org-engine"];
 
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
@@ -165,28 +239,52 @@ export function demoTourSteps(
 ): TourStep[] {
   const steps: TourStep[] = [];
   let onPage: string | undefined;
+  let pageCapability: Capability | undefined;
   // What each `sql` step ran as: the SQL explorer's role and time travel set by the steps before
   // it (REQ-2083), so a later step can run its statement again as it ran then.
   const ran = new Map<string, StatementRun>();
   const context: Omit<StatementRun, "sql"> = {};
   for (const def of defs) {
     onPage = def.route ?? onPage;
+    pageCapability = def.route !== undefined ? def.capability : pageCapability;
     if (def.role !== undefined && onPage === "/sql") context.role = def.role;
-    if (def.as_of !== undefined) context.asOf = def.as_of;
-    if (def.as_recorded !== undefined) context.asRecorded = def.as_recorded;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
-    const step = demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran);
+    // A relationship step continuing on the Relationships page opens it again with its own search:
+    // the route it would inherit searches for the step before's alias, which filters its row away.
+    const own =
+      def.relationship !== undefined && def.route === undefined && onPage === RELATIONSHIPS_PAGE
+        ? { ...def, route: onPage, capability: pageCapability }
+        : def;
+    const shown = demoTourStep(own, examples, notebook, steps[steps.length - 1], onPage, ran);
+    const step = runsAsItsRole(def) ? { ...shown, chooseFirst: rolePicker(def, onPage) } : shown;
     steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
   }
   return steps;
 }
 
-/** A tour statement as the SQL explorer ran it: its text, run-as role and time travel. */
+/** The step names a role and something to run: the role is picked as the step opens. */
+function runsAsItsRole(def: DemoTourStepDef): boolean {
+  return (
+    def.role !== undefined &&
+    (def.example !== undefined || def.sql !== undefined || def.mcp !== undefined)
+  );
+}
+
+/** The picker `def.role` is chosen in: the SQL explorer's own run-as on its page, the header's
+ *  role picker (what every other page's requests run as) anywhere else. */
+function rolePicker(
+  def: DemoTourStepDef,
+  onPage: string | undefined,
+): NonNullable<TourStep["chooseOnNext"]> {
+  return onPage === "/sql"
+    ? { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` }
+    : { open: APP_ROLE, option: `[data-role-option="${def.role}"]` };
+}
+
+/** A tour statement as the SQL explorer ran it: its text and run-as role. */
 export interface StatementRun {
   sql: string;
   role?: string;
-  asOf?: string;
-  asRecorded?: string;
 }
 
 function demoTourStep(
@@ -208,7 +306,13 @@ function demoTourStep(
     // The table's detail panel, open on the section (and Columns tab) the step is about: what it
     // describes is shown only there.
     const [section, tab] = def.open.split(".");
-    const query = new URLSearchParams({ open: def.table, section, ...(tab ? { tab } : {}) });
+    // In Identity the part after the dot is a field of the section, not a tab: the field is shown.
+    const field = section === "identity" ? tab : undefined;
+    const query = new URLSearchParams({
+      open: def.table,
+      section,
+      ...(tab && field === undefined ? { tab } : {}),
+    });
     if (def.graph !== undefined) {
       // Act, then explain (REQ-2115): the tour opens the table's View Profile Runs, which selects
       // the latest run, and picks the graph's tab; the popover then explains the graph, once its
@@ -224,13 +328,17 @@ function demoTourStep(
         readySelector: stage,
         element: stage,
         waitMs: RESULT_WAIT_MS,
+        absent: PROFILE_RUNS_NONE,
         clickAfterNext: PROFILE_RUNS_CLOSE,
       };
     }
     return {
       ...page,
       route: `${def.route ?? "/tables"}?${query.toString()}`,
-      element: `[data-testid="table-section-${section}-panel"]`,
+      element:
+        field !== undefined
+          ? `[data-testid="table-identity-${field}"]`
+          : `[data-testid="table-section-${section}-panel"]`,
     };
   }
   if (def.table !== undefined) {
@@ -243,6 +351,24 @@ function demoTourStep(
     // whatever else the org holds: a relationship listed past the first fifty mounts no anchor.
     const query = new URLSearchParams({ search: def.relationship });
     return { ...page, route: `${def.route}?${query.toString()}`, element };
+  }
+  if (def.region !== undefined) {
+    const anchor = onPage !== undefined ? REGION_ANCHORS[onPage] : undefined;
+    // The tour test holds each region step to a page that lists regions.
+    if (anchor === undefined) {
+      throw new Error(`Tour: step ${def.key} shows region "${def.region}" off a regions page`);
+    }
+    const element = anchor(def.region);
+    // Federation's tab is picked, so its engine is what the page shows beside it.
+    return FEDERATION_PAGES.includes(onPage!)
+      ? { ...page, clickBefore: element, element }
+      : { ...page, element };
+  }
+  if (def.purposes === true) {
+    if (onPage === undefined || !PURPOSES_PAGES.includes(onPage)) {
+      throw new Error(`Tour: step ${def.key} shows the region purposes off a regions page`);
+    }
+    return { ...page, element: '[data-testid="region-purposes-legend"]' };
   }
   if (def.trigger !== undefined) {
     return { ...page, element: `[data-testid="scheduled-task-row-${def.trigger}"]` };
@@ -270,6 +396,7 @@ function demoTourStep(
       readySelector: `${SQL_RESULT_ROW}, ${SQL_RESULT_ERROR}`,
       element: `.sql-results-table, ${SQL_RESULT_ERROR}`,
       waitMs: RESULT_WAIT_MS,
+      absent: SQL_RESULT_EMPTY,
     };
   }
   // Each runs on its page and is awaited as the SQL statement is: by a mark the page shows only
@@ -325,6 +452,34 @@ function demoTourStep(
       waitMs: NOTEBOOK_WAIT_MS,
     };
   }
+  if (def.mcp !== undefined) {
+    // Handed to the explorer, which sends it once and marks the page when the answer is in.
+    return {
+      ...page,
+      openQuery: { stateKey: "mcpQuestion", text: def.mcp },
+      readySelector: '[data-testid="mcp-explore"][data-answered]',
+      element: ".mcp-chat-wrap",
+      waitMs: RESULT_WAIT_MS,
+    };
+  }
+  if (def.mcp_explain === true) {
+    // Act, then explain: the tour opens the last run_sql call's explain; Next closes it.
+    return {
+      ...page,
+      clickBefore: "[data-mcp-explain-last]",
+      readySelector: '[data-testid="mcp-explain-ran"]',
+      element: '[data-testid="mcp-explain-panel"]',
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: MODAL_CLOSE,
+    };
+  }
+  if (def.mcp_connect === true) {
+    return {
+      ...page,
+      navState: { mcpConnect: true },
+      element: '[data-testid="mcp-connect-config"], [data-testid="mcp-connect-off"]',
+    };
+  }
   if (def.group_by !== undefined) {
     return {
       ...page,
@@ -348,12 +503,63 @@ function demoTourStep(
       element: '[data-testid="glossary-detail"]',
     };
   }
+  if (def.find_terms !== undefined) {
+    // Act, then explain (REQ-2115): the visitor sees the address typed and the scan started, and
+    // the tour cancels it at once -- a scan reads for minutes -- then explains the stopped scan.
+    const { url, domains } =
+      typeof def.find_terms === "string" ? { url: def.find_terms, domains: [] } : def.find_terms;
+    return {
+      ...page,
+      // Find terms opened as a scan step opens it; the window's own steps are acted.
+      ensureOpen: OPEN_FIND_TERMS,
+      actions: [
+        { do: "press", target: { testId: "find-terms-mode-url" } },
+        { do: "fill", target: { testId: "find-terms-url" }, value: url },
+        ...domains.map(
+          (domain): UiAction => ({
+            do: "choose",
+            target: { testId: "find-terms-domains" },
+            option: domain,
+          }),
+        ),
+        { do: "press", target: { testId: "find-terms-start" } },
+        { do: "press", target: { testId: "find-terms-cancel" } },
+      ],
+      element: `${FIND_TERMS_QUEUE}${scanOf(url, "failed")}`,
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: FIND_TERMS_CLOSE,
+    };
+  }
+  if (def.scan !== undefined) {
+    // The scan done ahead, opened from the list of Find terms, opened first when it is not.
+    const done = scanOf(def.scan, "done");
+    return {
+      ...page,
+      ensureOpen: OPEN_FIND_TERMS,
+      clickBefore: `[data-testid="find-terms-scans"] ${done} [data-find-terms-open]`,
+      readySelector: `${FIND_TERMS_QUEUE}${done} [data-testid^="find-terms-draft-"]`,
+      element: `${FIND_TERMS_QUEUE}${done}`,
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: FIND_TERMS_CLOSE,
+    };
+  }
+  if (def.library !== undefined) {
+    return { ...page, element: `[data-reflib-source="${documentMark(def.library)}"]` };
+  }
   if (def.product !== undefined) {
     // The page opens the product its deep link names (`?product=<id>`), read when it opens.
     return {
       ...page,
       route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
       element: '[data-testid="data-product-detail"]',
+    };
+  }
+  if (def.report !== undefined) {
+    // The page opens the report its deep link names (`?report=<table name>`).
+    return {
+      ...page,
+      route: `${def.route ?? ""}?report=${encodeURIComponent(def.report)}`,
+      element: `[data-testid="report-pane"][data-report="${def.report}"]`,
     };
   }
   if (def.role !== undefined && def.role.includes(",")) {
@@ -365,35 +571,10 @@ function demoTourStep(
       element: RUN_AS,
     };
   }
-  if (def.role !== undefined && onPage !== "/sql") {
-    // Anywhere but the SQL explorer, the role every request of the app runs as: the header's.
-    return {
-      ...page,
-      element: APP_ROLE,
-      chooseOnNext: { open: APP_ROLE, option: `[data-role-option="${def.role}"]` },
-    };
-  }
   if (def.role !== undefined) {
-    return {
-      ...page,
-      element: RUN_AS,
-      chooseOnNext: { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` },
-    };
-  }
-  // Each handed to the SQL explorer, which sets its picker; shown on the picker.
-  if (def.as_of !== undefined) {
-    return {
-      ...page,
-      openQuery: { stateKey: "asOf", text: def.as_of },
-      element: '[data-testid="sql-as-of"]',
-    };
-  }
-  if (def.as_recorded !== undefined) {
-    return {
-      ...page,
-      openQuery: { stateKey: "asRecorded", text: def.as_recorded },
-      element: '[data-testid="sql-as-recorded"]',
-    };
+    // Anywhere but the SQL explorer, the role every request of the app runs as: the header's.
+    const picker = rolePicker(def, onPage);
+    return { ...page, element: picker.open, chooseOnNext: picker };
   }
   if (def.as_recorded_from !== undefined) {
     const { step, row, column } = def.as_recorded_from;
@@ -404,8 +585,9 @@ function demoTourStep(
     }
     return {
       ...page,
-      openQuery: { stateKey: "asRecorded", text: "", from: { ...source, row, column } },
-      element: '[data-testid="sql-as-recorded"]',
+      // Handed to the SQL explorer as the next statement's $1; shown where it says so.
+      openQuery: { stateKey: "params", text: "", from: { ...source, row, column } },
+      element: '[data-testid="sql-bound-params"]',
     };
   }
   if (def.env !== undefined) {
@@ -443,7 +625,7 @@ function demoTourStep(
 
 /**
  * REQ-2083: the value an `as_recorded_from` step takes, read when it runs: the earlier statement
- * run again as it ran (its role, else the role the app acts as; its time travel), and row
+ * run again as it ran (its role, else the role the app acts as), and row
  * `row`'s `column`. A refused statement, or an answer without that row or column, fails the step
  * by name: there is no time to stand in for it.
  */
@@ -453,10 +635,7 @@ export async function answerValue(
 ): Promise<string> {
   const role = from.role ?? actingRoles;
   if (role === null) throw new Error("Tour: no role to run the earlier statement as");
-  const answer = await runSql(from.sql, role, false, {
-    asOf: from.asOf ?? null,
-    asRecorded: from.asRecorded ?? null,
-  });
+  const answer = await runSql(from.sql, role, false);
   if (answer.error) throw new Error(`Tour: the earlier statement was refused: ${answer.error}`);
   const row = answer.rows[from.row];
   if (row === undefined || !(from.column in row) || row[from.column] === null) {

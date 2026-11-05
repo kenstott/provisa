@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector_base import CatalogEntry, Connector
 
 if TYPE_CHECKING:
@@ -57,6 +58,24 @@ class MaterializeStoreUnconfigured(Exception):  # REQ-826
         super().__init__(
             f"engine {engine!r} has no materialization store: set materialize_store_url or use an "
             "engine that declares a default store"
+        )
+
+
+class StoreOutsideEngineDatabase(ValueError):
+    """A store an engine that reads its replicas only in the database it runs in cannot read:
+    rows landed there are never seen by a query, so it is refused rather than written."""
+
+    def __init__(self, engine: str, runs_in: str, store: str) -> None:
+        from sqlalchemy import make_url
+
+        def shown(dsn: str) -> str:
+            return make_url(dsn).render_as_string(hide_password=True)
+
+        super().__init__(
+            f"the {engine} engine runs in {shown(runs_in)} and reads its replicas there, but its "
+            f"materialization store is {shown(store)}, so a query would never see what lands "
+            "there. Leave PROVISA_MATERIALIZE_URL, materialize_store_url, the org's own store and "
+            "its region's replicas store unset, or name the engine's database in them"
         )
 
 
@@ -291,12 +310,23 @@ class FederationEngine:  # REQ-840
             streaming=self.streaming,
         )
 
-    def connector_pushdown(self, source_type: str) -> Capability:
-        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a source
-        type (REQ-897/842) — the planner's pushdown INPUT. Reconciles with promote.should_promote and
-        plan_mask_evaluation, which read the same connector ``Capability``; no duplicate trait is
-        introduced. Fails loud (UnreachableSource) when the engine cannot reach the type."""
-        return self.connector_for(source_type).capability()
+    def connector_pushdown(self, source: Any) -> Capability:
+        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a
+        registered source (REQ-897/842) — the planner's pushdown INPUT. Reconciles with
+        promote.should_promote and plan_mask_evaluation, which read the same connector
+        ``Capability``; no duplicate trait is introduced. Fails loud (UnreachableSource) when the
+        engine cannot reach the source's type.
+
+        Taken from the source, not only its type (REQ-2191): a JDBC source attached live on
+        this engine can do what its settings for this engine turn on, and nothing else. One not
+        attached here lands, and its replica is read as every landed table is."""
+        from provisa.jdbc_source.attach import attach_type
+
+        if attach_type(source, self) is not None:
+            from provisa.jdbc_source.settings import capability
+
+            return capability(source.federation_hints, self.name)
+        return self.connector_for(source.type.value).capability()
 
     # -- reachability (REQ-840) ------------------------------------------------
 
@@ -349,6 +379,9 @@ class FederationEngine:  # REQ-840
         (:meth:`connector_for`). A source that asks for a reach this engine does not have for its
         type, or names a reach that does not exist, is refused by name."""
         source_type = source.type.value
+        if self.asks_in_place(source) and source_type in self.code_host_types:
+            # REQ-2100: a built code source, its host attached as a Postgres catalog.
+            return self.scan_connectors[source_type]
         hints = getattr(source, "federation_hints", None) or {}
         reach = hints.get("reach")
         if reach is None or reach == "replica":
@@ -368,11 +401,23 @@ class FederationEngine:  # REQ-840
             )
         return connector
 
+    @property
+    def code_host_types(self) -> frozenset[str]:
+        """REQ-2100: the code source types whose built hosts this engine attaches."""
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        return frozenset(t for t in self.scan_connectors if t in CODE_SOURCE_TYPES)
+
     @staticmethod
     def asks_in_place(source: Any) -> bool:
         """Whether ``source`` asks to be read in place: ``reach: "scan"`` in its federation hints
-        (REQ-1867)."""
-        return (getattr(source, "federation_hints", None) or {}).get("reach") == "scan"
+        (REQ-1867), or a code source in built mode, its image on a remote host (REQ-2100)."""
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        if (getattr(source, "federation_hints", None) or {}).get("reach") == "scan":
+            return True
+        mapping = getattr(source, "mapping", None) or {}
+        return source.type.value in CODE_SOURCE_TYPES and mapping.get("mode") == "built"
 
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)
@@ -450,6 +495,7 @@ class FederationEngine:  # REQ-840
                     f"(only {sorted(self._supported_materialize_stores)} does); an org's own store, "
                     "materialize_store_url, or $PROVISA_MATERIALIZE_URL named an unsupported one"
                 )
+        self.backend.require_readable_store(dsn)
         # REQ-1912: replicas and materialized views each have a schema of their own, so a store
         # with no schemas is refused here — the one door every write and every read address
         # comes through.
@@ -629,12 +675,15 @@ def build_duckdb_engine(
         DuckDBSplunkConnector,
         DuckDBSqliteConnector,
     )
+    from provisa.federation.codehost_connectors import DuckDBCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
 
     return FederationEngine(
         name,
         [
             DuckDBPostgresConnector(),
+            # REQ-2100: a built code host, attached as the Postgres server it speaks as.
+            *(DuckDBCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
             DuckDBSqliteConnector(),
             DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
             DuckDBCsvConnector(),
@@ -752,6 +801,18 @@ def _platform_db_materialize_default() -> str | None:
     return f"{scheme.split('+', 1)[0]}://{rest}" if sep else None
 
 
+def _pg_engine_database() -> str | None:
+    """The DECLARED store of a pg engine: the database it runs in, the configured engine URL else
+    the platform's. Replicas land there (``PgBackend.replica_target``) and every statement reads
+    them there, so the two cannot be told apart. Driver-agnostic, as libpq wants it."""
+    url = configured_engine_url() or _platform_db_materialize_default()
+    if url is None:
+        return None
+    scheme, sep, rest = url.partition("://")
+    scheme = scheme.split("+", 1)[0]
+    return f"{'postgresql' if scheme == 'postgres' else scheme}://{rest}" if sep else url
+
+
 def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
     """A Postgres-family engine with ALL prebuilt connector defs registered; discover() prunes to what
     actually works.
@@ -790,6 +851,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         SqliteFdwConnector,
         TdsFdwConnector,
     )
+    from provisa.federation.codehost_connectors import PgCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
     from provisa.federation.pg_backend import PgBackend
 
@@ -797,6 +859,9 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         name,
         [
             PostgresFdwConnector(),  # postgresql
+            # REQ-2100: a built code host, through postgres_fdw (probe: a directory shared for its
+            # identity).
+            *(PgCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
             PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
@@ -845,7 +910,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         # FederationEngine.__init__'s own doc on this trait for the exact reproduction.
         catalog_qualified=False,
         backend_factory=PgBackend,  # in-process terminal driving PgFederationRuntime
-        default_materialize_store=_platform_db_materialize_default,
+        default_materialize_store=_pg_engine_database,
         capabilities=frozenset(
             {EngineCapability.ROWS, EngineCapability.ARROW, EngineCapability.ARROW_STREAM}
         ),  # ARROW via the generic row→batch adapter over the lazy server-side cursor (REQ-1219)
@@ -961,6 +1026,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     from provisa.federation.runtime import EngineCapability
     from provisa.federation.sqlalchemy_backend import SqlAlchemyBackend
 
+    require_engine_extra(name)
     dsn = url or configured_engine_url()
     if not dsn:
         raise ValueError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
@@ -1212,13 +1278,59 @@ _RDB_KINDS: list[tuple[str, str, str]] = [
     ("singlestore", "SingleStore", "singlestoredb://user:pass@host:3306/db"),
     ("vertica", "Vertica", "vertica+vertica_python://user:pass@host:5433/db"),
     ("exasol", "Exasol", "exa+websocket://user:pass@host:8563/schema"),
-    ("teradata", "Teradata Vantage", "teradatasql://user:pass@host/database"),
     ("saphana", "SAP HANA", "hana+hdbcli://user:pass@host:39015/db"),
-    ("sapase", "SAP ASE (Sybase)", "sybase+pyodbc://user:pass@dsn"),
-    ("sqlanywhere", "SAP SQL Anywhere", "sqlalchemy-sqlany://user:pass@host:2638/db"),
     ("monetdb", "MonetDB", "monetdb://user:pass@host:50000/db"),
-    ("firebird", "Firebird", "firebird+fdb://user:pass@host:3050/path/to/db.fdb"),
+    ("firebird", "Firebird", "firebird+firebird://user:pass@host:3050/path/to/db.fdb"),
 ]
+
+# The pyproject extra that ships each kind's SQLAlchemy dialect and DBAPI driver, and the modules
+# it installs. A kind absent here is served by the base install. Selecting a kind whose extra is not
+# installed is refused naming the extra (MissingEngineExtra), never left to fail at connect.
+#
+# kind -> (extra, modules the extra installs)
+RDB_EXTRAS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "cockroachdb": ("cockroachdb", ("sqlalchemy_cockroachdb",)),
+    "db2": ("db2", ("ibm_db_sa", "ibm_db")),
+    "exasol": ("exasol", ("sqlalchemy_exasol", "pyexasol")),
+    "firebird": ("firebird", ("sqlalchemy_firebird", "firebird.driver")),
+    "monetdb": ("monetdb", ("sqlalchemy_monetdb", "pymonetdb")),
+    "opengauss": ("opengauss", ("opengauss_sqlalchemy",)),
+    "saphana": ("saphana", ("sqlalchemy_hana", "hdbcli")),
+    "vertica": ("vertica", ("sqla_vertica_python", "vertica_python")),
+}
+
+
+class MissingEngineExtra(ImportError):
+    """The engine kind's dialect ships in a pyproject extra that is not installed. An ImportError,
+    so ``engine_registry`` lists the kind ``unavailable`` naming the extra, as it does an engine
+    whose driver library is absent."""
+
+    def __init__(self, kind: str, extra: str, module: str) -> None:
+        super().__init__(
+            f"the {kind!r} federation engine needs the {extra!r} extra "
+            f"(module {module!r} is not installed): pip install 'provisa[{extra}]'",
+            name=module,
+        )
+        self.kind = kind
+        self.extra = extra
+        self.module = module
+
+
+def require_engine_extra(kind: str) -> None:
+    """Refuse ``kind`` naming its extra when a module the extra installs is absent."""
+    import importlib.util
+
+    if kind not in RDB_EXTRAS:
+        return
+    extra, modules = RDB_EXTRAS[kind]
+    for module in modules:
+        try:
+            found = importlib.util.find_spec(module) is not None
+        except ModuleNotFoundError:  # the parent package of a dotted module is absent
+            found = False
+        if not found:
+            raise MissingEngineExtra(kind, extra, module)
+
 
 for _rdb_key, _rdb_label, _rdb_dsn in _RDB_KINDS:
     # Bind the key as the engine's name so a running engine reports the database it is on, not the

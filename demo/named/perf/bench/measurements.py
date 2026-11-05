@@ -19,6 +19,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from server_answer import checked
+
 _DOCKER_STATS = ["docker", "stats", "--no-stream", "--format", "{{.Name}} {{.CPUPerc}}"]
 _DOCKER_TIMEOUT_S = 30
 
@@ -151,9 +153,9 @@ def source_cpu_fields(
 # The per-request time split, from the server's own stats (``X-Provisa-Stats: true``)
 # --------------------------------------------------------------------------------------------
 
-# The HTTP surfaces that return ``provisa_stats``: GraphQL under ``extensions``, SQL and Cypher at
-# the top level of the body.
-PROFILE_TRANSPORTS = ("graphql", "data_sql", "cypher_http")
+# The HTTP surfaces that return ``provisa_stats``: GraphQL under ``extensions``; SQL, Cypher and
+# SPARQL (beside its SPARQL JSON result's head and results) at the top level of the body.
+PROFILE_TRANSPORTS = ("graphql", "data_sql", "cypher_http", "sparql")
 
 
 def extract_stats(transport: str, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -201,11 +203,17 @@ def _send(transport: str, client: Any, query: Any, role: str) -> Mapping[str, An
         resp = client.post("/data/graphql", json={"query": query.graphql}, headers=headers)
     elif transport == "data_sql":
         resp = client.post("/data/sql", json={"sql": query.sql, "role": role}, headers=headers)
+    elif transport == "sparql":
+        resp = client.post(
+            "/data/sparql",
+            data={"query": query.sparql},
+            headers={**headers, "Accept": "application/sparql-results+json"},
+        )
     else:
         resp = client.post(
             "/data/cypher", json={"query": query.cypher, "params": {}}, headers=headers
         )
-    resp.raise_for_status()
+    checked(resp)
     return resp.json()
 
 

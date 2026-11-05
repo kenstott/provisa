@@ -112,7 +112,14 @@ def _with_own_rules(view: str, body: str, gov: "GovernanceContext") -> str:
     from provisa.compiler.view_expand import _expand_one  # noqa: PLC0415
 
     table_id = gov.table_map.get(view)
-    if table_id is None or not _narrowed(table_id, gov):
+    if table_id is None:
+        # The bare name is the reader's only for a table of its compilation context. A view
+        # registered under its stored name and not there is served to the reader in nothing:
+        # its body, put in with none of its own rules, would read every column in clear.
+        if any(said.rsplit(".", 1)[-1] == view for said in gov.table_map if "." in said):
+            raise PermissionError(f"[V003] No column of {view!r} is visible to this role")
+        return body
+    if not _narrowed(table_id, gov):
         return body
     own = govern_fragment(f"SELECT * FROM {view}", gov)
     return _expand_one(own, view, body)
@@ -220,6 +227,15 @@ def _answered_after_governance(
     return _stored_rows(view, state) is not None and sees_everything(view, view_sql_map, gov)
 
 
+def _mentions(text: str, view: str) -> bool:
+    """Whether ``text`` may read ``view``: its name appears; for a view keyed ``schema.name`` (an
+    ontology Class, REQ-2163), its name under that schema, quoted or not."""
+    if "." not in view:
+        return view in text
+    schema, name = view.split(".", 1)
+    return view in text or f'"{schema}"."{name}"' in text
+
+
 def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:
     """Every view ``sql`` reads, directly or through another view, with its SQL."""
     read: dict[str, str] = {}
@@ -227,7 +243,7 @@ def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:
     while pending:
         text = pending.pop()
         for view, view_sql in view_sql_map.items():
-            if view not in read and view in text:
+            if view not in read and _mentions(text, view):
                 read[view] = view_sql
                 pending.append(view_sql)
     return read
@@ -242,7 +258,7 @@ def _views_read_here(
     while pending:
         text = pending.pop()
         for view, view_sql in view_sql_map.items():
-            if view in read or view in home_copies or view not in text:
+            if view in read or view in home_copies or not _mentions(text, view):
                 continue
             read[view] = view_sql
             pending.append(view_sql)
@@ -267,7 +283,7 @@ def semantic_statement(
     is held to (REQ-1921) -- it stays the registered table it is in both."""
     from provisa.compiler.view_expand import expand_view_refs  # noqa: PLC0415
 
-    definitions = _definitions(view_sql_map, state)
+    definitions = _class_bodies(sql, _definitions(view_sql_map, state), state, gov)
     home_copies = {view for view in views_read(sql, definitions) if _home_copy(view, state)}
     bodies: dict[str, str] = {}
     for view, view_sql in _views_read_here(sql, definitions, home_copies).items():
@@ -281,6 +297,37 @@ def semantic_statement(
     marked = expand_view_refs(sql, bodies, mark=True)
     judged = {view: body for view, body in definitions.items() if view not in home_copies}
     return governed, expand_view_refs(marked, judged, mark=True)
+
+
+def _class_bodies(
+    sql: str, definitions: dict[str, str], state: Any, gov: "GovernanceContext"
+) -> dict[str, str]:
+    """``definitions`` with each Class table ``sql`` reads given the body made for this reader
+    (REQ-2163): a branch for each of its tables the reader is served a column of, each column it
+    is not served there read as null (provisa.compiler.ontology_classes.reader_body). Lowered to
+    the physical plan as every view's entry is, once per reader's visibility of its tables."""
+    classes = getattr(state, "class_tables", None) or {}
+    read = [view for view in views_read(sql, definitions) if view in classes]
+    if not read:
+        return definitions
+    from provisa.compiler.ontology_classes import reader_body  # noqa: PLC0415
+    from provisa.compiler.sql_rewrite import lower_to_catalog_physical  # noqa: PLC0415
+
+    bodies = dict(definitions)
+    for view in read:
+        row = classes[view]
+        seen = tuple(
+            (b["table_id"], gov.visible_columns[b["table_id"]]) for b in row["class_bindings"]
+        )
+        memo = state.class_bodies
+        key = (view, seen)
+        if key not in memo:
+            served = dict(seen)
+            memo[key] = lower_to_catalog_physical(
+                reader_body(row, served.__getitem__), state.view_context
+            )
+        bodies[view] = memo[key]
+    return bodies
 
 
 def _definitions(view_sql_map: dict[str, str], state: Any) -> dict[str, str]:
@@ -334,3 +381,34 @@ def unnarrowed_view_bodies(
             else:
                 bodies[view] = stored
     return bodies
+
+
+def read_views_at(sql: str, state: Any, travel: Any) -> str:
+    """``sql`` with each reference to a bitemporal view that says its own time (``travel``'s
+    per-alias times, REQ-1163) replaced by the view's read over its append log at that time,
+    under the reference's alias. A reference that says none is answered at the request's time by
+    :func:`unnarrowed_view_bodies`."""
+    from provisa.mv.bitemporal import AsOf, view_read_sql  # noqa: PLC0415
+    from provisa.mv.time_travel import as_travel  # noqa: PLC0415
+
+    travel = as_travel(travel)
+    reads = _bitemporal_reads(state)
+    if not travel.by_alias or not reads:
+        return sql
+    import sqlglot  # noqa: PLC0415
+    from sqlglot import exp  # noqa: PLC0415
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    changed = False
+    for node in list(tree.find_all(exp.Table)):
+        if node.name not in reads:
+            continue
+        alias = node.alias or node.name
+        at = travel.by_alias.get(alias.lower())
+        if at is None:
+            continue
+        mv_ref, spec = reads[node.name]
+        read = sqlglot.parse_one(view_read_sql(mv_ref, spec, AsOf.from_key(at)), read="postgres")
+        node.replace(exp.Subquery(this=read, alias=exp.TableAlias(this=exp.to_identifier(alias))))
+        changed = True
+    return tree.sql(dialect="postgres") if changed else sql

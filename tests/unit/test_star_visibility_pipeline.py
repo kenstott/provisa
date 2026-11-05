@@ -55,7 +55,7 @@ async def _raw(monkeypatch, sql: str, *, tables: list[dict], views: dict | None 
     )
 
     async def _route(exec_sql, governed_sql, gov_ctx, ctx, state, **kwargs):
-        return exec_sql, decision, SOURCE_ID, False, {SOURCE_ID}, ()
+        return exec_sql, decision, False, {SOURCE_ID}, ()
 
     with patch.object(_pipeline, "_optimize_and_route", side_effect=_route):
         return (await _pipeline._govern_and_route(sql, "analyst")).sql

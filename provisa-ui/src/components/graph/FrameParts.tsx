@@ -12,7 +12,10 @@
 // statements, one per statement, the one chosen shown.
 
 import { useTranslation } from "react-i18next";
-import { Loader } from "@mantine/core";
+import { ActionIcon, Loader } from "@mantine/core";
+import { Trash2 } from "lucide-react";
+import { CopySymbolButton } from "../CopyButton";
+import { Tip } from "../Tip";
 import { StatementTabs } from "../StatementTabs";
 import { statementName } from "./frameStatements";
 import type { FrameData } from "./graph-model";
@@ -56,5 +59,78 @@ export function FrameStatementTabs({
       onChange={(i) => onStatement(frame.id, i)}
       testId="graph-statement-tab"
     />
+  );
+}
+
+/** What the last drop on the frame said, and whether its result reached the LIMIT the drop gave it. */
+export function FrameDropNotices({ frame }: { frame: FrameData }) {
+  const { t } = useTranslation();
+  const notices = frame.dropNotices ?? [];
+  const cut =
+    frame.status === "done" &&
+    frame.sparqlForm === "rows" &&
+    frame.dropLimit !== undefined &&
+    frame.rows.length >= frame.dropLimit;
+  if (notices.length === 0 && !cut) return null;
+  return (
+    <div className="gf-drop-notices" role="status" data-testid="graph-frame-drop-notice">
+      {notices.map((n) => (
+        <div key={n.key}>{t(n.key, n.values)}</div>
+      ))}
+      {cut && <div>{t("graphFrame.sparqlDropCut", { limit: frame.dropLimit })}</div>}
+    </div>
+  );
+}
+
+/** A refused statement: its reason, each access violation listed under it, copyable whole. */
+export function FrameError({ frame }: { frame: FrameData }) {
+  const { t } = useTranslation();
+  return (
+    <div className="gf-error gf-error--copyable">
+      <div className="gf-error-text">
+        <span data-testid="graph-frame-error">{frame.error}</span>
+        {frame.violations && (
+          <ul className="gf-error-violations" data-testid="graph-frame-violations">
+            {frame.violations.map((v, i) => (
+              <li key={i}>{v}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <CopySymbolButton
+        text={[frame.error ?? "", ...(frame.violations ?? [])].join("\n")}
+        className="gf-error-copy-btn"
+        title={t("graphFrame.copyErrorTitle")}
+      />
+    </div>
+  );
+}
+
+/** On hover of a frame's query, as the query bar's copy is: copy the statement, and -- outside the
+ *  expanded view -- delete the frame. */
+export function FrameQueryActions({ query, onDelete }: { query: string; onDelete?: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="gf-query-actions" data-testid="graph-frame-query-actions">
+      <CopySymbolButton
+        text={query}
+        className="gf-query-action"
+        title={t("graphFrame.copyQuery")}
+      />
+      {onDelete && (
+        <Tip text={t("graphFrame.deleteFrame")} named>
+          <ActionIcon
+            type="button"
+            variant="transparent"
+            className="gf-query-action"
+            aria-label={t("graphFrame.deleteFrame")}
+            data-testid="graph-frame-delete"
+            onClick={onDelete}
+          >
+            <Trash2 size={13} />
+          </ActionIcon>
+        </Tip>
+      )}
+    </div>
   );
 }

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Relationship, RegisteredTable } from "../../types/admin";
+import type { Relationship, ListedTable } from "../../types/admin";
 
 export interface ModelingCandidate {
   id: string;
@@ -22,7 +22,7 @@ export interface ModelingCandidate {
 }
 
 export interface Props {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   existingRels: Relationship[];
   onClose: () => void;
   onPromote?: (candidate: ModelingCandidate) => Promise<void>;
@@ -55,18 +55,10 @@ export interface CanvasJoin {
   cardinality: "many-to-one" | "one-to-many";
 }
 export interface JoinCanvasProps {
-  tables: RegisteredTable[];
+  tables: ListedTable[];
   existingRels: Relationship[];
   onGenerateSql: (sql: string) => void;
 }
-export interface CanvasTableCardProps {
-  ct: CanvasTable;
-  tbl: RegisteredTable;
-  onMove: (x: number, y: number) => void;
-  onRemove: () => void;
-  onStartConnect: (colName: string) => void;
-}
-
 export interface ColumnProfile {
   col: string;
   nullCount: number;
@@ -78,10 +70,6 @@ export interface ColumnProfile {
   mean: number | null;
   topValues: { value: string; count: number }[];
 }
-
-export const CARD_W = 200;
-export const CARD_HEADER_H = 34;
-export const COL_ROW_H = 27;
 
 export const HISTORY_KEY = "sql_modeling_history";
 export const HISTORY_MAX = 50;

@@ -82,8 +82,8 @@ TABLE_FIELDS = (
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
     "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
-    "pushDebounceMaxDelay mvConsistency mvPreprocess businessKey validTime "
-    "recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
+    "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
+    "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
     "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
     "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
@@ -131,6 +131,7 @@ _TABLE_AS_IS = (
     "recordedTime",
     "mvPersist",
     "mvIncremental",
+    "mvHoldOnFailingChecks",
     "mvAllowedLateness",
     "mvExpectedEvents",
     "mvBusinessDayGrain",
@@ -169,7 +170,7 @@ def column_input(c: Mapping[str, Any], masks: list[dict] | None = None) -> dict[
         "masks": [
             # The editor sends no why: the stored one stands (REQ-2094).
             {
-                "to": list(e["to"]),
+                "to": None if e["to"] is None else list(e["to"]),
                 "mask": None if e["mask"] is None else dict(e["mask"]),
                 "why": None,
             }
@@ -226,8 +227,9 @@ def table_input(
 
 def masked_columns(setup: cm.Setup, table: cm.Table, nullable: Mapping[str, bool], share: float):
     """The columns of ``table`` ``share`` of its columns masks, in the contract's order: nullable,
-    and not read by a filter, a join or the base request."""
-    wanted = round(share * len(nullable))
+    and not read by a filter, a join or the base request. The share is of the contract's columns:
+    the deployment's table has columns no request reads (``nullable`` names them all)."""
+    wanted = round(share * len(table.columns))
     if wanted == 0:
         return []
     joined = {
@@ -247,7 +249,7 @@ def masked_columns(setup: cm.Setup, table: cm.Table, nullable: Mapping[str, bool
     if len(eligible) < wanted:
         raise GovernanceError(
             f"table {table.name}: masked_column_share {share} masks {wanted} of its "
-            f"{len(nullable)} columns, but only {len(eligible)} are nullable and read by no "
+            f"{len(table.columns)} columns, but only {len(eligible)} are nullable and read by no "
             f"filter, join or base request ({', '.join(eligible) or 'none'})"
         )
     return eligible[:wanted]
@@ -304,7 +306,9 @@ class AdminGovernance:
 
     # ---- reads
     def _roles(self) -> dict[str, dict[str, Any]]:
-        data = self._graphql("{ roles { id capabilities domainAccess parentRoleId } }")
+        data = self._graphql(
+            "{ roles { id capabilities effectiveCapabilities domainAccess parents } }"
+        )
         return {r["id"]: r for r in data["roles"]}
 
     def _tables(self) -> dict[int, dict[str, Any]]:
@@ -341,9 +345,10 @@ class AdminGovernance:
                             "input": {
                                 "id": rid,
                                 "description": f"Benchmark governance: {level} below {r.role}",
-                                "capabilities": list(top["capabilities"]),
+                                # REQ-2155: a role holds what it lists of what its parents hold.
+                                "capabilities": list(top["effectiveCapabilities"]),
                                 "domainAccess": list(top["domainAccess"]),
-                                "parentRoleId": cm.chain_role(r.role, level - 1),
+                                "parents": [cm.chain_role(r.role, level - 1)],
                             }
                         },
                     )

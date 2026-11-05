@@ -20,6 +20,7 @@ import type { Relationship } from "../../types/admin";
 import { injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
 import type { FrameView } from "./graph-model";
+import type { SchemaRel } from "./graph-schema-types";
 import { useRequestedView } from "./use-requested-view";
 import { useColumnWidths } from "./use-column-widths";
 import CodeMirror from "@uiw/react-codemirror";
@@ -32,23 +33,31 @@ const { getCypherLanguageExtensions: _getGFCypherExts, cypherLinter: _gfCypherLi
   };
 const _gfCypherLangExts = _getGFCypherExts({ cypherLanguage: true });
 import { json as jsonLang } from "@codemirror/lang-json";
+import { sparqlLanguage } from "./sparqlLanguage";
+import { SparqlDrawControls } from "./SparqlDrawControls";
+import { useSparqlDraw } from "./useSparqlDraw";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import { createPortal } from "react-dom";
-import { CopySymbolButton } from "../../components/CopyButton";
 import type { CyInstance } from "./cytoscape-types";
 import type { ClusterLevel } from "./graph-clusters";
 import { downloadBlob, compositeGraphDownload, downloadGraphSvg, toCSV } from "./graph-export";
 import { GraphCanvas, GraphCutNote } from "./GraphCanvas";
+import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
-import { useLocalStorage } from "./graph-persistence";
+import { settingKey, useLocalStorage, type GraphLanguage } from "./graph-persistence";
 import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
+import { frameCode, frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
+import { useSparqlExpansion } from "./frame/use-sparql-expansion";
+import { useSparqlNodeProperties } from "./frame/use-sparql-node-properties";
+import { useSparqlStyledProperties } from "./frame/use-sparql-styled-properties";
+import { groupOptions, type ClassProperties } from "./frame/frame-meta";
 import {
   GraphViewIcon,
   TableViewIcon,
@@ -63,7 +72,16 @@ import {
 } from "./GraphIcons";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
-import { FrameRunning, FrameStatementTabs } from "./FrameParts";
+import {
+  FrameDropNotices,
+  FrameError,
+  FrameQueryActions,
+  FrameRunning,
+  FrameStatementTabs,
+} from "./FrameParts";
+import { nodeAtPoint } from "./canvas/canvas-helpers";
+import type { DropNode, SparqlDrop } from "./sparqlDrop";
+import { useFrameDrop } from "./frame/use-frame-drop";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -74,6 +92,10 @@ interface GraphFrameProps {
   onRerun: (id: string, query: string) => void;
   onTableDrop?: (frameId: string, compoundLabel: string) => void;
   onDomainDrop?: (frameId: string, domainLabel: string) => void;
+  /** A vocabulary pill dropped on a SPARQL frame, on the node of its drawing it landed on, if any. */
+  onSparqlDrop?: (frameId: string, drop: SparqlDrop, on: DropNode | null) => void;
+  /** A node dragged onto another of a Cypher drawing: the paths between the two. */
+  onNodePath?: (from: GNode, to: GNode) => void;
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
@@ -91,6 +113,9 @@ interface GraphFrameProps {
   // these edges even though `relationships` (admin-editable set) excludes them. Falls back to
   // `relationships` when omitted so existing callers keep working.
   graphRelationships?: Relationship[];
+  /** The acting role's relationship types (/data/graph-schema): what a query this frame writes to
+   * expand a node names (REQ-1586). */
+  schemaRels: SchemaRel[];
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
   onSelectedLabelChange?: (label: string | null) => void;
@@ -104,15 +129,31 @@ interface GraphFrameProps {
     nodes: Map<string, GNode>,
     edges: Map<string, GEdge>,
   ) => void;
+  /** The frame's query language (REQ-2135): its header's highlighting, and whether auto-impute,
+   *  which rewrites a Cypher query, is offered. */
+  language?: GraphLanguage;
+  /** The prefixes a SPARQL frame's terms show by. */
+  sparqlPrefixes?: Record<string, string>;
+  /** Merge what the model says of a resource into a SPARQL frame. ``toggle`` takes an expansion
+   *  back where there is one; a drag only ever adds. */
+  onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
+  /** Ask the model, once, for the properties of a SPARQL node that was selected and holds none. */
+  onDescribeResource?: (frameId: string, iri: string) => void;
+  /** Ask the model, once each, for the properties of SPARQL nodes a caption or a size reads. */
+  onDescribeResources?: (frameId: string, iris: string[]) => void;
+  /** What each SPARQL class has, by its nodes' label: offered to group by before they are read. */
+  classProperties?: Record<string, ClassProperties>;
 }
 
 export function GraphFrame({
-  frame,
+  frame: answered,
   requestedView,
   onClose,
   onRerun,
   onTableDrop,
   onDomainDrop,
+  onSparqlDrop,
+  onNodePath,
   colorOverrides,
   sizeOverrides,
   labelProperty,
@@ -125,6 +166,7 @@ export function GraphFrame({
   labelToTableId,
   relationships,
   graphRelationships = relationships,
+  schemaRels,
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
@@ -133,8 +175,17 @@ export function GraphFrame({
   onPin,
   onStatement,
   onEffectiveDataChange,
+  language = "cypher",
+  sparqlPrefixes,
+  onExpandResource,
+  onDescribeResource,
+  onDescribeResources,
+  classProperties,
 }: GraphFrameProps) {
   const { t } = useTranslation();
+  const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
+  const frame = sparqlDraw.frame;
+  const sparql = language === "sparql";
   // The editors sit inside the app chrome, so they follow the app's scheme rather than staying
   // dark on a light page. undefined = CodeMirror's own light theme.
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
@@ -143,6 +194,7 @@ export function GraphFrame({
     { kind: "node"; data: GNode; graphStats?: GraphStats } | { kind: "edge"; data: GEdge } | null
   >(null);
   const [inspectorVisible, setInspectorVisible] = useState(true);
+  const [highlight, setHighlight] = useState<CanvasHighlight | null>(null); // an Overview pill's
   const setSelected = useCallback(
     (
       s:
@@ -186,7 +238,6 @@ export function GraphFrame({
       (window as unknown as Record<string, unknown>).__overlayData = overlayData;
   }, [overlayData]);
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
-  const [dragOver, setDragOver] = useState(false);
   const handleRerun = useCallback(
     (id: string, query: string) => {
       setOverlayData(new Map());
@@ -200,7 +251,10 @@ export function GraphFrame({
     "none",
   );
   const canvasView = useRequestedView(requestedView, setClusterLevel);
-  const [tableWrap, setTableWrap] = useState(false);
+  const [tableWrap, setTableWrap] = useLocalStorage<boolean>(
+    settingKey(language, "tableWrap"),
+    false,
+  );
   const [tableColWidths, setTableColWidths] = useColumnWidths(frame.columns);
   const canvasCyRef = useRef<CyInstance | null>(null);
   const canvasHullSvgRef = useRef<SVGSVGElement | null>(null);
@@ -220,7 +274,7 @@ export function GraphFrame({
     overlayData,
     setOverlayData,
     frameNodes: frame.nodes,
-    relationships: graphRelationships,
+    schemaRels,
   });
 
   const handleExcludeNode = useCallback(
@@ -302,61 +356,32 @@ export function GraphFrame({
     onEffectiveDataChange(frame.id, allNodes, allEdges);
   }, [frame.id, augmentedNodes, frame.edges, overlayNodes, overlayEdges, onEffectiveDataChange]);
 
-  useAutoImpute(frame, autoImpute, setOverlayData);
+  useAutoImpute(frame, autoImpute && language === "cypher", setOverlayData);
+
+  const { inspected, describeError } = useSparqlNodeProperties(
+    frame,
+    selected,
+    onDescribeResource,
+  );
+  useSparqlStyledProperties(
+    frame.id,
+    frame.sparqlDescribed,
+    augmentedNodes,
+    labelProperty,
+    sizeByProperty,
+    onDescribeResources,
+    clusterLevel,
+    classProperties,
+  );
+  const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
-  // Properties available for grouping: virtual schema_L1/L2/L3 (mapped to scl1/scl2/scl3)
-  // followed by any scalar property with more than one distinct value.
-  const groupableAttrs = useMemo(() => {
-    if (augmentedNodes.size === 0) return [];
-    const SKIP = new Set([
-      "scl1",
-      "scl2",
-      "scl3",
-      "l1Cluster",
-      "l2Cluster",
-      "l3Cluster",
-      "degIn",
-      "degOut",
-      "degTotal",
-    ]);
-    const schemaVirtuals: string[] = [];
-    for (const [virtName, prop] of [
-      ["schema_L1", "scl1"],
-      ["schema_L2", "scl2"],
-      ["schema_L3", "scl3"],
-    ] as const) {
-      const vals = new Set<string>();
-      augmentedNodes.forEach((n) => {
-        const v = n.properties[prop];
-        if (v !== null && v !== undefined) vals.add(String(v));
-      });
-      if (vals.size > 1) schemaVirtuals.push(virtName);
-    }
-    const degreeVirtuals: string[] = [];
-    for (const key of ["degIn", "degOut", "degTotal"] as const) {
-      const vals = new Set<string>();
-      augmentedNodes.forEach((n) => {
-        const v = n.properties[key];
-        if (v !== null && v !== undefined) vals.add(String(v));
-      });
-      if (vals.size > 1) degreeVirtuals.push(key);
-    }
-    const counts = new Map<string, Set<string>>();
-    augmentedNodes.forEach((n) => {
-      Object.entries(n.properties).forEach(([k, v]) => {
-        if (SKIP.has(k) || v === null || v === undefined) return;
-        if (typeof v === "object") return;
-        if (!counts.has(k)) counts.set(k, new Set());
-        counts.get(k)!.add(String(v));
-      });
-    });
-    const regularAttrs = [...counts.entries()].filter(([, vals]) => vals.size > 1).map(([k]) => k);
-    return ["domain", ...schemaVirtuals, ...degreeVirtuals, ...regularAttrs].sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [augmentedNodes]);
+  const groups = useMemo(
+    () => groupOptions(augmentedNodes, classProperties),
+    [augmentedNodes, classProperties],
+  );
+  const groupableAttrs = useMemo(() => groups.map((g) => g.value), [groups]);
   const activeView: "graph" | "table" | "json" | "graphstats" | "code" = hasGraph
     ? view
     : view === "json"
@@ -366,6 +391,22 @@ export function GraphFrame({
         : view === "code"
           ? "code"
           : "table";
+
+  /** The resource of a drawing's node at a point of the page; null off its graph or off a node. */
+  const droppedOnNode = (x: number, y: number): DropNode | null => {
+    const cy = canvasCyRef.current;
+    const node = activeView === "graph" && cy ? nodeAtPoint(cy, x, y) : null;
+    const iri = node?.properties.iri;
+    return node && typeof iri === "string" ? { iri, label: node.label } : null;
+  };
+
+  const { dragOver, dropTarget } = useFrameDrop({
+    frameId: frame.id,
+    onTableDrop,
+    onDomainDrop,
+    onSparqlDrop,
+    nodeAt: droppedOnNode,
+  });
 
   const renderHeader = (isModal: boolean) => (
     <div className="gf-header">
@@ -391,8 +432,9 @@ export function GraphFrame({
             theme={cmTheme}
             minHeight="2.8em"
             extensions={[
-              ..._gfCypherLangExts,
-              _gfCypherLinter({ showErrors: false }),
+              ...(language === "sparql"
+                ? [sparqlLanguage]
+                : [..._gfCypherLangExts, _gfCypherLinter({ showErrors: false })]),
               EditorView.lineWrapping,
               Prec.highest(
                 keymap.of([
@@ -427,10 +469,9 @@ export function GraphFrame({
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
           />
         )}
-        <CopySymbolButton
-          text={editQuery}
-          className="gf-copy-query-btn"
-          title={t("graphFrame.copyQuery")}
+        <FrameQueryActions
+          query={editQuery}
+          onDelete={isModal ? undefined : () => onClose(frame.id)}
         />
       </div>
       <div className="gf-header-right">
@@ -440,18 +481,7 @@ export function GraphFrame({
               <span className="gf-loading">{t("graphFrame.running")}</span>
             )}
             {frame.status === "done" && (
-              <span className="gf-meta-text">
-                {frame.elapsed !== undefined
-                  ? t("graphFrame.metaCountElapsed", {
-                      nodes: frame.nodes.size,
-                      edges: frame.edges.size,
-                      elapsed: frame.elapsed,
-                    })
-                  : t("graphFrame.metaCount", {
-                      nodes: frame.nodes.size,
-                      edges: frame.edges.size,
-                    })}
-              </span>
+              <span className="gf-meta-text">{frameMetaText(frame, t)}</span>
             )}
             {frame.status === "error" && (
               <span className="gf-meta-error">{t("graphFrame.error")}</span>
@@ -564,7 +594,7 @@ export function GraphFrame({
               </ActionIcon>
             </Tip>
           )}
-          {hasGraph && frame.status === "done" && (
+          {hasGraph && frame.status === "done" && language === "cypher" && (
             <Tip
               text={autoImpute ? t("graphFrame.autoImputeOn") : t("graphFrame.autoImputeOff")}
               named
@@ -592,7 +622,7 @@ export function GraphFrame({
                 placeholder={t("graphFrame.groupPlaceholder")}
                 value={groupableAttrs.includes(clusterLevel) ? clusterLevel : null}
                 onChange={(val) => setClusterLevel((val ?? "none") as ClusterLevel)}
-                data={groupableAttrs.map((a) => ({ value: a, label: a }))}
+                data={groups}
                 clearable
                 comboboxProps={{ withinPortal: true }}
                 data-testid="graph-frame-group-select"
@@ -726,8 +756,12 @@ export function GraphFrame({
             key: "graph" as const,
             label: t("graphFrame.viewGraph"),
             Icon: GraphViewIcon,
-            show: hasGraph,
-            onClick: () => setView("graph"),
+            // A SELECT whose rows hold triples can show them as a graph.
+            show: hasGraph || frame.sparqlPairing !== undefined,
+            onClick: () => {
+              if (frame.sparqlPairing) sparqlDraw.setDrawSelect(true);
+              setView("graph");
+            },
           },
           {
             key: "table" as const,
@@ -777,17 +811,9 @@ export function GraphFrame({
       </div>
       <div className="gf-body-content">
         {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
+        <SparqlDrawControls draw={sparqlDraw} onDrawn={() => setView("graph")} />
         {frame.status === "loading" && <FrameRunning />}
-        {frame.status === "error" && (
-          <div className="gf-error gf-error--copyable">
-            <span className="gf-error-text">{frame.error}</span>
-            <CopySymbolButton
-              text={frame.error ?? ""}
-              className="gf-error-copy-btn"
-              title={t("graphFrame.copyErrorTitle")}
-            />
-          </div>
-        )}
+        {frame.status === "error" && <FrameError frame={frame} />}
         {frame.redirect && (
           <ResultRedirectNotice className="gf-redirect" redirect={frame.redirect} />
         )}
@@ -800,6 +826,8 @@ export function GraphFrame({
             }}
           >
             <GraphCanvas
+              highlight={highlight}
+              onClearHighlight={() => setHighlight(null)}
               nodes={augmentedNodes}
               edges={frame.edges}
               overlayNodes={overlayNodes}
@@ -815,9 +843,19 @@ export function GraphFrame({
               pkMap={pkMap}
               labelToTableLabel={labelToTableLabel}
               relationships={graphRelationships ?? []}
-              showingChildrenNatural={showingChildrenNatural}
-              onToggleChildren={handleToggleChildren}
-              onToggleChildrenBatch={handleToggleChildrenBatch}
+              showingChildrenNatural={sparql ? expandedNodes : showingChildrenNatural}
+              onToggleChildren={
+                sparql ? (nodeKey) => expandNode(nodeKey, true) : handleToggleChildren
+              }
+              onToggleChildrenBatch={
+                sparql
+                  ? (nodeKeys) => nodeKeys.forEach((k) => expandNode(k, true))
+                  : handleToggleChildrenBatch
+              }
+              describable={sparql}
+              keepPositions={sparql}
+              onNodeDragged={sparql ? (nodeKey) => expandNode(nodeKey, false) : undefined}
+              onNodeDroppedOnNode={onNodePath}
               showingChildrenCircular={showingChildrenCircular}
               onToggleChildrenCircular={handleToggleChildrenCircular}
               showingParents={showingParents}
@@ -834,7 +872,6 @@ export function GraphFrame({
               clusterLevel={clusterLevel}
               requestedView={canvasView}
               hullSvgRef={canvasHullSvgRef}
-              isExpanded={expanded}
               note={frame.truncated && <GraphCutNote count={frame.nodes.size} />}
             />
             {!inspectorVisible && (
@@ -852,9 +889,12 @@ export function GraphFrame({
             )}
             {inspectorVisible && (
               <Inspector
-                selected={selected}
+                selected={inspected}
+                describeError={describeError}
                 graphStats={selected?.kind === "node" ? selected.graphStats : undefined}
                 overviewData={overviewData}
+                highlight={highlight}
+                onHighlight={setHighlight}
                 colorOverrides={colorOverrides}
                 onColorChange={onColorChange}
                 onClose={() => setInspectorVisible(false)}
@@ -862,7 +902,6 @@ export function GraphFrame({
                 onResizeStart={handleResizeStart}
                 relationships={relationships}
                 onSaveEdgeAlias={onSaveEdgeAlias}
-                pkMap={pkMap}
                 labelToTableId={labelToTableId}
               />
             )}
@@ -906,49 +945,7 @@ export function GraphFrame({
         {frame.status !== "error" &&
           activeView === "code" &&
           (() => {
-            type SourceEntry = {
-              field?: string;
-              source?: string;
-              strategy?: string;
-              elapsed_ms?: number;
-              rows?: number;
-              physical_sql?: string;
-              cache_hit?: boolean;
-            };
-            const stats = frame.queryStats as
-              | { total_elapsed_ms?: number; sources?: SourceEntry[]; mermaid?: string }
-              | undefined;
-            const sqlQueries = (stats?.sources ?? [])
-              .filter((s) => s.physical_sql)
-              .map((s) => ({
-                field: s.field,
-                source: s.source,
-                strategy: s.strategy,
-                elapsed_ms: s.elapsed_ms,
-                rows: s.rows,
-                ...(s.cache_hit ? { cache_hit: true } : {}),
-                sql: s.physical_sql,
-              }));
-            const codeData: Record<string, unknown> = {
-              query: frame.query,
-              summary: {
-                nodes: frame.nodes.size,
-                relationships: frame.edges.size,
-                rows: frame.rows.length,
-                columns: frame.columns,
-                ...(frame.elapsed !== undefined ? { elapsed_ms: frame.elapsed } : {}),
-              },
-              ...(sqlQueries.length > 0 ? { sql: sqlQueries } : {}),
-              ...(stats
-                ? {
-                    stats: {
-                      total_elapsed_ms: stats.total_elapsed_ms,
-                      sources: (stats.sources ?? []).map(({ physical_sql: _, ...rest }) => rest),
-                    },
-                  }
-                : {}),
-            };
-            const jsonStr = JSON.stringify(codeData, null, 2);
+            const jsonStr = JSON.stringify(frameCode(frame), null, 2);
             return (
               <div className="gf-json-wrap">
                 <CodeMirror
@@ -980,32 +977,10 @@ export function GraphFrame({
               }
             : undefined
         }
-        onDragOver={(e) => {
-          if (
-            e.dataTransfer.types.includes("text/x-provisa-label") ||
-            e.dataTransfer.types.includes("text/x-provisa-domain")
-          ) {
-            e.preventDefault();
-            setDragOver(true);
-          }
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          setDragOver(false);
-          const label = e.dataTransfer.getData("text/x-provisa-label");
-          if (label && onTableDrop) {
-            e.preventDefault();
-            onTableDrop(frame.id, label);
-            return;
-          }
-          const domain = e.dataTransfer.getData("text/x-provisa-domain");
-          if (domain && onDomainDrop) {
-            e.preventDefault();
-            onDomainDrop(frame.id, domain);
-          }
-        }}
+        {...dropTarget}
       >
         {renderHeader(false)}
+        <FrameDropNotices frame={frame} />
         {!collapsed && frameBody}
         {!collapsed && !expanded && (
           <div className="gf-frame-resize-handle" onMouseDown={handleFrameResizeStart} />

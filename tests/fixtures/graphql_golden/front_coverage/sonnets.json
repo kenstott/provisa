@@ -1,0 +1,27 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:sonnets/1-strongest-echoes.graphql",
+  "root_field": "s__viewEchoLines"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:sonnets/2-sonnets-that-echo-each-other.graphql",
+  "root_field": "s__viewEchoLinesGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:sonnets/3-lines-on-time.graphql",
+  "root_field": "s__viewThemeTime"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:sonnets/4-themes-by-sequence.graphql",
+  "root_field": "s__viewThemeLinesGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:sonnets/5-sonnets-a-theme-runs-through.graphql",
+  "root_field": "s__viewThemeLinesGroupBy"
+ }
+]

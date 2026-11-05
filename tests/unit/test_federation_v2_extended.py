@@ -11,20 +11,19 @@
 """Extended Apollo Federation v2 subgraph tests.
 
 These tests do NOT duplicate the scenarios already in
-tests/unit/test_federation.py, which covers: FederationConfig defaults,
-extract_pk_columns (all fallback paths), build_federation_schema (_service,
-_entities, @key on single and composite PKs, _Entity union, _Any scalar,
-mutation preservation, existing query fields), generate_federation_sdl
-(@link/@key presence), group_representations (grouping, error paths),
-compile_entity_query (single and composite PK), and resolve_entities
-(basic, batch, rls_context forwarding, unresolved→None).
+tests/unit/test_federation.py, which covers: FederationConfig defaults and its
+declared role, build_federation_schema
+(_service, _entities, @key on single and composite PKs, _Entity union, _Any
+scalar, mutation preservation, existing query fields) and generate_federation_sdl
+(@link/@key presence). The governed _entities resolver is covered by
+tests/unit/test_federation_entities.py.
 
 New coverage here:
-  - build_federation_schema raises when no entity types are found
+  - a subgraph with no entity types serves _service alone
   - @key directive is emitted for every entity type in the schema
   - _entities field accepts a list argument named "representations"
   - SDL contains the correct federation URL (v2.3 spec)
-  - FederationConfig version field distinguishes v1 from v2
+  - FederationConfig subgraph name and declared role
   - generate_federation_sdl with an empty key_directives dict emits no @key
   - Subgraph schema retains all original root query fields after federation wrap
   - _Any scalar is present and its name is exactly "_Any"
@@ -36,7 +35,6 @@ New coverage here:
 
 from __future__ import annotations
 
-import pytest
 
 from graphql import (
     GraphQLField,
@@ -51,12 +49,10 @@ from graphql import (
 
 from provisa.compiler.federation import (
     FEDERATION_LINK_URL,
-    FederationConfig,
     build_federation_schema,
-    extract_pk_columns,
     generate_federation_sdl,
 )
-from provisa.compiler.introspect import ColumnMetadata
+from provisa.core.models import FederationConfig
 
 # ---------------------------------------------------------------------------
 # Schema / table factory helpers
@@ -94,22 +90,24 @@ def _pk_for(*type_names: str, start_id: int = 1) -> dict[int, list[str]]:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildFederationSchemaErrors:
-    def test_raises_when_no_entity_types_found(self):
-        """build_federation_schema must raise ValueError when no tables match
-        the base schema types (e.g. all _type_name fields are missing)."""
+class TestBuildFederationSchemaWithoutEntities:
+    def test_no_matching_type_serves_service_alone(self):
+        """A table that names no type of the base schema is no entity: the subgraph serves
+        _service and no _entities or _Entity union (the Federation spec's entity-less form)."""
         schema = _schema_with_types("Orders")
         tables = [{"id": 1, "table_name": "orders"}]  # no _type_name
-        pk = {1: ["id"]}
-        with pytest.raises(ValueError, match="No entity types found"):
-            build_federation_schema(schema, tables, pk)
+        fed = build_federation_schema(schema, tables, {1: ["id"]})
+        assert "_service" in fed.query_type.fields
+        assert "_entities" not in fed.query_type.fields
+        assert "_Entity" not in fed.type_map
 
-    def test_raises_when_pk_columns_empty_dict(self):
-        """build_federation_schema must raise ValueError when pk_columns is empty."""
+    def test_no_primary_keys_serves_service_alone(self):
         schema = _schema_with_types("Orders")
-        tables = _tables_for("Orders")
-        with pytest.raises(ValueError, match="No entity types found"):
-            build_federation_schema(schema, tables, pk_columns={})
+        fed = build_federation_schema(schema, _tables_for("Orders"), pk_columns={})
+        assert "_entities" not in fed.query_type.fields
+        result = graphql_sync(fed, "{ _service { sdl } }")
+        assert result.errors is None
+        assert "@key(fields" not in result.data["_service"]["sdl"]
 
 
 # ---------------------------------------------------------------------------
@@ -279,60 +277,19 @@ class TestServiceFieldAndSDL:
 
 
 class TestFederationConfigExtended:
-    def test_federation_config_version_defaults_to_2(self):
-        cfg = FederationConfig()
-        assert cfg.version == 2
+    def test_custom_subgraph_name(self):
+        cfg = FederationConfig(subgraph_name="my-subgraph")
+        assert cfg.subgraph_name == "my-subgraph"
 
-    def test_federation_config_custom_service_name(self):
-        cfg = FederationConfig(service_name="my-subgraph")
-        assert cfg.service_name == "my-subgraph"
-
-    def test_federation_config_enabled_true(self):
-        cfg = FederationConfig(enabled=True)
+    def test_enabled_with_role(self):
+        cfg = FederationConfig(enabled=True, role="partner")
         assert cfg.enabled is True
+        assert cfg.role == "partner"
 
-    def test_federation_config_all_fields_settable(self):
-        cfg = FederationConfig(enabled=True, version=2, service_name="svc")
-        assert cfg.enabled is True
-        assert cfg.version == 2
-        assert cfg.service_name == "svc"
+    def test_disabled_needs_no_role(self):
+        assert FederationConfig(enabled=False).role is None
 
-
-# ---------------------------------------------------------------------------
-# extract_pk_columns — additional paths
-# ---------------------------------------------------------------------------
-
-
-class TestExtractPKColumnsExtended:
-    def test_multiple_tables_each_get_their_pk(self):
-        tables = [
-            {"id": 1, "primary_key": "order_id"},
-            {"id": 2, "primary_key": ["tenant", "customer_id"]},
-            {"id": 3},
-        ]
-        column_types = {
-            3: [ColumnMetadata("id", "integer", False)],
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result[1] == ["order_id"]
-        assert result[2] == ["tenant", "customer_id"]
-        assert result[3] == ["id"]
-
-    def test_table_with_no_columns_returns_nothing(self):
-        """A table with no column metadata and no explicit PK must not appear in result."""
-        tables = [{"id": 99}]
-        column_types: dict = {}
-        result = extract_pk_columns(tables, column_types)
-        assert 99 not in result
-
-    def test_first_column_used_when_no_non_nullable_and_no_id(self):
-        """Falls back to first column when no 'id' column and all are nullable."""
-        tables = [{"id": 5}]
-        column_types = {
-            5: [
-                ColumnMetadata("name", "varchar", True),
-                ColumnMetadata("code", "varchar", True),
-            ]
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result[5] == ["name"]
+    def test_retired_fields_are_gone(self):
+        """The retired ``version``/``service_name`` fields are no settings of the model."""
+        assert "version" not in FederationConfig.model_fields
+        assert "service_name" not in FederationConfig.model_fields

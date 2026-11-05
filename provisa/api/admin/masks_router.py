@@ -9,9 +9,9 @@
 # permission from the copyright holder.
 
 """What the column editor shows about a mask list as it is being edited (REQ-2059): the entries
-no reader reaches, whether readers it does not list read the column unmasked, and the entry a
-reader acting as chosen roles and derived roles reads it through. It refuses nothing; the list is
-saved with the table. Gated by ``masking_config``, the right that edits masks."""
+no reader reaches, what a save of the list is refused with on that account, and the entry a reader
+acting as chosen roles and derived roles reads it through. It refuses nothing itself; the list is
+saved with the table, which refuses it. Gated by ``masking_config``, the right that edits masks."""
 
 # Requirements: REQ-2059, REQ-2142
 
@@ -32,7 +32,7 @@ class _CheckedEntry(BaseModel):
     """A mask entry as it is being edited: its mask is read as given, so a regex that is not yet
     universal is reported (``patterns``) rather than refused (REQ-2142)."""
 
-    to: list[str]
+    to: list[str] | None = None  # None: every other reader (REQ-2153)
     mask: dict[str, Any] | None = None
 
 
@@ -89,11 +89,21 @@ def chain_of(state: Any, role_id: str) -> list[str]:
 async def check_masks(body: MasksCheckBody, request: Request) -> dict:
     require_capability_request(request, Capability.MASKING_CONFIG.value)
     from provisa.api.app import state
-    from provisa.security.masking import masks_report
+    from provisa.security.masking import UNREACHABLE_MASK, masks_report, unreachable_entries
+
+    def chain(role_id: str) -> list[str]:
+        return chain_of(state, role_id)
 
     masks = [e.model_dump() for e in body.masks]
+    entries = unreachable_entries(masks, chain)
     return {
-        **masks_report(masks, lambda r: chain_of(state, r), body.roles),
+        **masks_report(masks, chain, body.roles),
+        "refusal": entries
+        and {
+            "code": "schema.mask_unreachable",
+            "message": UNREACHABLE_MASK + entries,
+            "params": {"entries": entries},
+        },
         **pattern_report(masks),
     }
 

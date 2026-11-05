@@ -16,12 +16,13 @@ from __future__ import annotations
 
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context
-from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID
+from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID, SYSTEM_DOMAINS
 
 
 class _FakeRLSContext:
     def __init__(self, rules: dict[int, str]) -> None:
         self.rules = rules
+        self.write_rules: dict[str, dict[int, str]] = {}
 
 
 _CORE_COL = "table_name"
@@ -45,8 +46,10 @@ def _meta_ctx(table_id: int = 1) -> CompilationContext:
 
 
 def _meta_tables(table_id: int = 1) -> list[dict]:
-    cols = [{"column_name": _CORE_COL, "data_type": "varchar"}]
-    cols += [{"column_name": c, "data_type": "varchar"} for c in _GOV_COLS]
+    # REQ-2154: the catalog is granted to the roles these tests read it as.
+    readers = ["analyst", "steward", "admin", "meta_reader", "sales"]
+    cols = [{"column_name": _CORE_COL, "data_type": "varchar", "visible_to": readers}]
+    cols += [{"column_name": c, "data_type": "varchar", "visible_to": readers} for c in _GOV_COLS]
     return [{"id": table_id, "columns": cols}]
 
 
@@ -190,9 +193,9 @@ def _data_tables() -> list[dict]:
     ]
 
 
-# One column open to its domain: a role's own tables are those it is served a column of
-# (REQ-1132 as narrowed with REQ-1959), so a described table needs one to be anyone's.
-_OPEN = [{"column_name": "id", "visible_to": []}]
+# One column granted to the roles that read it: a role's own tables are those it is served a
+# column of (REQ-1132 as narrowed with REQ-1959; REQ-2154: a grant names its readers).
+_OPEN = [{"column_name": "id", "visible_to": ["sales", "cataloger", "analyst", "admin", "empty"]}]
 
 
 def _relationships() -> list[dict]:
@@ -246,14 +249,15 @@ class TestREQ1132RowScope:
         )
         assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
 
-    def test_meta_domain_grant_sees_all_rows(self):
-        # REQ-1132 — a meta domain grant lifts the row filter entirely (no predicate injected).
+    def test_reaching_every_data_domain_sees_all_rows(self):
+        # REQ-1132 — "*" lifts the row filter entirely (no predicate injected); catalog_read opens
+        # the domain, not its rows.
         gov = _row_gov(
             {
                 "id": "cataloger",
                 "description": "Test role.",
                 "capabilities": [],
-                "domain_access": ["sales", META_DOMAIN_ID],
+                "domain_access": ["*", *SYSTEM_DOMAINS],
             }
         )
         assert _RT_META_TID not in gov.rls_rules
@@ -287,3 +291,55 @@ class TestREQ1132RowScope:
             }
         )
         assert gov.rls_rules[_RT_META_TID] == "id IN (-1)"
+
+
+# --- REQ-2153: listed names, for a reader outside the listed table's domain -----------------------
+
+_LN_META_TID = 102
+
+
+def _listed_ctx() -> CompilationContext:
+    ctx = _row_scope_ctx()
+    ctx.tables["listed_names"] = TableMeta(
+        table_id=_LN_META_TID,
+        field_name="listed_names",
+        type_name="ListedNames",
+        source_id="s",
+        catalog_name="main",
+        schema_name="public",
+        table_name="listed_names",
+        domain_id=META_DOMAIN_ID,
+    )
+    return ctx
+
+
+def _listed_gov(domain_access: list[str]):
+    role = {
+        "id": "sales",
+        "description": "Test role.",
+        "capabilities": [],
+        "domain_access": domain_access,
+    }
+    # finance's payroll lists its id: its name is in the catalog of every role.
+    payroll = {
+        "id": _FIN_HIDDEN,
+        "domain_id": "finance",
+        "columns": [{"column_name": "id", "visible_to": ["finance_reader"], "scope": "listed"}],
+    }
+    tables = [t for t in _data_tables() if t["id"] != _FIN_HIDDEN] + [payroll]
+    return build_governance_context(
+        role["id"], _FakeRLSContext({}), {}, _listed_ctx(), tables, role, relationships=[]
+    )
+
+
+def test_a_reader_outside_the_domain_lists_the_table_in_every_view_of_the_catalog():
+    gov = _listed_gov(["sales"])
+    # listed_names: the names of the domains it does not reach.
+    assert gov.rls_rules[_LN_META_TID] == "listed_domain NOT IN ('sales')"
+    # REQ-1132: every role lists it, so it is among the tables it is described.
+    assert str(_FIN_HIDDEN) in gov.rls_rules[_TC_META_TID]
+    assert str(_FIN_HIDDEN) in gov.rls_rules[_RT_META_TID]
+
+
+def test_a_reader_reaching_every_domain_has_no_listed_name_outside_its_reach():
+    assert _listed_gov(["*"]).rls_rules[_LN_META_TID] == "1 = 0"

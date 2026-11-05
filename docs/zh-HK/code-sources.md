@@ -427,6 +427,7 @@ await cache.set("rates", rates, 3600);
 | `vectors.upsert(items, model)`、`vectors.search(query, k, model)`、`vectors.embed(texts, model)`、`vectors.delete(ids)` | 數據來源自己的向量集合，用於它自己的參考數據。一個項目有 `id` 以及 `text` 或 `vector`；文字由你所在組織的某個向量模型嵌入。它無法搜尋你受治理的表，那些數據只以參數形式到達程式碼。 |
 | `http.get(url)`、`http.post(url, ...)` | Provisa 代表程式碼發出的請求，經過部署的出站代理和憑證機構。主機必須在出站允許清單中，每次請求都會記入稽核記錄。 |
 | `llm.chat(model, messages)`、`llm.embeddings(model, input)`、`llm.base_url()`（JavaScript 中為 `llm.baseUrl()`） | Provisa 的 LLM 服務。見[呼叫模型](#calling-a-model)。 |
+| `dq.dataset(name)`, `dq.product(id)` | 資料集（`domain.table` 或其資料表 id）或數據產品的數據質素，按元網域向您的程式碼所服務請求的角色所顯示的那樣傳回。對資料集：掃描它的檢查表，每個附帶描述、合約、所指派的數據產品和最近一次執行（結果、時間和失敗的檢查），以及它的剖析及每個剖析的最近一次執行。對數據產品：它的承諾、期望、合作方檢查和孤立檢查。 |
 | `log(message, level, fields)`、`metric(name, value, kind, attributes)` | 一行日誌，以及名為 `code_source.<name>` 的指標點，附加到你的程式碼正在處理的請求上。 |
 
 - 服務拒絕的呼叫會拋出 `ServiceError`，指明服務並說明原因。

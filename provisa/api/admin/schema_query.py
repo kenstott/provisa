@@ -14,11 +14,14 @@ from __future__ import annotations
 
 
 import asyncio
+import datetime
 import logging
-import os
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
+from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 import strawberry
@@ -42,7 +45,12 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import rls as rls_repo
+from provisa.security import domain_tree
+from provisa.security.inheritance import held_by_role
+from provisa.security.rights import SQL_CATALOG_TABLES
+from provisa.security.row_filters import with_owner_grant
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
@@ -67,7 +75,14 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
+    ContractColumnType,
+    ContractSlaPropertyType,
+    ContractTermsType,
+    DataContractType,
+    DataProductFindingType,
+    DataProductFindingsType,
     DataProductType,
+    ListedNamesType,
     DomainType,
     GovDataSubjectsType,
     GovDataSubjectType,
@@ -217,7 +232,7 @@ def _dq_kind(kind: dict) -> DqCheckKindType:  # REQ-1443 clause 7
 async def _listed_tables(conn: Any, scope: CatalogScope) -> list[tuple[int, str]]:
     """(table id, domain id) of every registered table the caller is answered (REQ-1958)."""
     _res = await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
-    return [(r.id, r.domain_id) for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)]
+    return [(r.id, r.domain_id) for r in _res.fetchall() if scope.lists_table(r.id)]
 
 
 async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
@@ -225,7 +240,7 @@ async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
     _res = await conn.execute_core(
         select(registered_tables.c.id, registered_tables.c.domain_id, registered_tables.c.source_id)
     )
-    return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)}
+    return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id)}
 
 
 async def _listed_relationships(
@@ -235,17 +250,15 @@ async def _listed_relationships(
     column, its target table and column where it has one, and the table it goes through."""
     if scope.whole:
         return rows
-    _res = await conn.execute_core(select(registered_tables.c.id, registered_tables.c.domain_id))
-    domain_of = {r.id: r.domain_id for r in _res.fetchall()}
 
     def _lists(table_id: int | None, column: str | None) -> bool:
         if table_id is None:
             return True  # no such end: a relationship to a function has no target table
-        if table_id not in domain_of:
-            return False
+        if column == _HAS_TABLE_KEY:
+            column = None  # a HAS_TABLE row anchors the table itself, by its id: no column
         # A composite key lists its columns comma-separated (REQ-1586).
         columns = [c.strip() for c in column.split(",")] if column else [None]
-        return all(scope.lists_column(table_id, domain_of[table_id], c) for c in columns)
+        return all(scope.lists_column(table_id, c) for c in columns)
 
     return [
         r
@@ -260,7 +273,16 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
     """``table`` as the caller is answered it (REQ-1958): the columns it administers or is
     served, and grant lists, mask settings and the view's SQL only with ``view_governance``
     (REQ-1134)."""
-    columns = scope.columns(table.id, table.domain_id)
+    columns = scope.answered_columns(
+        {
+            "id": table.id,
+            "domain_id": table.domain_id,
+            "columns": [
+                {"column_name": c.column_name, "visible_to": c.visible_to, "scope": c.scope}
+                for c in table.columns
+            ],
+        }
+    )
     if columns is not None:
         table.columns = [c for c in table.columns if c.column_name in columns]
     if not scope.governance:
@@ -273,18 +295,20 @@ def _trim_table(scope: CatalogScope, table: RegisteredTableType) -> RegisteredTa
 
 
 def _sees_metric(info: StrawberryInfo, row: Any) -> bool:
-    """REQ-1958: a metric is listed to its administrator, and to a caller whose acting role it is
-    granted to."""
+    """REQ-1958: a metric is listed to a caller whose acting role it is granted to; administering
+    metrics does not widen it (REQ-2152)."""
     from provisa.api.app import state
     from provisa.security.meta_role import acting_roles
 
     scope = catalog_scope(info)
-    if scope.whole or has_capability(info, "table_registration"):
+    if scope.whole:
         return True
     granted = list(row["visible_to"])
-    if "*" in granted:
-        return scope.role is not None and scope.role in state.contexts
     return scope.role is not None and any(r in granted for r in acting_roles(state, scope.role))
+
+
+#: The source "column" of a HAS_TABLE row: the table's own id, a literal, no column of it.
+_HAS_TABLE_KEY = "__table_id__"
 
 
 async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType]:
@@ -321,7 +345,7 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             source_table_name=r.table_name,
             source_domain_id=r.domain_id or "",
             target_table_name=meta_table_name,
-            source_column="__table_id__",
+            source_column=_HAS_TABLE_KEY,
             target_column="id",
             cardinality="many-to-one",
             materialize=False,
@@ -331,6 +355,7 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             alias="HAS_TABLE",
             graphql_alias=None,
             computed_cypher_alias=None,
+            cypher_type="HAS_TABLE",
             disable_cypher=False,
             same_entity=False,
             via_table_id=None,
@@ -343,6 +368,25 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
         )
         for r in src_res.fetchall()
     ]
+
+
+def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
+    """Whether the caller is served a column of every registered table named ``name`` (a name
+    held by a table it is not served is not told) -- for the observability lists, which name
+    tables rather than address them (REQ-2152, ruling Q3)."""
+    ids: dict[str, list[int]] = {}
+    # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
+    # its stored columns (catalog_scope), so its builds are its readers' as well.
+    for t in [*state.tables, *state.role_build_inputs["draft_tables"]]:
+        ids.setdefault(t["table_name"], []).append(t["id"])
+
+    def _reads(name: str) -> bool:
+        if scope.whole:
+            return True
+        bare = name.split(".")[-1]
+        return bare in ids and all(scope.lists_table(i) for i in ids[bare])
+
+    return _reads
 
 
 async def _table_region_maps(
@@ -442,6 +486,27 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     return [r for r in rows if visible(r)]
 
 
+def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
+    """A member's stored contract (data_product.member_contracts) as the admin API answers it."""
+    from provisa.core.data_contracts import contract_id
+    from provisa.core.models import DataContract
+
+    c = DataContract.model_validate(member["contract"])
+    return DataContractType(
+        table_id=member["id"],
+        source_id=member["source_id"],
+        schema_name=member["schema_name"],
+        table_name=member["table_name"],
+        contract_id=contract_id(member["product_id"], member["schema_name"], member["table_name"]),
+        version=c.version,
+        status=c.status,
+        description=c.description,
+        terms=ContractTermsType(**c.terms.model_dump()),
+        sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
+        columns=[ContractColumnType(**col.model_dump()) for col in c.columns],
+    )
+
+
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -476,9 +541,9 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
-        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Their administrator
-        (``table_registration``, the right that saves one) sees every metric; anyone else the
-        metrics its acting role is granted (``visible_to``; a meta-role by any member)."""
+        (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
+        metrics its acting role is granted (``visible_to``; a meta-role by any member), the
+        right that saves one included (REQ-2152)."""
         from provisa.core.repositories import metric as metric_repo
 
         pool = await _get_pool()
@@ -550,6 +615,16 @@ class Query:  # REQ-021, REQ-042
             for r in rows
             if r["id"] in decidable
         ]
+
+    @strawberry.field
+    def hold_on_failing_checks_source(self, info: StrawberryInfo) -> str:  # REQ-2133
+        """The built-in preflight a materialized view's Hold on failing checks option applies, as a
+        steward may copy it into the view's own preflight. Read on the view's edit form, gated as
+        that form's other reads are."""
+        require_capability(info, "table_registration")
+        from provisa.mv.hold_checks import SOURCE
+
+        return SOURCE
 
     @strawberry.field
     async def schema_version(self) -> str:
@@ -665,15 +740,69 @@ class Query:  # REQ-021, REQ-042
             ]
 
     @strawberry.field
+    async def listed_names(self, info: StrawberryInfo) -> list[ListedNamesType]:  # REQ-2153
+        """The names of the listed columns of domains the caller does not reach: each table's
+        name and its listed columns' names, and nothing more. What the caller reaches is in
+        ``tables``."""
+        _resolve_admin_context(info)
+        scope = catalog_scope(info)
+        if scope.whole or scope.reach is None:
+            return []  # nothing is outside the caller's reach
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        table_columns.c.column_name,
+                    )
+                    .select_from(
+                        registered_tables.join(
+                            table_columns, table_columns.c.table_id == registered_tables.c.id
+                        )
+                    )
+                    .where(
+                        table_columns.c.scope == "listed",
+                        registered_tables.c.draft.is_(False),
+                        registered_tables.c.domain_id.not_in(sorted(scope.reach)),
+                    )
+                    .order_by(
+                        registered_tables.c.domain_id,
+                        registered_tables.c.table_name,
+                        table_columns.c.column_name,
+                    )
+                )
+            ).fetchall()
+        named: dict[tuple[str, str], list[str]] = {}
+        for r in rows:
+            named.setdefault((r.domain_id, r.table_name), []).append(r.column_name)
+        return [
+            ListedNamesType(domain_id=domain, table_name=table, column_names=columns)
+            for (domain, table), columns in named.items()
+        ]
+
+    @strawberry.field
     async def data_products(self, info: StrawberryInfo) -> list[DataProductType]:  # REQ-1634
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import data_product as data_product_repo
 
         _resolve_admin_context(info)
         require_capability(info, "data_product_read")
+        from provisa.core import product_findings
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await data_product_repo.list_all(cast("Connection", conn))
+            conn = cast("Connection", conn)
+            rows = await data_product_repo.list_all(conn)
+            members = await data_product_repo.member_contracts(conn)
+            found = await product_findings.findings(
+                conn, await product_findings.context(datetime.date.today())
+            )
+        names = {r["id"]: r["name"] for r in rows}
+        contracts: dict[str, list[DataContractType]] = {}
+        for m in members:  # REQ-2158
+            contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
         return [
             DataProductType(
                 id=r["id"],
@@ -685,12 +814,47 @@ class Query:  # REQ-021, REQ-042
                 limitations=r["limitations"],
                 usage=r["usage"],
                 version=r["version"],
-                status=r["status"],
-                sla=r["sla"],
                 support=r["support"],
+                support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
+                created_at=r["created_at"].isoformat(),
+                contracts=contracts.get(r["id"], []),
+                status=r["status"],
+                status_reason=r["status_reason"],
+                retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,
+                status_by=r["status_by"],
+                status_at=r["status_at"].isoformat() if r["status_at"] is not None else None,
+                successor_id=r["successor_id"],
+                successor_name=names.get(r["successor_id"]) if r["successor_id"] else None,
+                findings=len(found.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def data_product_findings(
+        self, info: StrawberryInfo, product_id: str | None = None
+    ) -> list[DataProductFindingsType]:  # REQ-2146
+        """What a curator should look at in the data products, by product; one product's when
+        ``product_id`` is given."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.core import product_findings
+
+        _resolve_admin_context(info)
+        require_capability(info, "data_product_read")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            found = await product_findings.findings(
+                cast("Connection", conn),
+                await product_findings.context(datetime.date.today()),
+            )
+        return [
+            DataProductFindingsType(
+                product_id=pid,
+                findings=[DataProductFindingType(**f) for f in items],
+            )
+            for pid, items in sorted(found.items())
+            if product_id is None or pid == product_id
         ]
 
     @strawberry.field
@@ -851,12 +1015,18 @@ class Query:  # REQ-021, REQ-042
                     ).where(registered_tables.c.source_id != DERIVED_SOURCE_ID)
                 )
                 all_tables = [dict(r._mapping) for r in _ares.fetchall()]
-                # REQ-1958: the caller is answered the tables it administers or is served.
+                # REQ-1958, REQ-2152: the caller is answered the tables it is served; one the last
+                # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
-                listed = [r for r in rows if scope.lists_table(r["id"], r["domain_id"])]
+                listed = [
+                    r
+                    for r in rows
+                    if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
+                    and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
+                ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
-                return [
+                answered = [
                     _trim_table(
                         scope,
                         await _fetch_table_with_columns(
@@ -865,14 +1035,12 @@ class Query:  # REQ-021, REQ-042
                     )
                     for r in listed
                 ]
+                return [t for t in answered if scope.whole or t.columns]
 
     @strawberry.field
     async def relationships(
         self, info: StrawberryInfo
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
-        from provisa.api.app import state
-
-        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -899,7 +1067,7 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
@@ -907,9 +1075,6 @@ class Query:  # REQ-021, REQ-042
         self, info: StrawberryInfo
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
         """All relationships including system-generated meta:% entries (used by ERD)."""
-        from provisa.api.app import state
-
-        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -932,7 +1097,7 @@ class Query:  # REQ-021, REQ-042
                 .where(relationships.c.id.not_like("gql_auto__%"))
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping), convention) for r in _res.fetchall()]
+            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             rows.extend(await _has_table_synthetic_relationships(conn))
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
@@ -940,6 +1105,8 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
+        from provisa.core.repositories import data_product as data_product_repo
+
         active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -954,7 +1121,12 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
-            return [_role_from_row(r, detail=full(r["id"])) for r in rows]
+            # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
+            owned = with_owner_grant(rows, await data_product_repo.owner_roles(conn))
+            held = held_by_role(
+                owned, domain_tree.parent_map(await domain_repo.list_all(cast("Connection", conn)))
+            )
+            return [_role_from_row(r, detail=full(r["id"]), effective=held[r["id"]]) for r in rows]
 
     @strawberry.field
     async def rls_rules(
@@ -1156,9 +1328,13 @@ class Query:  # REQ-021, REQ-042
         authenticates against the real Kaggle API. Backs the token-gate that unlocks the dataset
         picker step, and re-editing an existing source whose token has since expired/revoked."""
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
         from provisa.kaggle.client import validate_token
 
-        return await validate_token(token)
+        # The token as typed: a value, or a reference resolved in the org's vault.
+        async with _bound_to_request_org():
+            resolved = resolve_secrets(token)
+        return await validate_token(resolved)
 
     @strawberry.field
     async def kaggle_datasets(  # REQ-1783
@@ -1169,9 +1345,12 @@ class Query:  # REQ-021, REQ-042
         assume a fixed catalog belonging to an already-registered source; here there is no source
         yet and the catalog is Kaggle's entire public listing, searched by free text."""
         require_capability(info, "source_registration")
+        from provisa.core.secrets import resolve_secrets
         from provisa.kaggle.client import search_datasets
 
-        results = await search_datasets(token, query=query, page=page)
+        async with _bound_to_request_org():
+            resolved = resolve_secrets(token)
+        results = await search_datasets(resolved, query=query, page=page)
         return [
             KaggleDatasetType(
                 ref=d.get("ref", ""),
@@ -1255,6 +1434,13 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "table_registration")
         columns = await resolve_available_columns_metadata(source_id, schema_name, table_name)
         await _remember_selected_columns(source_id, schema_name, table_name, columns)
+        from provisa.core.ir_types import base_type, subtype_named
+
+        for column in columns:
+            # REQ-2171: a subtype is offered as its base carrying the subtype.
+            named = subtype_named(column.data_type) if column.data_type else None
+            if named is not None:
+                column.data_type, column.subtype = base_type(column.data_type), named
         return columns
 
     @strawberry.field
@@ -1395,6 +1581,13 @@ class Query:  # REQ-021, REQ-042
         from provisa.mv.bitemporal_capture import logged_table_id
 
         names = {row["id"]: row["table_name"] for row in state.tables}
+        # REQ-2152 (Q3): only the materialized views over tables the caller reads.
+        reads = _names_read(state, catalog_scope(info))
+
+        def _readable(mv: Any) -> bool:
+            over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
+            return all(reads(name) for name in over)
+
         return [
             MVType(
                 id=mv.id,
@@ -1410,6 +1603,7 @@ class Query:  # REQ-021, REQ-042
                 version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
             for mv in state.mv_registry._mvs.values()
+            if _readable(mv)
         ]
 
     @strawberry.field
@@ -1635,7 +1829,10 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await check_catalog_for(
-                cast("Connection", conn), checker=checker, dataset=dataset
+                cast("Connection", conn),
+                checker=checker,
+                dataset=dataset,
+                scope=catalog_scope(info),
             )
         return DqCheckCatalogType(
             dataset_checks=[_dq_kind(k) for k in result["dataset_checks"]],
@@ -1753,7 +1950,12 @@ class Query:  # REQ-021, REQ-042
 
         # REQ-595: the acting org's entries in the acting environment, no other org's.
         counts = await state.response_cache_store.table_entry_counts(cache_place(state))
-        return [CacheTableStatType(table_id=tid, cached_entries=n) for tid, n in counts.items()]
+        scope = catalog_scope(info)  # REQ-2152 (Q3): only the tables the caller reads
+        return [
+            CacheTableStatType(table_id=tid, cached_entries=n)
+            for tid, n in counts.items()
+            if scope.lists_table(tid)
+        ]
 
     @strawberry.field
     async def region_choices(self) -> RegionChoicesType:  # REQ-1921
@@ -1825,6 +2027,7 @@ class Query:  # REQ-021, REQ-042
                 return by_id.get(e["table_id"])
             return by_key.get((e["catalog"], e["schema"], e["table_name"]))
 
+        reads = _names_read(state, catalog_scope(info))  # REQ-2152 (Q3)
         return [
             HotTableStatType(
                 table_name=e["table_name"],
@@ -1835,6 +2038,7 @@ class Query:  # REQ-021, REQ-042
                 region=_region_of(e),
             )
             for e, kind in entries
+            if reads(e["table_name"])
         ]
 
     @strawberry.field
@@ -1860,6 +2064,7 @@ class Query:  # REQ-021, REQ-042
         failure = replica_converge.last_error.get(current_org.get(None))
         # REQ-1922: stamp each replica with its table's stored home region (key is source/schema/table).
         _, by_key = await _table_region_maps(state)
+        reads = _names_read(state, catalog_scope(info))
         return ReplicaBuildsType(
             builds=[
                 ReplicaBuildType(
@@ -1870,10 +2075,22 @@ class Query:  # REQ-021, REQ-042
                     region=by_key.get((record.key[0], record.key[1], record.key[2])),
                 )
                 for record in records
+                if reads(record.key[2])  # REQ-2152 (Q3): only the tables the caller reads
             ],
             convergence_error=failure["cause"] if failure else None,
             convergence_error_at=failure["at"].isoformat() if failure else None,
         )
+
+    @strawberry.field
+    async def jdbc_source_setup(self, info: StrawberryInfo) -> JdbcSourceSetupType:  # REQ-2191
+        """What a JDBC source's form offers: the engine its capabilities are set for, the
+        standard drivers (with whether that engine attaches each), the SQL dialects it may be
+        written in, and the capabilities."""
+        require_capability(info, "source_registration")
+        from provisa.api.admin.jdbc_source_admin import setup
+        from provisa.api.app import state
+
+        return setup(state.federation_engine)
 
     @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
@@ -1898,7 +2115,7 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "observability")
         from provisa.api.admin.system_health import collect_system_health
 
-        return await collect_system_health()
+        return await collect_system_health(info.context["request"].app)
 
     # ── Admin: Scheduled Tasks ──
 
@@ -1921,8 +2138,12 @@ class Query:  # REQ-021, REQ-042
         runs = await last_runs(state)
         org_id = require_current_org()
         scheduler = state._scheduler
+        reads = _names_read(state, catalog_scope(info))
         result = []
         for row in rows:
+            # REQ-2152 (Q3): a trigger on a table's change or event names that table.
+            if row["on_table"] is not None and not reads(row["on_table"]):
+                continue
             job = (
                 scheduler.get_job(trigger_job_id(row["id"], org_id))
                 if scheduler is not None
@@ -2033,11 +2254,16 @@ class Query:  # REQ-021, REQ-042
         this must be asked BEFORE the save."""
         require_capability(info, "table_registration")
         from provisa.api.admin.column_dependents import dependents_for
+        from provisa.api.admin.read_rights import reader_for
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             found = await dependents_for(
-                conn, int(table_id), renamed=list(renamed or []), removed=list(removed or [])
+                conn,
+                int(table_id),
+                renamed=list(renamed or []),
+                removed=list(removed or []),
+                reader=reader_for(info),
             )
         return [
             ColumnDependentsType(
@@ -2530,6 +2756,26 @@ async def resolve_available_columns_metadata(
     return columns
 
 
+async def _derived_view_columns(schema_name: str, table_name: str) -> list[AvailableColumnType]:
+    """A derived view's columns: those it is registered with. A derived view is no object in any
+    engine's catalog -- it is expanded into the statement that reads it -- and every column of
+    one is typed when it is registered (REQ-1426), so that record is its schema."""
+    from provisa.core.repositories.table import registered_columns
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        rows = await registered_columns(conn, DERIVED_SOURCE_ID, schema_name, table_name)
+    return [
+        AvailableColumnType(
+            name=row["column_name"],
+            data_type=row["data_type"],
+            comment=row["description"],
+            is_primary_key=bool(row["is_primary_key"]),
+        )
+        for row in rows
+    ]
+
+
 async def _introspect_available_columns(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -2542,6 +2788,8 @@ async def _introspect_available_columns(
     """
     from provisa.api.app import state
 
+    if source_id == DERIVED_SOURCE_ID:
+        return await _derived_view_columns(schema_name, table_name)
     source_type = state.source_types.get(source_id, "")
     if source_type in ("graphql_remote", "grpc_remote"):
         return await _remote_source_columns(source_id, schema_name, table_name)
@@ -2565,7 +2813,7 @@ async def _introspect_available_columns(
             return await _cosmosdb_columns(source_id, table_name)
         if source_type == "qdrant":
             return await _qdrant_columns(source_id, table_name)
-        if source_type in ("node", "python"):
+        if source_type in CODE_SOURCE_TYPES:
             return await _code_columns(source_id, table_name)
         if source_type == "redis":
             return await _redis_columns(source_id, table_name)
@@ -2614,6 +2862,20 @@ async def _introspect_available_columns(
         ]
     if source_type == "logs":
         return await _logs_columns(source_id)
+    if source_type == "quickbooks":
+        # REQ-2197: an entity's columns are the catalog's, typed as QuickBooks' schema types them.
+        from provisa.api_source.persist import data_type_for_api_column
+        from provisa.quickbooks.entities import columns_of, entity
+
+        return [
+            AvailableColumnType(
+                name=c.name,
+                data_type=data_type_for_api_column(c.type),
+                comment=None,
+                is_primary_key=c.name == "id",
+            )
+            for c in columns_of(entity(table_name))
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
@@ -2671,7 +2933,8 @@ async def _introspect_available_columns(
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
-        from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+        from provisa.api.admin.introspect import openapi_parameter_columns
+        from provisa.openapi.register import _schema_to_columns
 
         spec = state.openapi_specs[source_id]["spec"]
         queries, _ = parse_spec(spec)
@@ -2682,30 +2945,7 @@ async def _introspect_available_columns(
         if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
             cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
         existing = {c["name"] for c in cols}
-        for p in q.path_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "path_param",
-                        "native_filter_required": True,
-                    }
-                )
-        for p in q.query_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        # A parameter's type is the spec's (array, object); a column's is one
-                        # the engine has, as the response's columns are typed.
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "query_param",
-                        "native_filter_required": p["required"],
-                    }
-                )
+        cols += [c for c in openapi_parameter_columns(q) if c["name"] not in existing]
         return [
             AvailableColumnType(
                 name=c["name"],
@@ -2741,7 +2981,7 @@ async def _introspect_available_columns(
                 source_id, source_type, schema_name, table_name, state.source_pools
             )
         pk_names = set(native_pks or [])
-        return [
+        listed = [
             AvailableColumnType(
                 name=name,
                 data_type=typing.data_type,
@@ -2754,6 +2994,23 @@ async def _introspect_available_columns(
             )
             for name, typing in native
         ]
+        if source_type == "jdbc":
+            # REQ-2191: each column offered as an optional column_value parameter, the floor's
+            # equality filter; a steward marks which are required.
+            from provisa.jdbc_source.table import parameters_of
+
+            listed += [
+                AvailableColumnType(
+                    name=p["name"],
+                    data_type=p["data_type"],
+                    comment=None,
+                    path=p["path"],
+                    native_filter_type=p["native_filter_type"],
+                    native_filter_required=p["native_filter_required"],
+                )
+                for p in parameters_of([{"name": c.name, "data_type": c.data_type} for c in listed])
+            ]
+        return listed
     # REQ-1912: the engine lists only a source it holds a live attach of. With none, a table the
     # driver listed and found no columns for has none to report; a source the driver cannot list
     # at all is refused, naming it.
@@ -2761,11 +3018,9 @@ async def _introspect_available_columns(
         await _require_live_attach(source_id, "columns")
     elif await _unattached_source(source_id) is not None:
         return []
-    # A __derived__ virtual view has no registered source and thus no catalog_for() entry — it's
-    # physically materialized in the view catalog (same pattern as table_profile_router.py:88).
     # REQ-1673: on a native engine the source's catalog does not exist before a table is
     # registered; the introspection seam attaches the raw source and DESCRIBEs the table.
-    if source_id != DERIVED_SOURCE_ID and state.federation_engine.engine.native_store is not None:
+    if state.federation_engine.engine.native_store is not None:
         src = await _source_for_introspection(source_id)
         if src is not None:
             # REQ-1695: inside the org's vault — see available_schemas.
@@ -2778,8 +3033,7 @@ async def _introspect_available_columns(
                     AvailableColumnType(name=name, data_type=str(dtype).lower(), comment=None)
                     for name, dtype in described.items()
                 ]
-    view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-    catalog = view_catalog if source_id == DERIVED_SOURCE_ID else state.catalog_for(source_id)
+    catalog = state.catalog_for(source_id)
     cols_meta: list[AvailableColumnType] = []
     # Two INDEPENDENT introspection reads, each with its own boundary. Constraint metadata is
     # optional — many engine connectors (Cassandra, Elasticsearch, Kafka, Druid, …) implement

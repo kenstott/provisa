@@ -431,6 +431,8 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Expor
 class OpenLineageExport(MetadataExport):  # REQ-1069
     """Publish a snapshot to any OpenLineage-compatible endpoint (Marquez, and others)."""
 
+    binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
+
     provider_name = "openlineage"
 
     def _headers(self) -> dict[str, str]:

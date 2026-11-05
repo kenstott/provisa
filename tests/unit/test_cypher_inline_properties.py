@@ -121,6 +121,8 @@ def test_a_write_naming_no_rows_is_refused():
         parse_cypher_write("MATCH (n:Person) DELETE n")
 
 
-def test_merge_with_a_map_is_still_refused():
-    with pytest.raises(CypherWriteParseError, match="MERGE"):
-        parse_cypher_write("MERGE (n:Person {name: 'Ann'})")
+def test_merge_with_a_map_matches_on_it():
+    # REQ-2176 (amended 2026-10-28): a MERGE of a model node is a governed write matching on
+    # its map.
+    ast = parse_cypher_write("MERGE (n:Person {name: 'Ann'})")
+    assert ast.kind == "merge" and ast.merges[0].nodes[0].props == {"name": "Ann"}

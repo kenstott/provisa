@@ -168,7 +168,7 @@ async def test_a_reboot_never_reapplies_the_file_and_an_admin_edit_survives(
     await _boot(config, monkeypatch)
     assert await _seeded()
     first = await _model()
-    assert {r["id"] for r in first["roles"]} >= {"analyst", "auditor"}
+    assert {r["id"] for r in first["roles"]} >= {"sales_analytics_analyst", "auditor"}
     assert {t["table"] for t in first["tables"]} >= {"orders", "customers"}
     assert _source(first, "sales-pg")["host"] == "localhost"
 

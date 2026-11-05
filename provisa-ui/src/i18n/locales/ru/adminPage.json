@@ -148,6 +148,7 @@
       "graphql": "GraphQL",
       "rest": "REST",
       "jsonapi": "JSON:API",
+      "odata": "OData",
       "sql_http": "SQL поверх HTTP",
       "cypher_http": "Cypher поверх HTTP",
       "pgwire": "PostgreSQL wire",
@@ -208,6 +209,13 @@
     "colParentDomain": "Родительский домен",
     "parentDomainHint": "Роль с доступом к родительскому домену получает доступ и к этому.",
     "noParentDomain": "Без родителя",
-    "stewardInherited": "унаследован"
+    "stewardInherited": "унаследован",
+    "apolloSubgraph": "Подграф Apollo Federation",
+    "apolloSubgraphEnabled": "Работать как подграф",
+    "apolloSubgraphEnabledHint": "Добавляет _service и _entities в /data/graphql для указанной ниже роли, чтобы Apollo Router мог собрать эту организацию в суперграф.",
+    "apolloSubgraphName": "Имя подграфа",
+    "apolloSubgraphNameHint": "Имя, под которым суперграф знает этот подграф.",
+    "apolloSubgraphRole": "Работает от роли",
+    "apolloSubgraphRoleHint": "Суперграф не может передать личность вызывающей стороны, поэтому роутер входит под этой ролью, и каждая получаемая им сущность управляется как эта роль: с её правилами строк, масками и видимостью."
   }
 }

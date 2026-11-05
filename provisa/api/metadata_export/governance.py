@@ -42,17 +42,27 @@ from provisa.core.models import Column, ProvisaConfig, Table
 
 
 def _mask_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
+    table: Table,
+    column: Column,
+    all_roles: tuple[str, ...],
+    chains: dict[str, list[str]],
+    org_id: str | None,
 ) -> list[GovernanceTag]:
     """One tag per entry of the column's mask list that masks (REQ-2059): the roles that read the
-    column through it are restricted by it, the roles that read it unmasked are exempt."""
+    column through it are restricted by it, the roles that read it unmasked are exempt. A role
+    reads through the first entry its chain holds (REQ-1677: it and its ancestors), as the build
+    resolves it (app_loaders._load_masking_rules); a role holding none reads the column completely
+    masked, one more tag after the list's entries."""
     from provisa.security.masking import entry_for
 
     masks = [e.model_dump() for e in column.masks]
-    reads = {r: entry_for(masks, [r]) for r in all_roles}
-    exempt = tuple(sorted(r for r, i in reads.items() if i is None or masks[i]["mask"] is None))
+    reads = {r: entry_for(masks, chains[r]) for r in all_roles}
+    exempt = tuple(
+        sorted(r for r, i in reads.items() if i is not None and masks[i]["mask"] is None)
+    )
     uri = column_uri(org_id, table, column.name, column.alias)
-    return [
+    unmatched = tuple(r for r in all_roles if reads[r] is None)
+    tags = [
         GovernanceTag(
             asset=column_ref(table, column.name),
             signal=GovernanceSignal.MASKED,
@@ -66,14 +76,29 @@ def _mask_tags(
         for i, entry in enumerate(masks)
         if entry["mask"] is not None
     ]
+    if masks and unmatched:
+        tags.append(
+            GovernanceTag(
+                asset=column_ref(table, column.name),
+                signal=GovernanceSignal.MASKED,
+                rule_id=f"mask:{uri}:{len(masks)}:constant",
+                restricted_roles=unmatched,
+                exempt_roles=exempt,
+            )
+        )
+    return tags
 
 
 def _visibility_tags(
-    table: Table, column: Column, all_roles: tuple[str, ...], org_id: str | None
+    table: Table,
+    column: Column,
+    all_roles: tuple[str, ...],
+    served: frozenset[str],
+    org_id: str | None,
 ) -> list[GovernanceTag]:
-    # Membership is literal — provisa/security/visibility.py enforces ``role_id in visible_to``
-    # with no wildcard for columns. The tag says exactly what the engine does.
-    visible = set(column.visible_to)
+    # ``served``: the roles the engine serves the column to, by the one rule
+    # (``rights.served_roles``, REQ-2152). The tag says exactly what the engine does.
+    visible = set(served) & set(all_roles)  # the roster's: a role reaching no domain is none
     restricted = tuple(r for r in all_roles if r not in visible)
     if not restricted:
         return []
@@ -137,16 +162,63 @@ def _rls_tags(
     return tags
 
 
+def _role_definitions(config: ProvisaConfig):
+    """``(definitions, chains, all_roles)``: the org's roles -- the standard roles (REQ-2155),
+    which a config may not declare, and the config's own -- each one's chain through the standard
+    roles too (a grant or mask entry reaching a role through a standard ancestor is that role's,
+    REQ-1677), and every role that reaches a domain (a role reaching none, a control-plane role,
+    is no data audience, REQ-1327)."""
+    from provisa.core.db import standard_role_dicts
+    from provisa.security.inheritance import flatten_role_dicts, role_chains, with_own_domains
+    from provisa.security.rights import lists_data_domain
+
+    stored = {r["id"]: r for r in standard_role_dicts()}
+    stored.update({role.id: role.model_dump() for role in config.roles})
+    # REQ-2155: what each role holds, which is what reads the columns.
+    definitions = {r["id"]: r for r in flatten_role_dicts(with_own_domains(stored.values()))}
+    all_roles = tuple(
+        sorted(r for r, d in definitions.items() if lists_data_domain(d["domain_access"]))
+    )
+    return definitions, role_chains(stored.values()), all_roles
+
+
+def _served(definitions, chains, table, column) -> frozenset[str]:
+    from provisa.security.rights import served_roles
+
+    return served_roles(
+        definitions,
+        chains,
+        table.domain_id,
+        {"visible_to": column.visible_to, "scope": column.scope},
+    )
+
+
+def table_readers(config: ProvisaConfig) -> dict[tuple[str, ...], tuple[str, ...]]:  # REQ-2118
+    """Each table's readers: every data role served at least one of its columns."""
+    definitions, chains, all_roles = _role_definitions(config)
+    readers: dict[tuple[str, ...], tuple[str, ...]] = {}
+    for table in config.tables:
+        served: set[str] = set()
+        for column in table.columns:
+            served |= _served(definitions, chains, table, column)
+        readers[table_ref(table).parts] = tuple(r for r in all_roles if r in served)
+    return readers
+
+
 def build_governance_tags(
     config: ProvisaConfig, org_id: str | None
 ) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
-    all_roles = tuple(sorted(role.id for role in config.roles))
+    definitions, chains, all_roles = _role_definitions(config)
     index = TableIndex(config.tables)
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:
-            tags.extend(_mask_tags(table, column, all_roles, org_id))
-            tags.extend(_visibility_tags(table, column, all_roles, org_id))
+            served = _served(definitions, chains, table, column)
+            # A mask applies only to a role the column is served to: one not served it reads
+            # nothing through the mask, and is named by the visibility tag instead.
+            readers = tuple(r for r in all_roles if r in served)
+            tags.extend(_mask_tags(table, column, readers, chains, org_id))
+            tags.extend(_visibility_tags(table, column, all_roles, served, org_id))
     tags.extend(_rls_tags(config, index, all_roles, org_id))
     return tags

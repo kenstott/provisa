@@ -185,11 +185,9 @@ async def _materialize_relation(ref: str, state, columns: list[str] | None = Non
     projection = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     sql = f'SELECT {projection} FROM "{schema}"."{table}"'
     result = await state.source_pools.execute(src_id, sql, [])
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    cols = result.column_names
-    rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
-    return {"kind": "result_set", "columns": cols, "rows": rows}
+    return {"kind": "result_set", "columns": result.column_names, "rows": result_records(result)}
 
 
 def _arg_kinds(fn: dict) -> dict[str, str]:
@@ -348,6 +346,7 @@ _EXTERNAL_KINDS = frozenset({"http", "grpc"})
 # source's write operation, which is passed through as is (REQ-1924).
 _PASSED_THROUGH_KINDS = frozenset(
     {"source_procedure", "source_operation", "source_query", "statement"}  # REQ-2001
+    | {"sql_expression", "builtin"}  # REQ-2168
 )
 _RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
 
@@ -393,10 +392,9 @@ async def _exec_source_procedure(fn: dict, args: dict, state, _payload, _session
     placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
     sql = f'SELECT * FROM "{fn["schema_name"]}"."{fn["function_name"]}"({placeholders})'
     result = await state.source_pools.execute(src_id, sql, params)
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    cols = result.column_names
-    return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+    return result_records(result)
 
 
 def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
@@ -515,6 +513,22 @@ async def _exec_statement(fn: dict, args: dict, state, _payload, session) -> lis
     return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
 
 
+async def _exec_sql_expression(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-2168: a SQL expression function called on its own: SELECT its template, the call's
+    arguments bound as the statement's parameters, through the one pipeline as the caller."""
+    from provisa.executor.sql_expression_call import run
+
+    return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
+
+
+async def _exec_builtin(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-2168: a command Provisa ships, its implementation named in the built-in registry."""
+    from provisa.core.builtin_commands import implementation
+
+    spec = str(_require(fn["binding"], "callable", "builtin"))
+    return await implementation(spec)(_bind_arg_names(fn, args), state, session.role_id)
+
+
 _EXECUTORS = {
     "source_procedure": _exec_source_procedure,
     "source_operation": _exec_source_operation,
@@ -524,6 +538,8 @@ _EXECUTORS = {
     "grpc": _exec_grpc,
     "python": _exec_python,
     "statement": _exec_statement,  # REQ-2001
+    "sql_expression": _exec_sql_expression,  # REQ-2168
+    "builtin": _exec_builtin,  # REQ-2168
 }
 
 

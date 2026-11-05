@@ -28,6 +28,25 @@ Each call is made to ``$PROVISA_SERVICES`` through the worker's egress proxy, na
 serves, so what it does is recorded against the request that called the code. A refusal is raised
 as :class:`ServiceError`, naming the service; with no ``$PROVISA_SERVICES`` every call raises it.
 The same calls, by the same names, are Node's ``@provisa/services`` (provisa/node/services.mjs).
+
+THE READ CONTEXT (REQ-2100). A ``@table`` or ``@stream`` function takes up to two parameters,
+``(inputs, context)``: an object whose fields are its inputs, and a :class:`ReadContext`, what the
+read asks of its rows -- its filters, its order, its limit (its offset folded in), the columns it
+reads and, for a ``@loader``, the join's keys. Either may be left out. Every part of the context is
+a hint: Provisa applies the whole statement to the rows the function returns, so a function may
+ignore any of it. One rule: if it applies the limit, it applies every filter it is given and the
+order first; otherwise it ignores the limit. A landed read (the engine reads the table where it
+landed) gives an empty context and asks for the whole table under its inputs.
+
+    from dataclasses import dataclass
+    from provisa_services import ReadContext
+
+    @dataclass
+    class OrderInputs:
+        region: str = "EU"
+
+    def orders(inputs: OrderInputs, context: ReadContext) -> Iterator[Order]:
+        ...
 """
 
 # Requirements: REQ-2104, REQ-2105, REQ-2106
@@ -40,11 +59,16 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 from typing import Any
 
 __all__ = [
+    "Filter",
+    "Order",
+    "ReadContext",
     "ServiceError",
     "cache",
+    "dq",
     "http",
     "llm",
     "log",
@@ -59,6 +83,13 @@ _call: contextvars.ContextVar[tuple[int, str | None] | None] = contextvars.Conte
     "provisa_services_call", default=None
 )
 _MISSING = object()
+
+#: REQ-1165: where the calls go when this module runs inside Provisa itself (a view's preflight) rather
+#: than in a worker: ``(method, path, body, headers) -> (status, body)``, set by the server for the
+#: call it serves. Unset, the calls go to $PROVISA_SERVICES.
+_transport: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "provisa_services_transport", default=None
+)
 
 
 class ServiceError(Exception):
@@ -97,9 +128,13 @@ def _send(service: str, method: str, path: str, payload: Any = None) -> tuple[in
         headers["X-Provisa-Call"] = str(held[0])
         if held[1]:
             headers["traceparent"] = held[1]
+    data = None if payload is None else json.dumps(payload).encode()
+    inside = _transport.get()
+    if inside is not None:
+        return inside(method, path, data, headers)
     request = urllib.request.Request(
         f"{_base(service)}/{path}",
-        data=None if payload is None else json.dumps(payload).encode(),
+        data=data,
         headers=headers,
         method=method,
     )
@@ -284,6 +319,24 @@ class llm:  # noqa: N801
         return _json("llm", "POST", "llm/v1/embeddings", {"model": model, "input": input})
 
 
+class dq:  # noqa: N801
+    """Everything about the data quality of a dataset or a data product, as the meta domain shows it
+    to the caller (REQ-2133)."""
+
+    @staticmethod
+    def dataset(name: str | int) -> dict:
+        """A dataset's checker tables -- each one's description, contract, latest run (its outcome,
+        when it ran, its failing checks) and the product it is assigned to -- and its profiles,
+        with each one's latest run. ``name`` is the dataset's ``domain.table``, or its table id."""
+        return _json("dq", "GET", f"dq/dataset/{_q(str(name))}")
+
+    @staticmethod
+    def product(product_id: str) -> dict:
+        """A data product's promises, expectations, partner DQ and orphans, each with its latest
+        run (REQ-1443)."""
+        return _json("dq", "GET", f"dq/product/{_q(product_id)}")
+
+
 def log(message: str, level: str = "info", **fields: Any) -> None:
     """A log line, recorded against the request this call serves."""
     _json("log", "POST", "log", {"level": level, "message": message, "fields": fields})
@@ -297,3 +350,54 @@ def metric(name: str, value: float, kind: str = "counter", **attributes: Any) ->
         "metric",
         {"name": name, "value": value, "kind": kind, "attributes": attributes},
     )
+
+
+# -- the read context (REQ-2100) ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Filter:
+    """A condition the read puts on a return column: ``column op value``. ``op`` is one of eq, ne,
+    gt, gte, lt, lte, in (``value`` a list) and like (a SQL pattern)."""
+
+    column: str
+    op: str
+    value: Any
+
+
+@dataclass(frozen=True)
+class Order:
+    """A key the read orders its rows by: a return column, descending or not, its nulls first or
+    last."""
+
+    column: str
+    descending: bool = False
+    nulls_first: bool = False
+
+
+@dataclass(frozen=True)
+class ReadContext:
+    """What a read asks of a ``@table`` or ``@stream`` function's rows, every part a hint
+    Provisa applies again (see the module's docstring): its ``filters`` (each must hold), its
+    ``order_by``, its ``limit`` (None: every row; its offset folded in), the ``columns`` it reads,
+    and for a ``@loader`` the join's ``keys``, a hash of sparse keys (``{hash: {input: value}}``)
+    to answer with ``{hash: [rows]}``."""
+
+    filters: tuple[Filter, ...] = ()
+    order_by: tuple[Order, ...] = ()
+    limit: int | None = None
+    columns: tuple[str, ...] = ()
+    keys: dict[str, dict[str, Any]] | None = field(default=None)
+
+    @classmethod
+    def _from_wire(cls, given: dict[str, Any]) -> ReadContext:
+        """The context a call carries, as the host gives it to the function."""
+        return cls(
+            filters=tuple(Filter(f["column"], f["op"], f["value"]) for f in given["filters"]),
+            order_by=tuple(
+                Order(o["column"], o["descending"], o["nulls_first"]) for o in given["order_by"]
+            ),
+            limit=given["limit"],
+            columns=tuple(given["columns"]),
+            keys=given.get("keys"),
+        )

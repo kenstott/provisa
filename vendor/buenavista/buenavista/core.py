@@ -41,14 +41,159 @@ class BVType(enum.Enum):
     TIMESTAMPTZ = 20
     TIMETZ = 21
     UUID = 22
+    # One-dimensional arrays, each with its element type's array OID.
+    BIGINTARRAY = 23
+    SMALLINTARRAY = 24
+    FLOATARRAY = 25
+    REALARRAY = 26
+    BOOLARRAY = 27
+    DECIMALARRAY = 28
+    # An unsigned 4-byte integer (oid, xid): its binary form is not int4's past 2**31.
+    OID = 29
+    # A function's or a type's oid, whose text form is its name (the server supplies the names).
+    REGPROC = 30
+    REGTYPE = 31
+    # oid[], and PostgreSQL's catalog vectors: written as space-separated text, sent as arrays.
+    OIDARRAY = 32
+    OIDVECTOR = 33
+    INT2VECTOR = 34
+    # aclitem[] (text only, as in PostgreSQL), "char"[], inet and pg_lsn.
+    ACLITEMARRAY = 35
+    CHARARRAY = 36
+    INET = 37
+    PG_LSN = 38
+    # Provisa's IR subtypes (REQ-2171), each sent as its PostgreSQL type (oid and inet are above).
+    CIDR = 39
+    MACADDR = 40
+    XML = 41
+    POINT = 42
+    MONEY = 43
+    MACADDR8 = 44
+    LINE = 45
+    LSEG = 46
+    BOX = 47
+    PATH = 48
+    POLYGON = 49
+    CIRCLE = 50
+    GEOMETRY = 51
+    GEOGRAPHY = 52
+    INT4RANGE = 53
+    INT8RANGE = 54
+    NUMRANGE = 55
+    TSRANGE = 56
+    TSTZRANGE = 57
+    DATERANGE = 58
+    BIT = 59
+    VARBIT = 60
+    TSVECTOR = 61
+    NAMEARRAY = 62
+    REGTYPEARRAY = 63
+    # A relation's and a schema's oid, whose text form is its name: the value carries both.
+    REGCLASS = 64
+    REGNAMESPACE = 65
+    INT4MULTIRANGE = 66
+    INT8MULTIRANGE = 67
+    NUMMULTIRANGE = 68
+    TSMULTIRANGE = 69
+    TSTZMULTIRANGE = 70
+    DATEMULTIRANGE = 71
+    MONEYARRAY = 72
+    INTERVALARRAY = 99
+    # PostgreSQL's other built-in types (REQ-2171), each held as its text and sent as its type.
+    CHAR = 73
+    NAME = 74
+    TID = 75
+    XID = 76
+    CID = 77
+    PG_NODE_TREE = 78
+    ACLITEM = 79
+    REFCURSOR = 80
+    REGPROCEDURE = 81
+    REGOPER = 82
+    REGOPERATOR = 83
+    TXID_SNAPSHOT = 84
+    PG_NDISTINCT = 85
+    PG_DEPENDENCIES = 86
+    TSQUERY = 87
+    GTSVECTOR = 88
+    REGCONFIG = 89
+    REGDICTIONARY = 90
+    JSONPATH = 91
+    REGROLE = 92
+    REGCOLLATION = 93
+    PG_BRIN_BLOOM_SUMMARY = 94
+    PG_BRIN_MINMAX_MULTI_SUMMARY = 95
+    PG_MCV_LIST = 96
+    PG_SNAPSHOT = 97
+    XID8 = 98
 
 
 class RawDataRowBytes(bytes):
-    """A ``rows()``-yielded "row" that is already a complete, wire-framed DataRow message (tag +
-    length + payload), forwarded verbatim from a source that speaks the same pgwire protocol —
-    used by ``provisa.pgwire.pg_passthrough`` for Postgres-to-Postgres queries, where decoding into
-    column values and re-encoding them would be pure overhead. ``send_data_rows`` checks for this
-    type and writes the bytes directly instead of iterating per-column converters."""
+    """A "row" that is already a complete, wire-framed DataRow message (tag + length + payload),
+    forwarded verbatim from a source that speaks the same pgwire protocol — used by
+    ``provisa.pgwire.pg_passthrough`` for Postgres-to-Postgres queries, where decoding into column
+    values and re-encoding them would be pure overhead. A result of them hands ``send_data_rows``
+    a raw ``ResultData``, whose rows the encoder forwards as they are (``forward_raw``)."""
+
+
+def wire_type_name(bvtype: Any) -> str:
+    """The name the Rust encoder (provisa._encoders.pgwire) knows a column's wire type by: the
+    BVType member's name, or a wire type BVType does not list by its own name ("xml[]")."""
+    return bvtype.name if isinstance(bvtype, BVType) else str(bvtype)
+
+
+class ResultData:
+    """A result's rows as the encoder reads them, in the form the result has (REQ-2194,
+    REQ-2195): Arrow record batches; -- ``rows`` -- a row result's batches of rows, each a sequence
+    of its cells; or -- ``raw`` -- batches of a PostgreSQL source's own DataRow messages
+    (RawDataRowBytes), forwarded as they are.
+
+    A result hands out one ResultData for its life, so a portal read ``limit`` rows at a time (each
+    Execute of a suspended portal) resumes where the last read stopped: a batch cut at the limit
+    keeps its rest for the next read."""
+
+    def __init__(self, batches: Iterator[Any], raw: bool = False, rows: bool = False) -> None:
+        self.raw = raw
+        self.rows = rows
+        self._batches = iter(batches)
+        self._rest: Any = None
+
+    @staticmethod
+    def _size(batch: Any) -> int:
+        return len(batch) if isinstance(batch, list) else batch.num_rows
+
+    @staticmethod
+    def _cut(batch: Any, start: int, length: Optional[int] = None) -> Any:
+        if isinstance(batch, list):
+            return batch[start:] if length is None else batch[start : start + length]
+        return batch.slice(start, length)
+
+    def take(self, limit: int = 0) -> Iterator[Any]:
+        """The next batches, ``limit`` rows of them (0: all that are left)."""
+        left = limit
+        while True:
+            if self._rest is not None:
+                batch, self._rest = self._rest, None
+            else:
+                batch = next(self._batches, None)
+                if batch is None:
+                    return
+            size = self._size(batch)
+            if not size:
+                continue
+            if limit and size >= left:
+                if size > left:
+                    self._rest = self._cut(batch, left)
+                yield self._cut(batch, 0, left)
+                return
+            left -= size
+            yield batch
+
+    def close(self) -> None:
+        self._rest = None
+        close = getattr(self._batches, "close", None)
+        if close is not None:
+            close()
 
 
 class QueryResult:
@@ -56,6 +201,20 @@ class QueryResult:
 
     def __init__(self):
         self.result_format = None
+
+    def data(self) -> ResultData:
+        """The result's rows as the encoder reads them, the same object on every call."""
+        raise NotImplementedError
+
+    def coercers(self) -> Optional[List[List[str]]]:
+        """Each column's coercers, by the name the encoder knows each by, in the order they apply;
+        None for none."""
+        return None
+
+    def kinds(self) -> Optional[List[Optional[str]]]:
+        """Each column's engine type name, by which the encoder writes a row result's cell of a
+        type it reads by no rule (REQ-2195); None for none."""
+        return None
 
     def reusable_for_execute(self, result_formats: List[int]) -> bool:
         """Whether this Describe(Statement)-time result may be served to the Execute of a Bind
@@ -72,8 +231,16 @@ class QueryResult:
     def column(self, index: int) -> Tuple[str, BVType]:
         raise NotImplementedError
 
-    def rows(self) -> Iterator[List]:
-        raise NotImplementedError
+    def column_type_oid(self, index: int) -> Optional[int]:
+        """The type OID the column is described with, when it is not its BVType's own (a
+        PostgreSQL type sent in its base type's wire form, such as name as text); None for the
+        BVType's."""
+        return None
+
+    def column_typmod(self, index: int) -> int:
+        """The type modifier the column is described with (a varchar's length, a numeric's
+        precision and scale, as PostgreSQL's typmod encodes them); -1 for none."""
+        return -1
 
     def status(self) -> str:
         raise NotImplementedError
@@ -90,6 +257,8 @@ class QueryResult:
 class Session:
     def __init__(self):
         self.id = uuid.uuid4()
+        # The connection's backend process id (BackendKeyData), set when its context is made.
+        self.process_id = 0
 
     def cursor(self):
         raise NotImplementedError
@@ -178,6 +347,7 @@ class SimpleQueryResult(QueryResult):
         self.name = name
         self.value = str(value)
         self.type = type
+        self._data: Optional[ResultData] = None
 
     def has_results(self):
         return True
@@ -191,8 +361,10 @@ class SimpleQueryResult(QueryResult):
         else:
             raise IndexError
 
-    def rows(self) -> Iterator[List]:
-        return iter([[self.value]])
+    def data(self) -> ResultData:
+        if self._data is None:
+            self._data = ResultData(iter([[(self.value,)]]), rows=True)
+        return self._data
 
     def status(self) -> str:
         return ""

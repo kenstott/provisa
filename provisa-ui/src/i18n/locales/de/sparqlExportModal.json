@@ -1,0 +1,19 @@
+{
+  "sparqlExportModal": {
+    "title": "SPARQL-Export",
+    "result": "Ergebnis",
+    "format": "Format",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "SPARQL-Ergebnisse (JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "Herunterladen",
+    "close": "Schließen",
+    "empty": "Führen Sie eine Abfrage aus, um ihr Ergebnis zu exportieren.",
+    "unnamedEdges": "Die Kanten dieses Graphen nennen kein Prädikat, daher enthält er keine Tripel, die als RDF geschrieben werden könnten."
+  }
+}

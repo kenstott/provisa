@@ -32,10 +32,10 @@ Declare the key with `is_primary_key: true` on the column. A replica with no dec
 
 A landing never waits for indexes. The replica is read from the moment it is swapped in; the replica runner then builds its indexes one at a time, in a separate pass, under a per-replica index lock. Expect the first queries after a landing to run without them.
 
-Each landing records the indexes it asked for, the ones built, and the ones that failed, by name, on the replica's record in the control plane (`replica_state.index_state`).
+Each landing records the indexes it asked for, the ones built, and the ones that failed, by name, on the replica's record in the model store (`replica_state.index_state`).
 
 - **A failed index never fails the landing.** It is logged with its cause and asked for again by the next landing. The log line reads `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`.
-- **Rows that repeat a declared key are their own failure**, code `replica.index_duplicate_key`, naming the key's columns. The source holds duplicates of a column set the model declares unique. A retry does not fix that: correct the data at the source, or correct the declared key.
+- **Rows that repeat a declared key are their own failure**, code `replica.index_duplicate_key`, naming the key's columns. The source holds duplicates of a column set the model declares unique. A retry does not fix that. Correct the data at the source, or correct the declared key.
 - **A landing that replaces the table mid-build** leaves the earlier builds behind; they stop and record nothing, and the new table gets its own. On a PostgreSQL store the swap cancels a build still running on the table it replaces.
 - **The plan follows the model at each landing.** A relationship added later gets its index at the replica's next landing.
 
@@ -66,7 +66,7 @@ When the engine runs its joins inside a relational database, keep the replicas t
 - **A relational engine** (`mysql`, `oracle`, `mssql`, the `sqlalchemy` catch-all and the rest). Every source lands into that database and is queried there.
 - **Trino with its PostgreSQL store.** PostgreSQL is the only store Trino supports; Trino reads replicas through its PostgreSQL connector. A filter or join Trino pushes down to PostgreSQL uses the indexes; work Trino does itself does not.
 
-Point an engine at a store with `PROVISA_MATERIALIZE_URL` or `materialize_store_url`; an org's own registered store takes precedence over both.
+Point an engine at a store with `PROVISA_MATERIALIZE_URL` or `materialize_store_url`; an org's own registered store takes precedence over both. The `pg` engine is the exception: its store is its own database, and any other is refused.
 
 ```bash
 PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/replicas"
@@ -85,14 +85,14 @@ The store is one lever among several, and they overlap. Settle the others first;
 
 | Lever | What it does | Where it helps |
 | --- | --- | --- |
-| Hot tables | A small lookup table is held in Redis and put into each query that reads it as an inline `VALUES` CTE (common table expression). | Joins to small lookups, on any store: the rows travel inside the query. The target of a many-to-one relationship, or a table at or under `hot_tables.auto_threshold` rows (1,000 by default), is made hot when first read. `hot: true` forces a table in and `hot: false` keeps it out. |
-| Materialized views you define | A view with `materialize: true` is stored and refreshed. A query that reads the view is answered from the stored rows when it is fresh and the reader sees it whole: no input carries a row rule narrower than everything. | Aggregates over large tables. You decide which ones exist; none is created for you. See [Views](configuration.md#views-governed-computed-datasets). |
+| Hot tables | A small lookup table is held in Redis and put into each query that reads it as an inline `VALUES` CTE (common table expression). | Joins to small lookups, on any store, because the rows travel inside the query. The target of a many-to-one relationship, or a table at or under `hot_tables.auto_threshold` rows (1,000 by default), is made hot when first read. `hot: true` forces a table in and `hot: false` keeps it out. |
+| Materialized views you define | A view with `materialize: true` is stored and refreshed. A query that reads the view is answered from the stored rows when it is fresh and the reader sees it whole, meaning no input carries a row rule narrower than everything. | Aggregates over large tables. You decide which ones exist; none is created for you. See [Views](configuration.md#views-governed-computed-datasets). |
 | Relationship `materialize: true` | A cross-source relationship gets a stored, pre-joined parent-child view. A request whose join matches the pattern, fully or in part, is rewritten to read it, whether it arrives as SQL or as a query the compiler builds. | Joins on a store that builds no join indexes. See [Auto-Materialization](configuration.md#auto-materialization). |
 | Placement | Sources the engine can read live are read live; the rest are replicated. What ends up in the store follows from the engine you pick. | Choosing the engine decides most of what the store has to hold. |
 
 Relationship materialization and indexed joins answer the same need in two ways. On a columnar or warehouse store (the DuckDB file, ClickHouse, Snowflake, BigQuery, Databricks, Fabric, Synapse) no join index is built, so a pre-joined view is how a frequent join gets cheap. On a relational store the join columns are indexed already, and the same joins can run fast without materializing them.
 
-What still depends on the store: ad-hoc scans and joins over large tables that no materialized view covers and no hot table serves. Those run on the store's indexes in a relational database, or on its scan speed in a columnar one.
+Ad-hoc scans and joins over large tables that no materialized view covers and no hot table serves still depend on the store. Those run on the store's indexes in a relational database, or on its scan speed in a columnar one.
 
 Results vary by workload. Measure before and after a change with the [sizing tool](sizing.md); its [live-or-replica runs](sizing.md#live-or-replica-reads-and-the-ttl) give a replica read's cost against a live read's on your deployment.
 
@@ -107,12 +107,12 @@ Enterprise sources rarely support real time. Data arrives by batch load or night
 | Live read | `replicate: -1` | Current as of the query | Every query reads the source |
 | TTL | `change_signal: ttl`, `cache_ttl` | A replica no older than `cache_ttl` | One rebuild per `cache_ttl`; with a `watermark_column`, only rows past the watermark |
 | Change probe | `change_signal: probe` or `ttl_probe`, `cache_ttl` | Rebuilt only after the probe reports a change; the probe runs every `cache_ttl` | One probe per interval, and a rebuild only on change |
-| Push change feed | A Kafka or WebSocket source; `change_signal: debezium` on a source with a `cdc` block; `change_signal: native` on PostgreSQL, MongoDB or Cosmos DB | Current to within the feed's lag and the debounce | Kafka, WebSocket and Debezium: none after the first build, the feed carries the rows. PostgreSQL, MongoDB and Cosmos DB: a rebuild per burst of changes |
+| Push change feed | A Kafka or WebSocket source; `change_signal: debezium` on a source with a `cdc` block; `change_signal: native` on PostgreSQL, MongoDB or Cosmos DB | Current to within the feed's lag and the debounce | Kafka, WebSocket and Debezium: none after the first build, because the feed carries the rows. PostgreSQL, MongoDB and Cosmos DB: a rebuild per burst of changes |
 | External signal | `change_signal: signal` | Rebuilt each time `POST /data/sources/{source_id}/signal` says the source changed; never on a clock | One rebuild per signal |
-| Per-role TTL | `role_ttl` on a table | A listed role accepts a replica up to its own TTL; the table's `cache_ttl` stays the floor | Fewer rebuilds: a tolerant role's read never asks for one |
+| Per-role TTL | `role_ttl` on a table | A listed role accepts a replica up to its own TTL; the table's `cache_ttl` stays the floor | Fewer rebuilds, because a tolerant role's read never asks for one |
 | Load protection | `load_protected: true`, with `cache_ttl`, a probe or an `off_peak_window` | Queries never read the source; the runner alone refreshes the replica, and with an off-peak window only while it is open | Only the scheduled refreshes |
 | Freshness gate | `freshness_gate: true` on a source | Each read is checked against the source's `change_signal` and `cache_ttl` first; a stale verdict refreshes before the read | A refresh in the read path when stale |
-| Never expires | `cache_ttl: -1` on a source or a table | Landed once; every read is answered from the replica, and a read of a table that has not landed is refused by name | Only the one landing: a source whose tables have all landed is never attached, probed or read again, and needs no credential |
+| Never expires | `cache_ttl: -1` on a source or a table | Landed once; every read is answered from the replica, and a read of a table that has not landed is refused by name | Only the one landing. A source whose tables have all landed is never attached, probed or read again, and needs no credential |
 
 A probe that has nothing to compare (no watermark, sentinel or probe query) degrades to the TTL.
 

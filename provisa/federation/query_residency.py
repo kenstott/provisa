@@ -469,10 +469,11 @@ async def ensure_resident(
         return Residency(answered_in=only_there)
     wanted = {s.id for s in sources}
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     from provisa.federation.replica_routing import owns_replica
 
-    _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
+    _attached_types = {s.id: engine_attaches(engine, reach_type(s, engine)) for s in sources}
     # A type that owns no replica (ingest, a profiler's results, REQ-1771/REQ-1934) is read where
     # it is written, never landed, so no read of it is judged for a replica or a landing TTL.
     _no_replica = {s.id for s in sources if not owns_replica(s)}
@@ -694,6 +695,7 @@ async def ensure_resident(
     replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
+    asked_at = datetime.now(UTC)
     budget = request_deadline.remaining()
     while waiting:
         still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
@@ -703,7 +705,7 @@ async def ensure_resident(
                 view.read(org_id, key, record)
                 if record is not None and record.build_state == replica_state.FAILED:
                     raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
-                if _stale(source, t, record):
+                if _stale(source, t, record) and not _landed_since(record, asked_at):
                     still.append((source, t, key))
                 else:
                     _read_from(key, record)
@@ -718,6 +720,23 @@ async def ensure_resident(
         await asyncio.sleep(_BUILD_POLL_S)
     log.info("query residency: %s built before the read", built)
     return Residency(built=built, replicas_read=replicas_read, answered_in=answered_in)
+
+
+def _landed_since(record: Any, asked_at: datetime) -> bool:
+    """Whether ``record``'s replica landed after ``asked_at``, when the read began waiting for it:
+    that landing answers the read whatever its TTL. A cache_ttl of 0 (REQ-2003) makes a replica
+    stale the moment it lands, so a read that waited only for a current one would never be
+    answered."""
+    from provisa.federation.replica_state import BUILDING, REQUESTED
+
+    if record is None or record.build_state in (REQUESTED, BUILDING):
+        return False
+    completed = record.completed_at
+    if completed is None:
+        return False
+    if completed.tzinfo is None:
+        completed = completed.replace(tzinfo=UTC)  # every completion is stamped in UTC
+    return completed >= asked_at
 
 
 #: How often a read waiting for a build looks at its record.
@@ -776,6 +795,7 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     from provisa.federation.registry_view import registered_sources, registered_tables
     from provisa.federation.replica_converge import builds_here, home_region
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     flagged = [
         t
@@ -789,7 +809,9 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     # source is a KeyError, not a skip.
     sources_by_id = {s.id: s for s in await registered_sources(state)}
     return [
-        t for t in flagged if not engine_attaches(engine, sources_by_id[t.source_id].type.value)
+        t
+        for t in flagged
+        if not engine_attaches(engine, reach_type(sources_by_id[t.source_id], engine))
     ]
 
 
@@ -1001,6 +1023,30 @@ async def pushdown_row_materialize(
     if not all_joins:
         return set()
 
+    # The probe reads every row-level replica the statement names, the pending ones LEFT-joined:
+    # each must exist before it is read, empty when nothing has landed it yet. On a cold store a
+    # replica reached only through a join had no table at all (ensure_rows_resident creates only
+    # the ones a key predicate binds), and the probe failed with "Table ... does not exist" --
+    # live on the bench, cypher_cross_engine on DuckDB (bench_placed_edge).
+    for name in sorted({t.name for t in tree.find_all(exp.Table)} & set(tables_by_name)):
+        table = tables_by_name[name]
+        source = sources_by_id.get(table.source_id)
+        if source is None:
+            raise LookupError(
+                f"{table.table_name}: row-level replica's source {table.source_id!r} is not registered"
+            )
+        address = backend.replica_address(
+            state, source_id=source.id, schema_name=table.schema_name, table_name=table.table_name
+        )
+        await _ensure_row_cache_table(
+            engine,
+            backend,
+            state,
+            address.schema,
+            address.table,
+            resolve_landing_args_for(source, table, backend.dialect).columns,
+        )
+
     landed_this_call: set[str] = set()
     remaining = set(all_joins)
     loader = SourceRowLoader(
@@ -1028,7 +1074,9 @@ async def pushdown_row_materialize(
                 skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue
             key_cols[name] = kc
-            joins_by_name[name].set("kind", "LEFT")
+            # A join's side says LEFT; a statement's own LEFT JOIN already carries it.
+            joins_by_name[name].set("side", "LEFT")
+            joins_by_name[name].set("kind", None)
         for name in skip:
             still_pending.discard(name)
         if not still_pending:
@@ -1529,6 +1577,16 @@ async def ensure_rows_resident(
             # Tombstone: a requested key the source returned no row for (section 6a) -- deleted
             # synchronously, inline, here, never deferred.
             tombstoned = [k for k in still_needed if k not in fetched_keys]
+            if not fetched:
+                log.warning(
+                    "row-level replica %s.%s: keys %s asked for, %s stale or missing, %s still "
+                    "needed after the lock; the source returned no row for them",
+                    schema,
+                    name,
+                    list(bound.values),
+                    stale_or_missing,
+                    still_needed,
+                )
 
             await _land_row_cache(
                 engine,

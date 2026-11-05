@@ -9,7 +9,7 @@
 #
 # Runs seed.py once, as the `seeder` service in docker-compose.yml: the demo's data.
 FROM python:3.12-slim
-RUN pip install --no-cache-dir pymongo==4.10.1
+RUN pip install --no-cache-dir pymongo==4.19.0
 WORKDIR /app
 COPY seed.py ./
 ENTRYPOINT ["python", "seed.py"]

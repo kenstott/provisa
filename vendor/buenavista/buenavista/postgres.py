@@ -13,21 +13,19 @@ import decimal
 import hashlib
 import uuid as _uuid_mod
 import io
-import json
 import logging
 import os
 import random
 import socket
 import socketserver
 import struct
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from .core import BVType, Connection, Extension, Session, QueryResult, RawDataRowBytes
+from .core import BVType, Connection, Extension, Session, QueryResult, wire_type_name
 from .rewrite import Rewriter
 
 logger = logging.getLogger(__name__)
 
-_INT32_STRUCT = struct.Struct("!i")
 
 NULL_BYTE = b"\x00"
 
@@ -169,213 +167,127 @@ class ClientCommand:
     TERMINATE = b"X"
 
 
-def _interval_parts(v):
-    """(months, days, microseconds) of an interval value: a timedelta, or a relativedelta when it
-    has months (a year-month interval)."""
-    if isinstance(v, datetime.timedelta):
-        micros = v // datetime.timedelta(microseconds=1)
-        days = int(micros / 86_400_000_000)
-        return 0, days, micros - days * 86_400_000_000
-    seconds = (v.hours * 60 + v.minutes) * 60 + v.seconds
-    return v.years * 12 + v.months, v.days, seconds * 1_000_000 + v.microseconds
+# Bind parameters of money: its text (``-$1,234.57``) or its binary int8 cents, as a decimal.
+def _money_value(v):
+    """A money value as a decimal: a number, or money's own text (``-$1,234.57``)."""
+    if isinstance(v, str):
+        text = v.strip().replace(",", "").replace("$", "")
+        return decimal.Decimal(text)
+    return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
 
 
-def _interval_text(v) -> str:
-    """An interval as Postgres writes it under IntervalStyle postgres (1 year 2 mons 3 days
-    04:05:06.5), the text a client's interval parser reads."""
-    months, days, micros = _interval_parts(v)
-    years, months = int(months / 12), months - int(months / 12) * 12
-    parts = [
-        f"{n} {unit}{'' if n == 1 else plural}"
-        for n, unit, plural in ((years, "year", "s"), (months, "mon", "s"), (days, "day", "s"))
-        if n
-    ]
-    if micros or not parts:
-        hours, rem = divmod(abs(micros), 3_600_000_000)
-        minutes, rem = divmod(rem, 60_000_000)
-        secs, frac = divmod(rem, 1_000_000)
-        clock = f"{'-' if micros < 0 else ''}{hours:02d}:{minutes:02d}:{secs:02d}"
-        parts.append(clock + (f".{frac:06d}".rstrip("0") if frac else ""))
-    return " ".join(parts)
+def _money_of_cents(v):
+    """cash_recv: money's binary form, its int8 cents, as a decimal."""
+    return decimal.Decimal(struct.unpack("!q", v)[0]).scaleb(-2)
 
 
-def _time_to_microseconds(t):
-    hours_to_microseconds = t.hour * 60 * 60 * 1e6
-    minutes_to_microseconds = t.minute * 60 * 1e6
-    seconds_to_microseconds = t.second * 1e6
-    microseconds = t.microsecond
-    total_microseconds = (
-        hours_to_microseconds + minutes_to_microseconds + seconds_to_microseconds + microseconds
-    )
-    return int(total_microseconds)
+TEXT_PARAM_DECODERS[790] = _money_value
+TYPE_OIDS[790] = ("MONEYOID", _money_of_cents, decimal.Decimal(0))
 
 
-def _micros_since_2000_utc(dt):
-    """timestamptz binary: microseconds since 2000-01-01 UTC. A value with no time zone is not a
-    timestamptz — refused rather than assumed to be UTC."""
-    if dt.tzinfo is None:
-        raise ValueError(f"timestamptz value without a time zone: {dt!r}")
-    return _micros_since_2000(dt)
-
-
-def _timetz_to_pg_binary(t):
-    """timetz binary: int64 microseconds since midnight + int32 zone offset in seconds WEST of UTC."""
-    offset = t.utcoffset()
-    if offset is None:
-        raise ValueError(f"timetz value without a time zone: {t!r}")
-    return struct.pack("!qi", _time_to_microseconds(t), -int(offset.total_seconds()))
-
-
-def _uuid_to_pg_binary(u):
-    return (u if isinstance(u, _uuid_mod.UUID) else _uuid_mod.UUID(str(u))).bytes
-
-
-def _micros_since_2000(dt):
-    # A naive value (TIMESTAMP WITHOUT TIME ZONE — what DuckDB and psycopg2 return for `timestamp`)
-    # counts from a naive epoch; subtracting the aware one raised TypeError mid-stream.
-    epoch = datetime.datetime(2000, 1, 1)
-    if dt.tzinfo is not None:
-        epoch = epoch.replace(tzinfo=datetime.timezone.utc)
-    delta = dt - epoch
-    return (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds
-
-
-# PostgreSQL binary numeric (OID 1700) encoder.
-# Format: int16 ndigits, int16 weight, uint16 sign, int16 dscale, then ndigits x uint16 base-10000 digits.
-def _numeric_to_pg_binary(v) -> bytes:
-    d = v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
-    if d.is_nan():
-        return struct.pack("!HhHH", 0, 0, 0xC000, 0)
-
-    sign_flag = 0x4000 if d < 0 else 0x0000
-    d_abs = abs(d)
-
-    _, _, exp = d_abs.as_tuple()
-    dscale = max(0, -exp) if isinstance(exp, int) and exp < 0 else 0
-
-    s = format(d_abs, "f")
-    if "." in s:
-        int_str, frac_str = s.split(".")
-    else:
-        int_str, frac_str = s, ""
-
-    int_str = int_str.lstrip("0") or ""
-
-    if int_str:
-        pad = (-len(int_str)) % 4
-        int_str_padded = "0" * pad + int_str
-        int_groups = [int(int_str_padded[i : i + 4]) for i in range(0, len(int_str_padded), 4)]
-        weight = len(int_groups) - 1
-    else:
-        int_groups = []
-        weight = -1
-
-    if frac_str:
-        pad = (-len(frac_str)) % 4
-        frac_str_padded = frac_str + "0" * pad
-        frac_groups = [int(frac_str_padded[i : i + 4]) for i in range(0, len(frac_str_padded), 4)]
-        while frac_groups and frac_groups[0] == 0 and not int_groups:
-            frac_groups.pop(0)
-            weight -= 1
-    else:
-        frac_groups = []
-
-    digits = int_groups + frac_groups
-    while digits and digits[-1] == 0:
-        digits.pop()
-
-    ndigits = len(digits)
-    if ndigits == 0:
-        return struct.pack("!HhHH", 0, 0, sign_flag, dscale)
-
-    return struct.pack(f"!HhHH{ndigits}H", ndigits, weight, sign_flag, dscale, *digits)
-
-
-PG_UNKNOWN = (705, str)
-BVTYPE_TO_PGTYPE = {
-    BVType.SMALLINT: (21, str, lambda r: r.to_bytes(2, "big", signed=True)),
-    BVType.REAL: (700, str, lambda r: struct.pack("!f", r)),
-    BVType.JSONB: (
-        3802,
-        lambda v: json.dumps(v) if not isinstance(v, str) else v,
-        # jsonb binary = a version byte (1) + the JSON text.
-        lambda r: b"\x01" + (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
-    ),
-    BVType.TIMESTAMPTZ: (
-        1184,
-        lambda v: v.isoformat().replace("T", " "),
-        lambda r: int.to_bytes(_micros_since_2000_utc(r), 8, "big", signed=True),
-    ),
-    BVType.TIMETZ: (1266, lambda v: v.isoformat(), _timetz_to_pg_binary),
-    BVType.UUID: (2950, str, _uuid_to_pg_binary),
-    BVType.NULL: (-1, lambda *_: None),
-    BVType.ARRAY: (
-        2277,
-        lambda v: "{" + ",".join(v) + "}",
-        lambda r: ("{" + ",".join(r) + "}").encode("utf-8"),
-    ),
-    BVType.BIGINT: (20, str, lambda r: r.to_bytes(8, "big", signed=True)),
-    BVType.BOOL: (
-        16,
-        lambda v: "true" if v else "false",
-        lambda r: b"\x01" if r else b"\x00",
-    ),
-    BVType.BYTES: (17, lambda v: "\\x" + v.hex(), lambda r: r),
-    BVType.DATE: (
-        1082,
-        lambda v: v.isoformat(),
-        lambda r: int.to_bytes((r.toordinal() - 730120), 4, "big", signed=True),
-    ),
-    BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
-    BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
-    BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
-    BVType.INTEGERARRAY: (
-        1007,
-        lambda v: "{" + ",".join(str(x) for x in v) + "}",
-        lambda r: (
-            struct.pack("!iiiii", 1, 0, 23, len(r), 1)
-            + b"".join(struct.pack("!ii", 4, x) for x in r)
-        ),
-    ),
-    BVType.INTERVAL: (
-        1186,
-        _interval_text,
-        # interval binary = int64 time-of-day microseconds, int32 days, int32 months (16 bytes);
-        # the former "!qih" wrote 14 bytes, which no binary client can decode.
-        lambda r: struct.pack("!qii", *reversed(_interval_parts(r))),
-    ),
-    BVType.JSON: (
-        114,
-        lambda v: json.dumps(v) if not isinstance(v, str) else v,
-        lambda r: (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
-    ),
-    BVType.STRINGARRAY: (
-        1009,
-        lambda v: "{" + ",".join(v) + "}",
-        lambda r: (
-            struct.pack("!iiiii", 1, 0, 25, len(r), 1)
-            + b"".join(
-                (struct.pack("!i", len(s.encode("utf-8"))) + s.encode("utf-8"))
-                if s is not None
-                else struct.pack("!i", -1)
-                for s in r
-            )
-        ),
-    ),
-    # str(r) in binary too: a declared text-family column may carry a non-str value (a UUID, a
-    # driver-specific scalar) — its text form is the wire value in both formats.
-    BVType.TEXT: (25, str, lambda r: str(r).encode("utf-8")),
-    BVType.TIME: (
-        1083,
-        lambda v: v.isoformat(),
-        lambda r: int.to_bytes(_time_to_microseconds(r), 8, "big"),
-    ),
-    BVType.TIMESTAMP: (
-        1114,
-        lambda v: v.isoformat().replace("T", " "),
-        # signed: a value before 2000-01-01 is a negative offset (unsigned raised OverflowError).
-        lambda r: int.to_bytes(_micros_since_2000(r), 8, "big", signed=True),
-    ),
+# REQ-2194: each wire type's PostgreSQL type OID, what RowDescription advertises. Its values are
+# written by the Rust encoder (provisa._encoders.pgwire, send_data_rows); none is written here.
+PG_UNKNOWN_OID = 705
+BVTYPE_TO_OID: Dict[Any, int] = {
+    BVType.NULL: -1,
+    BVType.BIGINT: 20,
+    BVType.BOOL: 16,
+    BVType.BYTES: 17,
+    BVType.DATE: 1082,
+    BVType.FLOAT: 701,
+    BVType.INTEGER: 23,
+    BVType.INTERVAL: 1186,
+    BVType.JSON: 114,
+    BVType.DECIMAL: 1700,
+    BVType.TEXT: 25,
+    BVType.TIME: 1083,
+    BVType.TIMESTAMP: 1114,
+    BVType.ARRAY: 2277,
+    BVType.INTEGERARRAY: 1007,
+    BVType.STRINGARRAY: 1009,
+    BVType.SMALLINT: 21,
+    BVType.REAL: 700,
+    BVType.JSONB: 3802,
+    BVType.TIMESTAMPTZ: 1184,
+    BVType.TIMETZ: 1266,
+    BVType.UUID: 2950,
+    BVType.BIGINTARRAY: 1016,
+    BVType.SMALLINTARRAY: 1005,
+    BVType.FLOATARRAY: 1022,
+    BVType.REALARRAY: 1021,
+    BVType.BOOLARRAY: 1000,
+    BVType.DECIMALARRAY: 1231,
+    BVType.OID: 26,
+    BVType.REGPROC: 24,
+    BVType.REGTYPE: 2206,
+    BVType.OIDARRAY: 1028,
+    BVType.OIDVECTOR: 30,
+    BVType.INT2VECTOR: 22,
+    BVType.ACLITEMARRAY: 1034,
+    BVType.CHARARRAY: 1002,
+    BVType.INET: 869,
+    BVType.PG_LSN: 3220,
+    BVType.CIDR: 650,
+    BVType.MACADDR: 829,
+    BVType.XML: 142,
+    BVType.POINT: 600,
+    BVType.MONEY: 790,
+    BVType.MACADDR8: 774,
+    BVType.LINE: 628,
+    BVType.LSEG: 601,
+    BVType.BOX: 603,
+    BVType.PATH: 602,
+    BVType.POLYGON: 604,
+    BVType.CIRCLE: 718,
+    BVType.GEOMETRY: 8310,
+    BVType.GEOGRAPHY: 8311,
+    BVType.INT4RANGE: 3904,
+    BVType.INT8RANGE: 3926,
+    BVType.NUMRANGE: 3906,
+    BVType.TSRANGE: 3908,
+    BVType.TSTZRANGE: 3910,
+    BVType.DATERANGE: 3912,
+    BVType.BIT: 1560,
+    BVType.VARBIT: 1562,
+    BVType.TSVECTOR: 3614,
+    BVType.NAMEARRAY: 1003,
+    BVType.REGTYPEARRAY: 2211,
+    BVType.REGCLASS: 2205,
+    BVType.REGNAMESPACE: 4089,
+    BVType.INT4MULTIRANGE: 4451,
+    BVType.INT8MULTIRANGE: 4536,
+    BVType.NUMMULTIRANGE: 4532,
+    BVType.TSMULTIRANGE: 4533,
+    BVType.TSTZMULTIRANGE: 4534,
+    BVType.DATEMULTIRANGE: 4535,
+    BVType.MONEYARRAY: 791,
+    BVType.CHAR: 18,
+    BVType.NAME: 19,
+    BVType.TID: 27,
+    BVType.XID: 28,
+    BVType.CID: 29,
+    BVType.PG_NODE_TREE: 194,
+    BVType.ACLITEM: 1033,
+    BVType.REFCURSOR: 1790,
+    BVType.REGPROCEDURE: 2202,
+    BVType.REGOPER: 2203,
+    BVType.REGOPERATOR: 2204,
+    BVType.TXID_SNAPSHOT: 2970,
+    BVType.PG_NDISTINCT: 3361,
+    BVType.PG_DEPENDENCIES: 3402,
+    BVType.TSQUERY: 3615,
+    BVType.GTSVECTOR: 3642,
+    BVType.REGCONFIG: 3734,
+    BVType.REGDICTIONARY: 3769,
+    BVType.JSONPATH: 4072,
+    BVType.REGROLE: 4096,
+    BVType.REGCOLLATION: 4191,
+    BVType.PG_BRIN_BLOOM_SUMMARY: 4600,
+    BVType.PG_BRIN_MINMAX_MULTI_SUMMARY: 4601,
+    BVType.PG_MCV_LIST: 5017,
+    BVType.PG_SNAPSHOT: 5038,
+    BVType.XID8: 5069,
+    BVType.INTERVALARRAY: 1187,
 }
 
 
@@ -425,6 +337,25 @@ class BVBuffer(object):
         return self.stream.getvalue()
 
 
+class UnknownStatement(Exception):
+    """A message named a prepared statement this connection does not hold."""
+
+    sqlstate = "26000"  # invalid_sql_statement_name
+
+    def __init__(self, name: str):
+        said = f'prepared statement "{name}"' if name else "unnamed prepared statement"
+        super().__init__(f"{said} does not exist")
+
+
+class UnknownPortal(Exception):
+    """A message named a portal this connection does not hold."""
+
+    sqlstate = "34000"  # invalid_cursor_name
+
+    def __init__(self, name: str):
+        super().__init__(f'portal "{name}" does not exist')
+
+
 class BVContext:
     """Manages the state of a single connection to the server."""
 
@@ -432,8 +363,12 @@ class BVContext:
         self.session = session
         self.rewriter = rewriter
         self.params = params
-        self.process_id = random.randint(0, 2**32 - 1)
+        # Below 2**31: PostgreSQL's backend pid is an int4 (pg_backend_pid, pg_stat_activity.pid).
+        self.process_id = random.randint(1, 2**31 - 1)
         self.secret_key = random.randint(0, 2**32 - 1)
+        session.process_id = self.process_id
+        # The connection's socket, set when it is registered: what ends it from another thread.
+        self.connection = None
         self.stmts = {}
         self.portals = {}
         self.result_cache = {}
@@ -447,7 +382,11 @@ class BVContext:
         # Execute to continue from (single use); portal name -> the one its Bind took.
         self.statement_prepared = {}
         self.portal_prepared = {}
+        # has_error: the cycle failed, and its later messages are discarded up to its Sync (a
+        # Query's ends at its ReadyForQuery). transaction_failed: a statement failed in the open
+        # transaction, reported 'E' by ReadyForQuery until the transaction ends.
         self.has_error = False
+        self.transaction_failed = False
         self.authenticated = False
         self.salt: bytes | None = None
 
@@ -460,13 +399,16 @@ class BVContext:
 
     def mark_error(self):
         self.has_error = True
+        if self.session.in_transaction():
+            self.transaction_failed = True
 
     def transaction_status(self):
         if self.session.in_transaction():
-            if self.has_error:
+            if self.has_error or self.transaction_failed:
                 return TransactionStatus.IN_FAILED_TRANSACTION
             else:
                 return TransactionStatus.IN_TRANSACTION
+        self.transaction_failed = False
         return TransactionStatus.IDLE
 
     def execute_sql(
@@ -487,8 +429,22 @@ class BVContext:
                 qr.result_format = result_fmt
         return qr
 
+    def statement(self, name: str):
+        """The (sql, parameter OIDs) of a prepared statement this connection holds."""
+        held = self.stmts.get(name)
+        if held is None:
+            raise UnknownStatement(name)
+        return held
+
+    def portal(self, name: str):
+        """The (statement, parameters, result formats) of a portal this connection holds."""
+        held = self.portals.get(name)
+        if held is None:
+            raise UnknownPortal(name)
+        return held
+
     def describe_portal(self, name: str) -> QueryResult:
-        stmt, params, result_fmt = self.portals[name]
+        stmt, params, result_fmt = self.portal(name)
         sql, _ = self.stmts[stmt]
         query_result = self.execute_sql(
             sql=sql,
@@ -501,7 +457,7 @@ class BVContext:
         return query_result
 
     def describe_statement(self, name: str) -> QueryResult:
-        sql, param_oids = self.stmts[name]
+        sql, param_oids = self.statement(name)
         params = []
         for typeoid in param_oids:
             type = TYPE_OIDS.get(typeoid)
@@ -558,7 +514,7 @@ class BVContext:
             del self.result_cache[name]
             return query_result
         else:
-            stmt, params, result_fmt = self.portals[name]
+            stmt, params, result_fmt = self.portal(name)
             sql, _ = self.stmts[stmt]
             qr = self.execute_sql(
                 sql=sql,
@@ -584,8 +540,9 @@ class BVContext:
         self.stmts[name] = (sql, param_oids)
 
     def close_statement(self, name: str):
+        # Closing a name that does not exist is no error (the protocol says so).
         self._drop_described(name)
-        del self.stmts[name]
+        self.stmts.pop(name, None)
 
     def add_portal(self, name: str, stmt: str, params: List, result_formats: List[int]):
         # A Bind REPLACES the portal it names (the unnamed portal on every simple client query). A
@@ -618,7 +575,7 @@ class BVContext:
         self.result_cache[name] = held
 
     def close_portal(self, name: str):
-        del self.portals[name]
+        self.portals.pop(name, None)
         self.portal_prepared.pop(name, None)
         # A Describe-then-Close flow (no Execute — e.g. a client fetching metadata only, or
         # aborting after Describe) leaves an already-executed result in result_cache with nobody
@@ -645,6 +602,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         try:
             ctx = self.handle_startup(self.server.conn)  # type: ignore[attr-defined]
             if ctx:
+                ctx.connection = self.request
                 self.server.ctxts[ctx.process_id] = ctx  # type: ignore[attr-defined]
             while ctx:
                 type_code = self.r.read_byte()
@@ -931,10 +889,13 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         buf = BVBuffer()
         for i in range(query_result.column_count()):
             name, bvtype = query_result.column(i)
-            oid = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
+            oid = query_result.column_type_oid(i)
+            if oid is None:
+                oid = BVTYPE_TO_OID.get(bvtype, PG_UNKNOWN_OID)
             buf.write_string(name)
             fmt = query_result.result_format[i] if query_result.result_format else 0
-            buf.write_bytes(struct.pack("!ihihih", 0, 0, oid, 0, -1, fmt))
+            typmod = query_result.column_typmod(i)
+            buf.write_bytes(struct.pack("!ihihih", 0, 0, oid, 0, typmod, fmt))
         out = buf.get_value()
         sig = struct.pack(
             "!cih",
@@ -944,77 +905,34 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         )
         self.wfile.write(sig + out)
 
-    # Rows accumulated per wfile.write() call: bounded (never the whole result, so a large scan
-    # still streams incrementally as query_result.rows() lazily produces rows — see
-    # ProvisaQueryResult's own streaming docstring), but large enough that per-write Python/BufferedWriter
-    # call overhead is paid once per _DATA_ROW_CHUNK_SIZE rows instead of once per row. Profiled
-    # live (80M-row order_items scan): the previous per-row write() cadence measured 3.29us/row;
-    # this chunking measured 3.06us/row on a 16-column synthetic batch, ~1.4x over the original
-    # per-row-BytesIO implementation this replaced.
-    _DATA_ROW_CHUNK_SIZE = 500
-
     def send_data_rows(self, query_result: QueryResult, limit: int = 0) -> int:
-        cnt = 0
-        converters = []
-        ncols = query_result.column_count()
-        for i in range(ncols):
-            bvtype = query_result.column(i)[1]
-            pgtype = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)
-            use_binary = (
-                query_result.result_format
-                and query_result.result_format[i] == 1
-                and len(pgtype) > 2
-                and pgtype[2] is not None
+        """The result's DataRow messages onto the socket, ``limit`` rows of them (0: all), written
+        by the Rust encoder from the result in the form it has (REQ-2194, REQ-2195): its Arrow
+        batches, or a row result's rows, with each column's wire type, result format and
+        coercers; or a source's own DataRow messages forwarded as they are."""
+        # Imported here, not with this module: the code host's front end (provisa/codehost) runs
+        # buenavista's modules on their own, and imports them before any result is sent.
+        from provisa._encoders import pgwire as encoder
+
+        data = query_result.data()
+        write = self.wfile.write
+        if data.raw:
+            return encoder.forward_raw((row for batch in data.take(limit) for row in batch), write)
+        count = query_result.column_count()
+        types = [wire_type_name(query_result.column(i)[1]) for i in range(count)]
+        formats = list(query_result.result_format) if query_result.result_format else None
+        if data.rows:
+            return encoder.encode_rows_stream(
+                data.take(limit),
+                types,
+                write,
+                formats,
+                query_result.coercers(),
+                query_result.kinds(),
             )
-            if use_binary:
-                converters.append((pgtype[2], False))
-            else:
-                converters.append((pgtype[1], True))
-        pack_i32 = _INT32_STRUCT.pack
-        chunk = bytearray()
-        chunk_n = 0
-        for row in query_result.rows():
-            if isinstance(row, RawDataRowBytes):
-                # Already a complete, wire-framed DataRow message (see RawDataRowBytes) — forward
-                # verbatim, skipping the per-column converter loop entirely.
-                chunk += row
-                cnt += 1
-                chunk_n += 1
-                if chunk_n >= self._DATA_ROW_CHUNK_SIZE:
-                    self.wfile.write(bytes(chunk))
-                    chunk.clear()
-                    chunk_n = 0
-                if limit > 0 and cnt >= limit:
-                    break
-                continue
-            # Precompiled struct.Struct + one bytearray per row (not a fresh BVBuffer/BytesIO
-            # object per row, and not one struct.pack call per int32 field) — profiled to cut
-            # server-side row-encoding cost roughly in half on its own.
-            row_buf = bytearray()
-            for j in range(ncols):
-                r = row[j]
-                if r is None:
-                    row_buf += b"\xff\xff\xff\xff"
-                else:
-                    converter, do_encode = converters[j]
-                    v = converter(r)
-                    if do_encode:
-                        v = v.encode("utf-8")
-                    row_buf += pack_i32(len(v))
-                    row_buf += v
-            chunk += struct.pack("!cih", ServerResponse.DATA_ROW, len(row_buf) + 6, ncols)
-            chunk += row_buf
-            cnt += 1
-            chunk_n += 1
-            if chunk_n >= self._DATA_ROW_CHUNK_SIZE:
-                self.wfile.write(bytes(chunk))
-                chunk.clear()
-                chunk_n = 0
-            if limit > 0 and cnt >= limit:
-                break
-        if chunk_n:
-            self.wfile.write(bytes(chunk))
-        return cnt
+        return encoder.encode_stream(
+            data.take(limit), types, write, formats, query_result.coercers()
+        )
 
     def send_error(self, exception, ctx: Optional[BVContext] = None):
         estr = str(exception)

@@ -66,6 +66,8 @@ def _promote(name: str, source: str, target: str) -> dict:
         "domain_id": "shop",
         "source_id": "",
         "returns": "",
+        # The trigger runs the command as its role, which the command is assigned to (REQ-2154).
+        "visible_to": [_ADMIN],
         "binding": {
             "sql": f'INSERT INTO "shop"."{target}" (id, amount) '
             f'SELECT id, amount FROM "shop"."{source}"'

@@ -23,6 +23,14 @@ set -euo pipefail
 set +x
 umask 077
 
+# The demo sources publish fixed host ports (33030-39200, demo-source-containers.ts and the specs'
+# own) inside Linux's ephemeral range (32768-60999): an outbound connection of a backend held
+# 37117 when the MongoDB container was to bind it, and the provisioning job ran no test (run
+# 40185713445). The band is reserved before any server starts, so none is handed out.
+if [ "$(uname -s)" = Linux ]; then
+  sudo sysctl -w net.ipv4.ip_local_reserved_ports=33000-39999
+fi
+
 dir="${RUNNER_TEMP:?}/lane-credentials"
 mkdir -p "$dir"
 

@@ -16,7 +16,7 @@ tests/integration/test_snowflake_source_e2e.py, test_databricks_source_e2e.py,
 test_bigquery_federation_engine_e2e.py, test_fabric_federation_engine_e2e.py) so this is not a new,
 unverified way of reaching them.
 
-Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down>
+Usage: python cloud_warehouse_seed.py <snowflake|databricks|bigquery|fabric> <up|down> <schema>
 """
 
 from __future__ import annotations
@@ -31,7 +31,9 @@ if str(_ROOT) not in sys.path:
     # `provisa` package and the `tests.integration` helpers this reuses — isn't on sys.path yet.
     sys.path.insert(0, str(_ROOT))
 
-_SCHEMA = "provisa_ui_e2e"
+# The run's own schema (e2e/cloud-warehouse.ts WAREHOUSE_SCHEMA), set from argv in main(): the
+# warehouses are shared by concurrent CI runs, which must not seed or drop each other's.
+_SCHEMA = ""
 _TABLE = "widgets"
 
 
@@ -67,18 +69,20 @@ def _snowflake(action: str) -> None:
     # silently lands with no current database at all (CURRENT_DATABASE() reads NULL) rather than
     # erroring. Reproduced live; filed as a bug (see spec header). A plain uppercase-safe database
     # name sidesteps it for this e2e without masking the finding.
-    db = _SCHEMA.upper()  # "PROVISA_UI_E2E" — also used as the schema name's database here
+    db = _SCHEMA.upper()  # the run's schema, upper-cased — also used as its database here
     table = _TABLE.upper()
+    if action == "down":
+        from tests.integration.live_teardown import run_every
+        from tests.integration.snowflake_warehouse import drop_database
+
+        # Dropped and read back gone, then the connection closed: every step attempted (REQ-254).
+        run_every([(f"drop database {db}", lambda: drop_database(conn, db)), ("close", conn.close)])
+        return
     cur = conn.cursor()
     try:
-        if action == "up":
-            cur.execute(f"CREATE DATABASE IF NOT EXISTS {db}")
-            cur.execute(f"CREATE OR REPLACE TABLE {db}.PUBLIC.{table} (id NUMBER, name STRING)")
-            cur.execute(
-                f"INSERT INTO {db}.PUBLIC.{table} VALUES (1,'sprocket'),(2,'cog'),(3,'gear')"
-            )
-        else:
-            cur.execute(f"DROP DATABASE IF EXISTS {db}")
+        cur.execute(f"CREATE DATABASE IF NOT EXISTS {db}")
+        cur.execute(f"CREATE OR REPLACE TABLE {db}.PUBLIC.{table} (id NUMBER, name STRING)")
+        cur.execute(f"INSERT INTO {db}.PUBLIC.{table} VALUES (1,'sprocket'),(2,'cog'),(3,'gear')")
     finally:
         cur.close()
         conn.close()
@@ -102,16 +106,30 @@ def _databricks(action: str) -> None:
         **databricks_tls_kwargs(),
     )
     fq = f"`workspace`.`{_SCHEMA}`.`{_TABLE}`"
+    if action == "down":
+        from tests.integration.databricks_uc import drop_schema
+        from tests.integration.live_teardown import run_every
+
+        # The schema (its table with it) dropped and read back gone, then the connection closed.
+        # The warehouse "up" woke is stopped by the lane's after-script (ui-core-after.sh): other
+        # workers of the run may still be reading it here (REQ-254). No other run is: the job
+        # holds the live-cloud-warehouses concurrency group (ui-e2e-core.yml).
+        run_every(
+            [
+                (
+                    f"drop schema workspace.{_SCHEMA}",
+                    lambda: drop_schema(conn, "workspace", _SCHEMA),
+                ),
+                ("close", conn.close),
+            ]
+        )
+        return
     cur = conn.cursor()
     try:
-        if action == "up":
-            cur.execute(f"CREATE SCHEMA IF NOT EXISTS `workspace`.`{_SCHEMA}`")
-            cur.execute(f"DROP TABLE IF EXISTS {fq}")
-            cur.execute(f"CREATE TABLE {fq} (id BIGINT, name STRING) USING DELTA")
-            cur.execute(f"INSERT INTO {fq} VALUES (1,'sprocket'),(2,'cog'),(3,'gear')")
-        else:
-            cur.execute(f"DROP TABLE IF EXISTS {fq}")
-            cur.execute(f"DROP SCHEMA IF EXISTS `workspace`.`{_SCHEMA}`")
+        cur.execute(f"CREATE SCHEMA IF NOT EXISTS `workspace`.`{_SCHEMA}`")
+        cur.execute(f"DROP TABLE IF EXISTS {fq}")
+        cur.execute(f"CREATE TABLE {fq} (id BIGINT, name STRING) USING DELTA")
+        cur.execute(f"INSERT INTO {fq} VALUES (1,'sprocket'),(2,'cog'),(3,'gear')")
     finally:
         cur.close()
         conn.close()
@@ -136,12 +154,21 @@ def _bigquery(action: str) -> None:
         table = bigquery.Table(table_ref, schema=schema)
         client.delete_table(table_ref, not_found_ok=True)
         client.create_table(table)
-        client.insert_rows_json(
-            table_ref,
-            [{"id": 1, "name": "sprocket"}, {"id": 2, "name": "cog"}, {"id": 3, "name": "gear"}],
-        )
+        # A DML insert, not a streaming one: insertAll into a table just dropped and recreated
+        # under the same name answers 404 "Table ... not found" until BigQuery's streaming
+        # backend sees the new table, which can take minutes.
+        client.query(
+            f"INSERT INTO `{table_ref}` (id, name) VALUES (1, 'sprocket'), (2, 'cog'), (3, 'gear')"
+        ).result()
     else:
+        from google.api_core.exceptions import NotFound
+
         client.delete_dataset(dataset_ref, delete_contents=True, not_found_ok=True)
+        try:
+            client.get_dataset(dataset_ref)
+        except NotFound:
+            return
+        raise RuntimeError(f"BigQuery dataset {dataset_ref} still exists after its delete")
 
 
 def _fabric(action: str) -> None:
@@ -159,27 +186,43 @@ def _fabric(action: str) -> None:
         database=os.environ["FABRIC_DATABASE"],
         engine_name="fabric",
     )
+    if action == "down":
+        from tests.integration.live_teardown import none_remain, run_every
+
+        def drop() -> None:
+            cur = rt.connection.cursor()
+            try:
+                cur.execute(f"DROP TABLE IF EXISTS [{_SCHEMA}].[{_TABLE}]")
+                cur.execute(f"DROP SCHEMA IF EXISTS [{_SCHEMA}]")
+                rt.connection.commit()
+                cur.execute("SELECT name FROM sys.schemas WHERE name = ?", [_SCHEMA])
+                none_remain("Fabric schemas", [r[0] for r in cur.fetchall()])
+            finally:
+                cur.close()
+
+        # The schema dropped and read back gone, the connection closed, the capacity paused: every
+        # step attempted, and a pause that fails fails the teardown -- a capacity left running
+        # bills (REQ-254).
+        run_every(
+            [
+                (f"drop schema {_SCHEMA}", drop),
+                ("close", rt.close),
+                ("pause the Fabric capacity", suspend_capacity),
+            ]
+        )
+        return
     cur = rt.connection.cursor()
     try:
-        if action == "up":
-            cur.execute(f"IF SCHEMA_ID('{_SCHEMA}') IS NULL EXEC('CREATE SCHEMA [{_SCHEMA}]')")
-            cur.execute(f"DROP TABLE IF EXISTS [{_SCHEMA}].[{_TABLE}]")
-            cur.execute(f"CREATE TABLE [{_SCHEMA}].[{_TABLE}] (id BIGINT, name VARCHAR(50))")
-            cur.execute(
-                f"INSERT INTO [{_SCHEMA}].[{_TABLE}] VALUES (1,'sprocket'),(2,'cog'),(3,'gear')"
-            )
-            rt.connection.commit()
-        else:
-            cur.execute(f"DROP TABLE IF EXISTS [{_SCHEMA}].[{_TABLE}]")
-            cur.execute(f"DROP SCHEMA IF EXISTS [{_SCHEMA}]")
-            rt.connection.commit()
+        cur.execute(f"IF SCHEMA_ID('{_SCHEMA}') IS NULL EXEC('CREATE SCHEMA [{_SCHEMA}]')")
+        cur.execute(f"DROP TABLE IF EXISTS [{_SCHEMA}].[{_TABLE}]")
+        cur.execute(f"CREATE TABLE [{_SCHEMA}].[{_TABLE}] (id BIGINT, name VARCHAR(50))")
+        cur.execute(
+            f"INSERT INTO [{_SCHEMA}].[{_TABLE}] VALUES (1,'sprocket'),(2,'cog'),(3,'gear')"
+        )
+        rt.connection.commit()
     finally:
         cur.close()
         rt.close()
-        if action == "down":
-            # Best-effort — leaving the capacity briefly running is a cost concern, not a
-            # correctness one, so a suspend failure must never fail the seed teardown.
-            suspend_capacity()
 
 
 _ENGINES = {
@@ -192,7 +235,12 @@ _ENGINES = {
 
 def main() -> None:
     _load_root_env()
-    engine, action = sys.argv[1], sys.argv[2]
+    global _SCHEMA
+    if len(sys.argv) != 4:
+        raise SystemExit(
+            f"usage: python cloud_warehouse_seed.py <{'|'.join(_ENGINES)}> <up|down> <schema>"
+        )
+    engine, action, _SCHEMA = sys.argv[1], sys.argv[2], sys.argv[3]
     if engine not in _ENGINES or action not in ("up", "down"):
         raise SystemExit(f"usage: python cloud_warehouse_seed.py <{'|'.join(_ENGINES)}> <up|down>")
     _ENGINES[engine](action)

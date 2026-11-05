@@ -89,8 +89,8 @@ def test_bigquery_ir_type_mapping():
     assert bq_type("text") == "STRING"
     assert bq_type("double") == "FLOAT64"
     assert bq_type("timestamptz") == "TIMESTAMP"  # native spelling normalizes via to_ir
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        bq_type("geography")
+    # REQ-2171: a type naming none of the IR's lands as text.
+    assert bq_type("hierarchyid") == "STRING"
 
 
 if __name__ == "__main__":

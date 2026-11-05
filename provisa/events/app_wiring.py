@@ -29,7 +29,7 @@ everything else are real.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
 
 from provisa.core.runtime_gone import RuntimeNotBuilt
@@ -76,17 +76,6 @@ async def _load_calendar_registry(db: Any) -> Any:
     return registry
 
 
-def _mv_pk(mv: Any) -> list[str]:
-    """REQ-970: the derived table's PK — operator-declared ``primary_key`` or inferred from an
-    unambiguous GROUP BY (``[]`` when neither)."""
-    from provisa.events.lineage import infer_pk
-
-    declared = list(getattr(mv, "primary_key", []) or [])
-    if declared:
-        return declared
-    return infer_pk(mv.sql) if getattr(mv, "sql", None) else []
-
-
 async def _reconcile_mv_store_schemas(
     engine: Any, mvs: list[Any], mv_cols: dict[str, list[tuple[str, str]]], log: Any
 ) -> None:
@@ -97,6 +86,8 @@ async def _reconcile_mv_store_schemas(
     boundary: a store/table not yet reachable is skipped (the per-fire persist_land re-creates if
     absent regardless)."""
     from sqlalchemy.exc import SQLAlchemyError
+
+    from provisa.mv.store_shape import view_key
 
     for mv in mvs:
         key = view_node(mv)
@@ -113,7 +104,7 @@ async def _reconcile_mv_store_schemas(
                 schema=mv.target_schema,
                 table=mv.target_table,
                 columns=cols,
-                pk_columns=_mv_pk(mv) or None,
+                pk_columns=view_key(mv) or None,
             )
         except SQLAlchemyError:
             log.warning("event loop: MV %s store-schema reconcile skipped (store not ready)", key)
@@ -228,10 +219,14 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     # REQ-1668: a neo4j table is a persisted query-API endpoint — same fetch chain.
     loaders["neo4j"] = make_openapi_loader(state)
     loaders["sparql"] = make_openapi_loader(state)  # REQ-1683
+    loaders["quickbooks"] = make_openapi_loader(state)  # REQ-2197
     gql_sources = getattr(state, "graphql_remote_sources", None)
     if gql_sources:
+        # A connection table lands at the page size its registration priced its query at.
         loaders["graphql_remote"] = make_graphql_remote_loader(
-            gql_sources, state.config.graphql_remote.max_rows
+            gql_sources,
+            state.config.graphql_remote.max_rows,
+            state.config.graphql_remote.max_list_items,
         )
     grpc_sources = getattr(state, "grpc_remote_sources", None)
     if grpc_sources:
@@ -351,6 +346,7 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
         make_clickhouse_keyed_loader,
         make_druid_keyed_loader,
         make_elasticsearch_keyed_loader,
+        make_graphql_remote_keyed_loader,
         make_hive_s3_keyed_loader,
         make_kafka_keyed_loader,
         make_mongodb_keyed_loader,
@@ -367,6 +363,8 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     keyed_loaders: dict[str, Any] = {}
     # The table's endpoint is looked up in state at each read (see the adapter loaders).
     keyed_loaders["neo4j"] = make_neo4j_keyed_loader(state)
+    # REQ-1865: a remote GraphQL table whose schema returns its rows for a list of its key.
+    keyed_loaders["graphql_remote"] = make_graphql_remote_keyed_loader(state)
     # sparql has no parser/AST to safely resolve a projected property or splice a filter
     # against (confirmed absent, no rdflib dependency either) -- stays on the loud
     # UnsupportedSourceFetch path in SourceRowLoader.load_keys until one exists.
@@ -408,9 +406,14 @@ def build_keyed_adapter_loaders(state: Any, engine: Any = None) -> dict[str, Any
     from provisa.events.source_loader import make_direct_keyed_loader
     from provisa.transpiler.router import API_SOURCES, VIRTUAL_SOURCES
 
+    from provisa.core.source_registry import is_live_only
+
     direct_keyed = make_direct_keyed_loader(state, engine)
     for stype in set(getattr(state, "source_types", {}).values()):
         if stype in keyed_loaders or stype in VIRTUAL_SOURCES or stype in API_SOURCES:
+            continue
+        if is_live_only(stype):
+            # REQ-2000: a live-only source's tables have no replica, so no row is fetched by key.
             continue
         if has_driver(stype) and not engine_attaches(bare_engine, stype):
             keyed_loaders[stype] = direct_keyed
@@ -467,6 +470,7 @@ def registry_marking(
     model_db: Any,
     build_state: Any,
     on_built: Callable[[Any], None] | None = None,
+    plan_indexes: Callable[[Any], Awaitable[None]] | None = None,
 ) -> Any:
     """``mv -> mark(change)``: a view's refresh by the event loop, recorded in the MV registry a
     read asks whether the view is fresh, and on this region's build row in ``build_state`` (its
@@ -481,7 +485,10 @@ def registry_marking(
     it, as the coordinated refresh seeds it (``coordination.ensure_mv_row``).
 
     ``on_built`` is told of each view a change marks fresh: a view that reads it may have been
-    waiting for its first build to be wired (:func:`_views_awaiting_an_input`)."""
+    waiting for its first build to be wired (:func:`_views_awaiting_an_input`).
+
+    ``plan_indexes`` states the indexes of each view a change landed (REQ-2015), for the replica
+    runner to build after the landing."""
     from provisa.mv.coordination import ensure_mv_row, record_build
 
     def mv_refreshed(mv: Any) -> Any:
@@ -504,6 +511,8 @@ def registry_marking(
             else:
                 registry.mark_refreshed(mv.id, None)
                 await record()
+            if event_type != "error" and plan_indexes is not None:
+                await plan_indexes(mv)
             if event_type != "error" and on_built is not None:
                 on_built(mv)
 
@@ -619,19 +628,19 @@ def _views_built_here(registry: Any) -> list[Any]:
 
 def _lineage(mvs: list[Any], state: Any, log: Any) -> dict[str, set[str]]:
     """The views' edges, resolved against the model (``events.nodes.lineage_graph``). A view
-    whose input does not resolve was refused when it was declared, so meeting one here is a
-    defect: the view is marked failed with the reason (the admin's view list and refresh status
-    show it), the error is logged naming the view and the reference, and the wiring raises."""
+    whose input does not resolve -- one left reading a table since deleted, or declared before the
+    check that refuses it existed -- is refused alone: it is marked failed with the reason (the
+    admin's view list and refresh status show it), the error is logged naming the view and the
+    reference, and it is left out of the lineage. Every other view is wired; one view never fails
+    the org's wiring."""
     from provisa.events.nodes import lineage_graph
-    from provisa.mv.view_inputs import InputUnresolved
 
-    try:
-        return lineage_graph(mvs, state)
-    except InputUnresolved as unresolved:
+    def _refuse(mv: Any, unresolved: Exception) -> None:
         reason = f"not wired into the event loop: {unresolved}"
-        state.mv_registry.mark_refresh_failed(unresolved.view, reason)
+        state.mv_registry.mark_refresh_failed(mv.id, reason)
         log.error("event loop: %s", reason)
-        raise
+
+    return lineage_graph(mvs, state, refuse=_refuse)
 
 
 async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = True) -> int:
@@ -658,8 +667,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         mvs = _views_built_here(getattr(state, "mv_registry", None))
 
         # The fan-out set: each view's inputs resolved against the model (REQ-939), never matched
-        # by the spelling its SQL uses. A view whose input does not resolve was refused when it was
-        # declared, so meeting one here is a defect: it raises, naming the view and the reference.
+        # by the spelling its SQL uses. A view whose input does not resolve is refused alone, named
+        # with the reference, and left out (_lineage).
         # A cycle is rejected — the loop must be acyclic.
         from provisa.events.nodes import expected_event_nodes, source_node
 
@@ -667,6 +676,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         graph: dict[str, set[str]] = {}
         try:
             graph = _lineage(mvs, state, log)
+            # A view refused by the lineage step is not wired; the others are.
+            mvs = [mv for mv in mvs if view_node(mv) in graph]
             dependents_of = supervisor.dependents_of(graph)
         except ValueError:
             log.warning("event loop: MV lineage has a cycle — skipping event-loop wiring")
@@ -716,10 +727,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         # columns (QueryResult.column_types), which we translate native→IR (REQ-846). Done here
         # (async) so the sync mv_columns callable below is a pure lookup. Best-effort per MV — one
         # whose sources are not yet reachable is skipped and binds on a later boot.
-        from provisa.core.ir_types import to_ir
 
         _mv_cols: dict[str, list[tuple[str, str]]] = {}
-        _dialect = engine.engine.dialect
         _unbuilt = {view_node(m) for m in mvs if getattr(m, "last_refresh_at", None) is None}
         for _m in mvs:
             _sql = getattr(_m, "sql", None)
@@ -739,27 +748,25 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 # pipeline, so a table it reads is read as a direct statement reads it -- a search
                 # table under its arguments among them -- never its physical SQL as written.
                 from provisa.mv.governed_build import view_shape_sql
+                from provisa.mv.store_shape import output_columns
 
-                _probe = await engine.execute_engine(
-                    # Its columns alone: never its rows, a column transform's among them.
-                    f"SELECT * FROM ({await view_shape_sql(_m, engine)}) AS _mv_probe LIMIT 0",
+                _cols = await output_columns(
+                    engine,
+                    await view_shape_sql(_m, engine),
                     authorization=system_auth("event signal"),
                 )
+            except ValueError:
+                log.warning("event loop: MV %s has an unmapped output type — skipping", _key)
+                continue
             except Exception:
                 log.exception("event loop: MV %s not introspectable yet — skipping", _key)
                 continue
-            if _probe.column_types is None:
+            if _cols is None:
                 log.warning(
                     "event loop: engine returned no column types for MV %s — skipping", _key
                 )
                 continue
-            try:
-                _mv_cols[_key] = [
-                    (n, to_ir(t, _dialect))
-                    for n, t in zip(_probe.column_names, _probe.column_types)
-                ]
-            except ValueError:
-                log.warning("event loop: MV %s has an unmapped output type — skipping", _key)
+            _mv_cols[_key] = _cols
 
         # REQ-970: reconcile each derived node's store table to its SELECT-derived schema (existing
         # reconcile_table machinery). REQ-965: build the demand-driven per-shape emit router. Both in
@@ -812,11 +819,19 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         state.views_awaiting_input = _views_awaiting_an_input(mvs, _mv_cols, graph)
         from provisa.core.request_context import require_current_org as _org_bound
 
+        from provisa.mv.view_indexes import plan_view_indexes
+
+        async def _plan_view_indexes(mv: Any) -> None:
+            await plan_view_indexes(
+                engine, mv, model_db=state.model_db, state_db=state.tenant_db, served=state
+            )
+
         mv_refreshed = registry_marking(
             state.mv_registry,
             state.model_db,
             state.tenant_db,
             on_built=_wire_views_reading(scheduler, state, log, _org_bound()),
+            plan_indexes=_plan_view_indexes,
         )
 
         # Drive the loop off the design-time REGISTERED tables (semantic sql names + resolved types),

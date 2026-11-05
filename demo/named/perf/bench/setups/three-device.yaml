@@ -62,6 +62,13 @@ sources:
           - {name: region, domain: {kind: set, values: [NA, EMEA, APAC, LATAM]}}
           - {name: status, domain: {kind: set, values: [open, shipped, delivered, cancelled, returned]}}
           - {name: amount}
+          # Read by no filter, join or base request, so masked_column_share can take them: a
+          # quarter of this table's 26 columns is 6.
+          - {name: discount}
+          - {name: tax}
+          - {name: shipping_cost}
+          - {name: currency}
+          - {name: payment_method}
       # Not drawn as a request's own table (weight 0): reached only through the join below.
       - schema: public
         table: order_items
@@ -117,7 +124,9 @@ sources:
         base_column: order_id
         columns:
           - {name: order_id, domain: {kind: int_range, min: 1, max: 2000000}}
-          - {name: customer_id, domain: {kind: int_range, min: 1, max: 250000}}
+          # No domain, so never filtered: the table is row_materialize on Neo4j, which has no direct
+          # driver to apply a non-key filter, so only its key binds one (REQ-1915).
+          - {name: customer_id}
           - {name: region}
           - {name: status}
     joins: []
@@ -193,6 +202,7 @@ transports:
   grpc: {}
   rest: {}
   jsonapi: {}
+  sparql: {}
 
 load:
   mode: closed_loop

@@ -12,7 +12,8 @@
 // (REQ-042, REQ-1174, REQ-1677). Split from useAdminQueries at the file-length ratchet.
 
 import { useQuery, useMutation } from "@apollo/client/react";
-import type { MutationResult, RLSRule } from "../types/admin";
+import type { MutationResult, RLSRule, RuleRight } from "../types/admin";
+import type { LlmLimit, LlmWindow } from "../types/auth";
 import {
   RolesQuery as ROLES_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY,
@@ -56,6 +57,9 @@ export function useUpsertRlsRule() {
       roleId: string;
       filterExpr: string;
       description: string; // REQ-2081: required
+      rights: RuleRight[]; // REQ-2188
+      id?: number | null; // the rule being edited
+      creating: boolean; // REQ-2188: a new rule replaces none, it is refused
     }) => {
       const result = await upsertRlsRule({ variables: { input } });
       return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;
@@ -78,6 +82,7 @@ export function useDeleteRlsRule() {
       domainId?: string | null,
       actionName?: string | null, // REQ-1679
       tagId?: string | null, // REQ-1384
+      id?: number | null, // REQ-2188: this rule, of the role's several on the target
     ) => {
       const result = await deleteRlsRule({
         variables: {
@@ -86,6 +91,7 @@ export function useDeleteRlsRule() {
           domainId: domainId ?? null,
           actionName: actionName ?? null,
           tagId: tagId ?? null,
+          id: id ?? null,
         },
       });
       return (result.data?.deleteRlsRule ?? { success: false, message: "" }) as MutationResult;
@@ -117,8 +123,10 @@ export function useUpsertRole() {
           requestsPerSecond: number | null;
           maxQueryComplexity: number | null;
           maxQueryTimeMs: number | null;
+          llmCallCap: LlmLimit | null; // REQ-1174
+          llmWindows: Record<LlmWindow, LlmLimit | null>;
         } | null;
-        parentRoleId?: string | null; // REQ-1677
+        parents?: string[]; // REQ-2155: in declared order
         residencyValues?: string[]; // REQ-1921
         sessionVars?: { name: string; value: string }[]; // REQ-1682
         inactivityDays?: number | null; // REQ-2077: null = never

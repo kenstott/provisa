@@ -77,7 +77,7 @@ def _all_governance_applied(shared_data: dict) -> None:
     assert "\"region\" = 'us'" in result, f"RLS predicate missing: {result}"
 
     # (2) column masking wrapped the masked column expression
-    assert "REGEXP_REPLACE" in upper, f"masking function not applied: {result}"
+    assert "PROVISA_REGEX_REPLACE" in upper, f"masking function not applied: {result}"
     assert "email" in result.lower(), f"masked column missing: {result}"
 
     # (3) column visibility — invisible column removed/nulled out
@@ -180,7 +180,7 @@ def _governance_at_every_reference(shared_data: dict) -> None:
 
     # Masking on customers.email must be injected wherever the column surfaces,
     # including the UNION arm — i.e. more than once across the full AST.
-    mask_count = upper.count("REGEXP_REPLACE")
+    mask_count = upper.count("PROVISA_REGEX_REPLACE")
     assert mask_count >= 1, f"masking not injected for customers.email: {result}"
 
     # UNION structure must be preserved through the AST rewrite.
@@ -261,7 +261,7 @@ def _identical_to_graphql_path(shared_data: dict) -> None:
         f"RLS predicate missing on /data/sql path: {sql_result}"
     )
     #   (2) masking applied to the masked column
-    assert "REGEXP_REPLACE" in upper, f"masking not applied on /data/sql path: {sql_result}"
+    assert "PROVISA_REGEX_REPLACE" in upper, f"masking not applied on /data/sql path: {sql_result}"
     #   (3) invisible column ("secret") stripped or nulled
     assert "secret" not in sql_result.lower() or "NULL" in upper, (
         f"invisible column not removed on /data/sql path: {sql_result}"

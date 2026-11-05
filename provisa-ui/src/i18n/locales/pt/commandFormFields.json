@@ -64,6 +64,10 @@
     "outputColumnsTitle": "Colunas do conjunto de dados de saída",
     "addOutputColumn": "+ Adicionar coluna de saída",
     "removeOutputColumn": "remover a coluna de saída {{name}}",
-    "datasetColumnPlaceholder": "coluna"
+    "datasetColumnPlaceholder": "coluna",
+    "bindingTemplate": "Expressão SQL",
+    "bindingTemplateHint": "Uma expressão SQL. Escreva cada argumento como {{placeholder}}; ela é executada dentro da consulta que a chama.",
+    "argDefault": "Valor padrão do argumento {{name}}",
+    "argDefaultPlaceholder": "Valor padrão (deixe vazio se obrigatório)"
   }
 }

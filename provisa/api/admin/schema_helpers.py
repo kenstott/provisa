@@ -20,8 +20,10 @@ from __future__ import annotations
 
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+import httpx
 
 from sqlalchemy import func, or_, select
 
@@ -124,35 +126,32 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
     row = dict(_r._mapping) if _r is not None else None
     if not row or row["type"] != "openapi" or not row["path"]:
         return False
-    try:
-        from provisa.core.secrets import resolve_secrets as _resolve_secrets
-        from provisa.openapi.exclusions import load_source_spec
+    from provisa.core.secrets import resolve_secrets as _resolve_secrets
+    from provisa.openapi.exclusions import load_source_spec
 
-        resolved_path = _resolve_secrets(row["path"])
-        # REQ-1957: without what the source's own exclusions name.
-        spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id)
-        servers = spec.get("servers", [])
-        base_url = servers[0].get("url", "") if servers else ""
-        if (
-            base_url
-            and not base_url.startswith(("http://", "https://"))
-            and resolved_path.startswith(("http://", "https://"))
-        ):
-            from urllib.parse import urljoin
+    resolved_path = _resolve_secrets(row["path"])
+    # REQ-1957: without what the source's own exclusions name.
+    spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id)
+    servers = spec.get("servers", [])
+    base_url = servers[0].get("url", "") if servers else ""
+    if (
+        base_url
+        and not base_url.startswith(("http://", "https://"))
+        and resolved_path.startswith(("http://", "https://"))
+    ):
+        from urllib.parse import urljoin
 
-            base_url = urljoin(resolved_path, base_url)
-        if not hasattr(state, "openapi_specs"):
-            state.openapi_specs = {}
-        state.openapi_specs[source_id] = {
-            "spec_path": row["path"],
-            "spec": spec,
-            "base_url": base_url,
-            "domain_id": "",
-            "cache_ttl": 300,
-        }
-        return True
-    except Exception:
-        return False
+        base_url = urljoin(resolved_path, base_url)
+    if not hasattr(state, "openapi_specs"):
+        state.openapi_specs = {}
+    state.openapi_specs[source_id] = {
+        "spec_path": row["path"],
+        "spec": spec,
+        "base_url": base_url,
+        "domain_id": "",
+        "cache_ttl": 300,
+    }
+    return True
 
 
 async def _rebuild_schemas():
@@ -274,6 +273,9 @@ class TableListing:
     sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
+    # OpenAPI source -> why its document could not be read: its tables are listed all the same,
+    # saying so, since one source out of reach fails no listing.
+    endpoint_errors: dict[str, str] = field(default_factory=dict)
 
 
 #: Each OpenAPI source's operations, parsed once per spec it holds: (that spec, its queries).
@@ -338,8 +340,21 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     ).fetchall()
     known = {r.id: (r.type, r.path) for r in source_rows}
     endpoints: dict[str, tuple[str, dict[str, Any]]] = {}
+    endpoint_errors: dict[str, str] = {}
     for source_id, (source_type, path) in known.items():
-        if source_type == "openapi" and path and await _ensure_openapi_spec(source_id):
+        if source_type != "openapi" or not path:
+            continue
+        try:
+            loaded = await _ensure_openapi_spec(source_id)
+        except (httpx.HTTPError, OSError) as exc:
+            # A document out of reach (its host, its file) is that source's alone: named on its
+            # tables and logged, the rest listed.
+            endpoint_errors[source_id] = (
+                f"the API document of source {source_id!r} could not be read: {exc}"
+            )
+            log.warning("%s", endpoint_errors[source_id])
+            continue
+        if loaded:
             operations = _openapi_operations(source_id)
             if operations is not None:
                 endpoints[source_id] = operations
@@ -349,6 +364,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         sources=known,
         grants=await write_grant_repo.for_tables(conn, ids),
         endpoints=endpoints,
+        endpoint_errors=endpoint_errors,
     )
 
 
@@ -392,6 +408,7 @@ async def _fetch_table_with_columns(
             or apply_gql_name(r["column_name"], row.get("gql_naming_convention")),
             description=r.get("description"),
             data_type=r.get("data_type"),
+            subtype=r.get("subtype"),  # REQ-2171
             native_filter_type=r.get("native_filter_type"),
             native_filter_required=native_filter_required(
                 r.get("native_filter_required"), r.get("native_filter_type"), _source_type
@@ -486,6 +503,7 @@ async def _fetch_table_with_columns(
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
         draft=row["draft"],  # REQ-1921
+        row_materialize=row["row_materialize"],  # REQ-1865
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz"),  # REQ-1141
@@ -495,6 +513,7 @@ async def _fetch_table_with_columns(
         write_grants=write_grants,
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
+        api_endpoint_error=listing.endpoint_errors.get(row["source_id"]),
         role_ttl=[
             RoleTtlType(role=role, ttl=ttl) for role, ttl in dict(row["role_ttl"]).items()
         ],  # REQ-1907
@@ -528,6 +547,7 @@ async def _fetch_table_with_columns(
         push_debounce_max_delay=float(row.get("push_debounce_max_delay") or 5.0),  # REQ-1733
         mv_consistency=row.get("mv_consistency") or "shared",  # REQ-879
         mv_preprocess=row.get("mv_preprocess"),  # REQ-957
+        mv_hold_on_failing_checks=bool(row["mv_hold_on_failing_checks"]),  # REQ-2133
         business_key=list(row.get("business_key") or []),  # REQ-2109
         valid_time=row.get("valid_time"),  # REQ-2109
         recorded_time=row.get("recorded_time"),  # REQ-2109

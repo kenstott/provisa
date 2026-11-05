@@ -18,6 +18,7 @@ so a permission denial here means the identical router call would also have deni
 from __future__ import annotations
 
 from types import SimpleNamespace
+from provisa.api.admin.read_rights import SERVICE_READER
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -59,10 +60,16 @@ async def test_list_glossary_terms_calls_repo():
             "provisa.core.repositories.glossary.list_terms",
             new=AsyncMock(return_value=[{"id": 1, "name": "Revenue"}]),
         ),
+        # REQ-2152: the counts are of what the caller is served (Provisa's own reader here).
+        patch(
+            "provisa.core.repositories.glossary.bindings",
+            new=AsyncMock(return_value=[(1, 10, "amount"), (1, 11, None)]),
+        ),
+        patch("provisa.api.admin.read_rights.reader_for_request", return_value=SERVICE_READER),
     ):
         result = await tools.list_glossary_terms(_state(), "analyst", _request(), q="rev")
 
-    assert result == [{"id": 1, "name": "Revenue"}]
+    assert result == [{"id": 1, "name": "Revenue", "ref_count": 1, "table_count": 1}]
 
 
 async def test_create_glossary_term_calls_repo_and_notifies():

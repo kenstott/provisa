@@ -45,6 +45,7 @@ with open(CONFIG_PATH, encoding="utf-8") as fh:
 PROJECT = CFG["project"]
 ZONE = CFG["zone"]
 INSTANCE = CFG["instance"]
+SANDBOX_INSTANCE = CFG["sandbox_instance"]  # "" where the sandbox tier has no VM of its own
 BACKEND_HOST = CFG["backend_host"]
 PORTS = {int(p): meta for p, meta in CFG["ports"].items()}
 STATUS_PORT = CFG["status_port"]
@@ -67,6 +68,12 @@ HEALTH_CACHE_TTL = 3.0
 WAKE_HOLD_SECONDS = 110  # raw-TCP clients: hold until boot completes or they give up
 STATUS_CACHE_TTL = 10.0
 START_DEBOUNCE_SECONDS = 30.0
+#: What a wake from idle takes, for the page's progress. The wait WAKING_TEXT and waking_json state
+#: is this; measure it again when it moves.
+WAKE_SECONDS = 300
+#: The paths a demo is opened by, as ui_server.DEMO_OPEN_PREFIXES and the live demos' page: a
+#: visitor here needs the sandbox VM too.
+DEMO_PATHS = ("/demos", "/public/demos/", "/sandboxes/")
 SPLICE_BUF = 65536
 #: How long a spliced connection may carry no byte either way before the proxy drops it. It must
 #: outlast the slowest request the app answers in one go: the UI server's own proxy timeout
@@ -80,6 +87,7 @@ _state_lock = threading.Lock()
 _last_activity = time.monotonic()
 _active_conns = 0
 _last_start_call = 0.0
+_last_sandbox_call = float("-inf")
 # When this proxy last STARTED a stopped coordinator (monotonic), as opposed to merely being asked
 # to. A backend that is not answering inside the boot grace after it is being woken from idle; one
 # that is not answering otherwise was started or restarted by someone else -- a deploy, an upgrade's
@@ -158,6 +166,35 @@ def trigger_wake() -> None:
             log.info("wake requested but %s is %s; not starting", INSTANCE, status)
     except urllib.error.URLError as exc:
         log.error("wake failed: %s", exc)
+
+
+def start_sandbox() -> None:
+    """Start the sandbox VM if it is down. Failures are the log's: the UI server starts it too, as
+    the first request for the tier finds it down (provisa/sandbox_wake.py)."""
+    try:
+        status = _compute_api("GET", f"instances/{SANDBOX_INSTANCE}")["status"]
+        if status in ("TERMINATED", "STOPPED", "SUSPENDED"):
+            log.info("waking %s (status=%s)", SANDBOX_INSTANCE, status)
+            _compute_api("POST", f"instances/{SANDBOX_INSTANCE}/start")
+    except urllib.error.URLError as exc:
+        log.error("sandbox wake failed: %s", exc)
+
+
+def wake_sandbox(wait: bool = False) -> None:
+    """A request for a demo reached a coordinator that is not up: the sandbox VM is started beside
+    it, not after it, so the visitor waits for the two once. Never for other traffic: a wake of the
+    coordinator alone needs no second VM. ``wait``: on this thread, not one of its own."""
+    global _last_sandbox_call
+    if not SANDBOX_INSTANCE:
+        return
+    with _state_lock:
+        if time.monotonic() - _last_sandbox_call < START_DEBOUNCE_SECONDS:
+            return
+        _last_sandbox_call = time.monotonic()
+    if wait:
+        start_sandbox()
+    else:
+        threading.Thread(target=start_sandbox, daemon=True).start()
 
 
 def waking_from_idle() -> bool:
@@ -307,7 +344,7 @@ def _splice(client: socket.socket, backend: socket.socket, activity: bool) -> No
 #: What the page says: woken from idle, or being updated (an upgrade, a deploy, a restart).
 WAKING_TEXT = (
     "Waking your instance",
-    "The environment scaled to zero while idle. It is starting now and will be ready in about two "
+    "The environment scaled to zero while idle. It is starting now and will be ready in about five "
     "minutes. This page refreshes automatically.",
 )
 UPDATING_TEXT = (
@@ -327,6 +364,8 @@ WAKE_HTML = """\
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:radial-gradient(120% 120% at 50% 45%,#16213f 0%,#0f1117 55%,#0b0d13 100%);color:#e6edf3;overflow:hidden}
 #wake-canvas{position:fixed;inset:0;width:100%;height:100%}
+.wake-bar{margin:14px auto 6px;width:100%;height:4px;border-radius:2px;background:rgba(230,237,243,.15);overflow:hidden}
+.wake-bar div{height:100%;background:#10B981}
 .card{position:relative;text-align:center;max-width:26rem}
 .mark{display:flex;flex-direction:column;align-items:center;gap:14px;animation:rise 700ms ease both}
 .mark svg{filter:drop-shadow(0 0 22px rgba(16,185,129,.35))}
@@ -348,6 +387,7 @@ p{margin:0;color:#9aa3b5;font-size:.9rem;line-height:1.5}
 </div>
 <h2>__HEADING__</h2>
 <p>__MESSAGE__</p>
+__PROGRESS__
 </div>
 <script>
 __BINARY_STREAMS__
@@ -372,6 +412,42 @@ reduce:window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").
 </body></html>""".replace("__BINARY_STREAMS__", BINARY_STREAMS_JS)
 
 
+def waking_page(text: tuple[str, str]) -> str:
+    """The waking page: what is happening and, for a wake this proxy started, how far along it is.
+    The page refreshes itself, so each answer shows the time gone. An update has no known length:
+    it claims no progress."""
+    heading, message = text
+    progress = ""
+    if text is WAKING_TEXT and _last_woke > float("-inf"):
+        elapsed = int(time.monotonic() - _last_woke)
+        # Held short of full: past the estimate, the page is still only waiting.
+        percent = min(elapsed * 100 // WAKE_SECONDS, 95)
+        progress = (
+            f'<div class="wake-bar"><div style="width:{percent}%"></div></div>'
+            f"<p>{elapsed // 60}:{elapsed % 60:02d} so far</p>"
+        )
+    return (
+        WAKE_HTML.replace("__HEADING__", heading)
+        .replace("__MESSAGE__", message)
+        .replace("__PROGRESS__", progress)
+    )
+
+
+def waking_json(waking: bool) -> dict:
+    """The answer to a fetch. REQ-1350 error shape: `code` is what the UI's catalog translates,
+    `detail` is the English sentence it falls back to when the key is absent."""
+    return {
+        "detail": (
+            "The environment is starting. It will be ready in about five minutes."
+            if waking
+            else "The environment is being updated. It will be back shortly."
+        ),
+        "code": "front_door.coordinator_waking" if waking else "front_door.coordinator_updating",
+        "params": {"retry_after_seconds": 120},
+        "retry_after_seconds": 120,
+    }
+
+
 def _wants_html(request: bytes) -> bool:
     """Whether these request bytes are a browser navigating, as opposed to the SPA calling an API.
 
@@ -393,6 +469,13 @@ def _wants_html(request: bytes) -> bool:
     if dest is not None:
         return dest == "document"
     return method == "GET" and "text/html" in headers.get("accept", "")
+
+
+def _names_a_demo(request: bytes) -> bool:
+    """Whether these request bytes ask for a demo (DEMO_PATHS)."""
+    parts = request.split(b"\r\n", 1)[0].decode("latin-1").split(" ")
+    path = parts[1].split("?", 1)[0] if len(parts) > 1 else ""
+    return path == "/demos" or path.startswith("/demos/") or path.startswith(DEMO_PATHS[1:])
 
 
 def _drain(tls: ssl.SSLSocket) -> None:
@@ -426,31 +509,13 @@ def _serve_wake_response(client: socket.socket, port: int) -> None:
         tls.settimeout(10)
         request = tls.recv(SPLICE_BUF)
         waking = waking_from_idle()
+        if _names_a_demo(request):
+            wake_sandbox()
         if PORTS[port]["wake_style"] == "html" and _wants_html(request):
-            heading, message = WAKING_TEXT if waking else UPDATING_TEXT
-            body = (
-                WAKE_HTML.replace("__HEADING__", heading).replace("__MESSAGE__", message).encode()
-            )
+            body = waking_page(WAKING_TEXT if waking else UPDATING_TEXT).encode()
             ctype = "text/html; charset=utf-8"
         else:
-            # REQ-1350 error shape: `code` is what the UI's catalog translates, `detail` is the
-            # English sentence it falls back to when the key is absent.
-            body = json.dumps(
-                {
-                    "detail": (
-                        "The environment is starting. It will be ready in about two minutes."
-                        if waking
-                        else "The environment is being updated. It will be back shortly."
-                    ),
-                    "code": (
-                        "front_door.coordinator_waking"
-                        if waking
-                        else "front_door.coordinator_updating"
-                    ),
-                    "params": {"retry_after_seconds": 120},
-                    "retry_after_seconds": 120,
-                }
-            ).encode()
+            body = json.dumps(waking_json(waking)).encode()
             ctype = "application/json"
         tls.sendall(
             b"HTTP/1.1 503 Service Unavailable\r\n"

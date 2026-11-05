@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Registry scan for a column's dependents (REQ-1484).
+"""Registry scan for a column's dependents (REQ-1484), as its caller may read them (REQ-2152).
 
 Advisory, not a gate: the answer is shown to the administrator before a save that renames a SQL alias
 or drops a column, and they decide. Because it only ever informs, the scans over free SQL text
@@ -42,6 +42,7 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.api.admin.read_rights import DependentsReader
 from provisa.lineage.dependents import Dependent, graph_dependents, relation_candidates
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def _mentions(sql_text: str | None, name: str) -> bool:
 
 
 async def _glossary_dependents(
-    conn: "Connection", table_id: int, column_name: str
+    conn: "Connection", table_id: int, column_name: str, reader: DependentsReader
 ) -> list[Dependent]:
     """The glossary terms this column is bound to, each stating what removing it would do.
 
@@ -79,6 +80,10 @@ async def _glossary_dependents(
             )
         )
     ).fetchall()
+    from provisa.core.repositories.glossary import term_domains
+
+    scopes = await term_domains(conn)
+    rows = [r for r in rows if reader.term(scopes.get(r.id, set()))]
     if not rows:
         return []
     term_ids = [r.id for r in rows]
@@ -186,19 +191,46 @@ async def _federation_graph(conn: "Connection"):
     return with_command_writes(merged, commands).graph
 
 
+async def _view_tables(conn: "Connection") -> dict[str, int]:
+    """A registered view's relation (as the federation graph names it) → its table id."""
+    res = await conn.execute_core(
+        select(
+            registered_tables.c.id, registered_tables.c.domain_id, registered_tables.c.table_name
+        ).where(
+            registered_tables.c.source_id == DERIVED_SOURCE_ID,
+            registered_tables.c.view_sql.is_not(None),
+        )
+    )
+    return {f"{domain_to_sql_name(r.domain_id)}.{r.table_name}": r.id for r in res.fetchall()}
+
+
+def _graph_readable(dependent: Dependent, views: dict[str, int], reader: DependentsReader) -> bool:
+    if dependent.kind == "command":
+        return reader.command(dependent.name)
+    table_id = views.get(dependent.name)
+    return table_id is not None and reader.column(table_id, None)
+
+
 async def _exposed_name_dependents(
-    conn: "Connection", row: dict, exposed: str, graph
+    conn: "Connection", row: dict, exposed: str, graph, reader: DependentsReader
 ) -> list[Dependent]:
     """Artifacts authored against the column's exposed name — they break on rename OR removal."""
     table_sql = apply_sql_name(row["alias"] or row["table_name"])
     domain_sql = domain_to_sql_name(row["domain_id"]) if row["domain_id"] else ""
-    out = graph_dependents(graph, relation_candidates(domain_sql, table_sql), exposed)
+    views = await _view_tables(conn)
+    out = [
+        d
+        for d in graph_dependents(graph, relation_candidates(domain_sql, table_sql), exposed)
+        if _graph_readable(d, views, reader)
+    ]
 
-    mres = await conn.execute_core(select(metrics.c.name, metrics.c.expression))
+    mres = await conn.execute_core(
+        select(metrics.c.name, metrics.c.expression, metrics.c.visible_to)
+    )
     out += [
         Dependent("metric", r.name, f"expression references {exposed}", "rename")
         for r in mres.fetchall()
-        if _mentions(r.expression, exposed)
+        if _mentions(r.expression, exposed) and reader.metric(dict(r._mapping))
     ]
 
     rres = await conn.execute_core(
@@ -225,22 +257,24 @@ async def _exposed_name_dependents(
     ]
 
     dres = await conn.execute_core(
-        select(registered_tables.c.table_name, registered_tables.c.dq_contract).where(
-            registered_tables.c.dq_contract.is_not(None)
-        )
+        select(
+            registered_tables.c.id, registered_tables.c.table_name, registered_tables.c.dq_contract
+        ).where(registered_tables.c.dq_contract.is_not(None))
     )
     out += [
         Dependent("dq_contract", r.table_name, f"contract references {exposed}", "rename")
         for r in dres.fetchall()
-        if _mentions(r.dq_contract, exposed)
+        if _mentions(r.dq_contract, exposed) and reader.column(r.id, None)
     ]
 
     vres = await conn.execute_core(
-        select(registered_tables.c.table_name, registered_tables.c.view_metrics).where(
-            registered_tables.c.view_metrics.is_not(None)
-        )
+        select(
+            registered_tables.c.id, registered_tables.c.table_name, registered_tables.c.view_metrics
+        ).where(registered_tables.c.view_metrics.is_not(None))
     )
     for r in vres.fetchall():
+        if not reader.column(r.id, None):
+            continue
         spec = r.view_metrics or {}
         refs = list(spec.get("dimensions") or []) + list(spec.get("filters") or [])
         if any(_mentions(ref, exposed) for ref in refs):
@@ -256,7 +290,7 @@ async def _exposed_name_dependents(
 
 
 async def _physical_name_dependents(
-    conn: "Connection", row: dict, column_name: str
+    conn: "Connection", row: dict, column_name: str, reader: DependentsReader
 ) -> list[Dependent]:
     """Artifacts storing the physical ``column_name`` — they break only on removal."""
     out: list[Dependent] = []
@@ -264,7 +298,11 @@ async def _physical_name_dependents(
 
     rres = await conn.execute_core(
         select(
-            relationships.c.id, relationships.c.source_column, relationships.c.target_column
+            relationships.c.id,
+            relationships.c.source_table_id,
+            relationships.c.target_table_id,
+            relationships.c.source_column,
+            relationships.c.target_column,
         ).where(
             or_(
                 relationships.c.source_table_id == tid,
@@ -273,10 +311,17 @@ async def _physical_name_dependents(
         )
     )
     for r in rres.fetchall():
-        if column_name in (r.source_column, r.target_column):
+        if r.source_table_id == tid and r.source_column == column_name:
+            other = (r.target_table_id, r.target_column)
+        elif r.target_table_id == tid and r.target_column == column_name:
+            other = (r.source_table_id, r.source_column)
+        else:
+            continue
+        # A relationship to a function has no target table: nothing at its other end to read.
+        if other[0] is None or reader.column(other[0], other[1]):
             out.append(Dependent("relationship", r.id, "join column", "remove"))
 
-    out += await _glossary_dependents(conn, tid, column_name)
+    out += await _glossary_dependents(conn, tid, column_name, reader)
 
     tres = await conn.execute_core(
         select(tag_assignments.c.tag_id).where(
@@ -306,24 +351,30 @@ async def _physical_name_dependents(
 
 
 async def dependents_for(
-    conn: "Connection", table_id: int, *, renamed: list[str], removed: list[str]
+    conn: "Connection",
+    table_id: int,
+    *,
+    renamed: list[str],
+    removed: list[str],
+    reader: DependentsReader,
 ) -> dict[str, list[Dependent]]:
-    """physical column name → the artifacts a pending edit would break (REQ-1484).
+    """physical column name → the artifacts a pending edit would break (REQ-1484) that ``reader``
+    may read (REQ-2152).
 
     ``renamed`` names columns whose SQL alias is changing (their CURRENT exposed name is what
     dependents were authored against); ``removed`` names columns being dropped, which breaks both
-    reference styles."""
+    reference styles. A column ``reader`` is not served is answered as one the table lacks."""
     row = await _table_row(conn, table_id)
     exposed = await _exposed_names(conn, table_id)
     graph = await _federation_graph(conn)
 
     out: dict[str, list[Dependent]] = {}
     for name in dict.fromkeys([*renamed, *removed]):
-        if name not in exposed:
+        if name not in exposed or not reader.column(table_id, name):
             raise ValueError(f"column {name!r} is not a column of table {table_id}")
-        found = await _exposed_name_dependents(conn, row, exposed[name], graph)
+        found = await _exposed_name_dependents(conn, row, exposed[name], graph, reader)
         if name in removed:
-            found += await _physical_name_dependents(conn, row, name)
+            found += await _physical_name_dependents(conn, row, name, reader)
         if found:
             out[name] = found
     return out

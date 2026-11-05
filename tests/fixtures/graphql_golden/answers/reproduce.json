@@ -1,0 +1,58 @@
+[
+ {
+  "columns": [
+   "desk",
+   "exposure",
+   "valid_from"
+  ],
+  "engine": "duckdb",
+  "ordered": false,
+  "origin": "demo:reproduce/1-exposure-now.graphql",
+  "root_field": "r__viewExposure",
+  "rows": [
+   [
+    "credit",
+    "1.182E+6",
+    "2026-09-30 00:00:00"
+   ],
+   [
+    "fx",
+    "3.81E+5",
+    "2026-09-30 00:00:00"
+   ],
+   [
+    "rates",
+    "1.54E+6",
+    "2026-09-30 00:00:00"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "desk",
+   "exposure",
+   "valid_from"
+  ],
+  "engine": "postgres",
+  "ordered": false,
+  "origin": "demo:reproduce/1-exposure-now.graphql",
+  "root_field": "r__viewExposure",
+  "rows": [
+   [
+    "credit",
+    "1.182E+6",
+    "2026-09-30 00:00:00"
+   ],
+   [
+    "fx",
+    "3.81E+5",
+    "2026-09-30 00:00:00"
+   ],
+   [
+    "rates",
+    "1.54E+6",
+    "2026-09-30 00:00:00"
+   ]
+  ]
+ }
+]

@@ -28,6 +28,7 @@ fragment ColumnFields on TableColumnType {
   computedGqlAlias
   description
   dataType
+  subtype
   nativeFilterType
   nativeFilterRequired
   requiredBySteward
@@ -69,9 +70,13 @@ query RolesQuery {
     id
     description
     capabilities
+    effectiveCapabilities
+    effectiveDomains
+    effectiveResidencyValues
     demonstrated
     domainAccess
-    parentRoleId
+    parents
+    standard
     residencyValues
     inactivityDays
     sessionVars {
@@ -82,6 +87,28 @@ query RolesQuery {
       requestsPerSecond
       maxQueryComplexity
       maxQueryTimeMs
+      llmCallCap {
+        amount
+        unit
+      }
+      llmWindows {
+        hour {
+          amount
+          unit
+        }
+        day {
+          amount
+          unit
+        }
+        week {
+          amount
+          unit
+        }
+        month {
+          amount
+          unit
+        }
+      }
     }
   }
 }
@@ -114,6 +141,7 @@ query SourcesQuery {
     federationHintsJson
     passwordRef
     changeSignal
+    rowFetchByKeys
     cdc {
       bootstrapServers
       topicPrefix
@@ -161,6 +189,15 @@ query ResolveOwners($refs: [String!]!) {
   }
 }
 
+# REQ-2153: listed columns' names in domains the caller does not reach -- names only.
+query ListedNamesQuery {
+  listedNames {
+    domainId
+    tableName
+    columnNames
+  }
+}
+
 query DataProductsQuery {
   dataProducts {
     id
@@ -173,9 +210,10 @@ query DataProductsQuery {
     usage
     version
     status
-    sla
     support
+    supportContact
     customProperties
+    createdAt
   }
 }
 
@@ -211,6 +249,62 @@ query TagAssignmentsQuery {
   }
 }
 
+# The fields of a registered table every table list reads: no editor knob, and neither of the
+# per-table derived fields the server works out per table only when asked (refreshPolicySummary,
+# qualityCheckers). LISTED_TABLE_FIELDS (types/admin.ts) names the same fields.
+fragment ListedTableFields on RegisteredTableType {
+  id
+  sourceId
+  domainId
+  schemaName
+  tableName
+  alias
+  description
+  draft
+  viewSql
+  materialize
+  productId
+  dqContract
+  dqDataset
+  timeTravel
+  apiEndpoint
+  modelingRole
+  viewMetrics {
+    metrics
+    dimensions
+    filters
+  }
+}
+
+# The registered tables without their columns, for the pages that name, count or pick tables and
+# show none of their columns.
+query TableRowsQuery {
+  tables {
+    ...ListedTableFields
+  }
+}
+
+# The registered tables with the columns the pages that list them read. TablesQuery is the
+# editor's, every field of every table.
+query TableListQuery {
+  tables {
+    ...ListedTableFields
+    columns {
+      id
+      columnName
+      alias
+      computedSqlAlias
+      description
+      dataType
+      nativeFilterType
+      nativeFilterRequired
+      requiredBySteward
+      isPrimaryKey
+      isForeignKey
+    }
+  }
+}
+
 query TablesQuery {
   tables {
     id
@@ -241,6 +335,7 @@ query TablesQuery {
     replicate
     region
     draft
+    rowMaterialize
     loadProtected
     offPeakWindow
     offPeakTz
@@ -251,6 +346,7 @@ query TablesQuery {
     }
     gqlNamingConvention
     graphqlFieldName
+    timeTravel
     dqDataset
     qualityCheckers {
       tableId
@@ -264,6 +360,7 @@ query TablesQuery {
     probeQuery
     probeType
     apiEndpoint
+    apiEndpointError
     viewSql
     dqContract
     profilerSourceId
@@ -285,6 +382,7 @@ query TablesQuery {
     pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
+    mvHoldOnFailingChecks
     businessKey
     validTime
     recordedTime
@@ -590,6 +688,7 @@ query RelationshipsQuery {
     graphqlAlias
     physicalName
     computedCypherAlias
+    cypherType
     autoSuggested
     disableCypher
     sameEntity
@@ -626,6 +725,7 @@ query AllRelationshipsQuery {
     graphqlAlias
     physicalName
     computedCypherAlias
+    cypherType
     autoSuggested
     disableCypher
     sameEntity
@@ -653,6 +753,7 @@ query RLSRulesQuery {
     roleId
     filterExpr
     description
+    rights
   }
 }
 
@@ -679,6 +780,7 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
       rowsField
     }
     pagingCeilingRows
+    requiredParameters
   }
 }
 
@@ -702,6 +804,7 @@ query AvailableColumnsMetadata($sourceId: String!, $schemaName: String!, $tableN
   availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
     name
     dataType
+    subtype
     comment
     nativeFilterType
     nativeFilterRequired
@@ -754,6 +857,8 @@ mutation CompileQuery($input: CompileQueryInput!) {
     canonicalField
     compiledCypher
     cypherError
+    compiledSparql
+    sparqlError
     optimizations
     warnings
     columnAliases {
@@ -890,6 +995,7 @@ query SystemHealth {
       name
       status
       port
+      path
     }
     mvRefreshLoopRunning
   }
@@ -955,9 +1061,53 @@ mutation UpdateDataProduct($input: DataProductInput!) {
   }
 }
 
+mutation SaveDataContract($tableId: Int!, $contract: DataContractInput!) {
+  saveDataContract(tableId: $tableId, contract: $contract) {
+    ...MutationResult
+  }
+}
+
 mutation DeleteDataProduct($id: String!) {
   deleteDataProduct(id: $id) {
     ...MutationResult
+  }
+}
+
+# REQ-1634 STATUS: a data product's lifecycle, one mutation per action.
+mutation PublishDataProduct($id: String!) {
+  publishDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation DeprecateDataProduct($id: String!, $reason: String!, $retireOn: Date) {
+  deprecateDataProduct(id: $id, reason: $reason, retireOn: $retireOn) {
+    ...MutationResult
+  }
+}
+
+mutation RetireDataProduct($id: String!, $reason: String!, $successor: String) {
+  retireDataProduct(id: $id, reason: $reason, successor: $successor) {
+    ...MutationResult
+  }
+}
+
+mutation RestoreDataProduct($id: String!) {
+  restoreDataProduct(id: $id) {
+    ...MutationResult
+  }
+}
+
+# REQ-2146: what a curator should look at in the data products, by product.
+query DataProductFindingsQuery {
+  dataProductFindings {
+    productId
+    findings {
+      kind
+      code
+      message
+      params
+    }
   }
 }
 
@@ -1034,6 +1184,11 @@ mutation DeleteTable($id: Int!) {
 }
 
 # REQ-962: snapshot-boundary calendars — the picker source + create form for the MV snapshot schedule.
+# REQ-2133: the built-in preflight a view's Hold on failing checks option applies.
+query HoldOnFailingChecksSource {
+  holdOnFailingChecksSource
+}
+
 query Calendars {
   calendars {
     name
@@ -1120,8 +1275,8 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
   }
 }
 
-mutation RefreshKaggleSource($sourceId: String!, $token: String!) {
-  refreshKaggleSource(sourceId: $sourceId, token: $token) {
+mutation RefreshKaggleSource($sourceId: String!) {
+  refreshKaggleSource(sourceId: $sourceId) {
     ...MutationResult
   }
 }
@@ -1248,6 +1403,7 @@ mutation DeleteRlsRule(
   $domainId: String
   $actionName: String
   $tagId: String
+  $id: Int
 ) {
   deleteRlsRule(
     roleId: $roleId
@@ -1255,6 +1411,7 @@ mutation DeleteRlsRule(
     domainId: $domainId
     actionName: $actionName
     tagId: $tagId
+    id: $id
   ) {
     ...MutationResult
   }

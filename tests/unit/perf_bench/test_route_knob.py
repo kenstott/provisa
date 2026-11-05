@@ -38,7 +38,11 @@ PERF_CONTRACT = BENCH / "setups" / "perf-stack.yaml"
 ENV = {"PROVISA_HTTP_BASE_URL": "http://localhost:8001"}
 TRANSPORTS = list(ol.TRANSPORTS)
 SOURCES = ["bench-postgresql", "bench-clickhouse", "bench-mongodb", "bench-neo4j"]
-NO_ROUTE_HINT = ["grpc", "rest", "jsonapi"]
+NO_ROUTE_HINT = [
+    t
+    for t, language in contract_model.TRANSPORT_LANGUAGE.items()
+    if language in contract_model.NO_ROUTE_HINT_LANGUAGES
+]
 
 
 def _mode(raw: dict[str, Any], source: str, mode: str, p: float) -> None:

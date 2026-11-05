@@ -303,7 +303,8 @@ def test_tolower_rewritten():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN toLower(n.name)")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
+    # The column is named as the statement writes it (toLower(n.name)); its expression is lower().
+    sql = sql_ast.expressions[0].this.sql(dialect="trino")
     assert "lower(" in sql.lower()
     assert "tolower" not in sql.lower()
 
@@ -380,8 +381,10 @@ def test_ends_with_predicate():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.name ENDS WITH 'e' RETURN n.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "like" in sql.lower() or "LIKE" in sql
+    sql = sql_ast.sql(dialect="postgres")
+    # The value's own characters, no LIKE wildcards (a % or _ in it is itself).
+    assert "LIKE" not in sql.upper()
+    assert "(RIGHT(n.\"name\", LENGTH('e')) = 'e')" in sql
 
 
 def test_regex_predicate():
@@ -389,7 +392,8 @@ def test_regex_predicate():
     ast = parse_cypher("MATCH (n:Person) WHERE n.name =~ 'Al.*' RETURN n.name")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "regexp_like" in sql.lower()
+    # Cypher's =~ matches the whole string.
+    assert "regexp_like(n.\"name\", '^(?:al.*)$')" in sql.lower()
 
 
 def test_cypher_calls_to_sql_list():
@@ -751,13 +755,14 @@ def test_domain_union_includes_branch_when_any_required_prop_exists():
     assert "companies" in sql.lower()
 
 
-def test_labeled_node_where_missing_prop_short_circuits():
-    """MATCH (n:Person) WHERE n.date IS NOT NULL — Person has no 'date'; WHERE FALSE, no table scan."""
+def test_a_property_the_label_has_not_is_null():
+    """MATCH (n:Person) WHERE n.date IS NOT NULL -- Person has no 'date': it is null, as a graph's
+    missing property is, and no column is read by that name."""
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE n.date IS NOT NULL RETURN n.date LIMIT 25")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "where false" in sql.lower()
+    assert '"date"' not in sql and "NOT NULL IS NULL" in sql
 
 
 def test_labeled_node_where_existing_prop_not_short_circuited():
@@ -769,35 +774,18 @@ def test_labeled_node_where_existing_prop_not_short_circuited():
     assert "persons" in sql.lower()
 
 
-def test_short_circuit_drops_orphaned_bound_param():
-    """A bound $param used only in a now-discarded WHERE FALSE must not survive in param_order —
-    otherwise the caller's positional `[parameters.get(name) for name in ordered_params]` hands the
-    executor one more bound value than the query has `$N` placeholders for, and DuckDB/Postgres both
-    reject it as an argument-count mismatch (the exact crash this test guards against)."""
-    lm = _make_label_map()
-    ast = parse_cypher("MATCH (n:Person) WHERE n.missing_prop = $x RETURN n.name")
-    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42})
-    sql = sql_ast.sql(dialect="postgres")
-    assert "where false" in sql.lower()
-    assert param_names == []
-    assert "$1" not in sql
-
-
-def test_short_circuit_renumbers_surviving_param():
-    """A bound param used ONLY inside the discarded WHERE must be pruned, and any surviving param
-    referenced elsewhere (here, in an UNWIND source) must be renumbered to stay contiguous from $1 —
-    dropping the dead entry without renumbering would silently rebind the surviving param's value to
-    the wrong ordinal."""
+def test_a_missing_property_compared_to_a_param_keeps_the_param_bound():
+    """The condition on a missing property stays the statement's (it is null, not dropped), and
+    every parameter keeps its own placeholder."""
     lm = _make_label_map()
     ast = parse_cypher(
         "MATCH (n:Person) WHERE n.missing_prop = $x UNWIND $keep AS k RETURN n.name, k"
     )
     sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"x": 42, "keep": [1, 2]})
     sql = sql_ast.sql(dialect="postgres")
-    assert "where false" in sql.lower()
-    assert param_names == ["keep"]
-    assert "$1" in sql
-    assert "$2" not in sql
+    assert sorted(param_names) == ["keep", "x"]
+    assert f"NULL = ${param_names.index('x') + 1}" in sql
+    assert '"missing_prop"' not in sql
 
 
 def test_type_and_domain_label_uses_type_table():
@@ -865,13 +853,13 @@ def test_allshortestpaths_same_result_as_shortestpath():
     assert "companies" in sql.lower()
 
 
-def test_shortestpath_no_path_raises():
+def test_shortestpath_with_no_schema_path_is_no_rows():
+    # REQ-347: a pattern no relationship can match answers no rows, never an error. No
+    # relationship leaves a Company, so the walk takes no first hop.
     lm = _make_label_map()
-    from provisa.gql.translator_types import CypherTranslateError
-
     ast = parse_cypher("MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name")
-    with pytest.raises(CypherTranslateError, match="No schema path"):
-        cypher_to_sql(ast, lm, {})
+    sql = cypher_to_sql(ast, lm, {})[0].sql(dialect="postgres")
+    assert "WHERE FALSE" in sql
 
 
 def test_shortestpath_multiple_schema_paths_union_all():
@@ -973,7 +961,8 @@ def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
 
 
 def test_domain_labeled_target_filters_rels_union():
-    """MATCH (n)-[]-(m:Sales) with two domains — only Sales rels appear, not cross-domain ones."""
+    """MATCH (n)-[]->(m:Sales) with two domains — only Sales rels appear, not cross-domain ones;
+    read undirected, a cross-domain relationship ending at a Sales node is read from that end."""
     # Two domains: Sales=[Person, Company], Other=[Company2].
     # Rel KNOWS: Person→Person (Sales↔Sales), WORKS_AT: Person→Company (Sales→Sales)
     # When m:Sales, the all-rels union must NOT include rels targeting non-Sales nodes.
@@ -1046,13 +1035,29 @@ def test_domain_labeled_target_filters_rels_union():
         relationships={"KNOWS": knows_rel, "OWNS": owns_rel},
         domains={"Sales": ["Sales_Person", "Sales_Company"], "Other": ["Other_Widget"]},
     )
-    ast = parse_cypher("MATCH (n)-[]-(m:Sales) RETURN n, m")
+    ast = parse_cypher("MATCH (n)-[]->(m:Sales) RETURN n, m")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     # Sales rels should appear
     assert "persons" in sql.lower()
     # Other domain table must NOT appear — we constrained target to Sales
     assert "widgets" not in sql.lower()
+    # Undirected, either end of a relationship may be m: OWNS is read from its target, a Widget
+    # as n and its Sales owner as m. m is a Sales node in every branch, never a Widget.
+    import sqlglot.expressions as sx
+
+    sql_ast, _, _ = cypher_to_sql(parse_cypher("MATCH (n)-[]-(m:Sales) RETURN n, m"), lm, {})
+    union = sql_ast.find(sx.Subquery).this
+    branches = [union] if isinstance(union, sx.Select) else list(union.find_all(sx.Select))
+    ends = {
+        (b.selects[0].this.expressions[3].name, b.selects[2].this.expressions[3].name)
+        for b in branches
+        if b.selects and b.selects[0].alias == "n"
+    }
+    assert ends == {
+        ("Sales:Person", "Sales:Person"),
+        ("Other:Widget", "Sales:Person"),
+    }
 
 
 def test_anonymous_nodes_relationship_return_r():
@@ -1293,7 +1298,9 @@ def test_an_unregistered_rel_type_is_refused():
 
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
-    with pytest.raises(UnregisteredRelationshipType, match=r"type\(s\): UNKNOWN_REL") as refused:
+    with pytest.raises(
+        UnregisteredRelationshipType, match=r"There is no relationship type :UNKNOWN_REL\."
+    ) as refused:
         cypher_to_sql(ast, lm, {})
     assert refused.value.types == ["UNKNOWN_REL"]
     known = sorted(lm.aliases)[0]
@@ -1430,24 +1437,30 @@ def test_compound_label_domain_only():
     assert "n" in graph_vars
 
 
-def test_compound_label_case_insensitive_table():
-    """MATCH (n:Support:Supporttickets) — wrong case on table label — should still resolve."""
+def test_compound_label_case_sensitive_table():
+    """Labels are case-sensitive (openCypher): MATCH (n:Support:Supporttickets) names no table,
+    and is refused by name, offering the declared label; :Support:SupportTickets resolves."""
+    from provisa.gql.translator_types import CypherMistake
+
     lm = _make_label_map_compound()
-    ast = parse_cypher("MATCH (n:Support:Supporttickets) RETURN n LIMIT 25")
+    with pytest.raises(
+        CypherMistake, match=r"There is no label :Supporttickets\..*:SupportTickets"
+    ):
+        cypher_to_sql(parse_cypher("MATCH (n:Support:Supporttickets) RETURN n LIMIT 25"), lm, {})
+    ast = parse_cypher("MATCH (n:Support:SupportTickets) RETURN n LIMIT 25")
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "support_tickets" in sql.lower()
+    assert "support_tickets" in sql_ast.sql(dialect="trino").lower()
     assert "n" in graph_vars
 
 
-def test_compound_label_case_insensitive_domain():
-    """MATCH (n:support:SupportTickets) — wrong case on domain label — should still resolve."""
+def test_compound_label_case_sensitive_domain():
+    """Labels are case-sensitive (openCypher): MATCH (n:support:SupportTickets) names no domain,
+    and is refused by name, offering the declared :Support."""
+    from provisa.gql.translator_types import CypherMistake
+
     lm = _make_label_map_compound()
-    ast = parse_cypher("MATCH (n:support:SupportTickets) RETURN n LIMIT 25")
-    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
-    sql = sql_ast.sql(dialect="trino")
-    assert "support_tickets" in sql.lower()
-    assert "n" in graph_vars
+    with pytest.raises(CypherMistake, match=r"There is no label :support\..*:Support"):
+        cypher_to_sql(parse_cypher("MATCH (n:support:SupportTickets) RETURN n LIMIT 25"), lm, {})
 
 
 def test_from_schema_table_label_from_field_name():
@@ -2285,9 +2298,9 @@ def test_where_after_optional_match_does_not_filter_base_rows():
 
 
 def test_where_on_required_match_variable_is_not_guarded():
-    """WHERE referencing only a required MATCH variable should remain a plain WHERE.
-
-    No IS NULL guard needed — required MATCH variables are never NULL.
+    """An OPTIONAL MATCH's WHERE is its condition, never a filter of the rows: a condition on
+    a required MATCH variable conditions the optional join (every n is kept, c null where it does
+    not hold). No IS NULL guard is needed: required MATCH variables are never NULL.
     """
     lm = _make_label_map()
     ast = parse_cypher(
@@ -2304,6 +2317,9 @@ def test_where_on_required_match_variable_is_not_guarded():
         f"WHERE on required MATCH variable must not add IS NULL guard: {sql}"
     )
     assert "30" in sql, f"WHERE condition should still appear in SQL: {sql}"
+    assert " WHERE " not in sql.upper(), (
+        f"the condition must be the LEFT JOIN's, not a WHERE: {sql}"
+    )
 
 
 def _make_label_map_bidir_multi_hop() -> CypherLabelMap:
@@ -2571,3 +2587,109 @@ def test_an_untyped_relationship_from_a_labeled_node_reads_only_that_node_types_
     sql = sql_ast.sql(dialect="trino")
     assert "'EMPLOYS'" in sql
     assert "'WORKS_AT'" not in sql and "'KNOWS'" not in sql
+
+
+def test_map_group_key_groups_by_its_values_and_orders_by_alias_key():
+    # REQ-2135: a GraphQL group-by lowers to RETURN {age: n.age} AS groupKey, {...count(*)...}.
+    # The map groups by its values (the same groups), and ORDER BY groupKey.age orders by the
+    # value itself: grouped by the map alone, an engine refuses n.age in the ORDER BY, and the
+    # map's column holds the value JSON-encoded.
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN {age: n.age} AS groupKey, {count: count(*)} AS aggregate "
+        "ORDER BY groupKey.age DESC"
+    )
+    sql = cypher_to_sql(ast, lm, {})[0].sql(dialect="postgres")
+    group_by = sql.split("GROUP BY", 1)[1].split("ORDER BY", 1)[0].strip()
+    assert group_by == 'n."age"'
+    assert sql.split("ORDER BY", 1)[1].strip().startswith('n."age" DESC')
+
+
+def _rows_of(cypher: str, label_map: CypherLabelMap) -> list[tuple]:
+    """A translated statement with no model table in it, run."""
+    import duckdb
+    from provisa.cypher.parser import parse_cypher
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    sql, _params, _graph_vars = cypher_to_sql(parse_cypher(cypher, label_map), label_map, {})
+    return duckdb.connect().execute(transpile_to_duckdb(sql.sql(dialect="postgres"))).fetchall()
+
+
+@pytest.mark.parametrize(
+    "cypher,expected",
+    [
+        ("CALL db.labels() YIELD label RETURN label", [("Company",), ("Person",)]),
+        (
+            "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType",
+            [("MANAGES",), ("WORKS_AT",)],
+        ),
+        ("CALL db.propertyKeys() YIELD propertyKey RETURN propertyKey", [("age",), ("name",)]),
+        ("CALL db.labels() YIELD label AS l WHERE l <> 'Person' RETURN l", [("Company",)]),
+    ],
+)
+def test_a_schema_procedure_yielding_is_answered_from_the_label_map(cypher, expected):
+    """REQ-572: as bare ``CALL db.labels()`` is; no command of that name is looked for."""
+    assert sorted(_rows_of(cypher, _make_label_map_multi_path())) == expected
+
+
+@pytest.mark.parametrize(
+    "cypher,expected",
+    [
+        ("CALL db.labels() YIELD label", [("Company",), ("Person",)]),
+        ("CALL db.labels() YIELD label;", [("Company",), ("Person",)]),
+        ("CALL db.relationshipTypes() YIELD relationshipType", [("MANAGES",), ("WORKS_AT",)]),
+        ("CALL db.propertyKeys() YIELD propertyKey", [("age",), ("name",)]),
+        ("CALL db.labels() YIELD label AS l WHERE l <> 'Person'", [("Company",)]),
+    ],
+)
+def test_a_schema_procedure_standing_alone_returns_what_it_yields(cypher, expected):
+    """REQ-572: a YIELD with no RETURN is Neo4j's standalone call."""
+    assert sorted(_rows_of(cypher, _make_label_map_multi_path())) == expected
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    ["CALL db.labels() YIELD *", "call db.labels() yield * ;", "CALL db.labels();"],
+)
+def test_a_schema_procedure_standing_alone_reads_a_star_as_the_bare_call(cypher):
+    from provisa.api.rest.registered_call import _detect_procedure
+
+    assert _detect_procedure(cypher) == "db.labels"
+
+
+def test_a_call_standing_alone_returns_each_variable_in_the_order_yielded():
+    from provisa.cypher.parser import parse_cypher
+
+    ast = parse_cypher("CALL my.proc() YIELD b AS y, a AS x WHERE x > 1")
+    assert ast.return_clause is not None
+    assert [item.name for item in ast.return_clause.items] == ["y", "x"]
+
+
+@pytest.mark.parametrize(
+    "cypher",
+    [
+        "CALL db.labels() YIELD label ORDER BY label",
+        "CALL db.labels() YIELD label LIMIT 1",
+        "MATCH (n:Person) CALL db.labels() YIELD label",
+        "CALL db.labels() YIELD label UNION CALL db.labels() YIELD label",
+    ],
+)
+def test_a_call_in_a_larger_statement_still_needs_its_return(cypher):
+    from provisa.cypher.parser import CypherParseError, parse_cypher
+
+    with pytest.raises(CypherParseError, match="Missing RETURN clause"):
+        parse_cypher(cypher)
+
+
+def test_a_schema_procedure_of_nothing_is_no_rows():
+    assert _rows_of("CALL db.labels() YIELD label RETURN label", CypherLabelMap({}, {})) == []
+
+
+def test_a_schema_procedure_yields_only_its_column():
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.translator_types import CypherTranslateError
+
+    label_map = _make_label_map_multi_path()
+    ast = parse_cypher("CALL db.labels() YIELD nope RETURN nope", label_map)
+    with pytest.raises(CypherTranslateError, match="it yields label"):
+        cypher_to_sql(ast, label_map, {})

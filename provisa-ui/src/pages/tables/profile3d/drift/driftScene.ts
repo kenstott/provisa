@@ -74,17 +74,20 @@ export class DriftScene extends BaseScene<StrataHover> {
   // ---------- public ----------
 
   setData(model: StrataModel, resetCamera: boolean) {
+    this.invalidate();
     this.model = model;
     this.rebuild();
     if (resetCamera) this.resetView(true);
   }
 
   setSelected(run: number | null) {
+    this.invalidate();
     this.selected = run;
     this.runs.forEach((r, i) => r.label.classList.toggle("is-selected", i === run));
   }
 
   setHover(h: StrataHover | null) {
+    this.invalidate();
     if (h?.run === this.hover?.run && h?.bin === this.hover?.bin) return;
     this.hover = h;
     if (this.hoverMesh) {
@@ -122,6 +125,7 @@ export class DriftScene extends BaseScene<StrataHover> {
   }
 
   resetView(instant = false) {
+    this.invalidate();
     const n = (this.model as StrataModel).runs.length;
     const depth = n * GAP;
     let dist = Math.max(D, depth) * 1.35;

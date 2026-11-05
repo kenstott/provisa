@@ -23,6 +23,8 @@ with (``replica_address.address_replicas``).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import functools
 import asyncio
 import logging
@@ -144,9 +146,11 @@ def home_keeps_by_key(source: Any, table: Any, region: Any) -> bool:
     source in place. Such a region holds only the rows its own reads fetched, so no other region
     reads the table from it."""
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
+    engine = _judging_engine(region.engine_kind)
     return bool(getattr(table, "row_materialize", False)) and not engine_attaches(
-        _judging_engine(region.engine_kind), _source_type(source)
+        engine, reach_type(source, engine)
     )
 
 
@@ -437,6 +441,7 @@ def routes_with_draft(state: Any, draft: dict, source: Any) -> ReplicaRoutes:
         source_id=source.id,
         table_name=draft["table_name"],
         target=(backend.replica_read_catalog(state), address.schema, address.table),
+        not_landed=_not_landed(source, draft, lambda: backend.dialect),  # REQ-2171
     )
     keys = engine_table_keys(engine, state.source_catalogs[source.id], draft["schema_name"], name)
     setting = table_floor(source, draft, promoted=False)
@@ -491,7 +496,9 @@ async def landing_worklist(
 
     The tables of :func:`replica_tables` whose data columns all have a resolved type. A registered
     data column with no type is a registration gap and the table is skipped (logged), never
-    guessed. Shared by every backend's ``reconcile_landed_tables`` so the engines agree on exactly
+    guessed. A table kept row by row (``replica_converge.row_level``) is not here: its row cache,
+    at the same address, holds bookkeeping columns of its own, and reconciled to the data columns
+    it was re-created, dropping the rows a read had just fetched. Shared by every backend's ``reconcile_landed_tables`` so the engines agree on exactly
     which tables are reconciled — they differ only in what they do with each entry."""
     return _worklist(engine, await replica_tables(engine, state))
 
@@ -508,9 +515,12 @@ def _worklist(
     engine: Any, tables: list[tuple[Any, dict]]
 ) -> list[tuple[Any, str, str, list[tuple[str, str]], list[str], str | None]]:
     from provisa.core.ir_types import to_ir
+    from provisa.federation.replica_converge import row_level
 
     work: list[tuple[Any, str, str, list[tuple[str, str]], list[str], str | None]] = []
     for src, reg in tables:
+        if row_level(src, reg, engine):
+            continue
         data_cols = _data_columns(reg)
         if any(c["data_type"] is None for c in data_cols):
             _log.warning(
@@ -531,6 +541,28 @@ def _worklist(
             )
         )
     return work
+
+
+def _not_landed(
+    source: Any, reg: dict, platform_of: Callable[[], str]
+) -> tuple[tuple[str, str, str], ...]:
+    """REQ-2171: each column of ``reg`` its replica was built without -- a subtyped column no
+    reader of ``source`` has a form to land in: (its name lowercased, subtype, reader)."""
+    from types import SimpleNamespace
+
+    from provisa.federation.residency import not_landed
+
+    columns = [
+        SimpleNamespace(name=c["column_name"], subtype=c["subtype"])
+        for c in reg["columns"]
+        if c["subtype"]
+    ]
+    if not columns:
+        return ()
+    return tuple(
+        (name.lower(), subtype, reader)
+        for name, subtype, reader in not_landed(source, columns, platform_of())
+    )
 
 
 async def replica_routes(state: Any) -> ReplicaRoutes:
@@ -569,6 +601,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
             source_id=src.id,
             table_name=reg["table_name"],
             target=(read_catalog, address.schema, address.table),
+            not_landed=_not_landed(src, reg, lambda: backend.dialect),  # REQ-2171
         )
         for key in keys:
             if key in ambiguous:
@@ -612,6 +645,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
             target=await asyncio.to_thread(
                 backend.region_read_address, state, region, address.schema, address.table
             ),
+            not_landed=_not_landed(src, reg, lambda: backend.dialect),  # REQ-2171
         )
         for key in keys:
             if key in ambiguous:

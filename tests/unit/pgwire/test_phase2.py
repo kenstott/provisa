@@ -46,6 +46,7 @@ class _ColMeta:
     column_name: str
     data_type: str
     is_nullable: bool
+    subtype: str | None = None  # REQ-2171
 
 
 def _make_state(tables: dict, col_types: dict) -> Any:
@@ -85,14 +86,17 @@ class TestParamSubstitution:
         assert _substitute_params("SELECT $1", [True]) == "SELECT TRUE"
 
     def test_multi_params(self):
-        assert _substitute_params("WHERE a=$1 AND b=$2", ["x", 5]) == "WHERE a='x' AND b=5"
+        # A statement, as PostgreSQL binds one: $N is bound on its tree (REQ-2167).
+        bound = _substitute_params("SELECT * FROM t WHERE a = $1 AND b = $2", ["x", 5])
+        assert bound == "SELECT * FROM t WHERE a = 'x' AND b = 5"
 
     def test_large_index_first(self):
-        params = ["a"] * 10
-        result = _substitute_params("$1 $10", params)
+        # $10 is its own parameter, not $1 followed by 0: each binds its own value.
+        params = [f"p{i}" for i in range(1, 11)]
+        result = _substitute_params("SELECT $1, $10", params)
         assert "$10" not in result
         assert "$1" not in result
-        assert result == "'a' 'a'"
+        assert result == "SELECT 'p1', 'p10'"
 
     def test_sql_injection_escaped(self):
         assert _substitute_params("SELECT $1", ["O'Brien"]) == "SELECT 'O''Brien'"

@@ -13,8 +13,10 @@
  *
  * A checker has no remote schema — nothing exists upstream until a scan runs — so the form must not
  * ask for one. It asks for the governed table to scan (the contract panel's dataset picker) and
- * derives the results table's name, alias and description from it, leaving the operator with the
- * rules. The payload carries the contract and the one placeholder column the server replaces.
+ * derives the results table's name and alias from it, leaving the operator with the rules -- and,
+ * REQ-2132, the description, asked for as the reason the check exists (its quality claim), which
+ * nothing derives. The payload carries the contract and the one placeholder column the server
+ * replaces.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -124,7 +126,7 @@ describe("RegisterTableForm on a checker source (REQ-1663)", () => {
     for (const call of useAvailableTables.mock.calls) expect(call[0]).toBeNull();
   });
 
-  it("derives the results table, alias and description from the scanned table", async () => {
+  it("derives the results table and alias from the scanned table, and asks why the check exists", async () => {
     const { suggestTableAlias } = renderForm();
     await pickScanTarget();
 
@@ -134,9 +136,10 @@ describe("RegisterTableForm on a checker source (REQ-1663)", () => {
       checks: [],
     });
     expect(screen.getByPlaceholderText("Semantic name override")).toHaveValue("pets_quality");
-    expect(
-      (screen.getByPlaceholderText("Appears in SDL docs") as HTMLInputElement).value,
-    ).toContain("pet_store.pets");
+    // REQ-2132: the description is the check's claim, the registrant's to state.
+    const reason = screen.getByTestId("register-table-description") as HTMLInputElement;
+    expect(reason).toHaveValue("");
+    expect(screen.getByLabelText("Why this check exists")).toBe(reason);
     expect(suggestTableAlias).not.toHaveBeenCalled();
   });
 

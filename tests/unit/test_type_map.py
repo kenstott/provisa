@@ -10,8 +10,6 @@
 
 """Unit tests for provisa.compiler.type_map.column_type_to_graphql."""
 
-import pytest
-
 from provisa.compiler.type_map import GraphQLFloat, GraphQLString, column_type_to_graphql
 
 
@@ -34,6 +32,6 @@ def test_column_type_to_graphql_postgres_double_precision():
     assert column_type_to_graphql("double precision") is GraphQLFloat
 
 
-def test_column_type_to_graphql_unmapped_type_raises():
-    with pytest.raises(ValueError, match="Unmapped the engine type"):
-        column_type_to_graphql("some_made_up_type")
+def test_column_type_to_graphql_a_type_naming_no_ir_type_is_text():
+    # REQ-2171: every type maps onto the IR; one naming none of it is text.
+    assert column_type_to_graphql("some_made_up_type") == column_type_to_graphql("text")

@@ -33,6 +33,8 @@ interface NodeContextMenuProps {
   menuRef: React.Ref<HTMLDivElement>;
   nodes: Map<string, GNode>;
   overlayNodes: Map<string, GNode>;
+  /** A node's expansion is a DESCRIBE of it: offered on every resource, and it reads no model. */
+  describable?: boolean;
   pkMap: Record<string, string[]>;
   labelToTableLabel: Record<string, string>;
   relationships: Relationship[];
@@ -57,6 +59,7 @@ export function NodeContextMenu({
   menuRef,
   nodes,
   overlayNodes,
+  describable = false,
   pkMap,
   labelToTableLabel,
   relationships,
@@ -96,7 +99,8 @@ export function NodeContextMenu({
   const isTarget = (r: (typeof relationships)[0]) =>
     dbTableLabel(r.targetTableName) === tableLabel ||
     siblingLabels.includes(dbTableLabel(r.targetTableName));
-  const hasChildRels = relationships.some(isSource);
+  const hasChildRels =
+    (describable && typeof ctxNode?.properties.iri === "string") || relationships.some(isSource);
   const hasParentRels = relationships.some(isTarget);
   const multiSelected = nodeCtxMenu.selectedNodeIds.length > 1;
   return (
@@ -189,6 +193,7 @@ export function NodeContextMenu({
             : t("nodeContextMenu.showChildren")}
         </UnstyledButton>
       </Tip>
+      {!describable && (
       <Tip
         text={
           hasChildRels
@@ -215,6 +220,8 @@ export function NodeContextMenu({
             : t("nodeContextMenu.showChildrenCircular")}
         </UnstyledButton>
       </Tip>
+      )}
+      {!describable && (
       <Tip text={hasParentRels ? undefined : t("nodeContextMenu.noIncomingTooltip")}>
         <UnstyledButton
           component="button"
@@ -235,6 +242,8 @@ export function NodeContextMenu({
             : t("nodeContextMenu.showParents")}
         </UnstyledButton>
       </Tip>
+      )}
+      {!describable && (
       <Tip
         text={
           hasParentRels
@@ -261,6 +270,7 @@ export function NodeContextMenu({
             : t("nodeContextMenu.showParentsCircular")}
         </UnstyledButton>
       </Tip>
+      )}
       <UnstyledButton
         component="button"
         role="menuitem"

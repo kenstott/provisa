@@ -1,0 +1,27 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:profiling/1-customer-columns.graphql",
+  "root_field": "h__viewCustomerColumns"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:profiling/2-phone-formats.graphql",
+  "root_field": "h__viewCustomerFormats"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:profiling/3-country-spellings.graphql",
+  "root_field": "h__customerTopValues"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:profiling/4-profile-runs.graphql",
+  "root_field": "h__customerProfileRuns"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:profiling/5-plausible-types.graphql",
+  "root_field": "h__customerColumnTypes"
+ }
+]

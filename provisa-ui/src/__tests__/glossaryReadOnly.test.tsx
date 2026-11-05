@@ -22,6 +22,8 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
+// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
+vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
@@ -57,15 +59,16 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: [],
 };
 const CHURN: GlossaryTermSummary = {
@@ -76,6 +79,7 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "draft",
   status_reason: null,
@@ -100,6 +104,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn" }],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
+  pending_on: [],
 };
 
 /** Mount the tab and open Revenue. */
@@ -209,6 +214,6 @@ describe("glossary read-only mode", () => {
   it("keeps searching and filtering, which write nothing", async () => {
     await openRevenue();
     expect(screen.getByTestId("glossary-search")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-show-deprecated")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-status-filter")).toBeInTheDocument();
   });
 });

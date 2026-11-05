@@ -199,3 +199,26 @@ def test_expiry_is_by_the_clock_when_nothing_was_registered(thread_starts, deadl
         deadline_clock.advance(0.1)
         assert dl.fired
     assert thread_starts == []
+
+
+def test_an_expiry_on_request_gives_the_statement_in_flight_its_drivers_grace(monkeypatch) -> None:
+    """A CancelRequest (Deadline.expire) cancels the statement through its driver at once, and
+    raises in the request's own thread only after the grace a clock expiry gives: raised at once,
+    the raise landed while the driver's cancel error was being answered (pgspec Cancel read half a
+    message)."""
+    watched: list[float] = []
+    monkeypatch.setattr(
+        request_deadline._watchdog, "watch", lambda dl, *, at=None: watched.append(at)
+    )
+    cancelled: list[bool] = []
+    dl = request_deadline.Deadline(30.0)
+    try:
+        # The statement returns after the cancel; its scope then reports the request cancelled.
+        with pytest.raises(TimeoutError, match="canceling statement due to user request"):
+            with dl._registered(lambda: cancelled.append(True)):
+                before = time.monotonic()
+                assert dl.expire("canceling statement due to user request")
+        assert cancelled == [True]
+        assert watched and watched[-1] >= before + request_deadline._CANCEL_GRACE_S
+    finally:
+        dl.stop()

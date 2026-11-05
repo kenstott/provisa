@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "Seções do comando",
+    "section_command": "Comando",
+    "section_bindings": "Vinculações",
+    "language": "Linguagem",
+    "name": "Nome",
+    "leaveOut": "Excluído",
+    "nameIn": "Nome em {{language}}",
+    "leaveOutOf": "Excluir de {{language}}",
+    "notOffered": "Não oferecido",
+    "sqlAlways": "Sempre oferecido",
+    "hint": "Um comando é oferecido em todas as linguagens com o próprio nome. Renomeie-o em uma linguagem ou exclua-o de uma. SQL é sempre oferecido.",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

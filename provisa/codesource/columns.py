@@ -17,8 +17,8 @@ result is an object whose fields are the output columns. It is registered as a c
 (:mod:`provisa.codesource.columns_fold`).
 
 It is stateless, so a statement's rows are cut into batches of :data:`BATCH` and the batches run
-in parallel across the source's workers (``workers`` on the source): adding workers raises
-throughput. What the function calls of Provisa's services -- its LLM service included (REQ-2105)
+in parallel across the source's workers (``workers`` on the source), streamed as the rows are read
+(:func:`provisa.codesource.columns_fold.apply`): adding workers raises throughput. What the function calls of Provisa's services -- its LLM service included (REQ-2105)
 -- is metered and capped against the source as any of its calls is. A batch answered with a
 different number of results than rows it was given is refused naming the function.
 """
@@ -27,8 +27,8 @@ different number of results than rows it was given is refused naming the functio
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 #: The implementation kind a registered ``@columns`` function's command carries (REQ-885).
@@ -112,23 +112,40 @@ async def registration(state: Any, source_id: str, function: str) -> tuple[list[
     return contract(prepared.manifest, export)
 
 
-def _batches(inputs: Sequence[list], rows: int) -> list[list[list]]:
-    """The input columns cut into batches of :data:`BATCH` rows, each a list of input columns."""
-    return [[column[at : at + BATCH] for column in inputs] for at in range(0, rows, BATCH)]
+@dataclass(frozen=True)
+class Runner:
+    """A registered column transform ready to run batches: its function, the row schema its
+    results are read by, its parameters' names, and the source's workers."""
+
+    function: str
+    schema: str
+    names: tuple[str, ...]
+    prepared: Any
+
+    @property
+    def workers(self) -> int:
+        return self.prepared.workers
+
+    def run(self, slot: int, batch: Sequence[list]) -> list[dict]:
+        """One batch (its input columns) on worker ``slot``: one result per row, in order. A batch
+        answered with a different number of results than rows is refused naming the function."""
+        answered = self.prepared.worker(slot).columns(
+            self.function, batch, list(self.names), schema=self.schema
+        )
+        given = len(batch[0])
+        if len(answered) != given:
+            raise ColumnTransformRefused(
+                self.function, f"it returned {len(answered)} results for a batch of {given} rows"
+            )
+        return answered
 
 
-async def transform(state: Any, command: dict, inputs: Sequence[list]) -> list[dict]:
-    """The registered column transform ``command`` (a ``state.column_transforms`` entry) over the
-    input columns ``inputs`` -- each a list of the statement's values, in row order -- as one
-    result per row, in order: each a dict of its output columns. The batches run in parallel
-    across the source's workers; a batch answered with a different number of results than rows
-    it was given is refused naming the function."""
+async def runner(state: Any, command: dict) -> Runner:
+    """The registered column transform ``command`` (a ``state.column_transforms`` entry), prepared
+    on its source to run batches."""
     from provisa.codesource.arrow_rows import row_schema, schema_text
 
     function = command["function_name"]
-    rows = len(inputs[0]) if inputs else 0
-    if rows == 0:
-        return []
     prepared = await _prepared(state, command["source_id"])
     export = _columns_export(prepared.manifest, function)
     if export is None:
@@ -137,25 +154,4 @@ async def transform(state: Any, command: dict, inputs: Sequence[list]) -> list[d
             f"source {command['source_id']!r} no longer has a @columns function of that name",
         )
     schema = schema_text(row_schema(prepared.manifest, export))
-    names = [p.name for p in export.parameters]
-    batches = _batches(inputs, rows)
-    results: list[list[dict] | None] = [None] * len(batches)
-
-    def _run_slot(slot: int) -> None:
-        # One worker's share: every ``workers``-th batch, in turn, so each worker runs one call
-        # at a time and the workers run side by side.
-        worker = prepared.worker(slot)
-        for at in range(slot, len(batches), prepared.workers):
-            batch = batches[at]
-            answered = worker.columns(function, batch, names, schema=schema)
-            given = len(batch[0])
-            if len(answered) != given:
-                raise ColumnTransformRefused(
-                    function, f"it returned {len(answered)} results for a batch of {given} rows"
-                )
-            results[at] = answered
-
-    await asyncio.gather(
-        *(asyncio.to_thread(_run_slot, s) for s in range(min(prepared.workers, len(batches))))
-    )
-    return [row for batch in results if batch is not None for row in batch]
+    return Runner(function, schema, tuple(p.name for p in export.parameters), prepared)

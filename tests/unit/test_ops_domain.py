@@ -156,6 +156,8 @@ class _Col:
         self.column_name = name
         self.data_type = dtype
         self.is_nullable = nullable
+        self.subtype = None  # REQ-2171
+        self.native_type = None  # REQ-1965, REQ-1961
 
 
 def _ops_ctx():
@@ -163,10 +165,10 @@ def _ops_ctx():
 
     ctx = CompilationContext()
     ctx.tables = {
-        "query_audit_log": TableMeta(
+        "op_query_audit_log": TableMeta(
             table_id=1,
-            field_name="query_audit_log",
-            type_name="QueryAuditLog",
+            field_name="op_query_audit_log",
+            type_name="OP_QueryAuditLog",
             source_id="provisa-admin",
             catalog_name="provisa-admin",
             schema_name="org_default",
@@ -189,7 +191,7 @@ class TestOpsCatalog:
                 _Col("status_code", "integer"),
             ]
         }
-        idx = _build_catalog_index(_ops_ctx(), col_types)
+        idx = _build_catalog_index(_ops_ctx(), col_types, database="provisa")
 
         schemas = {row[1] for row in idx.tables}
         names = {(row[1], row[2]) for row in idx.tables}
@@ -262,6 +264,12 @@ _REPORT_VIEW_NAMES = {
     "replica_builds",
     "replica_build_health",
     "service_level",
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT)
+    "ontology_term_quality",
+    "ontology_placeholders",
+    "ontology_quality",
+    # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT)
+    "sensitive_column_coverage",
 }
 
 
@@ -395,9 +403,11 @@ async def test_report_views_functional(control_plane):
         query_audit_log,
         registered_tables,
         sources,
+        table_columns,
         tag_assignments,
         user_directory,
     )
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
     from provisa.api.startup_seed import _adapt_view_ddl
 
     db = control_plane.org()
@@ -445,6 +455,10 @@ async def test_report_views_functional(control_plane):
                     object_key="column:2:email",
                 )
             )
+            # The pii column declares no fake: sensitive coverage reports it, and why.
+            await conn.execute_core(
+                insert(table_columns).values(table_id=2, column_name="email", domain_id="shelter")
+            )
             # REQ-1439: the tenant-local directory the report views resolve names through. bob is
             # deliberately absent, so the LEFT JOIN's null branch is exercised too.
             await conn.execute_core(
@@ -475,6 +489,10 @@ async def test_report_views_functional(control_plane):
             # (startup_seed.py: _seed_meta_domain then _seed_ops_domain). DuckDB resolves a
             # view's references when it is created, so the order matters here too.
             for ddl in _META_TABLE_VIEWS.values():
+                await conn.execute(_adapt_view_ddl(ddl))
+            # The ontology quality reports read the ontology schema's views, which
+            # _seed_ontology_domain creates before _seed_ops_domain.
+            for ddl in ONTOLOGY_TABLE_VIEWS.values():
                 await conn.execute(_adapt_view_ddl(ddl))
             for ddl in _OPS_REPORT_VIEWS.values():
                 await conn.execute(_adapt_view_ddl(ddl))
@@ -557,6 +575,15 @@ async def test_report_views_functional(control_plane):
             assert tags["pii"] == (1, 1, 1, 2, 2)
             # A system tag nobody applied is still a row, with zeroes rather than absent.
             assert tags["technical"] == (0, 0, 0, 0, 0)
+
+            # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT)
+            coverage = await rows(
+                "SELECT id, table_name, column_name, tags, status, reason "
+                "FROM sensitive_column_coverage"
+            )
+            assert [tuple(r) for r in coverage] == [
+                ("2:email", "customers", "email", "pii", "no_fake", "no fake declared")
+            ]
     finally:
         await db.close()
 

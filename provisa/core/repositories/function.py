@@ -25,6 +25,7 @@ from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 from provisa.core.host_code import refuse_host_code
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.mask_lists import refuse_unreachable_masks
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -38,6 +39,9 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
 ) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
     refuse_host_code(func.name, func.impl_kind)  # REQ-2134: config load and the admin API alike
+    await refuse_unreachable_masks(  # REQ-2059
+        conn, {c.name: c.model_dump()["masks"] for c in func.output_columns or []}
+    )
     model_change.name("upsert", "command", func.name)  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
@@ -58,7 +62,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "function_name": func.function_name,
         "returns": func.returns,
         # JSON columns take Python objects directly.
-        "arguments": [a.model_dump() for a in func.arguments],
+        "arguments": [a.stored() for a in func.arguments],
         "visible_to": func.visible_to,
         "domain_id": domain_id,
         "description": func.description,
@@ -66,8 +70,9 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "product_id": func.product_id,  # REQ-1634
         "return_schema": return_schema,
         # REQ-1159: canonical IR-typed output dataset contract (return_schema is its GraphQL projection).
+        # An empty list declares no outputs (a VOID command, REQ-2001); None declares none.
         "output_columns": [c.model_dump() for c in func.output_columns]
-        if func.output_columns
+        if func.output_columns is not None
         else None,
         # REQ-885: implementation kind + swappable binding (JSON), decoupled from addressing.
         "impl_kind": func.impl_kind,
@@ -75,6 +80,10 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "materialize": func.materialize,
         "requires_approval": func.requires_approval,  # REQ-1924
         "writes_table": func.writes_table,  # REQ-1924, REQ-871
+        # REQ-2168: the command's name per language.
+        "language_bindings": {
+            k: v.model_dump(exclude_defaults=True) for k, v in func.language_bindings.items()
+        },
     }
     update_cols = [
         "source_id",
@@ -94,6 +103,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "materialize",
         "requires_approval",
         "writes_table",
+        "language_bindings",
     ]
     function_id = await conn.upsert_returning(
         tracked_functions,
@@ -137,8 +147,11 @@ class CommandDeleteRefused(Exception):
     def __init__(self, name: str, dependents: list[Dependent]) -> None:
         self.name = name
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"{name!r} is still referred to by"
         named = ", ".join(f"{d.ref.kind} {d.ref.id}" for d in dependents)
-        super().__init__(f"{name!r} is still referred to by: {named}")
+        super().__init__(f"{self.lead}: {named}")
 
 
 async def _delete_one(conn: "Connection", kind: str, table, name: str) -> bool:  # REQ-1918
@@ -168,6 +181,9 @@ async def upsert_webhook(
     conn: "Connection", wh: Webhook
 ) -> int | None:  # REQ-209, REQ-210, REQ-211, REQ-1919
     """Upsert a tracked webhook. Returns the row id."""
+    await refuse_unreachable_masks(  # REQ-2059
+        conn, {c.name: c.model_dump()["masks"] for c in wh.inline_return_type}
+    )
     model_change.name("upsert", "webhook", wh.name)  # REQ-1524
     vals = {
         "name": wh.name,
@@ -177,7 +193,7 @@ async def upsert_webhook(
         "returns": wh.returns,
         # JSON columns take Python objects directly.
         "inline_return_type": [t.model_dump() for t in wh.inline_return_type],
-        "arguments": [a.model_dump() for a in wh.arguments],
+        "arguments": [a.stored() for a in wh.arguments],
         "visible_to": wh.visible_to,
         "domain_id": domain_policy.command_domain_id(wh.domain_id, wh.name),  # REQ-1531
         "description": wh.description,
@@ -264,6 +280,7 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         materialize=bool(d.get("materialize", False)),
         requires_approval=bool(d.get("requires_approval", False)),
         writes_table=d.get("writes_table"),
+        language_bindings=d["language_bindings"],  # REQ-2168
     )
 
 

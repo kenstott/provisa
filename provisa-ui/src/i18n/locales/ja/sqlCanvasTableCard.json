@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "{{tableName}} をキャンバスから削除",
     "toggleColumn": "列 {{columnName}} の選択を切り替え",
-    "connectColumn": "{{columnName}} からリレーションシップを開始"
+    "connectColumn": "{{columnName}} からリレーションシップを開始",
+    "allColumns": "すべての列（{{total}} 件中 {{selected}} 件）",
+    "unjoined": "{{tables}} は他のテーブルと結合されていません",
+    "joinsUnavailable": "このロールが記述できる結合を読み込めませんでした: {{reason}}"
   }
 }

@@ -1,0 +1,17 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:streaming/1-busiest-regions-now.graphql",
+  "root_field": "s__viewOrdersLastFiveMinutes"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:streaming/2-latest-orders.graphql",
+  "root_field": "s__orders"
+ },
+ {
+  "lowered": "a document that is not one query",
+  "origin": "demo:streaming/3-watch-the-orders.graphql",
+  "root_field": "s__orders"
+ }
+]

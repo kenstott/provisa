@@ -1,0 +1,19 @@
+{
+  "sparqlExportModal": {
+    "title": "SPARQL 匯出",
+    "result": "結果",
+    "format": "格式",
+    "formats": {
+      "turtle": "Turtle",
+      "ntriples": "N-Triples",
+      "jsonld": "JSON-LD",
+      "json": "SPARQL 結果 (JSON)",
+      "csv": "CSV",
+      "tsv": "TSV"
+    },
+    "download": "下載",
+    "close": "關閉",
+    "empty": "執行查詢後即可匯出其結果。",
+    "unnamedEdges": "此圖的邊未指明謂詞，因此沒有可寫為 RDF 的三元組。"
+  }
+}

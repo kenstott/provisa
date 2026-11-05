@@ -24,6 +24,7 @@ vi.mock("../context/AuthContext", async (importOriginal) => ({
 const AUTH = {
   role: { id: "org_admin" },
   selectedRoles: [{ id: "org_admin" }],
+  actingRoles: "org_admin",
   capabilities: ["source_registration", "create_relationship", "query_development", "org_settings"],
   domainAccess: ["*"],
   activeOrgId: "acme",

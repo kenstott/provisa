@@ -73,7 +73,7 @@ def _state(monkeypatch, runtime: _Runtime):
         "load_protected": None,
         "cache_ttl": None,
         "region": None,  # REQ-1921: a registration always carries its region
-        "columns": [{"column_name": "id", "native_filter_type": None}],
+        "columns": [{"column_name": "id", "native_filter_type": None, "subtype": None}],
     }
     key = ("pg", "public", "orders")
     registry = replica_routing._Registry(

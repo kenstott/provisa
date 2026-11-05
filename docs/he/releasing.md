@@ -89,7 +89,6 @@ git tag v1.2.3 && git push origin v1.2.3
 - זרימת העבודה `CVE Audit` (‏`.github/workflows/cve-audit.yml`) מריצה `pip-audit` על הקבוצה הנעולה בכל push ל-`main`, בכל pull request ופעם בשבוע.
 - בשחרור, הבניות של `provisa` ושל `provisa-client` מפיקות כל אחת SBOM בפורמט CycloneDX ומריצות `pip-audit` על מה שנשלח. דרייבר ה-JDBC נסרק עם `grype --fail-on medium`. ממצא מכשיל את ה-job, והשחרור אינו מפרסם דבר: העלאות ה-PyPI וגם ה-release ב-GitHub ממתינים ל-jobs האלה. ה-SBOMs ודוחות ה-CVE מצורפים לכל שחרור.
 - מתקני ה-desktop בונים את ה-wheel של `provisa` מקוד המקור על ה-runner של השחרור ופותרים את תלויותיו עם `pip` בזמן הבנייה, לא מ-`uv.lock`; שער ה-CVE של השחרור סורק את הקבוצה הנעולה, לא את התלויות המצורפות למתקנים.
-- חריג מתועד אחד מתעלמים ממנו: PYSEC-2026-4114 / CVE-2026-49265 (‏PKCE של oauthlib בצד השרת; Provisa משתמש ב-oauthlib בצד הלקוח בלבד).
 - `packaging/pypi/requirements-embedded.lock` הוא פתרון עם גיבובים מקובעים של `provisa[embedded]` עבור mirrors באוויר סגור (airgap) (ראו `packaging/pypi/MIRROR-CHECKLIST.md`). הוא נוצר מחדש ידנית, לא בכל שחרור.
 
 ## Secrets נדרשים במאגר {: #required-repository-secrets }

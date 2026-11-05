@@ -186,10 +186,22 @@ def edges_of(relationships: list[dict]) -> list[Edge]:
     return edges
 
 
-def check_closure(tables: dict[int, str], all_tables: dict[int, str], edges: list[Edge]) -> None:
-    """Refuse a dataset naming a table without the parent of one of its relationships."""
+def check_closure(
+    tables: dict[int, str],
+    all_tables: dict[int, str],
+    edges: list[Edge],
+    *,
+    told: Callable[[int], bool],
+) -> None:
+    """Refuse a dataset naming a table without the parent of one of its relationships. A parent
+    ``told(table id)`` says its reader may not be told of is not named (REQ-2152)."""
     for e in edges:
         if e.child_id in tables and e.parent_id not in tables:
+            if not told(e.parent_id):
+                raise DatasetRefused(
+                    f"table {tables[e.child_id]!r} refers to a table outside your grants, which "
+                    "the dataset does not name; it cannot be generated without it"
+                )
             raise DatasetRefused(
                 f"table {tables[e.child_id]!r} refers to {all_tables[e.parent_id]!r} "
                 f"({e.child_column} -> {e.parent_column}), which the dataset does not name; "
@@ -303,7 +315,8 @@ def plan_tables(
     by_id = {t.table_id: t for t in tables}
     plans: dict[int, TablePlan] = {}
     # ``names``: every registered table, so a missing parent is refused by its name.
-    check_closure({t.table_id: t.name for t in tables}, names, edges)
+    # Provisa's own planning: every table is told (REQ-2152's service identity).
+    check_closure({t.table_id: t.name for t in tables}, names, edges, told=lambda _table_id: True)
     check_pii(tables)
     ordered = _parents_first(tables, edges)
     rows: dict[int, int] = {}

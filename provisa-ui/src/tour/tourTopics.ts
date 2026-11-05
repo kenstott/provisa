@@ -17,23 +17,16 @@
 
 import { TOPIC_IDS, type TopicId } from "./tourSteps";
 import { TOUR_TOPICS_DONE_KEY } from "./tourKeys";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStoredJson, setStored } from "../lib/browserStorage";
 
 export { TOPIC_IDS };
 export type { TopicId };
 
 /** Topics the viewer has completed (Done on a topic's last step), in the order they were finished. */
 export function completedTopics(): TopicId[] {
-  try {
-    const raw = getStored(TOUR_TOPICS_DONE_KEY, { global: true });
-    if (raw === null) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id): id is TopicId => (TOPIC_IDS as readonly unknown[]).includes(id));
-  } catch {
-    // REQ-1945: completion marks are a per-viewer convenience; unreadable storage means no marks.
-    return [];
-  }
+  const parsed = getStoredJson<unknown>(TOUR_TOPICS_DONE_KEY, { global: true });
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter((id): id is TopicId => (TOPIC_IDS as readonly unknown[]).includes(id));
 }
 
 export function markTopicCompleted(id: TopicId): void {

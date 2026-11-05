@@ -1,0 +1,341 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ebe48b4d-969f-46b8-ab2a-56a42ad5bbfc
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The ephemeral-write handler (REQ-2176): a CREATE the governing rule does not make a governed
+write makes its nodes and relationships in the session.
+
+``[MATCH ... | UNWIND ... | WITH ...] CREATE <patterns>`` is read first as a governed read -- the
+statement's own leading clauses, returning every value the patterns write and every node they
+reach back to -- through the surface's own read, as the session's role, so a value taken from
+model data passes that data's rules. Each row it gives makes the patterns' new nodes and
+relationships once, landed in the session's tables (:mod:`.store`).
+"""
+
+# Requirements: REQ-2176
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
+
+from provisa.compiler.temp_tables import TempSession
+from provisa.cypher import counters
+from provisa.cypher.parser import CypherParseError
+from provisa.ephemeral import pattern, store
+from provisa.ephemeral.classify import CreateKind, classify_create
+from provisa.ephemeral.pattern import CreatePattern
+from provisa.ephemeral.store import NewNode, NewRel, Writes
+
+#: The surface's own governed read: a Cypher read and its values to its rows (column -> value,
+#: a node as its answer writes it).
+Read = Callable[[str, dict[str, Any]], Awaitable[list[dict[str, Any]]]]
+#: The surface's own governed write: a Cypher write and its values, done as the session's role.
+Write = Callable[[str, dict[str, Any]], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class Created:
+    """What a CREATE made, for its answer's counters."""
+
+    nodes: int
+    relationships: int
+    labels: int
+
+
+def _items(p: CreatePattern, kind: CreateKind, bound: set[str]) -> list[str]:
+    """The read's RETURN items: each new node's and relationship's property values, and each
+    node the patterns reach back to."""
+    made: dict[str, dict[str, str]] = {}
+    items: list[str] = []
+    for c in kind.created:
+        node = p.nodes[c.index]
+        values = {k: _made_values(value, made) for k, value in node.properties}
+        items += [f"{value} AS _n{c.index}_{k}" for k, value in values.items()]
+        if node.variable is not None and node.variable not in bound:
+            made[node.variable] = values
+    items += [
+        f"{_made_values(value, made)} AS _r{j}_{k}"
+        for j, rel in enumerate(p.rels)
+        for k, value in rel.properties
+    ]
+    reached = sorted(
+        {n.variable for n in p.nodes if n.variable is not None and n.variable in bound}
+    )
+    items += [f"{var} AS _v_{var}" for var in reached]
+    return items or ["1 AS _one"]
+
+
+#: A string literal, or a variable's property ``v.k`` (not a parameter's or a map's member).
+_MEMBER = re.compile(
+    r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|(?<![\w.$`])([A-Za-z_]\w*)\s*\.\s*(\w+)"""
+)
+
+
+def _made_values(value: str, made: dict[str, dict[str, str]]) -> str:
+    """``value`` with each property of a node the same CREATE makes before it read as the
+    expression that property is made of (``CREATE (a {id: 0}), ({num: a.id})``), or null when
+    the node is made without it: the read evaluating the values binds no such node."""
+
+    def put(m: re.Match[str]) -> str:
+        var, key = m.group(1), m.group(2)
+        if var is None or var not in made:
+            return m.group(0)
+        return f"({made[var][key]})" if key in made[var] else "null"
+
+    return _MEMBER.sub(put, value)
+
+
+def _identity(node: Any, label_map: Any, graph: store.Graph) -> tuple[str, tuple[str, ...]]:
+    """A node the read returned: its graph identity (an ephemeral node's id, or a model node's
+    ``Label|key``) and the labels it is read by."""
+    from provisa.gql.assembler import Node
+
+    if isinstance(node, Node):
+        label, props, read_as = node.label, node.properties, node.id
+    elif isinstance(node, dict) and "properties" in node and "label" in node:
+        label, props, read_as = node["label"], node["properties"], node.get("id")
+    else:
+        raise CypherParseError("A created relationship's end is a node")
+    key = props.get("_id")
+    if store.is_session_node_key(key):
+        return key, graph.node_keys[key]
+    by_label = {nm.label: nm for nm in label_map.nodes.values()}
+    if key is None and isinstance(read_as, str) and "|" in read_as:
+        # Read with no label, a node is ``Label|key``: a session node's id after the label it
+        # was read by, a model node's graph identity.
+        first, after = read_as.split("|", 1)
+        if after in graph.node_keys and (first == "" or first in graph.node_keys[after]):
+            return after, graph.node_keys[after]
+        named = by_label.get(first)
+        if named is not None:
+            return read_as, (named.type_name,)
+    owners = [nm for nm in label_map.nodes.values() if nm.label == label]
+    owner = owners[0] if len(owners) == 1 else None
+    # A model node read under a label not its own (a session tag) is its graph identity
+    # (read.py), ``Label|key``, its own label first.
+    if isinstance(key, str) and "|" in key:
+        named = by_label.get(key.split("|", 1)[0])
+        if named is not None and named is not owner:
+            return key, (named.type_name,)
+    if owner is None:
+        raise CypherParseError(f"A created relationship's end, {label}, is no one node")
+    nm = owner
+    # A compound key's _id is its identity already (select_builder.node_key).
+    identity = str(key) if len(nm.key_columns) > 1 else f"{nm.label}|{key}"
+    return identity, (nm.type_name,)
+
+
+def _model_identity(nm: Any, props: dict[str, Any]) -> str:
+    """The graph identity (``Label|key``, select_builder.node_identity) of the model row a
+    governed write makes of ``props``."""
+    columns = nm.key_columns if len(nm.key_columns) > 1 else (nm.id_column,)
+    parts: list[str] = []
+    for column in columns:
+        prop = nm.property_of(column)
+        if prop not in props:
+            raise CypherParseError(
+                f"A relationship ends on the new {nm.label}: the CREATE names its {prop}"
+            )
+        parts.append(str(props[prop]))
+    if len(parts) == 1:
+        return f"{nm.label}|{parts[0]}"
+    escaped = (part.replace("\\", "\\\\").replace("|", "\\|") for part in parts)
+    return f"{nm.label}|" + "|".join(escaped)
+
+
+def _governed_row(node: pattern.NodeSpec, labels: tuple[str, ...]) -> str:
+    """The governed write of one model row, its values bound by property name."""
+    values = ", ".join(f"{k}: ${k}" for k, _ in node.properties)
+    return f"CREATE (n:{':'.join(labels)}{' {' + values + '}' if values else ''})"
+
+
+async def create(
+    statement: str,
+    params: dict[str, Any],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    read: Read,
+    governed_write: Write,
+) -> Created | None:
+    """Run ``statement`` when the governing rule does not make it wholly the governed write;
+    None when it creates nothing or is the governed write (the governed path's, unchanged).
+
+    A CREATE mixing governed and session parts splits: each governed relationship goes to the
+    governed path first, as its own statement over the leading clauses; then, for each row the
+    leading clauses give, each governed row is written by the governed path and the session's
+    parts land in the session. The two paths are not one transaction: the outcome is the parts
+    written as statements of their own."""
+    done = await create_bound(statement, params, label_map, session, state, read, governed_write)
+    return None if done is None else done[0]
+
+
+async def create_bound(
+    statement: str,
+    params: dict[str, Any],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    read: Read,
+    governed_write: Write,
+    keep: tuple[str, ...] | None = None,
+) -> tuple[Created, list[dict[str, Any]]] | None:
+    """:func:`create`, and with ``keep`` (the variables a read after it names) each row's
+    bindings of them (then.Bound): a variable of the leading clauses as it was read, a new node
+    by its graph identity, a new relationship by its id."""
+    from provisa.ephemeral.then import bound_value
+
+    create = pattern.create_of(statement)
+    if create is None:
+        return None
+    prefix, p, bound = create.prefix, create.pattern, create.bound
+    graph = store.graph(session)
+    kind = classify_create(p, bound, label_map, graph)
+    if kind.governed:
+        return None
+    if create.trailing is not None:
+        raise CypherParseError(
+            f"A CREATE of ephemeral objects ends its statement; it is followed by {create.trailing}"
+        )
+    for rel, governed in zip(p.rels, kind.rels_governed, strict=True):
+        if governed:
+            source, target = p.nodes[rel.source].variable, p.nodes[rel.target].variable
+            await governed_write(
+                f"{prefix} CREATE ({source or ''})-[:{rel.rel_type}]->({target or ''})".strip(),
+                params,
+            )
+    keep = keep or ()
+    items = _items(p, kind, bound)
+    reached = {n.variable for n in p.nodes if n.variable in bound}
+    items += [f"{v} AS _v_{v}" for v in keep if v in bound and v not in reached]
+    answer = await read(f"{prefix} RETURN {', '.join(items)}".strip(), params)
+    created_at = {c.index: p.nodes[c.index].variable for c in kind.created}
+    identify = frozenset(i for i, var in created_at.items() if var in keep)
+    made, ids, rel_ids = await write_rows(
+        p, kind, answer, label_map, session, state, governed_write, identify
+    )
+    node_at = {n.variable: i for i, n in reversed(list(enumerate(p.nodes))) if n.variable}
+    rel_at = {r.variable: j for j, r in enumerate(p.rels) if r.variable}
+    rows: list[dict[str, Any]] = []
+    for row, row_ids, row_rels in zip(answer, ids, rel_ids, strict=True):
+        out: dict[str, Any] = {}
+        for var in keep:
+            if var in bound:
+                out[var] = bound_value(row[f"_v_{var}"], label_map, graph)
+            elif var in node_at:
+                node_id, labels = row_ids[node_at[var]]
+                out[var] = ("n", node_id, labels)
+            elif var in rel_at:
+                j = rel_at[var]
+                rel_type = p.rels[j].rel_type
+                out[var] = ("r", row_rels[j], rel_type) if j in row_rels else ("m", None, rel_type)
+        rows.append(out)
+    return made, rows
+
+
+#: Each node a pattern's row wrote or reached back to, by its index among the pattern's nodes:
+#: its graph identity and the labels it is read by.
+RowIds = dict[int, tuple[str, tuple[str, ...]]]
+
+
+async def write_rows(
+    p: CreatePattern,
+    kind: CreateKind,
+    rows: list[dict[str, Any]],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    governed_write: Write,
+    identify: frozenset[int] = frozenset(),
+) -> tuple[Created, list[RowIds], list[dict[int, str]]]:
+    """Make ``p``'s nodes and relationships once per row (``rows``: what the leading clauses read,
+    as _items names it): each governed row through the governed write, the session's parts in the
+    session; a governed relationship is the caller's. Each row's node identities are given back,
+    a governed row's only when a session relationship ends on it or ``identify`` names it, and
+    each row's session relationships' ids, by their index among the pattern's."""
+    graph = store.graph(session)
+    made = {p.nodes[c.index].variable: c.index for c in kind.created}
+    created_at = {c.index for c in kind.created}
+    # The governed rows a session relationship ends on: only theirs need a graph identity.
+    ended_on = {
+        end if end in created_at else made.get(p.nodes[end].variable, -1)
+        for rel, governed in zip(p.rels, kind.rels_governed, strict=True)
+        if not governed
+        for end in (rel.source, rel.target)
+    } | identify
+    writes = Writes()
+    rows_written = 0
+    every: list[RowIds] = []
+    every_rel: list[dict[int, str]] = []
+    for row in rows:
+        ids: RowIds = {}
+        rel_ids: dict[int, str] = {}
+        for c in kind.created:
+            props = {k: row[f"_n{c.index}_{k}"] for k, _ in p.nodes[c.index].properties}
+            if c.governed:
+                nm = label_map.nodes[c.labels.models[0]]
+                await governed_write(_governed_row(p.nodes[c.index], c.labels.written), props)
+                rows_written += 1
+                if c.index in ended_on:
+                    ids[c.index] = (_model_identity(nm, props), (nm.type_name,))
+                continue
+            node_id = graph.new_id()
+            keys = c.labels.keys
+            ids[c.index] = (node_id, keys or ("",))
+            if c.anchor is not None:
+                # Held from its first node on, so a label differing only in case made beside it
+                # is given another table (store.anchor_of).
+                anchor = graph.anchors.setdefault(c.anchor, store.anchor_of(graph, c.anchor))
+            else:
+                anchor = store.DEFAULT_ANCHOR
+            writes.nodes.append(NewNode(node_id, anchor, keys, props))
+        for i, node in enumerate(p.nodes):
+            if i in ids or i in created_at:
+                continue
+            var = node.variable
+            assert var is not None
+            if var in made:
+                if made[var] in ids:
+                    ids[i] = ids[made[var]]
+                continue
+            ids[i] = _identity(row[f"_v_{var}"], label_map, graph)
+        for j, rel in enumerate(p.rels):
+            if kind.rels_governed[j]:
+                continue
+            props = {k: row[f"_r{j}_{k}"] for k, _ in rel.properties}
+            (source, from_labels), (target, to_labels) = ids[rel.source], ids[rel.target]
+            rel_ids[j] = graph.new_id("r")
+            writes.rels.append(
+                NewRel(rel_ids[j], rel.rel_type, source, target, props, from_labels, to_labels)
+            )
+        every.append(ids)
+        every_rel.append(rel_ids)
+    for c in kind.created:
+        if c.anchor is not None:
+            graph.anchors.setdefault(c.anchor, store.anchor_of(graph, c.anchor))
+    await store.write(state, session, writes)
+    # The session's parts; each governed row was counted as the governed path wrote it.
+    counters.count(
+        nodes_created=len(writes.nodes),
+        relationships_created=len(writes.rels),
+        labels_added=sum(len(n.labels) for n in writes.nodes),
+        properties_set=sum(
+            v is not None
+            for made in (*writes.nodes, *writes.rels)
+            for v in made.properties.values()
+        ),
+    )
+    created = Created(
+        len(writes.nodes) + rows_written,
+        len(writes.rels),
+        sum(len(n.labels) for n in writes.nodes) + rows_written,
+    )
+    return created, every, every_rel

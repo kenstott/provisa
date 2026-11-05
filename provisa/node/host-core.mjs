@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 const IR_KEY = "provisa.ir";
 const WHOLE_ROW = "$row";
 // REQ-2100: the field a loader call's row carries its key in.
@@ -113,6 +113,22 @@ function forField(value, field) {
   return value;
 }
 
+/** REQ-2100: a @table or @stream function's arguments, in the order it `takes` them: its inputs,
+ * an object of the inputs the read gives (one it leaves out is absent, so its default applies),
+ * and its read context. */
+function withContext(takes, args, names, context) {
+  const out = [];
+  if (takes.includes("inputs")) {
+    const inputs = {};
+    names.forEach((name, i) => {
+      if (args[i] !== undefined) inputs[name] = args[i];
+    });
+    out.push(inputs);
+  }
+  if (takes.includes("context")) out.push(context);
+  return out;
+}
+
 function iterable(result) {
   return result != null && (typeof result[Symbol.asyncIterator] === "function" || typeof result[Symbol.iterator] === "function");
 }
@@ -125,7 +141,8 @@ export function frame(body) {
 }
 
 /** One connection's serving: its calls, the frames it reads and the ones it writes (`write`
- * takes a whole frame). `onRefused` is told when Provisa refuses this host. */
+ * takes a whole frame, and returns a promise when the frame waits for its reader: the call's
+ * next rows wait for it). `onRefused` is told when Provisa refuses this host. */
 export class Connection {
   constructor(loaded, write, onRefused) {
     this.bundle = loaded.bundle;
@@ -138,7 +155,7 @@ export class Connection {
   }
 
   send(message) {
-    this.write(frame(Buffer.concat([Buffer.from("J"), Buffer.from(encode(message), "utf8")])));
+    return this.write(frame(Buffer.concat([Buffer.from("J"), Buffer.from(encode(message), "utf8")])));
   }
 
   hello() {
@@ -158,25 +175,59 @@ export class Connection {
       schema,
       A.makeData({ type: new A.Struct(fields), length: values.length, nullCount: 0, children }),
     );
-    const ipc = A.tableToIPC(new A.Table(batch), "stream");
+    return this.sendTable(id, new A.Table(batch));
+  }
+
+  /** REQ-2100: a rows frame waits for its call's credit -- the reader's window -- so the code is
+   * pulled no further ahead of its reader than that. */
+  async takeCredit(id) {
+    const state = this.running.get(id);
+    if (!state) return; // the call has ended: nothing more of it is sent
+    while (state.credit <= 0 && !state.cancelled) {
+      await new Promise((resolve) => (state.wake = resolve));
+    }
+    state.credit -= 1;
+  }
+
+  async sendTable(id, table) {
+    await this.takeCredit(id);
+    const ipc = arrow().tableToIPC(table, "stream");
     const head = Buffer.alloc(9);
     head.write("A", 0);
     head.writeBigUInt64BE(BigInt(id), 1);
-    this.write(frame(Buffer.concat([head, Buffer.from(ipc)])));
+    return this.write(frame(Buffer.concat([head, Buffer.from(ipc)])));
+  }
+
+  /** Arrow the code made (a Table or a RecordBatch), sent as it is: its columns the schema's, by
+   * name, each of the schema's type. */
+  sendArrow(id, value, schema) {
+    const A = arrow();
+    const table = value instanceof A.RecordBatch ? new A.Table(value) : value;
+    for (const field of schema.fields) {
+      const found = table.schema.fields.find((f) => f.name === field.name);
+      if (!found) throw new Error(`the Arrow rows have no column ${field.name}`);
+      if (String(found.type) !== String(field.type)) {
+        throw new Error(`the Arrow rows' column ${field.name} is ${found.type}, not the declared ${field.type}`);
+      }
+    }
+    return this.sendTable(id, table.select(schema.fields.map((f) => f.name)));
   }
 
   /** The call: the function once per argument set -- the one `args`, or a table's several
    * (`calls`, REQ-2099) in order -- every set's rows sent under the call's id. A `keyed` call
    * (REQ-2100) passes a loader and is answered with each key's rows (`serveKeyed`). */
-  async serve({ id, export: name, kind, args, calls, schema: schemaText, keyed }) {
+  async serve({ id, export: name, kind, args, names, calls, schema: schemaText, keyed, window, takes, context }) {
     const fn = this.bundle[name];
     if (typeof fn !== "function") throw new Error(`the bundle exports no function ${name}`);
-    const state = { cancelled: false, iterator: null };
+    const state = { cancelled: false, iterator: null, credit: Number(window), wake: null };
     this.running.set(id, state);
     try {
-      const sets = calls ? calls.map((c) => c.args) : [args];
-      for (const set of sets) {
+      const sets = calls ? calls.map((c) => [c.args, c.names, c.context]) : [[args, names, undefined]];
+      for (const [given, named, own] of sets) {
         if (state.cancelled) break;
+        // A call's own context (a loader's batch of keys), else the read's.
+        const read = own ?? context;
+        const set = takes ? withContext(takes, revive(given), named, revive(read)) : revive(given);
         if (keyed) await this.serveKeyed(id, state, fn, set, schemaText);
         else await this.serveOne(id, state, fn, kind, set, schemaText);
       }
@@ -188,7 +239,7 @@ export class Connection {
   /** REQ-2100: a loader call, answered with a hash of the keys it was given to each key's rows;
    * every row is sent with its key as `$key`. */
   async serveKeyed(id, state, fn, args, schemaText) {
-    const result = await fn(...revive(args));
+    const result = await fn(...args);
     if (result === null || typeof result !== "object" || Array.isArray(result)) {
       throw new Error(`a loader call is answered with a hash of each key's rows, not a ${Array.isArray(result) ? "list" : typeof result}`);
     }
@@ -197,24 +248,29 @@ export class Connection {
       if (!Array.isArray(rows)) throw new Error(`key ${key}: its rows are an array, not a ${typeof rows}`);
       const tagged = rows.map((row) => ({ ...row, [KEY]: key }));
       for (let i = 0; i < tagged.length && !state.cancelled; i += BATCH) {
-        this.sendRows(id, tagged.slice(i, i + BATCH), schema);
+        await this.sendRows(id, tagged.slice(i, i + BATCH), schema);
       }
     }
   }
 
   async serveOne(id, state, fn, kind, args, schemaText) {
-    let result = fn(...revive(args));
+    let result = fn(...args);
     if (kind !== "stream") result = await result;
     if (schemaText === null || schemaText === undefined) {
       // A single value, or a command whose result is not rows: its JSON value message.
       this.send({ op: "value", id, value: result ?? null });
       return;
     }
-    const schema = arrow().tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    const A = arrow();
+    const schema = A.tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    if (result instanceof A.Table || result instanceof A.RecordBatch) {
+      await this.sendArrow(id, result, schema);
+      return;
+    }
     if (!iterable(result)) throw new Error(`a ${typeof result} is not a collection of rows`);
     if (Array.isArray(result)) {
       for (let i = 0; i < result.length && !state.cancelled; i += BATCH) {
-        this.sendRows(id, result.slice(i, i + BATCH), schema);
+        await this.sendRows(id, result.slice(i, i + BATCH), schema);
       }
       return;
     }
@@ -224,17 +280,21 @@ export class Connection {
     for (;;) {
       const step = await iterator.next();
       if (step.done || state.cancelled) break;
-      if (kind === "stream") {
-        this.sendRows(id, [step.value], schema); // a stream's row goes as it comes
+      if (step.value instanceof A.Table || step.value instanceof A.RecordBatch) {
+        if (batch.length) await this.sendRows(id, batch, schema);
+        batch = [];
+        await this.sendArrow(id, step.value, schema);
+      } else if (kind === "stream") {
+        await this.sendRows(id, [step.value], schema); // a stream's row goes as it comes
       } else {
         batch.push(step.value);
         if (batch.length >= BATCH) {
-          this.sendRows(id, batch, schema);
+          await this.sendRows(id, batch, schema);
           batch = [];
         }
       }
     }
-    if (batch.length && !state.cancelled) this.sendRows(id, batch, schema);
+    if (batch.length && !state.cancelled) await this.sendRows(id, batch, schema);
   }
 
   dispatch(message) {
@@ -245,6 +305,16 @@ export class Connection {
       if (state) {
         state.cancelled = true;
         state.iterator?.return?.();
+        state.wake?.();
+      }
+      return;
+    }
+    if (message.op === "credit") {
+      // The call's reader took n of its rows frames: as many more may go.
+      const state = this.running.get(message.id);
+      if (state) {
+        state.credit += Number(message.n);
+        state.wake?.();
       }
       return;
     }
@@ -286,6 +356,7 @@ export class Connection {
     for (const state of this.running.values()) {
       state.cancelled = true;
       state.iterator?.return?.();
+      state.wake?.();
     }
   }
 }

@@ -22,13 +22,15 @@ import { Notifications } from "@mantine/notifications";
 import { I18nextProvider } from "react-i18next";
 import { theme } from "./theme/theme.ts";
 import "./theme/tokens.css";
-import i18n from "./i18n/index.ts";
+import i18n, { i18nReady } from "./i18n/index.ts";
 import { DirectionSync } from "./i18n/direction.tsx";
 import "./index.css";
 import App from "./App.tsx";
+import { StorageNotice } from "./components/StorageNotice.tsx";
 import { cacheRestored } from "./apolloClient.ts";
 import { isOrgSubdomainHost, orgFromHost } from "./lib/authHost.ts";
-import { setStored, visitorActive } from "./lib/browserStorage.ts";
+import { SessionStorageError, setStored, visitorActive } from "./lib/browserStorage.ts";
+import { startBulkMove } from "./lib/bulkStorage.ts";
 import { LOGOUT_PATH, signOut } from "./lib/session.ts";
 
 declare global {
@@ -43,6 +45,9 @@ adoptSandboxTokenFromLocation();
 // REQ-2065: the tab says it is closing as it unloads; it takes the native fetch, before the wrap.
 installSandboxClosing();
 installAuthFetch();
+// Lists an earlier version kept in localStorage go to IndexedDB, in every scope, and give the space
+// back. Not waited for: reads of them queue behind it, and a stuck IndexedDB must not hold the boot.
+void startBulkMove();
 
 const colorSchemeManager = localStorageColorSchemeManager({
   key: "provisa-color-scheme",
@@ -54,14 +59,14 @@ const colorSchemeManager = localStorageColorSchemeManager({
 // as soon as the first token state settles — a fresh token written, or cleared when signed
 // out / refresh rejected — and no-ops (resolves immediately) on non-firebase deploys. The
 // Firebase SDK is dynamically imported so it stays in its own chunk, loaded only here.
-async function bootstrap() {
+async function establishSession(): Promise<"render" | "stop"> {
   // REQ-1603: /logout is an entry point, not a route — it is where an org subdomain sends the
   // browser to end a session it does not hold. Answer it before React mounts: the app rendered
   // under a still-valid token would fire its signed-in queries during the sign-out it is here to
   // perform. signOut ends with a navigation, so nothing after this runs.
   if (window.location.pathname === LOGOUT_PATH) {
     await signOut();
-    return;
+    return "stop";
   }
 
   // REQ-1348: an org subdomain has no session of its own — sign-in runs only on the control
@@ -74,7 +79,7 @@ async function bootstrap() {
     if (isOrgSubdomainHost()) setStored("provisa_org", orgFromHost(), { global: true });
   } else if (isOrgSubdomainHost()) {
     const { establishOrgSubdomainSession } = await import("./lib/crossSubdomainAuth.ts");
-    if (!(await establishOrgSubdomainSession())) return;
+    if (!(await establishOrgSubdomainSession())) return "stop";
     // REQ-1486: on an org's own address the Host names the org, so its branding is read without a
     // header and applied before the first paint. A branding read that fails is not a boot failure —
     // the product's own presentation is the correct fallback (REQ-1486 says branding is additive).
@@ -89,11 +94,24 @@ async function bootstrap() {
     const firebase = await import("./lib/firebase.ts");
     await firebase.installFirebaseTokenSync();
   }
+  return "render";
+}
+
+async function bootstrap() {
+  try {
+    if ((await establishSession()) === "stop") return;
+  } catch (e) {
+    // A session the browser will not keep was logged and noticed where it failed, and is no reason
+    // not to start: the app comes up signed out, on the sign-in page. Anything else is a failed boot.
+    if (!(e instanceof SessionStorageError)) throw e;
+  }
 
   // The persisted Apollo snapshot lives in IndexedDB, which is read asynchronously — so the read
   // has to finish before the first render, or the dashboard's initial queries run against an empty
   // cache and the warm start is lost. It never rejects (see cacheRestored).
   await cacheRestored;
+  // A reader of another language is shown it from the first paint, not English first.
+  await i18nReady;
 
   createRoot(document.getElementById("root")!).render(
     <DirectionProvider>
@@ -105,6 +123,7 @@ async function bootstrap() {
         <I18nextProvider i18n={i18n}>
           <DirectionSync />
           <Notifications />
+          <StorageNotice />
           <App />
         </I18nextProvider>
       </MantineProvider>

@@ -65,6 +65,7 @@ KIND_DIRS: dict[str, str] = {
     "stores": "stores",  # REQ-1922
     "org_regions": "regions",  # REQ-1921
     "data_products": "data-products",  # REQ-1526
+    "erd_layouts": "erd-layouts",  # REQ-2189
 }
 
 #: The two command registries share one directory, because REQ-1385 gives them one address space:
@@ -211,7 +212,9 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
     paths = _table_paths(tables)
     columns = await _rows(conn, org.table_columns, schema)
     relationships = await _rows(conn, org.relationships, schema)
-    rls = await _rows(conn, org.rls_rules, schema)
+    # REQ-2188: a role holds up to three rules on a target, and children sort by role alone: in
+    # the order of their rights, not of the ids they arrived with, which differ across environments.
+    rls = sorted(await _rows(conn, org.rls_rules, schema), key=lambda r: r["rights"])
     # REQ-2074: ordered by role then operation, so two environments holding the same grants
     # write them in the same order (the child sort is by role alone, and stable).
     write_grants = sorted(
@@ -219,7 +222,6 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
         key=lambda g: (g["role_id"], g["operation"]),
     )
     term_refs = await _rows(conn, org.glossary_term_refs, schema)
-    table_terms = await _rows(conn, org.glossary_term_table_refs, schema)  # REQ-2130
     meta_links = await _rows(conn, org.table_meta_links, schema)
     assignments = await _rows(conn, org.tag_assignments, schema)
     terms = await _rows(conn, org.glossary_terms, schema)
@@ -266,11 +268,15 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             if r["table_id"] == table_id
         ]
         # REQ-2141: a proposal is marked, so a deploy keeps it a proposal (derived, not declared)
-        own_class = [
-            {"term": term_paths[r["term_id"]], **({"derived": True} if r["derived"] else {})}
-            for r in table_terms
-            if r["table_id"] == table_id
-        ]
+        # REQ-2130: the table's class_term_id, written as the term's path -- the serial means
+        # nothing in another environment.
+        class_term_id = row.pop("class_term_id")
+        derived = row.pop("class_term_derived")
+        own_class = (
+            []
+            if class_term_id is None
+            else [{"term": term_paths[class_term_id], **({"derived": True} if derived else {})}]
+        )
         tree[paths[table_id]] = entity(
             "registered_tables",
             row,
@@ -305,8 +311,8 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 table="table_write_grants",
             ),
             glossary=Child("column_name", "table_id", own_refs, table="glossary_term_refs"),
-            # REQ-2130: at most one, by the table's UNIQUE -- a list only because every child is.
-            class_term=Child("term", "table_id", own_class, table="glossary_term_table_refs"),
+            # REQ-2130: at most one -- a list only because every child is.
+            class_term=Child("term", "table_id", own_class),
             meta_links=Child("target", "source_table_id", own_links, table="table_meta_links"),
             tags=Child(
                 "at",
@@ -434,6 +440,28 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
     ):
         for row in await _rows(conn, table, schema):
             tree[kind_path(KIND_DIRS[table.name], row[key])] = entity(table.name, row)
+
+    # REQ-2189: a saved ERD layout, its tables written as their paths -- a table's serial means
+    # nothing in another environment.
+    layout_domains = await _rows(conn, org.erd_layout_domains, schema)
+    layout_tables = await _rows(conn, org.erd_layout_tables, schema)
+    for row in await _rows(conn, org.erd_layouts, schema):
+        placed = [
+            {**{k: v for k, v in t.items() if k != "table_id"}, "table": paths[t["table_id"]]}
+            for t in layout_tables
+            if t["layout_name"] == row["name"]
+        ]
+        tree[kind_path(KIND_DIRS["erd_layouts"], row["name"])] = entity(
+            "erd_layouts",
+            row,
+            domains=Child(
+                "domain_id",
+                "layout_name",
+                [d for d in layout_domains if d["layout_name"] == row["name"]],
+                table="erd_layout_domains",
+            ),
+            tables=Child("table", "layout_name", placed, table="erd_layout_tables"),
+        )
 
     for row in await _rows(conn, org.calendars, schema):
         tree[kind_path(KIND_DIRS["calendars"], row["name"], row["version"])] = entity(

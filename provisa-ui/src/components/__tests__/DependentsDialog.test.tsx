@@ -20,8 +20,13 @@ import { dependentsOf } from "../../lib/dependents";
 const DEPENDENTS = [
   { kind: "column", id: 41, name: "orders.amount", via: ["table_columns.visible_to"] },
   { kind: "column", id: 42, name: "orders.note", via: ["table_columns.visible_to"] },
-  { kind: "role_assignment", id: 7, name: "alice holds seller", via: ["user_role_assignments.role_id"] },
-  { kind: "role", id: "junior", name: "junior", via: ["roles.parent_role_id"] },
+  {
+    kind: "role_assignment",
+    id: 7,
+    name: "alice holds seller",
+    via: ["user_role_assignments.role_id"],
+  },
+  { kind: "role", id: "junior", name: "junior", via: ["roles.parents"] },
 ];
 
 describe("dependentsOf", () => {
@@ -37,7 +42,9 @@ describe("dependentsOf", () => {
 
   it("is null for a delete that succeeded, failed for another reason, or reported none", () => {
     expect(dependentsOf({ success: true, message: "" })).toBeNull();
-    expect(dependentsOf({ success: false, message: "not found", code: "schema.role_not_found" })).toBeNull();
+    expect(
+      dependentsOf({ success: false, message: "not found", code: "schema.role_not_found" }),
+    ).toBeNull();
     expect(dependentsOf({ success: false, message: "", params: { dependents: [] } })).toBeNull();
     expect(dependentsOf(undefined)).toBeNull();
   });

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import { NEO4J_URL } from "./neo4j-container";
+import { NEO4J_URL, describeNeo4jContainer } from "./neo4j-container";
 
 const EXPORT_BATCH = 200;
 // The discovery queries run this many at a time: one per label and one per relationship type,
@@ -70,7 +70,9 @@ async function waitForNeo4j(timeoutMs = 90_000): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 1500));
   }
-  throw new Error(`Neo4j container did not become ready within ${timeoutMs}ms`);
+  throw new Error(
+    `Neo4j container did not become ready within ${timeoutMs}ms\n${describeNeo4jContainer()}`,
+  );
 }
 
 /** Returns rows, or null if the query requires parameters or otherwise fails. */

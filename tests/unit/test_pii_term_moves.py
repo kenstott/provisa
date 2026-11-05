@@ -45,8 +45,16 @@ from provisa.core.term_tags import (
     inherited_snapshot,
     tag_changes_of_moves,
 )
+from tests.unit.gate_identity import serve_every_column
 
 SCHEMA = "org_default"
+
+
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which columns a caller may read is REQ-2152's own tests
+    (test_glossary_read_rights)."""
+    serve_every_column(monkeypatch)
 
 
 def _request(body: dict | None = None) -> "Request":

@@ -32,6 +32,7 @@ from typing import Any
 
 from provisa.api.errors import ApiError
 from provisa.api.role_surface import RoleSurface, role_surface
+from provisa.security.meta_role import is_meta_role_id
 
 
 class _WithDraft:
@@ -79,12 +80,17 @@ class _WithDraft:
         self.federation_engine = type(real)(real.engine, self)
 
     @property
-    def contexts(self) -> dict:
-        return {r: s.context for r, s in self.surfaces.items() if s.context is not None}
+    def contexts(self) -> Any:
+        # Views of this read's surfaces: a role is built when its part is read, not all of them.
+        from provisa.api.role_surface import SurfacePart
+
+        return SurfacePart(self, "context")
 
     @property
-    def rls_contexts(self) -> dict:
-        return {r: s.rls for r, s in self.surfaces.items() if s.rls is not None}
+    def rls_contexts(self) -> Any:
+        from provisa.api.role_surface import SurfacePart
+
+        return SurfacePart(self, "rls")
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._state, name)
@@ -149,6 +155,45 @@ def _surface_with(state: Any, role_id: str, draft: dict) -> RoleSurface:
     ctx.refusal = surface.context.refusal
     ctx.kept = dict(surface.context.kept)
     return replace(surface, context=ctx)
+
+
+def _meta_surface_with(state: Any, meta_id: str, draft: dict) -> RoleSurface:
+    """A meta-role's surface with ``draft`` in it (REQ-1620): the union of its members' rights
+    over the draft, folded as the meta-role's build folds a table in service
+    (security/meta_role.fold_tables) -- from each member's own surface with the draft added --
+    on a copy of the draft, so no grant list the real state holds is changed."""
+    from copy import deepcopy
+
+    from provisa.security.meta_role import fold_tables
+
+    granted = deepcopy(draft)
+    members = {m: _surface_with(state, m, draft) for m in state.meta_roles[meta_id]}
+    folded = fold_tables(_Members(state, members), meta_id, [granted])
+    surface = _surface_with(state, meta_id, granted)
+    rls = replace(
+        surface.rls,
+        rules={**surface.rls.rules, **folded.rules},
+        member_reads={**surface.rls.member_reads, **folded.member_reads},
+    )
+    return replace(surface, rls=rls)
+
+
+class _Members:
+    """The state as a meta-role's fold reads its members: each member's surface is the one with
+    the draft added, everything else the real state's."""
+
+    def __init__(self, state: Any, surfaces: dict[str, RoleSurface]) -> None:
+        self._state = state
+        self.surfaces = {**state.surfaces, **surfaces}
+
+    @property
+    def rls_contexts(self) -> Any:
+        from provisa.api.role_surface import SurfacePart
+
+        return SurfacePart(self, "rls")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._state, name)
 
 
 def _view_body(state: Any, draft: dict) -> str | None:
@@ -253,11 +298,17 @@ async def read_as_caller(
     # (registry_view.registered_sources): a draft of one is read under the published routes.
     source = next((s for s in await registered_sources(state) if s.id == draft["source_id"]), None)
     routes = state.replica_routes if source is None else routes_with_draft(state, draft, source)
+    # Under "Role: All" the read is the meta-role's: the union of its members' rights (REQ-1620).
+    surface = (
+        _meta_surface_with(state, role_id, draft)
+        if is_meta_role_id(role_id)
+        else _surface_with(state, role_id, draft)
+    )
     seen = _WithDraft(
         state,
         draft,
         role_id,
-        _surface_with(state, role_id, draft),
+        surface,
         routes,
         _view_body(state, draft),
     )

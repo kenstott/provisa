@@ -148,12 +148,49 @@ def dump(tree: dict[str, dict[str, Any]]) -> dict[str, str]:
     other, it is a FIXED one, which is the whole requirement. Flow style is off so that every scalar
     lands on its own line and a one-field change diffs as one line.
     """
-    return {
-        path: yaml.safe_dump(
-            tree[path], sort_keys=True, default_flow_style=False, allow_unicode=True, width=100
+    return {path: _emit(tree[path]) for path in sorted(tree)}
+
+
+def _emit(entity: dict[str, Any]) -> str:
+    return yaml.safe_dump(
+        entity, sort_keys=True, default_flow_style=False, allow_unicode=True, width=100
+    )
+
+
+def fingerprint(value: Any) -> Any:
+    """``value`` as a hashable, order-free tree that names every node's type: two values with
+    equal fingerprints are the same values of the same types (``1``, ``1.0``, ``True`` and ``"1"``
+    all differ), so :func:`dump` renders them to the same text."""
+    if isinstance(value, dict):
+        return (
+            "dict",
+            tuple(sorted(((fingerprint(k), fingerprint(v)) for k, v in value.items()), key=repr)),
         )
-        for path in sorted(tree)
-    }
+    if isinstance(value, (list, tuple)):
+        return (type(value).__name__, tuple(fingerprint(v) for v in value))
+    return (type(value).__name__, value)
+
+
+#: An environment's last rendered files: path -> (fingerprint of its entity, its text).
+Rendered = dict[str, tuple[Any, str]]
+
+
+def dump_reusing(
+    tree: dict[str, dict[str, Any]], last: Rendered
+) -> tuple[dict[str, str], Rendered]:
+    """:func:`dump`, re-rendering only the entities that differ from ``last``: a model change edits
+    a few objects, and rendering every file of the model again for it was most of a write-through's
+    time (REQ-1882). Returns the files -- the very text :func:`dump` gives -- and what to pass as
+    ``last`` next time."""
+    files: dict[str, str] = {}
+    rendered: Rendered = {}
+    for path in sorted(tree):
+        mark = fingerprint(tree[path])
+        held = last.get(path)
+        text = held[1] if held is not None and held[0] == mark else _emit(tree[path])
+        files[path] = text
+        rendered[path] = (mark, text)
+    return files, rendered
 
 
 def load(files: dict[str, str]) -> dict[str, dict[str, Any]]:

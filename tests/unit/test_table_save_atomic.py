@@ -48,6 +48,7 @@ from provisa.core.schema_org import (
     sources,
     table_columns,
 )
+from tests.unit.gate_identity import serve_every_column
 
 
 @pytest.fixture
@@ -109,8 +110,16 @@ async def plane(monkeypatch, control_plane) -> Database:
     return db
 
 
+@pytest.fixture(autouse=True)
+def _served(monkeypatch):
+    """Every column is served here: which ones a caller may read is REQ-2152's own tests."""
+    serve_every_column(monkeypatch)
+
+
 def _info() -> Any:
-    request = types.SimpleNamespace(state=types.SimpleNamespace(identity=None, active_org_id="a"))
+    request = types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=None, active_org_id="a", role="support")
+    )
     return types.SimpleNamespace(context={"request": request})
 
 
@@ -210,6 +219,52 @@ async def test_a_hasura_spelling_of_a_convention_is_stored_as_the_preset_it_name
     assert result.success, result.message
     table, _cols, _grants = await _stored(plane)
     assert table is not None and table["gql_naming_convention"] == kept
+
+
+async def test_a_registration_grants_read_to_the_registrant_and_viewer(plane):
+    """REQ-2154: registering a table grants read on every column to the role the registrant acts
+    as and to Viewer, beside any grant the registration names; it never grants write."""
+    result = await _register(
+        columns=[
+            ColumnInput(name="id", data_type="integer", visible_to=[]),
+            ColumnInput(name="status", data_type="varchar", visible_to=["analyst"]),
+        ]
+    )
+    assert result.success, result.message
+    table, _cols, grants = await _stored(plane)
+    assert table is not None
+    async with plane.acquire() as conn:
+        read = {
+            r.column_name: sorted(r.visible_to)
+            for r in (
+                await conn.execute_core(
+                    select(table_columns.c.column_name, table_columns.c.visible_to).where(
+                        table_columns.c.table_id == table["id"]
+                    )
+                )
+            ).fetchall()
+        }
+    assert read == {"id": ["support", "viewer"], "status": ["analyst", "support", "viewer"]}
+    assert grants == []
+
+
+async def test_registering_a_stored_table_again_keeps_its_grants(plane):
+    """REQ-2154: the registration's grant is a new table's; saving a stored table again keeps a
+    column made sensitive (Viewer taken off it) as it is."""
+    first = await _register(columns=[ColumnInput(name="id", data_type="integer", visible_to=[])])
+    assert first.success, first.message
+    again = await _register(
+        columns=[ColumnInput(name="id", data_type="integer", visible_to=["support"])]
+    )
+    assert again.success, again.message
+    table, _cols, _grants = await _stored(plane)
+    async with plane.acquire() as conn:
+        (read,) = (
+            await conn.execute_core(
+                select(table_columns.c.visible_to).where(table_columns.c.table_id == table["id"])
+            )
+        ).fetchone()
+    assert sorted(read) == ["support"]
 
 
 async def test_left_out_a_registration_takes_a_new_tables_values(plane):

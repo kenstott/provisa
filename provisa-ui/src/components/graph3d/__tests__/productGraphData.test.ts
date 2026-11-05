@@ -23,10 +23,14 @@ import {
   NO_PRODUCT_FILTERS,
   productGraph,
   productGraphQuery,
+  rankChains,
   toGraphData,
+  type TermEdgeRow,
+  withProductLineage,
   type ProductFilters,
   type ProductRow,
 } from "../productGraphData";
+import type { LineageNode, ProductInput } from "../../../api/lineage";
 import { PRODUCT_SCOPE, visibleGraph, NO_FILTERS, type LayerId } from "../graphModel";
 
 const productsQuery = (
@@ -48,7 +52,7 @@ const type = (name: string, fields: Record<string, GraphqlType>) => ({
 });
 
 /** A role's schema as the compiler names it: domain alias "m", camelCase columns. */
-function reader(opts: { tags: boolean }): MetaReader {
+function reader(opts: { tags: boolean; ranks?: boolean }): MetaReader {
   const raw: Introspection = {
     __schema: {
       queryType: { name: "Query" },
@@ -57,6 +61,7 @@ function reader(opts: { tags: boolean }): MetaReader {
           m__dataProducts: list("M__DataProducts"),
           m__registeredTables: list("M__RegisteredTables"),
           m__tableColumns: list("M__TableColumns"),
+          ...(opts.ranks ? { on_termEdges: list("ON_TermEdges") } : {}),
         }),
         type("M__DataProducts", {
           id: scalar,
@@ -80,24 +85,24 @@ function reader(opts: { tags: boolean }): MetaReader {
         type("M__TableColumns", {
           columnName: scalar,
           columnKey: scalar,
-          glossaryRef: list("M__GlossaryTermRefs"),
+          glossaryRef: list("ON_TermRefs"),
           sensitivity: list("M__SensitiveCoverage"),
           ...(opts.tags ? { tags: list("M__TagAssignments") } : {}),
         }),
-        type("M__GlossaryTermRefs", { termId: scalar, term: one("M__GlossaryTerms") }),
-        type("M__GlossaryTerms", {
+        type("ON_TermRefs", { termId: scalar, term: one("ON_Terms") }),
+        type("ON_Terms", {
           id: scalar,
           name: scalar,
-          edgesOut: list("M__GlossaryTermEdges"),
-          edgesIn: list("M__GlossaryTermEdges"),
+          edgesOut: list("ON_TermEdges"),
+          edgesIn: list("ON_TermEdges"),
         }),
-        type("M__GlossaryTermEdges", {
+        type("ON_TermEdges", {
           id: scalar,
           fromTermId: scalar,
           toTermId: scalar,
           relType: scalar,
-          sourceTerm: one("M__GlossaryTerms"),
-          targetTerm: one("M__GlossaryTerms"),
+          sourceTerm: one("ON_Terms"),
+          targetTerm: one("ON_Terms"),
         }),
         type("M__SensitiveCoverage", { tags: scalar }),
         type("M__TrackedFunctions", { name: scalar, domainId: scalar }),
@@ -111,6 +116,9 @@ function reader(opts: { tags: boolean }): MetaReader {
       [rootKey("meta", "data_products"), "m__dataProducts"],
       [rootKey("meta", "registered_tables"), "m__registeredTables"],
       [rootKey("meta", "table_columns"), "m__tableColumns"],
+      ...(opts.ranks
+        ? ([[rootKey("ontology", "_term_edges"), "on_termEdges"]] as [string, string][])
+        : []),
     ]),
   };
 }
@@ -121,12 +129,12 @@ describe("the product graph's query", () => {
   it("reads each view by the root field the server names, each column aliased to its own name", () => {
     const q = squash(productsQuery(reader({ tags: true }), "c360"));
     expect(q).toContain('data_products: m__dataProducts(where: { id: { eq: "c360" } })');
-    expect(q).toContain("domain_id: domainId");
-    expect(q).toContain("member_tables: memberTables {");
-    expect(q).toContain("dq_contract: dqContract");
+    expect(q).toContain("domainId");
+    expect(q).toContain("memberTables {");
+    expect(q).toContain("dqContract");
     // Declared without an alias: found by the view it reaches.
-    expect(q).toContain("table_columns: tableColumns { column_name: columnName");
-    expect(q).toContain("tags: tags { tag_id: tagId }");
+    expect(q).toContain("tableColumns { columnName");
+    expect(q).toContain("tags { tagId }");
   });
 
   it("selects nothing the role cannot read", () => {
@@ -138,18 +146,18 @@ describe("the product graph's query", () => {
     expect(q).not.toContain("where");
   });
 
-  it("is one query: the bound terms' edges either way and each column's sensitivity in it", () => {
+  it("is one query: the bound terms, without their edges, and each column's sensitivity in it", () => {
     const q = squash(productsQuery(reader({ tags: true }), "c360"));
     expect(q.startsWith("query DataProductGraph {")).toBe(true);
     expect(q.match(/m__/g)).toHaveLength(1);
-    expect(q).toContain(
-      "edges_out: edgesOut { id: id from_term_id: fromTermId to_term_id: toTermId rel_type: relType target_term: targetTerm { id: id name: name } }",
-    );
-    expect(q).toContain("edges_in: edgesIn {");
-    expect(q).toContain("sensitivity: sensitivity { tags: tags }");
+    // A product's neighbourhood ends at the terms its columns are bound to.
+    expect(q).toContain("term { id name }");
+    expect(q).not.toContain("edgesOut");
+    expect(q).not.toContain("edgesIn");
+    expect(q).toContain("sensitivity { tags }");
   });
 
-  it("keeps the chosen domains, tags, sensitivities and edge types in its where", () => {
+  it("keeps the chosen domains, tags and sensitivities in its where", () => {
     const q = squash(
       productsQuery(reader({ tags: true }), null, {
         domains: ["sales"],
@@ -171,9 +179,10 @@ describe("the product graph's query", () => {
       `tableColumns(where: { _and: [{ tags: { tagId: { in: ["gold"] } } }, { sensitivity: ${pii} }] })`,
     );
     // Only the tags kept are drawn.
-    expect(q).toContain('tags: tags(where: { tagId: { in: ["gold"] } }) { tag_id: tagId }');
-    expect(q).toContain('commands: commands(where: { domainId: { in: ["sales"] } })');
-    expect(q).toContain('edgesOut(where: { relType: { in: ["KIND_OF"] } })');
+    expect(q).toContain('tags(where: { tagId: { in: ["gold"] } }) { tagId }');
+    expect(q).toContain('commands(where: { domainId: { in: ["sales"] } })');
+    // No term edge is read, so an edge type narrows nothing in it.
+    expect(q).not.toContain("relType");
   });
 
   it("is not built when the role cannot read the products view", () => {
@@ -187,42 +196,42 @@ const ROWS: ProductRow[] = [
   {
     id: "c360",
     name: "customer_360",
-    domain_id: "sales",
-    tags: [{ tag_id: "gold" }],
-    commands: [{ name: "refresh_c360", domain_id: "sales" }],
-    member_tables: [
+    domainId: "sales",
+    tags: [{ tagId: "gold" }],
+    commands: [{ name: "refresh_c360", domainId: "sales" }],
+    memberTables: [
       {
         id: 1,
-        domain_id: "sales",
-        table_name: "customers",
-        dq_contract: null,
-        product_id: "c360",
-        table_columns: [
+        domainId: "sales",
+        tableName: "customers",
+        dqContract: null,
+        productId: "c360",
+        tableColumns: [
           {
-            column_name: "email",
-            column_key: "1:email",
-            glossary_ref: [{ term_id: 7, term: { id: 7, name: "Customer" } }],
+            columnName: "email",
+            columnKey: "1:email",
+            glossaryRef: [{ termId: 7, term: { id: 7, name: "Customer" } }],
           },
         ],
-        profile_results: [{ id: 9, table_name: "customers_1_profile_columns" }],
-        source_relationships: [
+        profileResults: [{ id: 9, tableName: "customers_1_profile_columns" }],
+        sourceRelationships: [
           {
-            id: 1,
-            target_table: { id: 2, domain_id: "sales", table_name: "orders", product_id: "c360" },
+            id: "1",
+            targetTable: { id: 2, domainId: "sales", tableName: "orders", productId: "c360" },
           },
           {
-            id: 2,
-            target_table: { id: 5, domain_id: "finance", table_name: "invoices", product_id: null },
+            id: "2",
+            targetTable: { id: 5, domainId: "finance", tableName: "invoices", productId: null },
           },
         ],
       },
-      { id: 2, domain_id: "sales", table_name: "orders", dq_contract: null, product_id: "c360" },
+      { id: 2, domainId: "sales", tableName: "orders", dqContract: null, productId: "c360" },
       {
         id: 3,
-        domain_id: "sales",
-        table_name: "orders_dq",
-        dq_contract: "dataset: x/y/z",
-        product_id: "c360",
+        domainId: "sales",
+        tableName: "orders_dq",
+        dqContract: "dataset: x/y/z",
+        productId: "c360",
         checks: { id: 2 },
       },
     ],
@@ -236,14 +245,14 @@ describe("the product graph's data", () => {
       [
         {
           id: 1,
-          from_term_id: 7,
-          to_term_id: 8,
-          rel_type: "KIND_OF",
-          from_term: "Customer",
-          to_term: "Party",
+          fromTermId: 7,
+          toTermId: 8,
+          relType: "KIND_OF",
+          sourceTerm: { id: 7, name: "Customer" },
+          targetTerm: { id: 8, name: "Party" },
         },
       ],
-      [{ column_key: "1:email", table_id: 1, tags: "pii, contact" }],
+      [{ columnKey: "1:email", tableId: 1, tags: "pii, contact" }],
     );
     const byId = new Map(g.nodes.map((n) => [n.id, n]));
     expect(byId.get("p:c360")).toMatchObject({ type: "product", tags: ["gold"] });
@@ -264,53 +273,25 @@ describe("the product graph's data", () => {
     expect(kinds.get("profiled:r:9>t:1")).toBe("profiled");
   });
 
-  it("draws a checker reached through the table it scans, once (REQ-1443 clause 10)", () => {
-    const checker = {
-      id: 4,
-      domain_id: "sales",
-      table_name: "customers_dq",
-      dq_contract: "dataset: x/y/customers",
-      checks: { id: 1 },
-    };
-    const rows: ProductRow[] = [
-      {
-        ...ROWS[0],
-        member_tables: ROWS[0].member_tables!.map((t) =>
-          t.id === 1
-            ? { ...t, checked_by: [checker] }
-            : t.id === 2
-              ? { ...t, checked_by: [checker] }
-              : t,
-        ),
-      },
-    ];
-    const g = toGraphData(rows, null, null);
-    expect(g.nodes.filter((n) => n.id === "k:4").map((n) => n.type)).toEqual(["checker"]);
-    const kinds = new Map(g.edges.map((e) => [e.id, e.kind]));
-    expect(kinds.get("member:p:c360>k:4")).toBe("member");
-    expect(kinds.get("checks:k:4>t:1")).toBe("checks");
-  });
-
   it("reads a one-to-many the server answered null (no rows) as empty", () => {
     const rows = [
       {
         id: "lone",
         name: "lone",
-        domain_id: "sales",
+        domainId: "sales",
         tags: null,
         commands: null,
         edges: null,
-        member_tables: [
+        memberTables: [
           {
             id: 6,
-            domain_id: "sales",
-            table_name: "solo",
-            dq_contract: null,
+            domainId: "sales",
+            tableName: "solo",
+            dqContract: null,
             tags: null,
-            table_columns: null,
-            profile_results: null,
-            checked_by: null,
-            source_relationships: null,
+            tableColumns: null,
+            profileResults: null,
+            sourceRelationships: null,
           },
         ],
       },
@@ -333,41 +314,23 @@ describe("a product's own graph (REQ-2136)", () => {
     const rows: ProductRow[] = [
       {
         ...ROWS[0],
-        member_tables: (ROWS[0].member_tables ?? []).map((t) => ({
+        memberTables: (ROWS[0].memberTables ?? []).map((t) => ({
           ...t,
-          table_columns: (t.table_columns ?? []).map((c) => ({
+          tableColumns: (t.tableColumns ?? []).map((c) => ({
             ...c,
             sensitivity: [{ tags: "pii" }],
-            glossary_ref: (c.glossary_ref ?? []).map((r) => ({
-              ...r,
-              term: r.term && {
-                ...r.term,
-                edges_out: [
-                  {
-                    id: 1,
-                    from_term_id: 7,
-                    to_term_id: 8,
-                    rel_type: "KIND_OF",
-                    target_term: { id: 8, name: "Party" },
-                  },
-                ],
-                edges_in: [],
-              },
-            })),
           })),
         })),
         // A linked product is a bare node, in a domain of its own.
         edges: [
           {
             kind: "relationship",
-            direction: null,
-            target_product_id: "billing",
-            target_table_id: null,
-            target_relation: null,
+            targetProductId: "billing",
+            targetTableId: null,
             hops: 1,
-            path_count: 2,
+            pathCount: 2,
             aliases: "BILLED_TO",
-            target_product: { id: "billing", name: "Billing", domain_id: "finance" },
+            targetProduct: { id: "billing", name: "Billing", domainId: "finance" },
           },
         ],
       },
@@ -379,7 +342,8 @@ describe("a product's own graph (REQ-2136)", () => {
         .nodes.map((n) => n.id)
         .sort();
     expect(ids(["p:c360"])).toEqual(ids([]));
-    expect(ids([])).toEqual(expect.arrayContaining(["p:billing", "term:8", "c:1:email"]));
+    // The read stops at the bound terms: the graph holds no term beyond them.
+    expect(ids([])).toEqual(expect.arrayContaining(["p:billing", "term:7", "c:1:email"]));
   });
 });
 
@@ -388,38 +352,16 @@ describe("the product's links (REQ-2126)", () => {
     {
       id: "p1",
       name: "P1",
-      domain_id: "sales",
+      domainId: "sales",
       edges: [
         {
           kind: "relationship",
-          direction: null,
-          target_product_id: "p2",
-          target_table_id: null,
-          target_relation: null,
+          targetProductId: "p2",
+          targetTableId: null,
           hops: 1,
-          path_count: 2,
+          pathCount: 2,
           aliases: "BOUGHT, PAID",
-          target_product: { id: "p2", name: "P2", domain_id: "finance" },
-        },
-        {
-          kind: "lineage",
-          direction: "upstream",
-          target_product_id: null,
-          target_table_id: null,
-          target_relation: "raw.d",
-          hops: 2,
-          path_count: 1,
-          aliases: null,
-        },
-        {
-          kind: "lineage",
-          direction: "downstream",
-          target_product_id: null,
-          target_table_id: null,
-          target_relation: "mart.e",
-          hops: 1,
-          path_count: 1,
-          aliases: null,
+          targetProduct: { id: "p2", name: "P2", domainId: "finance" },
         },
       ],
     },
@@ -435,53 +377,293 @@ describe("the product's links (REQ-2126)", () => {
     });
   });
 
-  it("stands lineage in lanes: ancestry by its distance upstream, a consumer one lane down", () => {
-    const g = toGraphData(linked, null, null);
-    const lane = (id: string) => g.nodes.find((n) => n.id === id)?.lane;
-    expect([lane("l:raw.d"), lane("p:p1"), lane("l:mart.e")]).toEqual([-2, 0, 1]);
-    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
-      ["l:raw.d", "p:p1"],
-      ["p:p1", "l:mart.e"],
-    ]);
-  });
-});
-
-describe("column lineage (REQ-2129)", () => {
-  it("joins each member column to the columns deriving it, named by their relation", () => {
-    const rows: ProductRow[] = [
+  it("draws the product lineage endpoint's inputs feeding the product, each named as its reader knows it", () => {
+    const base = toGraphData(linked, null, null);
+    const input = (over: Partial<ProductInput>): ProductInput => ({
+      relation: "raw.d",
+      kind: "source_table",
+      table_id: 9,
+      domain_id: "raw",
+      table_name: "d",
+      alias: null,
+      product_id: null,
+      source_id: null,
+      source_type: null,
+      source_schema: null,
+      source_table: null,
+      ...over,
+    });
+    const g = withProductLineage(
+      base,
+      "p1",
       {
-        id: "p1",
-        name: "P1",
-        domain_id: "sales",
-        member_tables: [
-          {
-            id: 1,
+        nodes: [],
+        edges: [],
+        outputs: [],
+        dq: { expectations: [], promises: [], related: [], unattached: [] },
+        members: [],
+        consumers: [],
+        inputs: [
+          input({ relation: "pet_store.pets", domain_id: "pet-store", table_name: "pets" }),
+          input({
+            relation: "native:sales.orders",
+            kind: "source",
             domain_id: "sales",
-            table_name: "a",
-            table_columns: [
-              {
-                column_name: "total",
-                column_key: "1:total",
-                upstream: [
-                  {
-                    source_column_key: "9:amount",
-                    source_relation: "finance.b",
-                    source_column: "amount",
-                    via: "sales.a",
-                  },
-                ],
-              },
-            ],
+            table_name: "orders",
+            source_id: "shop",
+            source_schema: "public",
+            source_table: "Orders",
+          }),
+          input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_id: "p2" }),
+        ],
+      },
+      [],
+    );
+    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
+    // A registered table by its catalog name; a source read directly by the source's own names.
+    expect(label("l:pet_store.pets")).toBe("pet-store.pets");
+    expect(label("l:native:sales.orders")).toBe("shop · public.Orders");
+    // Another product's member stands for that product: p1 is built from p2.
+    expect(g.nodes.some((n) => n.id === "l:mart.e")).toBe(false);
+    expect(label("p:p2")).toBe("P2");
+    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
+      ["l:pet_store.pets", "p:p1"],
+      ["l:native:sales.orders", "p:p1"],
+      ["p:p2", "p:p1"],
+    ]);
+    // What the meta read drew is kept as it was.
+    expect(g.nodes.length).toBe(base.nodes.length + 2);
+  });
+
+  it("joins the endpoint's column lineage to the columns it names, by their tables", () => {
+    const member: ProductRow = {
+      id: "p1",
+      name: "P1",
+      domainId: "pet-store",
+      memberTables: [
+        {
+          id: 3,
+          domainId: "pet-store",
+          tableName: "pets",
+          tableColumns: [{ columnName: "name", columnKey: "3:name" }],
+        },
+      ],
+    } as ProductRow;
+    const base = toGraphData([member], null, null);
+    const node = (id: string, relation: string, column: string, kind: LineageNode["kind"]) => ({
+      id,
+      relation,
+      column,
+      kind,
+      materialized: false,
+    });
+    const g = withProductLineage(
+      base,
+      "p1",
+      {
+        nodes: [
+          {
+            ...node("native:raw.d.Name", "native:raw.d", "Name", "native"),
+            source_id: "crm",
+            source_schema: "public",
+            source_table: "D",
+          },
+          node("raw.d.name", "raw.d", "name", "source"),
+          node("pet_store.pets.name", "pet_store.pets", "name", "derived"),
+        ],
+        edges: [
+          { source: "native:raw.d.Name", target: "raw.d.name", transform: "", ops: [] },
+          { source: "raw.d.name", target: "pet_store.pets.name", transform: "", ops: [] },
+        ],
+        outputs: ["pet_store.pets.name"],
+        dq: { expectations: [], promises: [], related: [], unattached: [] },
+        members: ["pet_store.pets"],
+        consumers: [],
+        inputs: [
+          {
+            relation: "raw.d",
+            kind: "source_table",
+            table_id: 9,
+            domain_id: "raw",
+            table_name: "d",
+            alias: null,
+            product_id: null,
+            source_id: null,
+            source_type: null,
+            source_schema: null,
+            source_table: null,
           },
         ],
       },
-    ];
-    const g = toGraphData(rows, null, null);
-    expect(g.nodes.find((n) => n.id === "c:9:amount")?.label).toBe("finance.b.amount");
-    expect(g.edges.find((e) => e.kind === "column_lineage")).toMatchObject({
-      a: "c:9:amount",
-      b: "c:1:total",
-      label: "sales.a",
+      member.memberTables ?? [],
+    );
+    expect(g.edges.filter((e) => e.kind === "column_lineage").map((e) => [e.a, e.b])).toEqual([
+      ["lc:native:raw.d.Name", "c:9:name"],
+      ["c:9:name", "c:3:name"],
+    ]);
+    const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
+    // The member's column is the one the meta read drew; the others stand alone, by where they are.
+    expect(label("c:3:name")).toBe("pets.name");
+    expect(label("c:9:name")).toBe("raw.d.name");
+    expect(label("lc:native:raw.d.Name")).toBe("crm · public.D.Name");
+  });
+
+  it("draws no lineage from the product's edges: its lineage is the product lineage endpoint's", () => {
+    const g = toGraphData(linked, null, null);
+    expect(g.nodes.some((n) => n.id.startsWith("l:"))).toBe(false);
+    expect(g.edges.some((e) => e.kind === "lineage")).toBe(false);
+  });
+});
+
+describe("column lineage (REQ-2129, REQ-2156)", () => {
+  it("is read from no meta view: a member column carries no upstream edge here", () => {
+    const g = toGraphData(ROWS, null, null);
+    expect(g.edges.some((e) => e.kind === "column_lineage")).toBe(false);
+  });
+});
+
+describe("the product graph's term hierarchy (REQ-2174)", () => {
+  it("reads the rank edges beside the products, with the terms they join, in the one query", () => {
+    const q = squash(productsQuery(reader({ tags: true, ranks: true }), "c360"));
+    expect(q.startsWith("query DataProductGraph {")).toBe(true);
+    expect(q).toContain(
+      '_term_edges: on_termEdges(where: { relType: { in: ["KIND_OF","PART_OF","VALID_VALUE_OF"] } })',
+    );
+    expect(q).toContain("sourceTerm { id name }");
+    expect(q).toContain("targetTerm { id name }");
+  });
+
+  it("narrows the rank edges to the edge types kept, and reads none when none is a rank type", () => {
+    const m = reader({ tags: true, ranks: true });
+    const kept = squash(productsQuery(m, null, { ...NO_PRODUCT_FILTERS, edgeTypes: ["PART_OF"] }));
+    expect(kept).toContain('relType: { in: ["PART_OF"] }');
+    const none = squash(
+      productsQuery(m, null, { ...NO_PRODUCT_FILTERS, edgeTypes: ["RELATED_TO"] }),
+    );
+    expect(none).not.toContain("_term_edges");
+  });
+
+  const edge = (id: number, from: number, to: number, rel: string): TermEdgeRow => ({
+    id,
+    fromTermId: from,
+    toTermId: to,
+    relType: rel,
+    sourceTerm: { id: from, name: `t${from}` },
+    targetTerm: { id: to, name: `t${to}` },
+  });
+
+  it("keeps the edges on a chain up from a bound term, and no other", () => {
+    // Term 7 is bound (ROWS); 7 -> 8 -> 10 is its chain; 11 -> 12 is no chain of the product's.
+    const edges = [edge(1, 7, 8, "KIND_OF"), edge(2, 8, 10, "PART_OF"), edge(3, 11, 12, "KIND_OF")];
+    expect(
+      rankChains(ROWS, edges)
+        .map((e) => e.id)
+        .sort(),
+    ).toEqual([1, 2]);
+    const g = productGraph(ROWS, edges);
+    expect(g.nodes.filter((n) => n.type === "term").map((n) => n.id).sort()).toEqual([
+      "term:10",
+      "term:7",
+      "term:8",
+    ]);
+  });
+
+  it("keeps two edges of different types between the same two terms", () => {
+    const g = toGraphData(ROWS, [edge(1, 7, 8, "RELATED_TO"), edge(2, 7, 8, "KIND_OF")], null);
+    expect(
+      g.edges
+        .filter((e) => e.kind === "term_edge")
+        .map((e) => e.label)
+        .sort(),
+    ).toEqual(["KIND_OF", "RELATED_TO"]);
+  });
+
+  it("draws no edge to a term the role cannot read", () => {
+    const g = toGraphData(ROWS, [{ ...edge(1, 7, 8, "KIND_OF"), targetTerm: null }], null);
+    expect(g.edges.some((e) => e.kind === "term_edge")).toBe(false);
+  });
+});
+
+describe("each node's facts (REQ-2174)", () => {
+  const rows: ProductRow[] = [
+    {
+      id: "c360",
+      name: "customer_360",
+      domainId: "sales",
+      status: "live",
+      ownerRole: "sales_steward",
+      memberTables: [
+        {
+          id: 1,
+          domainId: "sales",
+          tableName: "customers",
+          sourceId: "sales_pg",
+          description: "Every customer.",
+          checkedBy: [
+            { latestOutcome: "pass", latestRunAt: "2026-10-26T10:00:00Z" },
+            { latestOutcome: "fail", latestRunAt: "2026-10-27T10:00:00Z" },
+          ],
+          dqContract: null,
+          productId: "c360",
+          tableColumns: [
+            {
+              columnName: "email",
+              columnKey: "1:email",
+              dataType: "varchar",
+              description: "Where we write.",
+              masks: '[{"to": ["analyst"], "mask": {"type": "constant", "value": null}}]',
+              glossaryRef: [
+                {
+                  termId: 7,
+                  term: {
+                    id: 7,
+                    name: "Customer",
+                    definition: "Someone who buys.",
+                    status: "live",
+                    experts: [
+                      { userId: "ada", kind: "expert" },
+                      { userId: "bob", kind: "author" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        { id: 2, domainId: "sales", tableName: "orders", dqContract: null, checkedBy: null },
+      ],
+    },
+  ];
+  const g = toGraphData(rows, null, null);
+  const byId = new Map(g.nodes.map((n) => [n.id, n]));
+
+  it("gives a term its definition, status and stewards (its experts)", () => {
+    expect(byId.get("term:7")).toMatchObject({
+      definition: "Someone who buys.",
+      info: { status: "live", stewards: ["ada"] },
     });
+  });
+
+  it("gives a column its type, description and whether it is masked", () => {
+    expect(byId.get("c:1:email")?.info).toEqual({
+      dataType: "varchar",
+      description: "Where we write.",
+      masked: true,
+    });
+  });
+
+  it("gives a table its source, description and its checkers' worst latest outcome", () => {
+    expect(byId.get("t:1")?.info).toEqual({
+      source: "sales_pg",
+      description: "Every customer.",
+      quality: "fail",
+      checkedAt: "2026-10-27T10:00:00Z",
+    });
+    // No checker scans it: no quality is said.
+    expect(byId.get("t:2")?.info).toBeUndefined();
+  });
+
+  it("gives a product its status and owner", () => {
+    expect(byId.get("p:c360")?.info).toEqual({ status: "live", owner: "sales_steward" });
   });
 });

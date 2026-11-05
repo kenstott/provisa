@@ -74,6 +74,35 @@ def named_unsecured(
     return roles, held, attributes
 
 
+def unsecured_acting_role(state, roles: list[str], held: Mapping[str, str]) -> str:
+    """The role an unsecured request acts as from its :func:`named_unsecured` split (REQ-1952):
+    one data role naming no derived role is that role; a set, or any named derived role, acts as
+    its meta-role, built in the org bound now. Named with no data role it reaches no data
+    (PermissionError)."""
+    from provisa.security.meta_role import ensure_meta_role
+
+    if held:
+        return ensure_meta_role(state, roles, tuple(held))
+    if len(set(roles)) > 1:
+        return ensure_meta_role(state, roles)
+    return roles[0]
+
+
+def unsecured_principal(state, requested: str) -> tuple[str, dict[str, str]]:
+    """The role an unsecured call naming ``requested`` (one role, or a comma-separated set) acts
+    as, and the session variables it binds -- what the HTTP middleware resolves and binds for
+    ``X-Provisa-Role``, for a transport that reads its own role (gRPC, Flight; REQ-1952). A named
+    derived role binds its attribute (``region__eu``: region=eu), which a row filter reads. A
+    meta-role named directly is refused (MetaRoleNamed)."""
+    from provisa.security.meta_role import refuse_named_meta_role
+
+    names = [r.strip() for r in requested.split(",") if r.strip()]
+    refuse_named_meta_role(names)
+    roles, held, attributes = named_unsecured(names, declared_derived_roles(state))
+    role = unsecured_acting_role(state, roles, held)
+    return role, principal_session_vars(None, attributes, role)
+
+
 def declared_derived_role_entries(state) -> list[DerivedRole]:  # REQ-2078
     """The derived roles the bound org declares, each an attribute and its description: its own
     ``derived_roles`` setting (org_settings) where it has one, which replaces the deployment
@@ -116,12 +145,19 @@ def principal_session_vars(
     user_id: str | None, attributes: Mapping[str, str], role_id: str | None
 ) -> dict[str, str]:
     """The session variables a principal binds (REQ-1682): its resolved attributes, then
-    ``user_id`` and ``role`` from the acting identity."""
+    ``user_id``, ``role`` and ``acting_roles`` from the acting identity."""
+    from provisa.core.request_context import ACTING_ROLES_VAR
+    from provisa.security.meta_role import members_of
+
     out = dict(attributes)
     if user_id and user_id != "anonymous":
         out["user_id"] = str(user_id)
+    # REQ-2188: bound here and nowhere else, over any attribute of the name: a client never says
+    # which roles a rule reads it acting as.
+    out.pop(ACTING_ROLES_VAR, None)
     if role_id:
         out["role"] = str(role_id)
+        out[ACTING_ROLES_VAR] = ",".join(members_of(str(role_id)))
     return out
 
 
@@ -129,10 +165,17 @@ def principal_session_vars(
 def principal_scope(state: Any, identity: Any, role_id: str | None) -> Iterator[None]:
     """Bind ``identity``'s session variables, acting as ``role_id``, for one call of a transport
     that authenticates its own caller, as the HTTP middleware binds them for a request."""
+    attributes, _held = principal_of(state, identity)
+    with session_vars_scope(principal_session_vars(identity.user_id, attributes, role_id)):
+        yield
+
+
+@contextmanager
+def session_vars_scope(values: dict[str, str]) -> Iterator[None]:
+    """Bind ``values`` as the session variables for one call (REQ-1682)."""
     from provisa.core.request_context import reset_session_vars, set_session_vars
 
-    attributes, _held = principal_of(state, identity)
-    token = set_session_vars(principal_session_vars(identity.user_id, attributes, role_id))
+    token = set_session_vars(values)
     try:
         yield
     finally:

@@ -132,8 +132,8 @@ async def sql_client(monkeypatch):
             "schema_name": "public",
             "table_name": "orders",
             "columns": [
-                {"column_name": "id", "data_type": "integer"},
-                {"column_name": "status", "data_type": "varchar"},
+                {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                {"column_name": "status", "data_type": "varchar", "visible_to": ["org_admin"]},
             ],
         }
     ]
@@ -238,8 +238,8 @@ class TestSQLGovernanceApplied:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [
-                    {"column_name": "id", "data_type": "integer"},
-                    {"column_name": "status", "data_type": "varchar"},
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                    {"column_name": "status", "data_type": "varchar", "visible_to": ["org_admin"]},
                 ],
             }
         ]
@@ -445,14 +445,25 @@ class TestImplicitTraversalDomains:
             "Expected V002 for JOIN between unrelated data domains without a registered relationship"
         )
 
+    def test_direct_meta_table_in_from_is_read_with_catalog_read(self):
+        """catalog_read, flattened into domain_access, opens a direct FROM (REQ-1132)."""
+        from provisa.compiler.sql_validator import validate_sql
+
+        ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        held = {**role, "domain_access": ["pet-store", "meta"]}
+        violations = validate_sql(
+            "SELECT table_name FROM registered_tables", ctx, gov_ctx, held, raw_tables
+        )
+        assert not [v for v in violations if v.code == "V001"]
+
     def test_direct_meta_table_in_from_blocked_by_v001(self):
-        """Direct FROM-clause use of a meta table is still domain-access checked (V001)."""
+        """Direct FROM-clause use of a meta table is domain-access checked (V001)."""
         from provisa.compiler.sql_validator import validate_sql
 
         ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
         sql = "SELECT table_name FROM registered_tables"
         violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
-        # meta domain not in role's domain_access ["pet-store"] → V001
+        # meta not in role's flattened domain_access ["pet-store"]: it holds no catalog_read → V001
         v001 = [v for v in violations if v.code == "V001"]
         assert v001, (
             "Expected V001 when meta table appears directly in FROM clause without domain access"
@@ -497,9 +508,9 @@ class TestMaskedColumnInPredicate:
                 "schema_name": "hr",
                 "table_name": "employees",
                 "columns": [
-                    {"column_name": "id", "data_type": "integer"},
-                    {"column_name": "name", "data_type": "varchar"},
-                    {"column_name": "ssn", "data_type": "varchar"},
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
+                    {"column_name": "name", "data_type": "varchar", "visible_to": ["org_admin"]},
+                    {"column_name": "ssn", "data_type": "varchar", "visible_to": ["org_admin"]},
                 ],
             }
         ]
@@ -599,11 +610,15 @@ def two_roles(sql_client, monkeypatch):
         "domain_access": ["*"],
     }
     state.roles["org_admin"]["domain_access"] = ["*"]
+    # REQ-2154: the analyst reads the table's columns only by a grant naming it.
+    for table in state.tables:
+        for column in table["columns"]:
+            column["visible_to"] = [*column["visible_to"], "analyst"]
     plans: list = []
 
     async def _route(exec_sql, governed_sql, gov_ctx, ctx, st, **kwargs):
         decision = RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t")
-        return exec_sql, decision, "pg", False, {"pg"}, ()
+        return exec_sql, decision, False, {"pg"}, ()
 
     async def _execute(plan, st=None):
         plans.append(plan)
@@ -815,16 +830,36 @@ class TestSQLEachStatement:
             "SELECT status FROM orders",
         ]
         assert all("error" not in r and r["columns"] == ["id"] for r in results)
-        assert all(r["data"] == [{"id": 1}] for r in results)
+        assert all(r["data"] == [[1]] for r in results)
 
     async def test_an_error_in_the_second_keeps_the_first_rows(self, sql_client):
         resp = await self._post(sql_client, "SELECT id FROM orders; SELECT id FROM secret_table")
         assert resp.status_code == 200, resp.text
         first, second = resp.json()["results"]
-        assert first["data"] == [{"id": 1}]
+        assert first["data"] == [[1]]
         assert second["error"]["status"] == 403
         assert "secret_table" in str(second["error"]["body"])
         assert "data" not in second
+
+    async def test_two_columns_of_one_name_each_keep_their_value(self, sql_client):
+        # SELECT id, id (as SELECT a.id, b.id): a row is its values in column order, so a repeated name loses nothing.
+        rows = _make_query_result(rows=[(1, 2)], column_names=["id", "id"])
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+        ):
+            resp = await sql_client.post(
+                "/data/sql",
+                json={
+                    "sql": "SELECT id, id FROM orders",
+                    "role": "org_admin",
+                    "results": "each",
+                },
+            )
+        assert resp.status_code == 200, resp.text
+        (only,) = resp.json()["results"]
+        assert only["columns"] == ["id", "id"]
+        assert only["data"] == [[1, 2]]
 
     async def test_a_semicolon_in_a_string_does_not_split(self, sql_client):
         resp = await self._post(sql_client, "SELECT id FROM orders WHERE status = 'a;b'")

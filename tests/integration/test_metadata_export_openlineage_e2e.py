@@ -35,6 +35,7 @@ from tests.integration.metadata_export_server import (
     VIEW,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -60,7 +61,7 @@ async def published():
     same server state back."""
     async with published_server(ORG) as client:
         result = await publish(client, {"provider": "openlineage", "endpoint": _base_url()})
-        assert result["ok"], result["errors"]
+        assert result["ok"], refused(result)
         yield {"result": result}
 
 

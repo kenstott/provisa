@@ -197,6 +197,9 @@ function Start-Native {
   Write-Status 'START' 'Starting the engine and UI'
   $baseEnv = Native-Env (Start-ControlPlane)
   foreach ($k in $baseEnv.Keys) { Set-Item -Path "Env:$k" -Value $baseEnv[$k] }
+  # REQ-2135: a local install's public address. The API's boot stores it as server.public_url,
+  # the operator setting in Deployment settings, when nothing sets it.
+  $env:PROVISA_LOCAL_ADDRESS = "http://localhost:$ApiPort"
 
   # CWD = {app}: the demo config references ./demo/files/*.sqlite relative to the working dir.
   # -u: stdout/stderr are redirected to files here, so without it the logs lag the live process and

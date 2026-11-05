@@ -49,6 +49,8 @@ GET /auth/provider-type
 
 请求以其执行角色运行：已验证用户的角色，或在开发模式（无身份验证）下取 `X-Provisa-Role` 标头，缺省时为 `org_admin`。正文中的 `role` 字段不选择角色。若存在，它必须与执行角色一致；不同的值返回 `400`，代码为 `data.role_mismatch`，并指明两个角色。同一规则适用于 `POST /data/sql`、`POST /data/query` 和 `POST /query/nl`。
 
+**基于 HTTP 的 GraphQL。** 该端点遵循 GraphQL-over-HTTP 规范。它也响应 `GET /data/graphql`,其 `query`、`operationName`、`variables` 和 `extensions` 以 URL 编码传递(`variables` 和 `extensions` 为 JSON 字符串);用 `GET` 发送的变更返回 `405`。`Accept` 中 `application/graphql-response+json` 列在 `application/json` 之前的请求,以该媒体类型应答;其他所有请求以 `application/json` 应答。不是 GraphQL 请求的请求返回 `400`:没有正文、正文不是 JSON 对象,或参数的 JSON 类型错误(`query` 和 `operationName` 为字符串,`variables` 和 `extensions` 为对象)。无法解析或验证、或变量无法强制转换的文档,应答其 `errors` 且不含 `data`:在 `application/json` 下状态为 `200`,在 `application/graphql-response+json` 下或 `Accept` 要求 CSV 等文件格式时为 `400`。
+
 `extensions` 字段支持自动持久化查询（APQ）协议：
 
 ```json
@@ -1568,7 +1570,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | 通过 `/v1/glossaries` 的 Provisa 术语表 | 以 fqn 为键的 PUT，重命名通过存储的 UUID 进行 PATCH 重绑定 | KIND_OF → 原生父级层级，SYNONYM_OF → `synonyms`，其他 → `relatedTerms` | `entityStatus` |
 | Collibra | 术语表类型域 "Provisa Glossary" | 通过 Import API 创建的 Business Term 资产 | 原生 Business Term 关系类型 | 资产状态 |
 
-关键在于绑定，而不是名称。每个已发布术语的供应商 id 都会以该术语的 URN（`provisa://<org>/terms/<name>`）记录在 `catalog_bindings` 中，只有当 Provisa 持有该绑定，或该条目位于 Provisa 创建的容器中时，Provisa 才会修改或删除供应商一侧的术语表条目。没有 Provisa 绑定的术语表条目来自外部系统，永远不会被触碰。更新会先读取再合并，所以数据管家在 Provisa 自有术语上添加的字段会保留；术语离开快照时也不会删除任何东西。数据管家所做的术语到资产的分配仍归外部系统所有：没有任何适配器写入它们（发布在 Provisa 中编写的分配是另一项后续工作）。具体到 Collibra，Import API 会替换收到的内容，安全性依靠范围限定：载荷只提及 Provisa 术语表领域内的资产，以及 Provisa 术语之间的关系，所以数据管家的术语表及其关系都不会被触及。
+关键在于绑定，而不是名称。每个已发布术语的供应商 id 都会以该术语的 URN（`provisa://<org>/terms/<name>`）记录在 `catalog_bindings` 中，只有当 Provisa 持有该绑定，或该条目位于 Provisa 创建的容器中时，Provisa 才会修改或删除供应商一侧的术语表条目。没有 Provisa 绑定的术语表条目来自外部系统，永远不会被触碰。更新会先读取再合并，所以数据管家在 Provisa 自有术语上添加的字段会保留；术语离开快照时也不会删除任何东西。每个术语都把它的角色（类、属性或概念）作为术语的属性带出：在 DataHub 中是自定义属性 `provisaRole`，在 OpenMetadata 中是一个自定义属性，在 Atlas、Purview 和 Atlan 中是术语的附加属性，在 Collibra 中是 `Provisa Role` 属性。在 DataHub 中，组织的 Provisa 节点为每个角色设一个子节点，分别名为 Classes、Properties 和 Concepts。OpenMetadata 除术语外没有术语表节点，所以每个角色是一个分组术语，容纳该角色的顶层术语；有 `KIND_OF` 父术语的术语留在该父术语之下。Provisa 还会把每个术语分配给它所指的数据。类术语分配给它所落地的已发布表，属性术语分配给它的已发布列，概念则不分配给任何东西。每项分配都以目录自身的自动分配写入，并归属于 Provisa：在 OpenMetadata 中是 `Automated` 标签，在 DataHub 中是归属于 Provisa 执行者的术语关联，在 Atlas 和 Atlan 中是来源为 Provisa 的语义分配，在 Collibra 中是由 Provisa 用户创建的关系。Provisa 只添加和撤回这些分配，所以数据管家所做的分配永远不会被移除或重复。请求失败不会导致分配被撤回。在 Collibra 中，分配通过关系 API 而不是 Import API 写入，因为导入会替换数据管家同一类型的关系。具体到 Collibra，Import API 会替换收到的内容，安全性依靠范围限定：载荷只提及 Provisa 术语表领域内的资产，以及 Provisa 术语之间的关系，所以数据管家的术语表及其关系都不会被触及。
 
 ---
 

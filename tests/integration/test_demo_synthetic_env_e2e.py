@@ -17,9 +17,10 @@ demo's template: its prod is profiled, dev is generated from those runs, and the
 their records -- the dataset, the generation and its report -- are written beside the replicas'
 seed. The demo's source is then deleted. A sandbox tier started afterwards adopts the template's
 dev from the seed, and a visitor's sandbox is given it: its dev reads generated rows, none of them
-a real name, and carries the report comparing them with the profile they were drawn from."""
+a real name, and carries the report comparing them with the profile they were drawn from. Its
+dev's runtime is built in the open, cloned from the template's (REQ-2006)."""
 
-# Requirements: REQ-1942, REQ-2053
+# Requirements: REQ-1942, REQ-2053, REQ-2006
 
 from __future__ import annotations
 
@@ -51,6 +52,7 @@ _PROFILER = {
     "correlation_max_columns": 20,
     "joint_max_distinct": 20,
     "category_max_columns": 10,
+    "classification_sample": 500,
 }
 
 
@@ -156,6 +158,25 @@ def _open(tier) -> dict:
         time.sleep(2)
 
 
+def _prepared_rows(store: Path, schema: str) -> list[tuple]:
+    """The animals the template's dev was generated with, read from the seed's store."""
+    import duckdb
+
+    db = duckdb.connect(str(store), read_only=True)
+    try:
+        (table,) = [
+            r[0]
+            for r in db.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = ? AND table_name LIKE '%animals%'",
+                [schema],
+            ).fetchall()
+        ]
+        return sorted(db.execute(f'SELECT name, species, age FROM "{schema}"."{table}"').fetchall())
+    finally:
+        db.close()
+
+
 def _headers(sandbox: dict, env: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {sandbox['token']}",
@@ -191,6 +212,11 @@ def test_a_synthetic_environment_is_generated_once_and_given_to_each_sandbox(tmp
     deployed.start(timeout=240)
     try:
         sandbox = _open(deployed)
+        # REQ-2006 (amended 2026-11-04): dev's runtime was built in the open, cloned, so the query
+        # below is served one already built and waits on no build of it.
+        opened = deployed.dump_stderr_debug()
+        built = f"demo sandbox {sandbox['org_id']} of gamma: its environment dev's runtime took "
+        assert built in opened, opened[-8000:]
         rows = httpx.post(
             f"{deployed.base_url}/data/sql",
             json={"sql": "SELECT name, species, age FROM animals"},
@@ -203,6 +229,11 @@ def test_a_synthetic_environment_is_generated_once_and_given_to_each_sandbox(tmp
         assert not {r["name"] for r in generated} & set(_NAMES), "no real name is in dev"
         assert len(generated) == len(_NAMES), "as many rows as production's profile counted"
         assert not {r["species"] for r in generated} & set(_SPECIES), "no real value is in dev"
+        # REQ-2006 (amended 2026-11-04): the sandbox's dev is the template's prepared dev, copied
+        # with no rebuild of it: it answers exactly the rows the template generated.
+        assert sorted((r["name"], r["species"], r["age"]) for r in generated) == _prepared_rows(
+            folder / "seeded" / "synthetic.duckdb", held["schema"]
+        )
         report = httpx.get(
             f"{deployed.base_url}/admin/synthetic-datasets/model/report",
             headers=_headers(sandbox, "dev"),

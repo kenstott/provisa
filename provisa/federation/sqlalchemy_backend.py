@@ -23,6 +23,16 @@ class SqlAlchemyBackend(NativeEngineBackend):
     """A self-only warehouse: every source lands into the store defined by the SQLAlchemy URL, and
     governed SQL runs against it."""
 
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: SQLAlchemy wraps each driver's error in its own of the same PEP 249 name."""
+        import sqlalchemy.exc as sa
+
+        from provisa.federation.dbapi_errors import dbapi_errors
+
+        return dbapi_errors(sa)
+
     def _new_runtime(self) -> Any:
         from provisa.federation.engine import configured_engine_url
 
@@ -30,6 +40,15 @@ class SqlAlchemyBackend(NativeEngineBackend):
         if not url:
             raise RuntimeError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
         return SqlAlchemyFederationRuntime(url=url, catalog_qualified=self.engine.catalog_qualified)
+
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: a session's tables are in this engine's own store, written there in place on
+        its own connection."""
+        from provisa.federation.session_rows import SqlAlchemySessionRows
+
+        return SqlAlchemySessionRows(
+            self._runtime_for(state)._sa.url.render_as_string(hide_password=False)
+        )
 
     def replica_indexer(self, state: Any, *, address: Any) -> Any:
         """REQ-2015: a replica in this engine's own store is indexed by that store's DDL -- a

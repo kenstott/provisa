@@ -37,6 +37,8 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
+from provisa.core.held_sizes import held
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, MutableMapping
 
@@ -47,6 +49,7 @@ DRAIN_INTERVAL_SECONDS = 30
 
 _LOCK = threading.Lock()
 _PENDING: dict[str, int] = {}
+held(__name__, "_PENDING", _PENDING)
 
 
 def report(org_id: str | None, n_bytes: int) -> None:

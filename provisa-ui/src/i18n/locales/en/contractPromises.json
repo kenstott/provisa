@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "Applies to",
+      "check": "Check",
+      "details": "Details",
+      "result": "Latest result"
+    },
+    "level": {
+      "table": "Table",
+      "row": "Row"
+    },
+    "check": {
+      "notNull": "Not null",
+      "unique": "Unique",
+      "allowedValues": "Allowed values",
+      "pattern": "Pattern match",
+      "valueRange": "Value range",
+      "textLength": "Text length",
+      "average": "Average range",
+      "distinctCount": "Distinct values",
+      "rowCount": "Row count",
+      "columnOrder": "Column order",
+      "unexpectedRows": "No unexpected rows",
+      "missing": "No missing values",
+      "valid": "Valid values",
+      "duplicate": "No duplicates",
+      "aggregate": "Aggregate",
+      "freshness": "Freshness",
+      "failedRows": "No failing rows"
+    },
+    "threshold": {
+      "eq": "Must be {{value}}",
+      "ne": "Must not be {{value}}",
+      "gt": "Greater than {{value}}",
+      "gte": "At least {{value}}",
+      "lt": "Less than {{value}}",
+      "lte": "At most {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}}%",
+      "between": "From {{min}} to {{max}}",
+      "atLeast": "At least {{value}}",
+      "atMost": "At most {{value}}",
+      "oneOf": "One of {{values}}",
+      "matches": "Matches {{pattern}}",
+      "greater": "{{a}} greater than {{b}}",
+      "orEqual": "{{a}} at least {{b}}",
+      "query": "Unexpected rows: {{query}}",
+      "expression": "Failing rows: {{expression}}",
+      "mostly": "At least {{percent}}% of rows",
+      "alsoMissing": "Also missing: {{values}}",
+      "minLength": "At least {{value}} characters",
+      "maxLength": "At most {{value}} characters"
+    },
+    "aggregate": {
+      "avg": "Average",
+      "sum": "Sum",
+      "min": "Minimum",
+      "max": "Maximum",
+      "minLength": "Shortest length",
+      "maxLength": "Longest length",
+      "avgLength": "Average length"
+    }
+  }
+}

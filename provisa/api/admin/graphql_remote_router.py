@@ -33,9 +33,14 @@ from provisa.api.errors import ApiError
 from provisa.core.schema_org import domains, registered_tables, sources, table_columns
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.schema_common import remote_source_counts
+from provisa.api.admin.read_rights import (
+    readable_columns_report,
+    readable_dependents,
+    reader_for_request,
+)
 
 if TYPE_CHECKING:
-    pass
+    from provisa.api.admin.read_rights import DependentsReader
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/sources/graphql-remote", tags=["admin", "graphql-remote"])
@@ -46,6 +51,9 @@ class GraphQLRemoteSourceRequest(BaseModel):
     # REQ-1923: a branded source names its brand and supplies only a credential; the endpoint
     # is the brand's, and the namespace is the brand's unless one is given.
     brand: str | None = None
+    # What a brand reached at a per-customer address asks for besides the credential (Shopify:
+    # the store and the API version), by its setup field names.
+    setup: dict[str, str] = {}
     url: str = ""
     namespace: str = ""
     domain_id: str = ""
@@ -122,6 +130,8 @@ def _auth_hints(auth: dict | None) -> dict[str, str]:
     did not take the registration can rebuild it (app_loaders._graphql_remote_auth)."""
     if not auth or auth.get("type", "none") == "none":
         return {}
+    if auth["type"] == "header":
+        return {"auth_type": "header", "auth_header": auth["header"]}
     return {"auth_type": auth["type"]}
 
 
@@ -142,16 +152,19 @@ async def _persist_source(  # REQ-307, REQ-1923
     conn,
     *,
     cache_ttl: int | None,
+    setup: dict[str, str] | None = None,
 ) -> None:
     """Write the ``sources`` row. The credential is kept as entered (a value, or a reference the
     operator typed) and resolved where it is used; the namespace, the auth scheme and the brand ride in
     ``federation_hints``. ``cache_ttl`` is the source's cache TTL when the caller declared one: the
-    clock its landed tables refresh on (REQ-1907); None leaves the row's as it is."""
+    clock its landed tables refresh on (REQ-1907); None leaves the row's as it is. ``setup``:
+    the values a brand's setup was given, kept in ``brand_setup`` (Source.brand_setup) so the
+    source's form shows them again."""
     from provisa.core.repositories.source import owned_if_reconnected
     from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT
 
     secret = (auth or {}).get("token") or (auth or {}).get("password") or ""
-    hints = {NAMESPACE_HINT: namespace, **_auth_hints(auth)}
+    hints: dict[str, object] = {NAMESPACE_HINT: namespace, **_auth_hints(auth)}
     if brand_id:
         hints[BRAND_HINT] = brand_id
     row = {
@@ -165,6 +178,7 @@ async def _persist_source(  # REQ-307, REQ-1923
         "path": url,
         "description": description,
         "federation_hints": hints,
+        "brand_setup": setup or {},
         "password_ref": secret or "",  # as entered: a value, or a reference the operator typed
     }
     if cache_ttl is not None:
@@ -184,7 +198,12 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
     """Add a branded source (REQ-1923): check the credential, record the source, register no
     tables. Its tables are available to the Register Table picker from the shipped schema."""
     from provisa.api.app import _rebuild_schemas, state
-    from provisa.graphql_remote.brands import BRANDS, available_tables, offered_mutation_count
+    from provisa.graphql_remote.brands import (
+        BRANDS,
+        SetupInvalid,
+        available_tables,
+        offered_mutation_count,
+    )
 
     brand = BRANDS.get(body.brand or "")
     if brand is None:
@@ -202,9 +221,20 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
             f"{brand.label} needs an access token",
             brand=brand.id,
         )
+    try:
+        setup = brand.setup(body.setup)
+    except SetupInvalid as bad:
+        raise ApiError(
+            422,
+            "graphql_remote.setup_invalid",
+            str(bad),
+            brand=brand.id,
+            field=bad.field,
+        ) from bad
+    url = brand.endpoint(setup)
     auth = brand.auth(await _resolved_credential(token))
     try:
-        await _verify_live_auth(brand.url, auth, brand.verify_query)
+        await _verify_live_auth(url, auth, brand.verify_query)
     except Exception as exc:
         raise ApiError(
             422,
@@ -222,22 +252,24 @@ async def _register_branded_source(request: Request, body: "GraphQLRemoteSourceR
         await _persist_source(
             request,
             body.source_id,
-            brand.url,
+            url,
             body.description,
             namespace,
             brand.auth(token),
             brand.id,
             conn,
             cache_ttl=_declared_cache_ttl(body),
+            setup=setup,
         )
     state.graphql_remote_sources[body.source_id] = {
         "source_id": body.source_id,
-        "url": brand.url,
+        "url": url,
         "namespace": namespace,
         "domain_id": body.domain_id,
         "auth": auth,
         "cache_ttl": body.cache_ttl,
         "brand": brand.id,
+        "setup": setup,
         "error_policy": brand.error_policy,
         "tables": [],
         "functions": [],
@@ -321,13 +353,14 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
     domain_id: str,
     tables: list[dict],
     model_db,
+    reader: "DependentsReader",
 ) -> list[dict]:
     """Write discovered GraphQL tables into registered_tables with descriptions.
 
     Each table is upserted by its identity (source, schema, name), so one that is still in the
     remote schema keeps its id and what refers to it. One the remote no longer has is deleted
     through the model store; when something depends on it, it is kept, and returned here with
-    what still refers to it (REQ-1918)."""
+    what still refers to it (REQ-1918) -- only what ``reader`` may read (REQ-2152)."""
     from provisa.api.admin._graphql_table_registration import arguments
     from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
@@ -425,7 +458,11 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                 # as it was and reported.
                 held = await table_repo.get_by_name(conn, source_id, "graphql", _sql_name)
                 unchanged.append(
-                    table_repo.kept_columns_report(refused, held["id"] if held else None)
+                    {
+                        "id": held["id"] if held else None,
+                        "name": refused.table_name,
+                        "columns": await readable_columns_report(conn, reader, refused.columns),
+                    }
                 )
 
         kept = await table_repo.retire_generated(
@@ -436,7 +473,20 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
         )
         # REQ-1387: settle only the terms whose fields truly departed.
         await glossary_repo.sweep_refless_terms(conn, before=refs_before)
-        return [*table_repo.kept_report(kept), *unchanged]
+        return [
+            *[
+                {
+                    "id": refused.table_id,
+                    "name": refused.name,
+                    "dependents": [
+                        d.as_dict()
+                        for d in await readable_dependents(conn, reader, refused.dependents)
+                    ],
+                }
+                for refused in kept
+            ],
+            *unchanged,
+        ]
 
 
 async def _upsert_relationships_to_semantic_layer(  # REQ-313, REQ-598
@@ -613,7 +663,7 @@ async def refresh_graphql_remote_source(request: Request, source_id: str):  # RE
 
     # REQ-1918: tables the remote schema no longer has that something still refers to.
     kept_tables = await _upsert_tables_to_semantic_layer(
-        source_id, reg.get("domain_id", ""), tables, state.model_db
+        source_id, reg.get("domain_id", ""), tables, state.model_db, reader_for_request(request)
     )
     reg["tables"] = []
     for table in tables:

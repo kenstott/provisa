@@ -608,9 +608,12 @@ async def test_an_apply_marks_the_store_seeded(db):
     assert "other" not in await _ids(db, "roles")
 
 
-async def test_a_seeded_role_a_file_redefined_keeps_that_definition(db):
-    """No seed reverts: a later file that no longer declares a seeded role it once redefined
-    leaves the role as it stands."""
+async def test_a_file_that_declares_a_standard_role_is_refused_by_name(db):
+    """REQ-2155: a standard role is Provisa's; a file that declares one is refused by name and the
+    role stands as Provisa defines it."""
+    from provisa.core.db import STANDARD_ROLES
+    from provisa.core.repositories.role import ReservedRoleRedefined
+
     raw = _raw(domains=("sales", "analytics"))
     raw["roles"].append(
         {
@@ -620,15 +623,12 @@ async def test_a_seeded_role_a_file_redefined_keeps_that_definition(db):
             "domain_access": ["analytics"],
         }
     )
-    await _apply(db, parse_config_dict(raw))
-    await _apply(db, _file())
+    with pytest.raises(ReservedRoleRedefined, match="'analyst'"):
+        await _apply(db, parse_config_dict(raw))
     async with db.acquire() as conn:
         analyst = await role_repo.get(conn, "analyst")
     assert analyst is not None
-    assert (sorted(analyst["capabilities"]), analyst["domain_access"]) == (
-        ["usage", "write"],
-        ["analytics"],
-    )
+    assert analyst["capabilities"] == list(STANDARD_ROLES["analyst"].capabilities)
 
 
 async def test_an_apply_that_would_publish_a_name_twice_is_refused_naming_both(db):

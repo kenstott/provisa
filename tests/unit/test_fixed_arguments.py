@@ -32,6 +32,16 @@ from provisa.core.schema_org import domains, registered_tables, sources
 _VIS = ["admin"]
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as provisa.api.app declares it for a single-tenant state."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _columns(*names: str) -> list[Column]:
     return [Column(name=n, data_type="text", visible_to=_VIS) for n in names]
 
@@ -208,7 +218,7 @@ async def test_a_connection_lands_with_its_fixed_arguments_on_every_page():
 
     route = respx.post(URL).mock(side_effect=[page([{"id": "1"}], "c1"), page([{"id": "2"}], None)])
     pages = whole_connection(
-        URL, None, t["field_name"], ["id"], t["rows_path"], table="gh.issues", max_rows=10,
+        URL, None, t["field_name"], ["id"], t["rows_path"], table="gh.issues", page_size=100, max_rows=10,
         variables={"owner": "acme", "name": "payments"}, required_args=t["required_args"],
     )  # fmt: skip
     assert [[r["id"] for r in p] async for p in pages] == [["1"], ["2"]]

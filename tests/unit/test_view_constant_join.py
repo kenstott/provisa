@@ -86,9 +86,10 @@ def test_a_join_on_a_constant_a_view_gives_relates_along_the_view_s_relationship
 def test_it_still_needs_the_view_s_relationship():
     # Refused for the join it makes; which further unrelated pair is also named depends on the
     # order the statement's table instances are compared in.
+    # The view is read as the derived table it is: the condition as the statement writes it.
     assert (
-        "Invalid JOIN: theme.id = evokes.theme_id — no approved relationship exists between "
-        "these tables on these columns"
+        "Invalid JOIN: t.id = e.theme_id (e.theme_id reads evokes.theme_id) — no approved "
+        "relationship exists between theme.id and evokes.theme_id"
     ) in _v002(_READ, related=False)
 
 

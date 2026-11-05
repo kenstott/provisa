@@ -445,7 +445,8 @@ class TestAggregate:
         assert "customer_id" in sum_field_names
         assert "amount" in sum_field_names
 
-    def test_aggregate_nodes_compiles_plain_select(self, schema_and_ctx):
+    def test_aggregate_nodes_are_a_column_of_its_one_statement(self, schema_and_ctx):
+        # Its one row holds the rows it aggregates beside the aggregates: no second statement.
         schema, ctx = schema_and_ctx
         doc = parse("""
             { orders_aggregate {
@@ -453,21 +454,17 @@ class TestAggregate:
                 nodes { id amount region }
             } }
         """)
-        errors = validate(schema, doc)
-        assert not errors
-        results = compile_query(doc, ctx)
-        q = results[0]
-        assert q.nodes_sql is not None
-        assert "COUNT(*)" not in q.nodes_sql
-        assert "SELECT" in q.nodes_sql
-        assert 'FROM "public"."orders"' in q.nodes_sql
-        assert q.nodes_columns is not None
-        node_field_names = {c.field_name for c in q.nodes_columns}
-        assert "id" in node_field_names
-        assert "amount" in node_field_names
-        assert "region" in node_field_names
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert q.has_nodes
+        assert "COUNT(*)" in q.sql and 'FROM "public"."orders"' in q.sql
+        assert (
+            "json_agg(json_object(KEY 'id' VALUE \"id\", KEY 'amount' VALUE \"amount\", "
+            "KEY 'region' VALUE \"region\"))"
+        ) in q.sql
+        assert [c.field_name for c in q.columns if c.nested_in is None] == ["nodes"]
 
-    def test_aggregate_nodes_sql_respects_where_filter(self, schema_and_ctx):
+    def test_aggregate_nodes_read_its_where(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         doc = parse("""
             { orders_aggregate(where: { region: { eq: "us-east" } }) {
@@ -475,24 +472,19 @@ class TestAggregate:
                 nodes { id region }
             } }
         """)
-        errors = validate(schema, doc)
-        assert not errors
-        results = compile_query(doc, ctx)
-        q = results[0]
-        assert q.nodes_sql is not None
-        assert 'WHERE "region" = $' in q.nodes_sql
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert 'WHERE "region" = $1' in q.sql and q.params == ["us-east"]
 
-    def test_aggregate_only_no_nodes_sql(self, schema_and_ctx):
+    def test_aggregate_only_no_nodes(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         doc = parse("""
             { orders_aggregate {
                 aggregate { count }
             } }
         """)
-        results = compile_query(doc, ctx)
-        q = results[0]
-        assert q.nodes_sql is None
-        assert q.nodes_columns is None
+        q = compile_query(doc, ctx)[0]
+        assert not q.has_nodes and "json_agg" not in q.sql
 
     def test_aggregate_per_role_gating_admin_vs_analyst(self):
         _naming.configure(gql="snake")
@@ -765,7 +757,7 @@ _METRICS = [
         "datatype": None,
         "description": "Gross minus refunds.",
         "ai_context": "Use for revenue questions; excludes tax.",
-        "visible_to": ["*"],
+        "visible_to": ["admin", "analyst", "limited"],
     },
     {
         "name": "customer_count",
@@ -773,7 +765,7 @@ _METRICS = [
         "datatype": None,
         "description": None,
         "ai_context": None,
-        "visible_to": ["*"],
+        "visible_to": ["admin", "analyst", "limited"],
     },
     {
         "name": "admin_only_margin",
@@ -790,7 +782,7 @@ _METRICS = [
         "datatype": None,
         "description": None,
         "ai_context": None,
-        "visible_to": ["*"],
+        "visible_to": ["admin", "analyst", "limited"],
     },
 ]
 

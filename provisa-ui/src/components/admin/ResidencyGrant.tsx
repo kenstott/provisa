@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Checkbox } from "@mantine/core";
 import { FormChecks, FormField } from "../form/FormLayout";
 import { MultiSelect } from "../MultiSelect";
+import { Tip } from "../Tip";
 
 /** The grant value that stands for "no region" (server: security/residency.NO_REGION). */
 export const NO_REGION = "no_region";
@@ -24,6 +25,7 @@ export function ResidencyGrant({
   held,
   values,
   regions,
+  parents,
   onHeld,
   onValues,
 }: {
@@ -31,23 +33,34 @@ export function ResidencyGrant({
   values: string[];
   /** The org's regions; none = the platform declares none, and nothing is shown. */
   regions: string[];
+  /** What the role's parents hold (pages/security/roleParents); null for a role with none. */
+  parents: { capabilities: ReadonlySet<string>; regions: ReadonlySet<string> } | null;
   onHeld: (held: boolean) => void;
   onValues: (values: string[]) => void;
 }) {
   const { t } = useTranslation();
   if (regions.length === 0) return null;
+  const offered = parents === null || parents.capabilities.has("data_residency");
+  const covered = (value: string) => parents === null || parents.regions.has(value);
   return (
     <>
       {/* The tick decides whether the field after it is shown, so it comes first. */}
       <FormChecks data-testid="residency-grant">
-        <FormField size="short" help={t("residencyGrant.help")}>
-          <Checkbox
-            label={t("residencyGrant.right")}
-            checked={held}
-            onChange={(e) => onHeld(e.currentTarget.checked)}
-            data-testid="residency-grant-checkbox"
-            size="sm"
-          />
+        <FormField size="short">
+          <Tip
+            text={offered ? t("capabilityHelp.data_residency") : t("capabilityHelp.notHeldByParent")}
+          >
+            <span>
+              <Checkbox
+                label={t("residencyGrant.right")}
+                checked={held}
+                disabled={!offered}
+                onChange={(e) => onHeld(e.currentTarget.checked)}
+                data-testid="residency-grant-checkbox"
+                size="sm"
+              />
+            </span>
+          </Tip>
         </FormField>
       </FormChecks>
       {held && (
@@ -58,7 +71,7 @@ export function ResidencyGrant({
             options={[
               ...regions.map((region) => ({ id: region, label: region })),
               { id: NO_REGION, label: t("residencyGrant.noRegion") },
-            ]}
+            ].filter((option) => covered(option.id))}
             value={values}
             onChange={onValues}
           />

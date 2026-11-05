@@ -14,11 +14,11 @@
 
 ---
 
-## pgwire — Native PostgreSQL Driver
+## pgwire: Native PostgreSQL Driver
 
 Provisa implements the PostgreSQL wire protocol (protocol version 3.0). Any client that speaks PostgreSQL connects without a custom driver.
 
-Enable by setting `PROVISA_PGWIRE_PORT` (e.g. `5433`) before starting Provisa. Disabled when unset or `0`.
+Enable it by setting `PROVISA_PGWIRE_PORT` (e.g. `5433`) before starting Provisa. It is disabled when unset or `0`.
 
 ### Why pgwire instead of JDBC?
 
@@ -73,9 +73,9 @@ The full surface × method table is in [Security Model](security.md#surfaces-and
 
 The Provisa JDBC driver uses Arrow Flight as its underlying transport. It is the recommended path for BI tools with a JDBC connection wizard.
 
-Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server — a refused credential, a role the user does not hold, a failed statement — is raised to the caller with the server's message; it is not retried over HTTP.
+Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server, such as a refused credential, a role the user does not hold or a failed statement, is raised to the caller with the server's message; it is not retried over HTTP.
 
-Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential: the driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`): the server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered.
+Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential. The driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`). The server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered.
 
 ### Connection
 
@@ -105,7 +105,7 @@ Authentication uses standard JDBC `user` / `password` properties. The driver exc
 3. URL: `jdbc:provisa://localhost:8815`
 4. Enter your username and password in the Authentication tab
 
-**Power BI** — use the ODBC gateway with the Provisa JDBC-ODBC bridge (included in the installer).
+**Power BI.** Use the ODBC gateway with the Provisa JDBC-ODBC bridge (included in the installer).
 
 ---
 
@@ -208,7 +208,7 @@ spark = SparkSession.builder \
 
 ## Protobuf gRPC (port 50051)
 
-Service-to-service path. Provisa generates a `.proto` per role and regenerates it whenever the model or the role changes. Each role sees only the tables and columns it has access to. The service has an RPC for each table at the root of the role's schema; related tables are reached through their relationships, as in GraphQL.
+This is the service-to-service path. Provisa generates a `.proto` per role and regenerates it whenever the model or the role changes. Each role sees only the tables and columns it has access to. The service has an RPC for each table at the root of the role's schema; related tables are reached through their relationships, as in GraphQL.
 
 Download the proto for your role:
 
@@ -222,7 +222,7 @@ Use `grpc_server_reflection` to discover the schema programmatically. Reflection
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-Every RPC must carry a credential in the `authorization` metadata key, either a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential and never was. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
+Every RPC must carry a credential in the `authorization` metadata key, either a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
 
 Streaming queries emit one message per row; mutations are unary.
 
@@ -251,7 +251,7 @@ When a command declares a `return_schema` (JSON Schema with `type: array, items:
 | GraphQL | `kind=query` → Query field; `kind=mutation` → Mutation field; domain-prefixed when `domain_prefix: true` | `{ ps__random_grpc_set { id region amount } }` |
 | pgwire / Arrow Flight / MCP `run_sql` | `SELECT * FROM fn(args)` or `SELECT fn(args)` | `SELECT * FROM random_grpc_set()` |
 | Cypher HTTP (`POST /data/cypher`) | `CALL fn(args) YIELD cols` | `CALL random_grpc_set() YIELD id, region, amount` |
-| Bolt (Neo4j Browser / driver) | `CALL fn(args)` — positional args map to declared argument names | `CALL random_grpc_set()` |
+| Bolt (Neo4j Browser / driver) | `CALL fn(args)`; positional args map to declared argument names | `CALL random_grpc_set()` |
 | Provisa gRPC (port 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_grpc_set","args_json":"{}"}' ... ProvisaService/CallCommand` |
 
 The `kind` field controls GraphQL placement only. The SQL, Cypher, Bolt and gRPC surfaces accept both `query` and `mutation` commands identically.
@@ -264,13 +264,16 @@ Provisa can act as a Federation v2 subgraph, exposing its published schema to an
 
 ### Setup
 
-Enable federation in `config.yaml`:
+Enable federation in `config.yaml`, or per organization on **Admin → Domains → Settings**:
 
 ```yaml
 federation:
   enabled: true
   subgraph_name: provisa-data
+  role: partner
 ```
+
+A supergraph cannot pass its caller's identity to a subgraph, so the subgraph serves as one declared role. `role` names it and is required when `enabled` is true. The router connects as an ordinary client acting as that role, and `_service` and `_entities` are offered on that role's schema only. Every entity the router fetches is read through the same governed path as any other query by the role, so its row rules, masks and column visibility apply.
 
 Provisa generates `@key` directives on primary-key columns and `@external`/`@provides` on cross-subgraph relationships automatically.
 
@@ -286,11 +289,23 @@ subgraphs:
       subgraph_url: http://provisa:8001/data/graphql
 ```
 
+The router's requests to Provisa carry the declared role's credentials. With authentication disabled, the `X-Provisa-Role` header selects it; in the router's `router.yaml`:
+
+```yaml
+headers:
+  subgraphs:
+    provisa-data:
+      request:
+        - insert:
+            name: x-provisa-role
+            value: partner
+```
+
 Run `rover supergraph compose --config supergraph.yaml` to generate the supergraph schema.
 
 ### Entities
 
-Provisa responds to `_entities` queries for cross-subgraph joins. Any table with a primary key is automatically resolvable as a Federation entity.
+Provisa responds to `_entities` queries for cross-subgraph joins. Any table with a designated primary key whose key columns the declared role can see is resolvable as a Federation entity. A representation whose row the role cannot read resolves to `null`.
 
 ---
 
@@ -308,9 +323,9 @@ See [docs/sources.md](sources.md#kafka-sources) for Kafka topic configuration as
 
 ## Data Quality Checkers
 
-Soda Core and Great Expectations connect to Provisa through pgwire, like any other postgres client. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
+Soda Core and Great Expectations connect to Provisa through pgwire, like any other postgres client. That is the whole integration. The checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
 
-The scan runs in a child interpreter — `python -m provisa.dq.worker` — which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop.
+The scan runs in a child interpreter, `python -m provisa.dq.worker`, which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop.
 
 Scan results land as ordinary source rows, so cadence, freshness, events, lineage, governance, RLS, the grid and export all apply without a second mechanism. Contract authoring, the result envelope and the derived registration are covered in [docs/sources.md](sources.md#data-quality-checkers).
 
@@ -363,7 +378,7 @@ The adapter maps Provisa objects to Ossie objects as follows:
 | `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Round-trip only; other tools may ignore |
 
 A relationship over several columns lists each column in `from_columns` and `to_columns`. A
-model with no table is refused with a `422`: an Ossie document has at least one dataset.
+model with no table is refused with a `422`, because an Ossie document has at least one dataset.
 
 Governance, RLS, lineage, and graph semantics are not exported. They may travel in the optional
 `provisa` custom_extensions slot for round-trip fidelity, but interchange never depends on other
@@ -513,7 +528,7 @@ two were not tried.
 
 ## Metrics Across Protocols
 
-A governed metric's definition — its expression, description, and `ai_context` — travels with the
+A governed metric's definition, meaning its expression, description and `ai_context`, travels with the
 value into every query surface through one compiler expansion. There are no copies. The compiler
 reserves the `metrics` schema for SQL access; each protocol then adds its own metadata channel.
 
@@ -553,9 +568,9 @@ schema-aware tools and codegen pick it up automatically.
 
 Two tools expose metrics to MCP clients:
 
-- **`list_metrics`** — returns all governed metrics visible to the session, with `name`,
+- **`list_metrics`.** Returns all governed metrics visible to the session, with `name`,
   `description`, and `ai_context`.
-- **`query_metric`** — accepts a metric name plus a dimension list and calls the compiler's
+- **`query_metric`.** Accepts a metric name plus a dimension list and calls the compiler's
   semantic-SQL path, returning the aggregate result.
 
 Agents that call `list_metrics` before constructing a query select a governed metric by name

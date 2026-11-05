@@ -1,6 +1,6 @@
 # Release: packages
 #
-# The Python client, the notebook assets package and the server wheel, each with its CVE scan, and the JDBC driver. Built here; published by the publish leg.
+# The Python client, the notebook assets package and the server's platform wheels (REQ-2194), each with its CVE scan, and the JDBC driver. Built here; published by the publish leg.
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
@@ -113,8 +113,151 @@ jobs:
           path: provisa-client/dist/
           retention-days: 1
 
+  # REQ-2194: the UI, built once; the same built assets go into every platform's provisa wheel.
+  build-provisa-ui:
+    name: Build the provisa UI (for every provisa wheel)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python (offline docs site)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node 20 (vite build)
+        uses: ./.github/actions/setup-ui
+        with:
+          node-version: "20"
+
+      # `npm run build`'s prebuild hook renders the offline MkDocs site into the UI's build; without
+      # mkdocs on PATH it fails with ENOENT.
+      - name: Install docs-site build deps (mkdocs)
+        uses: ./.github/actions/docs-site-deps
+
+      - name: Build provisa-ui
+        run: cd provisa-ui && npm run build
+
+      # Not a -dist name: it is an input of the wheels, not a release asset.
+      - name: Upload the built UI
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-ui-build
+          path: provisa-ui/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  # REQ-2194: provisa's wheels. provisa carries provisa._encoders, Provisa's Rust encoders compiled
+  # by setuptools-rust, so it is one cp312 wheel per platform a `pip install provisa` runs on, each
+  # with the UI built above, the config and buenavista. Linux wheels come from the Dockerfile's
+  # provisa-wheel stage (manylinux_2_28, zig-linked); macOS (arm64 only: Intel Macs are not
+  # supported) and Windows from `python -m build` on the runner. Each wheel is checked and imported
+  # on its own platform before it is uploaded. The linux-x86_64 row also builds the sdist, and proves a wheel builds from it with
+  # cargo present. Published to PyPI by the orchestrator, after every artifact exists; the -dist
+  # names also attach them to the GitHub release.
   build-provisa-wheel:
-    name: Build provisa server wheel (embedded tier)
+    name: Build provisa wheel (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    needs: [metadata, build-provisa-ui]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: linux-x86_64, runner: ubuntu-latest, arch: x64, tag: manylinux_2_28_x86_64, sdist: true }
+          - { label: linux-aarch64, runner: ubuntu-24.04-arm, arch: arm64, tag: manylinux_2_28_aarch64 }
+          - { label: macos-arm64, runner: macos-14, arch: arm64, tag: 'macosx_\d+_\d+_arm64' }
+          - { label: windows-x64, runner: windows-latest, arch: x64, tag: win_amd64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.arch }}
+
+      - name: Download the built UI
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-ui-build
+          path: provisa-ui/dist/
+
+      # The toolchain every recipe names (the Dockerfile's rust image). Linux wheels compile in the
+      # Dockerfile's stage; the linux-x86_64 row's sdist check compiles here.
+      - name: Install the Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal
+
+      # REQ-2071: provisa depends on provisa-notebook at this same release's version.
+      - name: Stamp the version
+        run: |
+          sed -i.orig 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
+          sed -i.orig 's/"provisa-notebook==[^"]*"/"provisa-notebook==${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
+          rm pyproject.toml.orig
+          grep -q '^version = "${{ needs.metadata.outputs.py_version }}"' pyproject.toml
+          grep -q '"provisa-notebook==${{ needs.metadata.outputs.py_version }}"' pyproject.toml
+
+      - name: Build the wheel (bundles the UI, config, buenavista and provisa._encoders)
+        env:
+          PY: ${{ steps.python.outputs.python-path }}
+          SDIST: ${{ matrix.sdist }}
+        run: |
+          "$PY" -m pip install --quiet "build==1.6.1"
+          if [ "$SDIST" = "true" ]; then
+            PROVISA_SKIP_UI_BUILD=1 PYTHON="$PY" scripts/build-wheel.sh --sdist --wheel
+          else
+            PROVISA_SKIP_UI_BUILD=1 PYTHON="$PY" scripts/build-wheel.sh --wheel
+          fi
+
+      - name: Verify the wheel's tag and import its encoders
+        env:
+          PY: ${{ steps.python.outputs.python-path }}
+          TAG: ${{ matrix.tag }}
+        run: '"$PY" scripts/check-provisa-wheel.py dist/provisa-*.whl --tag "$TAG" --import'
+
+      - name: Verify the wheel is self-contained
+        env:
+          PY: ${{ steps.python.outputs.python-path }}
+        run: |
+          "$PY" - <<'PY'
+          import glob, zipfile, sys
+          wheel = glob.glob("dist/provisa-*.whl")[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          missing = [n for n in ("provisa/cli.py", "buenavista/core.py", "provisa/_ui/index.html") if n not in names]
+          missing += [p for p in ("provisa/_ui/", "provisa/_config/") if not any(n.startswith(p) for n in names)]
+          leaked = [n for n in names if "node_modules" in n or n.startswith("provisa_client/")]
+          if missing or leaked:
+              print("missing:", missing, "\nleaked:", leaked[:5]); sys.exit(1)
+          print(f"OK: {wheel} self-contained ({len(names)} members)")
+          PY
+
+      # The sdist is published only because a wheel builds from it where cargo is present.
+      - name: Build a wheel from the sdist and import its encoders
+        if: matrix.sdist
+        env:
+          PY: ${{ steps.python.outputs.python-path }}
+          RUSTUP_TOOLCHAIN: '1.95.0'
+        run: |
+          set -euo pipefail
+          "$PY" -m pip wheel --quiet --no-deps --wheel-dir sdist-check dist/provisa-*.tar.gz
+          "$PY" scripts/check-provisa-wheel.py sdist-check/provisa-*.whl --import
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-wheel-${{ matrix.label }}-dist
+          path: dist/provisa-*
+          if-no-files-found: error
+          retention-days: 1
+
+  # The server's SBOM and CVE report, once for every provisa wheel (one locked dependency set).
+  provisa-sbom:
+    name: provisa SBOM + CVE scan
     runs-on: ubuntu-latest
     needs: [metadata]
     permissions:
@@ -133,45 +276,11 @@ jobs:
         with:
           sync: "false"
 
-      - name: Set up Node 20 (vite build)
-        uses: ./.github/actions/setup-ui
-        with:
-          node-version: "20"
-          install: "false"
-
-      # build-wheel.sh runs `npm run build`, whose prebuild hook renders the offline
-      # MkDocs site into provisa/_ui; without mkdocs on PATH it fails with ENOENT.
-      - name: Install docs-site build deps (mkdocs)
-        uses: ./.github/actions/docs-site-deps
-
-      # REQ-2071: provisa depends on provisa-notebook at this same release's version.
-      - name: Stamp version and build wheel (bundles UI + config + buenavista)
-        run: |
-          sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
-          sed -i 's/"provisa-notebook==[^"]*"/"provisa-notebook==${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
-          grep -q '"provisa-notebook==${{ needs.metadata.outputs.py_version }}"' pyproject.toml
-          pip install build -q
-          scripts/build-wheel.sh --sdist --wheel
-
-      - name: Verify the wheel is self-contained
-        run: |
-          python - <<'PY'
-          import glob, zipfile, sys
-          wheel = glob.glob("dist/provisa-*.whl")[0]
-          names = zipfile.ZipFile(wheel).namelist()
-          missing = [n for n in ("provisa/cli.py", "buenavista/core.py") if n not in names]
-          missing += [p for p in ("provisa/_ui/", "provisa/_config/") if not any(n.startswith(p) for n in names)]
-          leaked = [n for n in names if "node_modules" in n or n.startswith("provisa_client/")]
-          if missing or leaked:
-              print("missing:", missing, "\nleaked:", leaked[:5]); sys.exit(1)
-          print(f"OK: {wheel} self-contained ({len(names)} members)")
-          PY
-
       # SBOM + vulnerability gate for what actually ships: the root uv.lock (same locked
       # dependency set cve-audit.yml already scans continuously) rather than the build runner's
       # own pip environment, which only has `build`/mkdocs installed, not provisa's own deps.
-      # pip-audit's non-zero exit on any finding fails this job, which fails publish-provisa-pypi
-      # via its existing `needs: build-provisa-wheel` — no separate gating job/needs wiring needed.
+      # pip-audit's non-zero exit on any finding fails this job, so this leg, which
+      # publish-provisa-pypi needs — no separate gating job/needs wiring needed.
       - name: Export locked dependencies
         # pipefail: without it the step's status is grep's, and an export that failed left an
         # empty or partial file for the audit to pass on.
@@ -186,14 +295,10 @@ jobs:
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
             --of JSON -o sbom/provisa-sbom.cdx.json
 
-      # Documented ignore, PYSEC-2026-4114 / CVE-2026-49265 only: a server-side PKCE timing flaw
-      # in oauthlib. Provisa uses oauthlib only client-side, through databricks-sql-connector,
-      # which pins oauthlib<4 even in 4.6.0. Remove this ignore when the connector allows
-      # oauthlib 4. Every other finding still fails the job.
       - name: CVE scan (gates PyPI publish)
         run: |
           set -o pipefail
-          uvx pip-audit --timeout 60 -r requirements-audit.txt --no-deps --ignore-vuln PYSEC-2026-4114 -f json \
+          uvx --python 3.12 pip-audit --timeout 60 -r requirements-audit.txt --no-deps -f json \
             | tee sbom/provisa-cve-report.json
 
       - name: Ensure release exists
@@ -216,13 +321,6 @@ jobs:
             sbom/provisa-sbom.cdx.json \
             sbom/provisa-cve-report.json \
             --clobber
-
-      - name: Upload dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: provisa-wheel-dist
-          path: dist/
-          retention-days: 1
 
   # REQ-2071: the Data Science area's Pyodide, its packages and the provisa-client wheel, a
   # package of its own beside provisa (PyPI caps a file at 100 MB) at the same version, which

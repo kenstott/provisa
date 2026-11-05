@@ -11,18 +11,18 @@
 
 """Property-based tests for result serialization (REQ-047, REQ-048, REQ-049, REQ-050).
 
-serialize_rows turns flat SQL rows into the nested GraphQL JSON every query result
-is shaped by. A bug here corrupts EVERY response — dropped/duplicated rows, missing
+The Rust GraphQL encoder (REQ-2194) turns flat SQL rows into the nested GraphQL JSON every query
+result is shaped by; the rows reach it as a row engine's do (ir_arrow.row_batch). A bug here corrupts EVERY response — dropped/duplicated rows, missing
 fields, wrong values, children under the wrong parent — with no error. Two contracts:
 
-Flat / many-to-one (_serialize_flat):
+Flat / many-to-one:
   * the envelope is exactly {"data": {root_field: [...]}};
   * each object carries exactly the projected field names;
   * rows identical across all root columns collapse to one (dedup), and the count
     equals the distinct-row count, capped by result_limit;
   * each surviving object's values are the first occurrence's values (fidelity).
 
-One-to-many absorption (_serialize_with_one_to_many):
+One-to-many absorption:
   * a {root: [children]} model flattened to joined rows round-trips to exactly one
     object per root with its children nested — no child dropped, duplicated, or
     attributed to the wrong root (exact-equality oracle).
@@ -34,11 +34,13 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from provisa.compiler.sql_types import ColumnRef
-from provisa.executor.serialize import _convert_value, _to_hashable, serialize_rows
+from provisa.executor.serialize import _convert_value
+from tests.unit.json_encoder.rows import serialize_rows
 
 _ROOT = "items"
-# Scalar values for which _convert_value is identity, so fidelity is exact.
-_VALUES = st.one_of(st.integers(-100, 100), st.text(alphabet="abcde", max_size=3), st.none())
+# Scalar values for which _convert_value is identity, so fidelity is exact. A column holds one
+# type, as an engine's does.
+_COLUMN_VALUES = (st.integers(-100, 100), st.text(alphabet="abcde", max_size=3))
 
 
 @st.composite
@@ -48,18 +50,19 @@ def _flat_case(draw):
     n = draw(st.integers(min_value=1, max_value=4))
     fields = [f"f{i}" for i in range(n)]
     columns = [ColumnRef(alias="t0", column=f, field_name=f, nested_in=None) for f in fields]
-    rows = draw(st.lists(st.tuples(*([_VALUES] * n)), max_size=10))
+    kinds = [st.one_of(draw(st.sampled_from(_COLUMN_VALUES)), st.none()) for _ in fields]
+    rows = draw(st.lists(st.tuples(*kinds), max_size=10))
     limit = draw(st.one_of(st.none(), st.integers(min_value=0, max_value=12)))
     return rows, columns, fields, limit
 
 
 def _distinct_first(rows):
     """First occurrence of each row that is distinct across all columns — the dedup
-    the flat serializer performs (root_key = every root column value)."""
+    the flat path performs (its key is every root column's typed value)."""
     seen: set = set()
     out = []
     for r in rows:
-        key = tuple(_to_hashable(_convert_value(v)) for v in r)
+        key = tuple(_convert_value(v) for v in r)
         if key not in seen:
             seen.add(key)
             out.append(r)

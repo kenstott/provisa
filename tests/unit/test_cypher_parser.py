@@ -13,7 +13,13 @@
 import pytest
 
 from provisa.cypher.parser import CypherParseError, extract_parameters, parse_cypher
+from provisa.gql.expr_ast import CypherExpr, Literal, Property, Variable, walk
 from provisa.gql.ir import CallSubquery, PathFunction
+
+
+def _holds_number(expr: CypherExpr, value: int) -> bool:
+    """Whether the expression tree holds the number ``value``."""
+    return any(isinstance(n, Literal) and n.value == value for n in walk(expr))
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +36,9 @@ def test_simple_match_return():
     assert len(nodes) == 1
     assert nodes[0].labels == ["Person"]
     assert nodes[0].variable == "n"
-    assert ast.return_clause.items[0].expression.strip() in ("n . name", "n.name", "n . name")
+    # REQ-2135: a clause's expression is the IR's tree; the item keeps how it is written.
+    assert ast.return_clause.items[0].expression == Property(Variable("n"), "name")
+    assert ast.return_clause.items[0].name.replace(" ", "") == "n.name"
 
 
 def test_optional_match_flag():
@@ -39,10 +47,18 @@ def test_optional_match_flag():
     assert ast.match_clauses[1].optional is True
 
 
+def test_comma_separated_patterns_are_clauses_of_one_match():
+    ast = parse_cypher("MATCH (a:A)-[:R]->(b:B), (b)-[:S]->(c:C) WHERE a.x = 1 RETURN a.x")
+    assert len(ast.pipeline[0].matches) == 2
+    assert [m.optional for m in ast.match_clauses] == [False, False]
+    assert ast.match_clauses[1].pattern.nodes[0].variable == "b"
+    assert _holds_number(ast.where.expression, 1)
+
+
 def test_where_clause_parsed():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 RETURN n.name")
     assert ast.where is not None
-    assert "30" in ast.where.expression
+    assert _holds_number(ast.where.expression, 30)
 
 
 def test_limit_skip_parsed():
@@ -60,8 +76,8 @@ def test_order_by_parsed():
 def test_order_by_multiple_columns_parsed():
     ast = parse_cypher("MATCH (u:Person)-[:WROTE]->(p:Post) RETURN u.id, p.id ORDER BY u.id, p.id")
     assert len(ast.order_by) == 2
-    assert ast.order_by[0].expression.replace(" ", "") == "u.id"
-    assert ast.order_by[1].expression.replace(" ", "") == "p.id"
+    assert ast.order_by[0].expression == Property(Variable("u"), "id")
+    assert ast.order_by[1].expression == Property(Variable("p"), "id")
     assert ast.order_by[0].direction == "ASC"
     assert ast.order_by[1].direction == "ASC"
 
@@ -140,14 +156,30 @@ def test_remove_rejected():
         parse_cypher("MATCH (n:Person) REMOVE n.name")
 
 
-def test_apoc_rejected():
-    with pytest.raises(CypherParseError, match="APOC"):
-        parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+def test_an_apoc_function_is_read_as_a_function_call():
+    # REQ-2168: a namespaced function is a function's Cypher command binding; one no function is
+    # bound to is refused when the statement is bound for its role (api/data/cypher_commands.py).
+    ast = parse_cypher("MATCH (n) RETURN apoc.util.sleep(100)")
+    (item,) = ast.return_clause.items
+    assert item.expression.name == "apoc.util.sleep"
 
 
-def test_unbounded_variable_length_rejected():
-    with pytest.raises(CypherParseError, match="[Uu]nbounded"):
-        parse_cypher("MATCH (n:Person)-[*]->(m:Company) RETURN n")
+def test_unbounded_variable_length_parses_with_no_upper_bound():
+    # REQ-348 (amended 2026-11-03): [*] is one hop or more; the translation takes the maximum.
+    rel = (
+        parse_cypher("MATCH (n:Person)-[*]->(m:Company) RETURN n").match_clauses[0].pattern.rels[0]
+    )
+    assert (rel.variable_length, rel.min_hops, rel.max_hops) == (True, 1, None)
+
+
+def test_unbounded_variable_length_written_out_is_unbounded():
+    # [*..] is [*] written out (REQ-348; openCypher TCK Match5 [2]).
+    rel = (
+        parse_cypher("MATCH (n:Person)-[*..]->(m:Company) RETURN n")
+        .match_clauses[0]
+        .pattern.rels[0]
+    )
+    assert (rel.variable_length, rel.min_hops, rel.max_hops) == (True, 1, None)
 
 
 def test_missing_return_rejected():
@@ -197,9 +229,9 @@ def test_call_subquery_with_outer_return():
     ast = parse_cypher(query)
     assert len(ast.call_subqueries) == 2
     assert ast.return_clause is not None
-    outer_exprs = [item.expression.strip() for item in ast.return_clause.items]
-    assert any("x_name" in e for e in outer_exprs)
-    assert any("y_name" in e for e in outer_exprs)
+    outer_exprs = [item.expression for item in ast.return_clause.items]
+    assert Variable("x_name") in outer_exprs
+    assert Variable("y_name") in outer_exprs
 
 
 def test_call_subquery_no_outer_return():
@@ -232,7 +264,7 @@ def test_union_all_parsed():
 
 
 def test_union_sub_ast_has_match():
-    query = "MATCH (n:Person) RETURN n.name UNION MATCH (c:Company) RETURN c.name"
+    query = "MATCH (n:Person) RETURN n.name AS name UNION MATCH (c:Company) RETURN c.name AS name"
     ast = parse_cypher(query)
     sub_ast, _ = ast.union_parts[0]
     assert sub_ast.match_clauses[0].pattern.nodes[0].labels == ["Company"]
@@ -260,7 +292,7 @@ def test_with_preserves_match_group_where():
     step = ast.pipeline[0]
     assert isinstance(step, MatchStep)
     assert step.where is not None
-    assert "30" in step.where.expression
+    assert _holds_number(step.where.expression, 30)
 
 
 def test_multi_with_pipeline():
@@ -289,7 +321,7 @@ def test_match_clauses_property_backward_compat():
 def test_where_property_backward_compat():
     ast = parse_cypher("MATCH (n:Person) WHERE n.age > 30 RETURN n.name")
     assert ast.where is not None
-    assert "30" in ast.where.expression
+    assert _holds_number(ast.where.expression, 30)
 
 
 # ---------------------------------------------------------------------------
@@ -371,3 +403,58 @@ def test_two_writes_in_one_query_are_refused():
 
     with pytest.raises(CypherWriteParseError, match="but got: 2"):
         parse_cypher_write("CREATE (a:A {x: 1}); CREATE (b:A {x: 2})")
+
+
+@pytest.mark.parametrize(
+    ("query", "direction"),
+    [
+        ("MATCH (a:A)--(b:A) RETURN a", "none"),
+        ("MATCH (a:A)-->(b:A) RETURN a", "right"),
+        ("MATCH (a:A)<--(b:A) RETURN a", "left"),
+        ("MATCH (a:A)<-->(b:A) RETURN a", "none"),
+    ],
+)
+def test_a_relationship_written_without_brackets_is_read(query, direction):
+    """openCypher TCK: ``(me)--(you)`` is a relationship of any type, either direction."""
+    rel = parse_cypher(query).match_clauses[0].pattern.rels[0]
+    assert (rel.types, rel.direction) == ([], direction)
+
+
+def test_a_single_dash_between_nodes_is_not_a_relationship():
+    with pytest.raises(CypherParseError):
+        parse_cypher("MATCH (a:A)-(b:A) RETURN a")
+
+
+def test_a_statement_that_is_not_cypher_is_invalid_input_as_neo4j_says_it():
+    """A Neo4j client reads a syntax error by its words (the driver's cypher-error example):
+    the token the statement cannot start with is "Invalid input"."""
+    with pytest.raises(CypherParseError, match=r"^Invalid input 'SELECT'"):
+        parse_cypher("SELECT * FROM Employees WHERE name = $name")
+
+
+@pytest.mark.parametrize(
+    ("query", "orders"),
+    [
+        # openCypher's long sort directions (TCK ReturnOrderBy*, WithOrderBy*).
+        ("UNWIND [3, 1] AS x RETURN x ORDER BY x DESCENDING", ["DESC"]),
+        ("UNWIND [3, 1] AS x RETURN x ORDER BY x ASCENDING", ["ASC"]),
+        # A comma or bracket inside a map, list or call is the item's own.
+        (
+            "WITH {a: 1, b: 2} AS m RETURN m ORDER BY m.a + size([1, 2]) ASCENDING, m.b DESC",
+            ["ASC", "DESC"],
+        ),
+        ("UNWIND [1] AS x RETURN x ORDER BY [x, 2][1]", ["ASC"]),
+    ],
+)
+def test_an_order_by_item_reads_to_its_direction(query, orders):
+    assert [o.direction for o in parse_cypher(query).order_by] == orders
+
+
+def test_a_pattern_written_as_a_predicate_is_whether_it_matches():
+    # openCypher: WHERE (n)-[:R]->() is EXISTS { (n)-[:R]->() }; (a) - (b) is still arithmetic.
+    from provisa.cypher.expr_parser import parse_expression
+    from provisa.gql.expr_ast import Binary, SubqueryExpr, Unary
+
+    assert isinstance(parse_expression("(n)-[:R]->()"), SubqueryExpr)
+    assert isinstance(parse_expression("NOT (n)<--()"), Unary)
+    assert isinstance(parse_expression("(a) - (b)"), Binary)

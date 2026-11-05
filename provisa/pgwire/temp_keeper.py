@@ -62,7 +62,8 @@ _live: dict[str, tuple[TempSession, str, str | None]] = {}
 
 async def note_stored(state: Any, session: TempSession, schema: str) -> None:
     """Record ``schema`` BEFORE its first table is written, so a schema that exists is always
-    one the reaper knows of."""
+    one the reaper knows of. A kept session's schema is never recorded (REQ-2176)."""
+    assert not session.kept, "a kept session's schema is its own sweep's, not a keeper's"
     async with state.tenant_db.acquire() as conn:
         await conn.upsert(
             recorded,

@@ -1,0 +1,22 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:storefront/1-order-history.graphql",
+  "reads": [
+   "catalog",
+   "orders_db",
+   "shipping"
+  ],
+  "root_field": "s__orders"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:storefront/2-late-shipments-by-carrier.graphql",
+  "reads": [
+   "shipping"
+  ],
+  "root_field": "s__viewLateShipmentsByCarrier"
+ }
+]

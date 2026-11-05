@@ -89,7 +89,6 @@ Abhängigkeiten und CVE-Gates:
 - Der Workflow `CVE Audit` (`.github/workflows/cve-audit.yml`) führt `pip-audit` über die gesperrte Menge bei jedem Push auf `main`, bei jedem Pull Request und wöchentlich aus.
 - Beim Release erzeugen die Builds von `provisa` und `provisa-client` jeweils ein CycloneDX-SBOM und führen `pip-audit` über das Ausgelieferte aus. Der JDBC-Treiber wird mit `grype --fail-on medium` gescannt. Ein Fund lässt den Job fehlschlagen, und das Release veröffentlicht nichts: Die PyPI-Uploads und das GitHub-Release warten beide auf diese Jobs. Die SBOMs und CVE-Berichte werden an jedes Release angehängt.
 - Die Desktop-Installer bauen das `provisa`-Wheel auf dem Release-Runner aus dem Quellcode und lösen seine Abhängigkeiten zur Build-Zeit mit `pip` auf, nicht aus `uv.lock`; das CVE-Gate des Releases scannt die gesperrte Menge, nicht die gebündelten Abhängigkeiten der Installer.
-- Eine dokumentierte Ausnahme wird ignoriert: PYSEC-2026-4114 / CVE-2026-49265 (serverseitiges oauthlib-PKCE; Provisa verwendet oauthlib nur clientseitig).
 - `packaging/pypi/requirements-embedded.lock` ist eine Hash-gepinnte Auflösung von `provisa[embedded]` für Airgap-Mirrors (siehe `packaging/pypi/MIRROR-CHECKLIST.md`). Sie wird von Hand neu erzeugt, nicht pro Release.
 
 ## Erforderliche Repository-Secrets {: #required-repository-secrets }

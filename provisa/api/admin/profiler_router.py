@@ -12,6 +12,7 @@
 
 * ``GET  /admin/profilers`` — the profiler sources with their schedules, for Add to Profiler.
 * ``POST /admin/profilers/{source_id}/run`` — profile every member now.
+* ``POST /admin/profilers/carried-runs`` — load the runs a started demo's bundle carries (REQ-2052).
 * ``GET  /admin/profilers/{source_id}/catalog`` — the result relations it produces per member, each
   with the grants, masks and row rules the registration form starts from (the curation step; with
   no registration no reader sees a profile).
@@ -24,9 +25,10 @@
 * ``GET  /admin/tables/{table_id}/profile-runs/{run_id}/history`` — one measure across the run's
   drift window, with the run's drift row (REQ-1934 DRIFT ACROSS RUNS), safe for its viewer.
 
-The run history and results are shown only to those who may edit the table (the
-``table_registration`` capability); they are read straight from the result relations, as the
-profiler wrote them.
+The profilers, run history and results are data quality's to read (REQ-2155: ``dq_read``, which
+``dq_rw`` implies); running a profile, storing a declared one and the registration catalog stay with
+those who may edit the table (``table_registration``). Results are read straight from the result
+relations, as the profiler wrote them.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ from fastapi import APIRouter, Header, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, require_dq_read_request
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.schema_org import registered_tables
@@ -57,7 +59,8 @@ def _jsonable(row: dict) -> dict:
 
 @router.get("/profilers")
 async def list_profilers(request: Request) -> list[dict]:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
+    from provisa.api.admin.read_rights import served_columns_request
     from provisa.profiler.source import members, profiler_sources
 
     async with _db().acquire() as conn:
@@ -72,7 +75,12 @@ async def list_profilers(request: Request) -> list[dict]:
                     "lowCardinalityMax": settings.low_cardinality_max,
                     "driftWindow": settings.drift_window,
                     "driftSeason": settings.drift_season,
-                    "members": [m["table_name"] for m in await members(conn, p["id"])],
+                    # REQ-2152: only the members the caller is served a column of.
+                    "members": [
+                        m["table_name"]
+                        for m in await members(conn, p["id"])
+                        if await served_columns_request(conn, request, m["id"]) != set()
+                    ],
                 }
             )
     return out
@@ -89,6 +97,21 @@ async def run_profiler(request: Request, source_id: str) -> list[dict]:
         raise ApiError(404, "profile.not_a_profiler", str(exc), source=source_id) from exc
 
 
+@router.post("/profilers/carried-runs")
+async def load_carried_runs(request: Request) -> dict:
+    """REQ-2052: load the profile runs the bundle of the demo this server was started as carries,
+    as its hosted template loads them (a bundled demo's setup calls this in place of profiling)."""
+    require_capability_request(request, "source_registration")
+    from provisa.core.demo import started_demo_directory
+    from provisa.profiler.carry import load_bundle_runs
+
+    async with _db().acquire() as conn:
+        try:
+            return {"loaded": await load_bundle_runs(conn, started_demo_directory())}
+        except ValueError as exc:
+            raise ApiError(409, "profile.carried_runs_refused", str(exc)) from exc
+
+
 @router.get("/profilers/{source_id}/catalog")
 async def profiler_catalog(request: Request, source_id: str) -> list[dict]:
     require_capability_request(request, "table_registration")
@@ -96,9 +119,19 @@ async def profiler_catalog(request: Request, source_id: str) -> list[dict]:
     from provisa.profiler.schema import RESULT_KINDS, kind_fields, result_table_name
     from provisa.profiler.source import members
 
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import serves_every_column
+
+    # REQ-2152 (Q6a): the form registers result tables whose row rules name every column of the
+    # profiled table, so only a member the caller is served every column of is offered.
+    scope = catalog_scope(types.SimpleNamespace(context={"request": request}))
     out = []
     async with _db().acquire() as conn:
         for t in await members(conn, source_id):
+            if not await serves_every_column(conn, scope, t["id"]):
+                continue
             # The registration form's defaults, from the profiled table's rules as they are now.
             rules = await column_rules(conn, state, t["id"])
             entries = []
@@ -121,7 +154,13 @@ async def profiler_catalog(request: Request, source_id: str) -> list[dict]:
     return out
 
 
-async def _member(conn: Any, table_id: int) -> dict:
+async def _member(conn: Any, table_id: int, request: Request) -> dict:
+    """The profiled table ``table_id`` -- its name, its profiler, and the columns the caller is
+    served (``served``; None when nothing narrows it). A table the caller is served no column of
+    is answered as one that does not exist (REQ-2152): ``table_registration`` opens the profiler,
+    never more of the model."""
+    from provisa.api.admin.read_rights import served_columns_request
+
     row = (
         await conn.execute_core(
             select(registered_tables.c.table_name, registered_tables.c.profiler_source_id).where(
@@ -129,7 +168,8 @@ async def _member(conn: Any, table_id: int) -> dict:
             )
         )
     ).fetchone()
-    if row is None:
+    served = None if row is None else await served_columns_request(conn, request, table_id)
+    if row is None or served == set():
         raise ApiError(
             404, "profile.table_not_found", f"Table {table_id} not found", table_id=table_id
         )
@@ -140,7 +180,7 @@ async def _member(conn: Any, table_id: int) -> dict:
             f"Table {row[0]!r} has not joined a profiler",
             table=row[0],
         )
-    return {"table_name": row[0], "source_id": row[1]}
+    return {"table_name": row[0], "source_id": row[1], "served": served}
 
 
 @router.post("/tables/{table_id}/profile-runs")
@@ -149,7 +189,7 @@ async def run_profile_now(request: Request, table_id: int) -> dict:
     from provisa.profiler.run import ProfileError, profile_table
 
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         settings = await _settings(conn, member["source_id"])
     try:
         run = await profile_table(
@@ -188,14 +228,19 @@ def _viewer_roles(request: Request, x_provisa_role: str | None) -> frozenset[str
             "profile.role_header_required",
             "X-Provisa-Role header required: a profile run is shown as its viewer may see it",
         )
-    return frozenset(r.strip() for r in acting.split(",") if r.strip())
+    from provisa.security.meta_role import acting_roles
+
+    # REQ-1620: a set of roles acts as its meta-role, which no rule names: its members read.
+    return frozenset(
+        m for r in acting.split(",") if r.strip() for m in acting_roles(state, r.strip())
+    )
 
 
 @router.get("/tables/{table_id}/profile-runs")
 async def list_profile_runs(request: Request, table_id: int) -> list[dict]:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         runs = await _relation(conn, member["table_name"], table_id, "runs")
         result = await conn.execute_core(select(runs).order_by(runs.c.run_time.desc()))
         return [_jsonable(dict(r._mapping)) for r in result.fetchall()]
@@ -210,14 +255,14 @@ async def get_profile_run(
 ) -> dict:
     """One run's results, safe for the viewer: read off the profiled table's current column rules
     and the viewer's roles (governance.safe_run), here on the server and never in the browser."""
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler.governance import column_rules, safe_run
     from provisa.profiler.schema import RESULT_KINDS
 
     roles = _viewer_roles(request, x_provisa_role)
     out: dict[str, list[dict]] = {}
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         rules = await column_rules(conn, state, table_id)
         for kind in RESULT_KINDS:
             relation = await _relation(conn, member["table_name"], table_id, kind)
@@ -246,14 +291,14 @@ async def get_measure_history(
     """One measure of a run across the run's drift window (REQ-1934 DRIFT ACROSS RUNS): the run's
     drift row for it, and the measure's value in each window run and in the run, oldest first --
     shown only when the viewer may see the drift row (governance.safe_run)."""
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler import compare
     from provisa.profiler.governance import column_rules, safe_run
     from provisa.profiler.history import MEASURE_KINDS, as_utc, previous_runs, run_results
 
     roles = _viewer_roles(request, x_provisa_role)
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         settings = await _settings(conn, member["source_id"])
         rules = await column_rules(conn, state, table_id)
         drift = await _relation(conn, member["table_name"], table_id, "drift")

@@ -930,8 +930,8 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
             "columns": [
-                {"column_name": "id", "visible_to": []},
-                {"column_name": "customer_id", "visible_to": []},
+                {"column_name": "id", "visible_to": ["analyst"]},
+                {"column_name": "customer_id", "visible_to": ["analyst"]},
             ],
         },
         {
@@ -944,8 +944,8 @@ def _build_schema_input_with_root_ids(root_table_ids: set[int] | None) -> Any:
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
             "columns": [
-                {"column_name": "id", "visible_to": []},
-                {"column_name": "name", "visible_to": []},
+                {"column_name": "id", "visible_to": ["analyst"]},
+                {"column_name": "name", "visible_to": ["analyst"]},
             ],
         },
     ]
@@ -1270,7 +1270,10 @@ def _req016_steward(shared_data):
         domain_id="sales",
         schema_name="public",
         table_name="orders",
-        columns=[Column(name="id", visible_to=[]), Column(name="amount", visible_to=[])],
+        columns=[
+            Column(name="id", visible_to=["analyst"]),
+            Column(name="amount", visible_to=["analyst"]),
+        ],
     )
 
 

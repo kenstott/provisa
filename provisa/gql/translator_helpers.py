@@ -21,8 +21,85 @@ import re
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_types import key_list
+from provisa.gql.expr_ast import CypherExpr
 from provisa.gql.ir import MatchClause, PathPattern
 from provisa.gql.label_map import JunctionMapping, NodeMapping, RelationshipMapping
+
+
+def _properties_of(var: str, exprs: "list[CypherExpr]") -> list[str]:
+    """The properties ``exprs`` read of ``var`` (``var.prop``), each once, in the order written."""
+    from provisa.gql.expr_ast import Property, Variable, walk
+
+    seen: dict[str, None] = {}
+    for expr in exprs:
+        for node in walk(expr):
+            if (
+                isinstance(node, Property)
+                and isinstance(node.obj, Variable)
+                and node.obj.name == var
+            ):
+                seen.setdefault(node.name, None)
+    return list(seen)
+
+
+#: The comparisons that are null, and so filter the row out, when an operand is null.
+_NULL_REJECTING = {
+    "=",
+    "<>",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "IN",
+    "STARTS WITH",
+    "ENDS WITH",
+    "CONTAINS",
+    "=~",
+}
+
+
+def _required_properties(var: str, wheres: "list[CypherExpr]") -> list[str]:
+    """The properties of ``var`` without which a row fails one of ``wheres`` (REQ-347): each is
+    an operand of a comparison, or of an IS NOT NULL, that is one of the WHERE's top-level AND
+    conjuncts. A node lacking one of them is filtered out; any other property it lacks it reads
+    as null, and is still matched."""
+    from provisa.gql.expr_ast import Binary, IsNull, Paren, Property, Variable
+
+    def of_var(e: "CypherExpr") -> "str | None":
+        while isinstance(e, Paren):
+            e = e.inner
+        if isinstance(e, Property) and isinstance(e.obj, Variable) and e.obj.name == var:
+            return e.name
+        return None
+
+    seen: dict[str, None] = {}
+    pending = list(wheres)
+    while pending:
+        e = pending.pop(0)
+        if isinstance(e, Paren):
+            pending.insert(0, e.inner)
+        elif isinstance(e, Binary) and e.op == "AND":
+            pending[:0] = [e.left, e.right]
+        elif isinstance(e, Binary) and e.op in _NULL_REJECTING:
+            for p in (of_var(e.left), of_var(e.right)):
+                if p is not None:
+                    seen.setdefault(p, None)
+        elif isinstance(e, IsNull) and e.negated and (p := of_var(e.operand)) is not None:
+            seen.setdefault(p, None)
+    return list(seen)
+
+
+def _collects_maps(expr: "CypherExpr") -> bool:
+    """Whether ``expr`` collects map literals (``collect({...})``): its value is a list of maps."""
+    from provisa.gql.expr_ast import FunctionCall, MapLiteral, walk
+
+    return any(
+        isinstance(node, FunctionCall)
+        and node.name.lower() == "collect"
+        and bool(node.args)
+        and isinstance(node.args[0], MapLiteral)
+        for node in walk(expr)
+    )
 
 
 def _safe_alias(expr: str) -> str:
@@ -219,7 +296,8 @@ def _make_junction_joins(  # REQ-1586
             for node_col, via_col in zip(src_node_cols, src_keys, strict=True)
         ]
     )
-    if via.type_column is not None:
+    # An untyped hop's junction (type_value and type_values both unset) reads every row of it.
+    if via.type_column is not None and (via.type_values or via.type_value is not None):
         discriminator = via_column(via_alias, via.type_column)
         src_cond = exp.And(
             this=src_cond,
@@ -247,7 +325,13 @@ def _make_junction_joins(  # REQ-1586
     )
     return [
         {"table": _via_table_expr(via, via_alias), "on": src_cond, "join_type": join_type},
-        {"table": _node_table_expr(tgt_nm, tgt_alias), "on": tgt_cond, "join_type": join_type},
+        {
+            "table": _node_table_expr(tgt_nm, tgt_alias),
+            "on": tgt_cond,
+            "join_type": join_type,
+            # The junction row it is the far end of: one relationship, two joins.
+            "junction_alias": via_alias,
+        },
     ]
 
 
@@ -328,6 +412,16 @@ def _is_bwd_for_candidate(
 
     Returns None if the candidate should be filtered out (direction mismatch).
     """
+    if rm.directed and not bidir:
+        # REQ-2176: a stored edge is matched only along its direction: the pattern's source
+        # (its target when written backward) is the edge's source.
+        if src_nm is not None:
+            along = rm.target_label if backward else rm.source_label
+            return backward if along == src_nm.type_name else None
+        if tgt_nm is not None:
+            along = rm.source_label if backward else rm.target_label
+            return backward if along == tgt_nm.type_name else None
+        return backward
     if bidir:
         if src_nm is not None:
             canonical_fwd = rm.source_label == src_nm.type_name
@@ -358,24 +452,13 @@ def _is_bwd_for_candidate(
     return backward
 
 
-def _optional_vars(clauses: "list[MatchClause]") -> "set[str]":
-    """Return variables first introduced by OPTIONAL MATCH (not already bound by MATCH)."""
-    seen: set[str] = set()
-    optional_only: set[str] = set()
-    for clause in clauses:
-        if not isinstance(clause.pattern, PathPattern):
-            continue
-        new_in_clause = set()
-        for node in clause.pattern.nodes:
-            if node.variable:
-                new_in_clause.add(node.variable)
-        for rel in clause.pattern.rels:
-            if rel.variable:
-                new_in_clause.add(rel.variable)
-        if clause.optional:
-            optional_only.update(new_in_clause - seen)
-        seen.update(new_in_clause)
-    return optional_only
+def _clause_vars(clause: "MatchClause") -> "set[str]":
+    """The node and relationship variables a MATCH or OPTIONAL MATCH clause's pattern names."""
+    if not isinstance(clause.pattern, PathPattern):
+        return set()
+    return {n.variable for n in clause.pattern.nodes if n.variable} | {
+        r.variable for r in clause.pattern.rels if r.variable
+    }
 
 
 def _join_alias(table_expr: "exp.Expression") -> "str | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -393,60 +476,57 @@ def _split_and(expr: "exp.Expression") -> "list[exp.Expression]":  # pyright: ig
 
 def _fold_where_into_optional_joins(
     where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    optional_vars: "set[str]",
-    where_text: str,
+    step_vars: "set[str]",
     joins: "list[dict]",
 ) -> "tuple[list[dict], exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Fold WHERE conditions referencing optional variables into the relevant LEFT JOIN ON clauses.
+    """An OPTIONAL MATCH's own WHERE in the ON of the last LEFT JOIN the match introduces
+    (``step_vars``: its variables not bound before it). openCypher scopes the WHERE to the match,
+    so every conjunct conditions it, whatever it names, and none removes a row (REQ-345): as a
+    global WHERE it would turn the LEFT JOIN into an inner one. A ``_nf_`` condition stays in the
+    WHERE, where nf_extractor strips it before the SQL runs.
 
-    Cypher semantics: WHERE after OPTIONAL MATCH constrains the optional pattern.
-    In SQL this must be an ON condition, not a global WHERE — a global WHERE turns
-    a LEFT JOIN into an implicit INNER JOIN, filtering out rows where the optional
-    variable is NULL and eliminating the base MATCH rows.
-
-    Each AND conjunct is assigned only to the LEFT JOIN that introduces its
-    last-referenced optional variable, so a condition on variable `c` is never
-    placed in an earlier join (e.g. `b`) where `c` is not yet in scope.
-
-    Returns (modified_joins, remaining_where_or_None).
+    Returns (modified_joins, what stays in the WHERE).
     """
-    referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_text)}
-    if not referenced:
+    order = {
+        alias: i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and (alias := _join_alias(join["table"])) in step_vars
+    }
+    if not order:
+        # A hop between two nodes bound before it introduces only its relationship, joined by
+        # its junction (via_alias_for): that join is the match's, which its WHERE conditions.
+        order = {
+            alias: i
+            for i, join in enumerate(joins)
+            if join["join_type"] == "LEFT"
+            and (alias := _join_alias(join["table"])) is not None
+            and alias.endswith("__via")
+            and alias[: -len("__via")] in step_vars
+        }
+    if not order:
+        # The OPTIONAL MATCH is the statement's FROM, not a join: there is no join to condition,
+        # so its WHERE filters its own rows, as it always has here.
         return joins, where_expr
-
-    # Build position map for LEFT JOIN aliases so we can find the "last" one.
-    join_order: dict[str, int] = {}
-    for i, join in enumerate(joins):
-        alias = _join_alias(join["table"])
-        if alias:
-            join_order[alias] = i
-
-    # Split into individual AND conjuncts, route each to the appropriate join.
-    conjuncts = _split_and(where_expr)
-    alias_to_conjuncts: dict[str, list] = {}
-    remaining_conjuncts: list = []
-
-    for cond in conjuncts:
-        cond_text = cond.sql(dialect="postgres")
-        # _nf_ conditions must stay in WHERE so nf_extractor can strip them before SQL execution.
-        if "_nf_" in cond_text:
-            remaining_conjuncts.append(cond)
+    last = max(order, key=lambda a: order[a])
+    by_target: dict[str, list] = {}
+    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
+    for cond in _split_and(where_expr):
+        text = cond.sql(dialect="postgres")
+        if "_nf_" in text:
+            remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
             continue
-        refs = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", cond_text)}
-        refs_in_joins = refs & set(join_order.keys())
-        if refs_in_joins:
-            target = max(refs_in_joins, key=lambda v: join_order[v])
-            alias_to_conjuncts.setdefault(target, []).append(cond)
-        else:
-            remaining_conjuncts.append(cond)
-
+        # The join of the last of the match's variables it names, where they are all in scope;
+        # one naming none of them conditions the match's last join.
+        named = [a for a in order if re.search(rf"\b{re.escape(a)}\b", text)]
+        target = max(named, key=lambda a: order[a]) if named else last
+        by_target.setdefault(target, []).append(cond)
+    if not by_target:
+        return joins, remaining
     modified: list[dict] = []
     for join in joins:
-        alias = _join_alias(join["table"])
-        if alias in alias_to_conjuncts and join["join_type"] == "LEFT":
-            existing_on = join["on"]
-            new_on = existing_on
-            for cond in alias_to_conjuncts[alias]:
+        if (target := _join_alias(join["table"])) in by_target:
+            new_on = join["on"]
+            for cond in by_target[target]:
                 if new_on is None or (
                     hasattr(new_on, "sql") and new_on.sql() in ("TRUE", "true", "1 = 1")
                 ):
@@ -456,51 +536,61 @@ def _fold_where_into_optional_joins(
             modified.append({**join, "on": new_on})
         else:
             modified.append(join)
-
-    remaining: "exp.Expression | None" = None  # pyright: ignore[reportPrivateImportUsage]
-    for cond in remaining_conjuncts:
-        remaining = cond if remaining is None else exp.And(this=remaining, expression=cond)
-
-    return modified, remaining
+    return _one_join_per_junction_row(modified, set(by_target)), remaining
 
 
-def _is_bare_variable(expr: str) -> bool:
-    return bool(re.match(r"^[A-Za-z_]\w*$", expr.strip()))
+def _optional_step_matches_whole(joins: "list[dict]", step_vars: "set[str]") -> "list[dict]":
+    """An OPTIONAL MATCH's pattern -- each of its hops and comma-separated parts, and its own WHERE
+    -- matches whole or not at all: where only part of it matches, every variable it introduces is
+    null (REQ-345). As plain LEFT JOINs a row would keep the hops that matched beside nulls for the
+    rest. Each of the match's joins but the last holds the next as an EXISTS, built from the last
+    back, so a join matches only where all of the pattern after it does."""
+    span = [
+        i
+        for i, join in enumerate(joins)
+        if join["join_type"] == "LEFT" and _join_alias(join["table"]) in step_vars
+    ]
+    if len(span) < 2:
+        return joins
+    out = list(joins)
+    for k in range(span[-1] - 1, span[0] - 1, -1):
+        after = out[k + 1]
+        rest = exp.select(exp.Literal.number(1)).from_(after["table"].copy())
+        if after["on"] is not None:
+            rest = rest.where(after["on"].copy())
+        on = out[k]["on"]
+        whole = exp.Exists(this=rest)
+        bare = on is None or (isinstance(on, exp.Boolean) and on.this is True)
+        out[k] = {**out[k], "on": whole if bare else exp.And(this=on, expression=whole)}
+    return out
 
 
-_CYPHER_DQUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
-
-
-def _rewrite_cypher_dquote_strings(expr: str) -> str:  # REQ-410
-    """Cypher ``"str"`` → SQL ``'str'``, leaving quoted identifiers (after ``.``) untouched. Retained
-    for the UNWIND text path + REQ-410; the AST grammar handles this on the predicate paths (REQ-913)."""
-    result: list[str] = []
-    pos = 0
-    for m in _CYPHER_DQUOTE_RE.finditer(expr):
-        start = m.start()
-        result.append(expr[pos:start])
-        keep = start > 0 and expr[start - 1] == "."  # property name after `.` — leave as-is
-        result.append(m.group(0) if keep else "'" + m.group(1).replace("'", "\\'") + "'")
-        pos = m.end()
-    result.append(expr[pos:])
-    return "".join(result)
-
-
-_ISO_TS_LITERAL_RE = re.compile(r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'")
-
-
-def _coerce_ts_literals(text: str) -> str:  # REQ-409
-    """Wrap ISO-datetime string literals as ``TIMESTAMP '...'`` (retained for REQ-409)."""
-    return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
-
-
-def _rewrite_property_access(expr: str) -> str:
-    """Rewrite n.prop → n."prop" for SQL."""
-    return re.sub(
-        r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b",
-        lambda m: f'{m.group(1)}."{m.group(2)}"',
-        expr,
-    )
+def _one_join_per_junction_row(joins: "list[dict]", constrained: "set[str]") -> "list[dict]":
+    """An optional junction-backed relationship constrained at its far end matches a junction
+    row only where its far node meets the condition: the junction's join holds the far join as an
+    EXISTS. As two plain LEFT JOINs, a junction row whose far node the condition refuses would
+    stay, beside a null node, where the pattern has no match."""
+    out: list[dict] = []
+    for join in joins:
+        via = join.get("junction_alias")
+        alias = _join_alias(join["table"])
+        if (
+            via is not None
+            and alias in constrained
+            and join["join_type"] == "LEFT"
+            and out
+            and _join_alias(out[-1]["table"]) == via
+            and out[-1]["join_type"] == "LEFT"
+        ):
+            far = exp.Exists(
+                this=exp.select(exp.Literal.number(1))
+                .from_(join["table"].copy())
+                .where(join["on"].copy())
+            )
+            junction = out[-1]
+            out[-1] = {**junction, "on": exp.And(this=junction["on"], expression=far)}
+        out.append(join)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -523,8 +613,15 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "COLLECT": "array_agg",
     "STDEV": "stddev_samp",
     "STDEVP": "stddev_pop",
-    "PERCENTILECONT": "approx_percentile",
-    "PERCENTILEDISC": "approx_percentile",
+}
+
+#: Cypher's exact percentiles, percentileCont(x, p) and percentileDisc(x, p): the SQL ordered-set
+#: aggregate of each, PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY x), which each engine writes as its
+#: own (DuckDB's quantile_cont and quantile_disc, which refuse a percentile outside [0, 1] as
+#: openCypher's NumberOutOfRange does).
+_CYPHER_PERCENTILES: dict[str, type[exp.Expression]] = {
+    "PERCENTILECONT": exp.PercentileCont,
+    "PERCENTILEDISC": exp.PercentileDisc,
 }
 
 # Cast functions: Cypher fn (uppercase) → (sql_type, use_try_cast)
@@ -537,10 +634,67 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
     "TOFLOATORNULL": ("DOUBLE", True),
     "TOBOOLEAN": ("BOOLEAN", True),
     "TOBOOLEANORNULL": ("BOOLEAN", True),
+    # SPARQL's xsd:decimal, xsd:date and xsd:dateTime casts (REQ-2135)
+    "TODECIMAL": ("DECIMAL", True),
+    "TODATE": ("DATE", True),
+    "TODATETIME": ("TIMESTAMP", True),
 }
+
+# Cypher's temporal values: from a string, a cast to the type (date('2015-07-21')); with no
+# argument, the engine's current value of the type (datetime()).
+_CYPHER_TEMPORAL_FNS: dict[str, tuple[str, exp.Expression]] = {
+    "DATE": ("DATE", exp.CurrentDate()),
+    "DATETIME": ("TIMESTAMPTZ", exp.CurrentTimestamp()),
+    "LOCALDATETIME": ("TIMESTAMP", exp.Localtimestamp()),
+    "TIME": ("TIMETZ", exp.CurrentTime()),
+    "LOCALTIME": ("TIME", exp.Localtime()),
+}
+
+_MINUTE_ONLY = re.compile(r"((?:^|T)\d{2}:\d{2})(?=$|[-+Z])")
+
+# SPARQL's date parts (REQ-2135): its function → the field extracted.
+_DATE_PARTS: dict[str, str] = {
+    "YEAR": "YEAR",
+    "MONTH": "MONTH",
+    "DAY": "DAY",
+    "HOURS": "HOUR",
+    "MINUTES": "MINUTE",
+    "SECONDS": "SECOND",
+}
+_SPARQL_SCALARS = frozenset({*_DATE_PARTS, "STRCONCAT", "STRBEFORE", "STRAFTER"})
 
 # SUBSTRING(str, start[, len]) needs at least the string + start-index args.
 _SUBSTRING_MIN_ARGS = 2
+
+
+def _str_before_after(
+    name: str,
+    text: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    sought: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """SPARQL's STRBEFORE / STRAFTER (REQ-2135): the text before (after) the first ``sought`` in
+    ``text``, the empty string where it is not found."""
+    # substr, 1-based: an exp.Substring is a Cypher substring, whose start this transform shifts.
+    at = exp.StrPosition(this=text.copy(), substr=sought.copy())
+    if name == "STRBEFORE":
+        part = exp.Anonymous(
+            this="substr",
+            expressions=[
+                text.copy(),
+                exp.Literal.number(1),
+                exp.Sub(this=at.copy(), expression=exp.Literal.number(1)),
+            ],
+        )
+    else:
+        part = exp.Anonymous(
+            this="substr",
+            expressions=[
+                text.copy(),
+                exp.Add(this=at.copy(), expression=exp.Length(this=sought.copy())),
+            ],
+        )
+    missing = exp.EQ(this=at, expression=exp.Literal.number(0))
+    return exp.Case(ifs=[exp.If(this=missing, true=exp.Literal.string(""))], default=part)
 
 
 def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -566,20 +720,29 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
 
     # exp.Left / exp.Right — SQLGlot parses left()/right() as these; emit as Anonymous
     # so the engine receives LEFT(str, n) rather than a SUBSTRING expansion.
-    if isinstance(node, exp.Left):
-        return exp.Anonymous(this="left", expressions=[node.this, node.expression])
-
-    if isinstance(node, exp.Right):
-        return exp.Anonymous(this="right", expressions=[node.this, node.expression])
+    # The transform does not descend into the node it is handed back, so its arguments are
+    # rewritten here (toLower(x) ENDS WITH y reads right(toLower(x), ...)).
+    if isinstance(node, (exp.Left, exp.Right)):
+        return exp.Anonymous(
+            this="left" if isinstance(node, exp.Left) else "right",
+            expressions=[
+                node.this.transform(_rewrite_cypher_fn_node),
+                node.expression.transform(_rewrite_cypher_fn_node),
+            ],
+        )
 
     # Handle built-in exp.Substring — adjust 0-indexed Cypher start to 1-indexed SQL
     if isinstance(node, exp.Substring):
         start = node.args.get("start")
         if start is not None:
+            length = node.args.get("length")
             return exp.Substring(
-                this=node.this,
-                start=exp.Add(this=start, expression=exp.Literal.number(1)),
-                length=node.args.get("length"),
+                this=node.this.transform(_rewrite_cypher_fn_node),
+                start=exp.Add(
+                    this=start.transform(_rewrite_cypher_fn_node),
+                    expression=exp.Literal.number(1),
+                ),
+                length=length.transform(_rewrite_cypher_fn_node) if length is not None else None,
             )
         return node
 
@@ -587,6 +750,10 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
         return node
     name = node.name.upper()
     args: list[exp.Expression] = node.args.get("expressions") or []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    if name in ("HEAD", "LAST", "TAIL", "ISEMPTY", "SIZE"):
+        # Its arguments first, as the transform does not descend into the node it is handed back
+        # (size([y IN collect(x) ...]) collects).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
 
     if name == "HEAD" and args:
         return exp.Anonymous(this="element_at", expressions=[args[0], exp.Literal.number(1)])
@@ -616,16 +783,159 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
             return exp.Anonymous(this="char_length", expressions=args)
         return exp.Anonymous(this="cardinality", expressions=args)
 
+    if name in _CYPHER_PERCENTILES and len(args) == 2:
+        value, percentile = (a.transform(_rewrite_cypher_fn_node) for a in args)
+        return exp.WithinGroup(
+            this=_CYPHER_PERCENTILES[name](this=percentile),
+            expression=exp.Order(expressions=[exp.Ordered(this=value, nulls_first=False)]),
+        )
+
     if name in _CYPHER_FN_RENAMES:
-        return exp.Anonymous(this=_CYPHER_FN_RENAMES[name], expressions=args)
+        # Its arguments first, as the transform does not descend into the node it is handed back
+        # (collect(size(list)) counts the list).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
+        renamed = exp.Anonymous(this=_CYPHER_FN_RENAMES[name], expressions=args)
+        if name == "COLLECT" and len(args) == 1:
+            # collect() skips nulls, and collects nothing as [] (openCypher).
+            value = args[0].expressions[0] if isinstance(args[0], exp.Distinct) else args[0]
+            kept = exp.Filter(
+                this=renamed,
+                expression=exp.Where(
+                    this=exp.Not(this=exp.Is(this=value.copy(), expression=exp.Null()))
+                ),
+            )
+            return exp.Coalesce(this=kept, expressions=[exp.Array(expressions=[])])
+        return renamed
+
+    if name in _SPARQL_SCALARS or name in _CYPHER_CAST_FNS:
+        # The transform does not descend into the node it is handed back: its arguments first
+        # (toInteger(substring(x, 1)) shifts the substring's start).
+        args = [a.transform(_rewrite_cypher_fn_node) for a in args]
+
+    if name in ("TOINTEGER", "TOINTEGERORNULL") and args:
+        # Toward zero, as Cypher truncates (an engine's cast to an integer rounds): read as a
+        # decimal (a number, or a string of one), cut, then the integer.
+        number = exp.TryCast(this=args[0], to=exp.DataType.build("DECIMAL(38, 10)"))
+        return exp.TryCast(
+            this=exp.Anonymous(this="TRUNC", expressions=[number]),
+            to=exp.DataType.build("BIGINT"),
+        )
 
     if name in _CYPHER_CAST_FNS and args:
         sql_type, use_try = _CYPHER_CAST_FNS[name]
         cls = exp.TryCast if use_try else exp.Cast
         return cls(this=args[0], to=exp.DataType.build(sql_type))
 
+    if name in _CYPHER_TEMPORAL_FNS and len(args) <= 1:
+        sql_type, current = _CYPHER_TEMPORAL_FNS[name]
+        if not args:
+            return current.copy()
+        value = args[0].transform(_rewrite_cypher_fn_node)
+        if isinstance(value, exp.Literal) and value.is_string:
+            # A time written to the minute (16:30, 16:30+0100) is the minute's first second, which
+            # an engine reads only written out (16:30:00).
+            value = exp.Literal.string(_MINUTE_ONLY.sub(r"\1:00", value.this))
+        return exp.Cast(this=value, to=exp.DataType.build(sql_type))
+
+    if name in _DATE_PARTS and len(args) == 1:
+        return exp.Extract(this=exp.var(_DATE_PARTS[name]), expression=args[0])
+
+    if name == "STRCONCAT" and args:
+        # SPARQL's CONCAT: unbound where any part is, as || is (an engine's concat() skips nulls).
+        out = args[0]
+        for arg in args[1:]:
+            out = exp.DPipe(this=out, expression=arg)
+        return out
+
+    if name in ("STRBEFORE", "STRAFTER") and len(args) == 2:
+        return _str_before_after(name, args[0], args[1])
+
     if name == "SUBSTRING" and len(args) >= _SUBSTRING_MIN_ARGS:
         # Fallback if sqlglot parsed as Anonymous instead of Substring
         start_plus_1 = exp.Add(this=args[1], expression=exp.Literal.number(1))
         return exp.Anonymous(this="substr", expressions=[args[0], start_plus_1, *args[2:]])
     return node
+
+
+def refused_when_read(message: str, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A value of type ``to`` that is a type error when the engine reads it (openCypher's
+    TypeError at runtime): ``message`` cast to a number, which every engine refuses naming it.
+    Placed in a CASE branch, it is an error only for the rows that reach it."""
+    return exp.Cast(
+        this=exp.Cast(this=exp.Literal.string(message), to=exp.DataType.build("INT")),
+        to=exp.DataType.build(to),
+    )
+
+
+def _json_valued(
+    e: exp.Expression, json_columns: frozenset[str] | set[str] = frozenset()
+) -> str | None:
+    """ "list" for a list of JSON-encoded values, "value" for one value read from one (its JSON)
+    -- a column of ``json_columns``, or the largest or smallest of one -- else None."""
+    while isinstance(e, (exp.Alias, exp.Paren)):
+        e = e.this
+    if isinstance(e, exp.Column) and e.name in json_columns:
+        return "value"
+    if isinstance(e, exp.Anonymous) and e.name.upper() == "JSON_EXTRACT":
+        return "value"  # a key of a JSON-encoded map (expr_visitor._lower_Property)
+    if (
+        isinstance(e, exp.Cast)
+        and e.to.is_type("json")
+        and isinstance(e.this, (exp.Literal, exp.Paren))
+    ):
+        return "value"  # a deep literal as its JSON (expr_visitor._deep_written)
+    if isinstance(e, (exp.Max, exp.Min)):
+        return "value" if _json_valued(e.this, json_columns) == "value" else None
+    if isinstance(e, exp.Anonymous) and e.name.upper() in ("MAX_BY", "MIN_BY") and e.expressions:
+        return "value"
+    if isinstance(e, exp.Anonymous) and e.name.upper() in ("MAX", "MIN") and e.expressions:
+        return "value" if _json_valued(e.expressions[0], json_columns) == "value" else None
+    called = str(e.this).upper() if isinstance(e, exp.Anonymous) else None
+    if isinstance(e, exp.Array):
+        return (
+            "list"
+            if e.expressions
+            and all(
+                isinstance(x, exp.Anonymous) and str(x.this).upper() in ("TO_JSON", "JSON_OBJECT")
+                for x in e.expressions
+            )
+            else None
+        )
+    if called == "ARRAY" and len(e.expressions) == 1 and isinstance(e.expressions[0], exp.Select):
+        # A pattern comprehension's rows, each its JSON (expr_context.resolve_pattern_comprehension).
+        (row,) = e.expressions[0].expressions or [None]
+        held = row.this if isinstance(row, exp.Alias) else row
+        is_json = isinstance(held, exp.Anonymous) and str(held.this).upper() == "TO_JSON"
+        return "list" if is_json else None
+    if called in ("ARRAY_APPEND", "SLICE") and e.expressions:
+        return "list" if _json_valued(e.expressions[0]) == "list" else None
+    if called == "ARRAY_PREPEND" and len(e.expressions) == 2:
+        return "list" if _json_valued(e.expressions[1]) == "list" else None
+    if called == "ELEMENT_AT" and e.expressions:
+        return "value" if _json_valued(e.expressions[0]) == "list" else None
+    if called == "TRANSFORM" and e.expressions:
+        # reverse() of a list: its items read back in turn (expr_visitor._reversed_list).
+        return _json_valued(e.expressions[0]) if _reads_items(e) else None
+    if isinstance(e, (exp.Add, exp.DPipe)):
+        sides = {_json_valued(e.this), _json_valued(e.expression)}
+        return "list" if "list" in sides else None
+    if isinstance(e, exp.Case):
+        results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
+        found = {_json_valued(r) for r in results if r is not None}
+        if found == {"value"}:
+            return "value"  # one JSON value by a condition (expr_visitor._element_or_map_key)
+        return "list" if found == {"list"} or ("list" in found and None not in found) else None
+    return None
+
+
+def _reads_items(e: exp.Expression) -> bool:
+    """Whether a TRANSFORM over indexes reads a list's items (reverse()): its lambda is an
+    ELEMENT_AT of a list of JSON-encoded values."""
+    if len(e.expressions) != 2 or not isinstance(e.expressions[1], exp.Lambda):
+        return False
+    body = e.expressions[1].this
+    return (
+        isinstance(body, exp.Anonymous)
+        and str(body.this).upper() == "ELEMENT_AT"
+        and _json_valued(body.expressions[0]) == "list"
+    )

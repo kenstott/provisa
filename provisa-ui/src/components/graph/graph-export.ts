@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { isRdfCell } from "./sparql";
 import type { CyInstance } from "./cytoscape-types";
 import type { GNode, GEdge } from "./graph-model";
 
@@ -192,8 +193,15 @@ export function downloadGraphSvg(cy: CyInstance, hullSvg: SVGSVGElement | null) 
 
 export function toCSV(columns: string[], rows: Record<string, unknown>[]): string {
   const esc = (v: unknown) => {
+    // An RDF term (a SPARQL answer's) is written whole: the IRI, never its compacted form.
     const s =
-      v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+      v === null || v === undefined
+        ? ""
+        : isRdfCell(v)
+          ? v.value
+          : typeof v === "object"
+            ? JSON.stringify(v)
+            : String(v);
     return s.includes(",") || s.includes('"') || s.includes("\n")
       ? `"${s.replace(/"/g, '""')}"`
       : s;

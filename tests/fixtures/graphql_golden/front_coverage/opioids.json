@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:opioids/1-most-deaths-per-dollar.graphql",
+  "root_field": "o__viewTreatmentAgainstBurden"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:opioids/2-by-region.graphql",
+  "root_field": "o__viewTreatmentAgainstBurdenGroupBy"
+ }
+]

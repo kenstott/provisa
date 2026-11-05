@@ -12,7 +12,8 @@
 
 import { useMutation } from "@apollo/client/react";
 import type { MutationResult, WriteGrant } from "../types/admin";
-import { SetTableWriteGrants, TablesQuery } from "./admin.graphql";
+import { SetTableWriteGrants } from "./admin.graphql";
+import { useShownTableQueries } from "./useAdminQueries";
 
 /** The grants as the admin API takes them (WriteGrantInput): what each operation can carry. */
 export function writeGrantInputs(grants: WriteGrant[]) {
@@ -35,9 +36,10 @@ export function writeGrantInputs(grants: WriteGrant[]) {
 }
 
 export function useSetTableWriteGrants() {
+  const refetchTables = useShownTableQueries();
   const [run, { loading }] = useMutation<{ setTableWriteGrants: MutationResult }>(
     SetTableWriteGrants,
-    { refetchQueries: [{ query: TablesQuery }] },
+    { refetchQueries: refetchTables },
   );
   return {
     setTableWriteGrants: async (tableId: number, grants: WriteGrant[]) => {

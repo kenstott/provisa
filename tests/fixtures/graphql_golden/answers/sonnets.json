@@ -1,0 +1,90 @@
+[
+ {
+  "columns": [
+   "score",
+   "sonnet",
+   "line_no",
+   "text",
+   "echo_sonnet",
+   "echo_line_no",
+   "echo_text"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:sonnets/1-strongest-echoes.graphql",
+  "root_field": "s__viewEchoLines",
+  "rows": []
+ },
+ {
+  "columns": [
+   "score",
+   "sonnet",
+   "line_no",
+   "text",
+   "echo_sonnet",
+   "echo_line_no",
+   "echo_text"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:sonnets/1-strongest-echoes.graphql",
+  "root_field": "s__viewEchoLines",
+  "rows": []
+ },
+ {
+  "columns": [
+   "sonnet",
+   "echo_sonnet",
+   "count_star()",
+   "avg(score)"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:sonnets/2-sonnets-that-echo-each-other.graphql",
+  "root_field": "s__viewEchoLinesGroupBy",
+  "rows": []
+ },
+ {
+  "columns": [
+   "sonnet",
+   "echo_sonnet",
+   "count",
+   "avg"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:sonnets/2-sonnets-that-echo-each-other.graphql",
+  "root_field": "s__viewEchoLinesGroupBy",
+  "rows": []
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:sonnets/3-lines-on-time.graphql",
+  "reads": [
+   "sonnets",
+   "vectors"
+  ],
+  "root_field": "s__viewThemeTime"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:sonnets/4-themes-by-sequence.graphql",
+  "reads": [
+   "sonnets",
+   "vectors"
+  ],
+  "root_field": "s__viewThemeLinesGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:sonnets/5-sonnets-a-theme-runs-through.graphql",
+  "reads": [
+   "sonnets",
+   "vectors"
+  ],
+  "root_field": "s__viewThemeLinesGroupBy"
+ }
+]

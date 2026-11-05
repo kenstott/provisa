@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     lease_until     TIMESTAMPTZ,
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
-    snapshot_id     TEXT
+    snapshot_id     TEXT,
+    index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
 );
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (

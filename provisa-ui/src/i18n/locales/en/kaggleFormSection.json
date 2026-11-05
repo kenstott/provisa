@@ -1,7 +1,7 @@
 {
   "kaggleFormSection": {
     "tokenLabel": "Kaggle API Token",
-    "tokenDescription": "Validated live against the Kaggle API before the dataset picker unlocks",
+    "tokenDescription": "Checked live with Kaggle. Kept as the source's credential and used again at each refresh.",
     "tokenPlaceholder": "${env:KAGGLE_API_TOKEN}",
     "validateButton": "Validate Token",
     "tokenValid": "Token valid",

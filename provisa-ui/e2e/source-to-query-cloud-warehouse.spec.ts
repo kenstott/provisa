@@ -48,11 +48,10 @@
 // ALL-UPPERCASE-safe database instead, sidestepping it — the finding itself is reported, not
 // papered over.
 
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { test, expect } from "./coverage";
+import { test, expect, BACKEND_URL } from "./coverage";
+import { seedWarehouse, WAREHOUSE_SCHEMA } from "./cloud-warehouse";
+import { deleteSourceAndItsTables } from "./delete-source";
 import {
   expectDiscoveredColumns,
   openSourcesForm,
@@ -64,12 +63,19 @@ import {
   FORM_FIELD,
 } from "./source-to-query-helpers";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const PYTHON = path.join(ROOT, ".venv", "bin", "python");
-const SEED = path.join(ROOT, "provisa-ui", "e2e", "cloud_warehouse_seed.py");
 
-function seed(engine: "snowflake" | "databricks" | "bigquery" | "fabric", action: "up" | "down"): void {
-  execFileSync(PYTHON, [SEED, engine, action], { stdio: "pipe" });
+
+// A test removes the source it added before dropping its schema: left registered, its replica
+// keeps rebuilding a table that no longer exists (TABLE_OR_VIEW_NOT_FOUND, run 40365790222).
+async function removeSource(sourceId: string): Promise<void> {
+  await deleteSourceAndItsTables(async (query, variables = {}) => {
+    const res = await fetch(`${BACKEND_URL}/admin/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+    });
+    return res.json();
+  }, sourceId);
 }
 
 const WIDGET_ROWS = [
@@ -89,10 +95,9 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
     );
     test.setTimeout(300000);
-    seed("snowflake", "up");
+    const sourceId = `e2e_snowflake_${Date.now()}`;
+    seedWarehouse("snowflake", "up");
     try {
-      const stamp = Date.now();
-      const sourceId = `e2e_snowflake_${stamp}`;
 
       // 1. Sources form
       await openSourcesForm(page);
@@ -101,7 +106,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       await page.getByLabel(/Account URL/).fill(process.env.SNOWFLAKE_ACCOUNT!);
       // A dedicated all-uppercase-safe database, not SNOWFLAKE_DATABASE — see the file header's
       // "second bug" note.
-      await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("PROVISA_UI_E2E");
+      await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill(WAREHOUSE_SCHEMA.toUpperCase());
       await page.getByLabel(/^Warehouse$/).fill(process.env.SNOWFLAKE_WAREHOUSE ?? "COMPUTE_WH");
       // Mantine's Select portals its listbox with aria-labelledby pointing at the same label,
       // so plain getByLabel("Authentication") resolves to both the input and the (closed)
@@ -126,8 +131,24 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
         `SELECT id, name FROM pet_store.${registered} ORDER BY id`,
       );
       expect(rows).toEqual(WIDGET_ROWS);
+
+      // 4. The same table read with another source's: a statement over two sources is the
+      // engine's, which reads Snowflake through its own attach (the read above went to the
+      // source's driver). The attach takes the ADBC driver Provisa ships (REQ-899). A union, not
+      // a join: a join needs an approved relationship between the two tables (V002).
+      const combined = await runSqlOnPage(
+        page,
+        `SELECT id, name FROM pet_store.${registered} ` +
+          "UNION ALL SELECT id, name FROM pet_store.pets WHERE id = 1",
+      );
+      expect(combined).toHaveLength(WIDGET_ROWS.length + 1);
+      expect(combined).toEqual(expect.arrayContaining(WIDGET_ROWS));
     } finally {
-      seed("snowflake", "down");
+      try {
+        await removeSource(sourceId);
+      } finally {
+        seedWarehouse("snowflake", "down");
+      }
     }
   });
 
@@ -147,10 +168,9 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
     // ~73h (external Databricks-side suspension, not a code/creds gap). Confirmed live-queryable
     // again the same day — un-skipped.
     test.setTimeout(300000);
-    seed("databricks", "up");
+    const sourceId = `e2e_databricks_${Date.now()}`;
+    seedWarehouse("databricks", "up");
     try {
-      const stamp = Date.now();
-      const sourceId = `e2e_databricks_${stamp}`;
 
       // 1. Sources form
       await openSourcesForm(page);
@@ -171,7 +191,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
 
       // 2. Register Table form
       await openRegisterForm(page, sourceId);
-      await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+      await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
       await expectDiscoveredColumns(page, ["id"], 120000);
       await expectDiscoveredColumns(page, ["name"]);
       const registered = await submitRegisterAndExpectListed(page, sourceId);
@@ -183,7 +203,11 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       );
       expect(rows).toEqual(WIDGET_ROWS);
     } finally {
-      seed("databricks", "down");
+      try {
+        await removeSource(sourceId);
+      } finally {
+        seedWarehouse("databricks", "down");
+      }
     }
   });
 
@@ -195,10 +219,9 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
     );
     test.setTimeout(300000);
-    seed("bigquery", "up");
+    const sourceId = `e2e_bigquery_${Date.now()}`;
+    seedWarehouse("bigquery", "up");
     try {
-      const stamp = Date.now();
-      const sourceId = `e2e_bigquery_${stamp}`;
 
       // 1. Sources form — the SA key file at GOOGLE_APPLICATION_CREDENTIALS also serves as this
       // source's Application Default Credentials (the backend process's own ADC env var), so no
@@ -218,7 +241,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
 
       // 2. Register Table form
       await openRegisterForm(page, sourceId);
-      await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+      await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
       await expectDiscoveredColumns(page, ["id"], 120000);
       await expectDiscoveredColumns(page, ["name"]);
       const registered = await submitRegisterAndExpectListed(page, sourceId);
@@ -230,7 +253,11 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       );
       expect(rows).toEqual(WIDGET_ROWS);
     } finally {
-      seed("bigquery", "down");
+      try {
+        await removeSource(sourceId);
+      } finally {
+        seedWarehouse("bigquery", "down");
+      }
     }
   });
 
@@ -256,10 +283,9 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
         "module docstring for the one-time az CLI command",
     );
     test.setTimeout(300000);
-    seed("fabric", "up");
+    const sourceId = `e2e_fabric_${Date.now()}`;
+    seedWarehouse("fabric", "up");
     try {
-      const stamp = Date.now();
-      const sourceId = `e2e_fabric_${stamp}`;
 
       // 1. Sources form — Azure AD ambient credential (az login on this machine), no service
       // principal fields to fill.
@@ -283,7 +309,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
 
       // 2. Register Table form
       await openRegisterForm(page, sourceId);
-      await pickSchemaAndTable(page, "provisa_ui_e2e", "widgets");
+      await pickSchemaAndTable(page, WAREHOUSE_SCHEMA, "widgets");
       await expectDiscoveredColumns(page, ["id"], 120000);
       await expectDiscoveredColumns(page, ["name"]);
       const registered = await submitRegisterAndExpectListed(page, sourceId);
@@ -295,7 +321,11 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       );
       expect(rows).toEqual(WIDGET_ROWS);
     } finally {
-      seed("fabric", "down");
+      try {
+        await removeSource(sourceId);
+      } finally {
+        seedWarehouse("fabric", "down");
+      }
     }
   });
 

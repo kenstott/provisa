@@ -38,6 +38,30 @@ class ApiNotFoundError(Exception):
     """Raised when the API returns 404 — caller should yield empty rows."""
 
 
+class ApiAnswerNotJson(ValueError):
+    """An endpoint answered with a body that is not JSON: what it answered, so the reason (an XML
+    or HTML page, an empty body) is in the message rather than a decoder's position."""
+
+
+# How much of a non-JSON answer its error quotes.
+_QUOTED_CHARS = 300
+
+
+def _decoded(resp: httpx.Response) -> Any:
+    """``resp``'s JSON body; :class:`ApiAnswerNotJson` naming its status, URL, content type and
+    the start of its body when it is not JSON."""
+    import json
+
+    try:
+        return resp.json()
+    except json.JSONDecodeError as exc:
+        raise ApiAnswerNotJson(
+            f"{resp.request.method} {resp.request.url} answered {resp.status_code} "
+            f"{resp.headers.get('content-type') or 'with no content type'}, not JSON ({exc}): "
+            f"{resp.text[:_QUOTED_CHARS]!r}"
+        ) from None
+
+
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE = 1.0
 _DEFAULT_TIMEOUT = 30.0
@@ -232,7 +256,7 @@ async def _pages(
             form_body=form_body,
             timeout=timeout,
         )
-        yield await loop.run_in_executor(None, resp.json)
+        yield await loop.run_in_executor(None, _decoded, resp)
         return
 
     max_pages = pagination.max_pages
@@ -252,7 +276,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            page = await loop.run_in_executor(None, resp.json)
+            page = await loop.run_in_executor(None, _decoded, resp)
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
@@ -279,7 +303,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
             if paging is not None:
                 paging.more = bool(cursor)
@@ -308,7 +332,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -332,7 +356,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -356,7 +380,7 @@ async def _pages(
                 form_body=form_body,
                 timeout=timeout,
             )
-            data = await loop.run_in_executor(None, resp.json)
+            data = await loop.run_in_executor(None, _decoded, resp)
             yield data
             if _short_page(endpoint, data, page_size):
                 break
@@ -625,6 +649,37 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
         from provisa.core.secrets import resolve_secrets
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
+    if endpoint.response_normalizer == "quickbooks_query":
+        # REQ-2197: a QuickBooks entity's table. Its query pages by STARTPOSITION/MAXRESULTS in
+        # the query text itself and its token comes from the approval kept in the
+        # organisation's state store, so it is read by its own reader (provisa/quickbooks/read).
+        from provisa.quickbooks import read as qb_read
+
+        qb_token, qb_forget = qb_read.source_token(endpoint, base_url, auth)
+        qb = qb_read.Read()
+
+        async def _qb() -> ApiAnswer:
+            got = [
+                p
+                async for p in qb_read.pages(
+                    endpoint,
+                    resolved_params,
+                    base_url,
+                    qb_token,
+                    qb_forget,
+                    timeout=timeout,
+                    read=qb,
+                )
+            ]
+            return ApiAnswer(got, endpoint.pagination, qb.more)
+
+        try:
+            return await asyncio.wait_for(_qb(), timeout=total_timeout)
+        except asyncio.TimeoutError as exc:
+            raise ApiCallError(
+                f"QuickBooks read of {endpoint.table_name!r} exceeded "
+                f"total_timeout={total_timeout}s (source={endpoint.source_id!r})"
+            ) from exc
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     if endpoint.response_normalizer == "owl_inferred":
         # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
@@ -678,6 +733,18 @@ async def iter_api_pages(  # REQ-1915
     time limit: a build is not under a request's deadline, and each page is under ``timeout``.
     It stops at the endpoint's ``max_pages`` like every call; ``paging`` tells the reader
     whether the endpoint had more."""
+    if endpoint.response_normalizer == "quickbooks_query":  # REQ-2197: see call_api
+        from provisa.quickbooks import read as qb_read
+
+        qb_token, qb_forget = qb_read.source_token(endpoint, base_url, auth)
+        qb = qb_read.Read()
+        async for page in qb_read.pages(
+            endpoint, resolved_params, base_url, qb_token, qb_forget, timeout=timeout, read=qb
+        ):
+            if paging is not None:
+                paging.more = qb.more
+            yield page
+        return
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     async with httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks()) as client:
         async for page in _pages(

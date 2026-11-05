@@ -80,6 +80,8 @@ function props(seedOf: Source): SourceFormFieldsProps {
     onOpenapiPreview: noop,
     gqlNamespace: "",
     setGqlNamespace: noop,
+    brandSetup: {},
+    setBrandSetup: noop,
     gqlCacheTtl: "300",
     setGqlCacheTtl: noop,
     grpcProtoPath: "",
@@ -139,6 +141,7 @@ function source(type: string, extra: Partial<Source> = {}): Source {
     federationHintsJson: null,
     passwordRef: null,
     changeSignal: "",
+    rowFetchByKeys: false,
     cdc: null,
     ...extra,
   };

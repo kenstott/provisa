@@ -33,8 +33,9 @@
     "createView": "+ 檢視",
     "requestView": "要求檢視",
     "asOfLabel": "截至",
-    "asOfHint": "按此時刻的狀態讀取保留歷史的視圖",
+    "asOfHint": "在每個保留版本的關係上寫入 as_of：按此時的狀態讀取",
     "asRecordedLabel": "記錄於",
-    "asRecordedHint": "按 Provisa 當時的記錄讀取保留歷史的視圖，不含之後的更正"
+    "asRecordedHint": "在每個保留版本的關係上寫入 as_recorded：按 Provisa 當時的記錄讀取，早於之後的更正",
+    "boundParams": "綁定到下次執行：{{values}}"
   }
 }

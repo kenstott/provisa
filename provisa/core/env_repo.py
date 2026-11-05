@@ -45,14 +45,16 @@ needs libgit2 built.
 """
 
 # Requirements: REQ-294, REQ-1487, REQ-1488, REQ-1489, REQ-1496, REQ-1502, REQ-1505, REQ-1524,
-# REQ-1526, REQ-1543, REQ-1555
+# REQ-1526, REQ-1543, REQ-1555, REQ-2006
 
 from __future__ import annotations
 
 import os
 import shutil
 import tempfile
+import threading
 import time
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -61,7 +63,7 @@ from dulwich.objects import Blob, Commit, ObjectID, ShaFile, Tree
 from dulwich.refs import Ref
 from dulwich.repo import Repo
 
-from provisa.core.env_files import dump
+from provisa.core.env_files import Rendered, dump_reusing
 from provisa.core.env_project import project
 
 if TYPE_CHECKING:
@@ -254,6 +256,31 @@ def commit_files(
     so the commit the two lines last shared advances to it: the next merge between them is
     measured from here, and does not re-report what this one already carried.
     """
+    with _commit_lock(repo):
+        return _commit_files(repo, env, files, message, actor, onto, merged_from)
+
+
+#: See :func:`_commit_lock`.
+_COMMIT_LOCKS = tuple(threading.Lock() for _ in range(64))
+
+
+def _commit_lock(repo: Repo) -> threading.Lock:
+    """The lock one repository's commits take in turn (REQ-1524, REQ-2006): two threads committing
+    an org at once write the same objects, and the second met the first's ``.lock`` file
+    (FileExistsError), which left the environment drifted. From a fixed set, so an org that is gone
+    leaves nothing behind."""
+    return _COMMIT_LOCKS[zlib.crc32(str(repo.path).encode()) % len(_COMMIT_LOCKS)]
+
+
+def _commit_files(
+    repo: Repo,
+    env: str,
+    files: dict[str, str],
+    message: str,
+    actor: str | None,
+    onto: str | None,
+    merged_from: str | None,
+) -> str | None:
     tree_id = _build_tree(repo, files)
     ref = _branch_ref(env)
     parents: list[ObjectID] = []
@@ -319,6 +346,12 @@ def forget_pushed(org_id: str, env: str) -> None:
         del repo.refs[remote_ref(env)]
 
 
+#: Each environment's last projection as rendered, by (org, env): a write-through re-renders only
+#: the objects the change touched (env_files.dump_reusing). Any entry is correct whatever it is
+#: reused for -- text is reused only for an entity equal to the one it was rendered from.
+_rendered: dict[tuple[str, str], Rendered] = {}
+
+
 async def write_through(
     conn: "Connection",
     admin_db: "Database",
@@ -355,7 +388,9 @@ async def write_through(
         # was read, so the commit holds exactly the model at that stamp. Unequal, the commit is
         # recorded without a stamp and no statement's audit row will name it.
         before = await model_stamp(conn, schema)
-        files = dump(await project(conn, schema))
+        files, _rendered[(org_id, env)] = dump_reusing(
+            await project(conn, schema), _rendered.get((org_id, env), {})
+        )
         exact_stamp = before if await model_stamp(conn, schema) == before else None
         repo = ensure_repo(org_id)
         sha = commit_files(repo, env, files, message, actor, onto, merged_from)

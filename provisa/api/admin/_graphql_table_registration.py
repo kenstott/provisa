@@ -18,7 +18,7 @@ are stored once the table has been fitted to what the source's credential may re
 registered table is read.
 
 The schema a source's tables are offered from is the brand's, shipped with Provisa, for a
-branded source (GitHub, GitLab), and the source's own, read from its endpoint, for any other.
+branded source (GitHub, GitLab, Shopify), and the source's own, read from its endpoint, for any other.
 """
 
 # Requirements: REQ-308, REQ-1923
@@ -31,12 +31,14 @@ from sqlalchemy import select
 
 from provisa.compiler.naming import apply_sql_name
 from provisa.core.schema_org import registered_tables, sources, table_columns
+from provisa.graphql_remote.by_keys import BY_KEYS, TABLE_SPECS_KEY, key_fetches
 from provisa.graphql_remote.brands import (
     BRANDS,
     LiveSchema,
     SchemaOffer,
     available_tables,
     map_table,
+    map_tables,
     table_spec,
 )
 
@@ -56,7 +58,6 @@ _PHYSICAL_TYPE = {
 
 # Where a plain source's row records how each of its registered tables is read
 # (``sources.mapping``, the per-type table mapping every non-relational source keeps there).
-TABLE_SPECS_KEY = "tables"
 # What of a mapped table says how it is read.
 SPEC_FIELDS = (
     "name",  # the table as the schema names it; the registered name is the row's own
@@ -66,6 +67,7 @@ SPEC_FIELDS = (
     "optional_args",
     "pagination",
     "rows_path",
+    BY_KEYS,  # REQ-1865: the columns its rows are fetched by, a list at a time
 )
 
 
@@ -99,13 +101,17 @@ async def source_offer(state: Any, source_id: str) -> tuple[SchemaOffer, dict] |
 
 
 def offered_tables(offer: SchemaOffer, reg: dict) -> list[dict]:
-    """Every table the source offers, each as ``{name, description, connection}`` under the
-    name it registers with; ``connection``: its rows sit under a Relay connection."""
+    """Every table the source offers, each as ``{name, description, connection,
+    required_parameters}`` under the name it registers with; ``connection``: its rows sit under a
+    Relay connection; ``required_parameters``: the arguments a read of it must give (REQ-1986)."""
+    from provisa.core.parameters import required_parameters
+
     return [
         {
             "name": t["sql_name"],
             "description": t.get("description"),
             "connection": bool(t.get("rows_path")),
+            "required_parameters": required_parameters(parameter_columns(t)),
         }
         for t in available_tables(offer, reg["namespace"])
     ]
@@ -160,7 +166,15 @@ def _column_models(table: dict) -> "list[Column]":
         )
         for c in table["columns"]
     ]
-    columns += [
+    return columns + parameter_columns(table)
+
+
+def parameter_columns(table: dict) -> "list[Column]":
+    """A mapped table's native-filter columns, one per argument of its root field; a table spec
+    without its columns has them too."""
+    from provisa.core.models import Column
+
+    return [
         Column(
             name=f"_nf_{apply_sql_name(a['name'])}",
             visible_to=[],
@@ -171,7 +185,6 @@ def _column_models(table: dict) -> "list[Column]":
         )
         for a, required in arguments(table)
     ]
-    return columns
 
 
 def arguments(table: dict) -> list[tuple[dict, bool]]:
@@ -187,7 +200,21 @@ def offered_columns(
     """The columns a not-yet-registered table offers, for the picker's column list: each as
     (name, stored type, description), native-filter columns included."""
     name = offered_name(offer, reg, table_name)
-    table = map_table(offer, reg["namespace"], reg["source_id"], "", name)
+    return _picker_columns(map_table(offer, reg["namespace"], reg["source_id"], "", name))
+
+
+def offered_columns_of_every_table(
+    offer: SchemaOffer, reg: dict
+) -> dict[str, list[tuple[str, str, str | None]]]:
+    """``offered_columns`` of every table the source offers, by its registered name, read in
+    one walk of the schema (REQ-464): a table at a time, a shipped schema of 500 tables took
+    minutes."""
+    names = [t["name"] for t in offered_tables(offer, reg)]
+    mapped = map_tables(offer, reg["namespace"], reg["source_id"], "", names)
+    return {name: _picker_columns(table) for name, table in mapped.items()}
+
+
+def _picker_columns(table: dict) -> list[tuple[str, str, str | None]]:
     return [
         (apply_sql_name(c["name"]), _PHYSICAL_TYPE[c["type"]], c.get("description"))
         for c in table["columns"]
@@ -233,7 +260,9 @@ async def columns_to_register(
         offer.refused_error_types,
         page_size,
         offer.too_complex_messages,
+        offer.error_policy,
     )
+    fitted = {**fitted, BY_KEYS: key_fetches(offer.schema(), fitted)}
     offered = _column_models(fitted)
     by_choice = {c.name: c for c in chosen}
     columns = []
@@ -295,7 +324,13 @@ async def refreshed_registered_tables(state: Any, offer: SchemaOffer, reg: dict)
         mapped = map_table(offer, reg["namespace"], reg["source_id"], domain_id, name)
         columns = [c for c in mapped["columns"] if apply_sql_name(c["name"]) in column_names]
         tables.append(
-            {**mapped, "columns": columns, "sql_name": table_name, "registered_name": table_name}
+            {
+                **mapped,
+                "columns": columns,
+                "sql_name": table_name,
+                "registered_name": table_name,
+                BY_KEYS: key_fetches(offer.schema(), mapped),
+            }
         )
     return tables
 
@@ -324,6 +359,37 @@ async def remember_table(state: Any, reg: dict, table_name: str, fitted: dict) -
         await conn.execute_core(
             sources.update().where(sources.c.id == reg["source_id"]).values(mapping=mapping)
         )
+
+
+async def stored_key_fetches(state: Any, source_id: str, table_name: str) -> dict[str, dict]:
+    """The columns registered ``table_name`` fetches its rows by, a list at a time (REQ-1865,
+    graphql_remote.by_keys), as its registration holds them. A table registered before they were
+    kept has none held: they are read off the source's schema now and kept, in this process and
+    with the source's row."""
+    reg = state.graphql_remote_sources[source_id]
+    entry = next(t for t in reg["tables"] if t.get("sql_name") == table_name)
+    if BY_KEYS in entry:
+        return entry[BY_KEYS]
+    offered = await source_offer(state, source_id)
+    assert offered is not None  # the source is in graphql_remote_sources
+    offer, _ = offered
+    name = offered_name(offer, reg, table_name)
+    entry[BY_KEYS] = key_fetches(
+        offer.schema(), map_table(offer, reg["namespace"], source_id, "", name)
+    )
+    if not reg.get("brand"):
+        async with state.model_db.acquire() as conn:
+            row = (
+                await conn.execute_core(select(sources.c.mapping).where(sources.c.id == source_id))
+            ).fetchone()
+            mapping = dict(row.mapping or {})
+            specs = dict(mapping.get(TABLE_SPECS_KEY) or {})
+            specs[table_name] = {**(specs.get(table_name) or {}), BY_KEYS: entry[BY_KEYS]}
+            mapping[TABLE_SPECS_KEY] = specs
+            await conn.execute_core(
+                sources.update().where(sources.c.id == source_id).values(mapping=mapping)
+            )
+    return entry[BY_KEYS]
 
 
 async def sync_detected_relationships(state: Any, source_id: str) -> int:

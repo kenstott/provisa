@@ -1,0 +1,12 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:cloudpolicy/1-open-review.graphql",
+  "reads": [
+   "inventory",
+   "itsm"
+  ],
+  "root_field": "c__viewDailyReview"
+ }
+]

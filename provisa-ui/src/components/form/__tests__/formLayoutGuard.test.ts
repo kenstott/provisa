@@ -28,10 +28,15 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/FilterInput.tsx": "the search box above a list",
   "components/admin/MergeRequestsPanel.tsx":
     "the open-only filter above the list of merge requests",
+  "components/admin/relTypeGuide.tsx": "the related-to filter tick above the glossary term list",
+  "components/admin/TermReviewQueue.tsx":
+    "the select tick of each draft card, the select-all tick above the list, and the synonym ticks of a card, each saved on its click; the edit and merge forms are held to the shared layout",
   "components/admin/RegionSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/RegionSelector.tsx": "the region switch in the page header",
+  "components/DataAddressSwitcher.tsx":
+    "the data address switch in the page header, with a typed address in its menu",
   "components/GrantPicker.tsx":
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
   "components/MaskListEditor.tsx":
@@ -46,6 +51,10 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/SourceTypePicker.tsx": "the search box of the source-type picker",
   "components/graph/canvas/CanvasControls.tsx": "a slider on the graph canvas",
   "components/graph/GraphFrame.tsx": "the graph toolbar",
+  "components/graph/SparqlEndpointBar.tsx":
+    "the prefix name and namespace editor in the SPARQL endpoint bar, edited in place",
+  "components/graph/SparqlVocabularyPanel.tsx":
+    "the property search box above the SPARQL vocabulary pills",
   "components/graph/GraphSidebar.tsx": "renaming a favourite in place in the sidebar list",
   "components/EditorTabStrip.tsx": "renaming an editor tab in place in the tab strip",
   "components/erd/ErdPanel.tsx": "the diagram toolbar",
@@ -65,6 +74,7 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/jsonapi/ParamsSection.tsx": "the parameter inputs of the JSON:API request builder",
   "pages/McpExplorePage.tsx": "the address bar of the MCP explorer",
   "pages/LineagePage.tsx": "the role filter above the lineage graph",
+  "pages/DataProductsPage.tsx": "the To review filter tick above the list of data products",
   "plugins/provisa-tools.tsx": "controls of the GraphiQL tools plugin",
   "pages/tables/ProfileChecksBar.tsx": "the action bar above the profile results",
   "pages/tables/profile3d/terrain/ProfileTerrain.tsx":

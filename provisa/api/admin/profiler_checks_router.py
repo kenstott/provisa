@@ -22,7 +22,8 @@
 * ``POST   /admin/tables/{table_id}/profile-checks/drift`` — Create drift check.
 * ``POST   /admin/tables/{table_id}/profile-checks/expectation`` — Create expectation check.
 
-All are for those who may edit the table (``table_registration``). Every export is refused by name
+Reading needs ``dq_read`` and every change ``dq_rw`` (REQ-2155): data quality's own rights,
+not ``table_registration``. Every export is refused by name
 where no checker can take it (``provisa.profiler.export``).
 """
 
@@ -34,8 +35,9 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, require_dq_read_request
 from provisa.api.admin.profiler_router import _db, _member
+from provisa.dq.contract import model_contexts
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 
@@ -63,6 +65,36 @@ class ExpectationInput(ExportInput):
     expectationsTableId: int
 
 
+def readable_decisions(decided: list[dict], served: set[str] | None) -> list[dict]:
+    """The constraint decisions whose every column the caller is served (REQ-2152); ``served``
+    None reads them all."""
+    return [
+        d
+        for d in decided
+        if served is None
+        or all(
+            c in served for c in (d["physical_column"], d["physical_other_column"]) if c is not None
+        )
+    ]
+
+
+async def _readable_checkers(conn: Any, request: Request, checkers: list[Any]) -> list[Any]:
+    """The checker tables the caller is served a column of (REQ-2152)."""
+    from provisa.api.admin.read_rights import served_columns_request
+
+    return [c for c in checkers if await served_columns_request(conn, request, c.id) != set()]
+
+
+async def _readable_decision(
+    conn: Any, request: Request, table_id: int, constraint_id: str, served: set[str] | None
+) -> bool:
+    """Whether decision ``constraint_id`` exists and names only columns the caller is served."""
+    from provisa.profiler import constraints
+
+    decided = [d for d in await constraints.decisions(conn, table_id) if d["id"] == constraint_id]
+    return bool(readable_decisions(decided, served))
+
+
 def _checker_doc(c: Any) -> dict:
     return {"id": c.id, "tableName": c.table_name, "sourceId": c.source_id, "checker": c.checker}
 
@@ -83,13 +115,15 @@ def _physical_names(table_id: int) -> dict[str, str]:
 
 @router.get("/tables/{table_id}/profile-constraints")
 async def list_constraints(request: Request, table_id: int) -> dict:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.profiler import constraints, export
 
     async with _db().acquire() as conn:
-        await _member(conn, table_id)
-        decided = await constraints.decisions(conn, table_id)
-        checkers = await export.checkers_scanning(conn, state.contexts, {table_id})
+        member = await _member(conn, table_id, request)
+        decided = readable_decisions(await constraints.decisions(conn, table_id), member["served"])
+        checkers = await _readable_checkers(
+            conn, request, await export.checkers_scanning(conn, model_contexts(state), {table_id})
+        )
     return {
         "decisions": [
             {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in d.items()}
@@ -101,7 +135,7 @@ async def list_constraints(request: Request, table_id: int) -> dict:
 
 @router.post("/tables/{table_id}/profile-constraints")
 async def decide_constraint(request: Request, table_id: int, body: DecisionInput) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import constraints
 
     try:
@@ -111,7 +145,7 @@ async def decide_constraint(request: Request, table_id: int, body: DecisionInput
     except ValueError as exc:
         raise ApiError(422, "profile.constraint_invalid", str(exc)) from exc
     async with _db().acquire() as conn:
-        await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         try:
             cid = await constraints.decide(
                 conn,
@@ -122,7 +156,13 @@ async def decide_constraint(request: Request, table_id: int, body: DecisionInput
                 share=body.share,
                 sampled=body.sampled,
                 run_id=body.runId,
-                physical=_physical_names(table_id),
+                # REQ-2152: a decision names only columns the caller is served; any other is
+                # answered as a column the table does not have.
+                physical={
+                    exposed: physical
+                    for exposed, physical in _physical_names(table_id).items()
+                    if member["served"] is None or physical in member["served"]
+                },
             )
         except ValueError as exc:
             raise ApiError(422, "profile.constraint_invalid", str(exc)) from exc
@@ -131,12 +171,16 @@ async def decide_constraint(request: Request, table_id: int, body: DecisionInput
 
 @router.delete("/tables/{table_id}/profile-constraints/{constraint_id}")
 async def forget_constraint(request: Request, table_id: int, constraint_id: str) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import constraints
 
     async with _db().acquire() as conn:
-        await _member(conn, table_id)
-        if not await constraints.forget(conn, table_id, constraint_id):
+        member = await _member(conn, table_id, request)
+        # REQ-2152: a decision on a column the caller is not served is answered as missing.
+        readable = await _readable_decision(
+            conn, request, table_id, constraint_id, member["served"]
+        )
+        if not readable or not await constraints.forget(conn, table_id, constraint_id):
             raise ApiError(
                 404,
                 "profile.constraint_not_found",
@@ -159,19 +203,25 @@ async def _added(conn: Any, checker: Any, check: dict) -> dict:
 async def export_constraint(
     request: Request, table_id: int, constraint_id: str, body: ExportInput
 ) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import constraints, export
 
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
+        member = await _member(conn, table_id, request)
         accepted = {c.id: c for c in await constraints.accepted_constraints(conn, table_id)}
-        if constraint_id not in accepted:
+        # REQ-2152: a constraint on a column the caller is not served is answered as missing.
+        readable = await _readable_decision(
+            conn, request, table_id, constraint_id, member["served"]
+        )
+        if constraint_id not in accepted or not readable:
             raise ApiError(
                 404,
                 "profile.constraint_not_accepted",
                 f"Table {member['table_name']!r} has no accepted constraint {constraint_id}",
             )
-        found = await export.checkers_scanning(conn, state.contexts, {table_id})
+        found = await _readable_checkers(
+            conn, request, await export.checkers_scanning(conn, model_contexts(state), {table_id})
+        )
         try:
             checker = export.pick(found, body.checkerTableId, f"table {member['table_name']!r}")
         except export.ExportRefused as exc:
@@ -212,15 +262,28 @@ def _published(table_id: int) -> tuple[str, list[str]] | None:
 
 @router.get("/tables/{table_id}/profile-checks")
 async def check_candidates(request: Request, table_id: int) -> dict:
-    require_capability_request(request, "table_registration")
+    require_dq_read_request(request)
     from provisa.core.schema_org import registered_tables as rt
     from provisa.profiler import export
 
+    from provisa.api.admin.read_rights import served_columns_request
+
     async with _db().acquire() as conn:
-        member = await _member(conn, table_id)
-        drift_ids = await _registered_drift_ids(conn, member, table_id)
-        checkers = await export.checkers_scanning(conn, state.contexts, drift_ids)
-        rows = (await conn.execute_core(select(rt.c.id, rt.c.table_name))).fetchall()
+        member = await _member(conn, table_id, request)
+        # REQ-2152: only the drift, checker and expectations tables the caller is served.
+        drift_ids = {
+            tid
+            for tid in await _registered_drift_ids(conn, member, table_id)
+            if await served_columns_request(conn, request, tid) != set()
+        }
+        checkers = await _readable_checkers(
+            conn, request, await export.checkers_scanning(conn, model_contexts(state), drift_ids)
+        )
+        rows = [
+            (tid, name)
+            for tid, name in (await conn.execute_core(select(rt.c.id, rt.c.table_name))).fetchall()
+            if await served_columns_request(conn, request, tid) != set()
+        ]
     shaped = []
     for tid, name in rows:
         published = _published(tid)
@@ -233,12 +296,21 @@ async def check_candidates(request: Request, table_id: int) -> dict:
     }
 
 
-async def _drift_checker(conn: Any, table_id: int, checker_table_id: int | None) -> Any:
+async def _drift_checker(
+    conn: Any, table_id: int, checker_table_id: int | None, request: Request
+) -> Any:
     from provisa.profiler import export
     from provisa.profiler.schema import result_table_name
 
-    member = await _member(conn, table_id)
-    drift_ids = await _registered_drift_ids(conn, member, table_id)
+    from provisa.api.admin.read_rights import served_columns_request
+
+    member = await _member(conn, table_id, request)
+    # REQ-2152: a drift table the caller is not served is answered as unregistered.
+    drift_ids = {
+        tid
+        for tid in await _registered_drift_ids(conn, member, table_id)
+        if await served_columns_request(conn, request, tid) != set()
+    }
     name = result_table_name(member["table_name"], table_id, "drift")
     if not drift_ids:
         raise ApiError(
@@ -246,7 +318,7 @@ async def _drift_checker(conn: Any, table_id: int, checker_table_id: int | None)
             "profile.export_refused",
             f"the drift table {name!r} is not registered: register it on the profiler first",
         )
-    found = await export.checkers_scanning(conn, state.contexts, drift_ids)
+    found = await export.checkers_scanning(conn, model_contexts(state), drift_ids)
     try:
         return export.pick(found, checker_table_id, f"the registered drift table {name!r}")
     except export.ExportRefused as exc:
@@ -255,20 +327,31 @@ async def _drift_checker(conn: Any, table_id: int, checker_table_id: int | None)
 
 @router.post("/tables/{table_id}/profile-checks/drift")
 async def create_drift_check(request: Request, table_id: int, body: ExportInput) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import export
 
     async with _db().acquire() as conn:
-        checker = await _drift_checker(conn, table_id, body.checkerTableId)
+        checker = await _drift_checker(conn, table_id, body.checkerTableId, request)
         return await _added(conn, checker, export.drift_check(checker))
 
 
 @router.post("/tables/{table_id}/profile-checks/expectation")
 async def create_expectation_check(request: Request, table_id: int, body: ExpectationInput) -> dict:
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "dq_rw")
     from provisa.profiler import export
 
-    published = _published(body.expectationsTableId)
+    import types
+
+    from provisa.api.admin.catalog_scope import catalog_scope
+    from provisa.api.admin.read_rights import served_columns_of
+
+    # REQ-2152: an expectations table the caller is not served is answered as missing.
+    scope = catalog_scope(types.SimpleNamespace(context={"request": request}))
+    readable = scope.whole
+    if not readable:
+        async with _db().acquire() as conn:
+            readable = await served_columns_of(conn, scope, body.expectationsTableId) != set()
+    published = _published(body.expectationsTableId) if readable else None
     if published is None:
         raise ApiError(
             404,
@@ -284,5 +367,5 @@ async def create_expectation_check(request: Request, table_id: int, body: Expect
             f"{list(export.EXPECTATION_SHAPE)}",
         )
     async with _db().acquire() as conn:
-        checker = await _drift_checker(conn, table_id, body.checkerTableId)
+        checker = await _drift_checker(conn, table_id, body.checkerTableId, request)
         return await _added(conn, checker, export.expectation_check(checker, published[0]))

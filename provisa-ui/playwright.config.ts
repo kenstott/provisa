@@ -13,6 +13,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { LIVE_MODEL_YAML } from "./e2e/liveModel";
 
 // Load root .env so live-backend tests receive AWS credentials
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -98,6 +99,21 @@ if (!Number.isInteger(E2E_WORKERS) || E2E_WORKERS < 1) {
 // Block layout, offset from the block's own base: 0 http, 1 grpc, 2 flight, 3 bolt, 4 mcp,
 // 5 pgwire — so block 0 reproduces the previous flat 8901/8902/8903/8904/8905/8906 exactly.
 const backendPort = (worker: number) => E2E_API_PORT + worker * 10;
+// Each backend's own ports for the pgwire servers it starts (a files, SharePoint or Splunk source's,
+// REQ-955), named to it as PROVISA_PGWIRE_PORTS: two per server, the endpoint and its Calcite
+// child. Left to scan from 5433, two backends starting a server at the same moment both found 5433
+// free and one of them lost it -- "pgwire server port 5433 still bound 30s after the launcher
+// exited" -- a spec that passes alone failing beside another worker's (file-connector beside
+// file-connector-multi-format). A block per worker, as the pytest harness leases its own.
+// Above tests/port_lease.py's range (21100-25599), from which a pytest session on the same machine
+// leases its ports: a block inside it could be handed to a test stack mid-run.
+const PGWIRE_PORTS_BASE = Number(process.env.PROVISA_E2E_PGWIRE_PORTS_BASE ?? 25600);
+const PGWIRE_PORTS_PER_WORKER = 40;
+const pgwirePorts = (worker: number) =>
+  Array.from(
+    { length: PGWIRE_PORTS_PER_WORKER },
+    (_, i) => PGWIRE_PORTS_BASE + worker * PGWIRE_PORTS_PER_WORKER + i,
+  ).join(",");
 // Trino-backed E2E backend — a second isolated backend instance for sharepoint/splunk
 // tests that require Trino catalog creation (TrinoBackend.register_source creates the
 // catalog; NativeBackend.register_source is a no-op so the schema dropdown never
@@ -168,6 +184,17 @@ const SWAP_SPECS = [
   "**/engine-swap-reboot.spec.ts",
   "**/engine-swap-reboot-engines.spec.ts",
 ];
+// The specs that register or query a live cloud warehouse (Snowflake, Databricks, BigQuery, Fabric)
+// and Google Sheets, each billed or metered by its vendor. Maintainer 2026-10-29: the core UI lane
+// never touches a live warehouse; these are the "warehouse" project, which only the nightly
+// warehouse lane runs (integration-suite-lanes.yml warehouse-ui) and which "core" excludes the way
+// it excludes TRINO_SPECS. (The engine-swap specs that seed a warehouse are SWAP_SPECS, already
+// outside "core".)
+const WAREHOUSE_SPECS = ["**/source-to-query-cloud-warehouse.spec.ts"];
+// The same, for a case that shares its file with others: matched by title (google_sheets, in
+// source-to-query-special-cases.spec.ts, whose other cases stay in "core").
+const WAREHOUSE_TITLE_SPECS = ["**/source-to-query-special-cases.spec.ts"];
+const WAREHOUSE_TITLES = /\bgoogle_sheets: source to query through the UI\b/;
 // Specs whose sources only an amd64 host can boot (exasol/docker-db never turns healthy under an
 // arm64 host's emulation). The core project collects them only on an amd64 host — ui-e2e-core.yml's
 // ubuntu-latest runner — so an arm64 dev box never collects them rather than skipping them.
@@ -290,6 +317,7 @@ if (IS_RUNNER) {
   for (const b of CORE_BACKENDS) {
     fs.mkdirSync(path.dirname(b.configPath), { recursive: true });
     fs.copyFileSync(path.resolve(__dirname, "../config/provisa-install.yaml"), b.configPath);
+    fs.appendFileSync(b.configPath, LIVE_MODEL_YAML);
   }
 }
 // Trino backend uses a minimal config (domains only, no pre-registered sources) so the
@@ -405,6 +433,24 @@ function wipeStaleMaterializeStore(dataDir: string): void {
   for (const f of fs.readdirSync(dataDir)) {
     if (/\.duckdb(\.wal|\.tmp)?$/.test(f)) fs.rmSync(path.join(dataDir, f));
   }
+}
+
+// A backend's own home, not local-dev's ~/.provisa (three-instance isolation; the same values
+// tests/conftest.py forces for pytest): the MCP TLS certificates and the ops store follow
+// PROVISA_HOME; licensing writes its trial anchors and high-water mark only under its sandbox
+// (provisa/licensing/home.py), still reading the real trial clock; and the encryption master key
+// is read from the keyring BEFORE PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802), so the OS keychain
+// is swapped for the test key store, a file under PROVISA_DATA_DIR (tests/_memory_keyring.py).
+// REQ-2135: each backend's public address (server.public_url), where its SPARQL vocabulary's and its
+// subjects' IRIs start. Unset, the SPARQL tab's vocabulary is refused.
+const E2E_PUBLIC_URL = "https://e2e.provisa.example";
+
+function homeEnvFor(dataDir: string): Record<string, string> {
+  return {
+    PROVISA_HOME: dataDir,
+    PROVISA_LICENSING_SANDBOX_DIR: path.resolve(dataDir, "licensing"),
+    PYTHON_KEYRING_BACKEND: "tests._memory_keyring.MemoryKeyring",
+  };
 }
 
 const embeddedControlPlaneDir = (dataDir: string) => path.join(dataDir, "control-pg");
@@ -530,12 +576,22 @@ export default defineConfig({
             PROVISA_BOLT_PORT: String(b.port + 3),
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
+            PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker),
             PROVISA_DATA_DIR: b.dataDir,
+            // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
+            // its folder each minute, and four sharing one compacted each other's files.
+            PROVISA_TELEMETRY_DIR: path.resolve(b.dataDir, "telemetry"),
             PROVISA_CONFIG: b.configPath,
             ORG_ID: b.orgId,
             GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
             PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
             PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+            PROVISA_PUBLIC_URL: E2E_PUBLIC_URL,
+            ...homeEnvFor(b.dataDir),
+            // Each backend's DuckDB engines: their own default is most of the host's memory, and on
+            // the 16 GB runner they share it with the demo sources, the browser and the other
+            // backends (run 40115205350's provisioning job ran out with this server at 2.1 GB).
+            PROVISA_ENGINE_DUCKDB_MEMORY_LIMIT: String(2 * 1024 ** 3),
             ...controlPlaneEnvFor(b.dataDir),
           },
           reuseExistingServer: !process.env.CI,
@@ -567,12 +623,17 @@ export default defineConfig({
                   PROVISA_BOLT_PORT: String(E2E_TRINO_BOLT_PORT),
                   PROVISA_MCP_PORT: String(E2E_TRINO_MCP_PORT),
                   PROVISA_PGWIRE_PORT: String(E2E_TRINO_PGWIRE_PORT),
+                  // The block after the core workers' last: its pgwire servers are its own too.
+                  PROVISA_PGWIRE_PORTS: pgwirePorts(E2E_WORKERS),
                   PROVISA_DATA_DIR: E2E_TRINO_DATA_DIR,
+                  PROVISA_TELEMETRY_DIR: path.resolve(E2E_TRINO_DATA_DIR, "telemetry"),
                   PROVISA_CONFIG: E2E_TRINO_CONFIG_PATH,
                   ORG_ID: E2E_TRINO_ORG_ID,
                   GRAPHQL_DEMO_URL: `http://localhost:${E2E_GRAPHQL_DEMO_PORT}/graphql`,
                   PETSTORE_BASE_URL: `http://localhost:${E2E_PETSTORE_PORT}/api/v3`,
                   PROVISA_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
+                  PROVISA_PUBLIC_URL: E2E_PUBLIC_URL,
+                  ...homeEnvFor(E2E_TRINO_DATA_DIR),
                   PROVISA_ENGINE: "trino",
                   // Trino runs inside Docker; "localhost" in the app's control-plane URL resolves to the
                   // Trino container itself, not the host. These vars make engine_visible_address()
@@ -629,14 +690,31 @@ export default defineConfig({
               ...SWAP_SPECS,
               ...REGIONS_SPECS,
               ...PROVISIONING_SPECS,
+              ...WAREHOUSE_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
+            grepInvert: WAREHOUSE_TITLES,
+            // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
+            // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
+            // turning for a whole test held SwiftShader's GPU process at most of a core.
+            use: { reducedMotion: "reduce" },
           },
           {
             // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
             name: "core-provisioning",
             testMatch: PROVISIONING_SPECS,
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
+            use: { reducedMotion: "reduce" },
+          },
+          {
+            // Maintainer 2026-10-29: the live warehouses, nightly only (see WAREHOUSE_SPECS).
+            // Every case of the cloud-warehouse spec, and the google_sheets case of the special-cases one.
+            name: "warehouse",
+            testMatch: [...WAREHOUSE_SPECS, ...WAREHOUSE_TITLE_SPECS],
+            grep: new RegExp(
+              `\\bcloud warehouse sources through the UI\\b|${WAREHOUSE_TITLES.source}`,
+            ),
+            use: { reducedMotion: "reduce" },
           },
         ]
       : []),

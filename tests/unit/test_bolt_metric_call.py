@@ -36,7 +36,7 @@ def _state():
             "total_revenue": Metric(
                 name="total_revenue",
                 expression="SUM(orders.amount)",
-                visible_to=["*"],
+                visible_to=["admin"],
             ),
             "secret_margin": Metric(
                 name="secret_margin",

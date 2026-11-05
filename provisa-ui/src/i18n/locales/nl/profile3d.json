@@ -3,6 +3,7 @@
     "expand": "Weergave uitvouwen",
     "webglError": "De 3D-weergave kon niet worden gestart: {{error}}",
     "hint": "Sleep om te draaien · scroll om te zoomen · sleep met rechts om te verschuiven",
+    "hintFlat": "Sleep om te verschuiven · scroll om te zoomen",
     "rotate": "Roteren",
     "resetView": "Weergave resetten",
     "zoomTo": "Inzoomen op deze kolom",

@@ -83,8 +83,16 @@ class _Consumer:
     async def topics(self) -> set[str]:
         return {self._topic or _TOPIC}
 
-    def partitions_for_topic(self, topic: str) -> set[int]:
-        return {0}
+    def partitions_for_topic(self, topic: str) -> set[int] | None:
+        # As aiokafka's: the client's own metadata, which names only a subscribed topic.
+        return {0} if topic == self._topic else None
+
+    @property
+    def _client(self) -> SimpleNamespace:
+        async def fetch_all_metadata() -> SimpleNamespace:
+            return SimpleNamespace(partitions_for_topic=lambda topic: {0})
+
+        return SimpleNamespace(fetch_all_metadata=fetch_all_metadata)
 
     def assign(self, partitions) -> None:
         self._assigned = list(partitions)

@@ -28,6 +28,7 @@ from provisa.api.role_surface import role_surface
 # Requirements: REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353, REQ-392, REQ-398
 
 
+import json
 import logging
 import time as _time
 from typing import TYPE_CHECKING, Any, Literal
@@ -41,11 +42,14 @@ if TYPE_CHECKING:
     from provisa.api.app import AppState  # noqa: F401
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
     from provisa.core.database import Connection  # noqa: F401
+    from provisa.gql.translator_types import CypherMistake  # noqa: F401
 
 import re as _re
 from sqlalchemy import select
 
 from provisa.core import request_deadline
+from provisa.core.parameters import ParameterRequired
+from provisa.api.errors import ApiError
 from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
 from provisa.core.schema_org import node_ids
@@ -59,7 +63,12 @@ from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 from provisa.executor import stats as _qs_mod
 from provisa.cache.middleware import build_cache_headers
-from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for, request_cache_hint
+from provisa.compiler.directives import (
+    NO_CACHE_HINT,
+    cache_hint_for,
+    extract_directives_from_cypher_comments,
+    request_cache_hint,
+)
 from provisa.api.rest.cypher_exec import (
     _build_label_map,
     _execute_call_body,
@@ -160,11 +169,38 @@ def _federation_error(exc: Exception) -> str:
     return _scrub(str(exc))
 
 
+def cypher_error(
+    status: int,
+    code: str,
+    message: str,
+    *,
+    sql: str | None = None,
+    violations: list[dict[str, str]] | None = None,
+    **params: Any,
+) -> JSONResponse:
+    """An error of a graph surface over HTTP, in the app's ApiError body (REQ-1350): the English
+    ``detail``, a stable ``code`` and its ``params``, so every client reads the reason the same
+    way. ``sql`` is the statement that failed, where there is one; ``violations`` lists each
+    access violation (``code``, ``message``) that ``detail`` joins."""
+    content: dict[str, Any] = {"detail": message, "code": code, "params": params}
+    if sql is not None:
+        content["sql"] = sql
+    if violations is not None:
+        content["violations"] = violations
+    return JSONResponse(status_code=status, content=content)
+
+
+def mistake_error(exc: "CypherMistake") -> JSONResponse:
+    """REQ-778: a mistake in the user's statement, refused before any engine ran it -- 400, its
+    own code and params, its message in the user's terms."""
+    return cypher_error(400, exc.code, str(exc), **exc.params)
+
+
 def _exec_error(status: int, exc: Exception, sql: str) -> JSONResponse:
     """Neutral execution-error response (scrubbed message + the physical SQL)."""
-    return JSONResponse(
-        status_code=status,
-        content={"error": f"Execution failed: {_federation_error(exc)}", "sql": sql},
+    error = _federation_error(exc)
+    return cypher_error(
+        status, "cypher.execution_failed", f"Execution failed: {error}", sql=sql, error=error
     )
 
 
@@ -197,26 +233,36 @@ async def _execute_multi_call(
             )
             all_rows.append(rows_i)
             merged_graph_vars.update(gvars_i)
+        except (ApiError, ReadRefused):
+            raise  # REQ-1350: a refusal by name is answered by the app's handler for it
         except Exception as exc:
             log.exception("Cypher multi-CALL execution failed")
-            return JSONResponse(
-                status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}"}
+            error = _federation_error(exc)
+            return cypher_error(
+                500, "cypher.execution_failed", f"Execution failed: {error}", error=error
             )
 
     combined: list[dict] = [{}]
     for rs in all_rows:
         combined = [{**a, **b} for a in combined for b in (rs or [{}])]
+    from provisa.gql.assembler import take_overrun
+
+    combined = take_overrun(combined)
 
     try:
         assembled = assemble_rows(combined, merged_graph_vars)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
+        return cypher_error(
+            500, "cypher.assembly_failed", f"Assembly failed: {exc}", error=str(exc)
+        )
     try:
         columns = list(combined[0].keys()) if combined else []
         serializable_rows = [to_serializable(r) for r in assembled]
     except Exception as exc:
         log.exception("Cypher serialization failed")
-        return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
+        return cypher_error(
+            500, "cypher.serialization_failed", f"Serialization failed: {exc}", error=str(exc)
+        )
     return JSONResponse(
         content={"columns": columns, "rows": serializable_rows, "type": "cypher"},
         headers=build_cache_headers(None),  # REQ-536
@@ -229,29 +275,39 @@ def _build_sql_from_ast(
     body: CypherRequest,
     cypher_to_sql: Any,
     apply_graph_rewrites: Any,
+    role_id: str,
+    state: Any,
+    *,
+    expand: Any = None,
 ) -> tuple[Any, list, dict] | Response:
-    """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response."""
+    """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response.
+    ``expand`` puts the graph session's relations in place (REQ-2176, ``ephemeral.seam.expand``)."""
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
-        from provisa.gql.translator_types import (
-            CypherCrossSourceError,
-            CypherTranslateError,
-            UnregisteredRelationshipType,
-        )
+        from provisa.gql.translator_types import CypherMistake
+        from provisa.gql.translator_types import CypherCrossSourceError, CypherTranslateError
 
-        if isinstance(exc, UnregisteredRelationshipType):
-            # REQ-603: refused by the translation every Cypher surface performs.
-            return JSONResponse(status_code=403, content={"error": str(exc)})
+        if isinstance(exc, CypherMistake):
+            return mistake_error(exc)
         if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
-            return JSONResponse(status_code=400, content={"error": str(exc)})
+            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         raise
+
+    # REQ-2168: functions named by their Cypher command bindings, as the role may use them.
+    from provisa.api.data.cypher_commands import expand_functions
+
+    sql_ast = expand_functions(sql_ast, role_id, state)
 
     try:
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+        if expand is not None:
+            sql_ast = expand(sql_ast)
     except Exception as exc:
         log.exception("Cypher graph rewrite failed")
-        return JSONResponse(status_code=500, content={"error": f"Graph rewrite failed: {exc}"})
+        return cypher_error(
+            500, "cypher.rewrite_failed", f"Graph rewrite failed: {exc}", error=str(exc)
+        )
 
     try:
         sql_str = sql_ast.sql(dialect="postgres")
@@ -260,9 +316,37 @@ def _build_sql_from_ast(
             sql_str = f"{prefix}\n{sql_str}"
     except Exception as exc:
         log.exception("Cypher SQL render failed")
-        return JSONResponse(status_code=500, content={"error": f"SQL generation failed: {exc}"})
+        return cypher_error(
+            500, "cypher.sql_generation_failed", f"SQL generation failed: {exc}", error=str(exc)
+        )
 
     return sql_str, ordered_params, graph_vars
+
+
+async def _governed_plan(semantic_sql: str, role_id: str, **route: Any) -> Any:
+    """The Cypher read's plan, governed and routed by the one pipeline, or the failure as this
+    transport answers it. A refusal by name -- the app's coded errors (ApiError: a row-level
+    table read without a filter its source can apply, REQ-1915) and a read the deployment cannot
+    answer now (ReadRefused) -- is answered by the app's own handler for it, with its own status
+    and code, as on every other surface (REQ-1350); only what nothing names is a 500 here."""
+    from provisa.pgwire._pipeline import _govern_and_route_compiled
+
+    try:
+        return await _govern_and_route_compiled(semantic_sql, role_id, **route)
+    except (ComplexityLimitExceeded, ApiError, ReadRefused):
+        raise  # REQ-1174 (413), REQ-1350, REQ-1915: answered by the app's handlers
+    except PermissionError as exc:
+        return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
+    except ParameterRequired as exc:
+        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
+        return cypher_error(
+            400, "cypher.parameter_required", str(exc), table=exc.table, reason=str(exc)
+        )
+    except Exception as exc:
+        log.exception("Cypher governance/routing failed")
+        return cypher_error(
+            500, "cypher.governance_failed", f"Governance failed: {exc}", error=str(exc)
+        )
 
 
 async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
@@ -286,33 +370,45 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
         with request_deadline.within(_timeout):
             return await _asyncio.wait_for(_execute_plan(plan, state), timeout=_timeout)
     except _asyncio.TimeoutError:
-        return JSONResponse(
-            status_code=504,
-            content={
-                # REQ-1905: names the transport and the setting its timeout came from.
-                "error": (
-                    f"cypher_http request timed out after {_timeout:g}s "
-                    f"({request_timeout_setting('cypher_http')})"
-                ),
-                "sql": physical_sql,
-            },
+        # REQ-1905: names the transport and the setting its timeout came from.
+        setting = request_timeout_setting("cypher_http")
+        return cypher_error(
+            504,
+            "data.query_timeout",
+            f"cypher_http request timed out after {_timeout:g}s ({setting})",
+            sql=physical_sql,
+            timeout_s=f"{_timeout:g}",
+            transport="cypher_http",
+            setting=setting,
         )
     except OSError as exc:
         log.warning("Cypher execution: network error: %s", exc)
         return _exec_error(503, exc, physical_sql)
-    except (PermissionError, ReadRefused):
+    except (PermissionError, ReadRefused, ApiError):
         raise  # a refusal is answered by its own handler, not as an execution failure
     except Exception as exc:
         # Engine driver errors are classified through the seam (no engine-specific exception
         # import): connection loss → 503, query error → 400. Then HTTP-transport failures → 503,
         # else an unexpected 500.
+        refused = state.federation_engine.refusal_of(exc)
+        if refused is not None:
+            raise refused from exc  # REQ-778: said by name, by the ReadRefused handler
         kind = state.federation_engine.classify_error(exc)
         if kind == "connection":
             log.warning("Cypher execution: engine connection failed: %s", exc)
             return _exec_error(503, exc, physical_sql)
         if kind == "query":
             log.warning("Cypher execution: engine query error: %s", exc)
-            return _exec_error(400, exc, physical_sql)
+            # REQ-778: a statement the engine refused, after the translation took it: the
+            # engine's own text, said as the engine's.
+            error = _federation_error(exc)
+            return cypher_error(
+                400,
+                "cypher.engine_refused",
+                f"The engine refused the query: {error}",
+                sql=physical_sql,
+                error=error,
+            )
 
         import httpx as _httpx
 
@@ -332,8 +428,55 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
         return _exec_error(500, exc, physical_sql)
 
 
+def access_violations(
+    semantic_sql: str, surface: Any, role_id: str, state: "AppState"
+) -> Response | None:
+    """The 403 naming each access violation of a graph statement the role sent, or None: the
+    validation every graph surface over HTTP runs before the pipeline (Cypher's, SPARQL's)."""
+    from provisa.compiler.sql_validator import validate_sql
+    from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.pgwire.governed_plan import role_governance
+    from provisa.security.rights import effective_domain_access_role
+
+    role = effective_domain_access_role(role_id, state.roles)
+    ctx = surface.context
+    governance = role_governance(state, surface, role_id)
+    violations = validate_sql(
+        semantic_sql,
+        ctx,
+        governance,
+        role,
+        getattr(state, "tables", []),
+        # REQ-264: the relationship guard is held by the pipeline for every graph surface
+        # (provisa.pgwire._pipeline._govern_compiled), by the one bypass rule; here it is
+        # decided by that same rule, never switched off for the surface.
+        bypass_relationship_guard=relationship_guard_bypassed(
+            role, state, statement_opts_out=False
+        ),
+        bypass_uncovered_relationships=True,
+    )
+    if not violations:
+        return None
+    listed = [{"code": v.code, "message": v.message} for v in violations]
+    return cypher_error(
+        403,
+        "cypher.access_violations",
+        # A statement of many parts repeats one violation in each: said once, and listed for each.
+        "; ".join(dict.fromkeys(v["message"] for v in listed)),
+        violations=listed,
+        count=len(listed),
+    )
+
+
 def _dict_rows(result: QueryResult) -> list[dict]:
     return [dict(zip(result.column_names, row)) for row in result.rows]
+
+
+def _answered_columns(result: QueryResult) -> list[str]:
+    """The columns a read answers, rows or none (gql/assembler.answered_columns)."""
+    from provisa.gql.assembler import answered_columns
+
+    return answered_columns(list(result.column_names))
 
 
 def _serialize_rows(
@@ -341,21 +484,60 @@ def _serialize_rows(
     graph_vars: dict,
     assemble_rows: Any,
     to_serializable: Any,
+    columns_of_none: list[str],
 ) -> tuple[list[str], list] | Response:
-    """Assemble and serialize rows. Returns (columns, serializable_rows) or error Response."""
+    """Assemble and serialize rows. Returns (columns, serializable_rows) or error Response;
+    ``columns_of_none`` names the columns where there are no rows."""
     try:
         assembled = assemble_rows(rows, graph_vars)
     except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
+        return cypher_error(
+            500, "cypher.assembly_failed", f"Assembly failed: {exc}", error=str(exc)
+        )
 
     try:
-        columns = list(rows[0].keys()) if rows else []
+        columns = list(rows[0].keys()) if rows else columns_of_none
         serializable_rows = [to_serializable(r) for r in assembled]
     except Exception as exc:
         log.exception("Cypher serialization failed")
-        return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
+        return cypher_error(
+            500, "cypher.serialization_failed", f"Serialization failed: {exc}", error=str(exc)
+        )
 
+    found = _non_finite(serializable_rows)
+    if found is not None:
+        # REQ-778: JSON has no Infinity or NaN (t.id / 0, log(0)): the answer is refused, naming
+        # the column, rather than failing as it is written.
+        column, value = found
+        return cypher_error(
+            400,
+            "cypher.non_finite_number",
+            f"The answer holds a number JSON cannot carry: {column} is {value}",
+            column=column,
+            value=value,
+        )
     return columns, serializable_rows
+
+
+def _non_finite(rows: list) -> tuple[str, str] | None:
+    """The first column holding Infinity or NaN anywhere in its value, and which it is."""
+    import math
+
+    def _in(value: Any) -> str | None:
+        if isinstance(value, float) and not math.isfinite(value):
+            return "NaN" if math.isnan(value) else ("Infinity" if value > 0 else "-Infinity")
+        if isinstance(value, dict):
+            return next((v for v in map(_in, value.values()) if v is not None), None)
+        if isinstance(value, (list, tuple)):
+            return next((v for v in map(_in, value) if v is not None), None)
+        return None
+
+    for row in rows:
+        for column, value in row.items() if isinstance(row, dict) else enumerate(row):
+            held = _in(value)
+            if held is not None:
+                return str(column), held
+    return None
 
 
 def _build_stats_content(
@@ -368,20 +550,28 @@ def _build_stats_content(
     """Build response content dict, optionally including query stats."""
     content: dict = {"columns": columns, "rows": serializable_rows}
     if stats_enabled:
-        from provisa.api.app import state  # noqa: PLC0415
-
-        _qs_mod.record(
-            field="cypher",
-            source=state.federation_engine.name,
-            strategy="federated",
-            elapsed_ms=(_time.perf_counter() - t0) * 1000,
-            rows=len(serializable_rows),
-            physical_sql=physical_sql,
-        )
-        qs = _qs_mod.current()
-        if qs is not None:
-            content["provisa_stats"] = qs.to_dict()
+        stats = statement_stats("cypher", len(serializable_rows), physical_sql, t0)
+        if stats is not None:
+            content["provisa_stats"] = stats
     return content
+
+
+def statement_stats(field: str, rows: int, physical_sql: str, t0: float) -> dict | None:
+    """A graph statement's provisa_stats (X-Provisa-Stats: true): its execution since ``t0``
+    recorded as one entry on the federation engine, beside what the pipeline recorded. Shared by
+    the Cypher and SPARQL endpoints."""
+    from provisa.api.app import state  # noqa: PLC0415
+
+    _qs_mod.record(
+        field=field,
+        source=state.federation_engine.name,
+        strategy="federated",
+        elapsed_ms=(_time.perf_counter() - t0) * 1000,
+        rows=rows,
+        physical_sql=physical_sql,
+    )
+    qs = _qs_mod.current()
+    return qs.to_dict() if qs is not None else None
 
 
 async def _each_statement(
@@ -397,11 +587,14 @@ async def _each_statement(
     from provisa.api.error_answer import error_answer
     from provisa.cypher.parser import split_cypher_statements
 
+    from provisa.cypher.counters import counting_apart
+
     results: list[dict[str, Any]] = []
     for statement in split_cypher_statements(body.query):
         one = CypherRequest(query=statement, params=body.params)
         try:
-            answered = await cypher_query(one, request, None, x_provisa_stats)
+            with counting_apart():
+                answered = await _answer(one, request, x_provisa_stats)
         except (
             Exception
         ) as exc:  # allow-ble: answered as this statement's error, by the app's own handler for it
@@ -424,27 +617,148 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     query_id: str | None = Query(None),
     x_provisa_stats: str | None = Header(None),
 ) -> Response:
-    """Execute a Cypher read or write query and return typed rows or affected_rows."""
+    """Execute a Cypher read or write query and return typed rows or affected_rows. A request
+    runs in its principal's graph session (REQ-2176), and its answer says when it wrote to it."""
+    from provisa.api.rest import cypher_session
+
+    if query_id:
+        return cypher_error(
+            410,
+            "cypher.query_id_removed",
+            "execute-by-approved-query-id is removed; submit the Cypher query "
+            "directly — access is governed by table/view and relationship rights",
+        )
+
+    async with cypher_session.statement(request, body.query) as held:
+        response = await _answer(body, request, x_provisa_stats)
+    return cypher_session.answered(response, held)
+
+
+class _SessionReadRefused(Exception):
+    """A read or write the ephemeral layer made was answered by an error: its answer too."""
+
+    def __init__(self, response: Response) -> None:
+        super().__init__(response.status_code)
+        self.response = response
+
+
+async def _session_write(
+    body: CypherRequest, request: Request, x_provisa_stats: str | None, state: Any
+) -> Response | None:
+    """REQ-2176: a statement of the principal's graph session the governing rule does not make wholly the
+    governed write is done by the ephemeral layer (its governed parts through this route's own
+    governed write); None for every other statement."""
+    from provisa.compiler import temp_tables
+    from provisa.cypher.parser import CypherParseError
+    from provisa.ephemeral import seam
+
+    temp = temp_tables.current()
+    if temp is None:
+        return None
+    role_id = _resolve_role_id(request, state)
+    surface = role_surface(state, role_id)
+    if surface is None:
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
+
+    async def run(statement: str, values: dict) -> dict:
+        answer = await _answer(
+            CypherRequest(query=statement, params=values),
+            request,
+            x_provisa_stats,
+            internal=True,
+        )
+        if answer.status_code != 200:
+            raise _SessionReadRefused(answer)
+        return json.loads(bytes(answer.body))
+
+    async def run_read(statement: str, values: dict) -> list[dict]:
+        content = await run(statement, values)
+        return [
+            dict(zip(content["columns"], r)) if not isinstance(r, dict) else r
+            for r in content["rows"]
+        ]
+
+    async def run_write(statement: str, values: dict) -> None:
+        await run(statement, values)
+
+    from provisa.cypher.counters import counting
+
+    try:
+        with counting() as counted:
+            made = await seam.write(
+                body.query,
+                body.params,
+                _build_label_map(surface.context, role_id, state),
+                temp,
+                state,
+                run_read,
+                run_write,
+            )
+    except _SessionReadRefused as refused:
+        return refused.response
+    except CypherParseError as exc:
+        return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
+    if made is None:
+        return None
+    if any(seam.counters(made).values()):
+        from provisa.api import graph_session
+
+        held = graph_session.bound()
+        assert held is not None, "an ephemeral write is made in the principal's graph session"
+        held.wrote = True
+    # A write followed by reads answers with the rest's rows (REQ-2176).
+    columns, rows = seam.rows_of(made, temp)
+    return JSONResponse(
+        content={
+            "type": "cypher",
+            "columns": columns,
+            "rows": rows,
+            **_counters(counted, body.query),
+        }
+    )
+
+
+def _counters(counted: Any, statement: str) -> dict[str, Any]:
+    """A write's answer's ``counters``: the Bolt summary's ``stats`` (provisa.cypher.counters),
+    so both surfaces agree. A count that could not be made is no counters, and a warning."""
+    from provisa.core.statement_warnings import warn
+    from provisa.cypher.counters import count_unknown_warning
+
+    if counted.unknown:
+        for reason in counted.unknown:
+            warn(count_unknown_warning(statement, reason))
+        return {}
+    return {"counters": counted.stats()}
+
+
+async def _answer(
+    body: CypherRequest,
+    request: Request,
+    x_provisa_stats: str | None,
+    *,
+    internal: bool = False,
+) -> Response:
+    """The answer to one Cypher request, in the graph session bound for it. ``internal``
+    is a statement the ephemeral layer makes of its own: done as the governed statement it is,
+    and its nodes keep their graph identities."""
     from provisa.api.app import state
 
     if body.results == "each":
         return await _each_statement(body, request, x_provisa_stats)
 
-    if query_id:
-        return JSONResponse(
-            status_code=410,
-            content={
-                "error": "execute-by-approved-query-id is removed; submit the Cypher query "
-                "directly — access is governed by table/view and relationship rights"
-            },
-        )
+    if not internal:
+        _made = await _session_write(body, request, x_provisa_stats, state)
+        if _made is not None:
+            return _made
 
     # --- Write path (REQ-670): CREATE / DELETE / UPDATE ---
     from provisa.cypher.write_translator import (  # noqa: PLC0415
         CypherWriteParseError as _CWPE,
         WriteTranslator as _WT,
-        bind_write_params,
         parse_cypher_write as _pwc,
+        written,
     )
     from provisa.cypher.params import CypherParamError  # noqa: PLC0415
 
@@ -464,41 +778,78 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         _role_id = _resolve_role_id(request, state)
         _ctx = state.contexts.get(_role_id)
         if _ctx is None:
-            return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
-        _label_map = _build_label_map(_ctx, _role_id, state)
-        try:
-            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
-            # admission's new-row check and the source see the values, never their names.
-            _write_sql, _write_params = bind_write_params(
-                _WT(_label_map).translate(_write_ast), body.params
+            return cypher_error(
+                503, "data.no_schema_for_role", f"No schema for role '{_role_id}'", role_id=_role_id
             )
-        except (_CWPE, CypherParamError) as exc:
-            return JSONResponse(status_code=400, content={"error": str(exc)})
+        _label_map = _build_label_map(_ctx, _role_id, state)
+        _answered: list[Response] = []
 
-        # ONE write path: the translated statement goes through the pipeline every other surface's
-        # write goes through (Bolt's Cypher writes included) — its admission (the write right and
-        # the role's write grant, REQ-2074), its lowering to the source's own
-        # addressing and dialect, and its execution. This route used to check, address and run
-        # the statement itself.
-        try:
-            _plan = await _govern_write(
-                _write_sql,
+        class _ReadRefused(Exception):
+            """A read the write made was answered by an error: the write's answer too."""
+
+        async def _read(query: str, params: dict) -> tuple[list[str], list[list[Any]]]:
+            # A relationship's ends and a RETURN are read as this route reads any query.
+            response = await _answer(
+                CypherRequest(query=query, params=params), request, x_provisa_stats
+            )
+            _answered.append(response)
+            if response.status_code != 200:
+                raise _ReadRefused
+            content = json.loads(bytes(response.body))
+            columns = content["columns"]
+            rows = [[r[c] for c in columns] if isinstance(r, dict) else r for r in content["rows"]]
+            return columns, rows
+
+        _wrote: list[QueryResult] = []
+
+        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
+            # ONE write path: the translated statement goes through the pipeline every other
+            # surface's write goes through (Bolt's Cypher writes included) — its admission (the
+            # write right and the role's write grant, REQ-2074), its lowering to the source's own
+            # addressing and dialect, and its execution.
+            plan = await _govern_write(
+                sql,
                 _role_id,
-                exec_params=_write_params or None,
+                exec_params=bound or None,
                 state=state,
                 cache_hint=_NO_CACHE,
                 sdl_joins=False,
             )
-            _result = await _execute_write_plan(_plan, state)
+            _wrote.append(await _execute_write_plan(plan, state))
+            done = _wrote[-1]
+            return done.column_names, [list(row) for row in done.rows], done.rowcount
+
+        from provisa.cypher.counters import counting
+
+        try:
+            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
+            # admission's new-row check and the source see the values, never their names.
+            with counting() as counted:
+                await written(_write_ast, _WT(_label_map), body.params, _read, _write)
+        except (_CWPE, CypherParamError) as exc:
+            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
+        except _ReadRefused:
+            return _answered[-1]
         except PermissionError as exc:
-            return JSONResponse(status_code=403, content={"error": str(exc)})
+            return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
+        except (ApiError, ReadRefused):
+            raise  # REQ-1350: a refusal by name is answered by the app's handler for it
         except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
-            return JSONResponse(status_code=500, content={"error": f"Write failed: {exc}"})
-        affected = _result.rowcount if _result.rowcount is not None else len(_result.rows)
+            return cypher_error(500, "cypher.write_failed", f"Write failed: {exc}", error=str(exc))
+        if _write_ast.returns:
+            # The RETURN, read of the node the write created, with what the write did.
+            returned = _answered[-1]
+            content = json.loads(bytes(returned.body))
+            content.update(_counters(counted, body.query))
+            headers = {k: v for k, v in returned.headers.items() if k.lower() != "content-length"}
+            return JSONResponse(content=content, status_code=returned.status_code, headers=headers)
+        affected = sum(r.rowcount if r.rowcount is not None else len(r.rows) for r in _wrote)
 
         # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
         # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
-        return JSONResponse(content={"affected_rows": affected, "type": "cypher"})
+        return JSONResponse(
+            content={"affected_rows": affected, "type": "cypher", **_counters(counted, body.query)}
+        )
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
@@ -507,30 +858,37 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
         from provisa.gql.assembler import assemble_rows, to_serializable
         from provisa.compiler.sql_rewrite import make_semantic_sql
-        from provisa.compiler.stage2 import build_governance_context
-        from provisa.compiler.sql_validator import validate_sql as _validate_sql
-        from provisa.pgwire._pipeline import relationship_guard_bypassed
-        from provisa.pgwire._pipeline import _govern_and_route_compiled
     except Exception as exc:
         log.exception("Cypher imports failed")
-        return JSONResponse(status_code=500, content={"error": f"Import failed: {exc}"})
+        return cypher_error(500, "cypher.import_failed", f"Import failed: {exc}", error=str(exc))
 
     role_id = _resolve_role_id(request, state)
     surface = role_surface(state, role_id)  # one snapshot: context and row filters of one build
     if surface is None:
-        return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
     ctx = surface.context
 
-    label_map = _build_label_map(ctx, role_id, state)
+    # REQ-2176: a read while the graph session holds ephemeral objects compiles over the
+    # session's overlay of the model, and is never kept: its answer is the session's own.
+    from provisa.compiler import temp_tables
+    from provisa.ephemeral import read as ephemeral_read
+    from provisa.ephemeral import seam
 
-    _pre = await intercept_precompile(body, state, role_id, label_map)  # procs + REQ-872 CALLs
+    temp = temp_tables.current()
+    involved = ephemeral_read.involved(temp)
+    model_map = _build_label_map(ctx, role_id, state)
+    label_map = seam.label_map(model_map, temp)
+
+    _pre = await intercept_precompile(body, state, role_id, model_map)  # procs + REQ-872 CALLs
     if _pre is not None:
         return _pre
 
     # Resolve stable node ids in id(var) IN [...] to id-column values
     query_text = body.query
     if state.model_db is not None:
-        query_text = await _resolve_id_references(query_text, state.model_db, label_map)
+        query_text = await _resolve_id_references(query_text, state.model_db, model_map)
 
     # REQ-1877: a read this role already translated and was admitted for under this schema
     # generation is not parsed, translated or validated again — only its values are bound.
@@ -546,20 +904,24 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         cypher=query_text,
         params=body.params,
     )
-    translation = kept.cached()
+    translation = None if involved else kept.cached()
     if translation is None:
         # Stage 1: Parse
+        from provisa.gql.translator_types import CypherMistake
+
         try:
-            ast = parse_cypher(query_text)
+            ast = parse_cypher(query_text, label_map)
+        except CypherMistake as exc:
+            return mistake_error(exc)
         except CypherParseError as exc:
-            return JSONResponse(status_code=400, content={"error": str(exc)})
+            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
 
         # Validate and bind params
         param_names = collect_param_names(query_text)
         try:
             bind_params(param_names, body.params)
         except CypherParamError as exc:
-            return JSONResponse(status_code=400, content={"error": str(exc)})
+            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
 
         # Multi-CALL pattern: independent (non-correlated) CALL blocks with no outer MATCH.
         _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
@@ -576,44 +938,32 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             )
 
         # Stages 1-2: Translate + graph rewrites
-        _sql_result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+        _sql_result = _build_sql_from_ast(
+            ast,
+            label_map,
+            body,
+            cypher_to_sql,
+            apply_graph_rewrites,
+            role_id,
+            state,
+            expand=lambda sql_ast: seam.expand(sql_ast, label_map, model_map, temp),
+        )
         if isinstance(_sql_result, Response):
             return _sql_result
         sql_str, ordered_params, graph_vars = _sql_result
 
         # Stage 3: Semantic conversion + access validation (transport responsibility)
         semantic_sql = make_semantic_sql(sql_str, ctx)
-        rls = surface.rls
-        _gov_ctx_for_validate = build_governance_context(
-            role_id,
-            rls,
-            state.masking_rules,
-            ctx,
-            getattr(state, "tables", []),
-            role=_role_dict,
-            relationships=getattr(state, "relationships", None),
-        )
-        _violations = _validate_sql(
-            semantic_sql,
-            ctx,
-            _gov_ctx_for_validate,
-            _role_dict,
-            getattr(state, "tables", []),
-            # REQ-264: the relationship guard is held by the pipeline for every Cypher surface
-            # (provisa.pgwire._pipeline._govern_compiled), by the one bypass rule; here it is
-            # decided by that same rule, never switched off for the surface.
-            bypass_relationship_guard=relationship_guard_bypassed(
-                _role_dict, state, statement_opts_out=False
-            ),
-            bypass_uncovered_relationships=True,
-        )
-        if _violations:
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
-                },
-            )
+        # REQ-2168: a command composed in the statement runs now, as the role, and its rows take
+        # its place. Its argument values are in the statement, so it is never kept.
+        from provisa.api.data.cypher_commands import calls_commands, put_command_rows
+
+        composed = calls_commands(semantic_sql)
+        if composed:
+            semantic_sql = await put_command_rows(semantic_sql, role_id, state)
+        _refusal = access_violations(semantic_sql, surface, role_id, state)
+        if _refusal is not None:
+            return _refusal
 
         translation = CypherTranslation(
             semantic_sql=semantic_sql,
@@ -621,7 +971,8 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
             param_names=tuple(param_names),
             graph_vars=graph_vars,
         )
-        kept.record(translation)
+        if not composed and not involved:
+            kept.record(translation)
 
     semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
     from provisa.api.rest.cypher_drawing import graph_columns
@@ -632,7 +983,7 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     try:
         resolved_params = translation.bind(body.params)
     except CypherParamError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
+        return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
 
     # Stage 4: Pipeline (governance + routing)
     from provisa.api.redirect_headers import delivery_from_headers
@@ -646,27 +997,23 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     try:
         cache_hint = request_cache_hint(cache_hint_for("cypher", body.query), request.headers)
     except ValueError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-    try:
-        plan = await _govern_and_route_compiled(
-            semantic_sql,
-            role_id,
-            exec_params=resolved_params or None,
-            deliver=delivery,
-            # A drawing is never delivered to a file: the redirect threshold is a rule for rows.
-            buffered=not drawn,
-            cache_hint=cache_hint,
-            # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
-            serve_cached=True,
-            sdl_joins=False,
-        )
-    except ComplexityLimitExceeded:
-        raise  # REQ-1174: answered as 413 by the app's handler
-    except PermissionError as exc:
-        return JSONResponse(status_code=403, content={"error": str(exc)})
-    except Exception as exc:
-        log.exception("Cypher governance/routing failed")
-        return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
+        return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
+    plan = await _governed_plan(
+        semantic_sql,
+        role_id,
+        exec_params=resolved_params or None,
+        deliver=delivery,
+        # A drawing is never delivered to a file: the redirect threshold is a rule for rows.
+        buffered=not drawn,
+        cache_hint=cache_hint,
+        # REQ-030: the statement's own `// @provisa route=...` comment.
+        steward_hint=extract_directives_from_cypher_comments(body.query).steward_hint,
+        # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
+        serve_cached=True,
+        sdl_joins=False,
+    )
+    if isinstance(plan, Response):
+        return plan
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
@@ -689,11 +1036,15 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    rows = _dict_rows(_executed)
+    from provisa.gql.assembler import take_overrun
+
+    rows = take_overrun(_dict_rows(_executed))
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize
-    _ser_result = _serialize_rows(rows, graph_vars, assemble_rows, to_serializable)
+    _ser_result = _serialize_rows(
+        rows, graph_vars, assemble_rows, to_serializable, _answered_columns(_executed)
+    )
     if isinstance(_ser_result, Response):
         return _ser_result
     columns, serializable_rows = _ser_result
@@ -701,8 +1052,14 @@ async def cypher_query(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-351,
     # Register nodes and relationships, replacing composite string IDs with stable integers
     from provisa.gql.assembler import register_node_ids, register_rel_ids
 
-    await register_node_ids(serializable_rows, state.model_db)
-    await register_rel_ids(serializable_rows, state.model_db)
+    if not (involved or internal):
+        # REQ-2176: an ephemeral node is the session's alone, never registered in the model's
+        # node ids; a read of the session keeps every node's graph identity.
+        await register_node_ids(serializable_rows, state.model_db)
+        await register_rel_ids(serializable_rows, state.model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable_rows = seam.answered(serializable_rows, temp)
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"
@@ -722,7 +1079,9 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     # One surface, taken once: its context and its root fields come from the same build.
     surface = role_surface(state, role_id)
     if surface is None or surface.context is None:
-        return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
     ctx = surface.context
 
     label_map = _build_label_map(ctx, role_id, state)
@@ -803,6 +1162,8 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     # FK/PK-backed edge, which is how a client tells the two apart.
                     "junction_table_name": r.via.table_name if r.via else None,
                     "properties": sorted(r.properties.keys()),
+                    # REQ-2135: what it joins, the same for a join declared from both ends.
+                    "join": r.join,
                 }
                 for r in label_map.relationships.values()
             ],
@@ -864,7 +1225,9 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
     role_id = _resolve_role_id(request, state)
     ctx = state.contexts.get(role_id)
     if ctx is None:
-        return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+        return cypher_error(
+            503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
+        )
 
     domains_param = request.query_params.get("domains", "")
     filtered_domains: set[str] = (
@@ -878,28 +1241,36 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         built or run: an uncounted label is said with its reason, never counted as 0 rows."""
         ast = parse_cypher(cypher)
         body = CypherRequest(query=cypher, params={})
-        result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+        result = _build_sql_from_ast(
+            ast, label_map, body, cypher_to_sql, apply_graph_rewrites, role_id, state
+        )
         if isinstance(result, Response):
             return _uncounted(cypher, result)
         sql_str, _, _ = result
         semantic_sql = make_semantic_sql(sql_str, ctx)
-        plan = await _govern_and_route_compiled(
-            semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT, sdl_joins=False
-        )
+        try:
+            plan = await _govern_and_route_compiled(
+                semantic_sql, role_id, exec_params=None, cache_hint=NO_CACHE_HINT, sdl_joins=False
+            )
+        except ParameterRequired as exc:
+            # A parameterized table: a count gives no parameter, so the read is refused -- said,
+            # with that refusal's reason.
+            log.warning("graph-counts: %s not counted: %s", cypher, exc)
+            return {"count": None, "error": str(exc)}
         executed = await _run_plan(plan, state)
         if isinstance(executed, Response):
-            # A label the engine cannot count (its catalog is not attached on this engine, a
-            # parameterized table with no snapshot): said, with the engine's reason.
+            # A label the engine cannot count (its catalog is not attached on this engine): said,
+            # with the engine's reason.
             return _uncounted(cypher, executed)
         rows = _dict_rows(executed)
         return {"count": int(rows[0]["cnt"]) if rows else 0}
 
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import reaches_domain
 
     _domain_access = state.roles[role_id]["domain_access"]
 
     def _reads_domain(domain_id: str | None) -> bool:
-        return not domain_id or reaches_all_domains(_domain_access) or domain_id in _domain_access
+        return not domain_id or reaches_domain(_domain_access, domain_id)
 
     node_labels, rel_types = _countable_labels(label_map, filtered_domains, _reads_domain)
 
@@ -932,7 +1303,7 @@ def _uncounted(cypher: str, refused: Response) -> dict[str, Any]:
     """A count statement's refusal, as its entry: no count, and the reason it gave."""
     import json as _json
 
-    why = _json.loads(bytes(refused.body))["error"]
+    why = _json.loads(bytes(refused.body))["detail"]
     log.warning("graph-counts: %s not counted (%s): %s", cypher, refused.status_code, why)
     return {"count": None, "error": why}
 

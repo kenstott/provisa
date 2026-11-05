@@ -209,6 +209,10 @@ async def test_registration_persists_the_sparql_endpoint_and_mirrors_live_state(
     )
 
 
+#: The results format every table of a SPARQL source is read in.
+_RESULTS = "application/sparql-results+json"
+
+
 @pytest.mark.asyncio
 async def test_every_call_to_the_endpoint_says_it_is_provisa():
     """REQ-2138: a public endpoint (Wikidata's User-Agent policy) refuses a library's default
@@ -217,10 +221,11 @@ async def test_every_call_to_the_endpoint_says_it_is_provisa():
 
     agent = f"Provisa/{running_provisa()} (https://provisa.dev)"
     _cfg, api_source = sparql_config_from_source(source_id="graph", endpoint_url=_EP)
-    assert api_source.headers == {"User-Agent": agent}
+    assert api_source.headers == {"User-Agent": agent, "Accept": _RESULTS}
     with respx.mock:
         route = respx.post(_EP).mock(
             return_value=httpx.Response(200, json=_bindings(["name"], [["Sara"]]))
         )
         await qa.preview_sparql(_Conn(_SRC), "graph", "SELECT ?name WHERE { ?a ?p ?name }")  # type: ignore[arg-type]
     assert route.calls.last.request.headers["user-agent"] == agent
+    assert route.calls.last.request.headers["accept"] == _RESULTS

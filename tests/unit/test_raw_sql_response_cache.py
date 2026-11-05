@@ -630,3 +630,73 @@ def test_flight_direct_hit_types_each_registered_column_as_its_miss_does():
     assert miss.schema.field("id").type == pa.int32()
     assert hit.schema == miss.schema
     assert hit.to_pylist() == miss.to_pylist()[1:2]
+
+
+def test_a_column_transform_plan_streams_its_rows_transformed_and_keeps_them(bound, monkeypatch):
+    """REQ-2131: the rows stream through the transform's workers to the caller, the first before
+    the source's last is read; the source's raw DataRows are never the answer; and what the cache
+    keeps, and a hit replays, is the transformed rows."""
+    from provisa.codesource import columns as columns_mod
+    from provisa.codesource.columns_fold import ColumnsCall, Folded
+    from provisa.pgwire._pipeline import serve_stream_through_cache
+
+    class _Worker:
+        def columns(self, function, batch, names, *, schema):
+            return [{"label": f"#{value}"} for value in batch[0]]
+
+    async def prepared(_state, _source_id):
+        return SimpleNamespace(manifest=None, workers=2, worker=lambda slot: _Worker())
+
+    monkeypatch.setattr(columns_mod, "_prepared", prepared)
+    monkeypatch.setattr(
+        columns_mod,
+        "_columns_export",
+        lambda manifest, function: SimpleNamespace(parameters=[SimpleNamespace(name="v")]),
+    )
+    monkeypatch.setattr("provisa.codesource.arrow_rows.row_schema", lambda manifest, export: None)
+    monkeypatch.setattr("provisa.codesource.arrow_rows.schema_text", lambda schema: "s")
+    command = {
+        "function_name": "label",
+        "source_id": "code",
+        "output_columns": [{"name": "label", "type": "text"}],
+    }
+    call = ColumnsCall(
+        command="label", inputs=("__provisa_columns_0_0",), outputs=(("label", "text"),)
+    )
+    plan = _plan(columns=Folded("SELECT id, v AS __provisa_columns_0_0 FROM t", (call,)))
+    bound(20000)  # the whole answer is kept
+    store, run = FakeCacheStore(), _Runner()
+    state = _state(store)
+    state.column_transforms = {"label": command}
+    pulls: list[int] = []
+
+    def _open_rows():
+        rows = [[(i, i)] for i in range(10000)]  # record batches of one row
+
+        def gen():
+            for i, batch in enumerate(rows):
+                pulls.append(i)
+                yield batch
+
+        return StreamingQueryResult(gen(), column_names=["id", "__provisa_columns_0_0"])
+
+    def _passthrough_must_not_run():
+        raise AssertionError("a column transform plan is answered decoded")
+
+    try:
+        kw = dict(run=run, check_rows=True, passthrough=([1], _passthrough_must_not_run))
+        miss = serve_stream_through_cache(plan, state, open_rows=_open_rows, **kw)
+        assert miss.column_names == ["id", "label"]
+        batches = miss.batches()
+        assert next(batches)[:2] == [(0, "#0"), (1, "#1")]
+        assert len(pulls) < 10000  # answered before the source is read through
+        rest = [row for batch in batches for row in batch]
+        assert len(rest) == 9000 and rest[-1] == (9999, "#9999")
+
+        def _must_not_run():
+            raise AssertionError("the decoded HIT should have been served")
+
+        hit = serve_stream_through_cache(plan, state, open_rows=_must_not_run, **kw)
+        assert hit.rows[:2] == [(0, "#0"), (1, "#1")] and len(hit.rows) == 10000
+    finally:
+        run.close()

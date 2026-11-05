@@ -10,10 +10,9 @@
 
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { Relationship } from "../../../types/admin";
+import type { SchemaRel } from "../graph-schema-types";
 import type { GNode, GEdge } from "../graph-model";
 import { extractElements } from "../graph-model";
-import { tableLabel as dbTableLabel, cypherRelType } from "../../../naming";
 
 type OverlayMap = Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>;
 type MergedOverlay = { nodes: Map<string, GNode>; edges: Map<string, GEdge> };
@@ -22,14 +21,16 @@ interface UseOverlayNavigationParams {
   overlayData: OverlayMap;
   setOverlayData: Dispatch<SetStateAction<OverlayMap>>;
   frameNodes: Map<string, GNode>;
-  relationships: Relationship[] | undefined;
+  /** The acting role's relationship types (/data/graph-schema): the only types a query is written
+   * with, so the translator never meets one it does not register. */
+  schemaRels: SchemaRel[];
 }
 
 export function useOverlayNavigation({
   overlayData,
   setOverlayData,
   frameNodes,
-  relationships,
+  schemaRels,
 }: UseOverlayNavigationParams) {
   const _resolveNodeForKey = useCallback(
     (nodeKey: string): GNode | undefined => {
@@ -82,18 +83,14 @@ export function useOverlayNavigation({
     async (nodeKey: string): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode || gNode.id == null) return null;
-      const tableLabel = gNode.tableLabel;
-      const rels = (relationships ?? []).filter(
-        (r) => dbTableLabel(r.sourceTableName) === tableLabel,
-      );
-      if (rels.length === 0) return null;
+      // Each type the role's label map registers out of the node's label (REQ-1586).
+      const types = [
+        ...new Set(schemaRels.filter((r) => r.source === gNode.label).map((r) => r.type)),
+      ];
+      if (types.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
-        rels.map(async (r) => {
-          // REQ-1586: a junction-backed edge names itself by its nomination, not by an alias it
-          // does not carry, and a row that names no type at all cannot be matched by type.
-          const relType = cypherRelType(r);
-          if (!relType) return;
+        types.map(async (relType) => {
           const q = `MATCH (n:${gNode.label})-[r:${relType}]->(child) WHERE id(n) IN [${gNode.id}] RETURN n, r, child`;
           const result = await _fetchNeighbors(q);
           if (result) {
@@ -104,23 +101,21 @@ export function useOverlayNavigation({
       );
       return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
     },
-    [relationships, _resolveNodeForKey, _fetchNeighbors],
+    [schemaRels, _resolveNodeForKey, _fetchNeighbors],
   );
 
   const _fetchParentsForNode = useCallback(
     async (nodeKey: string): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode || gNode.id == null) return null;
-      const tableLabel = gNode.tableLabel;
-      const rels = (relationships ?? []).filter(
-        (r) => dbTableLabel(r.targetTableName) === tableLabel,
-      );
-      if (rels.length === 0) return null;
+      // Each type the role's label map registers into the node's label (REQ-1586).
+      const types = [
+        ...new Set(schemaRels.filter((r) => r.target === gNode.label).map((r) => r.type)),
+      ];
+      if (types.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
-        rels.map(async (r) => {
-          const relType = cypherRelType(r);
-          if (!relType) return;
+        types.map(async (relType) => {
           const q = `MATCH (parent)-[r:${relType}]->(n:${gNode.label}) WHERE id(n) IN [${gNode.id}] RETURN n, r, parent`;
           const result = await _fetchNeighbors(q);
           if (result) {
@@ -131,7 +126,7 @@ export function useOverlayNavigation({
       );
       return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
     },
-    [relationships, _resolveNodeForKey, _fetchNeighbors],
+    [schemaRels, _resolveNodeForKey, _fetchNeighbors],
   );
 
   const handleToggleChildren = useCallback(

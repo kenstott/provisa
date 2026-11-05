@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "{{tableName}} van het canvas verwijderen",
     "toggleColumn": "Selectie van kolom {{columnName}} in-/uitschakelen",
-    "connectColumn": "Relatie starten vanaf {{columnName}}"
+    "connectColumn": "Relatie starten vanaf {{columnName}}",
+    "allColumns": "Alle kolommen ({{selected}} van {{total}})",
+    "unjoined": "{{tables}} is niet gekoppeld aan de andere tabellen",
+    "joinsUnavailable": "De joins die deze rol mag schrijven, konden niet worden gelezen: {{reason}}"
   }
 }

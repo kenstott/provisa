@@ -26,14 +26,16 @@ dropped edge would tell the external catalog that a governed derivation does not
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime, timezone
 
-from provisa.api.metadata_export.governance import build_governance_tags
+from provisa.api.metadata_export.governance import build_governance_tags, table_readers
 from provisa.api.metadata_export.model import (
     ColumnAsset,
     DataProductAsset,
     DataQualityAssertion,
     DataQualityOutcome,
     DomainAsset,
+    GlossaryAxiom,
     GlossaryTermAsset,
     GlossaryTermEdge,
     JunctionRef,
@@ -42,6 +44,7 @@ from provisa.api.metadata_export.model import (
     ModelTag,
     OwnerRef,
     RelationshipEdge,
+    ServingEndpoints,
     SourceAsset,
     TableAsset,
 )
@@ -62,8 +65,8 @@ from provisa.api.metadata_export.refs import (
     term_uri,
 )
 from provisa.core.derived_tags import derived_tags_for_table
-from provisa.core.glossary import live_term_ids
-from provisa.core.models import SYSTEM_TAG_IDS, ProvisaConfig, Table, TagAssignment
+from provisa.core.glossary import term_grounding
+from provisa.core.models import SYSTEM_TAG_IDS, SYSTEM_TAGS, ProvisaConfig, Table, TagAssignment
 from provisa.dq.contract import (
     CHECKERS,
     check_definition,
@@ -127,7 +130,15 @@ def _column_asset(table: Table, column, org_id: str | None) -> ColumnAsset:
         description=column.description or "",
         aliases=(column.alias,) if column.alias else (),
         semantic_uri=column_uri(org_id, table, column.name, column.alias),
+        subtype=column.subtype,  # REQ-2171
     )
+
+
+def _unique_keys(table: Table) -> tuple[tuple[str, ...], ...]:  # REQ-1093, REQ-2118
+    """The table's declared UNIQUE constraints, then each alternate key column on its own."""
+    keys = [tuple(u.columns) for u in table.unique_constraints]
+    keys += [(c.name,) for c in table.columns if c.is_alternate_key and (c.name,) not in keys]
+    return tuple(keys)
 
 
 def _table_assets(
@@ -136,8 +147,10 @@ def _table_assets(
     technical_columns: frozenset[tuple[tuple[str, ...], str]],
     product_ids: dict[tuple[str, ...], str | None],
     source_ttls: Mapping[str, int | None] | None = None,
+    readers: Mapping[tuple[str, ...], tuple[str, ...]] | None = None,
 ) -> list[TableAsset]:
     source_ttls = source_ttls or {}
+    readers = readers or {}
     return [
         TableAsset(
             ref=table_ref(table),
@@ -153,8 +166,7 @@ def _table_assets(
                 if (table_ref(table).parts, column.name) not in technical_columns
             ],
             semantic_uri=table_uri(org_id, table),
-            # REQ-1592: model-report column, kept. REQ-1443 clause 10: a checker table's flag is
-            # the one it inherits from the table it scans.
+            # REQ-1592: model-report column, kept.
             data_product=product_ids[table_ref(table).parts] is not None,
             # REQ-1652: every declared key column, technical-tagged or not -- the physical table
             # carries it whether or not the Data Product exposes it.
@@ -164,6 +176,10 @@ def _table_assets(
                 table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
             ),
             is_view=table.view_sql is not None,
+            contract=table.contract,  # REQ-2158
+            unique_keys=_unique_keys(table),
+            readers=readers.get(table_ref(table).parts, ()),
+            writers=tuple(sorted({grant.role for grant in table.write_grants})),
         )
         for table in tables
     ]
@@ -187,24 +203,9 @@ def _contract_target(
     return checker, by_physical[(meta.source_id, meta.schema_name, meta.table_name)]
 
 
-def _effective_product_ids(
-    config: ProvisaConfig, contexts: Mapping
-) -> dict[tuple[str, ...], str | None]:  # REQ-1443 clause 10
-    """Every registered table's data-product membership, keyed by :func:`table_ref` parts.
-
-    A checker table's membership is DERIVED: it belongs to whatever product the table its contract
-    scans belongs to, because its rows are observations about that table and publish nowhere else.
-    Registration refuses a stored ``product_id`` on a checker table
-    (:func:`provisa.dq.registration.derive_checker_table`), so this map is the only place the two
-    are joined. Every other table's membership is its own ``product_id``.
-    """
-    product_ids: dict[tuple[str, ...], str | None] = {
-        table_ref(table).parts: table.product_id for table in config.tables
-    }
-    for results, contract in _checker_tables(config):
-        _, observed = _contract_target(config, results, contract, contexts)
-        product_ids[table_ref(results).parts] = observed.product_id
-    return product_ids
+def _utc_iso(at: datetime | None) -> str | None:
+    """``at`` as ODPS writes a timestamp: ISO 8601 in UTC."""
+    return at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z") if at else None
 
 
 def _data_product_assets(
@@ -215,11 +216,14 @@ def _data_product_assets(
     documentation_base_url: str | None = None,
     page_org_id: str = "",
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
+    product_created: Mapping[str, datetime] | None = None,
 ) -> list[DataProductAsset]:
-    from provisa.core.mail import data_product_page_url
+    from provisa.core.mail import admin_graphql_url, data_product_lineage_url, data_product_page_url
 
     # A product with no exported members does not build: publishing an empty listing would tell
-    # the catalog about a product with nothing behind it.
+    # the catalog about a product with nothing behind it. A retired one builds all the same
+    # (REQ-1634 STATUS): its members went to its successor, and each catalog is told it is retired
+    # rather than left listing it as it last saw it.
     members_by_product: dict[str, list[Table]] = {}
     for table in exported:
         product_id = product_ids[table_ref(table).parts]
@@ -228,7 +232,7 @@ def _data_product_assets(
     assets: list[DataProductAsset] = []
     for product in config.data_products:
         members = members_by_product.get(product.id, [])
-        if not members:
+        if not members and product.status != "retired":
             continue
         assets.append(
             DataProductAsset(
@@ -243,18 +247,28 @@ def _data_product_assets(
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
-                publish=product.publish,
                 team_role=product.team_role,
                 limitations=product.limitations,
                 usage=product.usage,
                 version=product.version,
                 status=product.status,
-                sla=product.sla,
                 support=product.support,
                 custom_properties=dict(product.custom_properties),
                 owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),
+                team_emails=(owner_emails or {}).get(product.team_role or "", ()),
+                created_at=_utc_iso((product_created or {}).get(product.id)),
                 documentation_url=(
                     data_product_page_url(documentation_base_url, page_org_id, product.id)
+                    if documentation_base_url
+                    else None
+                ),
+                lineage_url=(
+                    data_product_lineage_url(documentation_base_url, page_org_id, product.id)
+                    if documentation_base_url
+                    else None
+                ),
+                admin_api_url=(
+                    admin_graphql_url(documentation_base_url, page_org_id)
                     if documentation_base_url
                     else None
                 ),
@@ -577,9 +591,30 @@ def _dq_assertions(
                     outcome=dq_outcomes.get(
                         outcome_key, DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
                     ),
+                    owner_product_id=results.product_id,
                 )
             )
     return assertions
+
+
+def _glossary_axioms(
+    glossary: dict | None, terms: list[GlossaryTermAsset]
+) -> list[GlossaryAxiom]:  # REQ-2163
+    """The ontology's axioms (ontology._axioms) about the published terms: one about a withheld
+    term, or naming one as its object, goes with it."""
+    published = {term.term_id for term in terms}
+    return [
+        GlossaryAxiom(
+            subject_term_id=row["subject_term_id"],
+            predicate=row["predicate"],
+            object_term_id=row["object_term_id"],
+            object_iri=row["object_iri"],
+            object_literal=row["object_literal"],
+        )
+        for row in (glossary or {}).get("axioms", [])
+        if row["subject_term_id"] in published
+        and (row["object_term_id"] is None or row["object_term_id"] in published)
+    ]
 
 
 def _glossary_assets(
@@ -594,10 +629,12 @@ def _glossary_assets(
     rootedness this rule is judged on is narrower than the repository's: a term whose refs
     are all withheld is not rooted here even though it holds refs in the control plane.
 
-    On top of that, only live terms publish — ``live_term_ids``: in service, defined, and
-    connected to a rooted term. A downstream catalog binds assets to whatever it receives, so
-    an undefined proposal or an abstract term wired to nothing physical must never leave here.
-    ``export_excluded`` withholds a term on top of that. Edges publish when both endpoints do.
+    On top of that, only approved terms publish (REQ-1387), each with its grounding, computed
+    over that narrower rootedness: a person approved the vocabulary a downstream catalog binds
+    assets to, so a draft never leaves here. A term an approval was followed by a curator's
+    deprecation of still publishes, as deprecated, for each catalog to mark; a retired one, or one
+    whose derivation lost its last column, does not. ``export_excluded`` withholds a term on top
+    of that. Edges publish when both endpoints do.
     """
     by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
     refs_by_term: dict[int, list] = {}
@@ -611,22 +648,36 @@ def _glossary_assets(
         refs_by_term.setdefault(ref["term_id"], []).append(asset_ref)
     # REQ-1387 (GROUNDED TO A TABLE): a class term is rooted by a table it grounds, when that
     # table publishes -- the same narrowing its column refs get.
-    classes = {
-        ref["term_id"]
-        for ref in glossary.get("table_refs", [])
-        if (ref["source_id"], ref["schema_name"], ref["table_name"]) in by_identity
-    }
+    tables_by_term: dict[int, list] = {}
+    for ref in glossary.get("table_refs", []):
+        table = by_identity.get((ref["source_id"], ref["schema_name"], ref["table_name"]))
+        if table is not None:
+            tables_by_term.setdefault(ref["term_id"], []).append(table_ref(table))
+    classes = set(tables_by_term)
+    # REQ-2141: the role follows the control plane's grounding, not what this export narrows
+    # to -- a Class whose tables are all withheld is still a Class.
+    grounds_tables = {ref["term_id"] for ref in glossary.get("table_refs", [])}
+    owns_columns = {ref["term_id"] for ref in glossary.get("refs", [])}
+    domains_by_term: dict[int, list[str]] = {}
+    for row in glossary.get("domains", []):
+        domains_by_term.setdefault(row["term_id"], []).append(row["domain_id"])
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
-    live = live_term_ids(
+    grounding = term_grounding(
         glossary.get("terms", []),
-        [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
+        [(e["from_term_id"], e["to_term_id"], e["rel_type"]) for e in glossary.get("edges", [])],
         set(refs_by_term) | classes,
     )
+    published_roots = set(refs_by_term) | classes
     terms = []
     for term in glossary.get("terms", []):
-        if term["id"] not in live or term.get("export_excluded"):
+        approved = term["approved"] and not term["retired"] and not term["deprecated"]
+        if not approved or term["export_excluded"]:
+            continue
+        # The data_product filter: a term bound to data, none of which publishes, goes with it.
+        held = term["id"] in owns_columns or term["id"] in grounds_tables
+        if held and term["id"] not in published_roots:
             continue
         refs = refs_by_term.get(term["id"], [])
         terms.append(
@@ -636,12 +687,22 @@ def _glossary_assets(
                 definition=term.get("definition"),
                 is_abstract=bool(term["is_abstract"]),
                 deprecated=bool(term["deprecated"]),
-                status="deprecated" if term["deprecation_asserted"] else "live",  # REQ-2144
+                status="deprecated" if term["deprecation_asserted"] else "approved",  # REQ-2144
+                grounding=grounding[term["id"]],  # REQ-1387
                 status_reason=term["status_reason"],
                 retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),
+                tables=tuple(tables_by_term.get(term["id"], [])),
+                role=(
+                    "class"
+                    if term["id"] in grounds_tables
+                    else "property"
+                    if term["id"] in owns_columns
+                    else "concept"
+                ),
                 experts=tuple(experts_by_term.get(term["id"], [])),
                 semantic_uri=term_uri(org_id, term["name"]),
+                domains=tuple(sorted(domains_by_term.get(term["id"], []))),
             )
         )
     published_ids = {t.term_id for t in terms}
@@ -669,6 +730,8 @@ def build_snapshot(
     data_products_only: bool = True,
     documentation_base_url: str | None = None,
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
+    product_created: Mapping[str, datetime] | None = None,
+    endpoints: ServingEndpoints | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -684,7 +747,9 @@ def build_snapshot(
     names a contract's dataset addresses (REQ-1443).
 
     ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
-    caller: a data product's owners are its owner role's holders.
+    caller: a data product's owners are its owner role's holders, its team its team role's.
+    ``product_created`` is when each product was created, by product id, read by the caller.
+    ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -713,8 +778,9 @@ def build_snapshot(
     # REQ-1592: the model report projects the SAME governance over every registered table — it is a
     # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
     # and reads the Data Product flag off each row instead.
-    # REQ-1443 clause 10: a checker table publishes with the product of the table it scans.
-    product_ids = _effective_product_ids(config, contexts)
+    # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
+    # product it is assigned to.
+    product_ids = {table_ref(table).parts: table.product_id for table in config.tables}
     exported = [
         table
         for table in config.tables
@@ -728,6 +794,7 @@ def build_snapshot(
         technical_columns,
         product_ids,
         {source.id: source.cache_ttl for source in config.sources},
+        table_readers(config),
     )
     relationships = [
         edge
@@ -753,6 +820,7 @@ def build_snapshot(
             documentation_base_url=documentation_base_url,
             page_org_id=org_id,
             owner_emails=owner_emails or {},
+            product_created=product_created or {},
         ),
         relationships=relationships,
         lineage=[
@@ -783,5 +851,10 @@ def build_snapshot(
         ],
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
+        glossary_axioms=_glossary_axioms(glossary, glossary_terms),
         assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}, contexts),
+        sensitive_tags=frozenset(
+            tag.id for tag in (*SYSTEM_TAGS, *config.tags) if tag.sensitive
+        ),  # REQ-1943
+        endpoints=endpoints,
     )

@@ -42,13 +42,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from server_answer import checked
+
 LANGS = ("sql", "cypher", "graphql", "grpc", "rest", "jsonapi")
 
 ADMIN_QUERY = """
 query BenchLookup {
   sources { id type replicate cacheEnabled cacheTtl }
   tables {
-    id sourceId domainId schemaName tableName alias cacheTtl replicate
+    id sourceId domainId schemaName tableName alias cacheTtl replicate rowMaterialize
     graphqlFieldName dqDataset
     columns { columnName computedSqlAlias computedGqlAlias }
   }
@@ -79,6 +81,8 @@ class RawLookup:
     rest_spec: Mapping[str, Any]
     jsonapi_spec: Mapping[str, Any]
     proto: str
+    # GET /data/sparql/vocabulary: the role's classes, predicates and edge types as IRIs
+    sparql_vocabulary: Mapping[str, Any]
 
 
 @dataclass(frozen=True)
@@ -117,22 +121,27 @@ class TableNames:
     rest_path: str | None
     jsonapi_path: str | None
     jsonapi_type: str | None
+    sparql_class: str | None  # the table's class IRI; None: SPARQL does not expose it
     columns: Mapping[str, Mapping[str, str]]
     # the replication setting the registry holds for the table (None: inherits the source)
     replicate: int | None = None
     cache_ttl: int | None = None
     table_id: int | None = None  # the registry id the admin API addresses the table by
     domain_id: str | None = None  # the registered domain (what the audit log's domain_id holds)
+    # replicated row by row (REQ-1915): where the engine cannot attach the source, a read with no
+    # filter on it is refused
+    row_materialize: bool = False
 
 
 @dataclass(frozen=True)
 class JoinNames:
-    """How GraphQL and Cypher traverse a registered relationship (None: not exposed). ``forward``
-    is whether the contract's left table is the relationship's source."""
+    """How GraphQL, Cypher and SPARQL traverse a registered relationship (None: not exposed).
+    ``forward`` is whether the contract's left table is the relationship's source."""
 
     forward: bool
     graphql_field: str | None
     cypher_rel: str | None
+    sparql_rel: str | None  # the edge type's predicate IRI
 
 
 @dataclass(frozen=True)
@@ -184,11 +193,11 @@ def fetch(client: Any, role: str) -> RawLookup:
 
     def get(path: str, **params: str) -> Any:
         resp = client.get(path, headers=headers, params=params or None)
-        resp.raise_for_status()
+        checked(resp)
         return resp
 
     admin = client.post("/admin/graphql", json={"query": ADMIN_QUERY}, headers=headers)
-    admin.raise_for_status()
+    checked(admin)
     body = admin.json()
     if body.get("errors"):
         raise LookupError_(f"/admin/graphql: {str(body['errors'])[:300]}")
@@ -199,6 +208,7 @@ def fetch(client: Any, role: str) -> RawLookup:
         rest_spec=get("/data/rest/openapi.json", role=role).json(),
         jsonapi_spec=get("/data/jsonapi/openapi.json", role=role).json(),
         proto=get(f"/data/proto/{role}").text,
+        sparql_vocabulary=get("/data/sparql/vocabulary").json(),
     )
 
 
@@ -211,6 +221,7 @@ def raw_to_json(raw: RawLookup) -> str:
             "rest_spec": raw.rest_spec,
             "jsonapi_spec": raw.jsonapi_spec,
             "proto": raw.proto,
+            "sparql_vocabulary": raw.sparql_vocabulary,
         },
         indent=2,
     )
@@ -310,6 +321,7 @@ def resolve(
     nodes = raw.graph_schema["node_labels"]
     proto_roots = _proto_roots(raw.proto)
     proto_blocks = _proto_blocks(raw.proto)
+    vocab = raw.sparql_vocabulary
 
     def registered(ident: TableIdentity) -> Mapping[str, Any]:
         row = registry.get((ident.source, ident.schema, ident.table))
@@ -351,6 +363,7 @@ def resolve(
                     return prefix + path, tname, item["get"]
         return None
 
+    vocab_labels: dict[str, str] = {}
     out_tables: dict[str, TableNames] = {}
     graphql_item: dict[str, str | None] = {}
     for ident in tables:
@@ -386,6 +399,36 @@ def resolve(
                 )
                 if prop:
                     spelled[c]["cypher"] = prop
+
+        # SPARQL: the table's own class, typing the node label, and its columns' predicates
+        sparql_class = None
+        if node:
+            # The vocabulary and the graph schema spell a table's label differently (PB__Orders
+            # against PerfBench:Orders), so the class is found by its IRI, /<domain>/<table>, and
+            # the vocabulary's own label names its predicates and edges.
+            found = [
+                c
+                for c in vocab["classes"]
+                if c["kind"] == "table" and c["iri"].endswith(f"/{row['domainId']}/{ident.table}")
+            ]
+            if len(found) > 1:
+                raise LookupError_(f"SPARQL classes {found} all name table {ident.table!r}")
+            sparql_class = found[0]["iri"] if found else None
+            if found:
+                vocab_labels[node["label"]] = found[0]["labels"][0]
+        if sparql_class:
+            for c in ident.columns:
+                if "cypher" not in spelled[c]:
+                    continue
+                iris = [
+                    p["iri"]
+                    for p in vocab["predicates"]
+                    if p["kind"] == "column"
+                    and p["label"] == vocab_labels[node["label"]]
+                    and p["property"] == spelled[c]["cypher"]
+                ]
+                if iris:
+                    spelled[c]["sparql"] = iris[0]
 
         # gRPC
         grpc_type = None
@@ -438,11 +481,13 @@ def resolve(
             rest_path=rest_path,
             jsonapi_path=japi_path,
             jsonapi_type=japi_type,
+            sparql_class=sparql_class,
             columns=spelled,
             replicate=row["replicate"],
             cache_ttl=row.get("cacheTtl"),
             table_id=row["id"],
             domain_id=row["domainId"],
+            row_materialize=row["rowMaterialize"],
         )
 
     # joins: each must be a registered relationship (either orientation)
@@ -507,7 +552,18 @@ def resolve(
                 cypher_rel = types[0]
             elif len(types) > 1:
                 raise LookupError_(f"{j.key}: Cypher relationship types {types} all connect them")
-        out_joins[j.key] = JoinNames(forward, graphql_field, cypher_rel)
+        # SPARQL edge predicate: the relationship type's, between the two tables' labels
+        sparql_rel = None
+        if cypher_rel and out_tables[src_key].sparql_class and out_tables[tgt_key].sparql_class:
+            edges = [
+                e["iri"]
+                for e in vocab["edges"]
+                if e["type"] == cypher_rel
+                and e["source"] == vocab_labels[s_node["label"]]
+                and e["target"] == vocab_labels[t_node["label"]]
+            ]
+            sparql_rel = edges[0] if edges else None
+        out_joins[j.key] = JoinNames(forward, graphql_field, cypher_rel, sparql_rel)
 
     return Resolved(
         tables=out_tables,

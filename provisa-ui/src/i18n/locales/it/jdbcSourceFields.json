@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "Dialetto SQL",
+    "dialectHelp": "La variante di SQL che Provisa scrive per questa sorgente. Non deve corrispondere al driver: scegli la più vicina al database, oppure ANSI.",
+    "ansi": "ANSI (SQL generico)",
+    "username": "Nome utente",
+    "password": "Password",
+    "capabilityName": {
+      "attach": "Collegamento live",
+      "predicate": "Pushdown dei filtri",
+      "join": "Pushdown dei join",
+      "aggregate": "Pushdown delle aggregazioni",
+      "key_range": "Pushdown degli intervalli di chiave"
+    },
+    "detect": "Rileva",
+    "checkPassed": "{{capability}}: superato",
+    "checkFailed": "{{capability}}: non superato ({{reason}})",
+    "jdbcDriverJar": "JAR del driver JDBC",
+    "jdbcDriverJarHint": "Il file JAR del driver, caricato dal tuo computer. Solo installazioni self-hosted.",
+    "jdbcDriverClass": "Classe del driver",
+    "driver": "Driver",
+    "jarDriver": "Il tuo driver JDBC (JAR)",
+    "host": "Host",
+    "port": "Porta",
+    "database": "Database",
+    "file": "File del database",
+    "fileHint": "Il file del database, scritto {files}/… per uno nell'area file dell'organizzazione.",
+    "jdbcUrl": "URL JDBC",
+    "jdbcUrlHint": "L'URL jdbc: del driver. Non inserirvi alcuna password.",
+    "jdbcDriverJarPlaceholder": "Carica il file JAR del driver"
+  }
+}

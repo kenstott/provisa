@@ -1,0 +1,172 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:groupexposure/1-groups-over-limit.graphql",
+  "reads": [
+   "bank",
+   "wikidata"
+  ],
+  "root_field": "g__viewGroupExposure"
+ },
+ {
+  "columns": [
+   "sector",
+   "count_star()",
+   "sum(committed_eur)",
+   "max(pct_of_tier1)"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:groupexposure/2-by-sector.graphql",
+  "root_field": "g__viewBorrowerExposureGroupBy",
+  "rows": [
+   [
+    "Construction",
+    7,
+    "1.76E+8",
+    6.9
+   ],
+   [
+    "Energy",
+    2,
+    "4E+7",
+    4.4
+   ],
+   [
+    "Engineering",
+    1,
+    "1.1E+7",
+    1.7
+   ],
+   [
+    "Food and drink",
+    2,
+    "3.7E+7",
+    3.8
+   ],
+   [
+    "Insurance",
+    2,
+    "6.9E+7",
+    9.4
+   ],
+   [
+    "Manufacturing",
+    6,
+    "1.34E+8",
+    6.4
+   ],
+   [
+    "Retail",
+    1,
+    "4.7E+7",
+    7.3
+   ],
+   [
+    "Technology",
+    3,
+    "5.7E+7",
+    5.3
+   ],
+   [
+    "Telecoms",
+    3,
+    "1.04E+8",
+    7.2
+   ],
+   [
+    "Utilities",
+    9,
+    "2.77E+8",
+    8.1
+   ],
+   [
+    "Wholesale",
+    1,
+    "1.9E+7",
+    3.0
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "sector",
+   "count",
+   "sum",
+   "max"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:groupexposure/2-by-sector.graphql",
+  "root_field": "g__viewBorrowerExposureGroupBy",
+  "rows": [
+   [
+    "Construction",
+    7,
+    "1.76E+8",
+    "6.9"
+   ],
+   [
+    "Energy",
+    2,
+    "4E+7",
+    "4.4"
+   ],
+   [
+    "Engineering",
+    1,
+    "1.1E+7",
+    "1.7"
+   ],
+   [
+    "Food and drink",
+    2,
+    "3.7E+7",
+    "3.8"
+   ],
+   [
+    "Insurance",
+    2,
+    "6.9E+7",
+    "9.4"
+   ],
+   [
+    "Manufacturing",
+    6,
+    "1.34E+8",
+    "6.4"
+   ],
+   [
+    "Retail",
+    1,
+    "4.7E+7",
+    "7.3"
+   ],
+   [
+    "Technology",
+    3,
+    "5.7E+7",
+    "5.3"
+   ],
+   [
+    "Telecoms",
+    3,
+    "1.04E+8",
+    "7.2"
+   ],
+   [
+    "Utilities",
+    9,
+    "2.77E+8",
+    "8.1"
+   ],
+   [
+    "Wholesale",
+    1,
+    "1.9E+7",
+    "3"
+   ]
+  ]
+ }
+]

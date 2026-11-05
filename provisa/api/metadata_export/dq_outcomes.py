@@ -118,8 +118,12 @@ def index_outcomes(rows: list[dict]) -> dict[OutcomeKey, DataQualityOutcome]:
     return index
 
 
-async def read_latest_outcomes(config: ProvisaConfig) -> dict[OutcomeKey, DataQualityOutcome]:
-    """The last scan's verdicts for every registered contract in the config.
+async def read_latest_outcomes(
+    config: ProvisaConfig, *, product_id: str | None = None
+) -> dict[OutcomeKey, DataQualityOutcome]:
+    """The last scan's verdicts for every registered contract in the config, or, given
+    ``product_id``, for the contracts that product owns: its checker tables, the only checks its
+    documents carry (REQ-2157). Each results table read is a governed query.
 
     A results table that has never been scanned returns no rows and contributes no keys, so its
     checks publish as never run — the true statement about a contract registered but not yet
@@ -131,6 +135,8 @@ async def read_latest_outcomes(config: ProvisaConfig) -> dict[OutcomeKey, DataQu
     rows: list[dict] = []
     for table in config.tables:
         if table.source_id not in checker_ids or not table.dq_contract:
+            continue
+        if product_id is not None and table.product_id != product_id:
             continue
         plan = await _govern_and_route(
             latest_scan_sql(table.schema_name, table.table_name), _EXPORT_ROLE

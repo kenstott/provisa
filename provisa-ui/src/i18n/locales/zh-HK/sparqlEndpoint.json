@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "端點",
+    "copyEndpoint": "複製端點 URL",
+    "prefixes_one": "{{count}} 個前綴",
+    "prefixes_other": "{{count}} 個前綴",
+    "prefixName": "前綴",
+    "namespace": "命名空間",
+    "removePrefix": "移除前綴",
+    "invalidPrefix": "僅限字母、數字、- 和 _",
+    "addHint": "填寫最後一行即可新增前綴。前綴用於在結果和標籤查詢中命名術語；查詢按原樣執行。",
+    "restore": "還原前綴"
+  }
+}

@@ -26,6 +26,7 @@ import json
 
 from sqlalchemy import select
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.schema_org import kafka_topics, sources
 
 if TYPE_CHECKING:
@@ -177,6 +178,16 @@ PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
 )
 
 
+def _jdbc_source_driver(pool: "SourcePool", source_id: str):  # REQ-2191
+    """A JDBC source's driver, which lists what its database holds through its dialect."""
+    from provisa.executor.drivers.jdbc_source import JdbcSourceDriver
+
+    driver = pool.get(source_id)
+    if not isinstance(driver, JdbcSourceDriver):
+        raise TypeError(f"source {source_id!r} is not served by the JDBC driver")
+    return driver
+
+
 def is_provisa_internal(schema: str) -> bool:
     """True for any provisa-managed schema that should be hidden from users."""
     return schema in PROVISA_INTERNAL_SCHEMAS or schema.startswith("org_")
@@ -261,10 +272,13 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "sparql":
         return ["sparql"]
 
+    if t == "quickbooks":
+        return ["default"]  # REQ-2197: one schema; an entity is the table
+
     if t == "elasticsearch":
         return ["default"]  # REQ-1672: one schema; the index is the table
 
-    if t in ("node", "python"):
+    if t in CODE_SOURCE_TYPES:
         return ["default"]  # REQ-1984, REQ-1993: one schema; a @table function is the table
 
     if t == "cosmosdb":  # REQ-1982: the source's database; a container is the table
@@ -457,6 +471,12 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return [row[0] for row in result.rows]
 
+    if t == "jdbc":
+        # REQ-2191: listed by the source's own SQLAlchemy dialect, which knows its catalog.
+        if not pool.has(source_id):
+            return None
+        return await _jdbc_source_driver(pool, source_id).schema_names()
+
     if t == "saphana":
         # REQ-1753: saphana's direct driver is the generic SQLAlchemyDriver (registry.py's
         # _SQLALCHEMY_FALLBACK), same as trino's — $1, not ? or %s. SYS.SCHEMAS is HANA's own
@@ -590,6 +610,25 @@ def _openapi_is_table(query) -> bool:
     return query.response_schema is not None or query.columns_declared
 
 
+def openapi_parameter_columns(query) -> list[dict]:  # REQ-1986
+    """An OpenAPI operation's native-filter columns: one per path parameter, which the
+    operation always requires, then one per query parameter, required where the spec says."""
+    from provisa.openapi.register import _openapi_to_provisa_type
+
+    return [
+        {
+            "name": f"_nf_{p['name']}",
+            # A parameter's type is the spec's (array, object); a column's is one the engine
+            # has, as the response's columns are typed.
+            "type": _openapi_to_provisa_type(p.get("type")),
+            "native_filter_type": kind,
+            "native_filter_required": True if kind == "path_param" else p["required"],
+        }
+        for kind, params in (("path_param", query.path_params), ("query_param", query.query_params))
+        for p in params
+    ]
+
+
 def _unwrap_gql_type(type_node: dict) -> dict:
     """Unwrap NON_NULL wrappers to get the inner type node."""
     while type_node and type_node.get("kind") == "NON_NULL":
@@ -620,6 +659,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
     queries, _ = parse_spec(spec_info["spec"])
     from provisa.api.admin._table_paging import paging_type
     from provisa.core.paging import ENDPOINT, paging_row
+    from provisa.core.parameters import required_parameters
 
     return [
         AvailableTableType(
@@ -628,6 +668,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
             paging_kind=ENDPOINT,  # REQ-318: with the paging the operation suggests
             pagination=paging_type(paging_row(q.pagination)),
             columns_declared=q.columns_declared,  # REQ-1924
+            required_parameters=required_parameters(openapi_parameter_columns(q)),  # REQ-1986
         )
         for q in queries
         if _openapi_is_table(q)
@@ -657,6 +698,7 @@ async def _native_tables_graphql(  # REQ-307, REQ-308, REQ-1923
             # REQ-318: a connection table may set its own row bound when it is registered.
             paging_kind="connection" if t["connection"] else None,
             paging_ceiling_rows=state.config.graphql_remote.max_rows if t["connection"] else None,
+            required_parameters=t["required_parameters"],  # REQ-1986
         )
         for t in offered_tables(*offered)
     ]
@@ -707,7 +749,7 @@ async def specification_columns(  # REQ-464
         return {
             q.operation_id: [
                 *(c["name"] for c in _schema_to_columns(q.response_schema)),
-                *(f"_nf_{p['name']}" for p in (*q.path_params, *q.query_params)),
+                *(c["name"] for c in openapi_parameter_columns(q)),
             ]
             for q in queries
             if _openapi_is_table(q)
@@ -732,8 +774,7 @@ async def specification_columns(  # REQ-464
         if not reg.get("brand") and reg.get("schema") is None:
             return None  # its schema has not been read from its endpoint yet: no call here
         from provisa.api.admin._graphql_table_registration import (
-            offered_columns,
-            offered_tables,
+            offered_columns_of_every_table,
             source_offer,
         )
 
@@ -741,10 +782,8 @@ async def specification_columns(  # REQ-464
         if offered is None:
             return None
         return {
-            table["name"]: [
-                name for name, _type, _comment in offered_columns(*offered, table["name"])
-            ]
-            for table in offered_tables(*offered)
+            table: [name for name, _type, _comment in columns]
+            for table, columns in offered_columns_of_every_table(*offered).items()
         }
     return None
 
@@ -1082,14 +1121,27 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
         return None
 
     t = source_type.lower()
-    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum", "redshift"):
-        # cockroachdb/yugabytedb/greenplum/redshift: same wire-compatible grouping as
-        # native_schemas's postgres-wire branch — were missing from this tuple, so each fell
-        # through to the generic engine-catalog fallback (empty pre-registration), leaving the
-        # Register Table TABLE picker permanently empty even once the schema picker itself
-        # worked (verified live: cockroachdb's schema list resolves fine, but "widgets" never
-        # appeared in the table select without this; redshift's regclass/pg_class support is
-        # identical to upstream Postgres's for this already-schema-scoped query).
+    if t == "redshift":
+        # Redshift has no text-to-regclass cast ("cannot cast type text to regclass"), so the
+        # postgres-wire listing below failed and the Register Table picker stayed empty. Its
+        # tables and their comments are read from the pg_catalog it keeps.
+        result = await pool.execute(
+            source_id,
+            "SELECT c.relname, d.description FROM pg_class c "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "LEFT JOIN pg_description d ON d.objoid = c.oid AND d.objsubid = 0 "
+            "WHERE n.nspname = $1 AND c.relkind = 'r' ORDER BY c.relname",
+            [schema_name],
+        )
+        return [AvailableTableType(name=row[0], comment=row[1]) for row in result.rows]
+
+    if t in ("postgresql", "cockroachdb", "yugabytedb", "greenplum"):
+        # cockroachdb/yugabytedb/greenplum: same wire-compatible grouping as native_schemas's
+        # postgres-wire branch — were missing from this tuple, so each fell through to the
+        # generic engine-catalog fallback (empty pre-registration), leaving the Register Table
+        # TABLE picker permanently empty even once the schema picker itself worked (verified
+        # live: cockroachdb's schema list resolves fine, but "widgets" never appeared in the
+        # table select without this).
         result = await pool.execute(
             source_id,
             "SELECT table_name, obj_description("
@@ -1148,6 +1200,10 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             [schema_name],
         )
         return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
+    if t == "jdbc":  # REQ-2191: as its dialect lists them
+        listed = await _jdbc_source_driver(pool, source_id).table_names(schema_name)
+        return [AvailableTableType(name=name, comment=comment) for name, comment in listed]
 
     if t == "saphana":
         # SYS.TABLES is HANA's own catalog view; TABLE_TYPE excludes views (COLUMN/ROW covers
@@ -1281,6 +1337,15 @@ async def athena_table_format(source_id: str, schema_name: str, table_name: str)
     return table_format(meta.get("Parameters") or {})
 
 
+async def record_table_format(model: Any, source_type: str | None) -> None:
+    """REQ-1981: record on ``model`` the format its source reports for it (an Athena table's),
+    which decides the writes the table takes; a table of any other source has none."""
+    if source_type == "athena":
+        model.table_format = await athena_table_format(
+            model.source_id, model.schema_name, model.table_name
+        )
+
+
 async def _native_columns_athena(
     source_id: str, schema_name: str, table_name: str
 ) -> list[tuple[str, str]]:
@@ -1381,15 +1446,65 @@ def _pg_column_typing(
     registering an unmappable column. Its two markers are resolved here: ``ARRAY`` from the
     array type's own spelling, and ``USER-DEFINED`` as a composite (JSON, REQ-1965) or as an enum
     or domain (text)."""
-    from provisa.core.ir_types import ColumnTyping, column_typing, composite_typing, to_ir
+    from provisa.core.ir_types import (
+        ColumnTyping,
+        character_typing,
+        column_typing,
+        composite_typing,
+        subtype_of,
+        to_ir,
+    )
+    from provisa.core.temporal_type import sized_time, sized_timestamp
 
     if data_type == _PG_ARRAY:
         return column_typing(formatted or udt_name, kind)
     if data_type == _PG_USER_DEFINED:
         if typtype == "c":
             return composite_typing(formatted or udt_name, kind)
-        return ColumnTyping("text")
+        # REQ-2171: an extension's type that is a subtype (PostGIS geometry and geography).
+        return ColumnTyping(subtype_of(udt_name, kind) or "text")
+    if data_type == "numeric" and formatted and formatted != "numeric":
+        return ColumnTyping(formatted)  # a sized decimal keeps its size (REQ-1961)
+    sized = (sized_timestamp(formatted) or sized_time(formatted)) if formatted else None
+    if sized is not None:
+        return ColumnTyping(sized)  # a timestamp or time keeps its declared precision (REQ-1961)
+    subtype = subtype_of(data_type, kind)
+    if subtype is not None:
+        return ColumnTyping(subtype)  # REQ-2171: registration records the subtype
+    character = character_typing(formatted or udt_name, kind)
+    if character is not None:
+        return character  # text, keeping its native type and length (REQ-1961)
     return ColumnTyping(to_ir(data_type))
+
+
+# REQ-2167: an unsized PostgreSQL numeric registers with a precision of 38 -- the widest every
+# engine holds exactly -- and the largest scale its values have, read from at most this many rows.
+_NUMERIC_PRECISION = 38
+_NUMERIC_SCALE_SAMPLE_ROWS = 100_000
+# The scale an unsized numeric registers with when its table has no value to read it from.
+_NUMERIC_SCALE_WITHOUT_VALUES = 10
+
+
+async def _sized_numeric(
+    pool: "SourcePool", source_id: str, schema_name: str, table_name: str, column: str
+) -> "ColumnTyping":
+    """An unsized numeric column as ``numeric(38,s)``: ``s`` the largest scale among its values
+    (a bounded sample), so an engine that cannot hold an unbounded numeric (DuckDB reads one as
+    a double) reads it exactly at the source instead."""
+    from provisa.core.ir_types import ColumnTyping
+
+    def ident(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    result = await pool.execute(
+        source_id,
+        f"SELECT max(scale({ident(column)})) FROM (SELECT {ident(column)} FROM "
+        f"{ident(schema_name)}.{ident(table_name)} LIMIT {_NUMERIC_SCALE_SAMPLE_ROWS}) sampled",
+    )
+    scale = result.rows[0][0] if result.rows else None
+    if scale is None:
+        scale = _NUMERIC_SCALE_WITHOUT_VALUES
+    return ColumnTyping(f"numeric({_NUMERIC_PRECISION},{min(int(scale), _NUMERIC_PRECISION)})")
 
 
 async def native_column_typings(  # REQ-1965
@@ -1412,7 +1527,13 @@ async def native_column_typings(  # REQ-1965
             _PG_COLUMN_TYPES_SQL if kind in _PG_CATALOG_KINDS else _PG_WIRE_COLUMN_TYPES_SQL,
             [schema_name, table_name],
         )
-        return [(row[0], _pg_column_typing(kind, *row[1:5])) for row in result.rows]
+        typings = [(row[0], _pg_column_typing(kind, *row[1:5])) for row in result.rows]
+        return [
+            (name, await _sized_numeric(pool, source_id, schema_name, table_name, name))
+            if typing.data_type == "numeric"
+            else (name, typing)
+            for name, typing in typings
+        ]
     listed = await native_columns(
         source_id, source_type, schema_name, table_name, pool, config_conn
     )
@@ -1518,6 +1639,8 @@ async def native_columns(  # REQ-1732
             [schema_name, table_name],
         )
         return [(row[0], _oracle_spelling(*row[1:4])) for row in result.rows]
+    if t == "jdbc":  # REQ-2191: as its dialect reads them
+        return await _jdbc_source_driver(pool, source_id).column_types(schema_name, table_name)
     if t == "saphana":
         # REQ-1753: same "no ATTACH-mechanism seam" gap as trino above — saphana has no DuckDB
         # ATTACH connector, so this is the only path. SYS.TABLE_COLUMNS is HANA's own catalog view.
@@ -1829,17 +1952,13 @@ async def require_live_attach(state, source_id: str, what: str) -> None:
 
 def _listed_by_its_server(source_type: str, state) -> bool:
     """Whether a source of ``source_type`` is read through its bundled connector server on the
-    bound engine: a pgwire-replica type the engine lands through that server, or attaches through
-    it (``Connector.served_by_bundle``). Trino reads files with its own file catalog, for one."""
+    bound engine (``strategy.read_through_its_server``)."""
     from provisa.federation.pgwire_replica import PGWIRE_REPLICA_TYPES
-    from provisa.federation.strategy import engine_attaches
+    from provisa.federation.strategy import read_through_its_server
 
     if source_type not in PGWIRE_REPLICA_TYPES:
         return False
-    engine = state.federation_engine.engine
-    if not engine_attaches(engine, source_type):
-        return True
-    return engine.connector_for(source_type).served_by_bundle
+    return read_through_its_server(state.federation_engine.engine, source_type)
 
 
 async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314, REQ-322, REQ-147
@@ -1935,10 +2054,19 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t in ("neo4j", "sparql"):
         return []
 
+    if t == "quickbooks":  # REQ-2197: the Accounting API's entities
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.quickbooks.entities import ENTITIES, table_name as _qb_table
+
+        return [
+            AvailableTableType(name=_qb_table(e.name), comment=e.description)
+            for e in ENTITIES.values()
+        ]
+
     if t == "elasticsearch":
         return await _native_tables_elasticsearch(source_id, schema_name, config_conn, state)
 
-    if t in ("node", "python"):  # REQ-1984, REQ-1993: the code's @table functions
+    if t in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: the code's @table functions
         from provisa.api.admin.types import AvailableTableType
         from provisa.codesource import discovery as _code
 
@@ -1946,7 +2074,10 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         return (
             None
             if found is None
-            else [AvailableTableType(name=n, comment=d or None) for n, d in found]
+            else [
+                AvailableTableType(name=n, comment=d or None, required_parameters=required)
+                for n, d, required in found
+            ]
         )
 
     if t == "cosmosdb":  # REQ-1982
@@ -2078,10 +2209,13 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t in ("fabric", "synapse"):
         from provisa.api.admin.types import AvailableTableType
 
+        # A Synapse serverless pool holds no tables of its own, only views and external tables,
+        # so its views are what it offers; a Fabric warehouse offers its base tables.
+        kinds = "'BASE TABLE', 'VIEW'" if t == "synapse" else "'BASE TABLE'"
         result = await pool.execute(
             source_id,
             "SELECT TABLE_NAME, NULL FROM INFORMATION_SCHEMA.TABLES "
-            "WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+            f"WHERE TABLE_SCHEMA = ? AND TABLE_TYPE IN ({kinds}) ORDER BY TABLE_NAME",
             [schema_name],
         )
         return [AvailableTableType(name=row[0], comment=None) for row in result.rows]

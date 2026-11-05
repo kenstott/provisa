@@ -226,10 +226,10 @@ La vue lit les enregistrements de rafraîchissement dans `"ops"."traces"` et ré
 
 ## Une vue telle qu'elle était, et telle qu'elle a été enregistrée {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Une vue qui associe les colonnes de sa source comme `business_key`, `valid_time` et `recorded_time` conserve chaque version qu'elle a connue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur aucun stockage. Une lecture simple renvoie l'état actuel. Deux en-têtes de requête lisent son passé :
+Une lecture simple répond l'état actuel. Deux arguments de la vue, écrits là où l'instruction la nomme, lisent son passé :
 
-- `X-Provisa-As-Of` lit la vue à une date ou sur une plage.
-- `X-Provisa-As-Recorded` la lit telle que Provisa l'avait enregistrée à une date. Les versions enregistrées après cette date sont écartées, si bien qu'une correction enregistrée plus tard ne change pas la relecture du passé.
+- `as_of` lit la vue à un moment, ou sur une plage : `"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`.
+- `as_recorded` la lit telle que Provisa l'avait enregistrée à un moment. Les versions enregistrées après ce moment sont écartées, de sorte qu'une correction enregistrée plus tard ne change pas une relecture du passé.
 
 Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit les trois déclarations, avec des exemples, et chaque surface qui accepte les deux valeurs.
 

@@ -123,14 +123,14 @@ async def test_role_upsert_still_writes_other_roles():
     await role_repo.upsert(
         conn,  # type: ignore[arg-type]
         Role(
-            id="analyst",
+            id="sales_analyst",
             description="Test role.",
             capabilities=["query_development"],
             domain_access=["sales"],
         ),
         org_id=None,
     )
-    assert [u["id"] for u in conn.upserts] == ["analyst"]
+    assert [u["id"] for u in conn.upserts] == ["sales_analyst"]
 
 
 @pytest.mark.parametrize("path", CONFIGS)

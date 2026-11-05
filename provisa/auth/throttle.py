@@ -84,6 +84,11 @@ class LoginThrottle:  # REQ-1393
         self.lockout_seconds = lockout_seconds
         self._clock = clock
         self._lock = threading.Lock()
+        # Each in the order its entries were last written -- a subject's last failure, its lockout
+        # -- so what has expired is always at the front, swept on the next failure (_sweep). A
+        # failure past the window counts for nothing and a lockout past its end binds nothing:
+        # neither is kept. Kept, every distinct bad credential (a bearer surface keys by its
+        # digest) stayed for the process's life.
         self._failures: dict[str, list[float]] = {}
         self._locked_until: dict[str, float] = {}
 
@@ -114,11 +119,30 @@ class LoginThrottle:  # REQ-1393
         """Count one rejected credential, locking the subject out on the nth within the window."""
         now = self._clock()
         with self._lock:
-            recent = [t for t in self._failures.get(subject, []) if now - t < self.window_seconds]
+            self._sweep(now)
+            recent = [t for t in self._failures.pop(subject, []) if now - t < self.window_seconds]
             recent.append(now)
             self._failures[subject] = recent
             if len(recent) >= self.max_attempts:
+                self._locked_until.pop(subject, None)
                 self._locked_until[subject] = now + self.lockout_seconds
+
+    def _sweep(self, now: float) -> None:
+        """Drop, from the front, the lockouts that have ended and the subjects whose last failure
+        is past the window. A locked-out subject's failures are not needed to keep it locked out
+        (``_locked_until`` does), and the lockout's end clears them in any case (``check``).
+        Under ``_lock``."""
+        while self._locked_until:
+            subject, until = next(iter(self._locked_until.items()))
+            if until > now:
+                break
+            del self._locked_until[subject]
+            self._failures.pop(subject, None)
+        while self._failures:
+            subject, times = next(iter(self._failures.items()))
+            if now - times[-1] < self.window_seconds:
+                break
+            del self._failures[subject]
 
     def record_success(self, subject: str) -> None:
         """A valid credential clears the subject's history — the account is demonstrably in use."""

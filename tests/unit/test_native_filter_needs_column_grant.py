@@ -74,9 +74,7 @@ def test_granted_role_gets_the_table_and_its_parameters():
     assert [c["column_name"] for c in info.native_filter_columns] == ["pet_id"]
 
 
-def test_an_unrestricted_data_column_still_carries_every_role_in():
-    """visible_to=[] is unrestricted, so the implied reach is every role's -- as before."""
+def test_a_data_column_granted_to_no_role_carries_no_role_in():
+    """REQ-2154: visible_to=[] is no role, so no role reaches the table through its parameters."""
     si = _schema_input("sandbox", data_visible_to=[])
-    (info,) = _build_visible_tables(si)
-    assert [c["column_name"] for c in info.visible_columns] == ["name"]
-    assert [c["column_name"] for c in info.native_filter_columns] == ["pet_id"]
+    assert _build_visible_tables(si) == []

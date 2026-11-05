@@ -52,6 +52,8 @@
     "draftNoRightTooltip": "Een tabel vrijgeven of terugzetten naar concept vereist het recht Tabelregistratie in het domein van de tabel.",
     "draftPreviewNote": "Conceptvoorbeeld: lezers kunnen deze tabel nog niet zien.",
     "keepsHistory": "Bewaart historie: elke versie, met wanneer het gebeurde en wanneer het werd vastgelegd.",
-    "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd"
+    "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd",
+    "deleteTitle": "Tabel {{name}} verwijderen?",
+    "deleteConsequence": "De registratie van de tabel wordt verwijderd."
   }
 }

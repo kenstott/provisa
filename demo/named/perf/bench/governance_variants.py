@@ -30,6 +30,8 @@ VARIANTS: dict[str, dict[str, Any]] = {
     "zero": {},
     "row_rules_2": {"row_rules_per_table": 2},
     "masked_quarter": {"masked_column_share": 0.25},
+    # row rules and masks together, without the other knobs "all" adds
+    "rows_and_masks": {"row_rules_per_table": 2, "masked_column_share": 0.25},
     "redaction": {"central_redaction": True},
     "role_depth_2": {"role_depth": 2},
     "derived_roles_2": {"derived_roles": 2},

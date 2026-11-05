@@ -22,15 +22,27 @@ fixed decimal type passes that type instead.
 
 from __future__ import annotations
 
+import ipaddress
 import json
-from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+import math
+import re
+from collections.abc import Sequence
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
+from decimal import Decimal, localcontext
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pyarrow as pa
 from dateutil.relativedelta import relativedelta
 
-from provisa.core.ir_types import interval_parts, interval_value, to_ir
+from provisa.core.ir_types import (
+    infinite_date,
+    infinite_timestamp,
+    infinity_of,
+    interval_parts,
+    interval_value,
+    to_ir,
+)
 
 # Canonical IR name → the pyarrow factory name, or one of the two spellings decided below.
 _IR_TO_ARROW: dict[str, str] = {
@@ -120,14 +132,110 @@ def arrow_value(value: Any, ir_type: str, *, decimal: pa.DataType | None = None)
     return value
 
 
+# DuckDB stores PostgreSQL's infinity and -infinity at the ends of the storage integer's range
+# but one: a date as its day count, a timestamp as its microseconds.
+_DATE_INFINITY = 2**31 - 1
+_TIMESTAMP_INFINITY = 2**63 - 1
+
+
 def column_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
     """An Arrow column's values as row values: ``to_pylist``, an interval column's each the IR
-    interval it is (ir_types.interval_value) rather than Arrow's own ``MonthDayNano``."""
-    if not pa.types.is_interval(column.type):
-        return column.to_pylist()
+    interval it is (ir_types.interval_value) rather than Arrow's own ``MonthDayNano``, an
+    infinite date or timestamp the IR infinity it is (ir_types.infinite_date,
+    infinite_timestamp), which ``to_pylist`` cannot hold, and a timestamp in a zone in that zone
+    as zoneinfo and PostgreSQL write it (``_zoned_values``)."""
+    if pa.types.is_interval(column.type):
+        return [
+            None if v is None else interval_value(v.months, v.days, v.nanoseconds // 1000)
+            for v in column.to_pylist()
+        ]
+    if pa.types.is_date32(column.type):
+        return _with_infinities(column, pa.int32(), _DATE_INFINITY, infinite_date)
+    if pa.types.is_timestamp(column.type) and column.type.tz is not None:
+        return _zoned_values(column)
+    if pa.types.is_timestamp(column.type) and column.type.unit == "us":
+        return _with_infinities(
+            column,
+            pa.int64(),
+            _TIMESTAMP_INFINITY,
+            lambda sign: infinite_timestamp(sign, aware=False),
+        )
+    return column.to_pylist()
+
+
+# Arrow writes a fixed offset as its zone like this; any other zone is an IANA name.
+_FIXED_OFFSET = re.compile(r"(?P<sign>[+-])(?P<hours>\d\d):(?P<minutes>\d\d)")
+
+
+def _zone(name: str) -> tzinfo:
+    """The zone an Arrow timestamp column names, as PostgreSQL reads it: a fixed offset, else the
+    IANA zone by zoneinfo. pyarrow's own to_pylist takes pytz where it can import it, and pytz has
+    no daylight time after 2037, no transitions before 1901 and offsets rounded to the minute.
+    ``UTC``, the zone DuckDB's session writes, is the offset zero, as pyarrow reads it (the same
+    UTC as ``+00:00``), not a region: openCypher writes it ``Z`` and names no region.
+    An unknown name raises (ZoneInfoNotFoundError)."""
+    if name == "UTC":
+        return timezone.utc
+    fixed = _FIXED_OFFSET.fullmatch(name)
+    if fixed is None:
+        return ZoneInfo(name)
+    east = timedelta(hours=int(fixed["hours"]), minutes=int(fixed["minutes"]))
+    return timezone(-east if fixed["sign"] == "-" else east)
+
+
+def _floor_to_micros(column: pa.Array | pa.ChunkedArray) -> pa.Array | pa.ChunkedArray:
+    """A nanosecond timestamp column as microseconds in UTC, each floored, as PostgreSQL holds an
+    instant to the microsecond. Arrow's cast and division truncate toward zero."""
+    import pyarrow.compute as pc
+
+    nanos = column.cast(pa.int64())
+    micros = pc.call_function("divide", [nanos, pa.scalar(1000, pa.int64())])
+    over = pc.call_function(
+        "greater", [pc.call_function("multiply", [micros, pa.scalar(1000, pa.int64())]), nanos]
+    )
+    micros = pc.call_function("subtract", [micros, over.cast(pa.int64())])
+    return micros.cast(pa.timestamp("us"))
+
+
+def _zoned_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
+    """A timestamp column in a zone: each value the instant it holds, in that zone by zoneinfo (or
+    its fixed offset), never pytz's (``_zone``). A nanosecond value is floored to the microsecond
+    and never passes through pandas, whose range ends in 1677 and 2262; an infinite microsecond
+    value is the IR infinity, in UTC."""
+    zone = _zone(column.type.tz)
+    unit = column.type.unit
+    utc = _floor_to_micros(column) if unit == "ns" else column.cast(pa.timestamp(unit))
+    values = (
+        _with_infinities(
+            utc, pa.int64(), _TIMESTAMP_INFINITY, lambda sign: infinite_timestamp(sign, aware=True)
+        )
+        if unit == "us"
+        else utc.to_pylist()
+    )
     return [
-        None if v is None else interval_value(v.months, v.days, v.nanoseconds // 1000)
-        for v in column.to_pylist()
+        v if v is None or infinity_of(v) else zone.fromutc(v.replace(tzinfo=zone)) for v in values
+    ]
+
+
+def _with_infinities(
+    column: pa.Array | pa.ChunkedArray, storage: pa.DataType, end: int, infinite: Any
+) -> list[Any]:
+    import pyarrow.compute as pc
+
+    # call_function: the comparison and selection kernels are generated at import, so a type
+    # checker sees no pc.equal or pc.if_else (as scheduler/jobs.py reads them).
+    raw = column.cast(storage)
+    positive = pc.fill_null(pc.call_function("equal", [raw, pa.scalar(end, storage)]), False)
+    negative = pc.fill_null(pc.call_function("equal", [raw, pa.scalar(-end, storage)]), False)
+    infinite_at = pc.call_function("or", [positive, negative])
+    if not pc.call_function("any", [infinite_at]).as_py():
+        return column.to_pylist()
+    finite = pc.call_function("if_else", [infinite_at, pa.scalar(None, column.type), column])
+    return [
+        infinite(1) if up else infinite(-1) if down else value
+        for value, up, down in zip(
+            finite.to_pylist(), positive.to_pylist(), negative.to_pylist(), strict=True
+        )
     ]
 
 
@@ -147,3 +255,342 @@ def rows_to_batch(
         for i, (name, ir) in enumerate(columns)
     ]
     return pa.RecordBatch.from_arrays(arrays, schema=schema)
+
+
+_EPOCH_DATE = date(1970, 1, 1)
+_EPOCH = datetime(1970, 1, 1)
+_EPOCH_UTC = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_JSON_TYPES = frozenset({"JSON", "JSONB"})
+
+
+def row_batch(  # REQ-2194
+    rows: Sequence[Any], names: Sequence[str], declared: Sequence[str | None] | None = None
+) -> pa.RecordBatch:
+    """Rows, as one Arrow record batch. No encoder reads a row result through this (REQ-2195:
+    each encoder takes a row result's rows as they are, docs/arch/fetch-paths.md); it is what a
+    row result's Arrow would be, for a reader that needs Arrow of rows it holds.
+
+    Each column holds its values as :func:`column_values` reads them back: the same Python value,
+    of the same type (a Decimal with its own exponent, an aware datetime with its own offset), so
+    what the encoder writes of the cell is what it writes of the value. Where Arrow cannot hold a
+    column's values as they are, it holds what PostgreSQL writes of them (``declared``, the
+    engine's type name for the column, says which type that is): a numeric of mixed scales or
+    NaN as numeric_out's text (as a money or a float the numeric it is, at its widest scale), a
+    time with a zone of differing offsets as timetz_out's text, an address as inet_out's or
+    cidr_out's, a JSON document of varying keys as its JSON text, anything else as its str().
+    Aware datetimes of differing offsets are held as instants in UTC."""
+    width = len(names)
+    types = list(declared) if declared else [None] * width
+    arrays = [_column([row[i] for row in rows], types[i]) for i in range(width)]
+    return pa.RecordBatch.from_arrays(arrays, names=list(names))
+
+
+_FLOAT_TYPES = frozenset({"DOUBLE", "DOUBLE PRECISION", "FLOAT", "FLOAT4", "FLOAT8", "REAL"})
+_ADDRESSES = (
+    ipaddress.IPv4Address,
+    ipaddress.IPv6Address,
+    ipaddress.IPv4Interface,
+    ipaddress.IPv6Interface,
+    ipaddress.IPv4Network,
+    ipaddress.IPv6Network,
+)
+
+
+def _declared(declared: str | None) -> str:
+    return "" if declared is None else str(declared).strip().upper()
+
+
+def _column(values: list[Any], declared: str | None) -> pa.Array:
+    values = [
+        bytes(v)
+        if isinstance(v, (memoryview, bytearray))
+        else _by_zoneinfo(v)
+        if isinstance(v, datetime)
+        else v
+        for v in values
+    ]
+    present = [v for v in values if v is not None]
+    if not present:
+        return pa.nulls(len(values))
+    if any(getattr(v, "pg_infinity", 0) for v in present):
+        held = _with_sentinels(values, present)
+        if held is not None:
+            return held
+    if any(isinstance(v, relativedelta) for v in present):
+        held = _intervals(values)
+        if held is not None:
+            return held
+    if all(isinstance(v, time) and v.tzinfo is not None for v in present):
+        held = _clocks(values)
+        if held is not None:
+            return held
+    if all(isinstance(v, Decimal) for v in present):
+        held = _decimals(values, present, _declared(declared))
+        if held is not None:
+            return held
+    array = _inferred(values)
+    if array is not None and _same_values(column_values(array), values):
+        return array
+    if all(isinstance(v, datetime) and v.tzinfo is not None for v in present):
+        array = _instants(values)
+        if array is not None:
+            return array
+    kind = _declared(declared)
+    texts = [None if v is None else _text(v, kind) for v in values]
+    return _inferred(texts) or pa.array([None if v is None else str(v) for v in values])
+
+
+def _by_zoneinfo(value: datetime) -> datetime:
+    """A datetime in a pytz zone (pyarrow's to_pylist, DuckDB's rows) as the same instant in that
+    zone by zoneinfo (``_zone``), whose rules PostgreSQL's agree with; pytz has no daylight time
+    after 2037, no transitions before 1901 and offsets rounded to the minute. Any other value is
+    itself."""
+    name = getattr(value.tzinfo, "zone", None)
+    if not isinstance(name, str) or getattr(value, "pg_infinity", 0):
+        return value
+    return value.astimezone(_zone(name))
+
+
+def _inferred(values: list[Any]) -> pa.Array | None:
+    try:
+        return pa.array(values)
+    except (
+        pa.ArrowInvalid,
+        pa.ArrowTypeError,
+        pa.ArrowNotImplementedError,
+        OverflowError,
+        TypeError,
+        ValueError,
+    ):
+        return None
+
+
+def _decimals(values: list[Any], present: list[Decimal], kind: str) -> pa.Array | None:
+    """A numeric column: exact at the one scale its values share; else, for a money or a float,
+    exact at its widest scale; else numeric_out's text of each."""
+    finite = all(v.is_finite() for v in present)
+    exponents = {v.as_tuple().exponent for v in present} if finite else set()
+    if finite and (len(exponents) == 1 or kind == "MONEY" or kind in _FLOAT_TYPES):
+        scale = max(0, -min(int(e) for e in exponents))
+        if kind in _FLOAT_TYPES:
+            return pa.array([None if v is None else float(v) for v in values], pa.float64())
+        if len(exponents) == 1 and min(int(e) for e in exponents) <= 0:
+            held = values
+        else:
+            # Mixed scales, or a positive exponent (1E+3): each value at the one scale, exact
+            # (1000, as numeric_out writes it).
+            quantum = Decimal(1).scaleb(-scale)
+            with localcontext() as wide:
+                wide.prec = 1000  # quantize refuses a result past the context's 28 digits
+                held = [None if v is None else v.quantize(quantum) for v in values]
+        # J518 (J502b): a coefficient with a positive exponent (4E+38) has that many more
+        # integer digits, as numeric_out writes it; past decimal256 it is numeric_out's text
+        digits = max(
+            len(v.as_tuple().digits) + max(0, int(v.as_tuple().exponent))
+            for v in held
+            if v is not None
+        )
+        precision = max(digits, scale, 1)
+        if precision <= 76:
+            kind_of = pa.decimal128 if precision <= 38 else pa.decimal256
+            return pa.array(held, kind_of(max(precision, scale), scale))
+    return pa.array([None if v is None else _numeric_text(v) for v in values], pa.string())
+
+
+def _numeric_text(value: Decimal) -> str:
+    """numeric_out: the plain digits, NaN and the infinities by name, no negative zero."""
+    if value.is_nan():
+        return "NaN"
+    if value.is_infinite():
+        return "Infinity" if value > 0 else "-Infinity"
+    return format(value.copy_abs() if value.is_zero() else value, "f")
+
+
+def _clocks(values: list[Any]) -> pa.Array | None:
+    """A timetz column of one offset, as Arrow times of day on 1970-01-01 in that offset."""
+    offsets = {v.utcoffset() for v in values if v is not None}
+    if len(offsets) != 1:
+        return None
+    (offset,) = offsets
+    if offset is None or offset.seconds % 60 or offset.microseconds:
+        return None
+    zone = timezone(offset)
+    stamps = [
+        None if v is None else datetime.combine(_EPOCH_DATE, v.replace(tzinfo=None), tzinfo=zone)
+        for v in values
+    ]
+    try:
+        return pa.array(stamps)
+    except (pa.ArrowInvalid, pa.ArrowTypeError):
+        return None
+
+
+def _offset_text(offset: timedelta) -> str:
+    """The offset as PostgreSQL writes it: +HH, then :MM and :SS only where not zero."""
+    seconds = int(offset.total_seconds())
+    sign = "-" if seconds < 0 else "+"
+    hours, rest = divmod(abs(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    text = f"{sign}{hours:02d}"
+    if minutes or secs:
+        text += f":{minutes:02d}"
+    if secs:
+        text += f":{secs:02d}"
+    return text
+
+
+def _timetz_text(value: time) -> str:
+    """timetz_out: a fraction without its trailing zeros, then the offset."""
+    clock = value.replace(tzinfo=None).isoformat()
+    if value.microsecond:
+        clock = clock.rstrip("0")
+    offset = value.utcoffset()
+    return clock if offset is None else clock + _offset_text(offset)
+
+
+def _pg_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str:
+    """inet_net_ntop: an IPv6 address whose first 80 bits are zero and next 16 zero or ffff (its
+    longest run of zero words, at its start, six long or five then ffff) ends in dotted quad."""
+    if ip.version == 4:
+        return str(ip)
+    words = [int.from_bytes(ip.packed[k : k + 2], "big") for k in range(0, 16, 2)]
+    best_base, best_len, cur_base, cur_len = -1, 0, -1, 0
+    for k, word in enumerate([*words, 1]):
+        if word == 0 and k < 8:
+            cur_base, cur_len = (k, 1) if cur_base == -1 else (cur_base, cur_len + 1)
+            continue
+        if cur_base != -1 and (best_base == -1 or cur_len > best_len):
+            best_base, best_len = cur_base, cur_len
+        cur_base, cur_len = -1, 0
+    if best_base != 0 or not (best_len == 6 or (best_len == 5 and words[5] == 0xFFFF)):
+        return str(ip)
+    head = "::" if best_len == 6 else "::ffff:"
+    return head + str(ipaddress.IPv4Address(ip.packed[12:]))
+
+
+def _address_text(value: Any, kind: str) -> str:
+    """inet_out (an address with its whole prefix written without it) or cidr_out."""
+    if isinstance(value, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+        ip, prefix = value.network_address, value.prefixlen
+    elif isinstance(value, (ipaddress.IPv4Interface, ipaddress.IPv6Interface)):
+        ip, prefix = value.ip, value.network.prefixlen
+    else:
+        ip, prefix = value, value.max_prefixlen
+    if kind != "CIDR" and prefix == ip.max_prefixlen:
+        return _pg_address(ip)
+    return f"{_pg_address(ip)}/{prefix}"
+
+
+def _text(value: Any, kind: str) -> Any:
+    """What PostgreSQL writes of a value Arrow cannot hold as it is (a list: each element's)."""
+    if isinstance(value, str):
+        return value
+    if kind in _JSON_TYPES:
+        return json.dumps(value)
+    if isinstance(value, list):
+        return [None if v is None else _text(v, "") for v in value]
+    if isinstance(value, Decimal):
+        return _numeric_text(value)
+    if isinstance(value, time) and value.tzinfo is not None:
+        return _timetz_text(value)
+    if isinstance(value, _ADDRESSES):
+        return _address_text(value, kind)
+    return str(value)
+
+
+def text_of(value: Any, declared: str | None) -> Any:  # REQ-2195
+    """What PostgreSQL writes of a row result's cell that no encoder reads by its type (a range,
+    a point, an address, a time with a zone), ``declared`` the engine's type name of its column:
+    the encoders read a row result's cells as they are and take this text of any other."""
+    return _text(value, _declared(declared))
+
+
+def _instants(values: list[Any]) -> pa.Array | None:
+    try:
+        return pa.array(
+            [None if v is None else v.astimezone(timezone.utc) for v in values],
+            pa.timestamp("us", tz="UTC"),
+        )
+    except (pa.ArrowInvalid, pa.ArrowTypeError, OverflowError):
+        return None
+
+
+def _with_sentinels(values: list[Any], present: list[Any]) -> pa.Array | None:
+    """A date or timestamp column holding PostgreSQL's infinities, as the sentinels
+    :func:`column_values` reads back as them."""
+    if all(isinstance(v, datetime) for v in present):
+        aware = {v.tzinfo is not None for v in present}
+        if len(aware) != 1:
+            return None
+        zoned = aware.pop()
+        epoch = _EPOCH_UTC if zoned else _EPOCH
+
+        def micros(v: datetime) -> int:
+            sign = getattr(v, "pg_infinity", 0)
+            if sign:
+                return sign * _TIMESTAMP_INFINITY
+            delta = v - epoch
+            return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+
+        raw = pa.array([None if v is None else micros(v) for v in values], pa.int64())
+        return raw.cast(pa.timestamp("us", tz="UTC" if zoned else None))
+    if all(isinstance(v, date) and not isinstance(v, datetime) for v in present):
+
+        def days(v: date) -> int:
+            sign = getattr(v, "pg_infinity", 0)
+            return sign * _DATE_INFINITY if sign else (v - _EPOCH_DATE).days
+
+        return pa.array([None if v is None else days(v) for v in values], pa.int32()).cast(
+            pa.date32()
+        )
+    return None
+
+
+def _intervals(values: list[Any]) -> pa.Array | None:
+    """An interval column some of whose values have months, as Arrow's month-day-nano."""
+    if not all(v is None or isinstance(v, (timedelta, relativedelta)) for v in values):
+        return None
+    parts = [None if v is None else interval_parts(v) for v in values]
+    array = pa.array(
+        [None if p is None else (p[0], p[1], p[2] * 1000) for p in parts],
+        pa.month_day_nano_interval(),
+    )
+    return array if _same_values(column_values(array), values) else None
+
+
+def _same_values(back: list[Any], values: list[Any]) -> bool:
+    return len(back) == len(values) and all(_same(b, v) for b, v in zip(back, values, strict=True))
+
+
+def _same(back: Any, value: Any) -> bool:
+    """Whether ``back`` is ``value`` to every writer of it: equal, of the same type, a Decimal
+    with the same digits and exponent, a datetime or time at the same offset, a float of the same
+    bits."""
+    if value is None or back is None:
+        return value is None and back is None
+    if isinstance(value, tuple) and isinstance(back, list):
+        # Arrow holds a tuple (a point's coordinates, a record) as a list: its writers take either.
+        return len(back) == len(value) and all(
+            _same(b, v) for b, v in zip(back, value, strict=True)
+        )
+    if type(back) is not type(value):
+        return False
+    if isinstance(value, Decimal):
+        # numeric has no negative zero: -0.00 is 0.00 to PostgreSQL
+        b, v = back.as_tuple(), value.as_tuple()
+        return (b.digits, b.exponent) == (v.digits, v.exponent) and (
+            back.is_zero() or b.sign == v.sign
+        )
+    if isinstance(value, float):
+        return (back != back and value != value) or (
+            back == value and math.copysign(1.0, back) == math.copysign(1.0, value)
+        )
+    if isinstance(value, (datetime, time)):
+        return back == value and back.utcoffset() == value.utcoffset()
+    if isinstance(value, (list, tuple)):
+        return len(back) == len(value) and all(
+            _same(b, v) for b, v in zip(back, value, strict=True)
+        )
+    if isinstance(value, dict):
+        return list(back) == list(value) and all(_same(back[k], value[k]) for k in value)
+    return bool(back == value)

@@ -26,6 +26,8 @@ that answers from a 60-row table:
 
 from __future__ import annotations
 
+from provisa.executor.result import QueryResult
+
 import re
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -84,7 +86,7 @@ class _Pipeline:
     async def execute(self, plan, state):
         sql, params = plan.sql, plan.params
         if "COUNT(*)" in sql:
-            return SimpleNamespace(rows=[(_TABLE_ROWS,)], redirect=None, cache_entry=None)
+            return QueryResult(rows=[(_TABLE_ROWS,)], column_names=["total"])
 
         def _bound(keyword: str) -> int | None:
             m = re.search(rf"{keyword} \$(\d+)", sql)
@@ -99,9 +101,7 @@ class _Pipeline:
         rows = rows[offset : offset + limit] if limit is not None else rows[offset:]
         select_list = sql[len("SELECT ") : sql.index(" FROM ")]
         names = [re.findall(r'"([^"]+)"', part)[-1] for part in select_list.split(", ")]
-        return SimpleNamespace(
-            rows=[tuple(r[n] for n in names) for r in rows], redirect=None, cache_entry=None
-        )
+        return QueryResult(rows=[tuple(r[n] for n in names) for r in rows], column_names=names)
 
     @property
     def sql(self) -> list[str]:
@@ -508,9 +508,10 @@ async def test_a_different_shape_compiles_separately(surface):
     assert len(set(statements)) == len(requests)
 
 
-async def test_a_value_the_compiler_writes_into_the_statement_is_never_bound(surface):
-    """An ISO date compiles to a TIMESTAMP literal, any other string to a bound value: the two
-    are different statements, so a plan kept for one never serves the other."""
+async def test_a_text_value_for_a_timestamp_column_is_bound_with_its_cast(surface):
+    """A text value compared with a timestamp column is bound and cast to the column's type,
+    whatever it holds — an ISO date as any other string — so it compares as a timestamp on every
+    engine (Trino has no varchar to timestamp comparison). Each request runs with its own value."""
     plain = await surface.client.get(
         "/data/rest/sales/orders",
         params={"fields": "id", **_rest_filter("createdAt", "eq", "yesterday")},
@@ -527,11 +528,14 @@ async def test_a_value_the_compiler_writes_into_the_statement_is_never_bound(sur
         headers=_REST,
     )
     assert plain.status_code == dated.status_code == other_day.status_code == 200
-    plain_sql, dated_sql, other_sql = surface.pipeline.sql
-    assert '"created_at" = $1' in plain_sql
-    assert "TIMESTAMP '2026-01-01'" in dated_sql
-    assert "TIMESTAMP '2026-02-02'" in other_sql
-    assert [p for _, p in surface.pipeline.statements] == [["yesterday"], [], []]
+    statements = surface.pipeline.sql
+    assert len(statements) == 3
+    assert all('"created_at" = CAST($1 AS TIMESTAMP)' in sql for sql in statements)
+    assert [p for _, p in surface.pipeline.statements] == [
+        ["yesterday"],
+        ["2026-01-01"],
+        ["2026-02-02"],
+    ]
 
 
 async def test_a_value_the_schema_rejects_is_rejected_after_a_plan_is_kept(surface):

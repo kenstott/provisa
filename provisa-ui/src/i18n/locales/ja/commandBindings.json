@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "コマンドのセクション",
+    "section_command": "コマンド",
+    "section_bindings": "バインディング",
+    "language": "言語",
+    "name": "名前",
+    "leaveOut": "除外",
+    "nameIn": "{{language}} での名前",
+    "leaveOutOf": "{{language}} から除外",
+    "notOffered": "提供されません",
+    "sqlAlways": "常に提供",
+    "hint": "コマンドはすべての言語で自身の名前で提供されます。言語ごとに名前を変更するか、言語から除外できます。SQL は常に提供されます。",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

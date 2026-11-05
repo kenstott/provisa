@@ -1,0 +1,929 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9b2e47c1-0d6a-4f38-a5e1-c84f2b7d6e03
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""A document's passages read into candidate glossary terms (REQ-2179).
+
+Two steps, each a model call:
+
+1. **Mentions.** The passages are read in batches (:func:`batches`); for each the model names the
+   concepts its passages define or use (:func:`extraction_prompt`) -- business concepts, roles,
+   organization types, policies, processes and regulations, never a named individual -- each with
+   the passage it is in, the passage's own words for it (``quote``), whether those words define
+   it, the sense the passage uses it in and the variants it is called by. A mention is kept only
+   when its category is one of :data:`CATEGORIES` and its quote is the passage's own text
+   (:func:`read_mentions`); what is left out is counted, never silently dropped.
+2. **Candidates.** The mentions are resolved into concepts (:func:`resolution_prompt`): the
+   mentions of one concept grouped, however worded; one word used with two meanings split into two
+   groups, each named apart and scoped by its passages; explanations that cannot both be true
+   named in pairs; and, for a group with no explicit definition, one synthesized from its
+   mentions' quotes, naming the mentions it drew from (:func:`read_groups`). The answer grows with
+   the document -- a group for every concept -- so the mentions are resolved in parts small enough
+   for their answer to fit a call's output limit (:func:`resolution_batches`), mentions named
+   alike always in one part. When there is more than one part, one more call joins the groups the
+   parts named differently that are one concept (:func:`joining_prompt`, :func:`read_joins`).
+
+A dense batch can ask for more than a call's output limit holds. An answer cut off there is read
+again as the batch's two halves, down to one passage, which is then named; a resolution or a
+joining cut off is named. An answer that is not JSON is asked for once more, then named. Each of
+these is one more call (:func:`run`).
+
+Every answer is one JSON object (:class:`Answer`): the mentions under ``"mentions"``, the groups
+under ``"groups"``, the joined sets under ``"joins"``. Each call names its answer's JSON schema, so
+the model is asked for exactly that one value on a wire that can hold it to one
+(provisa.llm.client); a bare list invites a model to answer with two lists, or a list and prose.
+
+:func:`candidates` turns the groups into proposals: an explicit definition first (the earliest in
+the document), every other explanation kept as a supporting passage; a synthesized definition
+marked so, listing every passage it used; conflicting explanations side by side. :func:`match`
+then finds the glossary terms and synonyms each candidate duplicates or names again.
+
+A registered table of text is scanned the same way, each of its rows one passage cited by the
+row's id; a table of terms and their definitions needs no model at all (:func:`defined`)
+(REQ-2202).
+
+Nothing here touches a database or a model: the caller passes the passages and a ``call`` that
+answers a prompt (:mod:`.model`).
+"""
+
+# Requirements: REQ-2179, REQ-2202
+
+from __future__ import annotations
+
+import json
+import re
+from collections import Counter, deque
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
+
+#: The kinds of concept a scan proposes (REQ-2179). A named individual -- a particular person,
+#: company or policy edition -- is none of these.
+CATEGORIES = (
+    "business concept",
+    "role",
+    "organization type",
+    "policy",
+    "process",
+    "regulation",
+)
+#: The kinds of variant a concept is called by. A ``form`` (case, plural, article) or a
+#: ``reference`` ("as defined in Section 2") is resolved into the candidate but not offered as a
+#: synonym by default; an ``abbreviation`` or an ``alternative name`` is.
+VARIANT_KINDS = ("abbreviation", "alternative name", "form", "reference")
+SYNONYM_KINDS = frozenset({"abbreviation", "alternative name"})
+#: About how much passage text one mention-finding call reads, in characters.
+BATCH_CHARS = 6000
+#: The most output one mention-finding call and one resolution or joining call may use, in tokens.
+EXTRACT_MAX_TOKENS = 4096
+RESOLVE_MAX_TOKENS = 8192
+#: About how many mentions one resolution call groups. Each may come back a group of its own,
+#: with a sense, its variants and a synthesized definition -- about 120 tokens of answer -- so
+#: this many leave room within :data:`RESOLVE_MAX_TOKENS`.
+RESOLVE_BATCH_MENTIONS = 50
+
+EXPLICIT = "explicit"
+SYNTHESIZED = "synthesized"
+#: A candidate whose group neither holds an explicit definition nor came back with a synthesized
+#: one: the steward writes it.
+MISSING = "missing"
+
+DUPLICATE = "duplicate"
+SYNONYM = "synonym"
+
+
+#: What a scan reads: a reference library document, or a registered table whose every row is one
+#: passage (REQ-2202).
+DOCUMENT = "document"
+TABLE = "table"
+_ROWS = {DOCUMENT: "", TABLE: " (each passage is one row of the table)"}
+
+#: The steps a running scan reports (:func:`run`).
+READING = "reading"
+MERGING = "merging"
+
+
+class ScanFailed(RuntimeError):
+    """The scan cannot go on, said naming why (an answer that is not JSON, a refused budget)."""
+
+
+class AnswerCutOff(ScanFailed):
+    """The model's answer stopped at its output limit; the message names the model and the limit."""
+
+
+class NotJSON(ScanFailed):
+    """The model's answer is not JSON, said naming what it answered."""
+
+
+class ScanStopped(Exception):
+    """The scan's row is no longer running: someone cancelled it, or it was given up on. The row
+    already says why."""
+
+
+@dataclass(frozen=True)
+class Answer:
+    """The one JSON object a call is answered with: ``key`` holds its list, ``schema`` is its
+    JSON schema, every property required and no other allowed, as the vendors' structured output
+    asks (provisa.llm.client)."""
+
+    name: str
+    key: str
+    schema: dict[str, Any]
+
+
+def _object(properties: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+def _answer(key: str, item: dict[str, Any]) -> Answer:
+    return Answer(key, key, _object({key: {"type": "array", "items": item}}))
+
+
+_STRING = {"type": "string"}
+_IDS = {"type": "array", "items": {"type": "integer"}}
+_VARIANTS = {"type": "array", "items": _object({"text": _STRING, "kind": _STRING})}
+
+#: The answer naming a batch's mentions (:func:`extraction_prompt`).
+MENTIONS = _answer(
+    "mentions",
+    _object(
+        {
+            "passage": {"type": "integer"},
+            "name": _STRING,
+            "category": _STRING,
+            "sense": _STRING,
+            "quote": _STRING,
+            "explicit": {"type": "boolean"},
+            "variants": _VARIANTS,
+        }
+    ),
+)
+#: The answer grouping mentions into concepts (:func:`resolution_prompt`).
+GROUPS = _answer(
+    "groups",
+    _object(
+        {
+            "name": _STRING,
+            "sense": _STRING,
+            "mentions": _IDS,
+            "variants": _VARIANTS,
+            "conflicts": {"type": "array", "items": _IDS},
+            "definition": _STRING,
+            "uses": _IDS,
+        }
+    ),
+)
+#: The answer naming the sets of groups that are one concept (:func:`joining_prompt`).
+JOINS = _answer("joins", _IDS)
+
+
+@dataclass(frozen=True)
+class Passage:
+    ordinal: int
+    section: str | None
+    page: int | None
+    text: str
+    #: The id of the table row the passage is, when a table is scanned (REQ-2202).
+    row: str | None = None
+
+
+@dataclass(frozen=True)
+class Variant:
+    text: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class Mention:
+    id: int
+    passage: int
+    name: str
+    category: str
+    sense: str
+    quote: str
+    explicit: bool
+    variants: tuple[Variant, ...]
+
+
+@dataclass
+class LeftOut:
+    """What a scan read but does not propose, counted by why."""
+
+    not_a_concept: int = 0
+    quote_not_in_passage: int = 0
+    unknown_passage: int = 0
+    malformed: int = 0
+    unresolved: int = 0
+
+    def as_dict(self) -> dict[str, int]:
+        return dict(self.__dict__)
+
+
+@dataclass(frozen=True)
+class Group:
+    name: str
+    sense: str
+    mentions: tuple[int, ...]
+    variants: tuple[Variant, ...]
+    conflicts: tuple[tuple[int, int], ...]
+    definition: str | None
+    uses: tuple[int, ...]
+
+
+@dataclass
+class Candidate:
+    """A proposed term with everything the steward needs to decide on it."""
+
+    name: str
+    category: str
+    sense: str
+    definition: str | None
+    definition_kind: str
+    #: Each passage the candidate is found in: ``ordinal``, ``section``, ``page``, ``quote``,
+    #: ``explicit``, and its ``role`` -- ``definition`` (the explicit definition), ``synthesis``
+    #: (a passage the synthesized definition drew on) or ``supporting``.
+    passages: list[dict[str, Any]]
+    #: Each variant: ``text``, ``kind``, and ``keep`` -- proposed as a synonym.
+    variants: list[dict[str, Any]]
+    #: Explanations that cannot both be true, each pair side by side.
+    conflicts: list[list[dict[str, Any]]]
+    #: The other candidates of this scan named by the same word with another meaning.
+    homonyms: list[str] = field(default_factory=list)
+    #: The glossary term this candidate duplicates or names again (:func:`match`).
+    match_term_id: int | None = None
+    match_kind: str | None = None
+    #: Every glossary term matched, by name: ``term_id``, ``name``, ``via`` (the candidate's name
+    #: or variant that matched).
+    matches: list[dict[str, Any]] = field(default_factory=list)
+
+
+# -- reading the model's answers ----------------------------------------------------------------
+
+
+def _json(raw: str, what: str) -> Any:
+    text = raw.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    try:
+        return json.loads(text)
+    except ValueError as exc:
+        raise NotJSON(f"the model's answer to {what} was not JSON: {exc}") from None
+
+
+def _listed(raw: str, answer: Answer, what: str) -> list[Any]:
+    """The list ``answer`` holds in the model's answer ``raw`` to ``what``."""
+    found = _json(raw, what)
+    held = found.get(answer.key) if isinstance(found, dict) else None
+    if not isinstance(held, list):
+        raise ScanFailed(
+            f"the model's answer to {what} was not an object holding a list of {answer.key!r}"
+        )
+    return held
+
+
+_QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
+_SPACE = re.compile(r"\s+")
+
+
+def _plain(text: str) -> str:
+    return _SPACE.sub(" ", text.translate(_QUOTES)).strip().lower()
+
+
+def _name(raw: Any) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    name = _SPACE.sub(" ", raw).strip().lower()
+    return name or None
+
+
+_ARTICLE = re.compile(r"^(the|a|an)\s+")
+
+
+def _singular(word: str) -> str:
+    if word.endswith("ies") and len(word) > 4:
+        return word[:-3] + "y"
+    if word.endswith("sses"):
+        return word[:-2]
+    if word.endswith("s") and not word.endswith(("ss", "us", "is")) and len(word) > 3:
+        return word[:-1]
+    return word
+
+
+def normal(name: str) -> str:
+    """``name`` as compared with other names: lowercase, its leading article and plural gone."""
+    plain = _ARTICLE.sub("", _plain(name))
+    words = plain.split(" ")
+    return " ".join([*words[:-1], _singular(words[-1])]) if plain else ""
+
+
+def _variants(raw: Any) -> tuple[list[Variant], int]:
+    """The well-formed variants of ``raw`` and how many were not."""
+    if raw is None:
+        return [], 0
+    if not isinstance(raw, list):
+        return [], 1
+    found: list[Variant] = []
+    bad = 0
+    for v in raw:
+        text = v.get("text") if isinstance(v, dict) else None
+        kind = v.get("kind") if isinstance(v, dict) else None
+        if not isinstance(text, str) or not text.strip() or kind not in VARIANT_KINDS:
+            bad += 1
+            continue
+        found.append(Variant(_SPACE.sub(" ", text).strip(), kind))
+    return found, bad
+
+
+# -- step 1: mentions ---------------------------------------------------------------------------
+
+
+def batches(passages: Sequence[Passage], limit: int = BATCH_CHARS) -> list[list[Passage]]:
+    """The passages in document order, gathered into batches of about ``limit`` characters."""
+    out: list[list[Passage]] = []
+    current: list[Passage] = []
+    size = 0
+    for p in passages:
+        if current and size + len(p.text) > limit:
+            out.append(current)
+            current, size = [], 0
+        current.append(p)
+        size += len(p.text)
+    if current:
+        out.append(current)
+    return out
+
+
+def reading_prompts(title: str, passages: Sequence[Passage], kind: str = DOCUMENT) -> list[str]:
+    """The prompts a scan of ``passages`` sends at the least: one per batch, before any batch is
+    split or asked for again and before the mentions are resolved."""
+    return [extraction_prompt(title, batch, kind) for batch in batches(passages)]
+
+
+def _where(p: Passage) -> str:
+    bits = []
+    if p.section:
+        bits.append(f"section {p.section!r}")
+    if p.page is not None:
+        bits.append(f"page {p.page}")
+    if p.row is not None:
+        bits.append(f"row {p.row!r}")
+    return f" ({', '.join(bits)})" if bits else ""
+
+
+def extraction_prompt(title: str, batch: Sequence[Passage], kind: str = DOCUMENT) -> str:
+    """The prompt naming the concepts ``batch``'s passages define or use. ``kind`` is what is
+    scanned: a :data:`DOCUMENT`, or a :data:`TABLE` whose rows are its passages."""
+    numbered = "\n\n".join(f"[P{p.ordinal}]{_where(p)}\n{p.text}" for p in batch)
+    return (
+        f"You are helping a data steward build a business glossary from a {kind}. Below are "
+        f"passages of the {kind} {title!r}{_ROWS[kind]}, each numbered [P<n>].\n\n"
+        "Find the concepts these passages define or use that belong in a business glossary: "
+        "business concepts, roles, organization types, policies, processes and regulations. "
+        "Never a named individual: not a particular person, company, product, system, place, "
+        "or a particular edition of a policy or regulation (not 'Jane Smith', 'Acme Ltd' or "
+        "'Privacy Policy v2.1'). The general kind an individual belongs to may be a concept "
+        "('employee', 'supplier', 'privacy policy'). Leave out everyday words that are not the "
+        "document's vocabulary.\n\n"
+        "Report each concept once for every passage it appears in, as an object with:\n"
+        '- "passage": the passage number n of [P<n>].\n'
+        '- "name": the concept as the passage names it, singular, lowercase.\n'
+        f'- "category": one of {", ".join(repr(c) for c in CATEGORIES)}.\n'
+        '- "sense": a few words saying which meaning the passage uses the name in, so the '
+        "same word used with two meanings can be told apart.\n"
+        '- "quote": the words of the passage that define or explain the concept, copied '
+        "exactly as they appear, at most two sentences.\n"
+        "- \"explicit\": true when the quote is a definition ('X means ...', 'X is defined "
+        "as ...', an entry of a definitions section), false when it only uses or explains "
+        "the concept.\n"
+        '- "variants": the other ways the passage refers to the same concept, each '
+        '{"text": ..., "kind": ...} with kind one of '
+        f"{', '.join(repr(k) for k in VARIANT_KINDS)}: 'form' for a case, plural or article "
+        "difference, 'reference' for a phrase such as 'as defined in Section 2'. An empty "
+        "list when there are none.\n\n"
+        f"Passages:\n\n{numbered}\n\n"
+        'Respond with only one JSON object, {"mentions": [...]}, its list these objects; no '
+        'prose, no code fences. {"mentions": []} when the passages hold no such concept.'
+    )
+
+
+def read_mentions(
+    raw: str, batch: Sequence[Passage], first_id: int, left_out: LeftOut
+) -> list[Mention]:
+    """The mentions in the model's answer for ``batch``, numbered from ``first_id``. A mention of
+    another category, of a passage not in the batch or whose quote is not the passage's own
+    text is counted in ``left_out``."""
+    by_ordinal = {p.ordinal: p for p in batch}
+    what = f"passages {batch[0].ordinal}-{batch[-1].ordinal}"
+    found = _listed(raw, MENTIONS, what)
+    mentions: list[Mention] = []
+    for item in found:
+        if not isinstance(item, dict):
+            left_out.malformed += 1
+            continue
+        name = _name(item.get("name"))
+        quote = item.get("quote")
+        sense = item.get("sense")
+        passage = item.get("passage")
+        if (
+            name is None
+            or not isinstance(quote, str)
+            or not quote.strip()
+            or not isinstance(sense, str)
+            or not isinstance(item.get("explicit"), bool)
+            or not isinstance(passage, int)
+            or isinstance(passage, bool)
+        ):
+            left_out.malformed += 1
+            continue
+        if item.get("category") not in CATEGORIES:
+            left_out.not_a_concept += 1
+            continue
+        held = by_ordinal.get(passage)
+        if held is None:
+            left_out.unknown_passage += 1
+            continue
+        if _plain(quote) not in _plain(held.text):
+            left_out.quote_not_in_passage += 1
+            continue
+        variants, bad = _variants(item.get("variants"))
+        left_out.malformed += bad
+        mentions.append(
+            Mention(
+                id=first_id + len(mentions),
+                passage=passage,
+                name=name,
+                category=item["category"],
+                sense=sense.strip(),
+                quote=_SPACE.sub(" ", quote).strip(),
+                explicit=item["explicit"],
+                variants=tuple(variants),
+            )
+        )
+    return mentions
+
+
+# -- step 2: candidates -------------------------------------------------------------------------
+
+
+def resolution_prompt(
+    title: str, mentions: Sequence[Mention], passages: Mapping[int, Passage], kind: str = DOCUMENT
+) -> str:
+    """The prompt resolving ``mentions`` into the concepts they are mentions of."""
+
+    def line(m: Mention) -> str:
+        variants = ", ".join(f"{v.text} ({v.kind})" for v in m.variants) or "none"
+        return (
+            f"M{m.id} [{m.category}] {m.name!r} -- sense: {m.sense}; variants: {variants}; "
+            f"{'definition' if m.explicit else 'explanation'} in P{m.passage}"
+            f'{_where(passages[m.passage])}: "{m.quote}"'
+        )
+
+    listed = "\n".join(line(m) for m in mentions)
+    return (
+        f"You are helping a data steward build a business glossary from a {kind}. Below are "
+        f"the mentions of concepts found in the {kind} {title!r}, each numbered M<n>, with "
+        "the passage P<n> it is in and the passage's own words for it.\n\n"
+        "Group the mentions into concepts:\n"
+        "- Mentions of one concept form one group however they are worded: a different case, "
+        "a plural, an article, an abbreviation, another name, or a reference such as 'as "
+        "defined in Section 2'.\n"
+        "- One word used with two different meanings in different places forms two groups, "
+        "one per meaning. Name such groups apart, the word with its meaning in brackets, "
+        "e.g. 'account (customer relationship)' and 'account (ledger)'.\n"
+        "- Put every mention in exactly one group.\n\n"
+        "For each group give an object with:\n"
+        '- "name": the concept\'s preferred name, singular, lowercase.\n'
+        '- "sense": a few words saying what the concept is.\n'
+        '- "mentions": the numbers n of its mentions M<n>.\n'
+        '- "variants": the other names the document uses for it, each {"text": ..., '
+        '"kind": ...} with kind one of '
+        + ", ".join(repr(k) for k in VARIANT_KINDS)
+        + ".\n"
+        + '- "conflicts": pairs [a, b] of its mentions whose explanations cannot both be true. '
+        "Do not reconcile them. An empty list when there are none.\n"
+        '- "definition" and "uses": when none of its mentions is a definition, definition is '
+        "one or two sentences in plain business language drawn only from its mentions' quotes, "
+        "never blending explanations that conflict, and uses lists the mention numbers it drew "
+        'on. When a mention is a definition, definition is "" and uses is [].\n\n'
+        f"Mentions:\n{listed}\n\n"
+        'Respond with only one JSON object, {"groups": [...]}, its list these objects; no '
+        "prose, no code fences."
+    )
+
+
+def _ids(raw: Any) -> list[int] | None:
+    if not isinstance(raw, list) or not all(
+        isinstance(i, int) and not isinstance(i, bool) for i in raw
+    ):
+        return None
+    return list(raw)
+
+
+def read_groups(raw: str, mentions: Sequence[Mention], left_out: LeftOut) -> list[Group]:
+    """The groups in the model's resolution of ``mentions``. A mention in no group is counted
+    in ``left_out`` as unresolved; a mention named by a second group stays in its first."""
+    found = _listed(raw, GROUPS, "the mentions' resolution")
+    known = {m.id for m in mentions}
+    placed: set[int] = set()
+    groups: list[Group] = []
+    for item in found:
+        name = _name(item.get("name")) if isinstance(item, dict) else None
+        ids = _ids(item.get("mentions")) if isinstance(item, dict) else None
+        if name is None or ids is None:
+            left_out.malformed += 1
+            continue
+        members = tuple(i for i in dict.fromkeys(ids) if i in known and i not in placed)
+        if not members:
+            continue
+        placed.update(members)
+        variants, bad = _variants(item.get("variants"))
+        left_out.malformed += bad
+        conflicts: list[tuple[int, int]] = []
+        for pair in item.get("conflicts") or []:
+            ids_pair = _ids(pair)
+            if ids_pair is None or len(ids_pair) != 2 or ids_pair[0] == ids_pair[1]:
+                left_out.malformed += 1
+                continue
+            if all(i in members for i in ids_pair):
+                conflicts.append((ids_pair[0], ids_pair[1]))
+        definition = item.get("definition")
+        uses = _ids(item.get("uses")) or []
+        groups.append(
+            Group(
+                name=name,
+                sense=item["sense"].strip() if isinstance(item.get("sense"), str) else "",
+                mentions=members,
+                variants=tuple(variants),
+                conflicts=tuple(conflicts),
+                definition=definition.strip()
+                if isinstance(definition, str) and definition.strip()
+                else None,
+                uses=tuple(i for i in dict.fromkeys(uses) if i in members),
+            )
+        )
+    left_out.unresolved += len(known - placed)
+    return groups
+
+
+def resolution_batches(
+    mentions: Sequence[Mention], limit: int = RESOLVE_BATCH_MENTIONS
+) -> list[list[Mention]]:
+    """``mentions`` gathered into parts of about ``limit`` to resolve one call each. Mentions that
+    share a name or a variant (compared as :func:`normal` compares names), directly or through
+    another mention, are always in one part, so one word's meanings are told apart and its
+    conflicting explanations seen side by side. Such a set larger than ``limit`` is a part of its
+    own."""
+    parent = list(range(len(mentions)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    named: dict[str, int] = {}
+    for i, m in enumerate(mentions):
+        for key in {normal(m.name), *(normal(v.text) for v in m.variants)} - {""}:
+            parent[root(i)] = root(named.setdefault(key, i))
+    alike: dict[int, list[Mention]] = {}
+    for i, m in enumerate(mentions):
+        alike.setdefault(root(i), []).append(m)
+    out: list[list[Mention]] = []
+    current: list[Mention] = []
+    for members in alike.values():
+        if current and len(current) + len(members) > limit:
+            out.append(current)
+            current = []
+        current.extend(members)
+    if current:
+        out.append(current)
+    return [sorted(part, key=lambda m: m.id) for part in out]
+
+
+def joining_prompt(title: str, groups: Sequence[Group], kind: str = DOCUMENT) -> str:
+    """The prompt naming which of ``groups`` -- resolved from different parts of the mentions --
+    are one concept."""
+
+    def line(n: int, g: Group) -> str:
+        variants = ", ".join(f"{v.text} ({v.kind})" for v in g.variants) or "none"
+        return f"G{n} {g.name!r} -- sense: {g.sense or 'not given'}; variants: {variants}"
+
+    listed = "\n".join(line(n, g) for n, g in enumerate(groups))
+    return (
+        f"You are helping a data steward build a business glossary from a {kind}. Below are "
+        f"the concepts found in parts of the {kind} {title!r}, each numbered G<n>, with what it "
+        "is and the other names it is called by.\n\n"
+        "Some of them may be one concept named differently in different parts: another name, "
+        "an abbreviation, a reference such as 'as defined in Section 2'. Name each set of "
+        "concepts that are one concept. One word used with two different meanings is two "
+        "concepts: never put those in one set.\n\n"
+        f"Concepts:\n{listed}\n\n"
+        'Respond with only one JSON object, {"joins": [...]}, its list the sets, each an array '
+        "of the numbers n of its concepts G<n>; leave out every concept that is one with no "
+        'other. {"joins": []} when there are none. No prose, no code fences.'
+    )
+
+
+def read_joins(raw: str, groups: Sequence[Group], left_out: LeftOut) -> list[Group]:
+    """``groups`` with each set the model's answer names as one concept joined into one group,
+    named by its first in the list: its mentions, variants and conflicts all the set's, its
+    synthesized definition the first the set has. A group named by a second set stays in its
+    first."""
+    found = _listed(raw, JOINS, "the concepts' joining")
+    into: dict[int, int] = {}
+    for item in found:
+        ids = _ids(item)
+        if ids is None:
+            left_out.malformed += 1
+            continue
+        members = sorted(i for i in set(ids) if 0 <= i < len(groups) and i not in into)
+        if len(members) > 1:
+            into.update((i, members[0]) for i in members)
+    sets: dict[int, list[Group]] = {}
+    for n, g in enumerate(groups):
+        sets.setdefault(into.get(n, n), []).append(g)
+    return [_joined(gs) for gs in sets.values()]
+
+
+def _joined(groups: Sequence[Group]) -> Group:
+    head = groups[0]
+    if len(groups) == 1:
+        return head
+    synthesized = next((g for g in groups if g.definition is not None and g.uses), None)
+    return Group(
+        name=head.name,
+        sense=head.sense,
+        mentions=tuple(i for g in groups for i in g.mentions),
+        variants=tuple(v for g in groups for v in g.variants),
+        conflicts=tuple(c for g in groups for c in g.conflicts),
+        definition=None if synthesized is None else synthesized.definition,
+        uses=() if synthesized is None else synthesized.uses,
+    )
+
+
+def _base(name: str) -> str:
+    """A name without its bracketed meaning: 'account (ledger)' -> 'account'."""
+    return normal(re.sub(r"\s*\([^)]*\)\s*$", "", name))
+
+
+def candidates(
+    groups: Sequence[Group], mentions: Sequence[Mention], passages: Mapping[int, Passage]
+) -> list[Candidate]:
+    """The candidate terms of ``groups``, in the order the document first mentions them."""
+    by_id = {m.id: m for m in mentions}
+    out: list[Candidate] = []
+    for g in groups:
+        members = sorted((by_id[i] for i in g.mentions), key=lambda m: (m.passage, m.id))
+        explicit = next((m for m in members if m.explicit), None)
+        if explicit is not None:
+            definition, kind, used = explicit.quote, EXPLICIT, {explicit.id}
+        elif g.definition is not None and g.uses:
+            definition, kind, used = g.definition, SYNTHESIZED, set(g.uses)
+        else:
+            definition, kind, used = None, MISSING, set()
+
+        def cite(m: Mention) -> dict[str, Any]:
+            p = passages[m.passage]
+            role = (
+                ("definition" if kind == EXPLICIT else "synthesis")
+                if m.id in used
+                else "supporting"
+            )
+            return {
+                "mention": m.id,
+                "ordinal": p.ordinal,
+                "section": p.section,
+                "page": p.page,
+                "row": p.row,
+                "quote": m.quote,
+                "explicit": m.explicit,
+                "sense": m.sense,
+                "role": role,
+            }
+
+        variants: dict[str, Variant] = {}
+        for v in [*g.variants, *(v for m in members for v in m.variants)]:
+            key = v.text.lower()
+            if key != g.name and key not in variants:
+                variants[key] = v
+        for m in members:
+            if m.name != g.name and m.name not in variants:
+                variants[m.name] = Variant(
+                    m.name, "form" if normal(m.name) == normal(g.name) else "alternative name"
+                )
+        out.append(
+            Candidate(
+                name=g.name,
+                category=Counter(m.category for m in members).most_common(1)[0][0],
+                sense=g.sense or members[0].sense,
+                definition=definition,
+                definition_kind=kind,
+                passages=[cite(m) for m in members],
+                variants=[
+                    {"text": v.text, "kind": v.kind, "keep": v.kind in SYNONYM_KINDS}
+                    for v in variants.values()
+                ],
+                conflicts=[[cite(by_id[a]), cite(by_id[b])] for a, b in g.conflicts],
+            )
+        )
+    bases: dict[str, list[str]] = {}
+    for c in out:
+        bases.setdefault(_base(c.name), []).append(c.name)
+    for c in out:
+        c.homonyms = [n for n in bases[_base(c.name)] if n != c.name]
+    out.sort(key=lambda c: min(p["ordinal"] for p in c.passages))
+    return out
+
+
+def match(
+    found: Iterable[Candidate],
+    terms: Sequence[Mapping[str, Any]],
+    synonym_of: Iterable[tuple[int, int]],
+) -> None:
+    """Mark each candidate with the glossary terms it duplicates or names again.
+
+    ``terms`` are the glossary's terms (``id``, ``name``); ``synonym_of`` its SYNONYM_OF edges
+    (from, to): the from term is a synonym of the to term. A candidate named as a term is a
+    ``duplicate`` of it; one whose variant is a term's name, or named as a term that is itself a
+    synonym, is a ``synonym`` of it. Either way the candidate is proposed as a merge into the term
+    it is another name for -- the preferred term, when the match is a synonym of one.
+    """
+    by_name: dict[str, Mapping[str, Any]] = {}
+    for t in terms:
+        by_name.setdefault(normal(t["name"]), t)
+    preferred = dict(synonym_of)
+    names = {t["id"]: t["name"] for t in terms}
+    for c in found:
+        seen: dict[int, dict[str, Any]] = {}
+        for via in [c.name, *(v["text"] for v in c.variants)]:
+            term = by_name.get(normal(via))
+            if term is not None and term["id"] not in seen:
+                seen[term["id"]] = {"term_id": term["id"], "name": term["name"], "via": via}
+        c.matches = list(seen.values())
+        if not c.matches:
+            continue
+        first = c.matches[0]
+        target = preferred.get(first["term_id"], first["term_id"])
+        if target not in names:
+            target = first["term_id"]
+        c.match_term_id = target
+        c.match_kind = (
+            DUPLICATE if first["via"] == c.name and target == first["term_id"] else SYNONYM
+        )
+
+
+# -- a table of terms and their definitions ----------------------------------------------------
+
+
+def defined(rows: Sequence[tuple[Any, Any]]) -> list[Candidate]:
+    """The candidates a table of terms and their definitions holds, each row ``(term,
+    definition)`` -- read as it is, with no model (REQ-2202). Rows naming one term (compared as
+    :func:`normal` compares names) are one candidate: the first row's definition is its
+    definition, each other row's a supporting passage. A row with no term holds none, and one with
+    no definition leaves the candidate's to the steward. The table names no category, so the
+    candidate has none. Each passage is cited by the term, the row's own name for itself."""
+    found: dict[str, Candidate] = {}
+    for ordinal, (raw_term, raw_definition) in enumerate(rows, start=1):
+        term = _SPACE.sub(" ", str(raw_term or "")).strip()
+        if not term:
+            continue
+        definition = str(raw_definition or "").strip() or None
+        held = found.get(normal(term))
+        if held is None:
+            held = found[normal(term)] = Candidate(
+                name=term,
+                category="",
+                sense="",
+                definition=None,
+                definition_kind=MISSING,
+                passages=[],
+                variants=[],
+                conflicts=[],
+            )
+        if definition is None:
+            continue
+        first = held.definition is None
+        if first:
+            held.definition, held.definition_kind = definition, EXPLICIT
+        held.passages.append(
+            {
+                "mention": ordinal - 1,
+                "ordinal": ordinal,
+                "section": None,
+                "page": None,
+                "row": term,
+                "quote": definition,
+                "explicit": True,
+                "sense": "",
+                "role": "definition" if first else "supporting",
+            }
+        )
+    return list(found.values())
+
+
+# -- the scan -----------------------------------------------------------------------------------
+
+
+@dataclass
+class Result:
+    candidates: list[Candidate]
+    passages: int
+    mentions: int
+    left_out: LeftOut
+    calls: int
+
+
+async def run(
+    title: str,
+    passages: Sequence[Passage],
+    call: Callable[[str, int, Answer], Awaitable[str]],
+    report: Callable[[str, int, int], Awaitable[None]],
+    kind: str = DOCUMENT,
+) -> Result:
+    """Scan ``passages`` with ``call`` (a prompt, an output limit to the model's answer and the
+    :class:`Answer` it is asked to be).
+    ``report`` hears each call before it is made: :data:`READING` a call of how many are now known
+    to be needed, the total growing as a batch is split or asked for again, then :data:`MERGING`
+    (0 of 0) for each resolution or joining call; it raises :class:`ScanStopped` to stop the scan
+    there."""
+    if not passages:
+        raise ScanFailed(f"the {kind} {title!r} holds no passages to scan")
+    left_out = LeftOut()
+    mentions: list[Mention] = []
+    calls = 0
+    # Each batch still to read, in document order, with whether it has been asked for again.
+    waiting = deque((batch, False) for batch in batches(passages))
+    while waiting:
+        batch, retried = waiting.popleft()
+        await report(READING, calls + 1, calls + 1 + len(waiting))
+        calls += 1
+        try:
+            raw = await call(extraction_prompt(title, batch, kind), EXTRACT_MAX_TOKENS, MENTIONS)
+            mentions.extend(read_mentions(raw, batch, len(mentions), left_out))
+        except AnswerCutOff as exc:
+            if len(batch) == 1:
+                raise ScanFailed(
+                    f"the model's answer to passage {batch[0].ordinal}{_where(batch[0])} was cut "
+                    f"off with that passage read alone: {exc}"
+                ) from None
+            half = len(batch) // 2
+            waiting.extendleft([(batch[half:], False), (batch[:half], False)])
+        except NotJSON as exc:
+            if retried:
+                raise ScanFailed(f"{exc} (asked twice)") from None
+            waiting.appendleft((batch, True))
+    by_ordinal = {p.ordinal: p for p in passages}
+    if not mentions:
+        return Result([], len(passages), 0, left_out, calls)
+
+    async def answer(prompt: str, shape: Answer, read: Callable[[str], _T], what: str) -> _T:
+        nonlocal calls
+        retried = False
+        while True:
+            await report(MERGING, 0, 0)
+            calls += 1
+            try:
+                return read(await call(prompt, RESOLVE_MAX_TOKENS, shape))
+            except AnswerCutOff as exc:
+                raise ScanFailed(f"the model's answer to {what} was cut off: {exc}") from None
+            except NotJSON as exc:
+                if retried:
+                    raise ScanFailed(f"{exc} (asked twice)") from None
+                retried = True
+
+    parts = resolution_batches(mentions)
+    groups: list[Group] = []
+    for n, part in enumerate(parts, start=1):
+        what = "the mentions' resolution"
+        if len(parts) > 1:
+            what += f" (part {n} of {len(parts)})"
+        groups += await answer(
+            resolution_prompt(title, part, by_ordinal, kind),
+            GROUPS,
+            lambda raw, part=part: read_groups(raw, part, left_out),
+            what,
+        )
+    if len(parts) > 1:
+        groups = await answer(
+            joining_prompt(title, groups, kind),
+            JOINS,
+            lambda raw: read_joins(raw, groups, left_out),
+            "the concepts' joining",
+        )
+    return Result(
+        candidates(groups, mentions, by_ordinal), len(passages), len(mentions), left_out, calls
+    )

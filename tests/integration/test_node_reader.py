@@ -24,6 +24,7 @@ from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
 pytestmark = [pytest.mark.integration]
 
 DECLARATIONS = """
+import type { ReadContext } from "@provisa/services";
 export interface Line { sku: string; qty: number; }
 export type Tier = "gold" | "silver";
 export interface Order {
@@ -34,13 +35,19 @@ export interface Order {
   lines: Line[];
   note?: string | null;
 }
+export interface OrdersInputs {
+  /** The customer whose orders these are. */
+  customerId: string;
+  since?: Date;
+}
+export interface PlacedInputs { region: string; }
 /**
  * Orders of one customer.
  * @table
  */
-export declare function orders(customerId: string, since?: Date): Promise<Order[]>;
+export declare function orders(inputs: OrdersInputs, context: ReadContext): Promise<Order[]>;
 /** Orders as they are placed. @stream */
-export declare function placed(region: string): AsyncGenerator<Order>;
+export declare function placed(inputs: PlacedInputs): AsyncGenerator<Order>;
 /** @command */
 export declare function cancel(id: number): Promise<void>;
 export declare function helper(): number;
@@ -74,10 +81,15 @@ def test_each_runtime_reads_the_same_tables_commands_and_streams(runtime, cache,
     ]
     orders = manifest.export("orders")
     assert orders.description == "Orders of one customer."
+    # REQ-2100: its inputs' fields are its parameters, and it takes its read context too.
     assert [(p.name, p.shape, p.required) for p in orders.parameters] == [
         ("customerId", Scalar("text"), True),
         ("since", Scalar("timestamp"), False),
     ]
+    assert orders.parameters[0].description == "The customer whose orders these are."
+    assert orders.takes == ("inputs", "context")
+    assert manifest.export("placed").takes == ("inputs",)
+    assert "ReadContext" not in manifest.types
     assert orders.returns == Named("Order")
     assert manifest.types["Order"].fields == (
         Field("id", Scalar("double"), False, "The order's number."),

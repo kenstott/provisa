@@ -182,10 +182,14 @@ def _what_the_engine_did(pg: "_SourceAndEngine") -> list[str]:
     done = subprocess.run(
         ["docker", "logs", pg._engine], check=True, capture_output=True, text=True
     )
+    # This module's own polling (_replica_rows: a to_regclass lookup and a COUNT) is left out: it
+    # filled the dump, and the build, its index and any drop of the replica fell off its end.
     touched = [
         line
         for line in (done.stdout + done.stderr).splitlines()
-        if "src__public__orders" in line or "fdw_src" in line
+        if ("src__public__orders" in line or "fdw_src" in line)
+        and "SELECT COUNT(*) FROM" not in line
+        and "DETAIL:  parameters: $1 =" not in line
     ]
     return [
         f"--- the engine: replica rows {_replica_rows(pg)!r}",

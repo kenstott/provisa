@@ -3,6 +3,7 @@
     "expand": "Expandir visualização",
     "webglError": "Não foi possível iniciar a visualização 3D: {{error}}",
     "hint": "Arraste para orbitar · role para ampliar · arraste com o botão direito para mover",
+    "hintFlat": "Arraste para mover · role para ampliar",
     "rotate": "Girar",
     "resetView": "Redefinir visualização",
     "zoomTo": "Ampliar para esta coluna",

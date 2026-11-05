@@ -23,7 +23,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from provisa.dq.contract import CHECKERS, ContractError, contract_dataset, resolve_contract_target
+from provisa.dq.contract import (
+    CHECKERS,
+    ContractError,
+    contract_checks,
+    contract_dataset,
+    resolve_contract_target,
+)
 from provisa.dq.results import (
     DQ_PROMOTIONS,
     DQ_WATERMARK_COLUMN,
@@ -41,7 +47,8 @@ def is_checker_source_type(source_type: Any) -> bool:
 def derive_checker_table(table: Any, source_type: Any) -> str:
     """Validate a checker table's contract and derive its registration IN PLACE. Returns the dataset.
 
-      * the contract must parse and must name a three-part dataset; whether that dataset resolves
+      * the contract must parse, must name at least one check (stored as ``dq_rules``), and must
+        name a three-part dataset; whether that dataset resolves
         to a governed table is :func:`check_contract_target`, run once the compiled names exist;
       * the columns become :func:`results_columns` — the envelope is the CHECKER's, not the
         operator's, so a hand-written column list could only ever disagree with what lands;
@@ -49,8 +56,10 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
       * the table is registered under its result relation's name, ``<name>_<source>_dq``
         (:func:`~provisa.dq.results.relation_name`), the name given becoming its alias; a table
         already registered under that name keeps it and its alias;
-      * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added;
-      * ``product_id`` must be unset — membership is inherited from the scanned table (clause 10).
+      * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added.
+
+    Its ``product_id`` is its own, as any member's is (REQ-1443 PRODUCT ASSIGNMENT): it names the
+    product whose owner controls the check, whatever the check scans.
 
     Raises :class:`ValueError` naming the table on any of those. The declared columns are read ONLY
     for their ``visible_to`` and are then replaced; ``visible_to`` must be unanimous, because one
@@ -62,15 +71,6 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
         raise ValueError(
             f"Table {table.table_name!r}: source {table.source_id!r} is a {checker} checker, "
             f"so the table must carry a dq_contract — its rows are that contract's results"
-        )
-    # REQ-1443 clause 10: a results table belongs to whatever product the table it scans belongs
-    # to, derived at read time from the contract's dataset. A declared product_id could only ever
-    # agree with that derivation or contradict it, so it is refused rather than stored.
-    if table.product_id is not None:
-        raise ValueError(
-            f"Table {table.table_name!r}: a checker table cannot declare product_id "
-            f"{table.product_id!r}; its data-product membership is inherited from the table its "
-            f"contract scans"
         )
     if not table.columns:
         raise ValueError(
@@ -85,8 +85,15 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
         )
     try:
         dataset = contract_dataset(table.dq_contract, checker)
+        rules = contract_checks(table.dq_contract, checker)
     except ContractError as exc:
         raise ValueError(f"Table {table.table_name!r}: {exc}") from exc
+    if not rules:
+        raise ValueError(
+            f"Table {table.table_name!r}: its contract names no checks, so a scan would land nothing"
+        )
+    # REQ-1443 clause 10: parsed once, here, and stored for the meta domain's dq_rules.
+    table.dq_rules = rules
     if not is_relation_name(table.table_name, table.source_id):
         # The name the steward chose is what SQL and GraphQL publish; an alias they set is theirs.
         table.alias = table.alias or table.table_name

@@ -19,15 +19,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
+from provisa.core import command_bindings
 from provisa.compiler.schema_gen import (
-    RESOLVE_FIELD,
     SchemaInput,
-    _IMPLICIT_TRAVERSAL_DOMAINS,
     _assign_names,
     _build_domain_alias_map,
     _build_visible_tables,
     _can_see_relationship,
 )
+from provisa.compiler.schema_types import offers_domain
+from provisa.security.rights import META_DOMAIN_ID, SQL_CATALOG_TABLES
 
 if TYPE_CHECKING:
     from provisa.grpc.field_numbering import FieldNumberAllocator
@@ -91,6 +92,14 @@ def _physical_to_proto(column_type: str) -> str:
 
     if parse_native_type(normalized).nested:
         return "string"
+    # Any other spelling an engine or a source reports (``character varying``, ``character``,
+    # ``timestamp without time zone``): the product's one type vocabulary names it, as the Arrow
+    # catalog's map does (core.catalog_types).
+    from provisa.core.ir_types import to_ir
+
+    canonical = to_ir(normalized)
+    if canonical in _PROTO_TYPE_MAP:
+        return _PROTO_TYPE_MAP[canonical]
     raise ValueError(f"Unmapped column type for proto: {column_type!r}")
 
 
@@ -126,9 +135,10 @@ def _arg_proto_type(arg_type: str) -> str:
     return _ARG_PROTO_TYPE.get((arg_type or "").lower(), "string")
 
 
-#: REQ-1365: the RPC that dereferences a semantic address -- the GraphQL ``resolve`` root field,
-#: which every role's schema carries, so every role's service carries it too (REQ-1929).
-RESOLVE_RPC = RESOLVE_FIELD.capitalize()
+#: REQ-1365: the RPC that dereferences a semantic address -- the meta domain's GraphQL ``resolve``
+#: field, which every role's schema carries, so every role's service carries it too (REQ-1929). A
+#: command's RPC carries no domain prefix, so it is ``Resolve``.
+RESOLVE_RPC = "Resolve"
 
 
 def command_rpc_name(fn_name: str) -> str:
@@ -205,8 +215,9 @@ def _emit_aggregate_messages(
         )
         for suffix in ("SumFields", "AvgFields", "StddevFields", "VarianceFields"):
             lines.append(f"message {t.type_name}{suffix} {{")
+            # `optional`: an aggregate over no rows is NULL, the field left unset -- never 0.
             for col_name in numeric_names:
-                lines.append(f"  double {col_name} = {numbers[col_name]};")
+                lines.append(f"  optional double {col_name} = {numbers[col_name]};")
             lines.append("}")
             lines.append("")
 
@@ -219,10 +230,10 @@ def _emit_aggregate_messages(
         for suffix in ("MinFields", "MaxFields"):
             lines.append(f"message {t.type_name}{suffix} {{")
             for col_name in comparable_names:
-                lines.append(
-                    f"  {_physical_to_proto(comparable_type[col_name])} {col_name} "
-                    f"= {numbers[col_name]};"
-                )
+                proto_type = _physical_to_proto(comparable_type[col_name])
+                # As the row's columns: a scalar is `optional`, a Timestamp has presence already.
+                presence = "" if proto_type == "google.protobuf.Timestamp" else "optional "
+                lines.append(f"  {presence}{proto_type} {col_name} = {numbers[col_name]};")
             lines.append("}")
             lines.append("")
 
@@ -295,7 +306,9 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
     """Commands (tracked functions) visible to this role, deduped by name (REQ-1156).
 
     The commands the role may call (``mutation_authz.command_reachable``): assigned to it
-    (``visible_to`` empty = every role) and in a domain it reaches, as on every other surface."""
+    (``visible_to`` names it) and in a domain it reaches, as on every other surface. The proto
+    is the GraphQL schema's, so a command excluded from GraphQL has no RPC (REQ-2168)."""
+    from provisa.core.command_bindings import binding_name
     from provisa.security.mutation_authz import command_reachable
 
     out: list[dict] = []
@@ -305,7 +318,10 @@ def _visible_commands(si: SchemaInput) -> list[dict]:
         name = fn.get("name")
         if not name or name in seen:
             continue
-        if not command_reachable(fn, si.role):
+        if not command_reachable(fn, si.role) or binding_name(fn, "graphql") is None:
+            continue
+        # A per-domain proto offers only the commands of the domains it was asked for.
+        if not offers_domain(si, fn.get("domain_id") or ""):
             continue
         seen.add(name)
         out.append(fn)
@@ -330,9 +346,14 @@ def generate_proto(
     FULL set (every column, ``visible_to=[]``) — the one point in a build that can tell a genuinely
     dropped column from a role simply not seeing it, so only that call may retire a field number.
     """
-    tables = _build_visible_tables(si)
-    if not tables:
-        raise ValueError(f"No tables visible to role {si.role['id']!r}. Cannot generate proto.")
+    # REQ-2154: a role served no table is not refused as such: its proto has no table's message
+    # or RPC, and keeps the service's command and resolve RPCs, as its GraphQL schema does.
+    # REQ-2190: what a SQL catalog reads has no message: a root is not all a table has here.
+    tables = [
+        t
+        for t in _build_visible_tables(si)
+        if (t.domain_id, t.table_name) not in SQL_CATALOG_TABLES
+    ]
 
     domain_alias_map = _build_domain_alias_map(si.domains)
     _assign_names(
@@ -369,21 +390,16 @@ def generate_proto(
 
     # --- Query message (mirrors GraphQL type Query) ---
     _root_ids = si.root_table_ids
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import SQL_ONLY_TABLES
 
-    # Same root rule as the GraphQL Query type (schema_gen): an implicit-traversal domain is a
-    # root only for a role that reaches it. An empty domain_access reaches no domain.
-    _accessible = set(si.role["domain_access"])
-    _all_access = reaches_all_domains(si.role["domain_access"])
+    # Same root rule as the GraphQL Query type (schema_gen): the tables the role reads. An empty
+    # domain_access reads no domain.
     root_tables = [
         t
         for t in sorted(tables, key=lambda t: t.type_name)
         if (_root_ids is None or t.table_id in _root_ids)
-        and (
-            _all_access
-            or t.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS
-            or t.domain_id in _accessible
-        )
+        # REQ-2163: a table SQL alone serves is no gRPC root.
+        and (t.domain_id, t.table_name) not in SQL_ONLY_TABLES
     ]
     lines.append("message Query {")
     for i, t in enumerate(root_tables, start=1):
@@ -422,7 +438,13 @@ def generate_proto(
                 continue
             proto_type = _physical_to_proto(meta.data_type)
             field_num = row_numbers[col["column_name"]]
-            lines.append(f"  {proto_type} {col['column_name']} = {field_num};")
+            # `optional`: a null is the field left unset, never its type's zero (a masked amount
+            # read as 0.0). Every scalar column, the NOT NULL ones too: a regex mask fails closed
+            # to NULL on any column that is not text (REQ-2142). A Timestamp is a message, which
+            # has presence already. The same for every role and the wire, so they read one byte
+            # stream alike.
+            presence = "" if proto_type == "google.protobuf.Timestamp" else "optional "
+            lines.append(f"  {presence}{proto_type} {col['column_name']} = {field_num};")
 
         for rel, target in rel_fields:
             field_num = row_numbers[target.field_name]
@@ -555,17 +577,20 @@ def generate_proto(
     lines.append("")
 
     # --- resolve(uri, as_of, as_recorded) (REQ-1365, REQ-1163): the GraphQL field's arguments; the answer, whose shape
-    # is the addressed row's, as JSON (as a command's rows are).
-    lines.append(f"message {RESOLVE_RPC}AddressRequest {{")
-    lines.append("  string uri = 1;")
-    lines.append("  string as_of = 2;")
-    lines.append("  string as_recorded = 3;")
-    lines.append("}")
-    lines.append("")
-    lines.append(f"message {RESOLVE_RPC}AddressResponse {{")
-    lines.append("  string result_json = 1;")
-    lines.append("}")
-    lines.append("")
+    # is the addressed row's, as JSON (as a command's rows are). It is meta's, so a per-domain
+    # proto has it only when meta is asked for, as the GraphQL schema has meta's resolve field.
+    offers_resolve = offers_domain(si, META_DOMAIN_ID)
+    if offers_resolve:
+        lines.append(f"message {RESOLVE_RPC}AddressRequest {{")
+        lines.append("  string uri = 1;")
+        lines.append("  string as_of = 2;")
+        lines.append("  string as_recorded = 3;")
+        lines.append("}")
+        lines.append("")
+        lines.append(f"message {RESOLVE_RPC}AddressResponse {{")
+        lines.append("  string result_json = 1;")
+        lines.append("}")
+        lines.append("")
 
     # --- Per-command request messages (REQ-1156) ---
     # Beyond the generic CallCommand, every command visible to the role gets a typed request message
@@ -575,21 +600,27 @@ def generate_proto(
     # route through the single invoke_tracked_function executor server-side.
     commands = _visible_commands(si)
     for fn in commands:
-        cmd = command_rpc_name(fn["name"])
+        cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         lines.append(f"message {cmd}Request {{")
         for i, arg in enumerate([a for a in (fn.get("arguments") or []) if a.get("name")], start=1):
-            lines.append(f"  {_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};")
+            # REQ-2168: an argument with a default is optional, so a call that leaves it out is told
+            # from one that sends its type's zero value.
+            optional = "optional " if "default" in arg else ""
+            lines.append(
+                f"  {optional}{_arg_proto_type(arg.get('type', 'String'))} {arg['name']} = {i};"
+            )
         lines.append("}")
         lines.append("")
 
     # --- Service ---
     lines.append("service ProvisaService {")
     lines.append("  rpc CallCommand(CommandRequest) returns (CommandResponse);")
-    lines.append(
-        f"  rpc {RESOLVE_RPC}({RESOLVE_RPC}AddressRequest) returns ({RESOLVE_RPC}AddressResponse);"
-    )
+    if offers_resolve:
+        lines.append(
+            f"  rpc {RESOLVE_RPC}({RESOLVE_RPC}AddressRequest) returns ({RESOLVE_RPC}AddressResponse);"
+        )
     for fn in commands:
-        cmd = command_rpc_name(fn["name"])
+        cmd = command_rpc_name(command_bindings.offered_name(fn, "graphql"))
         resp = "MutationResponse" if fn.get("kind") == "mutation" else "CommandResponse"
         lines.append(f"  rpc Call{cmd}({cmd}Request) returns ({resp});")
     # The tables a role may CALL are the roots of its Query message above — the root rule of the

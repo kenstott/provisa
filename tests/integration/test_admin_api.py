@@ -197,7 +197,7 @@ class TestViewRegistrationRefreshPolicy:
                             tableName: "reg_test_view",
                             alias: "reg_test_view",
                             viewSql: "SELECT 1 AS n",
-                            columns: [{ name: "n", visibleTo: ["public"] }]
+                            columns: [{ name: "n", visibleTo: ["public", "org_admin"] }]
                         }) { success message }
                     }
                 """,

@@ -32,7 +32,7 @@ def _field_through(monkeypatch, *, materialize, failure):
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", AsyncMock(return_value=plan))
     monkeypatch.setattr(_pipeline, "_execute_plan", AsyncMock(side_effect=failure))
     monkeypatch.setattr(endpoint, "note_request_route", lambda route: None)
-    compiled = SimpleNamespace(root_field="orders", sql="SELECT 1", params=[], nodes_sql=None)
+    compiled = SimpleNamespace(root_field="orders", sql="SELECT 1", params=[], has_nodes=False)
     return endpoint._execute_one_field(
         compiled,
         SimpleNamespace(),
@@ -40,7 +40,6 @@ def _field_through(monkeypatch, *, materialize, failure):
         "analyst",
         "json",
         delivery=materialize,
-        as_of=None,
         steward_hint=None,
         query_session_props=None,
         cache_hint=NO_CACHE_HINT,

@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Tablas de Excel",
+    "note": "Cómo se encuentran las tablas en los libros de este origen. Deje una indicación en Detección automática salvo que un libro se lea mal.",
+    "auto": "Detección automática",
+    "autoValue": "Detección automática ({{value}})",
+    "hint": {
+      "header_rows": "Filas de encabezado",
+      "max_header_rows": "Máximo de filas de encabezado",
+      "table_gap_rows": "Filas en blanco entre tablas",
+      "column_gap": "Columnas en blanco entre tablas",
+      "min_columns": "Mínimo de columnas",
+      "min_data_rows": "Mínimo de filas de datos",
+      "range": "Rango"
+    },
+    "help": {
+      "header_rows": "El número exacto de filas de encabezado. Indíquelo cuando una fila de datos se lea como encabezado, o un encabezado como datos.",
+      "max_header_rows": "El máximo de filas que se leen como encabezado. 1 significa que cada tabla tiene una sola fila de encabezado.",
+      "table_gap_rows": "Cuántas filas en blanco seguidas terminan una tabla. Indique 1 cuando las tablas estén separadas por una fila en blanco.",
+      "column_gap": "Cuántas columnas en blanco seguidas separan tablas contiguas. Indique 1 cuando las separe una columna en blanco.",
+      "min_columns": "El mínimo de columnas de una tabla. Indique 1 para leer tablas de una columna.",
+      "min_data_rows": "El mínimo de filas de datos de una tabla. Una tabla con menos no se lee.",
+      "range": "Las celdas de esta tabla, leídas tal cual, como Sheet1!A3:F200. Ponga entre comillas el nombre de una hoja con espacios: 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "Para un libro o una tabla",
+    "entriesNote": "Una indicación aquí prevalece sobre la misma indicación de arriba. Una tabla se llama archivo__hoja, tal como aparece en la lista.",
+    "scope": "Para",
+    "scopeWorkbook": "Libro",
+    "scopeTable": "Tabla",
+    "workbookName": "Archivo del libro",
+    "workbookNameHelp": "El nombre de archivo del libro, como report.xlsx.",
+    "tableName": "Tabla",
+    "tableNameHelp": "El nombre de la tabla tal como lo muestra el origen, como report__summary. Con un rango, es el nombre que recibe la tabla del rango.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Nombrado dos veces; dé a cada libro o tabla una sola entrada.",
+    "repeatedFix": "Tablas de Excel: un libro o una tabla aparece en dos entradas. Dé a cada uno una sola entrada.",
+    "add": "Añadir un libro o una tabla",
+    "remove": "Quitar"
+  }
+}

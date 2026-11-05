@@ -20,10 +20,11 @@ from app.py are safe because this module is never loaded at app.py module-initia
 # Requirements: REQ-012, REQ-016, REQ-057, REQ-510, REQ-695, REQ-837
 
 from __future__ import annotations
-from provisa.compiler.sql_literals import sql_literal
 
 import logging
 import re
+import time
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -44,13 +45,23 @@ from provisa.api._meta_views import (
     _OPS_REPORT_VIEWS,
     _ops_table_usage_ddl,
 )
+from provisa.api._ontology_views import (
+    ONTOLOGY_BASE_TABLE,
+    ONTOLOGY_TABLE_ALIAS,
+    ONTOLOGY_TABLE_VIEWS,
+    ONTOLOGY_TABLES,
+)
 from provisa.core.control_plane import bring_up_platform
+from provisa.security.rights import ONTOLOGY_DOMAIN_ID
 from provisa.core.database import Connection, create_engine_from_url
 from provisa.api._catalog_descriptions import (
     COLUMN_DESCRIPTIONS as _COL_DESC,
     TABLE_DESCRIPTIONS as _TBL_DESC,
 )
 from provisa.core.db import init_schema
+from provisa.security.default_grant import VIEWER_ROLE
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from provisa.core.environments import org_schema
 from provisa.core.repositories import source as _source_repo
 from provisa.core.repositories import table as _table_repo
@@ -76,6 +87,33 @@ from provisa.core.models import DERIVED_SOURCE_ID
 # (see the lock's own call site for why). Any distinct bigint works; this one is just
 # "PROVISA1" packed as ASCII bytes, chosen so it reads as clearly app-specific in pg_locks output.
 _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
+# REQ-1900: and the one role every schema's seed shares, the cluster's rather than a schema's.
+_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY = 0x50524F5649534132
+
+
+class _SeedClock:
+    """Each slow step of a seed, at WARNING as a hosted tier logs (REQ-2006)."""
+
+    def __init__(self, org_id: str) -> None:
+        self._org_id = org_id
+        self._since = time.monotonic()
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        if now - self._since >= 2.0:  # noqa: PLR2004 - seconds: a step worth a line
+            logging.getLogger(__name__).warning(
+                "seed of %s: %s took %.1fs", self._org_id, step, now - self._since
+            )
+        self._since = now
+
+
+def _seed_lock_key(org_id: str, env: str | None) -> int:
+    """REQ-1900, REQ-2006: the seed's lock for one schema. What it protects is one schema's views
+    between one worker's DDL and its reflect, so workers building that schema take it in turn.
+    One key for every schema queued every org's build behind every other's, on every process of
+    the control plane: both sandbox tiers' opens and template builds, in one line."""
+    return _SEED_DOMAIN_ADVISORY_LOCK_KEY ^ zlib.crc32(org_schema(org_id, env).encode())
+
 
 # The ops views over the signals (ops_schema.OPS_SIGNAL_VIEWS), each engine with the signals
 # defining them in otel.signals.
@@ -239,8 +277,152 @@ async def _drop_sibling_environment_registrations(
     )
 
 
+def _terminal_relations() -> list[str]:
+    """Every relation of this schema registered under ``provisa-admin``, by its physical name: what
+    a client's statement on the admin terminal can read."""
+    return sorted(
+        {
+            *(_META_TABLE_ALIAS.get(tbl, tbl) for tbl in _META_TABLES),
+            *ONTOLOGY_TABLE_ALIAS.values(),
+            *_OPS_LOG_TABLE_ALIAS.values(),
+            *_OPS_REPORT_VIEWS,
+        }
+    )
+
+
+async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
+    """REQ-2190: what every client statement on the admin terminal runs as and may call. The role
+    reads that terminal's relations and nothing else of this schema, and holds no predefined role:
+    PostgreSQL then refuses it a server file and hides other connections from it. A view reads as
+    its owner, so a role needs no grant on what a view reads. provisa_raise is how a form answers
+    PostgreSQL's own error. Run once every relation it names is seeded."""
+    async with conn.advisory_lock(_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY):
+        await conn.execute(
+            f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+            "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+        )
+        await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
+    await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
+    await conn.execute(f"GRANT SELECT ON {', '.join(_terminal_relations())} TO {CLIENT_ROLE}")
+    await conn.execute(RAISE_FUNCTION_SQL)
+
+
+async def _register_admin_view(
+    conn: "Connection",
+    domain_id: str,
+    schema_name: str,
+    tbl: str,
+    *,
+    base_table: str | None,
+    view_name: str,
+    reflected: dict[str, list[dict]],
+) -> None:
+    """Register one of the control plane's own views as table ``tbl`` of a system schema (meta,
+    ontology): its columns are the view's, its primary key the base table's it restates (a view
+    restating none, ontology._axioms, is keyed by its own id), and descriptions are seeded without
+    overwriting an edited one. ``reflected`` holds the columns of both relations, read with every
+    other view of the schema (:func:`_reflect_admin_views`)."""
+    table_id = await conn.upsert_returning(
+        _registered_tables_t,
+        {
+            "source_id": "provisa-admin",
+            "domain_id": domain_id,
+            "schema_name": schema_name,
+            "table_name": tbl,
+            "description": _TBL_DESC[tbl],
+        },
+        index_elements=["source_id", "schema_name", "table_name"],
+        returning="id",
+        update_columns=["domain_id"],
+        set_extra=_keep_edited_description(_registered_tables_t.c.description, _TBL_DESC[tbl]),
+    )
+    # Portable reflection (SQLAlchemy Inspector) instead of information_schema. The org
+    # schema is honoured only on schema-capable backends — the abstraction decides.
+    pk_cols = (
+        {"id"}
+        if base_table is None
+        else {c["column_name"] for c in reflected[base_table] if c["is_primary_key"]}
+    )
+    cols = reflected[view_name]
+    col_names = {col["column_name"] for col in cols}
+    # Remove stale columns that no longer appear in the view.
+    await conn.execute_core(
+        _delete(_table_columns_t).where(
+            _table_columns_t.c.table_id == table_id,
+            _table_columns_t.c.column_name.not_in(list(col_names)),
+        )
+    )
+    async with conn.transaction():  # one commit, not one a column
+        for col in cols:
+            await conn.upsert(
+                _table_columns_t,
+                {
+                    "table_id": table_id,
+                    "domain_id": domain_id,
+                    "column_name": col["column_name"],
+                    # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
+                    "visible_to": [VIEWER_ROLE],
+                    "data_type": col["data_type"],
+                    "is_primary_key": col["column_name"] in pk_cols,
+                    "description": _COL_DESC[tbl].get(col["column_name"]),
+                },
+                index_elements=["table_id", "column_name"],
+                update_columns=[],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                ),
+            )
+
+
+async def _reflect_admin_views(
+    conn: "Connection", schema_name: str, relations: dict[str, str | None]
+) -> dict[str, list[dict]]:
+    """The columns of a system schema's registered views and of the tables they restate
+    (``relations``: view name to base table), read in one pass. A reflection per relation repeated
+    the catalog-wide lookups every reflection makes, once per relation: with the meta schema's
+    pg_catalog-shaped views (REQ-2190) that was hundreds of catalog scans on every boot, and the
+    deploy's health check timed out on them."""
+    from sqlalchemy.exc import NoSuchTableError
+
+    names = [*relations, *(base for base in relations.values() if base is not None)]
+    reflected = await conn.reflect_columns_many(names, schema=schema_name)
+    missing = sorted(set(names) - set(reflected))
+    if missing:
+        raise NoSuchTableError(f"{schema_name}: {', '.join(missing)}")
+    return reflected
+
+
+async def _seed_ontology_domain(
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
+) -> None:  # REQ-2163
+    """Register the glossary's definition views as the ontology system schema's tables
+    (idempotent), as :func:`_seed_meta_domain` registers meta's. The Class tables generated from
+    the glossary are the schema's too, and are not written here. ``views_made``: the views are
+    there already (:func:`_make_built_in_views`)."""
+    schema_name = org_schema(org_id, env)
+    if not views_made:
+        for ddl in ONTOLOGY_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
+    await _drop_sibling_environment_registrations(conn, ONTOLOGY_DOMAIN_ID, org_id, schema_name)
+    reflected = await _reflect_admin_views(
+        conn,
+        schema_name,
+        {ONTOLOGY_TABLE_ALIAS[tbl]: ONTOLOGY_BASE_TABLE[tbl] for tbl in ONTOLOGY_TABLES},
+    )
+    for tbl in ONTOLOGY_TABLES:
+        await _register_admin_view(
+            conn,
+            ONTOLOGY_DOMAIN_ID,
+            schema_name,
+            tbl,
+            base_table=ONTOLOGY_BASE_TABLE[tbl],
+            view_name=ONTOLOGY_TABLE_ALIAS[tbl],
+            reflected=reflected,
+        )
+
+
 async def _seed_meta_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-012, REQ-016, REQ-695
     """Register admin tables in the built-in meta domain (idempotent).
 
@@ -248,10 +430,13 @@ async def _seed_meta_domain(
     a branch's runtime is scoped to its own schema — naming ``org_<id>`` here registered the
     branch's meta tables at prod's address, next to the branch's own copies of the same rows, and
     every request to that runtime then failed the (domain, table) uniqueness assertion.
+
+    ``views_made``: the views are there already (:func:`_make_built_in_views`).
     """
     schema_name = org_schema(org_id, env)
-    for ddl in _META_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in _META_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
 
     await _drop_sibling_environment_registrations(conn, "meta", org_id, schema_name)
 
@@ -264,57 +449,34 @@ async def _seed_meta_domain(
             _registered_tables_t.c.table_name == view_name,
         )
 
+    # REQ-2163: meta's tables are a SET this seed declares, as ops's are (_seed_ops_pg), and a
+    # table an older build declared is retired with what refers to it. The glossary's moved to
+    # ontology, and its kept meta registrations kept their relationships beside the new ones: two
+    # `glossaryRefs` fields on registered_tables, and the schema build refused (J627). The root
+    # org's registry view is meta's too, written by seed_org_registry_view, not here.
+    from provisa.core.org_registry_view import VIEW_NAME as _ORG_REGISTRY_VIEW
+
+    await _table_repo.remove_registrations(
+        conn,
+        _registered_tables_t.c.source_id == "provisa-admin",
+        _registered_tables_t.c.domain_id == "meta",
+        _registered_tables_t.c.schema_name == schema_name,
+        _registered_tables_t.c.table_name.not_in([*_META_TABLES, _ORG_REGISTRY_VIEW]),
+    )
+
+    reflected = await _reflect_admin_views(
+        conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): tbl for tbl in _META_TABLES}
+    )
     for tbl in _META_TABLES:
-        table_id = await conn.upsert_returning(
-            _registered_tables_t,
-            {
-                "source_id": "provisa-admin",
-                "domain_id": "meta",
-                "schema_name": schema_name,
-                "table_name": tbl,
-                "description": _TBL_DESC[tbl],
-            },
-            index_elements=["source_id", "schema_name", "table_name"],
-            returning="id",
-            update_columns=["domain_id"],
-            set_extra=_keep_edited_description(_registered_tables_t.c.description, _TBL_DESC[tbl]),
+        await _register_admin_view(
+            conn,
+            "meta",
+            schema_name,
+            tbl,
+            base_table=tbl,
+            view_name=_META_TABLE_ALIAS.get(tbl, tbl),
+            reflected=reflected,
         )
-        # Portable reflection (SQLAlchemy Inspector) instead of information_schema. The org
-        # schema is honoured only on schema-capable backends — the abstraction decides.
-        pk_cols = {
-            c["column_name"]
-            for c in await conn.reflect_columns(tbl, schema=schema_name)
-            if c["is_primary_key"]
-        }
-        # Use the view name when available so column list reflects the exposed schema.
-        view_name = _META_TABLE_ALIAS.get(tbl, tbl)
-        cols = await conn.reflect_columns(view_name, schema=schema_name)
-        col_names = {col["column_name"] for col in cols}
-        # Remove stale columns that no longer appear in the view.
-        await conn.execute_core(
-            _delete(_table_columns_t).where(
-                _table_columns_t.c.table_id == table_id,
-                _table_columns_t.c.column_name.not_in(list(col_names)),
-            )
-        )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "meta",
-                    "column_name": col["column_name"],
-                    "visible_to": [],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] in pk_cols,
-                    "description": _COL_DESC[tbl].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=[],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-                ),
-            )
 
     # Register registered_tables → table_columns relationship (table_id FK)
     _rt_id = (
@@ -350,7 +512,7 @@ async def _seed_meta_domain(
 
 
 async def _seed_ops_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-884
     """Expose internal operational logs (query_audit_log, …) as first-class tables in
     the built-in ``ops`` domain, reusing the meta-domain view+seed mechanism.
@@ -364,11 +526,14 @@ async def _seed_ops_domain(
     REQ-1386: also creates and registers the management report views
     (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
     data — and designates ``org_admin`` as the ops-domain steward so the domain
-    never surfaces as a REQ-609 PENDING stewardship gap."""
+    never surfaces as a REQ-609 PENDING stewardship gap.
+
+    ``views_made``: the views are there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)  # REQ-1488: the environment's schema, not the org's
     await _drop_sibling_environment_registrations(conn, "ops", org_id, schema_name)
-    for ddl in _OPS_LOG_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in _OPS_LOG_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
 
     for tbl, view_name in _OPS_LOG_TABLE_ALIAS.items():
         table_id = await conn.upsert_returning(
@@ -399,35 +564,35 @@ async def _seed_ops_domain(
                 _table_columns_t.c.column_name.not_in(list(col_names)),
             )
         )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "ops",
-                    "column_name": col["column_name"],
-                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
-                    # means visible to NO role there, not "unrestricted" as elsewhere.
-                    # org_admin is the ops-domain steward (below) and must retain the
-                    # explicit grant or it loses its own steward access (REQ-1386).
-                    "visible_to": ["org_admin"],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] in pk_cols,
-                    "description": _COL_DESC[tbl].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=[],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-                ),
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "ops",
+                        "column_name": col["column_name"],
+                        # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
+                        "visible_to": ["org_admin"],
+                        "data_type": col["data_type"],
+                        "is_primary_key": col["column_name"] in pk_cols,
+                        "description": _COL_DESC[tbl].get(col["column_name"]),
+                    },
+                    index_elements=["table_id", "column_name"],
+                    update_columns=[],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                    ),
+                )
 
     # REQ-1386: management report views. The unnest spine first (the report views
     # reference it), then each report view, registered like any ops table. Every
     # report view exposes ``id`` as its primary key.
-    await _seed_view(conn, _ops_table_usage_ddl())
+    if not views_made:
+        await _seed_view(conn, _ops_table_usage_ddl())
     for view_name, ddl in _OPS_REPORT_VIEWS.items():
-        await _seed_view(conn, ddl)
+        if not views_made:
+            await _seed_view(conn, ddl)
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -452,28 +617,26 @@ async def _seed_ops_domain(
                 _table_columns_t.c.column_name.not_in(list(col_names)),
             )
         )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "ops",
-                    "column_name": col["column_name"],
-                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
-                    # means visible to NO role there, not "unrestricted" as elsewhere.
-                    # org_admin is the ops-domain steward (below) and must retain the
-                    # explicit grant or it loses its own steward access (REQ-1386).
-                    "visible_to": ["org_admin"],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] == "id",
-                    "description": _COL_DESC[view_name].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
-                ),
-                update_columns=[],
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "ops",
+                        "column_name": col["column_name"],
+                        # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
+                        "visible_to": ["org_admin"],
+                        "data_type": col["data_type"],
+                        "is_primary_key": col["column_name"] == "id",
+                        "description": _COL_DESC[view_name].get(col["column_name"]),
+                    },
+                    index_elements=["table_id", "column_name"],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
+                    ),
+                    update_columns=[],
+                )
 
     # REQ-1386: org_admin stewards the ops domain (REQ-609 — never PENDING).
     await conn.execute_core(
@@ -488,9 +651,9 @@ async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, RE
 
     The two ops seeds insert their columns once (``update_columns=[]``) so a later grant made
     through the admin UI survives a restart. That also means a column first written without the
-    steward grant keeps it forever, and in a lockdown domain that column is in no role's schema —
-    the report's ``ops.<table>`` reference then reaches the engine unrewritten. This adds the
-    stewards to any ops column missing them and touches nothing else, so REQ-1133 grants to other
+    steward grant keeps it forever, and a column granted to no role is in no role's schema
+    (REQ-2154) -- the report's ``ops.<table>`` reference then reaches the engine unrewritten. This
+    adds the stewards to any ops column missing them and touches nothing else, so grants to other
     roles are preserved.
 
     ``sandbox`` is included so its illustration of admin capabilities (REQ-1608) covers ops the
@@ -637,12 +800,8 @@ async def _seed_ops_pg(conn: "Connection") -> None:  # REQ-016
                     "table_id": table_id,
                     "domain_id": "ops",
                     "column_name": col_name,
-                    # ops is a _LOCKDOWN_DOMAINS domain (schema_gen.py): visible_to=[]
-                    # means visible to NO role, so a telemetry table seeded empty was in
-                    # no role's compilation context and its "ops"."<table>" reference was
-                    # never rewritten to a physical ref — the engine then rejected the
-                    # report with SCHEMA_NOT_FOUND on schema 'ops'. org_admin stewards ops
-                    # and holds the same grant the ops-domain views get (REQ-1386).
+                    # org_admin stewards ops and reads it by this grant, as the ops-domain
+                    # views are (REQ-1386); a column granted to no role is in no role's context.
                     "visible_to": ["org_admin"],
                     "data_type": pg_type,
                     "is_primary_key": is_pk,
@@ -824,6 +983,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     org_id: str,
     env: str | None = None,
     engine_addressable: bool = True,
+    cloned: bool = False,
+    provisioned: bool = False,
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
@@ -838,8 +999,23 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     the shard could not be allocated. The only thing that reads it is provisa-otel's recorded
     host/port, so those two columns are left as the last boot wrote them rather than the seed
     inventing an address: everything the seed exists for — the source rows, the meta domain, ops —
-    is control-plane state and is written either way."""
+    is control-plane state and is written either way.
+
+    ``cloned`` (REQ-2006): the org's model was cloned a moment ago from an org this seed ran on in
+    this release (a demo sandbox from its template), every row this seed writes with it, rebased
+    onto the org's own schema (env_copy._rebase). Only what a schema holds of its own is made: the
+    built-in views those rows register, and the catalog client's grants on them.
+
+    ``provisioned``: the org's schema was created a moment ago, in this process, and holds none of
+    the built-in views (a demo template's, built anew): they are made as one script
+    (:func:`_make_built_in_views`), and the domain seeds register them."""
     assert state.model_db is not None
+    if cloned:
+        async with state.model_db.acquire() as _conn:
+            async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
+                await _make_built_in_views(_conn)
+                await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
+        return
     cp_dialect = state.model_db.dialect
     from provisa.federation.engine import configured_engine_endpoint
 
@@ -943,8 +1119,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # visibility is a property of the OTHER session's DDL, not this session's ordering.
         # Confirmed live under `--workers 8`: `sqlalchemy.exc.NoSuchTableError` on
         # `org_default.usage_ranking`/`org_default.pii_access` from exactly this reflect step.
-        # A session advisory lock serializes the whole phase across every worker regardless of
-        # the exact interleaving — only one worker's pass ever runs at a time, so by the time any
+        # A session advisory lock, one per schema (_seed_lock_key), serializes the whole phase
+        # across every worker regardless of the exact interleaving — only one worker's pass ever runs at a time, so by the time any
         # OTHER worker's turn starts, every view this phase creates is fully committed and stable;
         # every worker's own pass is already idempotent (CREATE OR REPLACE VIEW, upserts), so a
         # later worker's now-serialized pass is just a fast no-op confirmation. Session-scoped
@@ -953,13 +1129,26 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # Sqlite (the embedded demo tier) has no multi-worker story and no advisory-lock function.
         # The lock is held on a session of its own on the server (Connection.advisory_lock), so it
         # spans these autocommitting statements even behind a transaction-pooling PgBouncer.
-        async with _conn.advisory_lock(_SEED_DOMAIN_ADVISORY_LOCK_KEY):
+        async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
+            clock = _SeedClock(org_id)
             await _seed_tag_param_values(_conn)  # REQ-1467
-            await _seed_meta_domain(_conn, org_id=org_id, env=env)
+            if provisioned:
+                await _make_built_in_views(_conn)
+                clock.mark("built-in views")
+            await _seed_meta_domain(_conn, org_id=org_id, env=env, views_made=provisioned)
+            clock.mark("meta domain")
+            await _seed_ontology_domain(  # REQ-2163
+                _conn, org_id=org_id, env=env, views_made=provisioned
+            )
+            clock.mark("ontology domain")
             await _seed_ops_pg(_conn)
-            await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
+            await _seed_ops_domain(_conn, org_id=org_id, env=env, views_made=provisioned)  # REQ-884
+            clock.mark("ops domain")
+            await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
+            clock.mark("catalog client")
             await _ensure_ops_steward_grant(_conn)  # REQ-1386
             await _seed_meta_relationships(_conn)
+            clock.mark("relationships")
         needs_clusters = (
             await _conn.execute_core(
                 select(_sa_func.count())
@@ -974,6 +1163,39 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     # opens both planes.
     if org_id == state.org_id:
         await seed_org_registry_view()
+
+
+async def _seed_built_in_views(conn: "Connection") -> None:
+    """The built-in views of the meta, ontology and ops domains, made in the order their seeds
+    make them (_seed_meta_domain, _seed_ontology_domain, _seed_ops_domain), and nothing they
+    register."""
+    for ddl in _built_in_view_ddl():
+        await _seed_view(conn, ddl)
+
+
+def _built_in_view_ddl() -> list[str]:
+    """Each built-in view's DDL, in the order :func:`_seed_built_in_views` makes them."""
+    return [
+        *_META_TABLE_VIEWS.values(),
+        *ONTOLOGY_TABLE_VIEWS.values(),
+        *_OPS_LOG_TABLE_VIEWS.values(),
+        _ops_table_usage_ddl(),
+        *_OPS_REPORT_VIEWS.values(),
+    ]
+
+
+async def _make_built_in_views(conn: "Connection") -> None:
+    """The built-in views of a schema provisioned a moment ago, which holds none of them (a demo
+    sandbox's, REQ-2006, or a demo template's built anew): sent as one script, in one round trip. Made one by one, each in its own
+    transaction, they were about 800 round trips to a control plane on another machine -- 9 s of a
+    sandbox's open. A view already there and reshaped is :func:`_seed_built_in_views`' case."""
+    await conn.execute(views_script(_built_in_view_ddl()))
+
+
+def views_script(ddls: list[str]) -> str:
+    """The view DDLs as one script. Each statement's terminator goes on a line of its own: a DDL
+    that ends in a ``--`` comment would otherwise swallow it, and the next CREATE fails."""
+    return "\n".join(f"{ddl.strip().removesuffix(';')}\n;" for ddl in ddls)
 
 
 async def seed_org_registry_view() -> bool:  # REQ-1301
@@ -995,18 +1217,14 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     assert state.admin_db is not None
     model_db = state.model_db
     assert model_db is not None
-    try:
-        await refresh_org_registry_view(model_db=model_db, admin_db=state.admin_db)
-        # The registration must name the schema the view was actually built in, which is the root
-        # connection's own scope — not a name recomposed from the org id.
-        schema_name = root_schema_name(model_db)
-    except RegistryViewUnavailable as exc:
-        logging.getLogger(__name__).info(
-            "org registry view not available on this deployment: %s", exc
-        )
-        return False
 
-    async with model_db.acquire() as conn:
+    async def _grant_and_register(conn: "Connection") -> None:
+        # Under the rebuild's hold of the lock: an org's schema dropped once it is let go takes the
+        # view with it (CASCADE), and a GRANT or a read of its columns after that fails.
+        # REQ-2190: a read of it on the admin terminal runs as the client role, and a rebuild drops
+        # the view and its grant with it.
+        await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
+        await conn.execute(f'GRANT SELECT ON "{schema_name}".{VIEW_NAME} TO {CLIENT_ROLE}')
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -1024,35 +1242,55 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
             ),
         )
         cols = await conn.reflect_columns(VIEW_NAME, schema=schema_name)
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "meta",
-                    "column_name": col["column_name"],
-                    "visible_to": [],
-                    "data_type": col["data_type"],
-                    # A view over the registry has no key of its own — one org appears once per
-                    # org_admin — so nothing here is a primary key.
-                    "is_primary_key": False,
-                    "description": _COL_DESC[VIEW_NAME][col["column_name"]],
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=["data_type"],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
-                ),
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "meta",
+                        "column_name": col["column_name"],
+                        # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
+                        "visible_to": [VIEWER_ROLE],
+                        "data_type": col["data_type"],
+                        # A view over the registry has no key of its own — one org appears once per
+                        # org_admin — so nothing here is a primary key.
+                        "is_primary_key": False,
+                        "description": _COL_DESC[VIEW_NAME][col["column_name"]],
+                    },
+                    index_elements=["table_id", "column_name"],
+                    update_columns=["data_type"],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
+                    ),
+                )
+
+    try:
+        # The registration must name the schema the view was actually built in, which is the root
+        # connection's own scope — not a name recomposed from the org id.
+        schema_name = root_schema_name(model_db)
+        await refresh_org_registry_view(
+            model_db=model_db, admin_db=state.admin_db, with_view=_grant_and_register
+        )
+    except RegistryViewUnavailable as exc:
+        logging.getLogger(__name__).info(
+            "org registry view not available on this deployment: %s", exc
+        )
+        return False
+
     return True
 
 
 async def _resolve_pk_from_sources() -> None:
-    """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
+    """Second pass -- record the keys each source declares (REQ-2170): its primary key and its
+    unique (alternate) keys, read from its own catalog (``discovery.declared_keys``), for every
+    registered table of a source kind that declares them. A table registered while its source had
+    no driver here (a configuration applied before the pools were built) gets them now. This pass
+    is no registration: it records what the source declares and clears nothing."""
+    from provisa.discovery.declared_keys import READERS, declared_keys
+
     assert state.model_db is not None
     _startup_log = logging.getLogger("uvicorn.error")
-    _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
-    _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
     async with state.model_db.acquire() as _pk_conn:
         _pk_rows = [
             dict(_r._mapping)
@@ -1061,85 +1299,81 @@ async def _resolve_pk_from_sources() -> None:
                     select(
                         _registered_tables_t.c.id,
                         _registered_tables_t.c.source_id,
+                        _registered_tables_t.c.domain_id,
                         _registered_tables_t.c.schema_name,
                         _registered_tables_t.c.table_name,
                         _sources_t.c.type.label("source_type"),
-                        _sources_t.c.path.label("source_path"),
                     )
                     .select_from(
                         _registered_tables_t.join(
                             _sources_t, _sources_t.c.id == _registered_tables_t.c.source_id
                         )
                     )
-                    .where(_sources_t.c.type.in_(list(_PK_SOURCE_TYPES)))
+                    .where(_sources_t.c.type.in_(list(READERS)))
                 )
             ).fetchall()
         ]
         from provisa.federation.replica_routing import kept_sources
 
         _kept = await kept_sources(state)  # REQ-2031: never contacted, its keys never re-read
+        # The control plane's own tables, each schema's read in one pass (reflect_columns_many):
+        # one reflection a table repeated the catalog-wide lookups every reflection makes.
+        _admin_schemas: dict[str, list[str]] = {}
+        for _pk_t in _pk_rows:
+            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] != ONTOLOGY_DOMAIN_ID:
+                _admin_schemas.setdefault(_pk_t["schema_name"], []).append(_pk_t["table_name"])
+        _admin_columns = {
+            _schema: await _pk_conn.reflect_columns_many(_names, schema=_schema)
+            for _schema, _names in _admin_schemas.items()
+        }
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] in _kept:
                 continue
-            _pk_dialect = {
-                "mysql": "mysql",
-                "mariadb": "mysql",
-                "singlestore": "mysql",
-                "sqlserver": "tsql",
-            }.get(_pk_t["source_type"], "postgres")
-            _sch = sql_literal(_pk_t["schema_name"], _pk_dialect)
-            _tbl = sql_literal(_pk_t["table_name"], _pk_dialect)
-            _pk_sql = (
-                "SELECT kcu.column_name "
-                "FROM information_schema.table_constraints tc "
-                "JOIN information_schema.key_column_usage kcu "
-                "  ON tc.constraint_name = kcu.constraint_name "
-                "  AND tc.table_schema = kcu.table_schema "
-                "WHERE tc.constraint_type = 'PRIMARY KEY' "
-                f"  AND tc.table_schema = {_sch} AND tc.table_name = {_tbl}"
-            )
+            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] == ONTOLOGY_DOMAIN_ID:
+                # REQ-2163: an ontology table is a view under another name (``_terms`` is
+                # ``_terms_ontology``), its key recorded when it is seeded, from the table it
+                # restates (_register_admin_view): there is no relation of its name to reflect.
+                continue
+            primary: list[str]
+            alternate: frozenset[str] = frozenset()
             try:
                 if _pk_t["source_id"] == "provisa-admin":
                     # Control-plane self-catalog: its tables live in the CP connection, so reflect
                     # there portably (the abstraction ignores the schema on schema-less backends).
-                    _pk_cols = [
+                    primary = [
                         c["column_name"]
-                        for c in await _pk_conn.reflect_columns(
-                            _pk_t["table_name"], schema=_pk_t["schema_name"]
-                        )
+                        for c in _admin_columns[_pk_t["schema_name"]][_pk_t["table_name"]]
                         if c["is_primary_key"]
                     ]
-                elif _pk_t["source_type"] == "sqlite":
-                    # REQ-1651: a SQLite file has no information_schema and is not in the CP
-                    # connection, and the engine's schema rebuild never wrote its keys either -- so
-                    # every file-backed table (the demo's pets among them) landed without a
-                    # PRIMARY KEY. PRAGMA table_info is the file's own constraint declaration.
-                    from provisa.core.secrets import resolve_secrets
-                    from provisa.federation.connector_sqlite import primary_key_columns
-
-                    _pk_cols = primary_key_columns(
-                        resolve_secrets(_pk_t["source_path"] or ""), _pk_t["table_name"]
-                    )
-                elif state.source_pools.has(_pk_t["source_id"]):
-                    _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
-                    _pk_cols = [_row[0] for _row in _pk_res.rows]
                 else:
-                    continue
+                    declared = await declared_keys(
+                        state.source_pools,
+                        _pk_t["source_type"],
+                        _pk_t["source_id"],
+                        _pk_t["schema_name"],
+                        _pk_t["table_name"],
+                    )
+                    if declared is None:
+                        continue  # no driver for the source here: nothing is read
+                    primary, alternate = list(declared.primary_key), declared.alternate_columns
             except Exception:
+                # One source that cannot be read now does not stop the others' keys being read
+                # (startup_resilience); it is named, and read again at the next start.
                 _startup_log.warning(
-                    "PK resolve failed for %s.%s.%s",
+                    "declared keys of %s.%s.%s could not be read",
                     _pk_t["source_id"],
                     _pk_t["schema_name"],
                     _pk_t["table_name"],
                     exc_info=True,
                 )
                 continue
-            if _pk_cols:
-                await _pk_conn.execute_core(
-                    update(_table_columns_t)
-                    .where(
-                        _table_columns_t.c.table_id == _pk_t["id"],
-                        _table_columns_t.c.column_name.in_(_pk_cols),
+            for _mark, _columns in (("is_primary_key", primary), ("is_alternate_key", alternate)):
+                if _columns:
+                    await _pk_conn.execute_core(
+                        update(_table_columns_t)
+                        .where(
+                            _table_columns_t.c.table_id == _pk_t["id"],
+                            _table_columns_t.c.column_name.in_(list(_columns)),
+                        )
+                        .values({_mark: True})
                     )
-                    .values(is_primary_key=True)
-                )

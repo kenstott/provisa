@@ -70,19 +70,21 @@ async def test_search_terms_is_a_registered_tool(control_plane):
 async def test_search_terms_round_trips_through_the_protocol(control_plane, monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")  # stdio names roles within its pin
     async with _server(control_plane) as (server, db):
-        # Derived and undefined, so the protocol offers nothing: an agent may only bind a
-        # question to a term that is in service, defined, and grounded in a column.
+        # Derived and a draft, so the protocol offers nothing: an agent sees what a steward
+        # approved, on a path to data (REQ-1387).
         empty = await server.call_tool("search_terms", {"query": "customer", "role": "analyst"})
         # No hits serializes as no content blocks, so the structured half carries the answer.
         assert empty[1] == {"result": []}
         async with db.acquire() as conn:
             term = (await glossary_repo.list_terms(conn))[0]
             await glossary_repo.set_definition(conn, term["id"], "The buyer.")
+            await glossary_repo.approve_term(conn, term["id"], by=None)
         content = await server.call_tool("search_terms", {"query": "customer", "role": "analyst"})
         blocks = content[0] if isinstance(content, tuple) else content
         payload = json.loads(blocks[0].text)
         term = payload[0] if isinstance(payload, list) else payload
         assert term["name"] == "customer"
+        assert (term["status"], term["grounding"]) == ("approved", "grounded")
         assert term["refs"][0]["column_name"] == "cust_id"
 
 

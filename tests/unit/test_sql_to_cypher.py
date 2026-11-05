@@ -36,6 +36,7 @@ class _TableMeta:
     column_presets: list = field(default_factory=list)
     source_type: str = ""
     original_table_name: str = ""  # as TableMeta: the name before a physical alias
+    display_name: str | None = None  # as TableMeta
 
 
 @dataclass
@@ -324,7 +325,8 @@ class TestTraversalOnlyNode:
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None, f"Got None: {result}"
         assert "CALL {" in result, f"Expected CALL subquery for per-relationship LIMIT: {result}"
-        assert "[..2]" in result, f"Per-relationship LIMIT 2 (as slice) missing: {result}"
+        # Each parent's own rows, cut in the CALL (a row per child, as the LATERAL answers).
+        assert "LIMIT 2\n}" in result, f"Per-relationship LIMIT 2 missing: {result}"
         assert "WITH " in result, f"CALL subquery must include WITH clause: {result}"
 
     def test_lateral_join_parameterized_limit_resolves_call_subquery(self):
@@ -339,7 +341,7 @@ class TestTraversalOnlyNode:
         result = semantic_sql_to_cypher(sql, lm, ctx, params=[3])
         assert result is not None, f"Got None: {result}"
         assert "CALL {" in result, f"Expected CALL subquery: {result}"
-        assert "[..3]" in result, f"Expected resolved limit [..3]: {result}"
+        assert "LIMIT 3\n}" in result, f"Expected resolved limit 3: {result}"
 
     def test_lateral_join_collect_avoids_cartesian_product(self):
         """Regression #44: multiple LATERAL joins must use collect() + list comprehension, not flat OPTIONAL MATCH."""
@@ -351,11 +353,8 @@ class TestTraversalOnlyNode:
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
-        assert "collect(" in result, (
-            f"Expected collect() in CALL subquery to avoid cartesian product: {result}"
-        )
-        # Per-property collect: list comprehensions replaced by direct list var references (issue #49)
-        assert "_list AS " in result, f"Expected per-property list var in RETURN: {result}"
+        # The limited field's rows are each parent's own, picked in its CALL by value.
+        assert "CALL {" in result and "LIMIT 5\n}" in result, result
         assert "OPTIONAL MATCH" not in result.split("CALL")[0].lstrip("MATCH"), (
             f"OPTIONAL MATCH outside CALL block would cause cartesian product: {result}"
         )
@@ -371,16 +370,12 @@ class TestTraversalOnlyNode:
         )
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
-        # collect(b) would be ARRAY_AGG(table_alias) — invalid in Trino
+        # A bare node alias would be a table alias in SQL -- invalid in Trino: the CALL returns
+        # the field's properties by name.
         import re
 
-        bare_collect = re.search(r"\bcollect\s*\(\s*[a-z]\s*\)", result)
-        assert bare_collect is None, (
-            f"Regression #49: collect() must not use bare node alias: {result}"
-        )
-        # collect(b.prop) is the correct form
-        assert re.search(r"\bcollect\s*\(\s*[a-z]\s*\.\s*\w+\s*\)", result), (
-            f"Regression #49: collect() must reference a property: {result}"
+        assert re.search(r"RETURN [a-z]\.\w+ AS [a-z]_\w+", result), (
+            f"Regression #49: the CALL must return properties, not a bare node: {result}"
         )
 
 

@@ -165,7 +165,12 @@ describe("what the invite list reports", () => {
 
   it("says what each link hands its redeemer", async () => {
     listed = [
-      invite({ token: "tok-env", env_policy: "per_visitor", env_ttl_seconds: 3600, max_uses: null }),
+      invite({
+        token: "tok-env",
+        env_policy: "per_visitor",
+        env_ttl_seconds: 3600,
+        max_uses: null,
+      }),
     ];
     renderTeamPage();
     expect(await screen.findByText("Per visitor, 1 hour of disuse")).toBeTruthy();

@@ -62,7 +62,7 @@ my_pg_connector:
 | --- | --- | --- |
 | **DataConnectorLink** | `sources[]` | Source type inferred from connector URL (postgres, mysql, mssql, mongo, clickhouse, snowflake, bigquery). Connection details default to placeholders; use `--source-overrides` to set actual values. |
 | **ObjectType** | Column definitions on `tables[]` | Fields become columns. `dataConnectorTypeMapping.fieldMapping` resolves GraphQL field names to physical column names. |
-| **Model** | `tables[]` | Each Model produces one table. `source_id` from connector, `table_name` from collection. `graphql_type_name` becomes `alias`. Subgraph (and thus `domain_id`) is derived from the file's directory: the first directory component under the project root. |
+| **Model** | `tables[]` | Each Model produces one table. `source_id` from connector, `table_name` from collection. `graphql_type_name` becomes `alias`. Subgraph (and thus `domain_id`) is derived from the file's directory, the first directory component under the project root. |
 | **Relationship** | `relationships[]` | Object type -> `many-to-one`, Array type -> `one-to-many`. Field mapping resolved through physical column lookup. |
 | **TypePermissions** | `columns[].visible_to[]` | `allowedFields` determines which roles can see each column. |
 | **ModelPermissions** | `rls_rules[]` | Filter predicates converted to SQL WHERE clauses. Supports `_eq`, `_neq`, `_gt`, `_lt`, `_gte`, `_lte`, `_in`, `_nin`, `_like`, `_is_null`, `_and`, `_or`, `_not`. Session variable references preserved as `${x-hasura-...}`. |
@@ -121,7 +121,7 @@ in the scanned directory.
 
 ### Subgraph discovery
 
-Subgraphs are derived from the directory structure: the first directory component
+Subgraphs are derived from the directory structure. The first directory component
 under the project root is taken as the subgraph name. The `subgraph` field inside
 HML documents is not used. Files under a `globals/` directory are assigned the
 `globals` subgraph and excluded from domain discovery.
@@ -134,7 +134,7 @@ name). If no Model uses the given ObjectType, the relationship is skipped silent
 ### Column aliases everywhere
 
 If your DDN project uses `fieldMapping` extensively, expect most columns to have
-an `alias` in the output. That is expected: `name` is the physical column,
+an `alias` in the output. That is expected. `name` is the physical column,
 `alias` is the GraphQL name your application used.
 
 ### Aggregate expressions

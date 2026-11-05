@@ -9,9 +9,9 @@
 from __future__ import annotations
 
 import re
+import os
 from pathlib import Path
 
-import pytest
 import yaml
 
 # Project root - all paths derived from here
@@ -149,28 +149,22 @@ class TestREQ070MaximumBrevity:
 class TestREQ071RequirementsTracker:
     """REQ-071"""
 
-    def test_requirements_tracker_agent_exists(self):
-        # REQ-071. `.claude/` is its own private checkout, never committed to this repo (see
-        # claude-dir-separate-repo convention) — present only on a maintainer's local primary
-        # working tree, absent from a git worktree AND from a plain clone (CI included). Skip
-        # rather than fail when it's genuinely not there instead of asserting content a CI
-        # checkout can never have.
+    def test_the_tracked_requirements_are_the_generated_form_of_the_catalog(self):
+        # REQ-071: new requirements are tracked into docs/arch/requirements.md. The tracker agent
+        # is `.claude/`'s, a private checkout no clone of this repo has (CI included); what this
+        # repo holds, and every checkout can check, is the tracked document itself: the generated
+        # form of docs/arch/requirements.yaml, in sync with it.
         import subprocess
+        import sys
 
-        common = subprocess.run(
-            ["git", "rev-parse", "--git-common-dir"],
+        checked = subprocess.run(
+            [sys.executable, "scripts/gen_requirements_md.py", "--check"],
             cwd=REPO_ROOT,
+            env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},  # the script imports provisa.tools
             capture_output=True,
             text=True,
-            check=True,
-        ).stdout.strip()
-        primary = (REPO_ROOT / common).resolve().parent
-        tracker = primary / ".claude" / "agents" / "requirements-tracker.md"
-        if not primary.joinpath(".claude").is_dir():
-            pytest.skip(
-                ".claude/ not present in this checkout (private, not committed to this repo)"
-            )
-        assert tracker.exists(), ".claude/agents/requirements-tracker.md must exist"
+        )
+        assert checked.returncode == 0, checked.stdout + checked.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +346,9 @@ class TestREQ225EmbeddedPostgresAndTrino:
         # REQ-225
         content = yaml.safe_load((REPO_ROOT / "docker-compose.core.yml").read_text())
         pg_image = content["services"]["postgres"]["image"]
-        assert "postgres:16" in pg_image
+        # REQ-2185: PostgreSQL 16 carrying pgvector, which the reference library requires
+        # by tag, no digest: bundles load it from a docker-save tarball, which has no registry digest
+        assert pg_image == "pgvector/pgvector:pg16-trixie"
 
     def test_core_compose_includes_trino(self):
         # REQ-225
@@ -963,7 +959,7 @@ class TestREQ632LinuxBundlesCoreAndObs:
 
 
 # ---------------------------------------------------------------------------
-# REQ-633: macOS and Windows use extension model. Core creates VM runtime.
+# REQ-633: macOS and Windows use extension model. Container tier runs on the user's Docker (macOS) or WSL2 + containerd (Windows).
 #           Obs and Demo are extensions in ~/.provisa/extensions/<name>/.
 #           Launcher enumerates extensions/*/docker-compose.*.yml at startup.
 # ---------------------------------------------------------------------------
@@ -981,6 +977,30 @@ class TestREQ633ExtensionModel:
         # REQ-633
         content = (REPO_ROOT / "packaging" / "macos" / "build-dmg-demo.sh").read_text()
         assert "extensions/demo" in content or "EXT_DIR" in content
+
+    def test_macos_extension_installers_load_into_users_docker(self):
+        # REQ-633 — the obs/demo DMG installers docker load into the user's own Docker,
+        # the same runtime first-launch.sh's Docker tier uses. No Lima VM exists to drive.
+        for name in ("build-dmg-obs.sh", "build-dmg-demo.sh"):
+            content = (REPO_ROOT / "packaging" / "macos" / name).read_text()
+            assert "require_docker" in content, f"{name} installer must check Docker is running"
+            assert 'docker load -i "$gz_file"' in content, f"{name} must docker load its images"
+            assert "limactl" not in content, f"{name} must not drive Lima (limactl)"
+            assert "ctr --namespace" not in content, f"{name} must not import via containerd ctr"
+
+    def test_macos_app_entitlements_carry_no_vm_entitlements(self):
+        # REQ-633 — the launcher spawns shell scripts and the CLI; it creates no VM and runs
+        # no JIT, so the Lima-era virtualization / JIT / library-validation entitlements are gone.
+        macos = REPO_ROOT / "packaging" / "macos"
+        assert not (macos / "entitlements-limactl.plist").exists()
+        content = (macos / "entitlements.plist").read_text()
+        for key in (
+            "com.apple.security.virtualization",
+            "com.apple.security.cs.allow-jit",
+            "com.apple.security.cs.allow-unsigned-executable-memory",
+            "com.apple.security.cs.disable-library-validation",
+        ):
+            assert key not in content, f"entitlements.plist must not grant {key}"
 
     def test_macos_core_ships_native_venv_and_docker_images(self):
         # Migrated macOS installer: the native tier ships a bare

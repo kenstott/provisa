@@ -81,6 +81,9 @@ def _admin(pg: LocalPostgres | SessionPostgres, *statements: str) -> None:
             conn.execute(statement)  # type: ignore[arg-type]
 
 
+from provisa.transpiler.metadata_settings import CLIENT_ROLE  # noqa: E402
+
+
 def build_template(pg: LocalPostgres | SessionPostgres) -> str:
     """The worker's template database, laid out as a deployment lays out its control plane."""
     from provisa.core.database import Database, create_engine_from_url
@@ -88,7 +91,12 @@ def build_template(pg: LocalPostgres | SessionPostgres) -> str:
     from provisa.core.schema_admin import init_registry_schema
 
     _admin(
-        pg, f'DROP DATABASE IF EXISTS "{TEMPLATE}" WITH (FORCE)', f'CREATE DATABASE "{TEMPLATE}"'
+        pg,
+        f'DROP DATABASE IF EXISTS "{TEMPLATE}" WITH (FORCE)',
+        f'CREATE DATABASE "{TEMPLATE}"',
+        # REQ-2190: roles are the cluster's; the role a client's catalog SQL runs as.
+        f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+        "EXCEPTION WHEN duplicate_object THEN NULL; END $$",
     )
     engine = create_engine_from_url(pg.url(TEMPLATE))
 

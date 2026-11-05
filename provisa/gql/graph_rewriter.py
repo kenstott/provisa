@@ -24,8 +24,8 @@ from typing import cast
 
 import sqlglot.expressions as exp
 
-from provisa.gql.translator_types import GraphVarKind
-from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.translator_types import NODE_COLUMN, GraphVarKind
+from provisa.gql.label_map import GRAPH_ID, CypherLabelMap, NodeMapping
 
 
 def apply_graph_rewrites(  # REQ-349, REQ-350
@@ -79,24 +79,44 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             else (col_name if col_name in graph_vars else None)
         )
 
-        if graph_var is None and table_ref and table_ref in graph_vars:
+        # ``n.*`` is the node n; a property of it (``n."city" AS c``) is a value, not the node.
+        if (
+            graph_var is None
+            and table_ref
+            and table_ref in graph_vars
+            and not _is_property_column(inner)
+        ):
             graph_var = table_ref
 
         if graph_var is not None:
             kind = graph_vars[graph_var]
-            # EDGE, PATH, and PASSTHROUGH expressions are pre-built, and a MAP is a property column
-            # (REQ-1991); pass through.
+            # EDGE, PATH, and PASSTHROUGH expressions are pre-built, a MAP is a property column
+            # (REQ-1991), a SPARQL TERM is its own JSON term and the depth limit's CUT flag a
+            # number (REQ-2135); pass through.
             if kind in (
                 GraphVarKind.EDGE,
                 GraphVarKind.PATH,
                 GraphVarKind.PASSTHROUGH,
                 GraphVarKind.MAP,
+                GraphVarKind.JSON_MAP,
+                GraphVarKind.JSON_LIST,
+                GraphVarKind.JSON_VALUE,
+                GraphVarKind.PROPERTIES,  # properties(): its JSON object
+                GraphVarKind.DURATION,  # REQ-2173: a duration's parts
+                GraphVarKind.DURATION_LIST,  # REQ-2173: each duration's parts
+                GraphVarKind.ZONED,  # REQ-2173: a date time's instant and zone
+                GraphVarKind.POINT,  # a point's srid and coordinates
+                GraphVarKind.TERM,
+                GraphVarKind.CUT,
             ):
                 new_expressions.append(sel_expr)
                 continue
             # NODE expressions already containing pre-built JSON (from _rewrite_graph_fns for
             # startNode/endNode/nodes) pass through — they must not be rebuilt from raw columns.
             # JSON_OBJECT parses to exp.JSONObject; JSON_ARRAY parses to exp.Anonymous("JSON_ARRAY").
+            if inner.meta.get("provisa_elements_built"):  # select_builder.ELEMENTS_BUILT
+                new_expressions.append(sel_expr)
+                continue
             if kind == GraphVarKind.NODE and isinstance(inner, (exp.JSONObject, exp.JSONArray)):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 new_expressions.append(sel_expr)
                 continue
@@ -107,19 +127,39 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             ):
                 new_expressions.append(sel_expr)
                 continue
-            # Find node meta: prefer alias_to_node lookup, then direct search
+            out_alias = alias_name or graph_var
+            tbl = table_ref or graph_var
+            # Find node meta: prefer alias_to_node lookup, then direct search. A node drawn from
+            # a union of labels (no label, or a domain) is no one label's, whatever its name: a
+            # variable `a` is never the label A's node (_find_node_meta matches names).
             node_meta = (
                 alias_to_node.get(graph_var)
                 or inner.meta.get("provisa_node")  # select_builder.NODE_OF_STAR
-                or _find_node_meta(graph_var, table_ref, label_map)
+                or (
+                    None
+                    if _from_node_union(sql_ast, tbl)
+                    else _find_node_meta(graph_var, table_ref, label_map)
+                )
             )
-            out_alias = alias_name or graph_var
-            tbl = table_ref or graph_var
-            if node_meta is not None:
+            if inner.meta.get("provisa_union_node"):  # select_builder.UNION_NODE_OF_STAR
+                # A union node a WITH carries: its value is the union's own, carried with it.
+                rewritten = exp.Column(
+                    this=exp.Identifier(this=NODE_COLUMN, quoted=True),
+                    table=exp.Identifier(this=tbl),
+                )
+            elif node_meta is not None:
                 rewritten = _build_row_cast(tbl, node_meta)
             else:
                 domain_props = _extract_domain_props_from_union(sql_ast, tbl)
-                rewritten = _build_domain_json(tbl, domain_props)
+                rewritten = (
+                    # Each arm carries the node as one value already (translator_union).
+                    exp.Column(
+                        this=exp.Identifier(this=NODE_COLUMN, quoted=True),
+                        table=exp.Identifier(this=tbl),
+                    )
+                    if NODE_COLUMN in domain_props
+                    else _build_domain_json(tbl, domain_props)
+                )
             new_expressions.append(cast(exp.Expression, exp.alias_(rewritten, out_alias)))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         else:
             new_expressions.append(cast(exp.Expression, sel_expr))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -139,18 +179,10 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
-    raw_id_col = exp.Column(
-        this=exp.Identifier(this=nm.id_column, quoted=True),
-        table=exp.Identifier(this=tbl),
-    )
-    # Compound id matches domain-union __id format: "Label|rawPk"
-    compound_id = exp.DPipe(
-        this=exp.DPipe(
-            this=exp.Literal.string(nm.label),
-            expression=exp.Literal.string("|"),
-        ),
-        expression=exp.Cast(this=raw_id_col, to=exp.DataType.build("VARCHAR")),
-    )
+    from provisa.gql.select_builder import node_identity
+
+    # "Label|key", as a domain union's __id is (a compound key's every column).
+    compound_id = node_identity(tbl, nm)
     kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=compound_id),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
@@ -158,15 +190,29 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
             this=exp.Literal.string("tableLabel"), expression=exp.Literal.string(nm.table_label)
         ),
     ]
-    reserved = {"id", "label"}
-    for prop_key, col_name in nm.properties.items():
-        if col_name in reserved:
-            continue
-        col_expr = exp.Column(
-            this=exp.Identifier(this=col_name, quoted=True),
-            table=exp.Identifier(this=tbl),
+    # Every column is a property under its own name -- ``id`` and ``label`` included -- held apart
+    # from the node's own keys, so the node's identity never shadows a column of the same name.
+    props: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        exp.JSONKeyValue(
+            this=exp.Literal.string(prop_key),
+            expression=exp.Column(
+                this=exp.Identifier(this=col_name, quoted=True),
+                table=exp.Identifier(this=tbl),
+            ),
         )
-        kv.append(exp.JSONKeyValue(this=exp.Literal.string(prop_key), expression=col_expr))
+        for prop_key, col_name in nm.properties.items()
+    ]
+    from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
+
+    # The node's key, a property every label has (``n._id``).
+    props.append(
+        exp.JSONKeyValue(this=exp.Literal.string(NODE_KEY_PROPERTY), expression=node_key(tbl, nm))
+    )
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=props)
+        )
+    )
     json_obj = exp.JSONObject(expressions=kv)
     return exp.Case(
         ifs=[exp.If(this=exp.Is(this=id_col_check, expression=exp.null()), true=exp.null())],
@@ -192,19 +238,22 @@ def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expressi
             ),
         ),
     ]
-    _reserved = {"id", "label"}
-    for prop in props or []:
-        if prop in _reserved:
-            continue
-        kv.append(
-            exp.JSONKeyValue(
-                this=exp.Literal.string(prop),
-                expression=exp.Column(
-                    this=exp.Identifier(this=prop, quoted=True),
-                    table=exp.Identifier(this=var),
-                ),
-            )
+    # Every column is a property under its own name, ``id`` included, apart from the node's keys.
+    held = [
+        exp.JSONKeyValue(
+            this=exp.Literal.string(prop),
+            expression=exp.Column(
+                this=exp.Identifier(this=prop, quoted=True),
+                table=exp.Identifier(this=var),
+            ),
         )
+        for prop in props or []
+    ]
+    kv.append(
+        exp.JSONKeyValue(
+            this=exp.Literal.string("properties"), expression=exp.JSONObject(expressions=held)
+        )
+    )
     return exp.JSONObject(expressions=kv)
 
 
@@ -229,7 +278,8 @@ def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> lis
                 props: list[str] = []
                 for expr in first_select.expressions:
                     alias = expr.alias if hasattr(expr, "alias") else None
-                    if alias and alias not in ("__id", "__label"):
+                    # A graph session's union names each node's graph identity too (REQ-348).
+                    if alias and alias not in ("__id", "__label", GRAPH_ID):
                         props.append(alias)
                 return props
     return []
@@ -262,7 +312,7 @@ def _extract_alias_mappings(
         sq_alias = subq.alias
         if not sq_alias or sq_alias in alias_map:
             continue
-        if isinstance(subq.this, exp.Union):
+        if isinstance(subq.this, exp.Union) or _is_domain_arm(subq.this):
             continue
         inner_table = subq.find(exp.Table)
         if inner_table:
@@ -274,6 +324,28 @@ def _extract_alias_mappings(
                     break
 
     return alias_map
+
+
+def _is_property_column(expr: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``expr`` is one named column (``n."city"``), not a node's star (``n.*``)."""
+    return isinstance(expr, exp.Column) and not isinstance(expr.this, exp.Star)
+
+
+def _is_domain_arm(body: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``body`` is an arm of a domain union (it carries ``__label``): what is left of the
+    union when a property narrows it to one type (#292). Its node is built from its own columns
+    (_build_domain_json), never as its table's row."""
+    return isinstance(body, exp.Select) and any(
+        getattr(e, "alias", None) == "__label" for e in body.expressions
+    )
+
+
+def _from_node_union(sql_ast: exp.Select, alias: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether ``alias`` names a union of labels' rows (translator_union), or one arm of one."""
+    for subq in sql_ast.find_all(exp.Subquery):
+        if subq.alias == alias and (isinstance(subq.this, exp.Union) or _is_domain_arm(subq.this)):
+            return True
+    return False
 
 
 def _find_node_meta(

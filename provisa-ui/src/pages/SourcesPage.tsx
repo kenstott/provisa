@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { ttlText } from "../components/form/cacheTtl";
 import { useSetSourceRegion, useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
@@ -24,21 +25,11 @@ import {
 import React, { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Select,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Select, Table, Text, TextInput } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { TipSurface } from "../components/Tip";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Database } from "lucide-react";
 import { fetchSettings, fetchSourceReach } from "../api/admin";
 import type { PlatformSettings, SourceReach } from "../api/admin";
 import {
@@ -48,9 +39,7 @@ import {
   useRenameSource,
   useDeleteSource,
   useUpdateSourceCache,
-  useUpdateSourceReplicate,
   useUpdateSourceLoadProtection,
-  useUpdateSourceNaming,
   useUpdateSourceAllowedDomains,
   useDomains,
   useTables,
@@ -68,6 +57,7 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
   BRAND_CARRIER,
+  brandSetupDefaults,
   CATEGORIES,
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
@@ -88,12 +78,15 @@ import { schemaRegistryAuthPayload } from "./sources/schemaRegistryAuth";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceMappingJson } from "./sources/salesforce";
+import { quickbooksMappingJson } from "./sources/quickbooks";
 import { cloudopsMappingJson } from "./sources/cloudops";
 import { sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
 import { COSMOSDB, cosmosHints } from "./sources/cosmosdb";
+import { JDBC_SOURCE, jdbcSourceHints } from "./sources/jdbcSource";
+import { excelHintsOf, filesMappingJson, repeatedNames } from "./sources/excelHints";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
 import { NEW_SOURCE, keepFolderAs, resendHeldFolder } from "./sources/folderZip";
@@ -145,7 +138,7 @@ export function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
   // The tables registered from each source, for its panel's Tables section.
-  const { tables: registeredTables } = useTables();
+  const { tables: registeredTables } = useTables({ columns: false });
   // The section of the source's panel in view, the same in its read view and its edit form, and
   // the form's sections that have fields for the source's kind (reported by the form as drawn).
   const [section, setSection] = useState<SourceSection>("connection");
@@ -160,13 +153,14 @@ export function SourcesPage() {
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
   const { updateSourceCache } = useUpdateSourceCache();
-  const { updateSourceReplicate } = useUpdateSourceReplicate();
   const setSourceRegion = useSetSourceRegion();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
-  const { updateSourceNaming } = useUpdateSourceNaming();
   const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
   const [settingsLoading, setSettingsLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  // ?new=kaggle&kaggle=<owner>/<ref> (the assistant's link to a Kaggle dataset it found) opens a
+  // new source's form on the Kaggle type, that dataset chosen: the user enters the token there.
+  const opensKaggle = searchParams.get("new") === "kaggle";
+  const [showForm, setShowForm] = useState(opensKaggle);
   // The registered source whose settings the form's state holds for its read view.
   const [readSeeded, setReadSeeded] = useState<string | null>(null);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
@@ -180,6 +174,9 @@ export function SourcesPage() {
   // only for a type with no dedicated branch -- never overrides a branch's own intentional {} (e.g.
   // hiveserver2 omitting the default PLAIN auth_mechanism on purpose).
   const [editingSourceHintsJson, setEditingSourceHintsJson] = useState<string | null>(null);
+  // The edited source's mapping, so that a field the form shows is saved over it and the rest of
+  // it is kept (a files source's Excel hints beside its crawl).
+  const [editingSourceMappingJson, setEditingSourceMappingJson] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
   const [error, setError] = useState<string | null>(null);
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
@@ -243,9 +240,9 @@ export function SourcesPage() {
   const sortGroup = useListSortGroup(regionSources, listColumns, "sources");
   const [form, setForm] = useState<SourceFormState>({
     id: "",
-    type: "postgresql",
+    type: opensKaggle ? "kaggle" : "postgresql",
     host: "",
-    port: 5432,
+    port: opensKaggle ? getDefaultPort("kaggle") : 5432,
     database: "",
     username: "",
     password: "",
@@ -452,6 +449,7 @@ export function SourcesPage() {
     // for this type (SourceFormFields.tsx), so default straight to it instead of "none".
     setAuthType(type === "hive_s3" ? "aws" : "none");
     setAuthFields({});
+    setBrandSetup(brandSetupDefaults(type));
     resetSpFields();
   };
 
@@ -495,6 +493,7 @@ export function SourcesPage() {
     if (r.kind === "graphql") {
       setGqlNamespace(r.namespace);
       setGqlCacheTtl(r.cacheTtl);
+      setBrandSetup(r.setup);
     } else if (r.kind === "openapi") {
       setOpenapiSpecMode(r.specMode);
       setOpenapiSpecPath(r.specPath);
@@ -520,6 +519,7 @@ export function SourcesPage() {
     if (!seedFrom(s)) return;
     setEditingSourceId(s.id);
     setEditingSourceHintsJson(s.federationHintsJson ?? null);
+    setEditingSourceMappingJson(s.mappingJson ?? null);
     updateExpanded(s.id);
     setShowForm(false);
   };
@@ -536,6 +536,7 @@ export function SourcesPage() {
     setShowForm(false);
     setEditingSourceId(null);
     setEditingSourceHintsJson(null);
+    setEditingSourceMappingJson(null);
     setForm({
       id: "",
       type: "postgresql",
@@ -587,6 +588,10 @@ export function SourcesPage() {
       setError(t("sourceFormFieldsExtended.loadManagementFixErrors"));
       return;
     }
+    if (form.type === "files" && repeatedNames(excelHintsOf(authFields)).size > 0) {
+      setError(t("excelHints.repeatedFix"));
+      return;
+    }
     setSubmitting(true);
     try {
       const {
@@ -619,117 +624,120 @@ export function SourcesPage() {
       const federationHints: Record<string, unknown> =
         form.type === COSMOSDB
           ? cosmosHints(authFields) // REQ-1982: how the Cosmos DB source signs in
-          : form.type === QDRANT
-            ? qdrantHints(authFields) // REQ-1983: whether the Qdrant source reads over gRPC
-            : form.type === WIKIPEDIA
-              ? wikipediaHints(authFields) // REQ-1960: the server makes these the files source's crawl
-              : form.type === "athena"
-                ? athenaHints(authFields) // REQ-1981
-                : form.type === "snowflake"
-                  ? Object.fromEntries(
-                      (["warehouse", "schema", "role"] as const)
-                        .filter((k) => authFields[k])
-                        .map((k) => [k, authFields[k]]),
-                    )
-                  : form.type === "databricks" && authFields.http_path
-                    ? {
-                        http_path: authFields.http_path,
-                        // REQ-1867: read in place only when the steward chose it; the default lands
-                        ...(authFields.reach === "scan" ? { reach: "scan" } : {}),
-                      }
-                    : form.type === "bigquery" &&
-                        authType === "service_account" &&
-                        authFields.credentials_json
-                      ? { credentials_path: authFields.credentials_json }
-                      : // REQ-990: a CSV/Parquet file in an object store carries that store's credentials,
-                        // the store named by its path (S3, GCS HMAC keys, an Azure account key).
-                        CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(fileLocationOf(form))
-                        ? objectStoreHints(objectStoreOf(fileLocationOf(form))!, authFields)
-                        : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds
-                          // from federation_hints, never from mapping — unlike hive, which keeps its
-                          // storage.aws creds in mapping (Trino's hive connector props). Only "aws" is wired
-                          // here: DuckDB's delta_scan/iceberg_scan have no azure/gcs SECRET support yet. The
-                          // region is saved with them (it was shown and then dropped). An iceberg source also
-                          // saves its catalog (REQ-990), whatever its storage authentication.
-                          form.type === "iceberg"
-                          ? {
-                              ...(authType === "aws" ? objectStoreHints("S3", authFields) : {}),
-                              ...icebergCatalogHints(authFields),
-                            }
-                          : form.type === "delta_lake" && authType === "aws"
-                            ? objectStoreHints("S3", authFields)
-                            : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
-                              // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
-                              form.type === "exasol" &&
-                                authType === "tls_fingerprint" &&
-                                authFields.tls_fingerprint
-                              ? { tls_fingerprint: authFields.tls_fingerprint }
-                              : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
-                                // truststore can't chain — common on internal/on-prem deployments (models.py's
-                                // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
-                                form.type === "sqlserver" && authType === "trust_server_certificate"
-                                ? { trust_server_certificate: "true" }
-                                : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
-                                  // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
-                                  // client_secret); absent, the driver falls back to the ambient credential.
-                                  (form.type === "fabric" || form.type === "synapse") &&
-                                    authType === "service_principal"
-                                  ? Object.fromEntries(
-                                      (["tenant_id", "client_id", "client_secret"] as const)
-                                        .filter((k) => authFields[k])
-                                        .map((k) => [k, authFields[k]]),
-                                    )
-                                  : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
-                                    // PLAIN is the driver's own default, so only submit it when the operator picked a
-                                    // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
-                                    form.type === "hiveserver2" &&
-                                      authFields.auth_mechanism &&
-                                      authFields.auth_mechanism !== "PLAIN"
-                                    ? { auth_mechanism: authFields.auth_mechanism }
-                                    : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
-                                      // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
-                                      // feed_url/poll_interval/use_ssl for rss) travel the same channel.
-                                      form.type === "websocket"
-                                      ? Object.fromEntries(
-                                          (
-                                            [
-                                              ["use_ssl", wsUseSsl ? "true" : ""],
-                                              ["subscribe_payload", wsSubscribePayload.trim()],
-                                              ["event_path", wsEventPath.trim()],
-                                              ["reconnect_interval", wsReconnectInterval.trim()],
-                                            ] as const
-                                          ).filter(([, v]) => v),
-                                        )
-                                      : form.type === "rss"
+          : form.type === JDBC_SOURCE
+            ? jdbcSourceHints(authFields) // REQ-2191: its URL, dialect and capabilities
+            : form.type === QDRANT
+              ? qdrantHints(authFields) // REQ-1983: whether the Qdrant source reads over gRPC
+              : form.type === WIKIPEDIA
+                ? wikipediaHints(authFields) // REQ-1960: the server makes these the files source's crawl
+                : form.type === "athena"
+                  ? athenaHints(authFields) // REQ-1981
+                  : form.type === "snowflake"
+                    ? Object.fromEntries(
+                        (["warehouse", "schema", "role"] as const)
+                          .filter((k) => authFields[k])
+                          .map((k) => [k, authFields[k]]),
+                      )
+                    : form.type === "databricks" && authFields.http_path
+                      ? {
+                          http_path: authFields.http_path,
+                          // REQ-1867: read in place only when the steward chose it; the default lands
+                          ...(authFields.reach === "scan" ? { reach: "scan" } : {}),
+                        }
+                      : form.type === "bigquery" &&
+                          authType === "service_account" &&
+                          authFields.credentials_json
+                        ? { credentials_path: authFields.credentials_json }
+                        : // REQ-990: a CSV/Parquet file in an object store carries that store's credentials,
+                          // the store named by its path (S3, GCS HMAC keys, an Azure account key).
+                          CLOUD_FILE_TYPES.has(form.type) && objectStoreOf(fileLocationOf(form))
+                          ? objectStoreHints(objectStoreOf(fileLocationOf(form))!, authFields)
+                          : // delta_lake/iceberg: DuckDB's _s3_secret_ddl (connector_duckdb.py) reads S3 creds
+                            // from federation_hints, never from mapping — unlike hive, which keeps its
+                            // storage.aws creds in mapping (Trino's hive connector props). Only "aws" is wired
+                            // here: DuckDB's delta_scan/iceberg_scan have no azure/gcs SECRET support yet. The
+                            // region is saved with them (it was shown and then dropped). An iceberg source also
+                            // saves its catalog (REQ-990), whatever its storage authentication.
+                            form.type === "iceberg"
+                            ? {
+                                ...(authType === "aws" ? objectStoreHints("S3", authFields) : {}),
+                                ...icebergCatalogHints(authFields),
+                              }
+                            : form.type === "delta_lake" && authType === "aws"
+                              ? objectStoreHints("S3", authFields)
+                              : // exasol: an optional TLS-fingerprint pin for a self-signed cert the truststore
+                                // can't chain (models.py's Source.jdbc_url reads federation_hints["tls_fingerprint"]).
+                                form.type === "exasol" &&
+                                  authType === "tls_fingerprint" &&
+                                  authFields.tls_fingerprint
+                                ? { tls_fingerprint: authFields.tls_fingerprint }
+                                : // sqlserver: an optional flag trusting a self-signed/internal-CA cert the
+                                  // truststore can't chain — common on internal/on-prem deployments (models.py's
+                                  // Source.jdbc_url reads federation_hints["trust_server_certificate"]).
+                                  form.type === "sqlserver" &&
+                                    authType === "trust_server_certificate"
+                                  ? { trust_server_certificate: "true" }
+                                  : // fabric/synapse: an optional Azure AD service-principal identity pinned per-source
+                                    // (mssql_warehouse.py's MssqlWarehouseDriver._token reads tenant_id/client_id/
+                                    // client_secret); absent, the driver falls back to the ambient credential.
+                                    (form.type === "fabric" || form.type === "synapse") &&
+                                      authType === "service_principal"
+                                    ? Object.fromEntries(
+                                        (["tenant_id", "client_id", "client_secret"] as const)
+                                          .filter((k) => authFields[k])
+                                          .map((k) => [k, authFields[k]]),
+                                      )
+                                    : // REQ-1731: HiveDriver.configure() reads `auth_mechanism` from federation_hints;
+                                      // PLAIN is the driver's own default, so only submit it when the operator picked a
+                                      // non-default mechanism (GSSAPI/LDAP) — no point round-tripping the default.
+                                      form.type === "hiveserver2" &&
+                                        authFields.auth_mechanism &&
+                                        authFields.auth_mechanism !== "PLAIN"
+                                      ? { auth_mechanism: authFields.auth_mechanism }
+                                      : // REQ-1739: websocket/rss connection extras that don't fit host/port/path
+                                        // (use_ssl/subscribe_payload/event_path/reconnect_interval for websocket;
+                                        // feed_url/poll_interval/use_ssl for rss) travel the same channel.
+                                        form.type === "websocket"
                                         ? Object.fromEntries(
                                             (
                                               [
-                                                ["feed_url", rssFeedUrl.trim()],
-                                                ["poll_interval", rssPollInterval.trim()],
-                                                ["use_ssl", rssUseSsl ? "true" : "false"],
+                                                ["use_ssl", wsUseSsl ? "true" : ""],
+                                                ["subscribe_payload", wsSubscribePayload.trim()],
+                                                ["event_path", wsEventPath.trim()],
+                                                ["reconnect_interval", wsReconnectInterval.trim()],
                                               ] as const
                                             ).filter(([, v]) => v),
                                           )
-                                        : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
-                                          // optional, restricts queries to one named graph.
-                                          form.type === "sparql" &&
-                                            authFields.default_graph_uri?.trim()
-                                          ? {
-                                              default_graph_uri:
-                                                authFields.default_graph_uri.trim(),
-                                            }
-                                          : // A type with no dedicated branch above has no UI field this form could
-                                            // ever reconstruct its federation_hints from -- falling through to {}
-                                            // unconditionally wiped them on every edit (confirmed: kaggle_owner/
-                                            // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
-                                            // the next edit of that same csv/parquet source). Preserve verbatim
-                                            // instead when editing such a type; a brand-new source has nothing yet.
-                                            editingSourceId && editingSourceHintsJson
-                                            ? (JSON.parse(editingSourceHintsJson) as Record<
-                                                string,
-                                                string
-                                              >)
-                                            : {};
+                                        : form.type === "rss"
+                                          ? Object.fromEntries(
+                                              (
+                                                [
+                                                  ["feed_url", rssFeedUrl.trim()],
+                                                  ["poll_interval", rssPollInterval.trim()],
+                                                  ["use_ssl", rssUseSsl ? "true" : "false"],
+                                                ] as const
+                                              ).filter(([, v]) => v),
+                                            )
+                                          : // REQ-1740: sparql/source.py's SparqlSourceConfig.default_graph_uri —
+                                            // optional, restricts queries to one named graph.
+                                            form.type === "sparql" &&
+                                              authFields.default_graph_uri?.trim()
+                                            ? {
+                                                default_graph_uri:
+                                                  authFields.default_graph_uri.trim(),
+                                              }
+                                            : // A type with no dedicated branch above has no UI field this form could
+                                              // ever reconstruct its federation_hints from -- falling through to {}
+                                              // unconditionally wiped them on every edit (confirmed: kaggle_owner/
+                                              // kaggle_ref, stashed on create by KaggleFormSection, silently lost on
+                                              // the next edit of that same csv/parquet source). Preserve verbatim
+                                              // instead when editing such a type; a brand-new source has nothing yet.
+                                              editingSourceId && editingSourceHintsJson
+                                              ? (JSON.parse(editingSourceHintsJson) as Record<
+                                                  string,
+                                                  string
+                                                >)
+                                              : {};
       const federationHintsJson =
         Object.keys(federationHints).length > 0 ? JSON.stringify(federationHints) : undefined;
       // password auth (Snowflake) / personal-access-token auth (Databricks) collect into authFields,
@@ -751,55 +759,59 @@ export function SourcesPage() {
             )
           : authFields;
       const spMappingJson =
-        form.type === "data_profiler"
-          ? profilerMappingJson(authFields) // REQ-1934
-          : CODE_SOURCE_TYPES.has(form.type)
-            ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
-            : form.type === "cloudops"
-              ? cloudopsMappingJson(authFields) // REQ-1947
-              : form.type === "sparql"
-              ? sparqlMappingJson(authFields) // REQ-2138
-              : form.type === GOOGLE_WORKSPACE
-                ? JSON.stringify(gwMapping(authFields)) // REQ-1923
-                : form.type === MICROSOFT_365
-                  ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
-                  : form.type === LOGS
-                    ? JSON.stringify(logsMapping(authFields)) // REQ-1996
-                    : form.type === "salesforce"
-                      ? salesforceMappingJson(authFields) // REQ-1946
-                      : form.type === "sharepoint"
-                        ? JSON.stringify({
-                            auth_type: spAuthType,
-                            ...(spAuthType === "CERTIFICATE"
-                              ? {
-                                  certificate_path: spCertPath,
-                                  certificate_password: spCertPassword,
-                                }
-                              : {}),
-                            ...(spAuthType === "USERNAME_PASSWORD"
-                              ? { sp_username: spUsername, sp_password: spPassword }
-                              : {}),
-                          })
-                        : form.type === "splunk"
-                          ? JSON.stringify({
-                              use_token: splunkAuthMode === "token",
-                              ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
-                            })
-                          : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                            // sheet id (which rides in `database`), so it travels in the mapping like the other
-                            // connectors' extra options.
-                            form.type === "google_sheets"
-                            ? JSON.stringify({
-                                credentials_json: authFields.credentials_json ?? "",
-                              })
-                            : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                              // region/endpoint) are a mapping-discriminated config choice read by
-                              // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                              // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                              // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                              form.type === "hive" || form.type === "hive_s3"
-                              ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                              : undefined;
+        form.type === "files"
+          ? filesMappingJson(editingSourceId ? editingSourceMappingJson : null, authFields)
+          : form.type === "data_profiler"
+            ? profilerMappingJson(authFields) // REQ-1934
+            : CODE_SOURCE_TYPES.has(form.type)
+              ? codeMappingJson(form.type, codeFields) // REQ-1984, REQ-1993
+              : form.type === "cloudops"
+                ? cloudopsMappingJson(authFields) // REQ-1947
+                : form.type === "sparql"
+                  ? sparqlMappingJson(authFields) // REQ-2138
+                  : form.type === GOOGLE_WORKSPACE
+                    ? JSON.stringify(gwMapping(authFields)) // REQ-1923
+                    : form.type === MICROSOFT_365
+                      ? JSON.stringify(m365Mapping(authFields)) // REQ-1923
+                      : form.type === LOGS
+                        ? JSON.stringify(logsMapping(authFields)) // REQ-1996
+                        : form.type === "salesforce"
+                          ? salesforceMappingJson(authFields) // REQ-1946
+                          : form.type === "quickbooks"
+                            ? quickbooksMappingJson(authFields) // REQ-2197
+                            : form.type === "sharepoint"
+                              ? JSON.stringify({
+                                  auth_type: spAuthType,
+                                  ...(spAuthType === "CERTIFICATE"
+                                    ? {
+                                        certificate_path: spCertPath,
+                                        certificate_password: spCertPassword,
+                                      }
+                                    : {}),
+                                  ...(spAuthType === "USERNAME_PASSWORD"
+                                    ? { sp_username: spUsername, sp_password: spPassword }
+                                    : {}),
+                                })
+                              : form.type === "splunk"
+                                ? JSON.stringify({
+                                    use_token: splunkAuthMode === "token",
+                                    ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                                  })
+                                : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                                  // sheet id (which rides in `database`), so it travels in the mapping like the other
+                                  // connectors' extra options.
+                                  form.type === "google_sheets"
+                                  ? JSON.stringify({
+                                      credentials_json: authFields.credentials_json ?? "",
+                                    })
+                                  : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                                    // region/endpoint) are a mapping-discriminated config choice read by
+                                    // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                                    // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                                    // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                                    form.type === "hive" || form.type === "hive_s3"
+                                    ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                                    : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,
@@ -810,6 +822,16 @@ export function SourcesPage() {
         // in THIS input, so a source whose tables always land (a mail source) was refused at the
         // save although its TTL was filled in — it used to travel only in the call that follows.
         cacheTtl: sourceFormCacheTtl(_ct),
+        // The other settings that also have mutations of their own travel with the source too, so
+        // a save is one createSource / updateSource and one schema rebuild (REQ-2109's rule for a
+        // table): each of those mutations rebuilt the schema, seven rebuilds for one save.
+        cacheEnabled: _ce,
+        replicate: _rep,
+        gqlNamingConvention: _nc === "" ? null : _nc,
+        allowedDomains: coreForm.allowedDomains
+          .split(",")
+          .map((d) => d.trim())
+          .filter(Boolean),
         sentinelPath: coreForm.sentinelPath.trim() || null,
         // REQ-2113: read in place, or downloaded into the organization's folder from here; a new
         // single-file source's table set up with it, as a draft.
@@ -876,87 +898,16 @@ export function SourcesPage() {
         }
         const result = await updateSource({ ...sourcePayload, id: effectiveId });
         if (!result.success) throw refusalError(result);
-        const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
-        if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
-        const cacheResult = await updateSourceCache(effectiveId, form.cacheEnabled, ttlValue);
-        if (!cacheResult.success) throw refusalError(cacheResult);
-        // REQ-826: the server refuses load protection with Replicate = Never, judged against what
-        // is stored at each save. Turning load protection off goes first, so a following Never is
-        // accepted; turning it on goes last, after the Replicate value it is compatible with.
-        const saveReplicate = async () => {
-          const replicateResult = await updateSourceReplicate(effectiveId, form.replicate);
-          if (!replicateResult.success) throw refusalError(replicateResult);
-        };
-        const saveLoadProtection = async () => {
-          const loadProtResult = await updateSourceLoadProtection(
-            effectiveId,
-            form.loadProtected,
-            form.offPeakWindow.trim() || null,
-            form.offPeakTz.trim() || "UTC",
-          );
-          if (!loadProtResult.success) throw refusalError(loadProtResult);
-        };
-        if (form.loadProtected) {
-          await saveReplicate();
-          await saveLoadProtection();
-        } else {
-          await saveLoadProtection();
-          await saveReplicate();
-        }
-        const namingResult = await updateSourceNaming(
-          effectiveId,
-          form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
-        );
-        if (!namingResult.success) throw refusalError(namingResult);
         // REQ-1921: the region its new tables start in, saved on its own when it changed.
         const savedRegion = sources.find((s) => s.id === effectiveId)?.region ?? null;
         if (form.region !== savedRegion) {
           const regionResult = await setSourceRegion(effectiveId, form.region);
           if (!regionResult.success) throw refusalError(regionResult);
         }
-        const parsedDomains = form.allowedDomains
-          .split(",")
-          .map((d) => d.trim())
-          .filter(Boolean);
-        const domainsResult = await updateSourceAllowedDomains(effectiveId, parsedDomains);
-        if (!domainsResult.success) throw refusalError(domainsResult);
       } else {
-        const { allowedDomains: _ad, ...createPayload } = sourcePayload as typeof sourcePayload & {
-          allowedDomains?: unknown;
-        };
-        void _ad;
-        const createResult = await createSource(
-          createPayload as Parameters<typeof createSource>[0],
-        );
+        // REQ-1921: a new source's region is created with it.
+        const createResult = await createSource({ ...sourcePayload, region: form.region });
         if (!createResult.success) throw refusalError(createResult);
-        // REQ-1907: the cache and Replicate settings offered at create are saved with it.
-        const createTtl = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
-        if (createTtl !== null && isNaN(createTtl)) throw new Error("TTL must be a number");
-        const createCache = await updateSourceCache(form.id, form.cacheEnabled, createTtl);
-        if (!createCache.success) throw refusalError(createCache);
-        const createReplicate = await updateSourceReplicate(form.id, form.replicate);
-        if (!createReplicate.success) throw refusalError(createReplicate);
-        if (form.region !== null) {
-          const createRegion = await setSourceRegion(form.id, form.region); // REQ-1921
-          if (!createRegion.success) throw refusalError(createRegion);
-        }
-        if (form.loadProtected) {
-          const lp = await updateSourceLoadProtection(
-            form.id,
-            true,
-            form.offPeakWindow.trim() || null,
-            form.offPeakTz.trim() || "UTC",
-          );
-          if (!lp.success) throw refusalError(lp);
-        }
-        const parsedDomainsCreate = form.allowedDomains
-          .split(",")
-          .map((d) => d.trim())
-          .filter(Boolean);
-        if (parsedDomainsCreate.length > 0) {
-          const domainsResult = await updateSourceAllowedDomains(form.id, parsedDomainsCreate);
-          if (!domainsResult.success) throw refusalError(domainsResult);
-        }
       }
       const created = editingSourceId ? null : form.id.trim();
       if (created) keepFolderAs(created); // REQ-2121
@@ -971,6 +922,8 @@ export function SourcesPage() {
   };
 
   const [gqlNamespace, setGqlNamespace] = useState("");
+  // REQ-1923: what a brand reached at a per-customer address was set up with (BRAND_SETUP).
+  const [brandSetup, setBrandSetup] = useState<Record<string, string>>({});
   const [gqlCacheTtl, setGqlCacheTtl] = useState("300");
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -1065,29 +1018,35 @@ export function SourcesPage() {
     e.preventDefault();
     setError(null);
     try {
-      const resp = await fetch("/admin/openapi/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          form.type in BRAND_CARRIER
-            ? // REQ-1923: a branded source sends its brand and a credential; the spec and the
-              // address are the brand's, and no tables are registered by adding it.
-              { source_id: form.id, brand: form.type, token: authFields.token ?? "" }
-            : {
-                ...(openapiSpecMode === "inline"
-                  ? { spec_content: openapiSpecInline }
-                  : { spec_path: openapiSpecPath }),
-                base_url: openapiBaseUrl || undefined,
-                source_id: form.id,
-                domain_id: "",
-                auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
-                cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
-              },
-        ),
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-        throw new Error(serverMessage(body, requestFailed("OpenAPI register", resp.status)));
+      // A branded source's edit with no token typed keeps the credential stored with it (REQ-320:
+      // never read back): re-registering would ask for one, so only its settings are saved.
+      const keepsStored =
+        editingSourceId !== null && form.type in BRAND_CARRIER && !authFields.token;
+      if (!keepsStored) {
+        const resp = await fetch("/admin/openapi/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            form.type in BRAND_CARRIER
+              ? // REQ-1923: a branded source sends its brand and a credential; the spec and the
+                // address are the brand's, and no tables are registered by adding it.
+                { source_id: form.id, brand: form.type, token: authFields.token ?? "" }
+              : {
+                  ...(openapiSpecMode === "inline"
+                    ? { spec_content: openapiSpecInline }
+                    : { spec_path: openapiSpecPath }),
+                  base_url: openapiBaseUrl || undefined,
+                  source_id: form.id,
+                  domain_id: "",
+                  auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
+                  cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
+                },
+          ),
+        });
+        if (!resp.ok) {
+          const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+          throw new Error(serverMessage(body, requestFailed("OpenAPI register", resp.status)));
+        }
       }
       // REQ-1907: the cache TTL offered at create, as the GraphQL and generic paths apply it.
       const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
@@ -1164,6 +1123,7 @@ export function SourcesPage() {
                 // is the brand's, and no tables are registered by adding it.
                 source_id: form.id,
                 brand: form.type,
+                setup: brandSetup,
                 namespace: gqlNamespace,
                 domain_id: "",
                 auth: { type: "bearer", token: authFields.token ?? "" },
@@ -1268,6 +1228,8 @@ export function SourcesPage() {
     onOpenapiPreview: handleOpenapiPreview,
     gqlNamespace,
     setGqlNamespace,
+    brandSetup,
+    setBrandSetup,
     gqlCacheTtl,
     setGqlCacheTtl,
     grpcProtoPath,
@@ -1607,11 +1569,13 @@ export function SourcesPage() {
                 }
                 onEdit={() => handleEdit(s)}
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
+                // REQ-2198: resolves once the list is read again without the source; the
+                // panel's Delete closes the panel and says why a failed one did not go through.
                 onDelete={async () => {
                   const result = await deleteSource(s.id);
-                  if (refusal.refused(result, s.id)) return;
-                  if (expanded === s.id) updateExpanded(null);
-                  load();
+                  if (refusal.refused(result, s.id)) return false;
+                  if (!result.success) throw new Error(serverMessage(result, result.message));
+                  await refetchSources();
                 }}
               />
             )}
@@ -1636,7 +1600,7 @@ export function SourcesPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("sourcesPage.title")}</Title>
+        <PageTitle icon={Database}>{t("sourcesPage.title")}</PageTitle>
         <FilterInput
           value={sourceSearch}
           onChange={updateSearch}
@@ -1747,6 +1711,7 @@ export function SourcesPage() {
                         return (
                           <React.Fragment key={s.id}>
                             <ListRow
+                              itemKey={s.id}
                               testId={`sources-row-${s.id}`}
                               // The row whose detail the right-hand panel is showing.
                               selected={isExpanded}

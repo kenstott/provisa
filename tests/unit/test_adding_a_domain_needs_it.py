@@ -195,17 +195,19 @@ async def test_rest_creates_a_role_in_the_callers_domain_and_refuses_one_outside
     assert await _role_row(plane, "r2") is None
 
 
-async def test_rest_refuses_a_role_that_would_inherit_a_domain_the_caller_does_not_reach(plane):
+async def test_rest_a_domain_no_parent_reaches_is_refused_by_name(plane):
+    """REQ-2155: a role narrows its parents, so a child of the finance auditor cannot list sales."""
     body = roles_router.CreateRoleBody(
         id="r3",
         description="Test role.",
         capabilities=["usage"],
         domain_access=["sales"],
-        parent_role_id="auditor",
+        parents=["auditor"],
     )
     with pytest.raises(ApiError) as err:
         await roles_router.create_role(body, _request("sales_admin"))
-    assert err.value.code == "auth.domain_denied"
+    assert err.value.code == "roles.right_not_in_parents"
+    assert err.value.params["right"] == "sales"
     assert await _role_row(plane, "r3") is None
 
 
@@ -249,7 +251,7 @@ async def _create_role(caller: str, role_id: str, listed: list[str], parent: str
             description="Test role.",
             capabilities=["usage"],
             domain_access=listed,
-            parent_role_id=parent,
+            parents=[parent] if parent else [],
         ),
     )
 
@@ -265,10 +267,13 @@ async def _update_role(caller: str, role_id: str, listed: list[str]):
 
 async def test_graphql_creates_a_role_in_the_callers_domain_and_refuses_one_outside_it(plane):
     assert (await _create_role("sales_admin", "g1", ["sales"])).success is True
-    for listed, parent in ((["finance"], None), (["*"], None), (["sales"], "auditor")):
+    for listed in (["finance"], ["*"]):
         with pytest.raises(PermissionError, match="No access to domain"):
-            await _create_role("sales_admin", "g2", listed, parent)
+            await _create_role("sales_admin", "g2", listed)
     assert await _role_row(plane, "g2") is None
+    # REQ-2155: a parent elsewhere holds no such domain.
+    refused = await _create_role("sales_admin", "g3", ["sales"], "auditor")
+    assert (refused.success, refused.code) == (False, "roles.right_not_in_parents")
     assert (await _create_role("everywhere", "g2", ["*"])).success is True
 
 

@@ -11,8 +11,12 @@
     "addViewTitle": "Een nieuwe view aanmaken in de SQL Explorer",
     "model": "+ Model",
     "modelTitle": "Een entiteit of feit modelleren (sterschema / Data Vault)",
+    "modelMenu": "Kies hoe je modelleert",
+    "modelEntityFact": "Entiteit/Feit",
+    "modelStarSchema": "Sterschema",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Werkmap",
-    "reportXlsxTitle": "Download het model als spreadsheet voor review — bronnen, tabellen, kolommen, relaties, views, metrics, gematerialiseerde views en ontologietermen, elk op een eigen blad",
+    "reportXlsxTitle": "Download het model als spreadsheet voor review — bronnen, tabellen, kolommen, relaties, views, metrics, gematerialiseerde views, ontologie, dataproducten, datacontracten, datakwaliteit en dataprofielen, elk op een eigen blad",
     "viewErd": "ERD bekijken",
     "colSource": "Bron",
     "colDomain": "Domein",
@@ -46,6 +50,8 @@
     "nextPage": "Volgende pagina",
     "firstPage": "Eerste pagina",
     "lastPage": "Laatste pagina",
+    "listedElsewhere": "Vermeld in andere domeinen",
+    "listedElsewhereHint": "Namen die andere domeinen vermelden. Vraag dat domein om toegang om ze te lezen.",
     "pageOf": "Pagina {{page}} / {{totalPages}}",
     "loadFailed": "Kan geregistreerde tabellen niet laden: {{message}}",
     "editViewDefinitionTitle": "Viewdefinitie bewerken",
@@ -56,6 +62,7 @@
       "impliedDimensionTitle": "Impliciete dimensie — 'Group by inschakelen' staat aan voor deze tabel"
     },
     "derived": "afgeleid",
+    "endpointUnread": "Het API-document van de bron kon niet worden gelezen",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -81,6 +88,8 @@
     "panelRegisterTable": "Tabel registreren",
     "panelNewView": "Nieuwe weergave",
     "panelNewModel": "Nieuw model",
+    "panelStarSchema": "Nieuw sterschema",
+    "panelDataVault": "Nieuwe Data Vault",
     "history": {
       "badge": "historie",
       "title": "Bewaart historie: bevraag het per een datum of zoals vastgelegd (Tijdreizen)"

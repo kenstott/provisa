@@ -125,6 +125,9 @@ class TagDeleteRefused(Exception):  # REQ-1384
     def __init__(self, tag_id: str, dependents: list[Dependent]) -> None:
         self.tag_id = tag_id
         self.dependents = dependents
+        # What a refusal says before naming its dependents (REQ-2152: the API layer names only
+        # those its caller may read).
+        self.lead = f"Tag {tag_id!r} is still referred to by"
         named = ", ".join(f"{d.ref.kind} {d.name or d.ref.id}" for d in dependents)
         super().__init__(f"Tag {tag_id!r} is still referred to by: {named}")
 

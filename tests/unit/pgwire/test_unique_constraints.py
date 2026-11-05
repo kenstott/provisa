@@ -15,6 +15,7 @@ from provisa.pgwire.catalog_constraints import (
 
 
 class _Idx:
+    database = "provisa"
     table_id_to_oid = {1: 100}
     toid_to_table = {100: ("provisa", "public", "users")}
     ns_map = {"public": 2200}

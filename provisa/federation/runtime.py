@@ -126,7 +126,8 @@ class EngineRuntime:  # REQ-825, REQ-840
 
         # REQ-615: a session's temporary table is read at its address in the engine's store.
         pg_sql = address_temp_tables(pg_sql, self._state)
-        return self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        physical = self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        return self._backend.exact_reads(self._state, physical)
 
     def _search_replica_indexes(self, pg_sql: str) -> str:
         """``pg_sql`` at its replicas' addresses, each top-k similarity search over a replica
@@ -230,11 +231,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             pg_sql = fold_catalog_into_schema(pg_sql)
         return self.transpile_physical(pg_sql)
 
-    def connector_pushdown(self, source_type: str):
-        """The bound engine's declared pushdown Capability for ``source_type`` — the same
+    def connector_pushdown(self, source):
+        """The bound engine's declared pushdown Capability for ``source`` — the same
         passthrough pattern as ``dialect``/``transpile_physical``, so callers reach the engine's
         planner input through the runtime seam rather than needing ``.engine`` themselves."""
-        return self.engine.connector_pushdown(source_type)
+        return self.engine.connector_pushdown(source)
 
     @property
     def has_otel_catalog(self) -> bool:
@@ -338,15 +339,25 @@ class EngineRuntime:  # REQ-825, REQ-840
         sql: str,
         params: list | None = None,
         span_attrs: dict[str, str] | None = None,
+        *,
+        reports_generated: bool = False,
     ) -> QueryResult:
         """DIRECT terminal (REQ-825): execute on a single reachable source's native driver.
 
         ``span_attrs`` carries the governed plan's OTel attributes so the DIRECT terminal is
-        observable on the same footing as ENGINE (REQ-1425).
+        observable on the same footing as ENGINE (REQ-1425). ``reports_generated``: the write's
+        connection reports the value it generated (REQ-2167, ``execute_reporting_generated``).
         """
         from provisa.executor.direct import execute_direct
 
-        return await execute_direct(source_pools, source_id, sql, params, span_attrs)
+        return await execute_direct(
+            source_pools,
+            source_id,
+            sql,
+            params,
+            span_attrs,
+            reports_generated=reports_generated,
+        )
 
     def execute_native_stream(
         self,
@@ -462,7 +473,7 @@ class EngineRuntime:  # REQ-825, REQ-840
     def _pg_passthrough_stream(self, pr: Any) -> ResultStream:
         """An opened passthrough's cursor as a lazily-drained :class:`ResultStream` of
         :class:`RawDataRowBytes` batches — shared by the DIRECT and ENGINE passthrough entrypoints."""
-        from provisa.executor.result import StreamingQueryResult
+        from provisa.executor.result import DataRowStreamResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
         from buenavista.core import RawDataRowBytes
 
@@ -482,7 +493,7 @@ class EngineRuntime:  # REQ-825, REQ-840
             finally:
                 pr.cursor.close()
 
-        return StreamingQueryResult(
+        return DataRowStreamResult(
             _batches(),
             column_names=pr.column_names,
             column_types=pr.column_types,
@@ -639,6 +650,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, source_id=source_id, schema_name=schema_name, table_name=table_name
         )
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` has been landed, from the catalog of the store it lands in
+        (REQ-318) -- delegated to the backend. Absent is False; a failed read raises."""
+        return await self._backend.landed_table_exists(self._state, schema=schema, table=table)
+
     async def analyze_landed_table(self, *, catalog: str | None, schema: str, table: str) -> None:
         """Planner statistics on a landed table, collected where the table lives (REQ-1688) —
         delegated to the backend."""
@@ -718,6 +734,16 @@ class EngineRuntime:  # REQ-825, REQ-840
             self._state, schema=schema, table=table, pk_columns=pk_columns
         )
 
+    def view_indexer(self, schema: str, table: str) -> Any:
+        """How the view stored at ``schema.table`` in this engine's materialization store gets its
+        indexes after it lands (REQ-2015): the indexer a replica in that store gets, or None for a
+        store that keeps no secondary index."""
+        from provisa.federation.replica_address import ReplicaAddress
+
+        return self._backend.replica_indexer(
+            self._state, address=ReplicaAddress(schema=schema, table=table)
+        )
+
     def mv_store_broker(self) -> Any:
         """The store broker an MV refresh writes through instead of engine SQL, or ``None``
         (REQ-1901) — delegated to the backend."""
@@ -770,6 +796,11 @@ class EngineRuntime:  # REQ-825, REQ-840
         ``"query"`` → 400, ``None`` → caller default) so generic request handlers select an HTTP
         status without importing engine-specific exception types."""
         return self._backend.classify_error(exc)
+
+    def refusal_of(self, exc: Exception) -> Any:
+        """What the engine cannot answer because of what it is, said by name (REQ-778), else
+        None (``EngineBackend.refusal_of``)."""
+        return self._backend.refusal_of(exc)
 
     def write_config(self, config_path: str) -> None:
         """Lifecycle: render the engine's cluster config from platform config (no-op for native)."""

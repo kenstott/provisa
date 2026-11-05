@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS sources (
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
+    brand_setup   JSONB NOT NULL DEFAULT '{}',  -- REQ-1923: the values a branded source's setup was given
     path          TEXT,  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- REQ-1919: the rest of a source's settings. After the seed the model store alone owns the
     -- model, so everything a configuration can say about a source is held here.
@@ -113,14 +114,19 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
 ON CONFLICT (id) DO NOTHING;
 
+-- REQ-2163: the ontology system schema (the glossary's definitions). Its GraphQL alias is stored:
+-- the computed one, "o", is ops's.
+INSERT INTO domains (id, description, graphql_alias) VALUES ('ontology', 'System ontology', 'ont')
+ON CONFLICT (id) DO NOTHING;
+
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
--- REQ-1660: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
+-- REQ-1634: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
 -- already has the underlying source of truth -- team_role/owner_role resolve to individuals
 -- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
--- inputPorts/outputPorts are derived from existing tag assignments/glossary/lineage rather
--- than stored here, and sla/support stay prose because a product spans multiple tables and a
--- structured SLA can't unambiguously attribute which member it describes.
+-- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
+-- and support stays prose. REQ-2158: each output port is a member table, whose declared contract
+-- (registered_tables.contract) holds the SLA.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
@@ -131,26 +137,35 @@ CREATE TABLE IF NOT EXISTS data_products (
     limitations   TEXT NOT NULL DEFAULT '',
     usage         TEXT NOT NULL DEFAULT '',
     version       TEXT,
-    status        TEXT,
-    sla           TEXT,
+    -- REQ-1634 STATUS: draft, live, deprecated or retired, each asserted by an action.
+    status        TEXT NOT NULL DEFAULT 'draft',
+    status_reason TEXT,
+    retire_on     DATE,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
+    successor_id  TEXT REFERENCES data_products(id) ON DELETE SET NULL,
     support       TEXT,
     support_contact TEXT,
-    publish       BOOLEAN NOT NULL DEFAULT FALSE,
-    custom_properties JSONB NOT NULL DEFAULT '{}'
+    custom_properties JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2118: when the product was created (ODPS productCreatedTs); set on insert only.
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- REQ-1660: added to a table that predates them.
+-- REQ-1634: added to a table that predates them.
 DO $$ BEGIN
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS team_role TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT '';
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS limitations TEXT NOT NULL DEFAULT '';
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT '';
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS version TEXT;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status TEXT;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS sla TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'draft';
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_reason TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS retire_on DATE;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_by TEXT;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS successor_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support TEXT;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS support_contact TEXT;
-    ALTER TABLE data_products ADD COLUMN IF NOT EXISTS publish BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE data_products ADD COLUMN IF NOT EXISTS custom_properties JSONB NOT NULL DEFAULT '{}';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
@@ -193,6 +208,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     push_debounce_max_delay DOUBLE PRECISION NOT NULL DEFAULT 5,  -- REQ-1733: CDC push-source debounce max delay (s)
     mv_consistency TEXT NOT NULL DEFAULT 'shared',  -- REQ-879: shared (fleet-coordinated) | distributed (per-instance)
     mv_preprocess TEXT,  -- REQ-957: inline preprocess(rows, ctx) hook source; NULL = identity
+    mv_hold_on_failing_checks BOOLEAN NOT NULL DEFAULT false,  -- REQ-2133: built-in preflight
     business_key JSONB,  -- REQ-2109: columns identifying the same thing across versions
     valid_time TEXT,  -- REQ-2109: the column holding the date the business gives the record
     recorded_time TEXT,  -- REQ-2109: the column holding when this version was entered or changed
@@ -214,6 +230,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2158: a data product member's ODCS contract (its output port), declared and versioned on
+    -- its own: {version, status, description, terms, sla, schema}; NULL for a table in no product.
+    contract    JSONB,
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -228,12 +247,14 @@ CREATE TABLE IF NOT EXISTS table_columns (
     data_type   TEXT,
     masks        JSONB NOT NULL DEFAULT '[]',  -- REQ-2059: the ordered mask list
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
+    not_null BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
     -- REQ-1965: the hidden attributes of a natively array/struct/map column, from its source
     array_depth  INTEGER NOT NULL DEFAULT 0,
     element_type TEXT,
     native_type  TEXT,
     native_platform TEXT,  -- whose spelling native_type is
+    subtype      TEXT,  -- REQ-2171: the subtype the column was registered as; data_type is its base
     fake         TEXT,  -- REQ-1494: the column's kind of fake, as declared
     fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
     fake_stable_version INTEGER,  -- REQ-1494: the portable definition version a stable fake is pinned to
@@ -288,6 +309,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS unique_constraints JSONB NOT NULL DEFAULT '[]';  -- REQ-1093
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_contract TEXT;  -- REQ-1443
+    -- REQ-1443 clause 10: the contract's checks, parsed at registration, for the meta dq_rules.
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_rules JSONB;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
@@ -408,6 +431,10 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS via_label_source TEXT;
     -- REQ-2141: the same-entity flag reaches a relationships table that predates it.
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS same_entity BOOLEAN NOT NULL DEFAULT FALSE;
+    -- REQ-351: the effective names a relationship is served under, derived once and stored
+    -- (core.relationship_names), so the meta domain reads what the admin API and Cypher use.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS cypher_type TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_field TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -456,13 +483,13 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS roles (
     id              TEXT PRIMARY KEY,
-    -- REQ-2080: what the role is for; required on every write. The seeded roles' are written
-    -- after the seed below (mirrored by SEEDED_ROLE_DESCRIPTIONS in core/db.py).
+    -- REQ-2080: what the role is for; required on every write. A standard role's is written by
+    -- db.assert_standard_roles (REQ-2155).
     description     TEXT NOT NULL DEFAULT '',
     capabilities    JSONB NOT NULL DEFAULT '[]',
     -- REQ-1602: rights this role does NOT hold, whose surfaces are shown to it anyway -- disabled,
-    -- and badged with what they are. A role built by taking rights AWAY (the sandbox, REQ-1597) is
-    -- a demonstration of the product, and a feature that is simply absent demonstrates nothing.
+    -- and badged with what they are. The sandbox (REQ-2155) demonstrates what org_admin holds and
+    -- it does not, and a feature that is simply absent demonstrates nothing.
     -- A right may never appear in both lists; the holder of a right needs no explanation of it.
     demonstrated    JSONB NOT NULL DEFAULT '[]',
     domain_access   JSONB NOT NULL DEFAULT '[]',
@@ -472,24 +499,14 @@ CREATE TABLE IF NOT EXISTS roles (
     -- current_setting('provisa.<name>') reads when the request binds nothing of that name.
     session_vars    JSONB NOT NULL DEFAULT '{}',
     rate_limit      JSONB,  -- REQ-1174: per-role rate + burst; mirrors schema_org.roles.rate_limit
-    parent_role_id  TEXT REFERENCES roles(id),
-    -- REQ-1597/REQ-1624: this row's capabilities are DERIVED from the named role's, in this schema
-    -- only -- a sandbox visitor's `org_admin` is `sandbox` (env_copy.adopt_role_definition). Held
-    -- as a column rather than applied once at creation because the tenancy seam
-    -- (db.apply_tenancy_role_grants) re-asserts org_admin's rights into every environment schema on
-    -- every runtime build, which handed the subtracted rights straight back.
-    defined_from    TEXT,
+    -- REQ-2155: the roles this one inherits from, in declared order; its capabilities are the
+    -- union of its own and every ancestor's (security.inheritance). Mirrors schema_org.roles.parents.
+    parents         JSONB NOT NULL DEFAULT '[]',
     max_rows        INTEGER,  -- REQ-005: the role's result-size ceiling; NULL = none of its own
     -- A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     inactivity_days INTEGER,
     relationship_guard BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-1919: held so the store owns it
 );
-
--- Migration: add parent_role_id if missing
-DO $$ BEGIN
-    ALTER TABLE roles ADD COLUMN IF NOT EXISTS parent_role_id TEXT REFERENCES roles(id);
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
 
 -- REQ-2080: the seed below writes each seeded role's description before add_missing_columns runs,
 -- so a roles table made before the column existed needs it here first.
@@ -509,9 +526,11 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     -- The reference to tags(id) is declared after that table, below.
     tag_id      TEXT,
     why         JSONB,  -- REQ-2094: why the rule is what it is
-    UNIQUE (table_id, role_id),
-    UNIQUE (action_name, role_id),
-    CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id)
+    -- REQ-2188: the rights the one predicate narrows: reading a row (R), updating it (U), deleting
+    -- it (D), in that order. A right is in at most one rule of a role on a target; no constraint
+    -- can say so across rows, so the save does (repositories.rls.upsert).
+    rights      TEXT NOT NULL DEFAULT 'R'
+                CHECK (rights IN ('R', 'U', 'D', 'RU', 'RD', 'UD', 'RUD'))
 );
 
 -- REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
@@ -537,11 +556,6 @@ ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tag_id TEXT;  -- REQ-1384
 DO $$ BEGIN
     ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS domain_id TEXT REFERENCES domains(id) ON DELETE CASCADE;
     ALTER TABLE rls_rules ALTER COLUMN table_id DROP NOT NULL;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-DO $$ BEGIN
-    ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key UNIQUE (domain_id, role_id);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -614,7 +628,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- Commands (tracked functions/webhooks) are named, not serial-keyed; no FK — their
     -- registries split across two tables and deletion cleanup is the mutation's job.
     command_name    TEXT,
-    -- REQ-1660: explicit data-product-level tags, distinct from tags inherited/rolled up
+    -- REQ-1634: explicit data-product-level tags, distinct from tags inherited/rolled up
     -- from member tables' own assignments (computed, not stored here).
     product_id      TEXT REFERENCES data_products(id) ON DELETE CASCADE,
     -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
@@ -647,7 +661,7 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1660: product-level tags, added to a table that predates them.
+-- REQ-1634: product-level tags, added to a table that predates them.
 DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
@@ -711,9 +725,12 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- Per-term opt-out from metadata export: the term (and any edge touching it) is
     -- withheld from every vendor snapshot while its curation stays intact locally.
     export_excluded BOOLEAN NOT NULL DEFAULT FALSE,
-    -- REQ-2144: the parts of a term's status a curator asserts (draft and live are computed):
-    -- a deprecation of a live term, with its reason and an optional planned retirement date, on
-    -- which the scheduler retires it; a retirement's reason; and who asserted it, when.
+    -- REQ-1387 (STATUS IS HUMAN): a steward approved the term, which needs a definition. A term
+    -- not approved, deprecated or retired is a draft, which every derived term starts as.
+    approved        BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2144: the parts of a term's status a curator asserts: a deprecation of an approved
+    -- term, with its reason and an optional planned retirement date, on which the scheduler
+    -- retires it; a retirement's reason; and who asserted it, when.
     deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE,
     status_reason   TEXT,
     retire_on       DATE,
@@ -755,20 +772,14 @@ CREATE TABLE IF NOT EXISTS glossary_term_refs (
 );
 
 -- REQ-2130: a class term grounds a whole table or view -- the table is what the term names an
--- instance of. A table has at most one class term; a term may ground many tables. Only a table
--- with a primary key may be grounded, so each of its rows is an identifiable instance.
-CREATE TABLE IF NOT EXISTS glossary_term_table_refs (
-    id          SERIAL PRIMARY KEY,
-    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
-    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
-    -- REQ-2141: TRUE when sync derived this grounding from the table's concept; FALSE when a
-    -- configuration declared it or a person grounded it. A derived grounding whose term is not
-    -- curated is a draft: the config export does not state it and it goes with its table.
-    derived     BOOLEAN NOT NULL DEFAULT FALSE,
-    tenant_id   UUID,
-    UNIQUE (table_id)
-);
-ALTER TABLE glossary_term_table_refs ADD COLUMN IF NOT EXISTS derived BOOLEAN NOT NULL DEFAULT FALSE;
+-- instance of. A table has at most one class term (its class_term_id); a term may ground many.
+-- Only a table with a primary key may be grounded, so each of its rows is an identifiable instance.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS class_term_id INTEGER
+    REFERENCES glossary_terms(id) ON DELETE SET NULL;
+-- REQ-2141: TRUE when sync derived the class term from the table's concept; FALSE when a
+-- configuration declared it or a person grounded it. A derived grounding whose term is not
+-- curated is a draft: the config export does not state it and it goes with its table.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS class_term_derived BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Closed, enum-typed relationship set (REQ-1387) — free-form edge types are not permitted.
 CREATE TABLE IF NOT EXISTS glossary_term_edges (
@@ -859,7 +870,8 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     lease_until     TIMESTAMPTZ,
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
-    snapshot_id     TEXT
+    snapshot_id     TEXT,
+    index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
 );
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.
@@ -957,6 +969,16 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
+-- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
+-- no row has never run; the dry run writes none.
+CREATE TABLE IF NOT EXISTS checker_latest_runs (
+    table_id  INTEGER PRIMARY KEY,
+    scan_id   TEXT NOT NULL,
+    scan_time TIMESTAMPTZ NOT NULL,
+    outcome   TEXT NOT NULL CONSTRAINT checker_latest_runs_outcome_check
+              CHECK (outcome IN ('pass', 'fail'))
+);
+
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
     id              SERIAL PRIMARY KEY,
@@ -1012,7 +1034,7 @@ CREATE TABLE IF NOT EXISTS kafka_topics (
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
     id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')),
+    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
@@ -1063,12 +1085,12 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1668/REQ-1683: the query-API source kinds joined the type check after api_sources existed;
+-- REQ-1668/REQ-1683/REQ-2197: the query-API source kinds joined the type check after api_sources existed;
 -- an org schema created before them still carries the narrower constraint.
 DO $$ BEGIN
     ALTER TABLE api_sources DROP CONSTRAINT IF EXISTS api_sources_type_check;
     ALTER TABLE api_sources ADD CONSTRAINT api_sources_type_check
-        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql'));
+        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1116,6 +1138,7 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     output_columns JSONB,  -- REQ-1159: canonical IR-typed output dataset contract [{name,type}]
     requires_approval BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1924: each call approved by the hook
     writes_table  TEXT,  -- REQ-1924, REQ-871: "schema.table" of the registered table it writes
+    language_bindings JSONB NOT NULL DEFAULT '{}',  -- REQ-2168: the command's name per language
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1274,6 +1297,77 @@ CREATE TABLE IF NOT EXISTS profiler_constraints (
     UNIQUE (table_id, signature)
 );
 
+-- REQ-2147: a steward's decision on a classification a profile suggested for a column.
+CREATE TABLE IF NOT EXISTS profiler_classifications (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    status           TEXT NOT NULL,
+    evidence         TEXT NOT NULL,
+    run_id           TEXT NOT NULL,
+    decided_by       TEXT,
+    decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
+-- kinds held inside their values.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_scans (
+    scan_id          TEXT PRIMARY KEY,
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    status           TEXT NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at      TIMESTAMPTZ,
+    sampled_rows     INTEGER,
+    scanned_columns  INTEGER,
+    requested_by     TEXT,
+    error            TEXT
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind; counts only, never the
+-- matched text.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_hints (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    scan_id          TEXT NOT NULL,
+    values_tested    INTEGER NOT NULL,
+    values_matched   INTEGER NOT NULL,
+    share            DOUBLE PRECISION NOT NULL,
+    evidence         TEXT NOT NULL,
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
+-- REQ-2189: a saved, named arrangement of the ERD. Only the arrangement: what is drawn in it comes
+-- from the live model, and a table or domain removed from the model goes from every layout with it.
+CREATE TABLE IF NOT EXISTS erd_layouts (
+    name        TEXT PRIMARY KEY,
+    options     JSONB NOT NULL,
+    updated_by  TEXT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_domains (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    domain_id    TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    collapsed    BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    w            DOUBLE PRECISION,
+    h            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_tables (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    table_id     INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, table_id)
+);
+
 CREATE TABLE IF NOT EXISTS synthetic_report (
     id               SERIAL PRIMARY KEY,
     dataset_id       TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
@@ -1388,14 +1482,6 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- Add defined_from to roles (REQ-1624) -- an environment schema created before the column keeps a
--- derived role that no re-assertion can restore, so the column comes first and the derivation is
--- re-applied at the end of every apply_tenancy_role_grants.
-DO $$ BEGIN
-    ALTER TABLE roles ADD COLUMN IF NOT EXISTS defined_from TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
 -- Add rate_limit to roles (REQ-1174) — pre-1174 control planes lack it, so the role
 -- repository's rate_limit upsert fails against an existing Postgres roles table.
 DO $$ BEGIN
@@ -1496,215 +1582,9 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1266: org_admin is a system-provided template role seeded into EVERY org schema
--- (schema.sql runs per-org via init_schema) AND the boot/default-org schema. It is the
--- FK target for user_role_assignments granted to a self-service org creator / invitee, and
--- populates the process-global state.roles["org_admin"] so its capabilities resolve for any
--- org. org_admin is org-SCOPED admin: it manages members/invites/sources/governance WITHIN
--- its org (confinement comes from membership + active_org_id + per-schema assignments), and
--- deliberately EXCLUDES the platform rights 'platform_settings'/'cross_org' here. org_id = NULL
--- marks it a system role (identical caps in every org; non-editable via roles_router).
-INSERT INTO roles (id, capabilities, domain_access, org_id)
-VALUES (
-    'org_admin',
-    '["source_registration","table_registration","create_relationship","create_view",
-      "approve_view","approve_relationship","access_config","user_management",
-      "masking_config","column_grant","view_governance","query_development",
-      "full_results","write","usage","org_settings","observability",
-      "environment_management","environment_switch","environment_data","sensitive_data",
-      "glossary_read","glossary_rw","org_glossary_rw",
-      "data_product_read","data_product_rw"]'::jsonb,
-    '["*"]'::jsonb,
-    NULL
-)
-ON CONFLICT (id) DO NOTHING;
-
--- REQ-1297: analyst, developer and modeler are the other system template roles, seeded on the same
--- terms as org_admin (org_id = NULL, identical caps in every org). analyst is the least-privileged
--- of the defaults and is what an invitation confers when it names no role (REQ-1314), so it must
--- exist in every org schema before invite validation (REQ-1313) can resolve it. developer authors
--- queries, views and relationships and may write; none of the three holds user_management, so none
--- can confer roles.
---
--- modeler is the discovery role: it is the ONLY system role holding ignore_relationships, so it can
--- join across relations the approved relationship catalog does not yet cover — that is how a model
--- gets DETERMINED. Every other governance check (column visibility, RLS, masking, domain access)
--- still applies to it. Testing the result of a modelling change is done by switching BACK to a role
--- without ignore_relationships, which is what enforces the model. analyst deliberately does not
--- hold it: the least-privileged default never breaks out of the model.
-INSERT INTO roles (id, capabilities, domain_access, org_id)
-VALUES (
-    'analyst',
-    '["usage","query_development","glossary_read","data_product_read"]'::jsonb,
-    '["*"]'::jsonb,
-    NULL
-),
-(
-    'developer',
-    '["query_development","create_view","create_relationship","full_results","write",
-      "usage","environment_management","environment_switch","glossary_read",
-      "data_product_read"]'::jsonb,
-    '["*"]'::jsonb,
-    NULL
-),
-(
-    'modeler',
-    '["query_development","create_relationship","create_view","ignore_relationships",
-      "full_results","usage","glossary_read","glossary_rw","data_product_read"]'::jsonb,
-    '["*"]'::jsonb,
-    NULL
-),
--- REQ-1944: data_steward owns a domain's governance -- its tables' visibility, row rules, column grants,
--- masks, sensitive columns, glossary and data products -- and audits with full results. Nothing
--- operational: no write, source/table registration, user management, org settings or
--- environment data. Every edit those rights allow is checked against the domain of what it
--- changes (provisa/api/admin/capabilities.py right_domain_refusal). Seeded reaching every domain
--- (a small team has one steward); per-domain stewards are copies with a narrower domain_access.
-(
-    'data_steward',
-    '["access_config","column_grant","masking_config","sensitive_data","glossary_read",
-      "glossary_rw","data_product_read","data_product_rw","usage","query_development",
-      "full_results","view_governance"]'::jsonb,
-    '["*"]'::jsonb,
-    NULL
-)
-ON CONFLICT (id) DO NOTHING;
-
--- REQ-1597: sandbox is what a "Try it Out" invitation confers (REQ-1595). It is org_admin's list
--- minus a DENYLIST rather than a list built up from analyst, because the point of the sandbox is
--- that a stranger can do everything the product does -- register a source, model it, govern it,
--- query it, write to it -- inside an environment that expires. Enumerating what they MAY do would
--- make every capability added later invisible to them until someone remembered this row; taking
--- away is the direction that stays correct.
---
--- Three rights are withheld, each because it reaches something the environment does not contain:
--- environment_management spends the org's plan ceiling and drops other environments' schemas;
--- user_management would let a visitor confer roles or admit more people; org_glossary_rw is the
--- override over terms the org's own people authored. environment_switch is held (REQ-2053): it
--- moves between environments that exist, and a pinned membership (REQ-1596) stays confined by
--- its pin, which is checked before the right.
---
--- org_settings and observability are NOT withheld: REQ-1349 made org_settings the single right
--- nearly every org-scoped admin page is gated on (cache, AI models, import, tags, secrets,
--- scheduler, requests, org-engine, billing, domains), so denying it took out most of the Admin tab
--- rather than the few surfaces REQ-1602 originally intended. The design is that a sandbox visitor
--- can do everything the product does except reach past the environment it was minted in and write
--- back to the shared sample sources it points at -- viewing settings and telemetry is not that.
---
--- REQ-1602/REQ-1608: two of the three are DEMONSTRATED rather than merely absent. A visitor is
--- being shown the product, so the surfaces those rights open stay on the page -- disabled, and
--- badged as belonging to the production system. Withholding them by hiding them would make the
--- sandbox look like a smaller product instead of the same one with the org's own controls held
--- back. `user_management` is the exception: letting a sandbox visitor see a page that implies they
--- could confer roles or admit people, even inertly, misrepresents what the role can ever do here,
--- so /team stays a hard block instead of a demonstration.
-INSERT INTO roles (id, capabilities, demonstrated, domain_access, org_id)
-VALUES (
-    'sandbox',
-    '["access_config","approve_relationship","approve_view","column_grant","create_relationship",
-      "create_view","data_product_read","data_product_rw","environment_data","environment_switch",
-      "full_results",
-      "glossary_read","glossary_rw","masking_config","observability","org_settings",
-      "query_development","sensitive_data","source_registration","table_registration","usage",
-      "view_governance","write"]'::jsonb,
-    '["environment_management","org_glossary_rw"]'::jsonb,
-    '["*"]'::jsonb,
-    NULL
-)
-ON CONFLICT (id) DO NOTHING;
-
--- REQ-1602/REQ-1608: the demonstrated list is part of the role's definition, and the insert above
--- cannot reach a sandbox row an earlier release already created -- including a row an earlier
--- release of this same reconcile left with `user_management`, `org_settings` or `observability`
--- still in it.
-UPDATE roles
-SET demonstrated = '["environment_management","org_glossary_rw"]'::jsonb
-WHERE id = 'sandbox'
-  AND demonstrated <> '["environment_management","org_glossary_rw"]'::jsonb;
-
-UPDATE roles
-SET capabilities = (SELECT jsonb_agg(DISTINCT v ORDER BY v)
-                     FROM jsonb_array_elements_text(capabilities || '["org_settings","observability"]'::jsonb) v)
-WHERE id = 'sandbox'
-  AND NOT (capabilities @> '["org_settings","observability"]'::jsonb);
-
--- REQ-1297: platform_admin is the deployment-wide administrator and the last system
--- template role. It is the role the bootstrap claim grants (REQ-1296).
---
--- Its capability list is the two REQ-1337 platform rights, so that every gate reads a RIGHT and
--- never a role name, and no capability stands in for another: platform_settings (the deployment-wide settings surface) and
--- cross_org (acting in an org one is not a member of, which is also what marks a role CONTROL-PLANE
--- and therefore off the data plane everywhere). NOTHING else. The org-scoped data capabilities it used to
--- enumerate (source_registration, table_registration, query_development, column_grant, write, …)
--- made it a data-plane role in every org schema it was seeded into, which is the opposite of what it
--- is for: the platform operator runs org lifecycle and infrastructure, and a tenant org's data is
--- governed only by roles that org granted. Data-plane administration of an org — including root's —
--- is org_admin's job. The middleware strips platform_admin from the resolved assignment set in any
--- tenant org, so it is actively ignored there rather than merely un-granted.
---
--- Seeded here rather than synthesized in code so user_role_assignments.role_id has a real FK target
--- and state.roles["platform_admin"] resolves its capabilities like any other role. role_repo.upsert
--- refuses to overwrite this row, so no config file or admin surface can re-grant the data caps.
-INSERT INTO roles (id, capabilities, domain_access, org_id)
-VALUES (
-    'platform_admin',
-    '["platform_settings","cross_org"]'::jsonb,
-    '[]'::jsonb,
-    NULL
-)
-ON CONFLICT (id) DO NOTHING;
-
--- REQ-1297: the seed asserts the system role's definition on every init_schema (ON CONFLICT DO
--- NOTHING above leaves an existing row alone), the same way the retired-id rewrite below does.
--- domain_access is empty too: the control plane reaches no data domain.
-UPDATE roles SET capabilities = '["platform_settings","cross_org"]'::jsonb, domain_access = '[]'::jsonb WHERE id = 'platform_admin';
-
--- REQ-2080: what each seeded role is for (SEEDED_ROLE_DESCRIPTIONS in core/db.py), on a row that has none.
-UPDATE roles SET description = 'Administers the organization: its sources, model, governance, members and settings, in every domain.' WHERE id = 'org_admin' AND description = '';
-UPDATE roles SET description = 'Reads and queries the governed data of the domains it is granted. The least-privileged role, and what an invitation gives when it names none.' WHERE id = 'analyst' AND description = '';
-UPDATE roles SET description = 'Builds queries, views and relationships, writes data and manages environments, in the domains it is granted.' WHERE id = 'developer' AND description = '';
-UPDATE roles SET description = 'Works out the model: the one seeded role that may join across relations no approved relationship covers yet. Every other rule still applies to it.' WHERE id = 'modeler' AND description = '';
-UPDATE roles SET description = 'Governs a domain: column visibility, row rules, grants, masks, sensitive columns, the glossary and data products. Nothing operational.' WHERE id = 'data_steward' AND description = '';
-UPDATE roles SET description = 'A Try it Out visitor: what the organization administrator does, inside an environment that expires, but not members, environments or the organization glossary.' WHERE id = 'sandbox' AND description = '';
-UPDATE roles SET description = 'Runs the platform: organizations, infrastructure and deployment settings. Holds no right to any organization''s data.' WHERE id = 'platform_admin' AND description = '';
-
--- REQ-1573: the two environment rights arrived after these system roles were seeded, and
--- ON CONFLICT DO NOTHING leaves an existing row alone, so assert them here the same way
--- platform_admin's narrowing is asserted above. org_admin and developer hold both;
--- analyst and modeler are named nowhere here and therefore hold neither.
-UPDATE roles SET capabilities = capabilities || '["environment_management","environment_switch"]'::jsonb
-WHERE id IN ('org_admin', 'developer')
-  AND org_id IS NULL
-  AND NOT capabilities @> '["environment_switch"]'::jsonb;
-
--- REQ-1942: environment_data -- changing an environment's data choices -- arrived after org_admin
--- was seeded; asserted on the same terms as the environment rights above. org_admin alone.
-UPDATE roles SET capabilities = capabilities || '["environment_data"]'::jsonb
-WHERE id = 'org_admin'
-  AND org_id IS NULL
-  AND NOT capabilities @> '["environment_data"]'::jsonb;
-
--- REQ-1943: sensitive_data -- revealing or hiding a sensitive column -- on the same terms.
-UPDATE roles SET capabilities = capabilities || '["sensitive_data"]'::jsonb
-WHERE id = 'org_admin'
-  AND org_id IS NULL
-  AND NOT capabilities @> '["sensitive_data"]'::jsonb;
-
--- REQ-1297: the role ids 'admin' and 'superadmin' are retired. Rewrite existing assignments naming
--- them to platform_admin, then drop the rows, so nothing resolves them afterward. The rewrite runs
--- as a DELETE-then-INSERT-select rather than an UPDATE because a user may already hold
--- platform_admin for the same domain and user_role_assignments is UNIQUE (user_id, role_id,
--- domain_id) — an UPDATE would raise on the collision. Deleting the roles rows would cascade the
--- assignments away (ON DELETE CASCADE), so the carry-over must happen first.
-DO $$ BEGIN
-    INSERT INTO user_role_assignments (user_id, role_id, domain_id)
-    SELECT DISTINCT user_id, 'platform_admin', domain_id
-    FROM user_role_assignments
-    WHERE role_id IN ('admin', 'superadmin')
-    ON CONFLICT (user_id, role_id, domain_id) DO NOTHING;
-
-    DELETE FROM roles WHERE id IN ('admin', 'superadmin');
-END $$;
+-- REQ-2155: the standard roles (org_admin, analyst, sandbox, platform_admin and the rest) are not
+-- seeded here: init_schema writes every one as provisa.core.db.STANDARD_ROLES defines it, on every
+-- run (db.assert_standard_roles), once the metadata has reconciled this schema.
 
 -- Org invite tokens live in the platform control plane (schema_admin.org_invites),
 -- not per-org here.
@@ -1819,6 +1699,21 @@ CREATE TABLE IF NOT EXISTS session_temp_schemas (
     beat_at      TIMESTAMPTZ NOT NULL
 );
 
+-- REQ-2176: state -- each principal's ephemeral graph session in this environment: its tables'
+-- shapes, generation and graph index, read under a lock for each statement (see schema_org.py).
+-- Never part of the model.
+CREATE TABLE IF NOT EXISTS graph_sessions (
+    user_id    TEXT NOT NULL PRIMARY KEY,
+    generation BIGINT NOT NULL,
+    stored     BOOLEAN NOT NULL,
+    tables     JSONB NOT NULL,
+    graph      JSONB NOT NULL,
+    roles      JSONB NOT NULL,
+    assigned   JSONB NOT NULL,
+    rights     TEXT NOT NULL,
+    used_at    TIMESTAMPTZ NOT NULL
+);
+
 -- Replica state (REQ-1912, REQ-826): one row per replica of a source table, shared by every
 -- worker and instance. ``promoted`` is the automatic-promotion decision (a Hot-N table past its
 -- threshold); the replica build's own state is added to this same row. Keyed by the table's
@@ -1927,6 +1822,18 @@ CREATE TABLE IF NOT EXISTS code_source_llm_usage (
 );
 
 
+-- REQ-1174 (amended 2026-10-27): what each role's LLM calls used, per-minute buckets kept an hour,
+-- per-hour a week, per-day 31 days. Mirrors schema_org.role_llm_usage.
+CREATE TABLE IF NOT EXISTS role_llm_usage (
+    role_id TEXT NOT NULL,
+    grain   TEXT NOT NULL,                       -- minute | hour | day
+    bucket  TIMESTAMPTZ NOT NULL,                -- the bucket's start, UTC
+    tokens  BIGINT NOT NULL DEFAULT 0,
+    usd     DOUBLE PRECISION NOT NULL DEFAULT 0,
+    PRIMARY KEY (role_id, grain, bucket)
+);
+
+
 -- REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
 -- archive kept on the node that built it), and why it failed. Mirrors schema_org.code_source_builds.
 CREATE TABLE IF NOT EXISTS code_source_builds (
@@ -1969,6 +1876,113 @@ CREATE TABLE IF NOT EXISTS code_source_vectors (
     PRIMARY KEY (source_id, item_id)
 );
 
+
+-- REQ-2185: the org's reference library: documents its assistants draw on, each proposed or kept,
+-- with domains (a list, or '*' for the whole org, as a glossary term's). A document's content is
+-- held as its passages, each embedded by the org's vector model; vector is the embedding, a pgvector
+-- column of any dimension (provisa.core.pgvector), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.store). Mirrors schema_org.reference_documents,
+-- reference_document_domains and reference_passages.
+CREATE TABLE IF NOT EXISTS reference_documents (
+    id              SERIAL PRIMARY KEY,
+    title           TEXT NOT NULL,
+    source_kind     TEXT NOT NULL CONSTRAINT reference_documents_kind_check
+                        CHECK (source_kind IN ('file', 'url')),
+    source          TEXT NOT NULL,
+    media_type      TEXT NOT NULL,
+    content_sha256  TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT reference_documents_status_check
+                        CHECK (status IN ('proposed', 'kept')),
+    embedding_model TEXT NOT NULL,
+    added_by        TEXT,
+    added_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    refreshed_at    TIMESTAMPTZ,
+    replaced_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
+
+CREATE TABLE IF NOT EXISTS reference_document_domains (
+    id          SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    domain_id   TEXT NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (document_id, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS reference_passages (
+    id          SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    section     TEXT,
+    page        INTEGER,
+    text        TEXT NOT NULL,
+    vector      public.vector NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (document_id, ordinal)
+);
+
+-- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by
+-- the org's vector model), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.terms). Mirrors schema_org.glossary_term_vectors.
+CREATE TABLE IF NOT EXISTS glossary_term_vectors (
+    term_id         INTEGER PRIMARY KEY REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    embedding_model TEXT NOT NULL,
+    digest          TEXT NOT NULL,
+    vector          public.vector NOT NULL,
+    tenant_id       UUID
+);
+
+-- REQ-2179: the glossary's scans of reference library documents for terms, and the review queue of
+-- the candidate terms each proposes, drafts until a steward accepts, merges or rejects them. A scan
+-- keeps the document's title and source, so its citations outlive the document. Mirrors
+-- schema_org.glossary_term_scans and glossary_term_drafts.
+CREATE TABLE IF NOT EXISTS glossary_term_scans (
+    id              SERIAL PRIMARY KEY,
+    document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,
+    document_title  TEXT NOT NULL,
+    document_source TEXT NOT NULL,
+    domains         TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT glossary_term_scans_status_check
+                        CHECK (status IN ('running', 'done', 'failed')),
+    error           TEXT,
+    summary         TEXT,
+    started_by      TEXT,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ,
+    model           TEXT,
+    step            TEXT,
+    batch           INTEGER,
+    batches         INTEGER,
+    budget_limit    INTEGER,
+    launch          TEXT,
+    progress_at     TIMESTAMPTZ,
+    source_table    TEXT,  -- REQ-2202: a table's scan: its domain, table, id and text columns
+    tenant_id       UUID
+);
+
+CREATE TABLE IF NOT EXISTS glossary_term_drafts (
+    id              SERIAL PRIMARY KEY,
+    scan_id         INTEGER NOT NULL REFERENCES glossary_term_scans(id) ON DELETE CASCADE,
+    ordinal         INTEGER NOT NULL,
+    name            TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    sense           TEXT NOT NULL,
+    definition      TEXT,
+    definition_kind TEXT NOT NULL CONSTRAINT glossary_term_drafts_definition_check
+                        CHECK (definition_kind IN ('explicit', 'synthesized', 'missing')),
+    proposal        TEXT NOT NULL CONSTRAINT glossary_term_drafts_proposal_check
+                        CHECK (proposal IN ('new', 'merge')),
+    match_term_id   INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    match_kind      TEXT,
+    payload         TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT glossary_term_drafts_status_check
+                        CHECK (status IN ('draft', 'accepted', 'merged', 'rejected')),
+    term_id         INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    decided_by      TEXT,
+    decided_at      TIMESTAMPTZ,
+    tenant_id       UUID,
+    UNIQUE (scan_id, ordinal)
+);
 
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):

@@ -153,7 +153,7 @@ def test_ann_access_methods_not_advertised() -> None:
     from provisa.pgwire import catalog_populate
 
     db = duckdb.connect(":memory:")
-    catalog_populate._populate_pg_tables_and_am(db, catalog_populate.CatalogIndex())
+    catalog_populate._populate_pg_tables_and_am(db, catalog_populate.CatalogIndex("provisa"))
     ams = {row[0] for row in db.execute("SELECT amname FROM _pg_am").fetchall()}
     db.close()
     assert "hnsw" not in ams and "ivfflat" not in ams
@@ -166,7 +166,7 @@ def test_pg_am_amhandler_is_numeric_oid() -> None:
     from provisa.pgwire import catalog_populate
 
     db = duckdb.connect(":memory:")
-    catalog_populate._populate_pg_tables_and_am(db, catalog_populate.CatalogIndex())
+    catalog_populate._populate_pg_tables_and_am(db, catalog_populate.CatalogIndex("provisa"))
     rows = db.execute("SELECT amname, CAST(amhandler AS BIGINT) FROM _pg_am").fetchall()
     db.close()
     handlers = dict(rows)

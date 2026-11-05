@@ -25,6 +25,7 @@ export const PROFILER_DEFAULTS: Record<string, string> = {
   correlation_max_columns: "20",
   joint_max_distinct: "20",
   category_max_columns: "10",
+  classification_sample: "500", // REQ-2147
 };
 
 /** The drift seasons a profiler's baseline can follow (provisa/profiler/source.py DRIFT_SEASONS). */

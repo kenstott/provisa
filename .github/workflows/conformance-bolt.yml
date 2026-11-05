@@ -1,0 +1,198 @@
+name: Conformance (Bolt)
+
+# REQ-2167: Provisa's Bolt endpoint against the official Neo4j Python driver's own integration tests
+# (github.com/neo4j/neo4j-python-driver, tests/integration, Apache-2.0), cloned at a pinned release
+# tag, never vendored, installed with its test dependency group in its own virtualenv and run with
+# pytest against Provisa's Bolt port as the examples' own role (bolt_examples).
+#
+# Each test is passed, skipped by design (a group of by_design/bolt.yaml citing its requirement
+# and decision) or failed (REQ-2167, amended 2026-10-28); a test the driver's suite skips for
+# every server is skipped by design in its suite group, citing the suite's reason, and failed if
+# no group names it. A failing test is data, written to the job summary and to the artifact
+# conformance-bolt.json (read by scripts/conformance/fill_docs.py into docs/conformance/bolt.md),
+# never a job failure. pytest's own line in the run step counts by pytest's outcomes; the three
+# counts are the Summarise step's. The job fails only when the Provisa instance did not start or no
+# test ran, until Bolt is at its baseline (scripts/conformance/by_design.py AT_BASELINE,
+# REQ-2167): then also on a failed test.
+#
+# The instance is every conformance job's (.github/actions/conformance-instance), with password
+# auth: the driver signs in as the job user, whom a role mapping rule maps to bolt_examples, a role
+# reaching only the examples' domain (Person, Company, Greeting): the examples' MATCH (a) DETACH
+# DELETE a cleanup empties their own graph and never reaches conformance.types_fixture.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+  # verification calls it (verify-surface.yml), on the run's own commit.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-bolt-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bolt:
+    name: Bolt conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      DRIVER_REPO: https://github.com/neo4j/neo4j-python-driver.git
+      # One test waiting on an answer that never comes fails alone, by name, not the whole run.
+      PYTEST_TIMEOUT_VERSION: 2.3.1
+      DRIVER_TEST_TIMEOUT_S: 60
+      DRIVER_VERSION: "6.2.0"
+      # The Bolt port the instance start step gives (API port + 3).
+      PROVISA_BOLT_PORT: "8904"
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Fetch the Neo4j Python driver
+        run: |
+          git clone --quiet --depth 1 --branch "$DRIVER_VERSION" "$DRIVER_REPO" "$RUNNER_TEMP/driver"
+          head -n 2 "$RUNNER_TEMP/driver/LICENSE.txt"
+          grep -q "Apache License" "$RUNNER_TEMP/driver/LICENSE.txt"
+          python3 -m venv "$RUNNER_TEMP/driver-venv"
+          "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --upgrade pip
+          cd "$RUNNER_TEMP/driver" && "$RUNNER_TEMP/driver-venv/bin/pip" install --quiet --group test -e . \
+            "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
+
+      # REQ-2167 (setup that creates objects is adapted, not excluded): the examples' labels and
+      # relationship types, seeded into the PostgreSQL service and declared in a model domain of
+      # their own, with the role the job user acts as there (scripts/conformance/bolt/fixtures.py).
+      # The examples run as written.
+      - name: Seed the examples' graph
+        run: |
+          .venv/bin/python scripts/conformance/bolt/fixtures.py seed --user "$CONFORMANCE_USER" \
+            --tables "$RUNNER_TEMP/bolt-tables.yaml" --relationships "$RUNNER_TEMP/bolt-relationships.yaml" \
+            --access "$RUNNER_TEMP/bolt-access.yaml" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION. The driver signs in once per connection, and its
+      # cancellation test opens a connection per cancelled read: the job user's password is stored
+      # at the minimum bcrypt cost.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+        with:
+          extra-tables: ${{ runner.temp }}/bolt-tables.yaml
+          extra-relationships: ${{ runner.temp }}/bolt-relationships.yaml
+          extra-access: ${{ runner.temp }}/bolt-access.yaml
+          password-cost: "4"
+
+
+      - name: Run the driver's integration tests
+        continue-on-error: true
+        timeout-minutes: 30
+        env:
+          TEST_NEO4J_HOST: 127.0.0.1
+          TEST_NEO4J_PORT: ${{ env.PROVISA_BOLT_PORT }}
+          TEST_NEO4J_SCHEME: bolt
+          TEST_NEO4J_USER: ${{ env.CONFORMANCE_USER }}
+          TEST_NEO4J_PASS: ${{ env.CONFORMANCE_PASSWORD }}
+          # The edition names the suite's server features, not Provisa's dbms.components answer
+          # (still community): it gates the database selection example alone
+          # (tests/conftest.py:158-164), whose CREATE DATABASE / session(database=...) Provisa
+          # answers (provisa/bolt/databases.py: a created database names the home database,
+          # kept in the principal's graph session, REQ-2176).
+          TEST_NEO4J_EDITION: enterprise
+          TEST_NEO4J_VERSION: "5.4"
+          TEST_NEO4J_IS_CLUSTER: "false"
+        run: |
+          for _ in $(seq 1 60); do
+            (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_BOLT_PORT") 2>/dev/null && break
+            sleep 2
+          done
+          # The driver's own test package, run from inside it (its tests/conftest.py applies).
+          cd "$RUNNER_TEMP/driver/tests"
+          leak="integration/mixed/test_async_cancellation.py::test_async_cancellation_does_not_leak"
+          "$RUNNER_TEMP/driver-venv/bin/python" -m pytest integration -p no:cacheprovider \
+            --timeout="$DRIVER_TEST_TIMEOUT_S" -k "not test_async_cancellation_does_not_leak" \
+            --junitxml="$RUNNER_TEMP/bolt-junit.xml" -q || true
+          # The cancellation leak test on its own: hung where no signal reaches it (its event loop
+          # waiting on a socket), the thread method dumps every thread's stack and ends this call
+          # only, before it writes its junit file -- so that case alone is written failed.
+          "$RUNNER_TEMP/driver-venv/bin/python" -m pytest "$leak" -p no:cacheprovider \
+            --timeout="$DRIVER_TEST_TIMEOUT_S" --timeout-method=thread \
+            --junitxml="$RUNNER_TEMP/bolt-junit-leak.xml" -q || true
+          if [ ! -f "$RUNNER_TEMP/bolt-junit-leak.xml" ]; then
+            printf '%s\n' '<testsuites><testsuite name="pytest"><testcase classname="tests.integration.mixed.test_async_cancellation" name="test_async_cancellation_does_not_leak"><failure message="Timeout: the test hung; every thread'"'"'s stack is in this step'"'"'s log"/></testcase></testsuite></testsuites>' \
+              > "$RUNNER_TEMP/bolt-junit-leak.xml"
+          fi
+
+      - name: Summarise
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/junit_summary.py "$RUNNER_TEMP/bolt-junit.xml,$RUNNER_TEMP/bolt-junit-leak.xml" \
+            bolt "neo4j-python-driver integration tests" "$DRIVER_VERSION" "tests/integration" \
+            "$RUNNER_TEMP/report/conformance-bolt.json" "$RUNNER_TEMP/report/conformance-bolt.md" || ran=$?
+          cat "$RUNNER_TEMP/report/conformance-bolt.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-bolt
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -223,7 +224,18 @@ def _tour_statements() -> list[tuple[str, str, str]]:
     return out
 
 
+#: How long an audit row may take to land: the writer inserts its queue in batches after the
+#: request has answered (provisa/audit/writer.py), so the read just before may not be there yet.
+_AUDITED_S = 30
+
+
 def test_each_tour_statement_answers_rows_as_its_role(set_up):
-    # In the tour's order: the ops record steps read what the steps before them did.
+    # In the tour's order: the ops record steps read what the steps before them did, once the
+    # audit writer has landed it.
     for key, role, sql in _tour_statements():
-        assert query(set_up, sql, role), key
+        rows = query(set_up, sql, role)
+        deadline = time.monotonic() + _AUDITED_S
+        while not rows and '"ops".' in sql and time.monotonic() < deadline:
+            time.sleep(1)
+            rows = query(set_up, sql, role)
+        assert rows, key

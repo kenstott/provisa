@@ -52,6 +52,7 @@
       "mailboxes_failed": "Buzones cuya lectura falló a mitad: {{total}}. Lo que se leyó de ellos se conserva y su lectura continúa en la próxima actualización. Son: {{accounts}}",
       "place_not_kept": "Esta copia está completa, pero no se pudo guardar hasta dónde llegó su lectura, por lo que la próxima comprobación de cambios volverá a pedir la lectura: {{reason}}",
       "indexes_not_planned": "Esta copia está completa y se puede leer, pero no se pudieron planificar sus índices, así que se lee sin ellos hasta que se vuelva a crear: {{reason}}",
+      "column_not_landed": "La columna {{column}} ({{subtype}}) no está en esta copia: {{reader}} no puede leerla como {{subtype}}, por lo que se omite y se rechaza su lectura.",
       "andMore": "{{ids}} y {{more}} más",
       "other": "La última compilación anotó: {{code}}"
     },

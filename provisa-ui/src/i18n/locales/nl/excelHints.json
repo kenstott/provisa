@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Excel-tabellen",
+    "note": "Hoe tabellen in de werkmappen van deze bron worden gevonden. Laat een hint op Automatisch detecteren staan, tenzij een werkmap verkeerd wordt gelezen.",
+    "auto": "Automatisch detecteren",
+    "autoValue": "Automatisch detecteren ({{value}})",
+    "hint": {
+      "header_rows": "Koprijen",
+      "max_header_rows": "Hoogstens koprijen",
+      "table_gap_rows": "Lege rijen tussen tabellen",
+      "column_gap": "Lege kolommen tussen tabellen",
+      "min_columns": "Minstens kolommen",
+      "min_data_rows": "Minstens gegevensrijen",
+      "range": "Bereik"
+    },
+    "help": {
+      "header_rows": "Het exacte aantal koprijen. Stel het in als een gegevensrij als kop wordt gelezen, of een kop als gegevens.",
+      "max_header_rows": "De meeste rijen die als koprij worden gelezen. 1 betekent dat elke tabel één koprij heeft.",
+      "table_gap_rows": "Hoeveel lege rijen achter elkaar een tabel beëindigen. Stel 1 in als tabellen door één lege rij gescheiden zijn.",
+      "column_gap": "Hoeveel lege kolommen achter elkaar naast elkaar staande tabellen scheiden. Stel 1 in als één lege kolom ze scheidt.",
+      "min_columns": "Het minste aantal kolommen van een tabel. Stel 1 in om tabellen van één kolom te lezen.",
+      "min_data_rows": "Het minste aantal gegevensrijen van een tabel. Een tabel met minder wordt niet gelezen.",
+      "range": "De cellen van deze tabel, precies zo gelezen, zoals Sheet1!A3:F200. Zet een bladnaam met spaties tussen aanhalingstekens: 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "Voor één werkmap of tabel",
+    "entriesNote": "Een hint hier gaat voor op dezelfde hint hierboven. Een tabel heet bestand__blad, zoals hij in de lijst staat.",
+    "scope": "Voor",
+    "scopeWorkbook": "Werkmap",
+    "scopeTable": "Tabel",
+    "workbookName": "Werkmapbestand",
+    "workbookNameHelp": "De bestandsnaam van de werkmap, zoals report.xlsx.",
+    "tableName": "Tabel",
+    "tableNameHelp": "De naam van de tabel zoals de bron hem toont, zoals report__summary. Met een bereik is dit de naam die de tabel van het bereik krijgt.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Twee keer genoemd; geef elke werkmap of tabel één regel.",
+    "repeatedFix": "Excel-tabellen: een werkmap of tabel staat in twee regels. Geef elk één regel.",
+    "add": "Werkmap of tabel toevoegen",
+    "remove": "Verwijderen"
+  }
+}

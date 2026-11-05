@@ -23,7 +23,6 @@ import asyncio
 from typing import Any
 
 from provisa.codesource.manifest import (
-    LOADER,
     Anonymous,
     EnumOf,
     Export,
@@ -69,11 +68,10 @@ def _parameter_columns(export: Export) -> list[dict]:
             "path": None,
             "native_filter_type": QUERY_ARG,
             "native_filter_required": p.required,
-            "comment": None,
+            # REQ-2100: an input's own documentation (its field's), as its column's.
+            "comment": p.description or None,
         }
         for p in export.parameters
-        # REQ-2100: a join's keys reach the loader; a statement gives it no argument.
-        if not (export.loader and p.name == LOADER)
     ]
 
 
@@ -101,15 +99,21 @@ async def _source(state: Any, source_id: str) -> Any:  # the app state; a regist
     return found[0] if found else None
 
 
-async def tables(state: Any, source_id: str) -> list[tuple[str, str]] | None:
-    """The source's ``@table`` functions, ``(name, description)``; None when it is not there."""
+async def tables(state: Any, source_id: str) -> list[tuple[str, str, list[str]]] | None:
+    """The source's ``@table`` functions, ``(name, description, required parameters)``; None
+    when it is not there."""
     from provisa.codesource.source import context_for, prepare
+    from provisa.core.parameters import required_parameters
 
     source = await _source(state, source_id)
     if source is None:
         return None
     prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
-    return [(e.name, e.description) for e in prepared.manifest.exports if e.kind == "table"]
+    return [
+        (e.name, e.description, required_parameters(_parameter_columns(e)))
+        for e in prepared.manifest.exports
+        if e.kind == "table"
+    ]
 
 
 async def exports(state: Any, source_id: str) -> list[tuple[str, str]] | None:

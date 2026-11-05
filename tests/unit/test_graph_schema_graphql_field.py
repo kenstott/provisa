@@ -33,7 +33,7 @@ def _table(tid: int, domain_id: str, name: str) -> dict:
         "source_id": "pg",
         "schema_name": "public",
         "table_name": name,
-        "columns": [{"column_name": "id", "visible_to": [], "native_filter_type": None}],
+        "columns": [{"column_name": "id", "visible_to": ["r"], "native_filter_type": None}],
         "write_ops": [],
         "write_returns_rows": True,
         "write_refused_forms": [],
@@ -58,7 +58,7 @@ def state(monkeypatch):
                 "id": "r",
                 "description": "Test role.",
                 "capabilities": ["usage"],
-                "domain_access": ["*"],
+                "domain_access": ["*", "meta", "ontology", "ops"],
             }
         ],
         tables=[_table(ORDERS, "sales", "orders"), _table(PRODUCTS, "meta", "data_products")],

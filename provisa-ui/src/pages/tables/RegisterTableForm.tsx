@@ -35,6 +35,7 @@ import {
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { NlTableSearch } from "./NlTableSearch";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
+import type { LateColumns } from "../../hooks/useAvailableColumnsMetadataLazy";
 import { RegionSelect } from "../../components/admin/RegionSelect";
 import { useRegionChoice, useRegionChoices } from "../../hooks/useRegionQueries";
 import { useQueryPreview } from "../../hooks/useQueryPreview";
@@ -67,6 +68,7 @@ import { useSourceKind } from "../sources/sourceKind";
 import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { ProfilerResultSelect } from "./ProfilerResultSelect";
+import { requiredParametersOf } from "./lookups";
 import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
@@ -94,16 +96,22 @@ interface RegisterTableFormProps {
     schemaName: string,
     tableName: string,
   ) => Promise<
-    {
-      name: string;
-      dataType: string;
-      comment?: string | null;
-      nativeFilterType?: string | null;
-      nativeFilterRequired?: boolean | null;
-      isPrimaryKey?: boolean | null;
-      path?: string | null;
-    }[]
+    | {
+        name: string;
+        dataType: string;
+        subtype?: string | null; // REQ-2171
+        comment?: string | null;
+        nativeFilterType?: string | null;
+        nativeFilterRequired?: boolean | null;
+        isPrimaryKey?: boolean | null;
+        path?: string | null;
+      }[]
+    | null // null: the source is still starting (REQ-1824); the answer arrives as `lateColumns`
   >;
+  /** The columns read answered after STARTING, with the table they belong to. */
+  lateColumns?: LateColumns | null;
+  columnsStarting?: boolean;
+  columnsStartingTimedOut?: boolean;
   suggestTableAlias: (tableName: string, domainId: string, sourceId: string) => Promise<string>;
   /**
    * REQ-2109 (settled): what is registered is chosen here; every setting of the table follows in
@@ -126,6 +134,9 @@ export function RegisterTableForm({
   tables,
   roles,
   getAvailableColumnsMetadata,
+  lateColumns,
+  columnsStarting = false,
+  columnsStartingTimedOut = false,
   suggestTableAlias,
   onContinue,
   onCancel,
@@ -344,21 +355,70 @@ export function RegisterTableForm({
   // only a CHANGE of dataset re-derives, so a name the operator typed over the default survives
   // authoring the rules.
   const lastDqDataset = useRef<string | null>(null);
-  const onDqDatasetChange = useCallback(
-    (dataset: string | null) => {
-      if (dataset === lastDqDataset.current) return;
-      lastDqDataset.current = dataset;
-      if (dataset === null) {
-        setDqScanned(null);
-        return;
-      }
-      const [, schema, table] = dataset.split("/");
-      setDqScanned({ schema, table });
-      setTableName(`${table}_quality`);
-      setTableDescription(t("registerTableForm.dqDescription", { table: `${schema}.${table}` }));
-    },
-    [t],
-  );
+  const onDqDatasetChange = useCallback((dataset: string | null) => {
+    if (dataset === lastDqDataset.current) return;
+    lastDqDataset.current = dataset;
+    if (dataset === null) {
+      setDqScanned(null);
+      return;
+    }
+    const [, schema, table] = dataset.split("/");
+    setDqScanned({ schema, table });
+    setTableName(`${table}_quality`);
+    // REQ-2132: a checker's description is its quality claim, why the check exists -- the
+    // registrant's to state, so nothing generic is put there for them.
+  }, []);
+
+  const applyColumns = (
+    cols: NonNullable<Awaited<ReturnType<typeof getAvailableColumnsMetadata>>>,
+  ) => {
+    const formed = cols.map((c) => {
+      const snake = toSnakeCase(c.name);
+      return {
+        name: c.name,
+        visibleTo: roles.map((r) => r.id),
+        masks: [],
+        alias: snake !== c.name ? snake : "",
+        description: c.comment || "",
+        // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
+        selected: !offeredUnselected(sourceType, c.path),
+        nativeFilterType: c.nativeFilterType ?? null,
+        nativeFilterRequired: c.nativeFilterRequired ?? null,
+        dataType: c.dataType,
+        subtype: c.subtype ?? null, // REQ-2171
+        isPrimaryKey: c.isPrimaryKey ?? false,
+        // REQ-1959: nothing is public by default. A parameter column is an argument, not
+        // data, and its scope publishes nothing whatever it says.
+        scope: "domain",
+        // REQ-1982: a document source says where a nested field is read from; REQ-1739: an
+        // ingest source's path is set below.
+        path: c.path ?? null,
+      };
+    });
+    setColumns(formed);
+    setUntypedAtDiscovery(formed.filter((c) => !c.dataType).map((c) => c.name));
+    const pickedType = sources.find((s) => s.id === sourceId)?.type ?? "";
+    if (!CDC_TYPES.has(pickedType)) {
+      const autoWm = formed.find(
+        (c) => (c.name === "updated_at" || c.name === "updated") && isWatermarkEligible(c.dataType),
+      );
+      if (autoWm) setWatermarkColumn(autoWm.name);
+    }
+  };
+
+  // The columns of a source that was still starting arrive here, once its server answers.
+  useEffect(() => {
+    if (
+      lateColumns &&
+      lateColumns.sourceId === sourceId &&
+      lateColumns.schemaName === schemaName &&
+      lateColumns.tableName === tableName
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the late answer of a read that began before this render
+      applyColumns(lateColumns.columns);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applied once per answer
+  }, [lateColumns]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset: columns cleared before async fetch when table selection changes
@@ -397,38 +457,7 @@ export function RegisterTableForm({
     setLoadingColumns(true);
     getAvailableColumnsMetadata(sourceId, schemaName, tableName)
       .then((cols) => {
-        const formed = cols.map((c) => {
-          const snake = toSnakeCase(c.name);
-          return {
-            name: c.name,
-            visibleTo: roles.map((r) => r.id),
-            masks: [],
-            alias: snake !== c.name ? snake : "",
-            description: c.comment || "",
-            // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
-            selected: !offeredUnselected(sourceType, c.path),
-            nativeFilterType: c.nativeFilterType ?? null,
-            nativeFilterRequired: c.nativeFilterRequired ?? null,
-            dataType: c.dataType,
-            isPrimaryKey: c.isPrimaryKey ?? false,
-            // REQ-1959: nothing is public by default. A parameter column is an argument, not
-            // data, and its scope publishes nothing whatever it says.
-            scope: "domain",
-            // REQ-1982: a document source says where a nested field is read from; REQ-1739: an
-            // ingest source's path is set below.
-            path: c.path ?? null,
-          };
-        });
-        setColumns(formed);
-        setUntypedAtDiscovery(formed.filter((c) => !c.dataType).map((c) => c.name));
-        const pickedType = sources.find((s) => s.id === sourceId)?.type ?? "";
-        if (!CDC_TYPES.has(pickedType)) {
-          const autoWm = formed.find(
-            (c) =>
-              (c.name === "updated_at" || c.name === "updated") && isWatermarkEligible(c.dataType),
-          );
-          if (autoWm) setWatermarkColumn(autoWm.name);
-        }
+        if (cols) applyColumns(cols);
       })
       .catch(() => setColumns([]))
       .finally(() => setLoadingColumns(false));
@@ -486,7 +515,8 @@ export function RegisterTableForm({
     value: string | boolean | string[] | MaskEntry[],
   ) => {
     const next = [...columns];
-    next[i] = { ...next[i], [key]: value };
+    // REQ-2171: a subtype describes the type it came with; a new type has none.
+    next[i] = { ...next[i], [key]: value, ...(key === "dataType" ? { subtype: null } : {}) };
     setColumns(next);
   };
 
@@ -527,8 +557,8 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorUntypedColumns", { columns: untyped.join(", ") }));
       return;
     }
-    // The short step declares no paging: it is not shown there, so nothing of it is sent; it is
-    // set on the editor's Load and timeliness tab.
+    // The short step does not show paging; the paging the source proposes is carried to the
+    // editor's Load and timeliness tab, where it is accepted or edited (REQ-318).
     if (
       !short &&
       pagingKind !== null &&
@@ -570,7 +600,7 @@ export function RegisterTableForm({
           .map((u) => ({ name: u.name.trim(), columns: u.columns })),
       },
       // REQ-318: the short step declares no paging; the longer one sends what it declared.
-      pagination: !short && pagingKind !== null ? declaredPaging(pagination) : null,
+      pagination: pagingKind !== null ? declaredPaging(pagination) : null,
       pagingKind,
       pagingCeilingRows,
       rowRules: isProfiler ? profilerRowRules : [],
@@ -630,6 +660,15 @@ export function RegisterTableForm({
   const isRegistered = (tbl: { name: string }) =>
     tables.some(
       (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
+    );
+  // REQ-1986: what each offered table needs to be read, a steward's requirements included once
+  // it is registered.
+  const requiredOf = (tbl: { name: string }) =>
+    requiredParametersOf(
+      availableTables.find((a) => a.name === tbl.name) ?? {},
+      tables.find(
+        (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
+      ),
     );
   const allTablesRegistered =
     !loadingTables &&
@@ -742,6 +781,7 @@ export function RegisterTableForm({
           <>
             <SchemaTableSelects
               {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
+              requiredOf={requiredOf}
               schemas={availableSchemas}
               loadingSchemas={loadingSchemas}
               fixedSchema={isFixedSchema}
@@ -751,6 +791,17 @@ export function RegisterTableForm({
               starting={startingTables}
               startingTimedOut={startingTablesTimedOut}
             />
+            {tableName && (columnsStarting || columnsStartingTimedOut) && (
+              <Text
+                size="xs"
+                c={columnsStartingTimedOut ? "red" : "dimmed"}
+                data-testid="register-table-columns-starting"
+              >
+                {columnsStartingTimedOut
+                  ? t("registerTableForm.tableStartingTimedOut")
+                  : t("registerTableForm.tableStarting")}
+              </Text>
+            )}
             {sourceType === "servicenow" && tableName && (
               <ImportSetField
                 {...{ sourceId, schemaName, tableName, value: importSet, onChange: setImportSet }}
@@ -848,13 +899,26 @@ export function RegisterTableForm({
       {isProfiler && tableName && (
         <ProfilerRowRulesField rules={profilerRowRules} onChange={setProfilerRowRules} />
       )}
-      {!short && (
+      {/* REQ-2132: on a checker source the description is the check's claim, why it exists. */}
+      {!short && isChecker && (
+        <FormField size="long" hint={t("registerTableForm.checkReasonHint")}>
+          <TextInput
+            label={t("registerTableForm.checkReasonLabel")}
+            value={tableDescription}
+            onChange={(e) => setTableDescription(e.currentTarget.value)}
+            placeholder={t("registerTableForm.checkReasonPlaceholder")}
+            data-testid="register-table-description"
+          />
+        </FormField>
+      )}
+      {!short && !isChecker && (
         <FormField size="long">
           <TextInput
             label={t("registerTableForm.descriptionLabel")}
             value={tableDescription}
             onChange={(e) => setTableDescription(e.currentTarget.value)}
             placeholder={t("registerTableForm.descriptionPlaceholder")}
+            data-testid="register-table-description"
           />
         </FormField>
       )}

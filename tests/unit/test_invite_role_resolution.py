@@ -21,12 +21,12 @@ from provisa.api.errors import ApiError
 from provisa.security.rights import Capability
 
 ROLES = [
-    {"id": "analyst", "capabilities": ["query_development"], "parent_role_id": None},
-    {"id": "org_admin", "capabilities": ["user_management"], "parent_role_id": None},
+    {"id": "analyst", "capabilities": ["query_development"], "parents": []},
+    {"id": "org_admin", "capabilities": ["user_management"], "parents": []},
     {
         "id": "platform_admin",
         "capabilities": [Capability.PLATFORM_SETTINGS.value, Capability.CROSS_ORG.value],
-        "parent_role_id": None,
+        "parents": [],
     },
 ]
 

@@ -62,7 +62,8 @@ class _WhoAmI(fl.FlightServerBase):
 
 def _worker(port: int, ready) -> None:
     server = _WhoAmI("grpc://127.0.0.1:0")
-    threading.Thread(target=server.serve, daemon=True).start()
+    # wait(), never serve(): see serve_in_background in provisa/api/flight/relay.py
+    threading.Thread(target=server.wait, daemon=True).start()
     _load_relay().FlightRelay("0.0.0.0", port, server.port)  # noqa: S104 - same bind as the product
     ready.set()
     threading.Event().wait()

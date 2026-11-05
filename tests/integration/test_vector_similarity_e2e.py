@@ -36,7 +36,7 @@ import yaml
 pytestmark = [pytest.mark.integration]
 
 _ROLE = "org_admin"
-_ANALYST = "analyst"
+_ANALYST = "itest_analyst"
 _IMAGE = "pgvector/pgvector:pg16"
 _ROWS = [(1, "[1, 0, 0]"), (2, "[0, 1, 0]"), (3, "[1, 1, 0]")]
 
@@ -123,8 +123,14 @@ def server(pgvector, tmp_path_factory):
         "roles": [
             {
                 "id": _ANALYST,
+                "parents": ["analyst"],
                 "description": "Test role.",
-                "capabilities": ["query_development"],
+                "capabilities": [
+                    "data_product_read",
+                    "glossary_read",
+                    "query_development",
+                    "usage",
+                ],
                 "domain_access": ["shop"],
             }
         ],

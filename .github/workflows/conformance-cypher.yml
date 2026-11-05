@@ -1,0 +1,176 @@
+name: Conformance (Cypher)
+
+# REQ-2167: Provisa's Cypher over HTTP against the openCypher TCK (github.com/opencypher/openCypher,
+# tck/features, Apache-2.0), fetched at a pinned tag by git, never vendored, and run by
+# scripts/conformance/cypher_tck.py against POST /data/cypher as org_admin.
+#
+# A failing scenario is data, written to the job summary and to the artifact conformance-cypher.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/cypher.md), never a job failure.
+# Each scenario is passed, skipped by design (a group of by_design/cypher.yaml citing its
+# requirement and decision) or failed (REQ-2167, amended 2026-10-28). The job fails only when the
+# Provisa instance did not start or the suite did not run, until Cypher is at its baseline
+# (scripts/conformance/by_design.py AT_BASELINE, REQ-2167): then also on a failed scenario.
+#
+# The instance is every conformance job's (.github/actions/conformance-instance): the embedded
+# PostgreSQL control plane and `uvicorn main:app` on the DuckDB engine, natively on the runner,
+# with password auth. The runner presents the job user's token and names org_admin in the
+# x-provisa-role header.
+
+# The optional features input (comma-separated TCK feature-name globs, e.g. "Merge*,Set1*") runs
+# only the matching features, so a fix can be iterated in minutes; empty runs the whole suite. A
+# glob matches a feature's full name ("Merge1 - Merge node") or its prefix ("Merge1"). A filter that
+# matches no feature fails the run. A filtered result JSON carries "filter" and totals for the
+# selected features only.
+run-name: ${{ inputs.features && format('Conformance (Cypher) [{0}]', inputs.features) || 'Conformance (Cypher)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+      features:
+        description: "TCK feature-name globs, comma-separated (e.g. Merge*,Set1*); empty runs all"
+        required: false
+        default: ""
+  # verification calls it (verify-surface.yml), on the run's own commit.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-cypher-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  cypher:
+    name: Cypher conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      TCK_REPO: https://github.com/opencypher/openCypher.git
+      TCK_VERSION: "2024.3"
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Fetch the openCypher TCK
+        run: |
+          git clone --quiet --depth 1 --branch "$TCK_VERSION" "$TCK_REPO" "$RUNNER_TEMP/opencypher"
+          head -n 3 "$RUNNER_TEMP/opencypher/LICENSE"
+          grep -q "Apache License" "$RUNNER_TEMP/opencypher/LICENSE"
+          find "$RUNNER_TEMP/opencypher/tck/features" -name '*.feature' | wc -l
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+
+      # The TCK's session user (scripts/conformance/pgwire_catalog_types.py TCK_SESSION_USER):
+      # its name maps it to tck_empty, the role its Bolt sessions act as. Created by the break-glass
+      # account; its session token signs each Bolt connection in without a password check.
+      - name: Create the TCK session user
+        run: |
+          su="$PROVISA_SUPERUSER_USERNAME:$PROVISA_SUPERUSER_PASSWORD"
+          body='{"username": "tck-session", "password": "tck-session-password"}'
+          status=$(curl -s -o "$RUNNER_TEMP/session-user.txt" -w '%{http_code}' -u "$su" \
+            -X POST -H 'Content-Type: application/json' --data "$body" \
+            "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::POST /admin/users answered $status"; cat "$RUNNER_TEMP/session-user.txt"; exit 1
+          fi
+          status=$(curl -s -o "$RUNNER_TEMP/session-login.txt" -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' --data "$body" \
+            "http://127.0.0.1:$PROVISA_API_PORT/auth/login")
+          if [ "${status:0:1}" != "2" ]; then
+            echo "::error::POST /auth/login answered $status"; cat "$RUNNER_TEMP/session-login.txt"; exit 1
+          fi
+          token=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["access_token"])' "$RUNNER_TEMP/session-login.txt")
+          echo "::add-mask::$token"
+          echo "CONFORMANCE_SESSION_TOKEN=$token" >> "$GITHUB_ENV"
+
+
+      - name: Run the TCK
+        timeout-minutes: 40
+        env:
+          # A scenario whose setup builds its graph runs it and its query in one ephemeral session
+          # over Bolt (REQ-2167, amended 2026-10-27): the instance's Bolt port (API port + 3).
+          CONFORMANCE_BOLT_URI: bolt://127.0.0.1:8904
+          # A scenario's test procedure is declared as a command of the fixture model, which the
+          # runner puts (PUT /admin/config) as the break-glass account (cypher_tck_procedures.py).
+          CONFORMANCE_MODEL: ${{ runner.temp }}/provisa/provisa.yaml
+          CONFORMANCE_FEATURES: ${{ inputs.features }}
+        run: |
+          for _ in $(seq 1 60); do
+            (exec 3<>"/dev/tcp/127.0.0.1/8904") 2>/dev/null && break
+            sleep 2
+          done
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/cypher_tck.py \
+            "$RUNNER_TEMP/opencypher/tck/features" "$TCK_VERSION" \
+            "http://127.0.0.1:$PROVISA_API_PORT" org_admin "$CONFORMANCE_AUTHORIZATION" \
+            "$RUNNER_TEMP/report/conformance-cypher.json" "$RUNNER_TEMP/report/conformance-cypher.md" || ran=$?
+          cat "$RUNNER_TEMP/report/conformance-cypher.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-cypher
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

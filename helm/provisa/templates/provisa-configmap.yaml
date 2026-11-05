@@ -53,25 +53,25 @@ data:
         columns:
           - name: id
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: customer_id
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: product_id
             data_type: integer
-            visible_to: [org_admin]
+            visible_to: [data_steward]
           - name: amount
             data_type: numeric(10,2)
-            visible_to: [org_admin]
+            visible_to: [data_steward]
           - name: region
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: status
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: created_at
             data_type: timestamp
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
       - source_id: sales-pg
         domain_id: sales-analytics
         schema: public
@@ -80,16 +80,16 @@ data:
         columns:
           - name: id
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: name
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: email
             data_type: varchar
-            visible_to: [org_admin]
+            visible_to: [data_steward]
           - name: region
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
       - source_id: sales-pg
         domain_id: product-catalog
         schema: public
@@ -98,16 +98,16 @@ data:
         columns:
           - name: id
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: name
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: price
             data_type: numeric(10,2)
-            visible_to: [org_admin]
+            visible_to: [data_steward]
           - name: category
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
       {{- if .Values.mongodb.enabled }}
       - source_id: reviews-mongo
         domain_id: product-catalog
@@ -117,16 +117,16 @@ data:
         columns:
           - name: product_id
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: reviewer
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: rating
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: comment
             data_type: varchar
-            visible_to: [org_admin]
+            visible_to: [data_steward]
       {{- end }}
       - source_id: analytics-pg
         domain_id: customer-insights
@@ -136,13 +136,13 @@ data:
         columns:
           - name: customer_id
             data_type: integer
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: segment
             data_type: varchar
-            visible_to: [org_admin, analyst]
+            visible_to: [data_steward, sales_analytics_analyst]
           - name: score
             data_type: numeric
-            visible_to: [org_admin]
+            visible_to: [data_steward]
 
     relationships:
       - id: orders-to-customers
@@ -167,14 +167,17 @@ data:
       {{- end }}
 
     roles:
-      # platform_admin and org_admin are seeded by the schema and are not redefined here: the
-      # loader refuses a write to either. The data-plane administrator is org_admin.
-      - id: analyst
+      # The standard roles (viewer, analyst, data_steward, org_admin, ...) are Provisa's and are
+      # not redefined here: the loader refuses it. This org's analyst is a child of the standard one.
+      - id: sales_analytics_analyst
+        parents: [analyst]
+        description: "Queries the sales analytics domain, each analyst their own region's orders."
         capabilities: [query_development]
         domain_access: [sales-analytics]
 
     rls_rules:
       - table_id: orders
-        role_id: analyst
+        role_id: sales_analytics_analyst
+        description: "An analyst reads only the orders of their own region."
         filter: "region = current_setting('provisa.user_region')"
     {{- include "provisa.auth" . | nindent 4 }}

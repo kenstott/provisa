@@ -36,18 +36,19 @@ JSON_OBJECT = "a JSON object"
 JSON_PATH = "JSON path extraction"
 ENGINE_FUNCTION = "an engine-only function"
 SIMILARITY = "cosine_similarity"
+DURATION = "a duration (an interval of months, days and seconds)"  # REQ-2173
 
 _RELATIONAL = frozenset({CTE, JOIN, GROUP_BY, WINDOW, SCALAR_SUBQUERY, EXISTS})
 _JSON = frozenset({JSON_AGGREGATE, JSON_OBJECT})
 
 #: Each dialect's constructs, as its own SQL runs them once SQLGlot has written them for it.
 CAPABILITIES: dict[str, frozenset[str]] = {
-    "postgres": _RELATIONAL | _JSON | {JSON_PATH, SIMILARITY},
+    "postgres": _RELATIONAL | _JSON | {JSON_PATH, SIMILARITY, DURATION},
     "redshift": _RELATIONAL,
     "mysql": _RELATIONAL | _JSON,
     "singlestore": _RELATIONAL | _JSON,
     "sqlite": _RELATIONAL | _JSON,
-    "duckdb": _RELATIONAL | _JSON,
+    "duckdb": _RELATIONAL | _JSON | {DURATION},
     "oracle": _RELATIONAL | _JSON,
     "tsql": _RELATIONAL,
     "snowflake": frozenset({CTE, JOIN, GROUP_BY, WINDOW, EXISTS, SIMILARITY}),
@@ -106,6 +107,10 @@ def _constructs(tree: exp.Expr, sql: str, json_path: bool) -> list[str]:
         found.append(JSON_PATH)
     if uncomputable(sql, "") is not None:
         found.append(ENGINE_FUNCTION)
+    if any(c.to.is_type(exp.DataType.Type.INTERVAL) for c in tree.find_all(exp.Cast)) or any(
+        n.name.upper() == "AGE" for n in tree.find_all(exp.Anonymous)
+    ):
+        found.append(DURATION)
     from provisa.vector.similarity import mentions
 
     if mentions(sql):

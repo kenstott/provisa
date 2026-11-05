@@ -61,11 +61,13 @@ export class JointScene extends BaseScene<JointHover> {
   }
 
   setColor(color: JointColor) {
+    this.invalidate();
     this.color = color;
     this.paint();
   }
 
   setHover(h: JointHover | null) {
+    this.invalidate();
     if (h?.cell === this.hover?.cell) return;
     this.hover = h;
     if (this.hl) this.hl.visible = false;
@@ -77,6 +79,7 @@ export class JointScene extends BaseScene<JointHover> {
   }
 
   resetView(instant = false) {
+    this.invalidate();
     const dist = this.aspect < 1.1 ? 30 / Math.max(this.aspect, 0.5) : 25;
     this.flyTo(
       new THREE.Vector3(dist * 0.62, dist * 0.42, dist * 0.68),

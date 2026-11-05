@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 
 from provisa.compiler.sql_where import META_QUERY_NAME
+from provisa.pgwire.catalog_pg17_tables import create_relation
 
 from typing import TYPE_CHECKING
 
@@ -64,13 +65,14 @@ def _build_pk_constraint_rows(
                 0,
                 0,
                 0,
-                None,
-                None,
-                None,
+                " ",  # confupdtype: a key has no action, which PostgreSQL writes as a space
+                " ",  # confdeltype
+                " ",  # confmatchtype
                 True,
                 0,
                 True,
                 conkey,
+                None,
                 None,
                 None,
                 None,
@@ -128,13 +130,14 @@ def _build_unique_constraint_rows(  # REQ-1093
                     0,
                     0,
                     0,
-                    None,
-                    None,
-                    None,
+                    " ",  # confupdtype: a key has no action, which PostgreSQL writes as a space
+                    " ",  # confdeltype
+                    " ",  # confmatchtype
                     True,
                     0,
                     True,
                     conkey,
+                    None,
                     None,
                     None,
                     None,
@@ -183,6 +186,7 @@ def _fk_row(
         None,
         None,
         None,
+        None,
     )
 
 
@@ -202,9 +206,9 @@ def _build_fk_constraint_rows(
     separate joins with no shared constraint identifier. Grouping data cannot be
     threaded through without a migration (forbidden in V1), so composite FKs are
     reconstructed here from the FK→PK invariant: joins between the same table pair
-    whose target columns together form the target's composite PK are one FK. Any
+    whose target columns together cover the target's composite PK are one FK. Any
     other joins (single-column FKs, partial coverage, independent multi-FKs to the
-    same table) fall through to one single-column row each — the prior behavior.
+    same table) fall through to one single-column row each.
     """
     from provisa.compiler.sql_rewrite import semantic_table_name
     from provisa.compiler.naming import apply_sql_name
@@ -268,18 +272,19 @@ def _build_fk_constraint_rows(
         ns_oid_fk = idx.ns_map.get(idx.toid_to_table[src_toid][1], 2200)
         tgt_table_id = entries[0]["tgt_table_id"]
         pk_cols = ctx.pk_columns.get(tgt_table_id, [])
-        tgt_cols = [e["tgt_col_sql"] for e in entries]
-        is_composite = (
-            len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS
-            and len(entries) == len(pk_cols)
-            and len(set(tgt_cols)) == len(entries)
-            and set(tgt_cols) == set(pk_cols)
-        )
+        # REQ-2190: the joins covering the target's composite key are one foreign key, as
+        # meta.table_keys has them, whatever else joins the same two tables: the rest fall through
+        # to one row each. The first join on a key column is the key's.
+        by_tgt: dict[str, dict] = {}
+        for e in entries:
+            by_tgt.setdefault(e["tgt_col_sql"], e)
+        is_composite = len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS and set(pk_cols) <= set(by_tgt)
+        remaining = entries
         if is_composite:
             # Order both key arrays by the target PK column order so conkey[i]
             # pairs with confkey[i].
-            by_tgt = {e["tgt_col_sql"]: e for e in entries}
             ordered = [by_tgt[c] for c in pk_cols]
+            remaining = [e for e in entries if not any(e is k for k in ordered)]
             src_sem_name = semantic_table_name(entries[0]["src_tm"])
             tgt_sem_name = semantic_table_name(entries[0]["tgt"])
             base_name = f"fk_{src_sem_name}__{tgt_sem_name}"
@@ -297,8 +302,7 @@ def _build_fk_constraint_rows(
                 )
             )
             con_oid += 1
-            continue
-        for e in entries:
+        for e in remaining:
             src_sem_name = semantic_table_name(e["src_tm"])
             tgt_sem_name = semantic_table_name(e["tgt"])
             base_name = f"fk_{src_sem_name}__{e['col_label']}"
@@ -343,15 +347,10 @@ def _meta_link(
     return conkey, confkey
 
 
-def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
-    db.execute("""CREATE TABLE _pg_constraint (
-        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
-        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
-        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
-        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
-        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkey INTEGER[], confkey INTEGER[], conpfeqop INTEGER[], conppeqop INTEGER[],
-        conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
+def catalog_constraint_rows(ctx, idx: CatalogIndex) -> list[tuple]:
+    """The role's key constraints as pg_constraint rows: primary keys, unique keys and the foreign
+    keys that reference one. The catalog every SQL surface lists keys from (pgwire's pg_constraint
+    and information_schema, Flight SQL's key commands, REQ-2175)."""
     constraint_rows: list[tuple] = []
     if ctx:
         pk_rows, next_oid = _build_pk_constraint_rows(ctx, idx, 20000)
@@ -366,9 +365,15 @@ def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
         # every FK to name the key it references.
         keys = _key_constraints(constraint_rows)
         constraint_rows.extend(r for r in fk_rows if (r[11], frozenset(r[19])) in keys)
+    return constraint_rows
+
+
+def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
+    create_relation(db, "pg_catalog", "pg_constraint")
+    constraint_rows = catalog_constraint_rows(ctx, idx)
     if constraint_rows:
         db.executemany(
-            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
+            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 26)})",
             constraint_rows,
         )
     # What pg_get_constraintdef(oid) answers (catalog_rewrite): each constraint's definition as
@@ -420,8 +425,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
     Clients (DataGrip) resolve primary-key columns via pg_index.indkey rather than
     pg_constraint, so each key constraint is surfaced as its backing index. indkey
     carries the ordered table attnums; indexrelid is synthesized from the
-    constraint oid (the index has no distinct pg_class entry — PK column resolution
-    joins pg_index → pg_attribute on indrelid, not on indexrelid).
+    constraint oid; its pg_class row is _populate_index_classes'.
     """
     index_rows: list[tuple] = []
     for con_row in constraint_rows:
@@ -440,6 +444,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
                 n,  # indnatts
                 n,  # indnkeyatts
                 True,  # indisunique
+                False,  # indnullsnotdistinct
                 contype == "p",  # indisprimary
                 False,  # indisexclusion
                 True,  # indimmediate
@@ -458,7 +463,62 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
             )
         )
     if index_rows:
-        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 20)})", index_rows)
+        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 21)})", index_rows)
+
+
+_BTREE_AM_OID = 403
+
+
+def _populate_index_classes(db, constraint_rows: list[tuple]) -> None:  # REQ-2167
+    """Each key constraint's index as a pg_class relation (relkind 'i', btree), named after its
+    constraint as PostgreSQL names a key's index: pgjdbc's getIndexInfo (DBeaver's index list)
+    joins pg_index to pg_class on indexrelid."""
+    rows = [
+        _index_class_row(con[0] + _INDEX_OID_OFFSET, con[1], con[2], len(con[18]))
+        for con in constraint_rows
+        if con[3] in ("p", "u") and con[18]
+    ]
+    if rows:
+        db.executemany(f"INSERT INTO _pg_class VALUES ({','.join(['?'] * 33)})", rows)
+
+
+def _index_class_row(oid: int, name: str, namespace: int, natts: int) -> tuple:
+    """A key constraint's index as its pg_class row, in _pg_class's column order."""
+    return (
+        oid,
+        name,
+        namespace,
+        0,  # reltype: an index has no row type
+        0,
+        10,
+        _BTREE_AM_OID,  # relam
+        oid,
+        0,
+        0,  # relpages
+        0.0,  # reltuples
+        0,
+        0,
+        False,
+        False,
+        "p",
+        "i",  # relkind
+        natts,
+        0,
+        False,
+        False,
+        False,
+        False,
+        False,
+        True,
+        "n",  # relreplident
+        False,
+        0,
+        0,
+        0,
+        None,
+        None,
+        None,
+    )
 
 
 def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex) -> None:
@@ -481,12 +541,12 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
         conns_oid_v: int = con_row[2]
         contype_v: str = con_row[3]
         conrelid_v: int = con_row[7]
-        c_v, c_sch_v, c_tname_v = idx.toid_to_table.get(conrelid_v, ("provisa", "public", ""))
+        c_v, c_sch_v, c_tname_v = idx.toid_to_table.get(conrelid_v, (idx.database, "public", ""))
         con_schema_v = oid_to_ns.get(conns_oid_v, "public")
         ctype_str = {"p": "PRIMARY KEY", "u": "UNIQUE", "f": "FOREIGN KEY"}[contype_v]  # REQ-1093
         is_tc_rows.append(
             (
-                "provisa",
+                idx.database,
                 con_schema_v,
                 conname_v,
                 c_v,
@@ -506,7 +566,7 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
             if col_name_v:
                 is_kcu_rows.append(
                     (
-                        "provisa",
+                        idx.database,
                         con_schema_v,
                         conname_v,
                         c_v,
@@ -527,7 +587,7 @@ def _populate_is_constraints(db, constraint_rows: list[tuple], idx: CatalogIndex
             f"INSERT INTO _is_key_column_usage VALUES ({','.join(['?'] * 9)})",
             is_kcu_rows,
         )
-    is_rc_rows = _build_referential_rows(constraint_rows, oid_to_ns)
+    is_rc_rows = _build_referential_rows(constraint_rows, oid_to_ns, idx.database)
     if is_rc_rows:
         db.executemany(
             f"INSERT INTO _is_referential_constraints VALUES ({','.join(['?'] * 9)})",
@@ -548,6 +608,7 @@ def _key_constraints(constraint_rows: list[tuple]) -> dict[tuple[int, frozenset]
 def _build_referential_rows(
     constraint_rows: list[tuple],
     oid_to_ns: dict[int, str],
+    database: str,
 ) -> list[tuple]:
     """One information_schema.referential_constraints row per FK constraint.
 
@@ -572,10 +633,10 @@ def _build_referential_rows(
         uniq_schema = oid_to_ns.get(ns_oid, "public")
         rc_rows.append(
             (
-                "provisa",
+                database,
                 fk_schema,
                 fk_name,
-                "provisa",
+                database,
                 uniq_schema,
                 uniq_name,
                 "NONE",

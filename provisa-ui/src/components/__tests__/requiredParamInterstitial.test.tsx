@@ -53,7 +53,7 @@ describe("a table with a required GraphQL argument", () => {
 
   it("is not previewed until the required value is given", async () => {
     vi.mocked(runSql).mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
-    render(<GovernedTableViewer table={TABLE} />);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
     expect(screen.getByTestId("table-preview-params-hint")).toBeInTheDocument();
     expect(screen.getByTestId("preview-param-_nf_owner")).toBeRequired();
     expect(screen.getByTestId("preview-param-_nf_first")).not.toBeRequired();

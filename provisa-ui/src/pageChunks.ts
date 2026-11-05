@@ -47,12 +47,16 @@ export function warmupSettled(): Promise<void> {
 }
 
 /**
- * Warm every page chunk once the first route's page has arrived and the browser is next idle, so
+ * Warm every page chunk once the first route's page has arrived, one chunk per idle period, so
  * ordinary navigation is instant. Starting at mount instead queued the whole warm-up -- Monaco and
  * GraphiQL included -- ahead of the imports of the page the visitor opened, which then painted
  * late: on a slow link for a visitor, and on the e2e lane's dev server, hundreds of module fetches
- * late (run 39822399296). The chunks load one after another, and the returned stop (App's unmount)
- * cancels a warm-up still waiting and starts no further chunk of one under way.
+ * late (run 39822399296). Loading the chunks back to back once started kept the browser's
+ * connections and main thread busy through what the visitor did next: a data product's status
+ * change answered, and the page's reads of it waited 0.4-1.6 s behind the warm-up's module fetches
+ * (runs 40616958784, 40701146958). So each chunk waits for the browser's next idle period: a page's
+ * own reads, and the work their answers start, go first. The returned stop (App's unmount) cancels
+ * the idle wait and starts no further chunk; one under way settles when it arrives.
  */
 export function prefetchPageChunksOnIdle(): () => void {
   const schedule =
@@ -65,21 +69,40 @@ export function prefetchPageChunksOnIdle(): () => void {
       : window.clearTimeout;
   let stopped = false;
   let handle: number | null = null;
+  // The idle wait in progress; stopping ends it, so the warm-up settles.
+  let wake: (() => void) | null = null;
+  const idle = () =>
+    new Promise<void>((resolve) => {
+      wake = resolve;
+      handle = schedule(() => {
+        handle = null;
+        wake = null;
+        resolve();
+      }) as number;
+    });
   void firstPage.then(() => {
     if (stopped) return;
     handle = schedule(() => {
       handle = null;
-      warming = warm(() => stopped);
+      warming = warm(idle, () => stopped);
     }) as number;
   });
   return () => {
     stopped = true;
     if (handle !== null) cancel(handle);
+    handle = null;
+    wake?.();
+    wake = null;
   };
 }
 
-async function warm(stopped: () => boolean): Promise<void> {
+async function warm(idle: () => Promise<void>, stopped: () => boolean): Promise<void> {
+  let first = true;
   for (const load of Object.values(PAGE_CHUNK_LOADERS)) {
+    // The first chunk starts in the idle period that started the warm-up; each next one waits for
+    // its own.
+    if (!first) await idle();
+    first = false;
     if (stopped()) return;
     // A chunk that fails to load is the next visit's to report (its route's Suspense); the
     // warm-up goes on to the others.

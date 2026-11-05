@@ -85,13 +85,15 @@ def used_roles(role_id: str, table_ids: Iterable[int], state: Any) -> tuple[str,
 
     if not is_meta_role_id(role_id):
         return (role_id,)
+    from provisa.api.role_surface import built_surface
+
     touched = set(table_ids)
     surfaces = state.surfaces
     return tuple(
         m
         for m in state.meta_roles[role_id]
         if m in surfaces
-        and any(tm.table_id in touched for tm in surfaces[m].context.tables.values())
+        and any(tm.table_id in touched for tm in built_surface(surfaces[m]).context.tables.values())
     )
 
 

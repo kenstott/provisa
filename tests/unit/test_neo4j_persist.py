@@ -27,6 +27,16 @@ from provisa.neo4j.source import Neo4jSourceConfig, build_api_source, build_endp
 _VIS = ["org_admin"]
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as provisa.api.app declares it for a single-tenant state."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _config(*, tables: list[dict], sources: list[dict] | None = None) -> dict:
     return {
         "sources": sources

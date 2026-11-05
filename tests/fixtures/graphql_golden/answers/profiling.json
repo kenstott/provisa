@@ -1,0 +1,47 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:profiling/1-customer-columns.graphql",
+  "reads": [
+   "harbor_profiler"
+  ],
+  "root_field": "h__viewCustomerColumns"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:profiling/2-phone-formats.graphql",
+  "reads": [
+   "harbor_profiler"
+  ],
+  "root_field": "h__viewCustomerFormats"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:profiling/3-country-spellings.graphql",
+  "reads": [
+   "harbor_profiler"
+  ],
+  "root_field": "h__customerTopValues"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:profiling/4-profile-runs.graphql",
+  "reads": [
+   "harbor_profiler"
+  ],
+  "root_field": "h__customerProfileRuns"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:profiling/5-plausible-types.graphql",
+  "reads": [
+   "harbor_profiler"
+  ],
+  "root_field": "h__customerColumnTypes"
+ }
+]

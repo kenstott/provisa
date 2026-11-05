@@ -16,6 +16,7 @@ import logging
 import re
 from dataclasses import dataclass
 from enum import Enum, auto
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import select
@@ -24,13 +25,18 @@ import provisa.bolt.messages as msg
 from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
-from provisa.compiler.directives import NO_CACHE_HINT, cache_hint_for
+from provisa.compiler.directives import (
+    NO_CACHE_HINT,
+    cache_hint_for,
+    extract_directives_from_cypher_comments,
+)
 from provisa.core import request_deadline
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
-from provisa.core.statement_warnings import ServerWarning, warn
+from provisa.core.statement_warnings import warn
+from provisa.cypher.counters import count_unknown_warning
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -73,6 +79,15 @@ def _scheme_of(meta: dict) -> str:
     return scheme.lower() if isinstance(scheme, str) and scheme else "basic"
 
 
+def _bookmark() -> str:
+    """A unit of work's bookmark (REQ-802): opaque and new each time. A write is applied as it
+    runs and a transaction is a no-op (REQ-883), so a bookmark a client passes back with BEGIN or
+    RUN is always already met and is accepted without a wait."""
+    import uuid
+
+    return f"provisa:{uuid.uuid4().hex}"
+
+
 class State(Enum):
     NEGOTIATION = auto()
     AUTHENTICATION = auto()
@@ -94,6 +109,7 @@ class _OpenResult:
     redirect: dict | None
     offset: int
     deadline: request_deadline.Deadline | None
+    stats: dict[str, Any]
 
 
 class BoltSession:
@@ -125,6 +141,9 @@ class BoltSession:
         # REQ-1194/REQ-1195: a materialize handle when the last RUN redirected to a sink instead of
         # buffering rows. Surfaced in the trailing PULL SUCCESS metadata — Bolt's side-channel.
         self._result_redirect: dict | None = None
+        # REQ-670, REQ-2176: what the last RUN wrote, as the trailing summary's ``stats`` (only
+        # the counters that are not zero; empty when it changed nothing or a count is unknown).
+        self._result_stats: dict[str, Any] = {}
         # REQ-1905: the request deadline of the RUN in flight — Bolt's own request timeout, ONE
         # for the request: opened when RUN starts executing, held while its records are pulled,
         # ended with the last PULL/DISCARD, a RESET or a failure.
@@ -196,6 +215,7 @@ class BoltSession:
             self._result_redirect,
             self._pull_offset,
             self._deadline,
+            self._result_stats,
         )
         self._deadline = None
         self._qid = None
@@ -219,6 +239,7 @@ class BoltSession:
         self._result_columns = result.columns
         self._result_rows = result.rows
         self._result_redirect = result.redirect
+        self._result_stats = result.stats
         self._pull_offset = result.offset
         self._deadline = result.deadline
         self._qid = qid
@@ -317,10 +338,12 @@ class BoltSession:
         all_roles = [r for r in app_state.contexts if not is_meta_role_id(r)]
 
         if provider == "none" or not getattr(app_state, "auth_middleware_active", False):
-            # No auth — every role is available; default to principal if it names a real role.
+            # No auth — every role is available; default to principal if it names a real role,
+            # or a set of roles: unsecured, the set acts as its meta-role, resolved once the
+            # session's org is bound (_meta_role), as X-Provisa-Role is on HTTP (REQ-1952).
             ordered = (
                 [principal, *[r for r in all_roles if r != principal]]
-                if principal and principal in app_state.contexts
+                if principal and (principal in app_state.contexts or "," in principal)
                 else all_roles
             )
             self._identity = None
@@ -329,7 +352,7 @@ class BoltSession:
         identity = await self._authenticate(app_state, scheme, principal, credentials)
         if identity is None:
             return None
-        roles = self._selectable_roles(app_state, identity)
+        roles = await self._selectable_roles(app_state, identity)
         if not roles:
             return None
         self._credential_org = identity.active_org_id
@@ -374,22 +397,25 @@ class BoltSession:
             return None
 
     @staticmethod
-    def _selectable_roles(app_state, identity) -> list[str]:
+    async def _selectable_roles(app_state, identity) -> list[str]:
         """The roles this identity may select, mapped role first (REQ-273, REQ-551).
 
-        The server derives them from the validated identity — the claim-mapped role plus whatever
-        the identity's own assignments carry — and keeps only those that exist as compiled
-        contexts. A role the identity does not hold is not selectable, whatever database the
-        client names.
+        The server derives them from the validated identity — the claim-mapped role plus its
+        assignments, as every transport reads them (provisa.auth.held_assignments) — and keeps
+        only those that exist as compiled contexts. A role the identity does not hold is not
+        selectable, whatever database the client names.
         """
-        from provisa.auth.role_mapping import resolve_assignments, resolve_role
+        from provisa.auth.held_assignments import held_assignments
+        from provisa.auth.role_mapping import resolve_role
 
         default_role = app_state.auth_config.get("default_role")
         if not default_role:
             # No admin default: an identity matching no mapping rule is refused, not escalated.
             raise RuntimeError("bolt auth requires auth.default_role to be configured")
         mapped = resolve_role(identity, app_state.auth_config.get("role_mapping", []), default_role)
-        held = [a.role_id for a in resolve_assignments(identity)]
+        held = [
+            a.role_id for a in await held_assignments(app_state, identity, identity.active_org_id)
+        ]
         ordered = [mapped, *[r for r in held if r != mapped]]
         return [r for r in ordered if r in app_state.contexts]
 
@@ -407,8 +433,16 @@ class BoltSession:
         try:
             # REQ-2057: a derived role the session's identity holds is named like any role.
             identity = self._identity
-            if identity is None:  # an unsecured session holds no derived role
-                return resolve_requested_role(app_state, set(self.roles), named)
+            if identity is None:
+                # Unsecured: a declared derived role named in the set is held, taken at its word
+                # as the HTTP middleware takes X-Provisa-Role's (REQ-1952, REQ-2057).
+                from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+
+                def named_derived() -> dict[str, str]:
+                    names = [r.strip() for r in named.split(",") if r.strip()]
+                    return named_unsecured(names, declared_derived_roles(app_state))[1]
+
+                return resolve_requested_role(app_state, set(self.roles), named, named_derived)
             from provisa.auth.derived_roles import principal_of
 
             return resolve_requested_role(
@@ -453,30 +487,58 @@ class BoltSession:
         self.send_failure("Neo.ClientError.Security.Forbidden", role_probe.NOT_PERMITTED)
         self.state = State.DEFUNCT
 
-    def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
+    def _derived_held(self, app_state: Any) -> Callable[[str], bool]:
+        """Whether a name is a derived role this session holds (REQ-2057), read in its bound org:
+        signed in, one the identity's attributes give it; unsecured, any the org declares, taken at
+        its word as X-Provisa-Role's are on HTTP (REQ-1952) -- what :meth:`_meta_role` resolves."""
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._bound_org())
+        try:
+            identity = self._identity
+            if identity is None:
+                declared = declared_derived_roles(app_state)
+                return lambda name: bool(named_unsecured([name], declared)[1])
+            from provisa.auth.derived_roles import principal_of
+
+            held = principal_of(app_state, identity)[1]
+            return lambda name: name in held
+        finally:
+            reset_current_org(token)
+
+    def _resolve_db(
+        self, db: Any, derived_held: Callable[[str], bool] | None = None
+    ) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
 
         The db name encodes two axes:
           provisa_ops_<role> → role + ops/meta domains included
           provisa_<role>     → role + business domains only (ops/meta excluded)
-        Empty / "system" / "provisa" → default role, business view.
+        Empty / "system" / "provisa" / "neo4j" → default role, business view (REQ-807: neo4j names
+        the home database as provisa does; a named alias, not a fallback).
         ``<role>`` may be a comma-separated set of held roles, which acts as their meta-role
         (security/meta_role.py; resolved once the session's org is bound). Every role must be in
-        the user's set; anything else → None.
+        the user's set, or a derived role the session holds (``derived_held``, read once its org
+        is bound; None before then: no derived role is known held); anything else → None.
         """
         from provisa.security.meta_role import RoleNotHeld, is_meta_role_id
 
         if not self.roles:
             return None
         default = self.roles[0]
-        if not db or db in ("system", "provisa"):
+        if not db or db in ("system", "provisa", "neo4j"):
             return default, False
         for prefix, include_ops in (("provisa_ops_", True), ("provisa_", False)):
             if isinstance(db, str) and db.startswith(prefix):
                 named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
                 if any(is_meta_role_id(r) for r in named):
                     return None  # a meta-role is never named; the roles it is made of are
-                unheld = [r for r in named if r not in self.roles]
+                unheld = [
+                    r
+                    for r in named
+                    if r not in self.roles and not (derived_held is not None and derived_held(r))
+                ]
                 if named and unheld:
                     # REQ-2076: a role named that the caller does not hold, not an unknown name.
                     raise RoleNotHeld(unheld[0], set(self.roles))
@@ -568,6 +630,37 @@ class BoltSession:
         whose records were never pulled ends with it — its deadline stops (REQ-1905)."""
         self._end_all_requests()
 
+    def _graph_session(self, app_state: Any, *, writes: bool) -> Any:
+        """REQ-2176: the principal's graph session, bound for one RUN -- ``writes``: the RUN may
+        change it, so it is held exclusively -- the one its every other client runs in
+        (provisa.api.graph_session), locked as HTTP locks it. An unsecured connection's is the
+        anonymous principal's, as an unsecured page's is: there the principal a driver names only
+        picks the role. A connection ending leaves it as it was."""
+        from provisa.api import graph_session
+
+        user_id, claims = (
+            (graph_session.ANONYMOUS, [])
+            if self._identity is None
+            else graph_session.principal(app_state, self._identity)
+        )
+        return graph_session.session_for(app_state, user_id, claims, writes=writes)
+
+    async def _created_databases(self, app_state: Any) -> set[str]:
+        """The databases this session's principal created (provisa.bolt.databases), read in its
+        graph session in the session's org."""
+        from provisa.api import graph_session
+        from provisa.bolt import databases
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        token = set_current_org(self._bound_org())
+        try:
+            async with self._graph_session(app_state, writes=False):
+                bound = graph_session.bound()
+                assert bound is not None
+                return databases.created(bound.session)
+        finally:
+            reset_current_org(token)
+
     def handle_reset(self) -> None:
         self._end_all_requests()
         self._result_columns = []
@@ -596,7 +689,7 @@ class BoltSession:
         self._tx_db = None
         self._end_all_requests()
         self.state = State.READY
-        self.send_success({})
+        self.send_success({"bookmark": _bookmark()})
 
     def handle_rollback(self) -> None:
         if self.state == State.FAILED:
@@ -685,6 +778,7 @@ class BoltSession:
         # REQ-1235: under multi-tenancy the database name carries the org, <org>.provisa_<role>.
         from provisa.api.app import state as _app_state
         from provisa.api.org_resolve import OrgResolutionError
+        from provisa.bolt import databases
 
         multitenant = bool(getattr(_app_state, "multitenancy", False))
         try:
@@ -695,15 +789,33 @@ class BoltSession:
         from provisa.security import role_probe
         from provisa.security.meta_role import RoleNotHeld
 
+        derived_held: Callable[[str], bool] | None = None
+        if self.roles and self.state != State.FAILED:
+            # A derived role the session holds is known only in its org (REQ-2057, REQ-1952): the
+            # org is resolved before the database's roles are checked.
+            try:
+                await self._ensure_org(database_org)
+            except OrgResolutionError as exc:
+                self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
+                return
+            derived_held = self._derived_held(_app_state)
         try:
-            resolved = self._resolve_db(db) if self.roles else None
+            resolved = self._resolve_db(db, derived_held) if self.roles else None
         except RoleNotHeld as refused:
             await self._probed(refused, database_org)
             return
+        if (
+            resolved is None
+            and self.roles
+            and self.state != State.FAILED
+            and isinstance(db, str)
+            and databases.may_be_created(db)
+            and db.lower() in await self._created_databases(_app_state)
+        ):
+            # A database the principal created names its home database (provisa.bolt.databases).
+            resolved = self.roles[0], False
 
-        import logging as _logging
-
-        _logging.getLogger("uvicorn.error").warning(
+        log.debug(
             "[BOLT] RUN cypher=%r db=%r resolved=%r state=%s",
             cypher,
             db,
@@ -742,8 +854,9 @@ class BoltSession:
             self.state = State.DEFUNCT
             return
 
-        if "," in role_id:
-            # A set of held roles acts as their meta-role, built in this session's org.
+        if "," in role_id or role_id not in self.roles:
+            # A set of held roles, or a held derived role, acts as their meta-role, built in this
+            # session's org.
             try:
                 role_id = self._meta_role(_app_state, role_id)
             except RoleNotHeld as refused:
@@ -791,8 +904,12 @@ class BoltSession:
         shield = request_deadline.shielded()
         deadline = request_deadline.open_request("bolt")
         from provisa.core.statement_warnings import collecting
+        from provisa.cypher.counters import counting
+        from provisa.cypher.parser import writes_in
 
         try:
+            # CREATE DATABASE / DROP DATABASE (provisa.bolt.databases), or None: any other Cypher.
+            admin = databases.parse(cypher)
             # REQ-1350: one collector for the RUN; what its statements' answers say about
             # themselves is sent as notifications with the RUN's SUCCESS.
             with (
@@ -800,18 +917,37 @@ class BoltSession:
                 self._principal_scope(_app_state, role_id),
                 request_deadline.bound(deadline),
                 collecting() as run_warnings,
+                counting() as counted,
             ):
-                columns, rows, redirect = await _execute_cypher(
-                    cypher,
-                    parameters,
-                    role_id,
-                    include_ops=include_ops,
-                    roles=self.roles,
-                    orgs=member_orgs,
-                    deliver=delivery,
-                )
+                # REQ-2176: the RUN is a statement of the principal's graph session; BEGIN, COMMIT
+                # and ROLLBACK frame none over it -- what a RUN wrote is the session's as it ends.
+                async with self._graph_session(
+                    _app_state, writes=admin is not None or writes_in(cypher)
+                ):
+                    if admin is not None:
+                        columns, rows = databases.run(
+                            admin,
+                            database=db,
+                            parameters=parameters,
+                            multitenancy=multitenant,
+                            org_id=self.org_id,
+                        )
+                        redirect = None
+                    else:
+                        columns, rows, redirect = await _execute_cypher(
+                            cypher,
+                            parameters,
+                            role_id,
+                            include_ops=include_ops,
+                            roles=self.roles,
+                            orgs=member_orgs,
+                            deliver=delivery,
+                        )
                 # The result is ready only now: not handed over once the deadline has passed.
                 deadline.check()
+                # A count the write could not make exactly is no counter at all: said instead.
+                for reason in counted.unknown:
+                    warn(count_unknown_warning(cypher, reason))
         except Exception as exc:
             deadline.stop()
             request_deadline.let_go(exc)  # what the interrupted frames held is released now
@@ -835,6 +971,9 @@ class BoltSession:
             if isinstance(exc, CommandCallRefused):
                 self.send_failure(_ARGUMENT_ERROR, str(exc))
                 return
+            if isinstance(exc, databases.DatabaseCommandError):
+                self.send_failure(exc.code, str(exc))
+                return
             import logging as _logging
             import traceback as _tb
 
@@ -852,6 +991,7 @@ class BoltSession:
         self._result_columns = columns
         self._result_rows = rows
         self._result_redirect = redirect
+        self._result_stats = {} if counted.unknown else counted.stats()
         self._pull_offset = 0
         self._deadline = deadline  # held until the records have been pulled
 
@@ -919,8 +1059,7 @@ class BoltSession:
             return
         n = meta.get("n", -1)
 
-        _dbg = logging.getLogger("uvicorn.error")
-        _dbg.warning(
+        log.debug(
             "[BOLT] PULL n=%d offset=%d total_rows=%d", n, self._pull_offset, len(self._result_rows)
         )
         # REQ-1885: send_record's per-row report() call is batched into one call per PULL below —
@@ -945,8 +1084,8 @@ class BoltSession:
                     timed_out = True
                     break
                 row = self._result_rows[self._pull_offset]
-                if _dbg.isEnabledFor(logging.DEBUG):
-                    _dbg.debug("[BOLT] PULL sending record row=%r", row)
+                if log.isEnabledFor(logging.DEBUG):
+                    log.debug("[BOLT] PULL sending record row=%r", row)
                 batch_bytes += self.send_record(row, meter=False)
                 self._pull_offset += 1
                 rows_sent += 1
@@ -963,11 +1102,16 @@ class BoltSession:
             return
 
         has_more = self._pull_offset < len(self._result_rows)
+        auto_commit = self.state == State.STREAMING
         if not has_more:
             self._result_done()
         summary: dict = {"has_more": has_more, "t_last": 0, "type": "r"}
+        if not has_more and auto_commit:
+            summary["bookmark"] = _bookmark()  # an auto-commit unit of work ends here
         if not has_more and self._result_redirect is not None:
             summary["redirect"] = self._result_redirect  # REQ-1194/REQ-1195
+        if not has_more and self._result_stats:
+            summary["stats"] = self._result_stats
         self.send_success(summary)
 
     def handle_discard(self, fields: list[Any]) -> None:
@@ -983,9 +1127,15 @@ class BoltSession:
         else:
             self._pull_offset = min(self._pull_offset + n, len(self._result_rows))
         has_more = self._pull_offset < len(self._result_rows)
+        auto_commit = self.state == State.STREAMING
         if not has_more:
             self._result_done()
-        self.send_success({"has_more": has_more})
+        summary: dict = {"has_more": has_more}
+        if not has_more and auto_commit:
+            summary["bookmark"] = _bookmark()
+        if not has_more and self._result_stats:
+            summary["stats"] = self._result_stats
+        self.send_success(summary)
 
     def handle_route(self) -> None:
         import logging as _logging
@@ -1126,12 +1276,14 @@ def select_database(db: Any, *, multitenancy: bool) -> tuple[str | None, Any]:  
 
 
 def _show_databases_rows(
-    roles: list[str], orgs: list[str] | None = None
+    roles: list[str], orgs: list[str] | None = None, created: Any = ()
 ) -> tuple[list[str], list[list[Any]]]:
-    """One database per (view × role): provisa_<role> (business) and provisa_ops_<role>.
+    """One database per (view × role): provisa_<role> (business) and provisa_ops_<role>, then each
+    database the principal ``created`` (provisa.bolt.databases), a name for the home database.
 
     REQ-1235: ``orgs`` (multi-tenant) prefixes each with every org the user belongs to; None is a
-    single-tenant deployment, whose names have no org part."""
+    single-tenant deployment, whose names have no org part. A created database is the graph
+    session's, which is the session's org's: it is named with the first org."""
     cols = [
         "name",
         "type",
@@ -1151,27 +1303,29 @@ def _show_databases_rows(
     rows: list[list[Any]] = []
     prefixes = [f"{o}." for o in orgs] if orgs is not None else [""]
     home_prefix = prefixes[0] if prefixes else ""
+
+    def row(name: str, is_home: bool) -> list[Any]:
+        return [
+            name,
+            "standard",
+            [],
+            "read-write",
+            "localhost:17687",
+            "primary",
+            True,
+            "online",
+            "online",
+            "",
+            is_home,
+            is_home,
+            [],
+        ]
+
     for prefix in prefixes:
         for r in roles:
             for name in (f"{prefix}provisa_{r}", f"{prefix}provisa_ops_{r}"):
-                is_home = name == f"{home_prefix}provisa_{default_role}"
-                rows.append(
-                    [
-                        name,
-                        "standard",
-                        [],
-                        "read-write",
-                        "localhost:17687",
-                        "primary",
-                        True,
-                        "online",
-                        "online",
-                        "",
-                        is_home,
-                        is_home,
-                        [],
-                    ]
-                )
+                rows.append(row(name, name == f"{home_prefix}provisa_{default_role}"))
+    rows.extend(row(f"{home_prefix}{name}", False) for name in sorted(created))
     return cols, rows
 
 
@@ -1195,7 +1349,12 @@ def _system_query(
     # SHOW DATABASES / SHOW DEFAULT DATABASE — one db per (view × role) the user holds.
     if q_upper.startswith("SHOW DATABASE") or q_upper.startswith("SHOW DEFAULT DATABASE"):
         _dbg.warning("[BOLT] _system_query: intercepted SHOW DATABASES roles=%r", roles)
-        return _show_databases_rows(roles or ([role_id] if role_id else []), orgs)
+        from provisa.api import graph_session
+        from provisa.bolt import databases
+
+        bound = graph_session.bound()
+        created = databases.created(bound.session) if bound is not None else set()
+        return _show_databases_rows(roles or ([role_id] if role_id else []), orgs, created)
 
     # SHOW ALIASES
     if q_upper.startswith("SHOW ALIASES"):
@@ -1219,11 +1378,14 @@ def _system_query(
             ],
         ]
 
-    # SHOW TRANSACTIONS / SHOW SETTINGS / SHOW INDEXES / SHOW CONSTRAINTS
+    # SHOW TRANSACTIONS / SHOW SETTINGS / SHOW INDEXES / SHOW CONSTRAINTS. In a graph session
+    # SHOW INDEXES lists the session's own (REQ-2176, provisa.ephemeral.indexes).
+    from provisa.compiler import temp_tables
+
     if (
         q_upper.startswith("SHOW TRANSACTIONS")
         or q_upper.startswith("SHOW SETTINGS")
-        or q_upper.startswith("SHOW INDEXES")
+        or (q_upper.startswith("SHOW INDEXES") and temp_tables.current() is None)
         or q_upper.startswith("SHOW CONSTRAINTS")
     ):
         _dbg.warning(
@@ -1322,15 +1484,6 @@ async def _graph_counts(
 def _sum_known(counts: list[int | None]) -> int | None:
     """The sum, or None when any count is unknown."""
     return None if None in counts else sum(c for c in counts if c is not None)
-
-
-def count_unknown_warning(statement: str, reason: str) -> ServerWarning:
-    """What the browser's node/relationship totals say when one count could not be made."""
-    return ServerWarning(
-        code="cypher.count_unknown",
-        params={"statement": statement, "reason": reason},
-        message=f"A count could not be made, so the total is unknown: {statement}: {reason}",
-    )
 
 
 async def _impute_relationships(
@@ -1447,16 +1600,15 @@ def _list_commands(app_state, role_id: str | None) -> list[dict]:
     """Commands visible to *role_id*, for SHOW PROCEDURES discovery (REQ-1156)."""
     from provisa.api.data.action_exec import list_visible_commands
 
-    return list_visible_commands(app_state, role_id)
+    return list_visible_commands(app_state, role_id, "cypher")
 
 
 def _command_signature(cmd: dict) -> str:
-    """A Neo4j-style procedure signature for a command: ``name(arg :: TYPE) :: (ROWS)`` (REQ-1156)."""
-    args = ", ".join(
-        f"{a['name']} :: {str(a.get('type', 'String')).upper()}" for a in cmd["arguments"]
-    )
-    ret = "LIST OF MAP" if cmd["set_returning"] else "MAP"
-    return f"{cmd['name']}({args}) :: ({ret})"
+    """A Neo4j-style procedure signature for a command (REQ-1156): the one Cypher over HTTP
+    lists too (cypher/command_call.command_signature), ``:: ()`` for a VOID one (REQ-2001)."""
+    from provisa.cypher.command_call import command_signature
+
+    return command_signature(cmd)
 
 
 async def _maybe_invoke_command_call(
@@ -1465,15 +1617,13 @@ async def _maybe_invoke_command_call(
     """If *cypher* is ``CALL <command>(args)``, invoke it (REQ-1156): read by the one Cypher
     command-call reader (cypher/command_call.py, shared with Cypher over HTTP), admitted and bound
     by the shared executor, shaped by its YIELD and RETURN. None falls through to Cypher."""
-    from provisa.api.data.action_exec import bind_command_args, invoke_tracked_function
-    from provisa.cypher.command_call import parse_command_call, project
+    from provisa.api.data.action_exec import run_cypher_call
+    from provisa.cypher.command_call import parse_command_call
 
     call = parse_command_call(cypher, parameters or {})
     if call is None:
         return None
-    args = bind_command_args(call.name, call.values, app_state, role_id)
-    rows = await invoke_tracked_function(call.name, args, app_state, role_id)
-    cols, shaped = project(call, rows)
+    cols, shaped = await run_cypher_call(call, app_state, role_id)
     return cols, [[r.get(c) for c in cols] for r in shaped]
 
 
@@ -1551,7 +1701,7 @@ async def _maybe_invoke_metric_call(
     metric = (getattr(app_state, "metrics", {}) or {}).get(name)
     # Visibility is part of existence for the caller — an invisible metric reads as unknown,
     # matching the pgwire catalog's visible_to gate (never leak that the name exists).
-    if metric is None or not ("*" in metric.visible_to or role_id in metric.visible_to):
+    if metric is None or role_id not in metric.visible_to:
         raise ValueError(f"Unknown metric: {name!r}")
 
     from provisa.compiler.metric_expand import metric_semantic_sql
@@ -1573,8 +1723,13 @@ async def _execute_cypher(
     roles: list[str] | None = None,
     deliver: Any = None,
     orgs: list[str] | None = None,
+    internal: bool = False,
 ) -> tuple[list[str], list[list[Any]], dict | None]:
     """Run Cypher through the Provisa pipeline; return (columns, rows-of-values, redirect-handle).
+
+    ``internal``: a read the graph session's own write makes (REQ-2176), whose nodes and
+    relationships keep their graph identities, as a read of a session holding ephemeral objects
+    does: neither is registered in the model's ids.
 
     ``deliver`` (a ``Delivery`` or None) requests the read result be materialized to a sink instead of
     buffered; when it fires the returned rows are empty and the third element is the sink handle. Only
@@ -1582,9 +1737,11 @@ async def _execute_cypher(
     """
     from provisa.api.app import state as app_state
     from provisa.gql.assembler import (
+        answered_columns,
         assemble_rows,
         register_node_ids,
         register_rel_ids,
+        take_overrun,
         to_serializable,
     )
     from provisa.cypher.params import CypherParamError, bind_params, collect_param_names
@@ -1664,28 +1821,81 @@ async def _execute_cypher(
         cypher=cypher,
         params=parameters,
     )
-    translation = kept.cached()
+    # REQ-2176: the principal's ephemeral graph. A CREATE the governing rule does not make
+    # wholly the governed write is done by the ephemeral layer (its governed parts through the
+    # governed write below); a read while the session holds ephemeral objects compiles over the
+    # session's overlay and is never kept, its answer being the session's own.
+    from provisa.compiler import temp_tables
+    from provisa.ephemeral import read as ephemeral_read
+    from provisa.ephemeral import seam
+
+    temp = temp_tables.current()
+    if temp is not None:
+
+        async def run_read(query: str, values: dict) -> list[dict]:
+            cols, value_rows, _ = await _execute_cypher(
+                query,
+                values,
+                role_id,
+                include_ops=include_ops,
+                roles=roles,
+                orgs=orgs,
+                internal=True,
+            )
+            return [dict(zip(cols, row)) for row in value_rows]
+
+        async def run_write(statement: str, values: dict) -> None:
+            await _execute_write_cypher(statement, values, role_id, ctx, include_ops, app_state)
+
+        made = await seam.write(
+            cypher,
+            parameters,
+            _bolt_label_map(ctx, role_id, include_ops, app_state),
+            temp,
+            app_state,
+            run_read,
+            run_write,
+        )
+        if made is not None:
+            if any(seam.counters(made).values()):
+                # Rows changed in place leave its shapes as they were: its generation is advanced
+                # all the same, as HTTP's write advances it.
+                from provisa.api import graph_session
+
+                held = graph_session.bound()
+                assert held is not None, (
+                    "an ephemeral write is made in the principal's graph session"
+                )
+                held.wrote = True
+            # A write followed by reads answers with the rest's rows (REQ-2176).
+            return (*seam.rows_of(made, temp), None)
+    involved = ephemeral_read.involved(temp)
+
+    translation = None if involved else kept.cached()
     if translation is None:
         # Try write path first; fall through to read path if it doesn't parse as a write.
         from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
 
+        # Only the parse decides the path: an error the write itself raises is its answer, never
+        # taken for "not a write" and sent on to the read path.
         try:
             parse_cypher_write(cypher)
+        except CypherWriteParseError:
+            pass
+        else:
             return (
                 *await _execute_write_cypher(
                     cypher, parameters, role_id, ctx, include_ops, app_state
                 ),
                 None,
             )
-        except CypherWriteParseError:
-            pass
 
+        model_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
+        label_map = seam.label_map(model_map, temp)
         try:
-            ast = parse_cypher(cypher)
+            ast = parse_cypher(cypher, label_map)
         except CypherParseError as exc:
             raise ValueError(str(exc)) from exc
-
-        label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
 
         param_names = collect_param_names(cypher)
         try:
@@ -1698,20 +1908,36 @@ async def _execute_cypher(
         except (CypherCrossSourceError, CypherTranslateError) as exc:
             raise ValueError(str(exc)) from exc
 
+        # REQ-2168: functions named by their Cypher command bindings, as the role may use them.
+        from provisa.api.data.cypher_commands import (
+            calls_commands,
+            expand_functions,
+            put_command_rows,
+        )
+
+        sql_ast = expand_functions(sql_ast, role_id, app_state)
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+        sql_ast = seam.expand(sql_ast, label_map, model_map, temp)
 
         try:
             sql_str = sql_ast.sql(dialect="postgres")
         except Exception as exc:
             raise RuntimeError(f"SQL generation failed: {exc}") from exc
 
+        semantic = make_semantic_sql(sql_str, ctx)
+        # REQ-2168: a command composed in the statement runs now, as the role, and its rows take
+        # its place. Its argument values are in the statement, so it is never kept.
+        composed = calls_commands(semantic)
+        if composed:
+            semantic = await put_command_rows(semantic, role_id, app_state)
         translation = CypherTranslation(
-            semantic_sql=make_semantic_sql(sql_str, ctx),
+            semantic_sql=semantic,
             ordered_params=tuple(ordered_params),
             param_names=tuple(param_names),
             graph_vars=graph_vars,
         )
-        kept.record(translation)
+        if not composed and not involved:
+            kept.record(translation)
 
     semantic_sql, graph_vars = translation.semantic_sql, translation.graph_vars
     try:
@@ -1732,6 +1958,8 @@ async def _execute_cypher(
         buffered=True,
         # REQ-544: the Cypher request's own `// @provisa cache` opt-in.
         cache_hint=cache_hint_for("cypher", cypher),
+        # REQ-030: the statement's own `// @provisa route=...` comment.
+        steward_hint=extract_directives_from_cypher_comments(cypher).steward_hint,
         # REQ-1897: an opted-in read is looked up in the response cache before it is routed.
         serve_cached=True,
         sdl_joins=False,
@@ -1740,15 +1968,22 @@ async def _execute_cypher(
     if result.redirect is not None:
         # Materialized to a sink — no records stream; the handle rides the trailing SUCCESS metadata.
         return [], [], result.redirect
-    raw_rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    raw_rows = take_overrun([dict(zip(result.column_names, row)) for row in result.rows])
     assembled = assemble_rows(raw_rows, graph_vars)
-    serializable = [to_serializable(r) for r in assembled]
+    serializable = [to_serializable(r, keep_values=True) for r in assembled]  # REQ-2173
 
-    _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
-    await register_node_ids(serializable, _model_db)
-    await register_rel_ids(serializable, _model_db)
+    if not (involved or internal):
+        # REQ-2176: an ephemeral node is the session's alone, never registered in the model's
+        # node ids; a read of the session keeps every node's graph identity.
+        _model_db = getattr(app_state, "model_db", None)  # REQ-1922: graph ids are org-wide
+        await register_node_ids(serializable, _model_db)
+        await register_rel_ids(serializable, _model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable = seam.answered(serializable, temp)
 
-    columns = list(raw_rows[0].keys()) if raw_rows else []
+    # A read of no rows names its columns too, as Cypher over HTTP does (REQ-347).
+    columns = list(raw_rows[0].keys()) if raw_rows else answered_columns(list(result.column_names))
     rows = [[row.get(col) for col in columns] for row in serializable]
     return columns, rows, None
 
@@ -1760,8 +1995,8 @@ async def _execute_write_cypher(
     from provisa.cypher.write_translator import (
         CypherWriteParseError,
         WriteTranslator,
-        bind_write_params,
         parse_cypher_write,
+        written,
     )
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
@@ -1772,16 +2007,23 @@ async def _execute_write_cypher(
 
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
     translator = WriteTranslator(label_map)
+
+    async def _read(query: str, params: dict) -> tuple[list[str], list[list[Any]]]:
+        columns, rows, _ = await _execute_cypher(query, params, role_id, include_ops=include_ops)
+        return columns, rows
+
+    async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
+        plan = await _govern_and_route_compiled(
+            sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
+        )
+        result = await _execute_plan(plan)
+        return result.column_names, [list(row) for row in result.rows], result.rowcount
+
     try:
         # The run's parameters are bound into the statement ($name → $k): the admission and the
-        # source see the values, never their names.
-        sql, bound = bind_write_params(translator.translate(write_ast), parameters)
-    except CypherParamError as exc:
+        # source see the values, never their names. A relationship's ends and a RETURN are read
+        # as every read is (written).
+        return await written(write_ast, translator, parameters, _read, _write)
+    except (CypherParamError, CypherWriteParseError) as exc:
+        # A write the translator refuses (a label it cannot write, say) is refused in its words.
         raise ValueError(str(exc)) from exc
-
-    plan = await _govern_and_route_compiled(
-        sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
-    )
-    result = await _execute_plan(plan)
-    rows = [list(row) for row in result.rows]
-    return result.column_names, rows

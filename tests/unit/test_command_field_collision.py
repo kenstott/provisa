@@ -34,7 +34,14 @@ def _convention():
 
 
 def _command(name: str, kind: str = "mutation") -> dict:
-    return {"name": name, "arguments": [], "returns": "", "domain_id": "pets", "kind": kind}
+    return {
+        "name": name,
+        "arguments": [],
+        "returns": "",
+        "domain_id": "pets",
+        "kind": kind,
+        "visible_to": ["admin"],  # REQ-2153: a command's list names its roles
+    }
 
 
 def _input(functions: list[dict], webhooks: list[dict] | None = None, tables=None) -> SchemaInput:
@@ -66,6 +73,7 @@ def test_a_function_and_a_webhook_named_for_one_field_are_refused():
         "inline_return_type": [],
         "domain_id": "pets",
         "kind": "mutation",
+        "visible_to": ["admin"],
     }
     with pytest.raises(CommandFieldTaken):
         _build_action_fields(_input([_command("add_pet")], [webhook]), {}, [])

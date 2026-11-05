@@ -250,6 +250,7 @@ def bind(setup: Setup, resolved: lookup.Resolved, *, verify_replication: bool = 
                     rest_path=names.rest_path,
                     jsonapi_path=names.jsonapi_path,
                     jsonapi_type=names.jsonapi_type,
+                    sparql_class=names.sparql_class,
                     columns=tuple(replace(c, names=dict(names.columns[c.name])) for c in t.columns),
                 )
             )
@@ -277,7 +278,12 @@ def bind(setup: Setup, resolved: lookup.Resolved, *, verify_replication: bool = 
         if names is None:
             raise SetupError(f"resolved names have no join {key}")
         if names.forward:
-            return replace(j, graphql_field=names.graphql_field, cypher_rel=names.cypher_rel)
+            return replace(
+                j,
+                graphql_field=names.graphql_field,
+                cypher_rel=names.cypher_rel,
+                sparql_rel=names.sparql_rel,
+            )
         # the registered relationship runs right -> left: orient the join the way it is registered
         return Join(
             j.right_source,
@@ -288,6 +294,7 @@ def bind(setup: Setup, resolved: lookup.Resolved, *, verify_replication: bool = 
             j.left_column,
             names.graphql_field,
             names.cypher_rel,
+            sparql_rel=names.sparql_rel,
         )
 
     for sid, src in list(sources.items()):

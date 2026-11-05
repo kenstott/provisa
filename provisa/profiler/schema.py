@@ -101,6 +101,12 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
             "Each read of the dependence statements, as JSON [{statement, percent, rows}]; a block "
             "sample under half its target is read again at four times the percentage.",
         ),
+        (  # REQ-2147
+            "classification_attempts",
+            "varchar",
+            "The classification statement's read of the sample, as JSON "
+            "[{statement, percent, rows}], rows the sample held; empty where none ran.",
+        ),
         ("duration_ms", "bigint", "How long the run took."),
         ("status", "varchar", "succeeded | failed."),
         ("error", "varchar", "Why the run failed; empty when it succeeded."),
@@ -289,6 +295,22 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("pass_share", "double", "1 - violations / rows_checked."),
         ("detail", "varchar", "Why it was not checked; empty when it was."),
     ),
+    "classifications": (
+        ("column_name", "varchar", "The profiled column."),
+        ("physical_column", "varchar", "The column's registered name."),
+        ("kind", "varchar", "The classification kind its sampled values passed."),
+        ("sensitive", "boolean", "Whether the kind is sensitive (accepting marks the column pii)."),
+        ("values_tested", "bigint", "Sampled non-null values the kind's test was applied to."),
+        ("values_passed", "bigint", "Of them, the values that passed it."),
+        ("share", "double", "values_passed / values_tested."),
+        ("threshold", "double", "The share the kind needs."),
+        ("evidence", "varchar", "The suggestion, in words."),
+        (
+            "status",
+            "varchar",
+            "suggested | accepted | rejected -- the steward's decision at the run's time.",
+        ),
+    ),
     "repeats": (
         ("rank", "integer", "Rank by repeat count, from 1."),
         ("row_count", "bigint", "How many rows hold one of the most repeated rows."),
@@ -411,6 +433,25 @@ def parse_result_table_name(name: str) -> tuple[str, int, str]:
     return m["table"], int(m["id"]), m["kind"]
 
 
+async def ensure_result_table(conn: Any, profiled_table: str, table_id: int, kind: str) -> sa.Table:
+    """The relation ``kind`` of ``profiled_table``, created empty where it is not there yet, with
+    every column of the shipped schema: a column the schema gained after the relation was created
+    is added in place (V1, no migration)."""
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateTable
+
+    table = result_sa_table(profiled_table, table_id, kind)
+    await conn.execute_core(CreateTable(table, if_not_exists=True))
+    dialect = postgresql.dialect()
+    prep = dialect.identifier_preparer
+    adds = ", ".join(
+        f"ADD COLUMN IF NOT EXISTS {prep.format_column(c)} {c.type.compile(dialect=dialect)}"
+        for c in table.columns
+    )
+    await conn.execute_core(sa.text(f"ALTER TABLE {prep.format_table(table)} {adds}"))
+    return table
+
+
 def result_sa_table(profiled_table: str, table_id: int, kind: str) -> sa.Table:
     """The relation ``kind`` of ``profiled_table`` as a SQLAlchemy table, schema-less: the writer's
     connection is scoped to the org's control-plane schema, as an ingest table's is."""
@@ -436,3 +477,57 @@ async def result_exists(
         sa.select(sa.func.to_regclass(sa.literal(qualified, sa.Text)).is_not(None))
     )
     return bool(found.scalar())
+
+
+#: The relations dropped per transaction by :func:`drop_superseded_results`. Each DROP holds its
+#: relation's locks (the table, its row and array types, its toast table and index) to its
+#: transaction's end, and the lock table holds max_locks_per_transaction x max_connections:
+#: cloud's 36,869 relations, dropped in the rebuild's one transaction, ran it out.
+DROP_BATCH = 50
+
+
+async def superseded_results(conn: Any, schema: str) -> list[str]:
+    """The result relations of ``schema`` that name no table its model registers: a relation is
+    current only while that schema's ``registered_tables`` holds its id under its name."""
+    prep = _quoted(schema)
+    current = {
+        (r[1], r[0])
+        for r in (
+            await conn.execute_core(sa.text(f"SELECT id, table_name FROM {prep}.registered_tables"))
+        ).fetchall()
+    }
+    names = (
+        await conn.execute_core(
+            sa.text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = :schema AND table_type = 'BASE TABLE' "
+                "ORDER BY table_name"
+            ).bindparams(schema=schema)
+        )
+    ).fetchall()
+    return [
+        r[0]
+        for r in names
+        if is_result_table_name(r[0]) and parse_result_table_name(r[0])[:2] not in current
+    ]
+
+
+async def drop_superseded_results(conn: Any) -> list[str]:
+    """Drop every result relation of the org ``conn`` is scoped to that names no table its model
+    registers (:func:`superseded_results`). A demo organisation's rebuild
+    (config_loader.rebuild_from_config) registers every table afresh, under a new id, and the
+    relations of the old ids were left behind. Called outside any transaction, once the rebuild
+    has committed: the relations are dropped :data:`DROP_BATCH` to a transaction, so the locks
+    held at once are bounded however large the backlog. Returns the relations dropped."""
+    schema = (await conn.execute_core(sa.select(sa.func.current_schema()))).scalar_one()
+    names = await superseded_results(conn, schema)
+    prep = _quoted(schema)
+    for start in range(0, len(names), DROP_BATCH):
+        async with conn.transaction():
+            for name in names[start : start + DROP_BATCH]:
+                await conn.execute_core(sa.text(f"DROP TABLE {prep}.{_quoted(name)}"))
+    return names
+
+
+def _quoted(name: str) -> str:
+    return '"{}"'.format(name.replace('"', '""'))

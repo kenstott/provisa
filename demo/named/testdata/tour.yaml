@@ -14,9 +14,9 @@
 #
 # The track: the scenario (the shop's production database, and three environments over it); the
 # model's fakes on the sensitive and identifying columns, the operator's choice; the steward's
-# coverage check, as the setup showed it before pre-prod existed; production's real rows; pre-prod,
-# Test (fake): the same rows with every sensitive column faked, for every role, and the totals
-# exactly production's; dev, Test (synthetic): rows generated from production's profile, nothing
+# coverage check, as the setup showed it before pre-prod existed; the assistant proposing a fake
+# from the profile; production's real rows; pre-prod, Test (fake): the same rows with every
+# sensitive column faked, for every role, and the totals exactly production's; dev, Test (synthetic): rows generated from production's profile, nothing
 # real, keys still joining, and the report comparing them with the profile they were drawn from;
 # a recap back in prod. "Where next?" is the Environments page.
 landing:
@@ -36,12 +36,16 @@ steps:
 - key: testdataCoverage
   image: coverage.png
 - key: testdataCoverageNow
+  route: /admin/reports
+  capability: observability
+  report: sensitive_column_coverage
+# The assistant reads customers.email's latest profile run and proposes its fake from what the
+# profile shows (propose_fakes): answered when the bundle is built, over the coverage report.
+- key: testdataPollyProposes
+  polly: Which fake would you propose for customers.email from its latest profile?
+- key: testdataProd
   route: /sql
   capability: query_development
-  sql: >-
-    SELECT table_name, column_name, tags, status, reason FROM "meta"."sensitive_coverage"
-    ORDER BY table_name, column_name
-- key: testdataProd
   sql: >-
     SELECT id, name, email, city, region, joined_on
     FROM "shop"."customers"
@@ -68,7 +72,7 @@ steps:
     ORDER BY revenue DESC
     LIMIT 10
 - key: testdataPreprodAnalyst
-  role: analyst
+  role: shop_analyst
 - key: testdataPreprodAsAnalyst
   sql: >-
     SELECT name, email, city, region

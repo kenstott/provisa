@@ -36,6 +36,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.json_refusal import NON_FINITE, JsonRefused
+from provisa.core.native_types import natively_nested
 
 MARKER = "provisa_native_json"
 
@@ -211,6 +212,9 @@ _BACKENDS: dict[str, _Backend] = {
             "numeric": _sized_decimal(_AS_TEXT),
             "date": _AS_WRITTEN,
             "time": _AS_TEXT,
+            # REQ-2167: interval_out's text, which database_to_xml writes of each element.
+            # Pinned by tests/unit/test_native_json_postgres_finite.py on the embedded server.
+            "interval": _AS_TEXT,
             "uuid": _AS_WRITTEN,
             "timestamp": _timestamp(
                 "to_char({x}, 'YYYY-MM-DD\"T\"HH24:MI:SS.US')",
@@ -300,21 +304,42 @@ def strip_native_json(tree: exp.Expr, served_as_json: Callable[[exp.Expr], bool]
             node.replace(marked[0])
 
 
-def source_projection(columns: list, dialect: str) -> str:
+def source_projection(columns: list, dialect: str, left_out: frozenset[str] = frozenset()) -> str:
     """The select list that reads a source table's rows for landing (REQ-1965): ``*`` for a table
-    with no natively nested column; otherwise every data column by name, each natively nested one
-    through this backend's to-JSON expression under its own name -- so the store receives JSON,
-    produced by the source or engine that holds the native value. ``columns`` are the registered
-    columns (``name``, ``native_filter_type`` and the three hidden attributes)."""
-    data = [c for c in columns if getattr(c, "native_filter_type", None) is None]
-    if not any(getattr(c, "native_type", None) for c in data):
+    with no natively nested or subtyped column; otherwise every data column by name, each natively
+    nested one through this backend's to-JSON expression under its own name -- so the store
+    receives JSON, produced by the source or engine that holds the native value. ``columns`` are
+    the registered columns (``name``, ``native_filter_type``, the three hidden attributes and the
+    subtype).
+
+    REQ-2171: a subtyped column is read in its subtype's own form (``ir_types.landing_form``); one
+    in ``left_out`` -- which a reader of its source has no such form for -- is not read at all."""
+    from provisa.core.ir_types import landing_form
+
+    data = [
+        c
+        for c in columns
+        if getattr(c, "native_filter_type", None) is None and c.name not in left_out
+    ]
+    if not left_out and not any(
+        getattr(c, "native_type", None) or getattr(c, "subtype", None) for c in data
+    ):
         return "*"
     parts: list[str] = []
     for c in data:
         quoted = exp.to_identifier(c.name, quoted=True).sql(dialect=dialect)
         native = getattr(c, "native_type", None)
-        if not native:
-            parts.append(quoted)
+        subtype = getattr(c, "subtype", None)
+        if subtype:
+            form = landing_form(subtype, dialect)
+            if form is None:
+                raise ValueError(
+                    f"column {c.name}: a {subtype} has no form to be landed in from {dialect}"
+                )
+            parts.append(f"{form.format(col=quoted)} AS {quoted}")
+            continue
+        if not natively_nested(native):
+            parts.append(quoted)  # none recorded, or a character column's (REQ-1961)
             continue
         nested = NestedColumn(native, getattr(c, "array_depth", 0) or 0, c.element_type)
         parts.append(f"{to_json_sql(quoted, nested, dialect, c.name)} AS {quoted}")

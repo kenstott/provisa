@@ -164,6 +164,8 @@ class TestActingOutsideThePinIsRefused:
         pinned(PIN)
         seen: list = []
         monkeypatch.setattr(router, "_guard_within", _record(seen))
+        # REQ-2155: deleting is guarded on ownership with environment_owned_management, else org_admin.
+        monkeypatch.setattr(router, "_guard_owned", _record(seen))
         monkeypatch.setattr(router, "_known", _record(seen))
         with pytest.raises(TypeError):
             # _known is stubbed, so the route fails LATER -- past the pin, which is the assertion.

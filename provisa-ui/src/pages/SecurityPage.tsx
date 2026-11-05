@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { Tip } from "../components/Tip";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Trash2, Pencil } from "lucide-react";
+import { Pencil, Shield } from "lucide-react";
 import {
   Alert,
   Button,
@@ -20,13 +20,12 @@ import {
   ActionIcon,
   Menu,
   NumberInput,
-  Select,
   Stack,
   Table,
+  Tabs,
   Text,
   TextInput,
   Textarea,
-  Title,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
@@ -37,25 +36,33 @@ import { RoleGrantAction } from "../components/RoleGrantAction";
 import { removeUserAssignment } from "../api/admin";
 import type { Role, Capability, SessionVar } from "../types/auth";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { assignableDomainIds } from "../lib/internalDomains";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ResidencyGrant } from "../components/admin/ResidencyGrant";
 import { RoleRead } from "./security/RoleRead";
+import { LlmBudgetFields } from "./security/LlmBudget";
+import { llmBudgetForm, llmBudgetInput } from "../lib/llmBudget";
+import { RoleCapabilities } from "./security/RoleCapabilities";
+import { RoleDataAccess } from "./security/RoleDataAccess";
 import { SessionValuesField } from "./security/SessionValuesField";
+import { CapabilityNames } from "./security/CapabilityNames";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
+import { parentRights, reachable, withParents } from "./security/roleParents";
 import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import { PanelDelete } from "../components/list/PanelDelete";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
 import { matchesQuery } from "../lib/searchItems";
 
-/** A role may be saved once it lists a domain — its own, or one a parent role hands down. */
-function listsADomain(form: { domainAccess: string[]; parentRoleId: string }): boolean {
-  return form.domainAccess.length > 0 || form.parentRoleId !== "";
+/** A role may be saved once it lists a domain, or holds no capability to apply in one (REQ-2155). */
+function listsADomain(form: { domainAccess: string[]; capabilities: Capability[] }): boolean {
+  return form.domainAccess.length > 0 || form.capabilities.length === 0;
 }
 
 const EMPTY_ROLE = {
@@ -64,13 +71,14 @@ const EMPTY_ROLE = {
 
   capabilities: [] as Capability[],
   domainAccess: [] as string[],
-  parentRoleId: "" as string, // REQ-1677: "" = no parent
+  parents: [] as string[], // REQ-2155: the roles it inherits from, in order
   residencyValues: [] as string[], // REQ-1921: with data_residency, the values it covers
   sessionVars: [] as SessionVar[], // REQ-1682: the role's constant session values
   // REQ-1174: per-role rate + query-complexity limits ("" = unlimited on that dimension).
   reqPerSec: "" as number | "",
   maxComplexity: "" as number | "",
   maxTimeMs: "" as number | "",
+  llmBudget: llmBudgetForm(null), // REQ-1174: the per-call cap and rolling windows
   // REQ-2077: remove a grant of the role once unused this many days ("" = never).
   inactivityDays: "" as number | "",
 };
@@ -141,8 +149,12 @@ export function SecurityRolesPage() {
         requestsPerSecond: _n(roleForm.reqPerSec),
         maxQueryComplexity: _n(roleForm.maxComplexity),
         maxQueryTimeMs: _n(roleForm.maxTimeMs),
+        ...llmBudgetInput(roleForm.llmBudget),
       };
-      const hasLimit = Object.values(rateLimit).some((v) => v !== null);
+      const { llmWindows, ...flat } = rateLimit;
+      const hasLimit = [...Object.values(flat), ...Object.values(llmWindows)].some(
+        (v) => v !== null,
+      );
       const res = await upsertRole(
         {
           id: roleForm.id,
@@ -150,7 +162,7 @@ export function SecurityRolesPage() {
           capabilities: roleForm.capabilities,
           domainAccess: roleForm.domainAccess,
           rateLimit: hasLimit ? rateLimit : null,
-          parentRoleId: roleForm.parentRoleId || null, // REQ-1677
+          parents: roleForm.parents, // REQ-2155
           // REQ-1921: the grant's values go with the right; without it the role lists none.
           residencyValues: roleForm.capabilities.includes("data_residency")
             ? roleForm.residencyValues
@@ -183,23 +195,14 @@ export function SecurityRolesPage() {
     }
   };
 
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the role.
   const handleDeleteRole = async (id: string) => {
-    setSaving(true);
     setError("");
-    try {
-      const result = await deleteRole(id);
-      if (refusal.refused(result, id)) return;
-      if (!result.success) {
-        setError(serverMessage(result, result.message));
-        return;
-      }
-      if (expandedRole === id) setExpandedRole(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    const result = await deleteRole(id);
+    if (refusal.refused(result, id)) return false;
+    if (!result.success) throw new Error(serverMessage(result, result.message));
+    await reload();
   };
 
   const startEditingRole = (role: Role) => {
@@ -208,13 +211,14 @@ export function SecurityRolesPage() {
       description: role.description,
       capabilities: [...role.capabilities],
       domainAccess: [...role.domain_access],
-      parentRoleId: role.parentRoleId ?? "", // REQ-1677
+      parents: [...(role.parents ?? [])], // REQ-2155
       residencyValues: [...(role.residencyValues ?? [])], // REQ-1921
       // REQ-1682: name and value only -- the input type takes no __typename.
       sessionVars: (role.sessionVars ?? []).map(({ name, value }) => ({ name, value })),
       reqPerSec: role.rateLimit?.requestsPerSecond ?? "",
       maxComplexity: role.rateLimit?.maxQueryComplexity ?? "",
       maxTimeMs: role.rateLimit?.maxQueryTimeMs ?? "",
+      llmBudget: llmBudgetForm(role.rateLimit), // REQ-1174
       inactivityDays: role.inactivityDays ?? "", // REQ-2077
     });
     setEditingRoleInRow(role.id);
@@ -230,10 +234,14 @@ export function SecurityRolesPage() {
     }));
   };
 
+  // REQ-2155: the form offers what the parents hold; the rest is shown disabled.
+  const held = parentRights(roleForm.parents, roles);
   const domainOptions = [
     { id: "*", label: t("securityPage.allDomains") },
-    ...domains.map((d) => ({ id: d.id, label: d.id })),
-  ];
+    // REQ-1132: a system domain is held as a capability, never listed on a role.
+    ...assignableDomainIds(domains.map((d) => d.id)).map((id) => ({ id, label: id })),
+  ].map((option) => ({ ...option, disabled: !reachable(option.id, held) }));
+  const chooseParents = (parents: string[]) => setRoleForm((f) => withParents(f, parents, roles));
 
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredRoles = roles.filter((r) => matchesQuery([r.id, r.description], roleSearch));
@@ -313,6 +321,7 @@ export function SecurityRolesPage() {
           label={t("securityPage.domainAccess")}
           placeholder={t("securityPage.chooseDomains")}
           options={domainOptions}
+          disabledHint={t("capabilityHelp.domainNotHeldByParent")}
           value={roleForm.domainAccess}
           onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
         />
@@ -323,20 +332,19 @@ export function SecurityRolesPage() {
           <DomainsNote savedWithNone={false} />
         </FormField>
       )}
-      {/* REQ-1677: single parent; the chain is walked child-first at build time. */}
-      <FormField help={t("securityPage.parentRoleHelp")} size="medium">
-        <Select
-          label={t("securityPage.parentRole")}
-          placeholder={t("securityPage.parentRoleNone")}
-          data={roles
-            .filter((r) => r.id !== roleForm.id)
-            .map((r) => ({ value: r.id, label: r.id }))}
-          value={roleForm.parentRoleId || null}
-          onChange={(v) => setRoleForm({ ...roleForm, parentRoleId: v ?? "" })}
-          clearable
-          searchable
-          data-testid="role-parent-select"
-        />
+      {/* REQ-2155: several parents; the role holds what it is given of what they hold. */}
+      <FormField help={t("securityPage.parentRoleHelp")} size="long">
+        <div data-testid="role-parent-select">
+          <MultiSelect
+            label={t("securityPage.parentRole")}
+            placeholder={t("securityPage.parentRoleNone")}
+            options={roles
+              .filter((r) => r.id !== roleForm.id)
+              .map((r) => ({ id: r.id, label: r.id }))}
+            value={roleForm.parents}
+            onChange={chooseParents}
+          />
+        </div>
       </FormField>
       <FormFooter
         panel
@@ -354,8 +362,9 @@ export function SecurityRolesPage() {
   ) : selectedRole ? (
     ((r) => (
       <>
-        {/* Its actions sit in the panel's head; while its form is open the head is the form's. */}
-        {editingRoleInRow !== r.id && (
+        {/* Its actions sit in the panel's head; while its form is open the head is the form's. A
+            standard role is Provisa's and locked (REQ-2155): it has none. */}
+        {editingRoleInRow !== r.id && !r.standard && (
           <PanelActions>
             <fieldset className="panel-action-set">
               <Group gap="xs">
@@ -371,33 +380,42 @@ export function SecurityRolesPage() {
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
-                <ConfirmDialog
+                <PanelDelete
+                  itemKey={r.id}
                   title={t("securityPage.deleteRoleTitle", { id: r.id })}
                   consequence={t("securityPage.deleteRoleConsequence")}
-                  onConfirm={() => handleDeleteRole(r.id)}
-                >
-                  {(open) => (
-                    <Tip text={t("securityPage.delete")} named>
-                      <ActionIcon
-                        color="red"
-                        aria-label={t("securityPage.delete")}
-                        data-testid={`delete-role-${r.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          open();
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </ActionIcon>
-                    </Tip>
-                  )}
-                </ConfirmDialog>
+                  ariaLabel={t("securityPage.delete")}
+                  testId={`delete-role-${r.id}`}
+                  onDelete={() => handleDeleteRole(r.id)}
+                />
               </Group>
             </fieldset>
           </PanelActions>
         )}
         {editingRoleInRow !== r.id ? (
-          <RoleRead role={r} />
+          // REQ-2161: the role's values, then its effective rights by dimension.
+          <Tabs defaultValue="details" keepMounted={false}>
+            <Tabs.List mb="sm" aria-label={t("roleRights.tabs")}>
+              <Tabs.Tab value="details" data-testid={`role-tab-details-${r.id}`}>
+                {t("roleRights.tab_details")}
+              </Tabs.Tab>
+              <Tabs.Tab value="capabilities" data-testid={`role-tab-capabilities-${r.id}`}>
+                {t("roleRights.tab_capabilities")}
+              </Tabs.Tab>
+              <Tabs.Tab value="data" data-testid={`role-tab-data-${r.id}`}>
+                {t("roleRights.tab_data")}
+              </Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="details">
+              <RoleRead role={r} />
+            </Tabs.Panel>
+            <Tabs.Panel value="capabilities">
+              <RoleCapabilities roleId={r.id} />
+            </Tabs.Panel>
+            <Tabs.Panel value="data">
+              <RoleDataAccess roleId={r.id} />
+            </Tabs.Panel>
+          </Tabs>
         ) : (
           <FormLayout>
             {/* REQ-2080: required. A role says what it is for, in words an access review reads. */}
@@ -414,6 +432,7 @@ export function SecurityRolesPage() {
             </FormField>
             <CapabilityGrid
               value={roleForm.capabilities}
+              held={held && held.capabilities}
               onToggle={toggleCapability}
               label={t("securityPage.capabilities")}
             />
@@ -421,6 +440,7 @@ export function SecurityRolesPage() {
               held={roleForm.capabilities.includes("data_residency")}
               values={roleForm.residencyValues}
               regions={regionChoices.regions}
+              parents={held}
               onHeld={() => toggleCapability("data_residency")}
               onValues={(residencyValues) => setRoleForm({ ...roleForm, residencyValues })}
             />
@@ -429,6 +449,7 @@ export function SecurityRolesPage() {
                 label={t("securityPage.domainAccess")}
                 placeholder={t("securityPage.chooseDomains")}
                 options={domainOptions}
+                disabledHint={t("capabilityHelp.domainNotHeldByParent")}
                 value={roleForm.domainAccess}
                 onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
               />
@@ -439,17 +460,18 @@ export function SecurityRolesPage() {
                 <DomainsNote savedWithNone={r.domain_access.length === 0} />
               </FormField>
             )}
-            <FormField size="medium">
-              <Select
-                label={t("securityPage.parentRole")}
-                placeholder={t("securityPage.parentRoleNone")}
-                data={roles.filter((x) => x.id !== r.id).map((x) => ({ value: x.id, label: x.id }))}
-                value={roleForm.parentRoleId || null}
-                onChange={(v) => setRoleForm({ ...roleForm, parentRoleId: v ?? "" })}
-                clearable
-                searchable
-                data-testid={`role-parent-select-${r.id}`}
-              />
+            <FormField size="long">
+              <div data-testid={`role-parent-select-${r.id}`}>
+                <MultiSelect
+                  label={t("securityPage.parentRole")}
+                  placeholder={t("securityPage.parentRoleNone")}
+                  options={roles
+                    .filter((x) => x.id !== r.id)
+                    .map((x) => ({ id: x.id, label: x.id }))}
+                  value={roleForm.parents}
+                  onChange={chooseParents}
+                />
+              </div>
             </FormField>
             <FormField size="full">
               <SessionValuesField
@@ -513,6 +535,10 @@ export function SecurityRolesPage() {
                 }
               />
             </FormField>
+            <LlmBudgetFields
+              value={roleForm.llmBudget}
+              onChange={(llmBudget) => setRoleForm({ ...roleForm, llmBudget })}
+            />
             <FormFooter
               panel
               problem={error || undefined}
@@ -546,7 +572,7 @@ export function SecurityRolesPage() {
       )}
 
       <Group justify="space-between" wrap="wrap">
-        <Title order={2}>{t("securityPage.rolesHeading")}</Title>
+        <PageTitle icon={Shield}>{t("securityPage.rolesHeading")}</PageTitle>
         <FilterInput
           value={roleSearch}
           onChange={setRoleSearch}
@@ -661,7 +687,12 @@ export function SecurityRolesPage() {
                         </Table.Td>
                       ) : (
                         <>
-                          <Table.Td>{r.capabilities.join(", ")}</Table.Td>
+                          <Table.Td>
+                            <CapabilityNames
+                              capabilities={r.capabilities}
+                              regions={r.residencyValues}
+                            />
+                          </Table.Td>
                           <Table.Td data-testid={`role-domains-${r.id}`}>
                             {r.domain_access.join(", ") || t("securityPage.noDomains")}
                           </Table.Td>
@@ -710,8 +741,8 @@ export function SecurityRolesPage() {
                 value={derivedPick.value}
                 onChanged={reloadDerived}
                 onDeleted={async () => {
-                  setDerivedPick(null);
                   await reloadDerived();
+                  setDerivedPick(null);
                 }}
               />
             ) : null)(derived.roles.find((x) => x.attribute === derivedPick.attribute))

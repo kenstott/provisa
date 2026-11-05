@@ -50,6 +50,8 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
+from provisa.transpiler.pg_forms_geometric import around
+
 # The two write choices (REQ-1162).
 MODE_SNAPSHOT = "snapshot"
 MODE_DELTA = "delta"
@@ -191,7 +193,9 @@ def create_sql(
     wm = _watermark(spec, watermark_sql)
     if wm is not None:
         stamp += f", {wm} AS {_q(WATERMARK_COLUMN)}"
-    return f"CREATE TABLE {target} AS SELECT _s.*, {stamp} FROM ({select_sql}) _s"
+    return f"CREATE TABLE {target} AS " + around(
+        select_sql, lambda s: f"SELECT _s.*, {stamp} FROM ({s}) _s"
+    )
 
 
 def append_sql(
@@ -228,9 +232,8 @@ def _append_snapshot(
     cols = ", ".join(_q(c) for c in business_cols)
     f_cols = ", ".join(f"{_q('f')}.{_q(c)}" for c in business_cols)
     sys = _q(spec.system_column)
-    return (
-        f"INSERT INTO {target} ({cols}, {sys}) "
-        f"SELECT {f_cols}, {now_ts} FROM ({select_sql}) {_q('f')}"
+    return f"INSERT INTO {target} ({cols}, {sys}) " + around(
+        select_sql, lambda s: f"SELECT {f_cols}, {now_ts} FROM ({s}) {_q('f')}"
     )
 
 
@@ -255,12 +258,14 @@ def _append_delta(
 
     # Upserts: fresh rows not identical to any currently-effective row (new keys + changed rows).
     f_cols = ", ".join(f"{_q('f')}.{_q(c)}" for c in business_cols)
-    upserts = (
-        f"INSERT INTO {target} ({cols}, {sys}, {op}{wm_col}) "
-        f"SELECT {f_cols}, {now_ts}, '{_OP_UPSERT}'{f', {wm}' if wm is not None else ''} "
-        f"FROM ({select_sql}) {_q('f')} "
-        f"WHERE NOT EXISTS (SELECT 1 FROM ({current}) {_q('c')} "
-        f"WHERE {_match(business_cols, 'c', 'f', dialect)})"
+    upserts = f"INSERT INTO {target} ({cols}, {sys}, {op}{wm_col}) " + around(
+        select_sql,
+        lambda s: (
+            f"SELECT {f_cols}, {now_ts}, '{_OP_UPSERT}'{f', {wm}' if wm is not None else ''} "
+            f"FROM ({s}) {_q('f')} "
+            f"WHERE NOT EXISTS (SELECT 1 FROM ({current}) {_q('c')} "
+            f"WHERE {_match(business_cols, 'c', 'f', dialect)})"
+        ),
     )
 
     # Tombstones: currently-effective keys with no matching fresh row. Key columns carried, the
@@ -274,12 +279,14 @@ def _append_delta(
     )
     ordered = ", ".join(_q(c) for c in (key + non_key))
     scoped = f"({scope}) AND " if scope is not None else ""
-    tombstones = (
-        f"INSERT INTO {target} ({ordered}, {sys}, {op}) "
-        f"SELECT {tomb_select}, {now_ts}, '{_OP_DELETE}' "
-        f"FROM ({current}) {_q('c')} "
-        f"WHERE {scoped}NOT EXISTS (SELECT 1 FROM ({select_sql}) {_q('f')} "
-        f"WHERE {_match(key, 'c', 'f', dialect)})"
+    tombstones = f"INSERT INTO {target} ({ordered}, {sys}, {op}) " + around(
+        select_sql,
+        lambda s: (
+            f"SELECT {tomb_select}, {now_ts}, '{_OP_DELETE}' "
+            f"FROM ({current}) {_q('c')} "
+            f"WHERE {scoped}NOT EXISTS (SELECT 1 FROM ({s}) {_q('f')} "
+            f"WHERE {_match(key, 'c', 'f', dialect)})"
+        ),
     )
     if wm is not None:
         return [tombstones, upserts]

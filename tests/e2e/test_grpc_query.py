@@ -23,36 +23,30 @@ import grpc
 import grpc.aio
 import pytest
 
+from provisa.executor.result import QueryResult
 from provisa.grpc.server import ProvisaServicer
 from tests.role_state import RoleState
 
 pytestmark = [pytest.mark.requires_trino, pytest.mark.e2e, pytest.mark.asyncio]
 
 
+_FIELD_TYPES = {"id": "int64", "amount": "double"}
+
+
 def _make_pb2_with_descriptor(type_name: str, fields: list[str]):
-    """Build a fake pb2 module with proper DESCRIPTOR for e2e-style testing."""
-    field_descriptors = []
-    for f in fields:
-        # No known FieldDescriptor.TYPE_* matches -> _proto_value's fallthrough returns the
-        # row value unchanged, preserving the exact int/float types the tests assert on.
-        fd = SimpleNamespace(name=f, message_type=None, type=-1)
-        field_descriptors.append(fd)
+    """A compiled service, as an organisation's is: the encoder writes the result's rows into
+    its real messages (REQ-2194). ``id`` is an int64, ``amount`` a double, any other a string."""
+    from provisa.grpc.descriptor import OrgDescriptor
 
-    descriptor = SimpleNamespace(
-        fields=field_descriptors,
-        fields_by_name={fd.name: fd for fd in field_descriptors},
+    body = " ".join(
+        f"optional {_FIELD_TYPES.get(f, 'string')} {f} = {n};" for n, f in enumerate(fields, 1)
     )
-    msg_cls = MagicMock()
-    msg_cls.DESCRIPTOR = descriptor
-    # A message has a serialized size: its egress is metered to the org bound (REQ-1452).
-    msg_cls.return_value.ByteSize.return_value = 1
+    pb2 = OrgDescriptor(f'syntax = "proto3"; package provisa.v1; message {type_name} {{ {body} }}')
+    return pb2, getattr(pb2, type_name)
 
-    service_descriptor = SimpleNamespace(full_name="provisa.v1.ProvisaService")
-    pb2 = SimpleNamespace(
-        **{type_name: msg_cls},
-        DESCRIPTOR=SimpleNamespace(services_by_name={"ProvisaService": service_descriptor}),
-    )
-    return pb2, msg_cls
+
+def _sent(msg_cls, streamed: list[bytes]) -> list[dict]:
+    return [{f.name: v for f, v in msg_cls.FromString(m).ListFields()} for m in streamed]
 
 
 def _make_full_state(role_id: str, extra_roles: dict | None = None):
@@ -110,17 +104,21 @@ def _routed_plan() -> MagicMock:
 
 
 def _pipeline_patches(result, *, govern=None):
-    """Patch the real _handle_query pipeline seams: gRPC lowers the request to a semantic SELECT,
-    then governs+routes it and executes the plan (the retired parse→compile→transpile→execute_direct
-    path no longer runs). ``govern`` may be an AsyncMock to capture/assert the govern call."""
+    """Patch the real _handle_query pipeline seams: gRPC lowers the request to GraphQL text,
+    compiles it (``compile_generated_graphql``), then governs+routes the statement and executes
+    the plan. ``govern`` may be an AsyncMock to capture/assert the govern call."""
     govern_patch = patch(
         "provisa.pgwire._pipeline._govern_and_route_compiled",
         govern if govern is not None else AsyncMock(return_value=_routed_plan()),
     )
     return (
         patch(
-            "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-            return_value=("SELECT id, amount FROM orders", []),
+            "provisa.grpc.query_ir.grpc_table_to_graphql",
+            return_value=("{ orders { id amount } }", {}),
+        ),
+        patch(
+            "provisa.api.generated_plan.compile_generated_graphql",
+            return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
         ),
         govern_patch,
         patch(
@@ -139,10 +137,10 @@ class TestStreamedQueries:
         servicer = ProvisaServicer(state, pb2)
 
         rows = [[i, float(i * 100)] for i in range(1, 6)]
-        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=rows)
+        fake_result = QueryResult(rows=[tuple(r) for r in rows], column_names=["id", "amount"])
 
-        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result)
-        with p_semantic, p_govern, p_execute:
+        p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result)
+        with p_lower, p_compile, p_govern, p_execute:
             context = _mock_context("admin")
             request = MagicMock()
             request.limit = 0
@@ -151,9 +149,10 @@ class TestStreamedQueries:
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
                 streamed.append(msg)
 
-            assert len(streamed) == 5
-            msg_cls.assert_any_call(id=1, amount=100.0)
-            msg_cls.assert_any_call(id=5, amount=500.0)
+            sent = _sent(msg_cls, streamed)
+            assert len(sent) == 5
+            assert sent[0] == {"id": 1, "amount": 100.0}
+            assert sent[4] == {"id": 5, "amount": 500.0}
 
     async def test_empty_result_streams_nothing(self):
         """An empty result set yields no messages."""
@@ -161,10 +160,10 @@ class TestStreamedQueries:
         state = _make_full_state("admin")
         servicer = ProvisaServicer(state, pb2)
 
-        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[])
+        fake_result = QueryResult(rows=[], column_names=["id", "amount"])
 
-        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result)
-        with p_semantic, p_govern, p_execute:
+        p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result)
+        with p_lower, p_compile, p_govern, p_execute:
             context = _mock_context("admin")
             request = MagicMock()
             request.limit = 0
@@ -239,11 +238,11 @@ class TestRoleBasedFieldFiltering:
         )
         servicer = ProvisaServicer(state, pb2)
 
-        fake_result = SimpleNamespace(column_names=["id"], rows=[[42]])
+        fake_result = QueryResult(rows=[(42,)], column_names=["id"])
 
         govern = AsyncMock(return_value=_routed_plan())
-        p_semantic, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)
-        with p_semantic as mock_semantic, p_govern, p_execute:
+        p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)
+        with p_lower as mock_lower, p_compile as mock_compile, p_govern, p_execute:
             context = _mock_context("viewer")
             request = MagicMock()
             request.limit = 0
@@ -253,8 +252,10 @@ class TestRoleBasedFieldFiltering:
 
             # The servicer selects the schema/context by the metadata role and passes that
             # role through governance (the IR path replaces the old parse_query(schema) call).
-            mock_semantic.assert_called_once()
-            assert mock_semantic.call_args[0][0] is state.contexts["viewer"]
+            mock_lower.assert_called_once()
+            assert mock_lower.call_args[0][0] is state.contexts["viewer"]
+            mock_compile.assert_called_once()
+            assert mock_compile.call_args[0][1] == "viewer"
             govern.assert_awaited_once()
             assert govern.await_args[0][1] == "viewer"
             assert streamed  # rows streamed for the resolved role

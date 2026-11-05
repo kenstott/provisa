@@ -13,8 +13,8 @@ Started on device 1 (Provisa) and device 3 (the backends) of the three-device be
 by the load generator on device 2. Read-only; it listens only where ``--listen`` says (there is no
 default address):
 
-    GET /host           the machine read off itself: machine type and zone (GCE metadata),
-                        physical cores (lscpu), each network interface's driver, and the
+    GET /host           the machine read off itself: machine type, zone, CPU platform and
+                        instance id (GCE metadata), physical cores (lscpu), each network interface's driver, and the
                         ``--fact`` values the operator's script states (telemetry, engine)
     GET /cpu            cumulative CPU seconds of ``--pid`` and its descendants (device 1)
     GET /docker-stats   one ``docker stats`` snapshot (device 3's containers)
@@ -22,6 +22,10 @@ default address):
                         major faults of ``--pid`` and its descendants as class ``provisa``
                         (paging.py); the reader takes one at each end of a step
     GET /rtt/<name>     the TCP round trip to the ``--rtt-target`` of that name
+    GET /process        what a soak samples (soak.py): ``--pid``'s process tree (resident memory,
+                        threads, fds, sockets) and the bytes under each ``--spill-dir``
+                        (process_sample.py), the server's ``--leak-probe`` answer and ``--redis``'s
+                        memory and keys
 
 A fact that cannot be read is reported under ``errors`` with the reason, never guessed.
 
@@ -46,6 +50,7 @@ from typing import Any
 
 import measurements
 import paging
+import process_sample
 from server_cpu_agent import cpu_seconds, parse_listen
 
 _METADATA = "http://metadata.google.internal/computeMetadata/v1/instance/"
@@ -100,6 +105,9 @@ def host_facts(
         # GCE answers "projects/<n>/machineTypes/<type>" and "projects/<n>/zones/<zone>"
         "machine_type": lambda: metadata("machine-type").rsplit("/", 1)[-1],
         "zone": lambda: metadata("zone").rsplit("/", 1)[-1],
+        # Two VMs of one type can differ by more than a change under test (bench_sanity.py).
+        "cpu_platform": lambda: metadata("cpu-platform"),
+        "instance_id": lambda: metadata("id"),
         "cpu": lambda: parse_lscpu(lscpu()),
         "nic_drivers": nics,
     }
@@ -130,13 +138,34 @@ def tcp_rtt(host: str, port: int, connects: int = RTT_CONNECTS) -> dict[str, Any
     }
 
 
+def leak_probe(url: str) -> dict[str, Any]:
+    """The server's ``/debug/leak-probe`` answer (mounted by ``PROVISA_LEAK_PROBE=1``)."""
+    try:
+        with urllib.request.urlopen(url, timeout=60) as resp:  # noqa: S310  # nosec B310
+            return json.loads(resp.read())
+    except OSError as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 def handler(
     *,
     pid: int | None,
     facts: Mapping[str, str],
     rtt_targets: Mapping[str, tuple[str, int]],
     docker_stats: Callable[[], str] = measurements.docker_stats_text,
+    spill_dirs: tuple[Path, ...] = (),
+    leak_probe_url: str | None = None,
+    redis: tuple[str, int] | None = None,
 ) -> type[BaseHTTPRequestHandler]:
+    def process() -> dict[str, Any]:
+        assert pid is not None
+        out: dict[str, Any] = {"process": process_sample.tree(pid, spill_dirs)}
+        if leak_probe_url is not None:
+            out["probe"] = leak_probe(leak_probe_url)
+        if redis is not None:
+            out["redis"] = process_sample.redis_info(*redis)
+        return out
+
     def answer(path: str) -> tuple[int, Any]:
         if path == "/host":
             return 200, {**host_facts(facts), "rtt_targets": sorted(rtt_targets)}
@@ -144,6 +173,10 @@ def handler(
             if pid is None:
                 return 404, {"error": "this agent was started without --pid"}
             return 200, {"pid": pid, "cpu_seconds": cpu_seconds(pid)}
+        if path == "/process":
+            if pid is None:
+                return 404, {"error": "this agent was started without --pid"}
+            return 200, process()
         if path == "/docker-stats":
             return 200, docker_stats()
         if path == "/paging":
@@ -202,10 +235,23 @@ def serve(
     pid: int | None,
     facts: Mapping[str, str],
     rtt_targets: Mapping[str, tuple[str, int]],
+    spill_dirs: tuple[Path, ...] = (),
+    leak_probe_url: str | None = None,
+    redis: tuple[str, int] | None = None,
 ) -> ThreadingHTTPServer:
     if pid is not None:
         cpu_seconds(pid)  # refuse a pid that is not there before listening
-    return _Server(listen, handler(pid=pid, facts=facts, rtt_targets=rtt_targets))
+    return _Server(
+        listen,
+        handler(
+            pid=pid,
+            facts=facts,
+            rtt_targets=rtt_targets,
+            spill_dirs=spill_dirs,
+            leak_probe_url=leak_probe_url,
+            redis=redis,
+        ),
+    )
 
 
 def main() -> int:
@@ -214,9 +260,20 @@ def main() -> int:
     parser.add_argument("--pid", type=int, help="the Provisa server's process id (device 1)")
     parser.add_argument("--fact", type=parse_fact, action="append", default=[])
     parser.add_argument("--rtt-target", type=parse_rtt_target, action="append", default=[])
+    parser.add_argument("--spill-dir", type=Path, action="append", default=[])
+    parser.add_argument(
+        "--leak-probe", help="the server's /debug/leak-probe URL (PROVISA_LEAK_PROBE=1)"
+    )
+    parser.add_argument("--redis", type=parse_listen, help="HOST:PORT of the response cache")
     args = parser.parse_args()
     server = serve(
-        args.listen, pid=args.pid, facts=dict(args.fact), rtt_targets=dict(args.rtt_target)
+        args.listen,
+        pid=args.pid,
+        facts=dict(args.fact),
+        rtt_targets=dict(args.rtt_target),
+        spill_dirs=tuple(args.spill_dir),
+        leak_probe_url=args.leak_probe,
+        redis=args.redis,
     )
     host, port = server.server_address[:2]
     print(f"host agent at http://{host}:{port}/ (pid {os.getpid()})", flush=True)

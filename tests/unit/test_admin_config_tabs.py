@@ -888,3 +888,43 @@ class TestVendorModelListing:
         # An empty catalog would read as "this vendor serves no models"; the shape is the defect.
         with pytest.raises(ValueError):
             parse_model_ids({"result": []})
+
+
+# --- Apollo Federation subgraph: the org's declared role (REQ-259) ---------------
+
+
+@pytest.fixture
+def subgraph_org(org_overrides):
+    from provisa.api.app import state
+
+    state.settings_overrides = {}
+    state.config = None
+    state.roles = {"partner": {"id": "partner"}}
+    return org_overrides
+
+
+class TestSettingsFederation:
+    def test_put_persists_the_orgs_whole_subgraph(self, client, subgraph_org):
+        r = client.put("/admin/settings", json={"federation": {"enabled": True, "role": "partner"}})
+        assert r.status_code == 200, r.text
+        assert subgraph_org["federation"] == {
+            "enabled": True,
+            "subgraph_name": "provisa",
+            "role": "partner",
+        }
+        assert set(r.json()["updated"]) == {"federation.enabled", "federation.role"}
+
+    def test_enabled_without_a_role_refused(self, client, subgraph_org):
+        r = client.put("/admin/settings", json={"federation": {"enabled": True}})
+        assert r.status_code == 400
+        assert "federation" not in subgraph_org
+
+    def test_role_not_of_the_org_refused(self, client, subgraph_org):
+        r = client.put("/admin/settings", json={"federation": {"enabled": True, "role": "ghost"}})
+        assert r.status_code == 400
+        assert "ghost" in r.text
+
+    def test_unknown_field_refused(self, client, subgraph_org):
+        r = client.put("/admin/settings", json={"federation": {"version": 2}})
+        assert r.status_code == 400
+        assert "version" in r.text

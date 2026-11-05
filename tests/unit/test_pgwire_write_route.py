@@ -244,7 +244,7 @@ def test_starting_the_server_does_not_wait_for_it_to_listen(monkeypatch):
         def endpoint(self, **kw):
             raise AssertionError("readiness is not asked for")
 
-        def close(self) -> None:
+        def retire(self) -> None:  # the registry's stop (REQ-1824)
             started.remove(self.id)
 
     monkeypatch.setattr(pr, "ConnectorReplica", _Replica)
@@ -353,6 +353,9 @@ async def test_the_direct_terminal_opens_the_pool_for_a_write(monkeypatch):
         return SimpleNamespace(
             kept=None,
             two_step=None,  # as _Plan: written whole (REQ-2001)
+            staged=None,  # as _Plan: no CTE holding a column transform (REQ-2131)
+            code_write=None,  # as _Plan: no code table written (REQ-2100)
+            generated_key=None,  # as _Plan: no generated value reported (REQ-2167)
             materialize=None,
             auto_deliver=None,
             engine_landing=None,

@@ -62,7 +62,13 @@ async def _chat(monkeypatch, name: str, args: dict):
     monkeypatch.setenv("PROVISA_MCP_CHAT_MODEL", "claude-haiku-5-5")
     holder = _install_fake_anthropic(monkeypatch, [_call(name, args), _answer()])
     convo = [{"role": "user", "content": "go"}]
-    events = [ev async for ev in chat_mod.run_chat(_state(), "analyst", convo)]
+    # The user behind the chat: its drawings run in that user's graph session (REQ-2176).
+    request = SimpleNamespace(
+        state=SimpleNamespace(
+            identity=SimpleNamespace(user_id="ada", roles=["analyst"], derived_roles={})
+        )
+    )
+    events = [ev async for ev in chat_mod.run_chat(_state(), "analyst", convo, request=request)]
     # The tool's result as the model got it: the last message of the call after the tool ran.
     return events, holder["client"].messages.calls[1]["messages"][-1]["content"][0]
 
@@ -75,8 +81,9 @@ def drawn(monkeypatch):
         seen["checked"] = query
         return cypher_check.GraphRead(None, {"l": "node", "e": "edge", "t": "node"})
 
-    async def _run_cypher(_state, role, cypher, params=None, limit=None):
+    async def _run_cypher(_state, role, cypher, params=None, limit=None, *, principal):
         seen["ran"] = (role, cypher)
+        seen["principal"] = principal
         return {"row_count": 1, "truncated": False, "elements": _ELEMENTS}
 
     def _render(elements, layout="force", *_a):
@@ -108,6 +115,7 @@ async def test_a_graph_is_drawn_in_the_chat_and_the_model_gets_only_what_was_dra
         "relationships": 1,
     }
     assert drawn["ran"] == ("analyst", _CYPHER)
+    assert drawn["principal"] == ("ada", ["analyst"])
     assert drawn["drawn"] == (_ELEMENTS, "hierarchy")
     told = json.loads(model_result["content"])
     assert told["nodes"] == 2 and told["relationships"] == 1

@@ -83,7 +83,9 @@ def test_a_statement_naming_no_registered_command_is_not_parsed_to_look_for_one(
 
     state = SimpleNamespace(
         roles={"r": {"id": "r", "capabilities": [], "domain_access": ["*"]}},
-        tracked_functions={"send_invoice": {"name": "send_invoice", "domain_id": "sales"}},
+        tracked_functions={
+            "send_invoice": {"name": "send_invoice", "domain_id": "sales", "visible_to": ["r"]}
+        },
         tracked_webhooks={},
     )
     assert (

@@ -24,6 +24,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
+import { removeDemoSources, startDemoSources } from "./demo-source-containers";
+import { sourceToQueryNeeds } from "./resolve-needed-sources";
 import {
   E2E_CASSANDRA_PORT,
   E2E_ES_PORT,
@@ -78,6 +80,22 @@ function provisionExtraSources(cmd: "up" | "down"): void {
     throw e;
   }
 }
+
+// The demo sources this file reads, up for it alone: started before its first test unless the run
+// holds them up already (global-setup.ts, PROVISA_E2E_RUN_DEMO_SOURCES), removed after its last.
+const RUN_DEMO_SOURCES = (process.env.PROVISA_E2E_RUN_DEMO_SOURCES ?? "").split(",");
+const OWN_DEMO_SOURCES = sourceToQueryNeeds().filter((s) => !RUN_DEMO_SOURCES.includes(s));
+
+test.beforeAll(() => {
+  // Splunk's first start is the slowest of the set: about three minutes to a healthy container.
+  test.setTimeout(900000);
+  startDemoSources(OWN_DEMO_SOURCES);
+});
+
+test.afterAll(() => {
+  test.setTimeout(300000);
+  removeDemoSources(OWN_DEMO_SOURCES);
+});
 
 test.describe("source to query through the UI (REQ-1671)", () => {
   // Each test's source goes when the test ends, also after a failure: left to the next
@@ -622,6 +640,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("csv");
     await page.getByLabel(/CSV File Path/).fill("./demo/files/customers.csv");
+    // The create form sets a single-file source's table up as a draft by default (REQ-2113);
+    // this test registers it through the Register Table form instead.
+    await page.getByTestId("source-draft-table").uncheck();
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);
@@ -648,6 +669,9 @@ test.describe("source to query through the UI (REQ-1671)", () => {
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption("parquet");
     await page.getByLabel(/Parquet File Path/).fill("./demo/files/products.parquet");
+    // The create form sets a single-file source's table up as a draft by default (REQ-2113);
+    // this test registers it through the Register Table form instead.
+    await page.getByTestId("source-draft-table").uncheck();
     await submitSourceAndExpectListed(page, sourceId);
 
     await openRegisterForm(page, sourceId);

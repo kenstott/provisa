@@ -227,8 +227,10 @@ def clear_trace_detail() -> None:
 
 
 def in_request_scope() -> bool:
-    """True while this context is serving a request that has a request span."""
-    return _request_span.get() is not None
+    """True while this context is serving a request that has a request span: while that span is
+    still recording. A binding the HTTP hook left behind outlives its request (it is never reset),
+    so a span that has ended is no longer a request this context serves."""
+    return _live_request_span() is not None
 
 
 def bind_request_span(span: Any, transport: str) -> None:
@@ -734,6 +736,8 @@ TRANSPORT_BY_KIND: dict[str, str] = {
     "grpc": "grpc",
     "python": "python",
     "statement": "sql",  # REQ-2001: a Provisa SQL statement, through the one pipeline
+    "sql_expression": "sql",  # REQ-2168: a SQL expression template, through the one pipeline
+    "builtin": "builtin",  # REQ-2168: a command Provisa ships (the APOC set), in process
 }
 
 

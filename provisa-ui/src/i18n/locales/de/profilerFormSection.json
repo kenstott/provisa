@@ -29,6 +29,8 @@
     "jointMaxDistinctDescription": "Eine Textspalte mit höchstens so vielen unterschiedlichen Werten geht als Kategorie in die Korrelationen und gemeinsamen Häufigkeiten ein.",
     "categoryMaxLabel": "Höchstzahl an Kategoriespalten",
     "categoryMaxDescription": "Wie viele Kategoriespalten in die Korrelationen und gemeinsamen Häufigkeiten eingehen; behalten werden die, die in den meisten Zeilen einen Wert haben.",
+    "classificationSampleLabel": "Für die Klassifizierung gezogene Zeilen",
+    "classificationSampleDescription": "Wie viele Zeilen, zufällig aus der Stichprobe des Laufs gezogen, mit ihren Werten gegen die Klassifizierungsarten geprüft werden. Die Werte werden geprüft und nicht gespeichert.",
     "groupSchedule": "Zeitplan und Stichprobe",
     "groupDrift": "Drift",
     "groupDependence": "Abhängigkeit zwischen Spalten"

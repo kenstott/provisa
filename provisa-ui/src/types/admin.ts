@@ -11,6 +11,8 @@
 /** Types matching provisa/api/admin/types.py */
 
 import type { MaskEntry } from "../lib/masks";
+import type { LifecycleStatus } from "./lifecycle";
+import { domainToSqlName } from "../naming";
 
 // REQ-824: source-level CDC transport (Debezium/Kafka), entered once per source.
 export interface SourceCdcConfig {
@@ -59,6 +61,8 @@ export interface Source {
   passwordRef?: string | null;
   changeSignal: string; // REQ-929: source default change signal, inherited by its tables
   cdc?: SourceCdcConfig | null;
+  // REQ-1865: its type fetches rows by key, so a table of it may be replicated row by row.
+  rowFetchByKeys: boolean;
 }
 
 // REQ-1143: server-derived plain-English summary of a table's effective refresh/serving policy.
@@ -80,10 +84,18 @@ export interface Domain {
   isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
 }
 
-// REQ-1634/REQ-1660: a first-class DataProduct entity; a table joins one via product_id.
+// REQ-2153: a listed table in a domain the caller does not reach: its name and its listed
+// columns' names, and nothing more.
+export interface ListedNames {
+  domainId: string;
+  tableName: string;
+  columnNames: string[];
+}
+
+// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
-// individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
-// outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
+// individuals via the existing role machinery; tags, terms, inputs and output ports are read
+// from the meta domain (REQ-2125, REQ-2126) rather than stored here.
 export interface DataProduct {
   id: string;
   domainId: string;
@@ -94,10 +106,77 @@ export interface DataProduct {
   limitations: string;
   usage: string;
   version?: string | null;
-  status?: string | null;
-  sla?: string | null;
+  // REQ-1634 STATUS: changed only by its actions (publish, deprecate, retire, restore).
+  status: LifecycleStatus;
+  /** Why it was deprecated or retired. */
+  statusReason?: string | null;
+  /** A deprecated product's planned retirement, an ISO date. */
+  retireOn?: string | null;
+  /** The product a retired one's members moved to. */
+  successorId?: string | null;
   support?: string | null;
+  /** The support contact (email or URL) a catalog listing requires. */
+  supportContact?: string | null;
   customProperties: Record<string, unknown>;
+  /** When the product was created (ISO 8601), its ODPS productCreatedTs; set on insert. */
+  createdAt: string;
+}
+
+// REQ-2158: a column an output port promises, of the type it is stored as.
+export interface ContractColumn {
+  name: string;
+  type: string;
+  description?: string | null;
+  required: boolean;
+}
+
+// REQ-2158: a declared ODCS service-level property; freshness is the member's own.
+export interface ContractSlaProperty {
+  property: string;
+  value?: unknown;
+  unit?: string | null;
+  description?: string | null;
+}
+
+export interface ContractTerms {
+  usage?: string | null;
+  limitations?: string | null;
+  noticePeriod?: string | null;
+}
+
+// REQ-2158: a product member's contract, its output port, versioned on its own.
+/** One difference of a contract version from the one before it (REQ-2158). */
+export interface ContractChange {
+  kind: string;
+  subject: string;
+  before: string | null;
+  after: string | null;
+  breaking: boolean;
+}
+
+/** A saved version of a contract, as the store keeps it (REQ-2158). */
+export interface ContractVersion {
+  contract: { version: string; status: string };
+  changes: ContractChange[];
+  saved_at: string;
+  /** Who saved it; null when the system did (a configuration load). */
+  saved_by: string | null;
+}
+
+export interface DataContract {
+  tableId: number;
+  sourceId: string;
+  schemaName: string;
+  tableName: string;
+  contractId: string;
+  version: string;
+  status: string;
+  description?: string | null;
+  terms: ContractTerms;
+  sla: ContractSlaProperty[];
+  columns: ContractColumn[];
+  // Its saved versions, oldest first; the contract as a mutation or an export reads it has none.
+  versions?: ContractVersion[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
@@ -189,6 +268,32 @@ export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): str
   return acronym || domain.id[0]?.toLowerCase() || "";
 }
 
+/** Mirror of provisa.compiler.naming.SYSTEM_SCHEMA_GQL_PREFIX (REQ-2163): the SDL prefix of each
+ * system schema's root fields (`on_terms`, `op_queries`), keyed by domain id. */
+export const SYSTEM_SCHEMA_GQL_PREFIX: Record<string, string> = { ontology: "on", ops: "op" };
+
+/** Mirror of provisa.compiler.naming.domain_alias_map (REQ-471): each domain's alias, every one its
+ * own. A computed alias another domain's alias also is is the domain's own name instead, so no
+ * domain's root fields are grouped as another's. A system schema (ontology, ops) is named by its
+ * own SDL prefix (REQ-2163), never by an alias: its computed alias is its own name and takes no
+ * model domain's (opioids keeps "o" beside ops). */
+export function domainAliasMap(
+  domains: Pick<Domain, "id" | "graphqlAlias">[],
+): Record<string, string> {
+  const isSystem = (d: Pick<Domain, "id" | "graphqlAlias">) =>
+    d.id in SYSTEM_SCHEMA_GQL_PREFIX && !d.graphqlAlias;
+  const aliases = domains.map((d) => [d, domainGqlAlias(d)] as const);
+  const taken = aliases.filter(([d, a]) => a && !isSystem(d)).map(([, a]) => a);
+  const out: Record<string, string> = {};
+  for (const [d, alias] of aliases) {
+    // The no-domain row's alias is "": its tables take no prefix.
+    const shared = taken.filter((a) => a === alias).length > 1;
+    out[d.id] =
+      alias && (isSystem(d) || (!d.graphqlAlias && shared)) ? domainToSqlName(d.id) : alias;
+  }
+  return out;
+}
+
 export interface TableColumn {
   id: number;
   columnName: string;
@@ -202,6 +307,8 @@ export interface TableColumn {
   computedGqlAlias: string;
   description: string | null;
   dataType: string | null;
+  /** REQ-2171: the subtype the column was registered as; dataType is its base. */
+  subtype?: string | null;
   nativeFilterType: string | null;
   /** Whether the source requires a value for this parameter; null where it is not recorded. */
   nativeFilterRequired?: boolean | null;
@@ -355,6 +462,7 @@ export interface RegisteredTable {
   replicate: number | null; // REQ-826: null = inherit source
   region: string | null; // REQ-1921: where its data lives; null = no region
   draft: boolean; // REQ-1921: out of service until its domain's owners release it
+  rowMaterialize: boolean; // REQ-1865: replicated row by row, fetched by key
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
   offPeakTz: string | null; // REQ-1141: window zone override
@@ -363,6 +471,9 @@ export interface RegisteredTable {
   // REQ-1634: this table's root query field name in the compiled data-plane GraphQL schema,
   // server-derived (provisa.compiler.naming.generate_name) — null if no role's schema exposes it.
   graphqlFieldName: string | null;
+  // REQ-1163: how the relation travels in time -- "bitemporal" (as_of and as_recorded), "snapshot"
+  // (an Iceberg or Delta table: as_recorded alone) -- or null; server-derived.
+  timeTravel: "bitemporal" | "snapshot" | null;
   // REQ-1443: "provisa/<domain-slug>/<table>" — the pgwire names a contract's dataset uses,
   // server-derived (provisa.dq.contract.meta_dataset) — null if no role's context exposes it.
   dqDataset: string | null;
@@ -377,6 +488,8 @@ export interface RegisteredTable {
   writeGrants: WriteGrant[] | null;
   uniqueConstraints: UniqueConstraint[]; // REQ-1093
   apiEndpoint: string | null;
+  /** Why the table names no endpoint: its OpenAPI source's document could not be read. */
+  apiEndpointError: string | null;
   viewSql: string | null;
   dqContract: string | null; // REQ-1443: the checker contract this results table lands the scans of
   profilerSourceId?: string | null; // REQ-1934: the Data Profiler source this table is a member of
@@ -393,6 +506,7 @@ export interface RegisteredTable {
   pushDebounceMaxDelay: number; // REQ-1733: staleness cap under continuous message churn
   mvConsistency: string; // REQ-879: "shared" (fleet-coordinated) | "distributed" (per-instance)
   mvPreprocess: string | null; // REQ-1165: inline preflight(rows, ctx) check source; null = no check
+  mvHoldOnFailingChecks: boolean; // REQ-2133: built-in preflight on its inputs' failing checks
   /** REQ-2109: the columns identifying the same thing across versions; [] = none declared. */
   businessKey: string[];
   /** REQ-2109: the column holding the date the business gives the record. */
@@ -419,6 +533,53 @@ export interface RegisteredTable {
   viewMetrics?: ViewMetricsSpec | null; // REQ-1318: declarative metric-composed view (null = free-hand SQL)
   implicitMeasures: ImplicitMeasure[]; // REQ-1360: metadata-only, populated only when enableAggregates
   implicitDimensions: string[]; // REQ-1360: metadata-only, populated only when enableGroupBy
+}
+
+/** The fields of a table every table list reads (fragment ListedTableFields, hooks/admin.graphql). */
+export const LISTED_TABLE_FIELDS = [
+  "id",
+  "sourceId",
+  "domainId",
+  "schemaName",
+  "tableName",
+  "alias",
+  "description",
+  "draft",
+  "viewSql",
+  "materialize",
+  "productId",
+  "dqContract",
+  "dqDataset",
+  "timeTravel",
+  "apiEndpoint",
+  "modelingRole",
+  "viewMetrics",
+] as const;
+
+/** The fields of a column TableListQuery reads. */
+export const LISTED_COLUMN_FIELDS = [
+  "id",
+  "columnName",
+  "alias",
+  "computedSqlAlias",
+  "description",
+  "dataType",
+  "nativeFilterType",
+  "nativeFilterRequired",
+  "requiredBySteward",
+  "isPrimaryKey",
+  "isForeignKey",
+] as const;
+
+/** A table as TableRowsQuery reads it: without its columns. */
+export type TableRow = Pick<RegisteredTable, (typeof LISTED_TABLE_FIELDS)[number]>;
+
+/** A column as TableListQuery reads it. */
+export type ListedColumn = Pick<TableColumn, (typeof LISTED_COLUMN_FIELDS)[number]>;
+
+/** A table as TableListQuery reads it: what the pages that pick, name or count tables use. */
+export interface ListedTable extends TableRow {
+  columns: ListedColumn[];
 }
 
 // REQ-1318: declarative metric-composed view definition. Mutually exclusive with
@@ -606,6 +767,8 @@ export interface Relationship {
   // by the naming authority; the client must never transliterate graphqlAlias itself.
   physicalName: string | null;
   computedCypherAlias: string | null;
+  // REQ-351, REQ-1586: the Cypher type the server serves this edge as; never derived here.
+  cypherType: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
   /** REQ-2141: the rows it joins are the same entity (two tables one term grounds, keys 1:1). */
@@ -630,6 +793,9 @@ export interface RelationshipParameter {
   sourceColumn: string;
 }
 
+// REQ-2188: what a row rule narrows: reading a row, updating it or deleting it.
+export type RuleRight = "R" | "U" | "D";
+
 export interface RLSRule {
   id: number;
   tableId: number | null;
@@ -639,6 +805,7 @@ export interface RLSRule {
   roleId: string;
   filterExpr: string;
   description: string; // REQ-2081: what the rule is for
+  rights: RuleRight[]; // REQ-2188: what the rule narrows; each in at most one rule
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.

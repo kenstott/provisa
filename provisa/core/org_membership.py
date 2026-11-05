@@ -33,6 +33,7 @@ from provisa.core.schema_admin import (
     org_auto_join_optouts,
     orgs,
     user_org_memberships,
+    user_profiles,
 )
 from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
@@ -40,7 +41,7 @@ from provisa.security.inheritance import effective_capabilities
 from provisa.security.rights import DEPLOYMENT_GRANTER, ORG_ADMIN_ROLE, check_role_grant
 
 if TYPE_CHECKING:
-    from provisa.core.database import Database
+    from provisa.core.database import Connection, Database
 
 log = logging.getLogger(__name__)
 
@@ -187,12 +188,20 @@ async def grant_membership(
     and re-announcing an org the member already acknowledged would be noise.
     """
     async with admin_db.acquire() as conn:
-        await conn.upsert(
-            user_org_memberships,
-            membership_values(user_id, org_id, joined_via),
-            index_elements=["user_id", "org_id"],
-            update_columns=[],
-        )
+        await record_membership(conn, user_id, org_id, joined_via=joined_via)
+
+
+async def record_membership(
+    conn: "Connection", user_id: str, org_id: str, *, joined_via: str
+) -> None:
+    """:func:`grant_membership` on ``conn``, a connection to the admin plane: with the writes it
+    goes with, in one transaction and one checkout (a demo sandbox's person, REQ-2006)."""
+    await conn.upsert(
+        user_org_memberships,
+        membership_values(user_id, org_id, joined_via),
+        index_elements=["user_id", "org_id"],
+        update_columns=[],
+    )
 
 
 async def acknowledge_membership(  # REQ-1478
@@ -223,28 +232,47 @@ async def grant_org_role(
     REQ-1337: ``granter_capabilities`` is what the grant is made WITH, and it is required — a role
     carrying a platform right is conferred only by a holder of that right
     (``rights.check_role_grant``, raising ``PlatformRoleGrantError``). The role's capabilities are
-    read here, from the schema the assignment lands in and with its parent chain folded in, so the
+    read here, from the schema the assignment lands in and with its ancestors folded in, so the
     answer is about the row being granted rather than a registry a caller happened to hold. A
     grant the deployment makes on its own behalf passes ``rights.DEPLOYMENT_GRANTER``; a grant
     nobody stands behind — an auto-join — passes an empty set.
     """
     async with model_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.parent_role_id)
-        )
+        await grant_org_roles(conn, user_id, [role_id], granter_capabilities=granter_capabilities)
+
+
+async def grant_org_roles(
+    conn: "Connection",
+    user_id: str,
+    role_ids: Iterable[str],
+    *,
+    granter_capabilities: Iterable[str],
+) -> None:
+    """:func:`grant_org_role` for each of ``role_ids``, on ``conn`` (scoped to the org's schema) in
+    one transaction: the roles are read once and every grant checked before any is written. A demo
+    sandbox's person is granted several at its open, each a round trip to a control plane on
+    another machine (REQ-2006)."""
+    wanted = list(role_ids)
+    granter = set(granter_capabilities)
+    async with conn.transaction():
+        result = await conn.execute_core(select(roles.c.id, roles.c.capabilities, roles.c.parents))
         role_rows = [dict(r._mapping) for r in result.fetchall()]
-        if role_id not in {r["id"] for r in role_rows}:
-            raise ValueError(
-                f"role {role_id!r} does not exist in the org schema the grant lands in: a role is "
-                "granted out of the roles that schema holds, and its rights are read from that row"
+        held = {r["id"] for r in role_rows}
+        for role_id in wanted:
+            if role_id not in held:
+                raise ValueError(
+                    f"role {role_id!r} does not exist in the org schema the grant lands in: a role "
+                    "is granted out of the roles that schema holds, and its rights are read from "
+                    "that row"
+                )
+            check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter)
+        for role_id in wanted:
+            await conn.upsert(
+                user_role_assignments,
+                {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
+                index_elements=["user_id", "role_id", "domain_id"],
+                update_columns=[],
             )
-        check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter_capabilities)
-        await conn.upsert(
-            user_role_assignments,
-            {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
-            index_elements=["user_id", "role_id", "domain_id"],
-            update_columns=[],
-        )
 
 
 async def grant_org_admin(
@@ -323,6 +351,35 @@ async def clear_auto_join_suppression(  # REQ-1306
                 org_auto_join_optouts.c.org_id == org_id,
             )
         )
+
+
+async def org_roster(admin_db: "Database", org_id: str) -> list[dict]:  # REQ-042, REQ-1592
+    """The people who belong to ``org_id``: each membership row with the profile it names.
+
+    Membership is admin-plane, so this is the control plane's answer to who is in the org. Two
+    surfaces read it under different rights: the team page (user_management, which adds what each
+    person may do) and the glossary's author/expert picker (glossary_rw, which needs only who they
+    are) -- so the query lives here once and each route decides what of it to return.
+    """
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                user_org_memberships.c.user_id,
+                user_profiles.c.email,
+                user_profiles.c.display_name,
+                user_profiles.c.provider,
+                user_org_memberships.c.created_at,
+            )
+            .select_from(
+                user_org_memberships.outerjoin(
+                    user_profiles,
+                    user_profiles.c.user_id == user_org_memberships.c.user_id,
+                )
+            )
+            .where(user_org_memberships.c.org_id == org_id)
+            .order_by(user_org_memberships.c.user_id)
+        )
+        return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def org_admin_user_ids(model_db: "Database") -> set[str]:  # REQ-1302

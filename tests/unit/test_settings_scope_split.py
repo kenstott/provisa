@@ -61,6 +61,7 @@ class _FakeState:
 
     def __init__(self):
         self.settings_overrides: dict = {}
+        self.config = None  # no config file: no subgraph declared (REQ-259)
         self.deployment_cache_default_ttl = 300
         self.config_live_export = False
         self.tenant_db = object()

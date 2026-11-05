@@ -1,0 +1,32 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:streaming/1-busiest-regions-now.graphql",
+  "reads": [
+   "catalog",
+   "orders"
+  ],
+  "root_field": "s__viewOrdersLastFiveMinutes"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:streaming/2-latest-orders.graphql",
+  "reads": [
+   "catalog",
+   "orders"
+  ],
+  "root_field": "s__orders"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:streaming/3-watch-the-orders.graphql",
+  "reads": [
+   "catalog",
+   "orders"
+  ],
+  "root_field": "s__orders"
+ }
+]

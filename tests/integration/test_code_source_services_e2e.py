@@ -53,11 +53,17 @@ class Used:
     cached: str
 
 
-def services_read(name: str) -> list[Used]:
+@dataclass
+class UsedInputs:
+    name: str
+
+
+def services_read(inputs: UsedInputs) -> list[Used]:
     """What the services answer, read through the module.
 
     @table
     """
+    name = inputs.name
     region = ps.settings.get("region")
     ps.cache.set(f"region-{name}", region, ttl=60)
     cached = ps.cache.get(f"region-{name}")
@@ -72,7 +78,7 @@ _NODE = {
     "uses/index.js": """
 import { settings, cache, log, metric } from "@provisa/services";
 
-export async function services_read(name) {
+export async function services_read({ name }) {
   const region = await settings.get("region");
   await cache.set(`region-${name}`, region, 60);
   const cached = await cache.get(`region-${name}`);
@@ -83,11 +89,12 @@ export async function services_read(name) {
 """,
     "uses/index.d.ts": """
 export interface Used { name: string; setting: string; cached: string; }
+export interface UsedInputs { name: string; }
 /**
  * What the services answer, read through the module.
  * @table
  */
-export declare function services_read(name: string): Promise<Used[]>;
+export declare function services_read(inputs: UsedInputs): Promise<Used[]>;
 """,
 }
 

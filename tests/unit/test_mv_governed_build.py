@@ -19,8 +19,8 @@ from provisa.transpiler.router import Route
 
 _REGIONS = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 
@@ -114,7 +114,11 @@ async def test_a_regions_build_is_governed_by_the_pipeline_as_its_administrator(
         (
             "SELECT id, home FROM sales.orders",
             "org_admin",
-            {"session_vars": {"tier": "gold", "region": "us"}, "route_hint": None},
+            {
+                "session_vars": {"tier": "gold", "region": "us"},
+                "route_hint": None,
+                "building": "view-eu_orders",
+            },
         )
     ]
     assert pipeline.resident == ["SELECT id, home FROM governed"]
@@ -170,7 +174,11 @@ async def test_with_no_platform_regions_a_build_is_governed_the_same_way(pipelin
         (
             "SELECT id, home FROM sales.orders",
             "org_admin",
-            {"session_vars": {"tier": "gold", "region": DEFAULT_REGION}, "route_hint": None},
+            {
+                "session_vars": {"tier": "gold", "region": DEFAULT_REGION},
+                "route_hint": None,
+                "building": "view-eu_orders",
+            },
         )
     ]
     assert pipeline.resident == ["SELECT id, home FROM governed"]
@@ -220,7 +228,8 @@ def model(monkeypatch, pipeline):
         tables={"orders": _meta("orders"), "customers": _meta("customers")}
     )
 
-    async def _tables(_state):
+    async def _tables(_state, *, catalog=False):
+        pipeline.read_catalog = catalog
         return [
             SimpleNamespace(
                 source_id="pg",
@@ -237,12 +246,14 @@ def model(monkeypatch, pipeline):
 @pytest.mark.asyncio
 async def test_a_join_pattern_view_is_governed_as_its_semantic_join(model, node_in):
     """A join-pattern view is a view: in a region deployment its build is the same join in the
-    model's terms, through the one pipeline as the region's administrator."""
+    model's terms, through the one pipeline as the region's administrator. A view may join a SQL
+    catalog's views, so the build reads the list that holds them (REQ-1911)."""
     from provisa.mv.governed_build import view_build_sql
 
     node_in("us")
     await view_build_sql(_join_view(), _Engine())
     [(sql, role, _kw)] = model.routed
+    assert model.read_catalog is True
     assert role == "org_admin"
     assert sql == (
         'SELECT "orders".*, "customers"."id" AS "customers__id", '

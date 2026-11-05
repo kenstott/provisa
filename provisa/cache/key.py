@@ -78,6 +78,7 @@ def raw_sql_cache_key(  # REQ-1897
     *,
     wire_formats: list[int] | None,
     as_of: str | None = None,
+    session: list[tuple[str, str]] | None = None,
 ) -> str:
     """The key of a plan's cached result — the one response cache's key, whichever surface sent
     the statement (REQ-1897).
@@ -90,18 +91,21 @@ def raw_sql_cache_key(  # REQ-1897
     no separate rules dict); the bound ``params`` and the ``role_id`` partition it further, and the
     store prefixes the org (REQ-595). ``as_of`` is the request-level as-of time (REQ-1163): it
     is not in the governed text, yet a statement over a bitemporal view reads different rows at
-    each one, so a read at one as-of (or at none) never shares an entry with another. Callers
-    MUST gate on ``is_cacheable`` first (REQ-866)."""
-    return _digest(
-        {
-            "namespace": "raw_sql_rows",
-            "sql": _normalize_sql(sql),
-            "params": params,
-            "role_id": role_id,
-            "wire_formats": wire_formats,
-            "as_of": as_of,
-        }
-    )
+    each one, so a read at one as-of (or at none) never shares an entry with another. ``session``
+    is the temporary-table session the statement read and its generation
+    (``temp_tables.slot_key``, REQ-2176): none for a statement that read none. Callers MUST gate
+    on ``is_cacheable`` first (REQ-866)."""
+    parts = {
+        "namespace": "raw_sql_rows",
+        "sql": _normalize_sql(sql),
+        "params": params,
+        "role_id": role_id,
+        "wire_formats": wire_formats,
+        "as_of": as_of,
+    }
+    if session:
+        parts["session"] = session
+    return _digest(parts)
 
 
 def _digest(key_parts: dict) -> str:

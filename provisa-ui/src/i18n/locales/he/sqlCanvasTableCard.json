@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "הסרת {{tableName}} מהקנבס",
     "toggleColumn": "החלפת מצב הבחירה של העמודה {{columnName}}",
-    "connectColumn": "התחלת קשר מ-{{columnName}}"
+    "connectColumn": "התחלת קשר מ-{{columnName}}",
+    "allColumns": "כל העמודות ({{selected}} מתוך {{total}})",
+    "unjoined": "{{tables}} אינה מצורפת לשאר הטבלאות",
+    "joinsUnavailable": "לא ניתן היה לקרוא את הצירופים שתפקיד זה רשאי לכתוב: {{reason}}"
   }
 }

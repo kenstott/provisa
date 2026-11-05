@@ -148,16 +148,20 @@ class CommandNotFound(LookupError):
 
 def command_assigned(command: dict, role_id: str) -> bool:
     """Whether ``command`` is assigned to ``role_id``: its one list of assigned roles,
-    ``visible_to`` — empty assigns it to every role."""
-    assigned = command.get("visible_to") or []
-    return not assigned or role_id in assigned
+    ``visible_to``, names it. Empty assigns it to no role (REQ-1317, REQ-2154)."""
+    return role_id in (command.get("visible_to") or ())
 
 
 def command_reachable(command: dict, role: dict) -> bool:
-    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain."""
-    from provisa.security.rights import reaches_domain
+    """Whether ``role`` may see ``command`` at all: assigned it, and reaching its domain by
+    rights.reaches_command_domain, which a capability opening a system domain does not widen. A
+    role with no capabilities needs only the assignment: a command's list of roles is the grant
+    of a role that exists to run it (REQ-2155)."""
+    from provisa.security.rights import reaches_command_domain
 
-    return command_assigned(command, str(role.get("id", ""))) and reaches_domain(
+    if not command_assigned(command, str(role.get("id", ""))):
+        return False
+    return not role.get("capabilities") or reaches_command_domain(
         role.get("domain_access"), command.get("domain_id") or ""
     )
 
@@ -173,7 +177,9 @@ def admit_command(command: dict, role: dict | None, name: str) -> None:  # REQ-8
         raise MutationNotPermitted(name, "no acting role: a command is called as a role")
     if not command_reachable(command, role):
         raise CommandNotFound(name)
-    if classify_kind(command.get("kind")) is MutationKind.WRITE and not has_capability(
-        role, Capability.WRITE
-    ):
+    # REQ-2155: a role with no capabilities that a command names runs it, and nothing else.
+    needs_write = classify_kind(command.get("kind")) is MutationKind.WRITE and role.get(
+        "capabilities"
+    )
+    if needs_write and not has_capability(role, Capability.WRITE):
         raise MutationNotPermitted(name, "role lacks the WRITE capability")

@@ -255,6 +255,7 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
         region_admin.ROLE,
         session_vars=region_admin.session_vars(state),
         route_hint=route_hint,
+        building=mv.id,  # the view answers none of its own build
     )
     if plan.route not in (Route.ENGINE, Route.DIRECT):
         raise ViewNotBuildable(
@@ -275,7 +276,8 @@ async def _join_semantic_sql(state: Any, mv: "MVDefinition") -> str:
 
     bound = dict(zip(mv.source_tables, mv.inputs, strict=True))
     registered = {
-        (t.source_id, t.schema_name, t.table_name): t for t in await registered_tables(state)
+        (t.source_id, t.schema_name, t.table_name): t
+        for t in await registered_tables(state, catalog=True)
     }
     metas = {
         (m.source_id, m.schema_name, m.original_table_name or m.table_name): m

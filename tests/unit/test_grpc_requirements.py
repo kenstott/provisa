@@ -126,8 +126,9 @@ class TestREQ525PerRoleProtoGeneration:
         # The table is "orders" -> type name should be "Orders"
         assert "message Orders" in proto
 
-    def test_no_visible_tables_raises(self):
-        # REQ-525: A role with no visible tables cannot generate a proto (no empty proto allowed).
+    def test_no_visible_tables_generates_a_proto_with_no_table(self):
+        # REQ-525: the proto reflects only the tables visible to the role. REQ-2154 (amended): a
+        # role served no table is not refused as such: its proto has no table's message or RPC.
         tables = [
             {
                 "id": 1,
@@ -151,8 +152,9 @@ class TestREQ525PerRoleProtoGeneration:
             domains=[{"id": "sales", "description": "Sales"}],
             source_types={"test-pg": "postgresql"},
         )
-        with pytest.raises(ValueError, match="No tables visible"):
-            generate_proto(si)
+        proto = generate_proto(si)
+        assert "message Orders" not in proto and "QueryOrders" not in proto
+        assert "message Query {\n}" in proto and "service ProvisaService {" in proto
 
 
 class TestREQ538ProtoTypeMappings:
@@ -392,14 +394,20 @@ class TestREQ617RoleSelectionViaMetadata:
             tier_caps=None,
             tier_plan=None,
         )
-        fake_result = SimpleNamespace(
-            column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]
+        from provisa.executor.result import QueryResult
+
+        fake_result = QueryResult(
+            rows=[(1, 10.0), (2, 20.0), (3, 30.0)], column_names=["id", "amount"]
         )
 
         with (
             patch(
-                "provisa.grpc.query_ir.grpc_table_to_semantic_sql",
-                return_value=("SELECT id, amount FROM orders", []),
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ),
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
             ),
             patch(
                 "provisa.pgwire._pipeline._govern_and_route_compiled",
@@ -422,7 +430,7 @@ class TestREQ617RoleSelectionViaMetadata:
                 rows_yielded.append(msg)
 
         # One message per row: 3 rows → 3 messages
-        assert len(rows_yielded) == 3
+        assert [pb2.Orders.FromString(m).id for m in rows_yielded] == [1, 2, 3]
 
     @pytest.mark.asyncio
     async def test_mutation_rpc_is_unary(self):
@@ -446,25 +454,8 @@ class TestREQ617RoleSelectionViaMetadata:
 
 
 def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None):
-    if fields is None:
-        fields = ["id", "amount"]
-    from google.protobuf.descriptor import FieldDescriptor
+    """A compiled service, as an organisation's is (tests/unit/test_grpc_server.py): the
+    encoder writes a result's rows into its real messages (REQ-2194)."""
+    from tests.unit.test_grpc_server import _make_pb2_module as compiled
 
-    # A real protobuf descriptor carries the by-name index and each field's type, and the
-    # servicer uses both when it builds a message — a fake without them tests a shape protobuf
-    # never hands it.
-    field_descriptors = [
-        SimpleNamespace(name=f, message_type=None, type=FieldDescriptor.TYPE_INT64) for f in fields
-    ]
-    descriptor = SimpleNamespace(
-        fields=field_descriptors,
-        fields_by_name={fd.name: fd for fd in field_descriptors},
-    )
-    msg_cls = MagicMock()
-    # A message has a serialized size: its egress is metered to the org bound (REQ-1452).
-    msg_cls.return_value.ByteSize.return_value = 1
-    msg_cls.DESCRIPTOR = descriptor
-    pb2 = SimpleNamespace(
-        **{type_name: msg_cls, "DESCRIPTOR": SimpleNamespace(services_by_name={})}
-    )
-    return pb2, msg_cls
+    return compiled(type_name, fields)

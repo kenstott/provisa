@@ -1,0 +1,59 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The agentdata demo where it runs from its bundle (start-ui-install.sh --demo agentdata; REQ-2049):
+# the database, loaded from the dump the bundle build wrote (dump/postgres/<database>.sql), read
+# only. The seeder ran once, in the build. The sandbox tier's node loads the same dump into its
+# shared Postgres instead (scripts/demo_stores.py), the database named with its version's suffix.
+
+x-demo-labels: &demo-labels
+  com.provisa.demo: agentdata
+
+name: provisa-demo-agentdata-run
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+      # Where config.yaml's agentdata-db reads it, for the sandbox tier's node (REQ-2049,
+      # scripts/demo_stores.py): it writes these into the bundle's stores.env, and the suffix every
+      # name config.yaml gives its data ends with (ns_env); its roles and grants (access).
+      com.provisa.demo.host_env: AGENTDATA_PG_HOST
+      com.provisa.demo.ns_env: AGENTDATA_PG_NS
+      com.provisa.demo.access: db/reader.sql
+      com.provisa.demo.port_env: AGENTDATA_PG_PORT
+      com.provisa.demo.port: "5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agentdata
+    ports:
+      # Unset: 30332. Set empty (the node, which runs several versions at once): a port docker
+      # picks. On the loopback only.
+      - "127.0.0.1:${AGENTDATA_PG_PORT-30332}:5432"
+    volumes:
+      - agentdata_run_pg:/var/lib/postgresql/data
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
+      - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
+      - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /var/lib/postgresql/data/.provisa-init-complete && pg_isready -U postgres -d agentdata"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      # The first start loads the dump before the marker is written; failures meanwhile do
+      # not count.
+      start_period: 600s
+
+volumes:
+  agentdata_run_pg:

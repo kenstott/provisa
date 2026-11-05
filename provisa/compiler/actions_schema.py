@@ -31,7 +31,8 @@ from graphql import (
 
 from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
 from provisa.compiler.type_map import JSONScalar
-from provisa.compiler.schema_types import SchemaInput, _TableInfo  # noqa: F401  (annotations)
+from provisa.security.mutation_authz import command_assigned
+from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain  # noqa: F401  (annotations)
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
@@ -72,6 +73,12 @@ def _mutation_name(op: str, field_name: str, convention: str = "apollo_graphql")
     if style == "snake":
         return f"{op}_{field_name}"
     return f"{op}{field_name[0].upper()}{field_name[1:]}"
+
+
+def void_return_type() -> GraphQLNonNull:
+    """A VOID command's field (REQ-2001): it answers an empty result, a list that is always
+    empty -- GraphQL has no type of no fields."""
+    return GraphQLNonNull(GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))))
 
 
 def _json_schema_to_gql_type(schema: dict, type_name: str):
@@ -142,10 +149,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     held_by: dict[tuple[str, str], str] = {}
 
     role_id = si.role["id"]
-    from provisa.security.rights import reaches_all_domains
-
-    accessible = set(si.role["domain_access"])
-    all_access = reaches_all_domains(si.role["domain_access"])
+    from provisa.security.rights import acts_in_domain
 
     def _gql_scalar(type_str: str):
         if type_str == _IR_JSON:
@@ -156,7 +160,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
         """Each declared argument under its own name: a field's arguments and its return type's
         fields are separate namespaces, so nothing needs renaming."""
         return {
-            a["name"]: GraphQLArgument(_gql_scalar(a.get("type", "String")))
+            a["name"]: GraphQLArgument(
+                _gql_scalar(a.get("type", "String")),
+                # REQ-2168: left out, the argument takes its default.
+                **({"default_value": a["default"]} if "default" in a else {}),
+            )
             for a in arguments
             if a.get("name")
         }
@@ -176,15 +184,27 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             resolve_return_and_args: Callable(item) → (gql_return, args) that computes
                 the GraphQL return type and argument dict for one item.
         """
+        from provisa.core.command_bindings import binding_name
+
         for item in items:
-            visible_to = item.get("visible_to") or []
-            if visible_to and role_id not in visible_to:
+            # REQ-2168: the field is the command's GraphQL command binding; none when excluded.
+            called = binding_name(item, "graphql")
+            if called is None:
+                continue
+            if not command_assigned(item, role_id):  # REQ-2153: an empty list names no role
                 continue
             domain_id = item.get("domain_id", "")
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the
             # domains it reaches. One that names no domain — saving it is refused; a stored row
             # can still carry none — is in no domain any role reaches, so no role is shown it.
-            if not domain_id or (not all_access and domain_id not in accessible):
+            # REQ-2155: a role with no capabilities needs only the assignment above.
+            if not domain_id or not (
+                not si.role.get("capabilities")
+                or acts_in_domain(si.role["domain_access"], domain_id)
+            ):
+                continue
+            # A per-domain schema offers only the commands of the domains it was asked for.
+            if not offers_domain(si, domain_id):
                 continue
 
             gql_return, args = resolve_return_and_args(item)
@@ -205,7 +225,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # Apply the active GraphQL naming convention to the command name, exactly like table
             # fields (apollo_graphql -> camelCase). The reverse lookup in app_loaders applies the
             # SAME transform, so the emitted field name still routes back to the command (REQ-1156).
-            field_key = apply_gql_name(item["name"])
+            field_key = apply_gql_name(called)
             if si.domain_prefix and domain_id:
                 alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
                 field_key = f"{alias}__{field_key}"
@@ -222,6 +242,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 extra_mutation[field_key] = gql_field
 
     def _resolve_function(func: dict):
+        from provisa.core.void_command import is_void
+
+        if is_void(func):
+            args = _build_args(func["arguments"] if isinstance(func["arguments"], list) else [])
+            return void_return_type(), args
         returns_str = func.get("returns", "")
         # returns_str is "schema.table" — look up the GraphQL object type
         parts = returns_str.split(".", 1) if returns_str else []

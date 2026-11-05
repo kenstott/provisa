@@ -15,6 +15,12 @@ import { useResultsGrid } from "../../../pages/sql/useResultsGrid";
 import { formatTelemetryValue, telemetryIdKind, traceDetailSql } from "../traceDetails";
 import { runSql } from "../../../api/admin";
 
+// A signed-in session under "Role: All": its acting roles are the selected set (REQ-1620).
+const ACTING = vi.hoisted(() => "analyst,org_admin");
+vi.mock("../../../context/AuthContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
+  useAuth: () => ({ actingRoles: ACTING }),
+}));
 vi.mock("../../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/admin")>()),
   runSql: vi.fn(),
@@ -86,7 +92,7 @@ describe("ResultsGrid telemetry drill-down", () => {
     fireEvent.click(link);
 
     await waitFor(() =>
-      expect(vi.mocked(runSql)).toHaveBeenCalledWith(traceDetailSql("trace", TRACE)),
+      expect(vi.mocked(runSql)).toHaveBeenCalledWith(traceDetailSql("trace", TRACE), ACTING),
     );
     expect(await screen.findByText("span_attributes")).toBeTruthy();
     expect(screen.getByText(/db\.system/)).toBeTruthy();

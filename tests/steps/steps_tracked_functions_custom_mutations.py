@@ -90,7 +90,7 @@ def given_volatile_db_function(shared_data: dict) -> dict:
             FunctionArgument(name="order_id", type="Int"),
             FunctionArgument(name="note", type="String"),
         ],
-        visible_to=[],
+        visible_to=["admin"],
         volatility="VOLATILE",
     )
     shared_data["function"] = func

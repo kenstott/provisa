@@ -46,9 +46,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 #: The seed of a published demo, beside its demo.yaml.
 SEED_DIR = "seeded"
@@ -127,6 +130,83 @@ def bitemporal_view_tables(config: Any) -> list[str]:
         for table in config.tables
         if table.source_id == DERIVED_SOURCE_ID and table.materialize and table.is_bitemporal
     )
+
+
+def live_landed_tables(config: Any) -> list[Any]:
+    """The tables of a demo's configuration a listener lands from a Kafka topic as its messages
+    arrive (``live: {strategy: kafka}``): neither a replica nor a view, so neither the template's
+    replica record nor its views say when they have landed (REQ-2049, amended 2026-11-03)."""
+    kafka = {s.id for s in config.sources if str(getattr(s.type, "value", s.type)) == "kafka"}
+    return [
+        t
+        for t in config.tables
+        if t.source_id in kafka
+        and t.live is not None
+        and t.live.strategy == "kafka"
+        and t.live.kafka is not None
+    ]
+
+
+def _live_topics(config: Any) -> list[tuple[Any, Any, str]]:
+    """Each live-landed table with its source and its topic."""
+    sources = {s.id: s for s in config.sources}
+    return [(t, sources[t.source_id], t.live.kafka.topic) for t in live_landed_tables(config)]
+
+
+async def continue_live_landing(template_org: str, org_id: str, config: Any) -> None:
+    """Record where the template's listener stopped on each live-landed table's topic as where the
+    sandbox ``org_id``'s landing of it stopped (kafka.landed_offsets): the sandbox's listener
+    starts there, over the template's landed rows its open copies next. Taken before they are
+    copied, so a message landed in between is read again and upserted by key, never missed."""
+    from provisa.events.push_wiring import kafka_bootstrap, listener_group
+    from provisa.kafka import landed_offsets
+
+    for _table, source, topic in _live_topics(config):
+        await landed_offsets.carry(
+            kafka_bootstrap(source),
+            listener_group(template_org, None, source.id),
+            landed_offsets.landed_group_of(org_id, None, source.id),
+            topic,
+        )
+
+
+async def live_topic_ends(config: Any) -> dict[str, dict[int, int]]:
+    """Where each live-landed table's topic ends now, by partition: what a template being prepared
+    lands to before it is ready."""
+    from provisa.events.push_wiring import kafka_bootstrap
+    from provisa.kafka import landed_offsets
+
+    return {
+        topic: {
+            tp.partition: offset
+            for tp, offset in (
+                await landed_offsets.end_offsets(kafka_bootstrap(source), topic)
+            ).items()
+        }
+        for _table, source, topic in _live_topics(config)
+    }
+
+
+async def live_landing_waits(
+    template_org: str, config: Any, ends: dict[str, dict[int, int]]
+) -> list[str]:
+    """Each live-landed table whose template listener has not yet landed its topic to ``ends``
+    (:func:`live_topic_ends`), saying how far it has; empty once every one has."""
+    from provisa.events.push_wiring import kafka_bootstrap, listener_group
+    from provisa.kafka import landed_offsets
+
+    waits = []
+    for table, source, topic in _live_topics(config):
+        landed = await landed_offsets.recorded(
+            kafka_bootstrap(source), listener_group(template_org, None, source.id), topic
+        )
+        for partition, end in sorted(ends.get(topic, {}).items()):
+            if landed.get(partition, 0) < end:
+                waits.append(
+                    f"{table.source_id}.{table.schema_name}.{table.table_name}: landed to "
+                    f"{landed.get(partition, 0)} of {end} on partition {partition}"
+                )
+    return waits
 
 
 def view_mv_id(table: str) -> str:
@@ -242,6 +322,11 @@ async def copy_to_sandbox(template_org: str, org_id: str) -> None:
     )
     async with _state_db(template_org).acquire() as conn:
         rows = await replica_state.completed_rows(conn)
+    if not rows:
+        # No replica built (a demo whose landed data is its listeners' alone, the streaming demo's
+        # orders): no definition to check or record, so the template's runtime is not built for
+        # one -- on a template retired with its stores, that build was 37 of an open's 38 s.
+        return
     keys = [_key(row) for row in rows]
     own = await definitions(template_org, keys, template_org)
     for row in rows:
@@ -284,6 +369,16 @@ def seed_paths(demo_directory: Path) -> tuple[Path, Path]:
     """Where a demo's seed is: its replicas' store and their record."""
     seed = demo_directory / SEED_DIR
     return seed / SEED_STORE, seed / SEED_RECORD
+
+
+def seed_failure_path(demo_directory: Path) -> Path:
+    """Where a bundle build's seeding run says why its template could not be seeded: beside the
+    record the build waits for -- this node's region's, on a regions node."""
+    from provisa.api import demo_region_seed
+
+    if demo_region_seed.regional():
+        return demo_region_seed.seed_dir(demo_directory, demo_region_seed.here()) / "failed"
+    return demo_directory / SEED_DIR / "failed"
 
 
 def views_seed_paths(demo_directory: Path) -> tuple[Path, Path]:
@@ -457,10 +552,16 @@ def store_counts(org_id: str) -> dict[str, dict[str, int]]:
     """The rows each replica and each view of ``org_id`` holds in its store file, read without
     its runtime: ``{"replicas": {table: rows}, "views": {table: rows}}``. A store not on disk
     holds none."""
+    from provisa.core import org_files
     from provisa.federation.materialize_broker import get_broker
 
-    store = _store_path(org_id)
     out: dict[str, dict[str, int]] = {"replicas": {}, "views": {}}
+    if not org_files.folder(org_id).is_dir():
+        # A node with a fresh disk under a shared control plane: the org's folder, and its store,
+        # are not here. A template's readiness check reads none, so it is prepared again here.
+        log.warning("%s's folder is not on this node: its store holds nothing here", org_id)
+        return out
+    store = _store_path(org_id)
     if not Path(store).exists():
         return out
     broker = get_broker(store)

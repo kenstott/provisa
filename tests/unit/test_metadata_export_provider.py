@@ -30,7 +30,12 @@ from provisa.api.metadata_export.registry import (
     register_provider,
     registered_providers,
 )
-from provisa.core.models import MetadataExportConfig, MetadataExportTarget
+from provisa.core.models import (
+    CatalogConnection,
+    CatalogsConfig,
+    MetadataExportConfig,
+    MetadataExportTarget,
+)
 
 
 @pytest.fixture()
@@ -135,21 +140,60 @@ def test_a_target_without_provider_or_endpoint_is_rejected():
     assert MetadataExportTarget(id="horizon", provider="snowflake_horizon").endpoint == ""
 
 
-def test_several_targets_one_provider_among_them_each_named_once():  # REQ-2118
-    two = MetadataExportConfig(
-        enabled=True,
-        targets=[
-            {"id": "om-prod", "provider": "openmetadata", "endpoint": "https://a.example"},
-            {"id": "om-lab", "provider": "openmetadata", "endpoint": "https://b.example"},
-        ],
+def test_several_targets_one_provider_among_them_each_named_once():  # REQ-2118, REQ-2122
+    catalogs = CatalogsConfig(
+        catalogs=[
+            {
+                "id": "om-prod",
+                "provider": "openmetadata",
+                "endpoint": "https://a.example",
+                "domains": ["sales"],
+            },
+            {
+                "id": "om-lab",
+                "provider": "openmetadata",
+                "endpoint": "https://b.example",
+                "domains": ["sales"],
+            },
+        ]
     )
-    assert [t.id for t in two.targets] == ["om-prod", "om-lab"]
+    two = MetadataExportConfig(
+        enabled=True, targets=[{"catalog": "om-prod"}, {"catalog": "om-lab"}]
+    )
+    assert [(t.id, t.endpoint) for t in two.export_targets(catalogs)] == [
+        ("om-prod", "https://a.example"),
+        ("om-lab", "https://b.example"),
+    ]
     with pytest.raises(ValidationError, match="named twice: om"):
-        MetadataExportConfig(
-            targets=[
-                {"id": "om", "provider": "openmetadata", "endpoint": "https://a.example"},
-                {"id": "om", "provider": "datahub", "endpoint": "https://b.example"},
+        MetadataExportConfig(targets=[{"catalog": "om"}, {"catalog": "om"}])
+    with pytest.raises(ValidationError, match="catalogs named twice: om"):
+        CatalogsConfig(
+            catalogs=[
+                {
+                    "id": "om",
+                    "provider": "openmetadata",
+                    "endpoint": "https://a.example",
+                    "domains": ["a"],
+                },
+                {
+                    "id": "om",
+                    "provider": "datahub",
+                    "endpoint": "https://b.example",
+                    "domains": ["a"],
+                },
             ]
+        )
+
+
+def test_a_target_names_a_catalog_of_the_org():  # REQ-2122
+    with pytest.raises(ValueError, match="name no catalog of the org: gone"):
+        MetadataExportConfig(targets=[{"catalog": "gone"}]).export_targets(CatalogsConfig())
+
+
+def test_a_catalog_serves_at_least_one_domain():  # REQ-2122
+    with pytest.raises(ValidationError, match="assigned to no domain"):
+        CatalogConnection(
+            id="om", provider="openmetadata", endpoint="https://a.example", domains=[]
         )
 
 

@@ -207,7 +207,6 @@ async def test_the_raw_sql_pipeline_reads_the_hint_off_the_statement(monkeypatch
         return (
             exec_sql,
             RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t"),
-            "pg",
             False,
             {"pg"},
             (),
@@ -315,7 +314,6 @@ async def test_the_compiled_pipeline_carries_the_hint_onto_the_plan(monkeypatch)
         return (
             exec_sql,
             RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="t"),
-            "pg",
             False,
             {"pg"},
             (),

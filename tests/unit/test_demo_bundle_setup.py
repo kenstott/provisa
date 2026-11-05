@@ -19,6 +19,8 @@ import argparse
 import contextlib
 import importlib.util
 import json
+import re
+import time
 from pathlib import Path
 
 import httpx
@@ -156,6 +158,10 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
     monkeypatch.setattr(
         builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
     )
+    # One set of region stores for the whole build: started after the demo's stores, stopped
+    # before them.
+    monkeypatch.setattr(builder._RegionStores, "start", lambda self: done.append("regions up"))
+    monkeypatch.setattr(builder._RegionStores, "stop", lambda self: done.append("regions down"))
 
     def _parsed(*_a):
         raise AssertionError("the config was parsed outside a region's node")
@@ -166,7 +172,33 @@ def test_a_demo_in_regions_is_seeded_without_parsing_its_config_outside_a_region
         name="retail", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
     )
     assert builder.build(args) == 0
-    assert done == ["up", "bundles", "seed", "no empty replica", "dump", "down"]
+    assert done == [
+        "up",
+        "regions up",
+        "bundles",
+        "seed",
+        "no empty replica",
+        "dump",
+        "regions down",
+        "down",
+    ]
+
+
+def test_a_published_demo_in_regions_no_regions_tier_serves_is_not_built(tmp_path, monkeypatch):
+    """The regions sandbox tier serves only the demos PROVISA_SANDBOX_REGIONS_DEMOS names; a
+    published demo in regions it does not name is refused before its stores come up."""
+    named = tmp_path / "named"
+    demo = named / "zoo"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\npublished: true\nregions: {headless: [eu], visitor: us}\n"
+    )
+    monkeypatch.setattr(builder.Stores, "up", lambda self: pytest.fail("its stores came up"))
+    args = argparse.Namespace(
+        name="zoo", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    with pytest.raises(SystemExit, match="PROVISA_SANDBOX_REGIONS_DEMOS"):
+        builder.build(args)
 
 
 def test_the_bundle_action_installs_a_demo_s_extras_before_it_builds():
@@ -492,7 +524,51 @@ def test_a_question_polly_does_not_answer_fails_the_build_naming_its_step(tmp_pa
 def test_a_tour_asking_polly_needs_the_openrouter_key(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(SystemExit, match="OPENROUTER_API_KEY is not set"):
-        builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, timeout=1)
+        builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, 1, None)
+
+
+def test_the_answering_config_finds_terms_through_openrouter_on_the_sandbox_model(tmp_path):
+    """REQ-2201: a setup's scan reads its document with the model a demo sandbox's Polly runs."""
+    from provisa.core.settings_registry import setting
+
+    config = yaml.safe_load(
+        builder.answering_config(tmp_path, _toured(tmp_path, _ASKING)).read_text()
+    )
+    assert config["ai_models"]["glossary_term_finding"] == {
+        "vendor": "openrouter",
+        "model": setting("sandbox.ai_model").default,
+    }
+
+
+def test_a_setup_scanning_a_document_needs_the_openrouter_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    demo = _toured(tmp_path, [{"key": "bsaIntro", "route": "/sources", "source": "bank"}])
+    (demo / "setup.yaml").write_text(
+        yaml.safe_dump({"steps": [{"scan": "https://www.ecfr.gov/api/versioner/v1/x.xml"}]})
+    )
+    with pytest.raises(SystemExit, match="scans 1 document.*OPENROUTER_API_KEY is not set"):
+        builder._set_up(tmp_path, demo, None, 1, None)
+
+
+def test_the_setup_s_scans_are_carried_and_a_scan_missing_fails_the_build(tmp_path, monkeypatch):
+    from provisa.term_finding import carry
+
+    demo = _toured(tmp_path, _ASKING)
+    url = "https://www.ecfr.gov/api/versioner/v1/x.xml"
+    (demo / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"scan": url}, {"scan": url}]}))
+    written: list = []
+
+    def export_scans(cp_url, schema, out):
+        written.append((cp_url, schema, out))
+        return len(written)
+
+    monkeypatch.setattr(carry, "export_scans", export_scans)
+    with pytest.raises(SystemExit, match="scanned 2 document.*holds 1 scan"):
+        builder._export_term_scans("postgresql://cp", demo)
+    builder._export_term_scans("postgresql://cp", demo)
+    assert written[-1][2] == carry.scans_path(demo)
+    builder._export_term_scans("postgresql://cp", tmp_path / "nothing")  # no setup: nothing
+    assert len(written) == 2
 
 
 def _stores_up(tmp_path: Path, services: str) -> list[tuple]:
@@ -618,6 +694,9 @@ def _sync(
     stores_fail: str | None = None,
     check_fail: str | None = None,
     failed_before: str | None = None,
+    prune_engines: bool = False,
+    up_and_another_waiting: bool = False,
+    asked_while_up: bool = False,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -634,6 +713,25 @@ def _sync(
         (bundles / "weblogs" / "requested").write_text(f"until {lingering_until}\n")
         (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
         (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    if up_and_another_waiting:
+        # weblogs up and in use; a visitor waits on "later", asked for and not up.
+        (bundles / "weblogs" / "requested").write_text("requested\n")
+        (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
+        (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+        (bundles / "later" / _VERSION).mkdir(parents=True)
+        (bundles / "later" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+        (bundles / "later" / "requested").write_text("requested\n")
+    if asked_while_up:
+        # weblogs and later up and in use; "third" not asked for, until a visitor opens it while
+        # the run pulls weblogs.
+        for up in ("weblogs", "later"):
+            (bundles / up / _VERSION).mkdir(parents=True, exist_ok=True)
+            (bundles / up / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+            (bundles / up / "requested").write_text("requested\n")
+            (bundles / up / "ready").write_text(_VERSION + "\n")
+            (bundles / up / _VERSION / "stores.env").write_text("NS=_x\n")
+        (bundles / "third" / _VERSION).mkdir(parents=True)
+        (bundles / "third" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     if wanted is not None:
@@ -647,14 +745,18 @@ def _sync(
     if ask_on_pull:
         (bundles / "later" / _VERSION).mkdir(parents=True)
     ask = (
-        f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f'[ "${{2%%@*}}" = weblogs ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f"echo requested > {bundles}/third/requested; touch {bundles}/.wanted; }}\n"
+        if asked_while_up
+        else f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
         f"echo requested > {bundles}/weblogs/requested; touch {bundles}/.wanted; }}\n"
         if ask_on_pull
         else ""
     )
     # The pull records what it was asked for (tmp_path/pulls), one line per pull.
     (fake / "pull").write_text(
-        f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
+        f'#!/usr/bin/env bash\n[ "$1" = pull ] || {{ echo "$1" >> {tmp_path}/other; exit 0; }}\n'
+        f'echo "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
     )
     (fake / "pull").chmod(0o755)
     # stores_fail: the stores cannot be brought up, and demo_stores.py says why on stderr.
@@ -672,7 +774,11 @@ def _sync(
         (bundles / "weblogs" / "failed").write_text(failed_before + "\n")
     env = {
         **os.environ,
-        "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
+        "PROVISA_DEMO_BUNDLES": "weblogs,later,third"
+        if asked_while_up
+        else "weblogs,later"
+        if ask_on_pull or up_and_another_waiting
+        else "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
         "DEMO_PULL": str(fake / "pull"),
         "DEMO_PULL_INTO": str(bundles),
@@ -680,6 +786,7 @@ def _sync(
         "DEMO_STORES_SHARED": "/shared.yml",
         "DEMO_STORES_PROJECT": "provisa-demo-stores",
         "DEMO_STORES_KAFKA_PORT": "29092",
+        **({"DEMO_PRUNE_ENGINES": "true"} if prune_engines else {}),
     }
     run = subprocess.run(
         ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
@@ -766,6 +873,51 @@ def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp
     assert not (demo.parent / ".wanted").exists()
 
 
+def test_a_demo_a_visitor_waits_on_is_brought_up_before_the_ones_already_up(tmp_path):
+    """A run brings up first each demo asked for and not up -- the one a visitor's open waits on
+    -- and only then goes over the demos already up. On the sandbox tier a run went over every demo
+    in the order the node lists them, each one up brought up again, so an open of a demo late in
+    the list waited behind every demo opened before it."""
+    run, demo, asked = _sync(tmp_path, up_and_another_waiting=True)
+    assert run.returncode == 0, run.stderr
+    later = demo.parent / "later"
+    assert asked[:2] == [
+        f"up later {_VERSION} {later / _VERSION}",
+        f"check later {_VERSION} {later / _VERSION}",
+    ]
+    assert (later / "ready").read_text().strip() == _VERSION
+    assert (tmp_path / "pulls").read_text().split() == ["later", "weblogs"]
+
+
+def test_a_demo_asked_for_while_the_run_goes_over_those_up_is_brought_up_next(tmp_path):
+    """A visitor's open while a run goes over the demos already up breaks that run off: the demo
+    now waited on is brought up next, and the ones up after it. Run to its end first, the open
+    waited behind every demo up, each pulled and brought up again (REQ-2049)."""
+    run, demo, asked = _sync(tmp_path, asked_while_up=True)
+    assert run.returncode == 0, run.stderr
+    third = demo.parent / "third"
+    later = demo.parent / "later"
+    assert asked[:4] == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+        f"up third {_VERSION} {third / _VERSION}",
+        f"check third {_VERSION} {third / _VERSION}",
+    ], asked
+    assert (third / "ready").read_text().strip() == _VERSION
+    # The demos up are still gone over, after it.
+    assert f"up later {_VERSION} {later / _VERSION}" in asked[4:]
+    assert "asked for during the run" in run.stdout
+
+
+def test_each_demo_s_sync_is_timed_in_the_node_s_log(tmp_path):
+    """The node's log says how long each demo's pull and stores took, so a slow open is named by
+    the step it waited on."""
+    run, _demo, _asked = _sync(tmp_path, requested=True)
+    assert run.returncode == 0, run.stderr
+    assert re.search(r"demo weblogs: pulled in \d+s", run.stdout), run.stdout
+    assert re.search(r"demo weblogs: stores up and checked in \d+s", run.stdout), run.stdout
+
+
 def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_path):
     bundles = tmp_path / "bundles" / "weblogs"
     for old in ("202601010000-old0001", "202601020000-old0002"):
@@ -802,9 +954,65 @@ def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served
     assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
 
 
-def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+def test_a_demo_not_asked_for_keeps_only_the_versions_read(tmp_path):
+    """Its older versions went only when it was asked for: on cloud-dev's sandbox VM, 2026-10-31,
+    19 of its 28 demos held versions beside the one offered, one holding 4. Nothing is started for it."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == []
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION).is_dir()
+
+
+def test_a_demo_not_asked_for_keeps_a_version_with_data_in_the_shared_stores(tmp_path):
+    """The shared stores may be down, so its data could not be dropped from them: it is dropped
+    at the next run that has them up, the demo's next open."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    old = "202601010000-wasup01"
+    (bundles / old).mkdir(parents=True)
+    (bundles / old / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    run, demo, asked = _sync(tmp_path)
+    assert run.returncode == 0, run.stderr
+    assert asked == []
+    assert (demo / old / "stores.env").exists()
+
+
+def test_a_lingered_out_demo_keeps_only_the_versions_read(tmp_path):
+    bundles = tmp_path / "bundles" / "weblogs"
+    (bundles / "202601010000-never01").mkdir(parents=True)
+    run, demo, _ = _sync(tmp_path, lingering_until=1)
+    assert run.returncode == 0, run.stderr
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / _VERSION).is_dir()
+
+
+def test_the_run_prunes_the_engine_releases_where_the_node_says_to(tmp_path):
+    run, _, _ = _sync(tmp_path, prune_engines=True)
+    assert run.returncode == 0, run.stderr
+    assert (tmp_path / "other").read_text().split() == ["prune-engines"]
+
+
+def test_a_run_elsewhere_prunes_no_engine_release(tmp_path):
+    """A developer's cache is shared by every worktree, each at a release of its own."""
+    run, _, _ = _sync(tmp_path)
+    assert run.returncode == 0, run.stderr
+    assert not (tmp_path / "other").exists()
+
+
+def test_the_sandbox_vm_prunes_its_engine_releases():
+    settings = (_REPO / "packaging/linux/demo-stores/sandbox-vm.env.tpl").read_text()
+    assert "DEMO_PRUNE_ENGINES=true" in settings.splitlines()
+
+
+def test_a_demo_lingered_out_has_its_own_services_taken_down_and_its_data_kept(tmp_path):
     """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
-    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    demo's own services are taken down; its data stays loaded (REQ-2049, amended 2026-11-02), and
+    its stores.env stays to say so, so a newer version's run drops it once it is superseded. Its
+    next open asks for it again."""
     import time
 
     run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
@@ -812,7 +1020,7 @@ def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_p
     assert asked == [f"stop weblogs {_VERSION}"]
     assert not (demo / "requested").exists()
     assert not (demo / "ready").exists()
-    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "stores.env").is_file()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()
     assert (demo / "pulled").read_text().strip() == _VERSION
 
@@ -1028,3 +1236,170 @@ def test_a_seeding_run_that_never_finished_names_the_tables_it_re_created_and_it
     con.execute('CREATE SCHEMA "r"; CREATE TABLE "r"."t" AS SELECT 1 AS a UNION ALL SELECT 2')
     con.close()
     assert builder._embedded_store(tmp_path, "retail") == "  r.t: 2 rows"
+
+
+def test_a_regions_demo_s_setup_runs_on_a_node_per_region_against_the_visitor_s():
+    """Its views are built in their regions' stores, so its setup runs with every region's node
+    up, each on its region's address and its region's store, all on one model store; the setup
+    client talks to the visitor's node. The same region stores are then seeded from."""
+    region_env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_LEDGER_PG_URL": "postgresql://ledger",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+        "PROVISA_DEMO_WAREHOUSE_PG_URL": "postgresql://warehouse",
+    }
+    nodes = builder.setup_nodes(
+        ["ledger", "warehouse"], region_env, redis_url="redis://cache", work=Path("/w")
+    )
+    assert [(n.region, n.port) for n in nodes] == [("ledger", 41001), ("warehouse", 41002)]
+    for node in nodes:
+        assert node.env["PROVISA_REGION"] == node.region
+        assert node.env["REDIS_URL"] == "redis://cache"
+        assert node.env["PROVISA_DATA_DIR"] == f"/w/setup-data-{node.region}"
+        assert {k: node.env[k] for k in region_env} == region_env
+    assert nodes[-1].region == "warehouse"  # the visitor's: the setup client's server
+
+
+def test_a_regions_demo_s_setup_history_is_carried_after_its_regions_are_seeded(
+    tmp_path, monkeypatch
+):
+    """REQ-1162, REQ-2068: set up on its region nodes, then seeded region by region, then each
+    bitemporal view's history carried into its home region's seed -- never through the
+    single-region export of the setup server's own store."""
+    named = tmp_path / "named"
+    demo = named / "banking"
+    demo.mkdir(parents=True)
+    (demo / "demo.yaml").write_text(
+        "requires_provisa: 0.1.0a483\nregions: {headless: [ledger], visitor: warehouse}\n"
+    )
+    (demo / "setup.yaml").write_text("steps: []\n")
+    done: list[str] = []
+    monkeypatch.setattr(builder.Stores, "up", lambda self: done.append("up"))
+    monkeypatch.setattr(builder.Stores, "dump", lambda self: done.append("dump") or [])
+    monkeypatch.setattr(builder.Stores, "down", lambda self: done.append("down"))
+    monkeypatch.setattr(builder._RegionStores, "start", lambda self: done.append("regions up"))
+    monkeypatch.setattr(builder._RegionStores, "stop", lambda self: done.append("regions down"))
+    monkeypatch.setattr(builder, "_set_up", lambda *_a: done.append("set up"))
+    monkeypatch.setattr(builder, "_export_views", lambda *_a: done.append("export views"))
+    monkeypatch.setattr(builder, "_seed", lambda *_a: done.append("seed"))
+    monkeypatch.setattr(builder, "_carry_region_views", lambda *_a: done.append("carry history"))
+    monkeypatch.setattr(builder, "_prefetch_connector_bundles", lambda *_a: done.append("bundles"))
+    monkeypatch.setattr(
+        builder, "_refuse_empty_replicas", lambda *_a: done.append("no empty replica")
+    )
+    monkeypatch.setattr(builder.bundles, "pack", lambda _demo, _manifest: b"bundle")
+    args = argparse.Namespace(
+        name="banking", named_dir=named, out=tmp_path / "out", commit="a" * 40, timeout=60.0
+    )
+    assert builder.build(args) == 0
+    assert done == [
+        "up",
+        "regions up",
+        "bundles",
+        "set up",
+        "seed",
+        "carry history",
+        "no empty replica",
+        "dump",
+        "regions down",
+        "down",
+    ]
+
+
+def test_a_regions_demo_s_seeding_nodes_run_together_until_every_region_is_seeded(
+    tmp_path, monkeypatch
+):
+    """A view one region builds may read a table another region keeps in place (banking's
+    end-of-day totals, built at the ledger): every region's seeding node runs at once, on its
+    region's address, and none stops before every region has written its seed (CI run
+    40271353724: the ledger's node had stopped, and the warehouse's view never built)."""
+    import threading
+
+    from provisa.api.demo_region_seed import seed_dir
+
+    demo = tmp_path / "banking"
+    regional = builder._RegionStores(tmp_path, ["ledger", "warehouse"])
+    regional.env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+    }
+    monkeypatch.setattr(builder._RegionStores, "redis_url", "redis://cache")
+    running: set[str] = set()
+    both_up = threading.Event()
+    stopped_before_all: list[str] = []
+
+    def _node(*_a, record, env, port, until, **_k):
+        region = env["PROVISA_REGION"]
+        running.add(region)
+        if running == {"ledger", "warehouse"}:
+            both_up.set()
+        assert both_up.wait(10), f"{region}'s node ran alone"
+        assert port == {"ledger": 41001, "warehouse": 41002}[region]
+        record.parent.mkdir(parents=True, exist_ok=True)
+        record.write_text("{}")
+        deadline = time.monotonic() + 10
+        while not until():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        if not all(seed_dir(demo, r).joinpath("record.json").exists() for r in running):
+            stopped_before_all.append(region)
+
+    monkeypatch.setattr(builder, "_seed_node", _node)
+    builder._seed(tmp_path, demo, None, 60.0, regional)
+    assert both_up.is_set() and stopped_before_all == []
+
+
+def test_a_failing_seeding_node_stops_the_others_and_fails_the_build(tmp_path, monkeypatch):
+    regional = builder._RegionStores(tmp_path, ["ledger", "warehouse"])
+    regional.env = {
+        "PROVISA_DEMO_LEDGER_ADDRESS": "http://127.0.0.1:41001",
+        "PROVISA_DEMO_WAREHOUSE_ADDRESS": "http://127.0.0.1:41002",
+    }
+    monkeypatch.setattr(builder._RegionStores, "redis_url", "redis://cache")
+
+    def _node(*_a, env, until, **_k):
+        if env["PROVISA_REGION"] == "ledger":
+            raise SystemExit("the seeding run exited early (3)")
+        deadline = time.monotonic() + 10
+        while not until():
+            assert time.monotonic() < deadline, "the warehouse's node waited past the failure"
+            time.sleep(0.01)
+
+    monkeypatch.setattr(builder, "_seed_node", _node)
+    with pytest.raises(SystemExit, match="exited early"):
+        builder._seed(tmp_path, tmp_path / "banking", None, 60.0, regional)
+
+
+def test_a_seeding_node_that_marks_its_template_failed_ends_the_build_at_once(
+    tmp_path, monkeypatch
+):
+    """A seeding node whose template fails writes why beside the record the build waits for; the
+    build stops on it at once, naming the reason, instead of waiting out its whole budget."""
+    record = tmp_path / "demo" / "seeded" / "replicas.json"
+    record.parent.mkdir(parents=True)
+    (record.parent / "failed").write_text("replicas failed to land: shop.orders")
+    stopped: list[str] = []
+
+    class _Server:
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            stopped.append("terminate")
+
+        def wait(self, timeout):
+            return 0
+
+    monkeypatch.setattr(builder, "_control_plane", lambda *_a: ("h", "1", "postgresql://cp"))
+    monkeypatch.setattr(builder, "_config_env", lambda _demo: {})
+    monkeypatch.setattr(builder, "_duckdb_env", lambda _work: {})
+    monkeypatch.setattr(builder.subprocess, "Popen", lambda *_a, **_k: _Server())
+    monkeypatch.setattr(builder.subprocess, "run", lambda *_a, **_k: None)
+    stores = argparse.Namespace(addresses={})
+    started = time.monotonic()
+    with pytest.raises(SystemExit, match="replicas failed to land: shop.orders"):
+        builder._seed_node(tmp_path, tmp_path / "demo", stores, 600.0, record=record, env={})
+    assert time.monotonic() - started < 30
+    assert stopped == ["terminate"]

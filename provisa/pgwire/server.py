@@ -24,43 +24,71 @@ from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
 import json
+import contextlib
 import datetime
 import decimal
 import logging
 import os
 import re
+import socket
 import socketserver
 import ssl
 import struct
 import threading
 import time
 from dataclasses import dataclass
-from dataclasses import field as _dc_field
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple
+from collections.abc import Sequence
+from itertools import chain
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple, cast
 
 from provisa.federation.execution_auth import plan_authorization
 
 import jwt
 
-from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
+from buenavista.core import (
+    BVType,
+    Connection,
+    QueryResult as BVQueryResult,
+    ResultData,
+    Session,
+    wire_type_name,
+)
 from buenavista.postgres import (
+    BVTYPE_TO_OID,
+    PG_UNKNOWN_OID,
     BVBuffer,
     BVContext,
     BuenaVistaHandler,
     BuenaVistaServer,
     ServerResponse,
+    TYPE_OIDS,
+    UnknownStatement,
 )
 
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
+from provisa.core.pg_error import MARK, PostgresError, from_engine
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.pgwire.session_zone import (
+    UNKNOWN_ZONE,
+    SessionZone,
+    in_session_zone,
+    raw_row_formats,
+    refuse_other_zone,
+)
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.otel_compat import HeldRequestSpan
 from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_REDIRECTED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
-from provisa.executor.result import ResultStream
+from provisa.executor.result import ResultStream, is_arrow
+from provisa.core.ir_types import HELD_AS_TEXT, SUBTYPES
+from provisa.compiler import xml_mapping
+from provisa.pgwire import advisory_locks
+from provisa.federation.duckdb_pg_xml import xml_out
+from provisa.pgwire.cast_types import XML_ARRAY
+from provisa.pgwire.constant_arguments import evaluable, is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -84,7 +112,17 @@ def requested_role(params: dict) -> str | None:  # REQ-1620
     return named.pop() if named else None
 
 
-def _startup_setting(params: dict, key_named: str) -> set[str]:
+def startup_time_zone(params: dict) -> str | None:
+    """The TimeZone a startup packet names, which pgjdbc always does and libpq does for PGTZ. A
+    setting's name is read in any case, and the startup parameter is applied after ``options``."""
+    keys = {key.lower(): value for key, value in params.items()}
+    named = _startup_setting(keys, "timezone", any_case=True)
+    if len(named) > 1 and not keys.get("timezone"):
+        return UNKNOWN_ZONE  # two in options: a set of them has no last
+    return keys.get("timezone") or next(iter(named), None)
+
+
+def _startup_setting(params: dict, key_named: str, *, any_case: bool = False) -> set[str]:
     """The values a connection's startup packet gives ``key_named``: as a startup parameter of that
     name, or set in ``options`` (``-c key=value``)."""
     import shlex
@@ -103,7 +141,8 @@ def _startup_setting(params: dict, key_named: str) -> set[str]:
         else:
             continue
         key, sep, value = setting.partition("=")
-        if sep and key.strip() == key_named and value.strip():
+        said = key.strip().lower() if any_case else key.strip()
+        if sep and said == key_named and value.strip():
             named.add(value.strip())
     return named
 
@@ -117,9 +156,9 @@ _REDIRECT_SET_RE = re.compile(
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.redirect(?:_format)?))\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
-# REQ-2110: a session's time travel, read on every statement it runs as a request's
-# X-Provisa-As-Of / X-Provisa-As-Recorded are on the HTTP transports: SET provisa.as_of /
-# provisa.as_recorded, RESET either, or SET either TO DEFAULT.
+# REQ-2110: a session's time travel, the default every statement it runs reads at where a
+# reference says no time of its own (REQ-1163): SET provisa.as_of / provisa.as_recorded, RESET
+# either, or SET either TO DEFAULT.
 _TIME_TRAVEL_SET_RE = re.compile(
     r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",
@@ -165,13 +204,138 @@ def _redirect_row(handle: dict | None, delivery: Any):
     )
 
 
+# An engine error's class → the SQLSTATE PostgreSQL reports for the same failure. Any other
+# exception is XX000 (internal_error), as PostgreSQL reports an error it has no class for.
+_SQLSTATE_BY_CLASS: dict[str, str] = {
+    "ParserException": "42601",  # syntax_error
+    "CatalogException": "42P01",  # undefined_table
+    "BinderException": "42703",  # undefined_column
+    "ConversionException": "22P02",  # invalid_text_representation
+    "OutOfRangeException": "22003",  # numeric_value_out_of_range
+    "PermissionError": "42501",  # insufficient_privilege
+    "NotImplementedError": "0A000",  # feature_not_supported
+    "ZeroDivisionError": "22012",  # division_by_zero
+    "TimeoutError": "57014",  # query_canceled: a CancelRequest, or the request timeout
+    "StatementSyntaxError": "42601",  # syntax_error
+    "BindParameterCountError": "08P01",  # protocol_violation
+}
+
+
+def _sqlstate_of(exception: object) -> str:
+    """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
+    the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
+    PostgreSQL's code for the engine error's class -- read through the chain of errors that
+    carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
+    chain: list[BaseException] = []
+    seen = exception if isinstance(exception, BaseException) else None
+    while seen is not None and seen not in chain:
+        chain.append(seen)
+        seen = seen.__cause__ or seen.__context__
+    for err in chain:
+        own = getattr(err, "sqlstate", None)
+        if isinstance(own, str) and len(own) == 5:
+            return own
+    for err in chain:
+        raised = from_engine(err) if isinstance(err, Exception) else None  # REQ-2167
+        if raised is not None:
+            return raised.sqlstate
+        for cls in type(err).__mro__:
+            code = _SQLSTATE_BY_CLASS.get(cls.__name__)
+            if code is not None:
+                return code
+    return "XX000"
+
+
+_TXN_OPEN_RE = re.compile(r"^\s*(BEGIN|START\s+TRANSACTION)\b", re.IGNORECASE)
+_TXN_CLOSE_RE = re.compile(
+    r"^\s*(COMMIT|END|ABORT|ROLLBACK(?!\s+(WORK\s+|TRANSACTION\s+)?TO\b))\b", re.IGNORECASE
+)
+
+
+def _transaction_open(sql: str, open_now: bool) -> bool:
+    """Whether a transaction block is open after ``sql``. The block is a no-op by design
+    (statements are not grouped); it is tracked only for the ReadyForQuery status byte."""
+    if _TXN_OPEN_RE.match(sql):
+        return True
+    if _TXN_CLOSE_RE.match(sql):
+        return False
+    return open_now
+
+
+class StatementSyntaxError(ValueError):
+    """A statement that does not parse, refused at Parse as PostgreSQL refuses it (42601)."""
+
+
+class BindParameterCountError(ValueError):
+    """A Bind supplying a different number of values than its statement takes (08P01)."""
+
+
+def _parse_message_sql(payload: bytes) -> str:
+    stmt_end = payload.index(0)
+    return payload[stmt_end + 1 : payload.index(0, stmt_end + 1)].decode("utf-8")
+
+
+def _with_spaced_placeholders(payload: bytes) -> bytes:
+    """A Parse message whose statement has every ``$N`` as sqlglot can read it."""
+    from provisa.pgwire.parameters import spaced_placeholders
+
+    stmt_end = payload.index(0)
+    sql_end = payload.index(0, stmt_end + 1)
+    sql = spaced_placeholders(payload[stmt_end + 1 : sql_end].decode("utf-8"))
+    return payload[: stmt_end + 1] + sql.encode("utf-8") + payload[sql_end:]
+
+
+def _refuse_bad_syntax(sql: str) -> None:
+    """Refuse at Parse a statement the pipeline cannot parse. Only a statement it governs is
+    checked: the catalog emulation answers its own statements (catalog.classify). DuckDB's parser
+    (PostgreSQL's grammar, microseconds) answers first; the statement is refused only when the
+    pipeline's own parser (sqlglot) refuses it too."""
+    import sqlglot
+    from sqlglot.errors import ParseError, TokenError
+
+    from provisa.federation.duckdb_backend import parses
+    from provisa.pgwire.catalog import classify
+
+    if not sql.strip() or classify(sql) != "PASS_THROUGH" or parses(sql):
+        return
+    try:
+        sqlglot.parse(sql, read="postgres")
+    except (ParseError, TokenError) as exc:
+        raise StatementSyntaxError(f"syntax error: {str(exc).splitlines()[0]}") from exc
+
+
+def _placeholder_count(sql: str) -> int:
+    """The highest $N a statement names outside its string literals: the parameters it takes."""
+    bare = re.sub(r"'(?:[^']|'')*'", "''", sql)
+    return max((int(n) for n in re.findall(r"\$(\d+)", bare)), default=0)
+
+
+def _refuse_wrong_parameter_count(ctx: BVContext, payload: bytes) -> None:
+    portal_end = payload.index(0)
+    stmt_end = payload.index(0, portal_end + 1)
+    stmt = payload[portal_end + 1 : stmt_end].decode("utf-8")
+    if stmt not in ctx.stmts:
+        raise UnknownStatement(stmt)
+    sql, param_oids = ctx.stmts[stmt][0], ctx.stmts[stmt][1]
+    (num_formats,) = struct.unpack("!h", payload[stmt_end + 1 : stmt_end + 3])
+    at = stmt_end + 3 + 2 * num_formats
+    (supplied,) = struct.unpack("!h", payload[at : at + 2])
+    required = max(len(param_oids), _placeholder_count(sql))
+    if supplied != required:
+        raise BindParameterCountError(
+            f"bind message supplies {supplied} parameters, but prepared statement "
+            f'"{stmt}" requires {required}'
+        )
+
+
 class _Said:
     """An error's text, redacted (REQ-2087), as what the base handler writes with ``str()``."""
 
-    def __init__(self, text: str) -> None:
-        from provisa.security.redaction import redact
+    def __init__(self, text: str, org_id: str | None) -> None:
+        # What the client is told: redacted, in the model's names (REQ-2152).
+        from provisa.api.engine_error_names import client_text
 
-        self._text = redact(text)
+        self._text = client_text(text, org_id)
 
     def __str__(self) -> str:
         return self._text
@@ -335,13 +499,32 @@ def _pg_literal(v) -> str:
 
 
 def _substitute_params(sql: str, params: list | None) -> str:
-    """Replace $1, $2, ... with literal values (highest index first to avoid $1 matching $10)."""
+    """``sql`` with each $1, $2, ... the literal of its value, on the tree (REQ-2167): a ``$1``
+    in a string literal is its text."""
     if not params:
         return sql
-    result = sql
-    for i in range(len(params), 0, -1):
-        result = result.replace(f"${i}", _pg_literal(params[i - 1]))
-    return result
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Parameter) and node.this is not None and node.name.isdigit():
+            index = int(node.name)
+            if 1 <= index <= len(params):
+                return sqlglot.parse_one(_pg_literal(params[index - 1]), read="postgres")
+        return node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(bound)
+    return sql if written == tree else written.sql(dialect="postgres")
+
+
+def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
+    """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
+    transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
+    the read on the connection's loop."""
+    from provisa.auth.held_assignments import held_assignments
+
+    return {a.role_id for a in run(held_assignments(state, identity, org_id))} | {mapped}
 
 
 def _write_tag(sql: str, result: Any) -> str:
@@ -356,6 +539,21 @@ def _write_tag(sql: str, result: Any) -> str:
     return f"{verb} {count}"
 
 
+# A session temporary table's statement (REQ-615) by its action: the tag PostgreSQL answers it with.
+_TEMP_TAGS = {"create": "CREATE TABLE", "drop": "DROP TABLE"}
+
+
+def _status_of(sql: str, result: Any, plan: Any) -> str:
+    """The command tag a statement is answered with: a data write's count (``INSERT 0 n``), a
+    temporary table's create or drop, a transaction statement's verb."""
+    if plan is not None and getattr(plan, "writes_tables", False):
+        return _write_tag(sql, result)
+    temp = getattr(plan, "temp", None) if plan is not None else None
+    if temp is not None:
+        return _TEMP_TAGS.get(temp.kind) or _write_tag(sql, result)
+    return _tag_from_sql(sql)
+
+
 def _tag_from_sql(sql: str) -> str:
     m = _TXN_TAG_RE.match(sql)
     if m:
@@ -363,11 +561,28 @@ def _tag_from_sql(sql: str) -> str:
     return ""
 
 
+# An array's element type → the array type it is sent as (its array OID, and PostgreSQL's array
+# text and binary forms). Any other array is sent as JSON.
+_ARRAY_OF: dict[BVType, BVType] = {
+    BVType.INTEGER: BVType.INTEGERARRAY,
+    BVType.BIGINT: BVType.BIGINTARRAY,
+    BVType.SMALLINT: BVType.SMALLINTARRAY,
+    BVType.FLOAT: BVType.FLOATARRAY,
+    BVType.REAL: BVType.REALARRAY,
+    BVType.BOOL: BVType.BOOLARRAY,
+    BVType.DECIMAL: BVType.DECIMALARRAY,
+    BVType.TEXT: BVType.STRINGARRAY,
+    BVType.OID: BVType.OIDARRAY,
+    BVType.REGTYPE: BVType.REGTYPEARRAY,
+    BVType.XML: XML_ARRAY,
+    BVType.MONEY: BVType.MONEYARRAY,
+    BVType.INTERVAL: BVType.INTERVALARRAY,
+}
+
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
-    "INTEGER[]": BVType.INTEGERARRAY,
-    "VARCHAR[]": BVType.STRINGARRAY,
     "BOOLEAN": BVType.BOOL,
-    "FLOAT": BVType.FLOAT,
+    # DuckDB's FLOAT is its 4-byte float (REAL is its alias): PostgreSQL's float4.
+    "FLOAT": BVType.REAL,
     "DOUBLE": BVType.FLOAT,
     "DECIMAL": BVType.DECIMAL,
     "TIMESTAMP": BVType.TIMESTAMP,
@@ -392,6 +607,9 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "TIMESTAMP_MS": BVType.TIMESTAMP,
     "TIMESTAMP_NS": BVType.TIMESTAMP,
     "TIME WITH TIME ZONE": BVType.TIMETZ,
+    # PostgreSQL's own spelling, which a catalog answer declares its column with (REQ-2167).
+    "TIME WITHOUT TIME ZONE": BVType.TIME,
+    "TIMESTAMP WITHOUT TIME ZONE": BVType.TIMESTAMP,
     "REAL": BVType.REAL,
     "DOUBLE PRECISION": BVType.FLOAT,
     "JSON": BVType.JSON,
@@ -401,6 +619,30 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "BLOB": BVType.BYTES,
     "BYTEA": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
+    # PostgreSQL's unsigned 4-byte integers, and information_schema's domains over integer and
+    # timestamp with time zone
+    # (REQ-2167: a catalog column is described with the type PostgreSQL declares for it).
+    "OID": BVType.OID,
+    "XID": BVType.OID,
+    "XID8": BVType.BIGINT,
+    "TID": BVType.OID,
+    "INFORMATION_SCHEMA.CARDINAL_NUMBER": BVType.INTEGER,
+    "INFORMATION_SCHEMA.TIME_STAMP": BVType.TIMESTAMPTZ,
+    "REGPROC": BVType.REGPROC,
+    "REGTYPE": BVType.REGTYPE,
+    "REGCLASS": BVType.REGCLASS,
+    "REGNAMESPACE": BVType.REGNAMESPACE,
+    "OIDVECTOR": BVType.OIDVECTOR,
+    "INT2VECTOR": BVType.INT2VECTOR,
+    "ACLITEM[]": BVType.ACLITEMARRAY,
+    '"CHAR"[]': BVType.CHARARRAY,
+    "NAME[]": BVType.NAMEARRAY,
+    "_NAME": BVType.NAMEARRAY,
+    "INET": BVType.INET,
+    "PG_LSN": BVType.PG_LSN,
+    # REQ-2171: a subtyped column, described as its subtype, is sent as its PostgreSQL type.
+    **{name.upper(): BVType[name.upper().strip('"')] for name in SUBTYPES},
+    "BIT VARYING": BVType.VARBIT,
 }
 _INT_TYPES = {
     "INTEGER",
@@ -440,12 +682,351 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         return BVType.INTEGER
     if type_str in _INT_TYPES:
         return BVType.BIGINT
+    if type_str.startswith("_"):
+        # PostgreSQL's own name for an array type (_int4, _text), as a source driver reports it.
+        type_str = f"{type_str[1:]}[]"
     if type_str.endswith("[]"):
-        return BVType.JSON  # any other list type: its Python list value encodes as JSON
+        # PostgreSQL has one array type of an element, whatever its dimensions.
+        array = _ARRAY_OF.get(_sql_type_to_bvtype(type_str.rstrip("[]")))
+        return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
 
 
-def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
+_WIRE_FAMILIES = (
+    frozenset(
+        {
+            BVType.SMALLINT,
+            BVType.INTEGER,
+            BVType.BIGINT,
+            BVType.OID,
+            BVType.REGPROC,
+            BVType.REGTYPE,
+            # A catalog's transaction and tuple ids are served as their numbers.
+            BVType.XID,
+            BVType.CID,
+            BVType.XID8,
+            BVType.TID,
+        }
+    ),
+    frozenset({BVType.REAL, BVType.FLOAT}),
+    frozenset({BVType.REALARRAY, BVType.FLOATARRAY}),
+    frozenset({BVType.DECIMAL, BVType.MONEY}),
+    frozenset({BVType.DECIMALARRAY, BVType.MONEYARRAY}),
+    # A regclass or regnamespace result column is served as its oid and name together, a
+    # struct (catalog_regs).
+    frozenset({BVType.REGCLASS, BVType.JSON}),
+    frozenset({BVType.REGNAMESPACE, BVType.JSON}),
+    frozenset(
+        {
+            BVType.TEXT,
+            BVType.INET,
+            BVType.PG_LSN,
+            BVType.POINT,
+            BVType.LSEG,
+            BVType.TSVECTOR,
+            BVType.MACADDR,
+            BVType.MACADDR8,
+            BVType.XML,
+            # REQ-2171: every type held as its text, which the column is read as.
+            *(BVType[name.upper().strip('"')] for name in HELD_AS_TEXT),
+        }
+    ),
+    frozenset(
+        {
+            BVType.STRINGARRAY,
+            BVType.ACLITEMARRAY,
+            BVType.CHARARRAY,
+            BVType.NAMEARRAY,
+            XML_ARRAY,
+        }
+    ),
+    frozenset(
+        {
+            BVType.SMALLINTARRAY,
+            BVType.INTEGERARRAY,
+            BVType.BIGINTARRAY,
+            BVType.OIDARRAY,
+            BVType.OIDVECTOR,
+            BVType.INT2VECTOR,
+            BVType.REGTYPEARRAY,
+        }
+    ),
+)
+
+
+# xml[]'s OID: a wire type the vendored BVType does not list (cast_types.XML_ARRAY).
+BVTYPE_TO_OID[XML_ARRAY] = 143
+
+
+def _register_catalog_names() -> None:  # REQ-2194
+    """Hands the encoder's reg* writers the catalog's procedure and type names, once."""
+    from provisa._encoders import pgwire as encoder
+    from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
+
+    encoder.register_catalog_names(
+        list(PROC_NAMES.items()), [(oid, entry[-1]) for oid, entry in TYPES.items()]
+    )
+
+
+_register_catalog_names()
+
+
+# REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): a statement that only calls one of the server functions
+# Provisa answers on its own connections.
+_SERVER_FUNCTION_RE = re.compile(
+    r'^\s*SELECT\s+(?:pg_catalog\s*\.\s*)?"?(?P<name>pg_backend_pid|pg_cancel_backend|'
+    r"pg_terminate_backend|inet_client_addr|inet_client_port|inet_server_addr|inet_server_port)"
+    r'"?\s*\((?P<args>[^()]*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
+    re.IGNORECASE,
+)
+
+#: The advisory lock functions: (mode, wait, transaction level); pg_advisory_unlock* by itself.
+_ADVISORY_LOCKS = {
+    "pg_advisory_lock": (advisory_locks.EXCLUSIVE, True, False),
+    "pg_advisory_lock_shared": (advisory_locks.SHARED, True, False),
+    "pg_advisory_xact_lock": (advisory_locks.EXCLUSIVE, True, True),
+    "pg_advisory_xact_lock_shared": (advisory_locks.SHARED, True, True),
+    "pg_try_advisory_lock": (advisory_locks.EXCLUSIVE, False, False),
+    "pg_try_advisory_lock_shared": (advisory_locks.SHARED, False, False),
+    "pg_try_advisory_xact_lock": (advisory_locks.EXCLUSIVE, False, True),
+    "pg_try_advisory_xact_lock_shared": (advisory_locks.SHARED, False, True),
+}
+_ADVISORY_UNLOCKS = {
+    "pg_advisory_unlock": advisory_locks.EXCLUSIVE,
+    "pg_advisory_unlock_shared": advisory_locks.SHARED,
+}
+_ADVISORY_FUNCTIONS = frozenset({*_ADVISORY_LOCKS, *_ADVISORY_UNLOCKS, "pg_advisory_unlock_all"})
+_ADVISORY_NAME = re.compile(r"\bpg_(?:try_)?advisory_", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class _AdvisoryCall:
+    """A statement that is one advisory lock function's call, and nothing else."""
+
+    name: str
+    args: tuple[str, ...]
+    column: str
+
+
+@dataclass(frozen=True)
+class _PostgresWarning:
+    """A WARNING PostgreSQL sends ahead of a result."""
+
+    message: str
+
+
+def _advisory_function(call: Any) -> Any:
+    """The call of an advisory lock function ``call`` is, under a pg_catalog qualifier; or None."""
+    import sqlglot.expressions as exp
+
+    if isinstance(call, exp.Dot):
+        call = call.expression
+    is_one = isinstance(call, exp.Anonymous) and call.name.lower() in _ADVISORY_FUNCTIONS
+    return call if is_one else None
+
+
+def _advisory_tree(sql: str) -> Any:
+    """``sql``'s parse if it names an advisory lock function; None if it names none."""
+    import sqlglot
+    from sqlglot.errors import SqlglotError
+
+    if _ADVISORY_NAME.search(sql) is None:
+        return None
+    try:
+        return sqlglot.parse_one(sql, read="postgres")
+    except SqlglotError:
+        return None  # the statement's own path reports what it cannot read
+
+
+def _advisory_call(sql: str) -> _AdvisoryCall | None:  # REQ-2167
+    """The advisory lock function ``sql`` only calls, with constant keys; None for any other
+    statement. Its keys are evaluated outside governance, so anything else is not one."""
+    import sqlglot.expressions as exp
+
+    tree = _advisory_tree(sql)
+    if not isinstance(tree, exp.Select) or tree.find(exp.From) is not None:
+        return None
+    if len(tree.selects) != 1:
+        return None
+    select = tree.selects[0]
+    call = _advisory_function(select.unalias())
+    if call is None or not all(_is_key(a) for a in call.expressions):
+        return None
+    name = call.name.lower()
+    args = tuple(a.sql(dialect="postgres") for a in call.expressions)
+    return _AdvisoryCall(name, args, select.alias or name)
+
+
+def _is_key(arg: Any) -> bool:
+    import sqlglot.expressions as exp
+
+    bound = isinstance(arg, (exp.Parameter, exp.Placeholder))
+    return bound or is_constant(arg)
+
+
+def _embedded_advisory_calls(sql: str) -> tuple[Any, list[Any]] | None:  # REQ-2167
+    """``sql``'s parse and the advisory lock functions it calls among other things, each with
+    constant keys; None where it calls none so, or is only such a call (``_advisory_call``)."""
+    import sqlglot.expressions as exp
+
+    tree = _advisory_tree(sql)
+    if tree is None or _advisory_call(sql) is not None:
+        return None
+    calls = [fn for fn in tree.find_all(exp.Anonymous) if fn.name.lower() in _ADVISORY_FUNCTIONS]
+    if not calls or not all(_is_key(a) for fn in calls for a in fn.expressions):
+        return None
+    return tree, calls
+
+
+_NOTIFICATION_STATEMENT = re.compile(r"^\s*(LISTEN|UNLISTEN|NOTIFY)\b", re.IGNORECASE)
+
+
+def refuse_notifications(sql: str) -> None:  # REQ-2167
+    """Refuse LISTEN, UNLISTEN and NOTIFY by name (REQ-2167, amended 2026-11-03, Privileges,
+    visibility and notifications): Provisa's pgwire has no notification channel. pg_notify is
+    refused by name on every engine (pg_forms_enum.NOT_SUPPORTED)."""
+    said = _NOTIFICATION_STATEMENT.match(sql)
+    if said is not None:
+        from provisa.compiler.definitions import NotAvailableHere
+
+        raise NotAvailableHere(
+            f"{said[1].upper()} is refused by name: Provisa's pgwire has no notification channel"
+        )
+
+
+def refuse_server_function(sql: str) -> None:  # REQ-2167
+    """Refuse a statement that takes an advisory lock while it does anything else, or with a key
+    that is not a constant, naming the function: a lock is taken by a statement that only calls
+    it, and its key is evaluated outside governance."""
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.definitions import NotAvailableHere
+
+    tree = _advisory_tree(sql)
+    if tree is None or _advisory_call(sql) is not None:
+        return
+    for fn in tree.find_all(exp.Anonymous):
+        name = fn.name.lower()
+        if name in _ADVISORY_FUNCTIONS:
+            raise NotAvailableHere(
+                f"{name} is not available through Provisa in a statement that does more than "
+                "call it with constant keys"
+            )
+
+
+def _evaluated_pid(args: str) -> int | None:
+    """The pid a call names: its first argument, a literal or a constant expression, evaluated;
+    None when it is NULL."""
+    import sqlglot
+
+    from provisa.core import engine_memory
+
+    import sqlglot.expressions as exp
+
+    first = cast(exp.Select, sqlglot.parse_one(f"SELECT {args}", read="postgres")).selects[0]
+    sql = sqlglot.transpile(
+        f"SELECT CAST(({first.sql(dialect='postgres')}) AS BIGINT)", read="postgres", write="duckdb"
+    )[0]
+    con = engine_memory.connect()
+    try:
+        ((pid,),) = con.execute(sql).fetchall()
+    finally:
+        con.close()
+    return pid
+
+
+def _evaluated_keys(args: tuple[str, ...]) -> tuple[int | None, ...]:
+    """A lock key's arguments, evaluated as constant expressions."""
+    import sqlglot
+
+    from provisa.core import engine_memory
+
+    selected = ", ".join(f"CAST(({evaluable(a)}) AS BIGINT)" for a in args)
+    sql = sqlglot.transpile(f"SELECT {selected}", read="postgres", write="duckdb")[0]
+    con = engine_memory.connect()
+    try:
+        return tuple(con.execute(sql).fetchall()[0])
+    finally:
+        con.close()
+
+
+def _undescribed_read_shape(plan: Any, shape: Any) -> list[tuple[str, str]] | None:  # REQ-2171
+    """The read shape an undescribed statement's subtyped columns keep their PostgreSQL type by,
+    and its sized numeric and character columns their typmod (REQ-1961): a row-returning read's. None for a described statement (sent by its description), for a
+    statement on a session's temporary table, which answers its command, not the rows of the
+    SELECT it is planned as, and for a write (a RETURNING write's rows keep the engine's typing)."""
+    if shape is not None or plan is None or plan.result_shape is None:
+        return None
+    if plan.temp is not None or plan.writes_tables:
+        return None
+    return plan.result_shape.wire_typed()
+
+
+def same_wire_form(declared: str, served: str) -> bool:  # REQ-2167
+    """Whether a value served as type ``served`` is sent correctly as type ``declared``: the
+    same wire type, or integers (or floats, integer lists, text, text lists) of another width or
+    kind."""
+    a, b = _sql_type_to_bvtype(declared), _sql_type_to_bvtype(served)
+    return a == b or any(a in family and b in family for family in _WIRE_FAMILIES)
+
+
+def _type_oid(type_str: str | None) -> int | None:  # REQ-2167
+    """The OID of a PostgreSQL type sent in its base type's wire form (name as text, an
+    information_schema domain as its base); None for a type described by its own BVType."""
+    from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
+
+    return CATALOG_TYPE_OIDS.get(type_str.lower()) if type_str else None
+
+
+def _described_oid(type_str: str) -> int:
+    oid = _type_oid(type_str)
+    return BVTYPE_TO_OID[_sql_type_to_bvtype(type_str)] if oid is None else oid
+
+
+def _infer_bvtype(batch: Any, col_idx: int) -> BVType:
+    """The wire type of a column the engine gave no type for, from its Arrow type (REQ-2194:
+    every result reaches pgwire as Arrow)."""
+    import pyarrow as pa
+
+    kind = batch.schema.field(col_idx).type
+    if pa.types.is_boolean(kind):
+        return BVType.BOOL
+    if pa.types.is_integer(kind):
+        return BVType.BIGINT
+    if pa.types.is_floating(kind):
+        return BVType.FLOAT
+    if pa.types.is_decimal(kind):
+        return BVType.DECIMAL
+    if pa.types.is_timestamp(kind):
+        return BVType.TIMESTAMP
+    if pa.types.is_date(kind):
+        return BVType.DATE
+    if pa.types.is_time(kind):
+        return BVType.TIME
+    if pa.types.is_list(kind) or pa.types.is_large_list(kind):
+        element = kind.value_type
+        if pa.types.is_integer(element):
+            return BVType.INTEGERARRAY
+        if pa.types.is_string(element) or pa.types.is_large_string(element):
+            return BVType.STRINGARRAY
+        return BVType.JSON
+    if pa.types.is_struct(kind) or pa.types.is_map(kind):
+        return BVType.JSON
+    return BVType.TEXT
+
+
+def _inferred_bvtypes(head: Any, count: int, raw: bool, rows: bool = False) -> list[BVType]:
+    """Each column's wire type as the first batch shows it; TEXT where there is none to look at."""
+    if head is None or raw:
+        return [BVType.TEXT] * count
+    if rows:
+        return [_infer_row_bvtype(head, i) for i in range(count)]
+    return [_infer_bvtype(head, i) for i in range(count)]
+
+
+def _infer_row_bvtype(rows: list[Any], col_idx: int) -> BVType:
+    """The wire type of a row result's column the engine gave no type for (REQ-2195), from its
+    first non-NULL value."""
     for row in rows:
         v = row[col_idx] if col_idx < len(row) else None
         if v is None:
@@ -476,8 +1057,24 @@ def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
     return BVType.TEXT
 
 
+def _batch_rows(batch: Any) -> int:
+    return batch.num_rows
+
+
 def _to_decimal(v: Any) -> decimal.Decimal:
     return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
+
+
+#: PostgreSQL's text of an array with its own lower bounds ("[0:2]={1,2,3}"), which no list holds.
+_BOUNDED_ARRAY_TEXT = re.compile(r"(\[-?\d+:-?\d+\])+=\{")
+
+
+def _to_list(v: Any) -> Any:
+    """A JSON array's text read as its list; PostgreSQL's text of a bounded array is sent as it is
+    (REQ-2167)."""
+    if not isinstance(v, str) or _BOUNDED_ARRAY_TEXT.match(v):
+        return v
+    return json.loads(v)
 
 
 def _to_date(v: Any) -> Any:
@@ -504,7 +1101,169 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
     BVType.DATE: _to_date,
     BVType.TIMESTAMP: _to_timestamp,
     BVType.TIMESTAMPTZ: _to_timestamp,
+    # A registered JSON column described as its array (REQ-1965) may arrive as its JSON text.
+    **{array: _to_list for array in _ARRAY_OF.values()},
+    BVType.XML: xml_out,  # REQ-2171: held as its text, sent as xml_out writes it
 }
+
+
+_CURRENT_QUERY = re.compile(r'"?\bcurrent_query"?\s*\(\s*\)', re.IGNORECASE)
+
+
+def _current_query_said(sql: str, client_sql: str) -> str:  # REQ-2171
+    """``sql`` with each current_query() the statement the client wrote: what an engine's own would
+    answer is the statement as Provisa wrote it for that engine. Read on the tree (REQ-2167)."""
+    if _CURRENT_QUERY.search(sql) is None:
+        return sql
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def called(node: exp.Expr) -> bool:
+        return (
+            isinstance(node, exp.Anonymous)
+            and node.name.lower() == "current_query"
+            and not node.expressions
+        )
+
+    def said(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
+            node = node.expression if called(node.expression) else node
+        if called(node):
+            return exp.cast(exp.Literal.string(client_sql), exp.DataType.Type.TEXT)
+        return node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(said)
+    return sql if written == tree else written.sql(dialect="postgres")
+
+
+def _null_alone(value: Any) -> Any:  # REQ-2171
+    """A column of no engine type holds NULL alone, which a coercer is not called with."""
+    raise TypeError(f"a value of no type the statement says: {value!r}")
+
+
+#: What an engine calls a column of a bare NULL, which has no type of its own to compare: Trino's
+#: ``unknown``, and the binary a ClickHouse Nothing reaches Arrow as.
+_UNTYPED_RESULTS = frozenset({"UNKNOWN", "BLOB"})
+
+
+def _describe_casts(
+    sql: str,
+    types: list[BVType],
+    oids: list[int | None],
+    typmods: list[int],
+    coerce: list[Tuple[int, Callable[[Any], Any]]],
+    served: Sequence[str | None] = (),
+) -> None:  # REQ-2167
+    """A result column that is a cast to a PostgreSQL type is described with the cast's OID and
+    typmod where its value has that type's wire form (cast_types), its value brought to it. A
+    column the engine could not type (``served``, its own type names) has none to differ."""
+    from provisa.pgwire.cast_types import result_casts
+
+    casts = result_casts(sql) if sql else None
+    if casts is None or len(casts) != len(types):
+        return
+    for i, cast_type in enumerate(casts):
+        if cast_type is None:
+            continue
+        untyped = i < len(served) and str(served[i]).upper() in _UNTYPED_RESULTS
+        if types[i] not in cast_type.served_as:
+            if not untyped:
+                continue
+            coerce.append((i, _null_alone))
+        types[i], oids[i], typmods[i] = cast_type.bvtype, cast_type.oid, cast_type.typmod
+        if cast_type.coerce is not None:
+            coerce.append((i, cast_type.coerce))
+
+
+def _describe_registered(
+    shape: list[Tuple[str, str]],
+    types: list[BVType],
+    oids: list[int | None],
+    typmods: list[int],
+    coerce: list[Tuple[int, Callable[[Any], Any]]],
+) -> None:  # REQ-1961
+    """A result column that is a registered column is described as the model registers it
+    (PGWIRE SENDS NUMERIC(P,S); VARCHAR AND CHAR KEEP THEIR TYPE): a numeric(p,s) with its typmod,
+    a text column whose native type is a character type as that type with its length typmod,
+    where its value has that type's wire form (cast_types)."""
+    from provisa.compiler.result_shape import RegisteredType
+    from provisa.pgwire.cast_types import described_type, registered_spelling
+
+    for i, (_name, declared) in enumerate(shape):
+        if not isinstance(declared, RegisteredType):
+            continue  # a computed column: the engine's type, or its cast's, describes it
+        wire = described_type(registered_spelling(declared, declared.native))
+        if wire is None or types[i] not in wire.served_as:
+            continue
+        types[i], oids[i], typmods[i] = wire.bvtype, wire.oid, wire.typmod
+        if wire.coerce is not None:
+            coerce.append((i, wire.coerce))
+
+
+def _duckdb_inet(value: Any) -> Any:  # REQ-2167
+    """DuckDB's INET value (its ip_type, address and mask) as the address it is; an IPv6 address
+    is held with its top bit flipped, so it orders as a signed integer."""
+    import ipaddress
+
+    if not isinstance(value, dict):
+        return value
+    if value["ip_type"] == 1:
+        return ipaddress.IPv4Interface((value["address"], value["mask"]))
+    return ipaddress.IPv6Interface((value["address"] + (1 << 127), value["mask"]))
+
+
+#: An engine type whose Python value is not the one its encoder takes, by the engine's type name.
+_ENGINE_VALUES: dict[str, Callable[[Any], Any]] = {"INET": _duckdb_inet}
+
+
+def _coercer_names_by_function() -> dict[Any, str]:
+    from provisa.core.pg_enum import array_text as enum_array_text
+    from provisa.pgwire import cast_types
+    from provisa.transpiler.pg_forms_json import jsonb_out
+
+    return {
+        int: "int",
+        float: "float",
+        _to_decimal: "decimal",
+        _to_date: "date",
+        _to_timestamp: "timestamp",
+        _to_list: "list",
+        _null_alone: "null_alone",
+        _duckdb_inet: "duckdb_inet",
+        xml_out: "xml_out",
+        jsonb_out: "jsonb_out",
+        cast_types._to_int: "int",
+        cast_types._to_float: "float",
+        cast_types._to_decimal: "decimal",
+        cast_types._to_bool: "bool",
+        cast_types.record_text: "record",
+        cast_types._clock_of: "clock",
+        cast_types._of_no_zone: "no_zone",
+        enum_array_text: "enum_array",
+    }
+
+
+def _coercer_name(coercer: Any, names: dict[Any, str]) -> str:
+    name = names.get(coercer)
+    if name is not None:
+        return name
+    if getattr(coercer, "__qualname__", "") == "_padded.<locals>.pad":
+        (length,) = (c.cell_contents for c in coercer.__closure__)
+        return f"pad:{length}"
+    raise ValueError(f"no encoder coercer for {coercer!r}")
+
+
+def coercer_names(
+    coerce: list[Tuple[int, Callable[[Any], Any]]], count: int
+) -> list[list[str]]:  # REQ-2194
+    """Each column's coercers, in the order they apply, by the name the Rust encoder knows each
+    by: the encoder brings each value to the described type as it writes it."""
+    names = _coercer_names_by_function()
+    out: list[list[str]] = [[] for _ in range(count)]
+    for i, coercer in coerce:
+        out[i].append(_coercer_name(coercer, names))
+    return out
 
 
 class _StatementDescription(BVQueryResult):  # REQ-589
@@ -512,11 +1271,23 @@ class _StatementDescription(BVQueryResult):  # REQ-589
     metadata, with no rows — nothing ran. ``statement_shape`` is what every Execute of the statement
     is encoded to; ``prepared`` is the governed statement the next Execute continues from."""
 
-    def __init__(self, shape: list[Tuple[str, str]], prepared: Any, sql: str) -> None:
+    def __init__(
+        self,
+        shape: list[Tuple[str, str]],
+        prepared: Any,
+        sql: str,
+        parameters: dict[int, str] | None = None,
+    ) -> None:
         super().__init__()
         self.statement_shape = shape
         self.prepared = prepared
+        self.parameter_types = parameters or {}
         self._types = [_sql_type_to_bvtype(t) for _, t in shape]
+        self._type_oids = [_type_oid(t) for _, t in shape]
+        self._typmods = [-1] * len(shape)
+        # REQ-1961: a registered column is described as its Execute sends it.
+        _describe_registered(shape, self._types, self._type_oids, self._typmods, [])
+        _describe_casts(sql, self._types, self._type_oids, self._typmods, [])
         self._status = _tag_from_sql(sql)
 
     def has_results(self) -> bool:
@@ -528,8 +1299,14 @@ class _StatementDescription(BVQueryResult):  # REQ-589
     def column(self, index: int) -> Tuple[str, BVType]:
         return (self.statement_shape[index][0], self._types[index])
 
-    def rows(self) -> Iterator[list]:
-        return iter(())
+    def column_type_oid(self, index: int) -> int | None:
+        return self._type_oids[index]
+
+    def column_typmod(self, index: int) -> int:
+        return self._typmods[index]
+
+    def data(self) -> ResultData:
+        return ResultData(iter(()))
 
     def status(self) -> str:
         return self._status or "OK"
@@ -539,11 +1316,14 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     """Adapts a :class:`ResultStream` (streaming ENGINE terminal, materialized DIRECT/admin
     result, or DuckDB catalog result) to the buenavista QueryResult ABC.
 
-    Rows are pulled lazily: a streaming result's batches are drained only as buenavista emits
-    DataRow messages, so a large user result set never fully materializes. The wire protocol
-    needs column types up front (RowDescription precedes DataRow); when the engine supplies no
-    per-column types, exactly ONE batch is buffered to infer them — a bounded peek, not the
-    whole result."""
+    The result reaches the encoder in the form it has (REQ-2194, REQ-2195): the engine's Arrow
+    record batches (``ResultStream.arrow_batches``), a row result's batches of rows, never built
+    into Arrow, or a PostgreSQL source's own DataRow messages (``datarow_batches``, the
+    passthrough). Batches are pulled
+    lazily: a streaming result is drained only as buenavista emits DataRow messages, so a large
+    user result set never fully materializes. The wire protocol needs column types up front
+    (RowDescription precedes DataRow); when the engine supplies no per-column types, exactly ONE
+    batch is buffered to infer them -- a bounded peek, not the whole result."""
 
     def late_warnings(self) -> list[Any]:
         """The warnings the plan gained since the last were said (REQ-1949), each given once."""
@@ -559,6 +1339,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         original_sql: str = "",
         shape: list[Tuple[str, str]] | None = None,
         plan: Any = None,
+        read_shape: list[Tuple[str, str]] | None = None,
     ):
         super().__init__()
         # Held so close() can release it (server-side cursor / pooled source connection): when a
@@ -573,27 +1354,35 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._plan_warnings: list[Any] | None = plan.warnings if plan is not None else None
         self._said: list[Any] = list(self.warnings)
         self._cols = engine_result.column_names
-        self._status = (
-            _write_tag(original_sql, engine_result)
-            if plan is not None and getattr(plan, "writes_tables", False)
-            else _tag_from_sql(original_sql)
-        )
-        self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
+        self._status = _status_of(original_sql, engine_result, plan)
+        # REQ-2194, REQ-2195: a passthrough's DataRow messages are forwarded as they are, an
+        # Arrow result's batches go to the encoder as Arrow, and a row result's rows as rows.
+        self._raw = hasattr(engine_result, "datarow_batches")
+        self._rows = False
+        self._batch_iter: Iterator[Any]
+        if self._raw:
+            self._batch_iter = engine_result.datarow_batches()  # type: ignore[attr-defined]
+        elif is_arrow(engine_result):
+            self._batch_iter = engine_result.arrow_batches()
+        else:
+            self._rows = True
+            self._batch_iter = engine_result.batches()
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
             from provisa.pgwire._pipeline import audit_on_drain
 
-            self._batch_iter = audit_on_drain(plan, self._batch_iter)
-        self._head: list | None = None
-        # REQ-1863 large-result fix: a batch pulled from self._batch_iter but only PARTIALLY
-        # forwarded when send_data_rows (vendor/buenavista) stops early at the client's own
-        # Execute limit — see rows()'s own docstring for why that happens on every multi-batch
-        # fetch. Persisted on self (not local to one .rows() call) so the NEXT .rows() call
-        # resumes this exact batch at this exact offset instead of pulling a fresh one and
-        # silently dropping the unforwarded tail.
-        self._pending: list | None = None
-        self._pending_pos: int = 0
+            self._batch_iter = audit_on_drain(
+                plan, self._batch_iter, len if self._raw or self._rows else _batch_rows
+            )
+        # The batch peeked for column types, handed to the encoder first.
+        self._head: Any = None
+        # REQ-1863: one ResultData for the result's life, so each Execute of a portal read a
+        # limit at a time resumes the batch the last one cut, at the row it stopped.
+        self._data: ResultData | None = None
         ctypes = engine_result.column_types
+        self._type_oids: list[int | None] = (
+            [_type_oid(t) for t in ctypes] if ctypes else [None] * len(self._cols)
+        )
         # (column index, coercer) for each column whose rows must be brought to the described type.
         self._coerce: list[Tuple[int, Callable[[Any], Any]]] = []
         if shape is not None:
@@ -610,6 +1399,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
                 )
             self._cols = [name for name, _ in shape]
             self._types = [_sql_type_to_bvtype(t) for _, t in shape]
+            self._type_oids = [_type_oid(t) for _, t in shape]
             for i, described in enumerate(self._types):
                 actual = ctypes[i] if ctypes and i < len(ctypes) else None
                 if actual is not None and _sql_type_to_bvtype(actual) == described:
@@ -617,18 +1407,49 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
                 coercer = _SHAPE_COERCERS.get(described)
                 if coercer is not None:
                     self._coerce.append((i, coercer))
+            self._typmods = [-1] * len(self._cols)
+            _describe_registered(shape, self._types, self._type_oids, self._typmods, self._coerce)
+            _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
             return
         # A None entry (or absent types) means the type must be inferred from data, which
         # requires the first batch on hand before RowDescription is sent.
         if not ctypes or any(t is None for t in ctypes):
-            self._head = next(self._batch_iter, [])
+            self._head = next(self._batch_iter, None)
+        inferred = _inferred_bvtypes(self._head, len(self._cols), self._raw, self._rows)
         if ctypes:
             self._types = [
-                _sql_type_to_bvtype(t) if t else _infer_bvtype(self._head or [], i)
-                for i, t in enumerate(ctypes)
+                _sql_type_to_bvtype(t) if t else inferred[i] for i, t in enumerate(ctypes)
             ]
         else:
-            self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
+            self._types = inferred
+        self._typmods = [-1] * len(self._cols)
+        if read_shape is not None:
+            # REQ-2171: a column the read's shape types as a subtype is sent as its PostgreSQL type.
+            if len(read_shape) != len(self._cols):
+                raise RuntimeError(
+                    f"the statement's shape has {len(read_shape)} result column(s) "
+                    f"{[n for n, _ in read_shape]} but its execution returned {len(self._cols)} "
+                    f"{list(self._cols)}"
+                )
+            for i, (_name, declared) in enumerate(read_shape):
+                if declared in SUBTYPES:
+                    self._types[i] = _sql_type_to_bvtype(declared)
+                if declared == "xml":  # REQ-2171: held as its text, sent as xml_out writes it
+                    self._coerce.append((i, xml_out))
+            _describe_registered(
+                read_shape, self._types, self._type_oids, self._typmods, self._coerce
+            )
+        for i, served in enumerate(ctypes or ()):
+            value_of = _ENGINE_VALUES.get(str(served).upper())
+            if value_of is not None:
+                self._coerce.append((i, value_of))
+        _describe_casts(
+            original_sql, self._types, self._type_oids, self._typmods, self._coerce, ctypes or ()
+        )
+        # REQ-2190: a type PostgreSQL named that the wire has no form of its own for.
+        for i, oid in enumerate(getattr(engine_result, "column_type_oids", None) or ()):
+            if oid is not None:
+                self._type_oids[i] = oid
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -639,52 +1460,29 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     def column(self, index: int) -> Tuple[str, BVType]:
         return (self._cols[index], self._types[index])
 
-    def rows(self) -> Iterator[list]:
-        # send_data_rows (vendor/buenavista) calls .rows() fresh on EVERY Execute message of a
-        # paginated (portal-suspend) fetch, not once for the whole result — self._head must be
-        # consumed exactly once across all of those calls, or every Execute after the first
-        # re-yields the same peeked head batch before reaching new rows, so a multi-batch fetch
-        # (any client with a row limit under the total result size — e.g. asyncpg's
-        # cursor.fetch(n)) never advances past that first batch. Clearing it here, before the
-        # first row is yielded, makes the peek genuinely one-time.
-        if self._head is not None:
-            head, self._head = self._head, None
-            self._pending, self._pending_pos = head, 0
-        # REQ-1863 large-result fix: send_data_rows stops calling next() on this generator as
-        # soon as it has forwarded `limit` rows for THIS Execute — nearly always mid-batch when
-        # the engine's own internal batch size (e.g. _STREAM_BATCH_ROWS, provisa/federation/
-        # runtime_support.py) doesn't evenly divide the client's own fetch size (e.g. asyncpg
-        # cursor.fetch(n)). This generator is simply abandoned at that point (a fresh one is
-        # created for the NEXT Execute), so `for batch in self._batch_iter: yield from batch`
-        # silently drops whatever of the current `batch` list was never reached — live-confirmed
-        # against a real 2,000,000-row scan: only 310,000 (31 x asyncpg's own 10,000-row
-        # cursor.fetch batch size) rows ever reached the client, with the remaining ~1.69M rows
-        # pulled from the source and discarded without any error. self._pending/_pending_pos
-        # track exactly how far into the current batch this call got, on `self` (not a local
-        # generator frame), so the NEXT .rows() call resumes the SAME batch at the SAME offset
-        # instead of pulling (and partially discarding) a new one.
-        while True:
-            if self._pending is not None:
-                while self._pending_pos < len(self._pending):
-                    row = self._pending[self._pending_pos]
-                    self._pending_pos += 1
-                    yield row
-                self._pending = None
-                self._pending_pos = 0
-                continue
-            batch = next(self._batch_iter, None)
-            if batch is None:
-                return
-            if self._coerce and batch and not isinstance(batch[0], bytes):
-                batch = [self._coerced(row) for row in batch]
-            self._pending, self._pending_pos = batch, 0
+    def column_type_oid(self, index: int) -> int | None:
+        return self._type_oids[index]
 
-    def _coerced(self, row: Any) -> list:
-        out = list(row)
-        for i, coercer in self._coerce:
-            if out[i] is not None:
-                out[i] = coercer(out[i])
-        return out
+    def column_typmod(self, index: int) -> int:
+        return self._typmods[index]
+
+    def data(self) -> ResultData:
+        if self._data is None:
+            head, self._head = self._head, None
+            batches = self._batch_iter if head is None else chain((head,), self._batch_iter)
+            self._data = ResultData(batches, raw=self._raw, rows=self._rows)
+        return self._data
+
+    def coercers(self) -> list[list[str]] | None:
+        if self._raw or not self._coerce:
+            return None
+        return coercer_names(self._coerce, len(self._cols))
+
+    def kinds(self) -> list[str | None] | None:
+        ctypes = self._engine_result.column_types
+        if not self._rows or not ctypes:
+            return None
+        return [None if t is None else str(t) for t in ctypes]
 
     def status(self) -> str:
         return self._status or "OK"
@@ -708,13 +1506,16 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
 
 
 class _CursorRowsResult(BVQueryResult):  # REQ-1862
-    """Adapts a batch of already-fetched cursor rows to buenavista's QueryResult ABC, for
-    sending a FETCH response's RowDescription/DataRow pair."""
+    """A FETCH's rows, as the batches the cursor's buffer holds them in (REQ-2194: Arrow, or a
+    passthrough's DataRow messages), for sending its RowDescription/DataRow pair."""
 
-    def __init__(self, columns: list[Tuple[str, BVType]], fetched: list[list]):
+    def __init__(self, cursor: "_CursorState", fetched: list[Any]):
         super().__init__()
-        self._columns = columns
-        self._fetched = fetched
+        source = cursor.query_result
+        self._columns = [source.column(i) for i in range(source.column_count())]
+        self._coercers = source.coercers()
+        self._kinds = source.kinds()
+        self._data = ResultData(iter(fetched), raw=cursor.buffer.raw, rows=cursor.buffer.row_form)
 
     def has_results(self) -> bool:
         return True
@@ -725,8 +1526,14 @@ class _CursorRowsResult(BVQueryResult):  # REQ-1862
     def column(self, index: int) -> Tuple[str, BVType]:
         return self._columns[index]
 
-    def rows(self) -> Iterator[list]:
-        yield from self._fetched
+    def data(self) -> ResultData:
+        return self._data
+
+    def coercers(self) -> list[list[str]] | None:
+        return self._coercers
+
+    def kinds(self) -> list[str | None] | None:
+        return self._kinds
 
     def status(self) -> str:
         return "OK"
@@ -738,12 +1545,68 @@ class _CursorNotScrollableError(Exception):
     cursor rather than silently returning wrong (or no) rows."""
 
 
+class _RowBuffer:  # REQ-1862, REQ-2194
+    """A cursor's rows pulled so far, held in the batches they came in (Arrow record batches, a
+    row result's rows, or a passthrough's DataRow messages): rows are addressed by position and
+    handed back as slices of those batches, in the form they came in."""
+
+    def __init__(self, raw: bool, rows: bool = False) -> None:
+        self.raw = raw
+        self.row_form = rows
+        self._chunks: list[Any] = []
+        self._size = 0
+
+    def __len__(self) -> int:
+        return self._size
+
+    def add(self, chunk: Any) -> None:
+        size = ResultData._size(chunk)
+        if size:
+            self._chunks.append(chunk)
+            self._size += size
+
+    def rows(self, start: int, stop: int) -> list[Any]:
+        """Rows ``start`` to ``stop`` (exclusive), as slices of the batches holding them."""
+        out: list[Any] = []
+        offset = 0
+        for chunk in self._chunks:
+            size = ResultData._size(chunk)
+            lo, hi = max(start - offset, 0), min(stop - offset, size)
+            if lo < hi:
+                out.append(chunk if (lo, hi) == (0, size) else ResultData._cut(chunk, lo, hi - lo))
+            offset += size
+            if offset >= stop:
+                break
+        return out
+
+    def reversed_rows(self, start: int, stop: int) -> list[Any]:
+        """Rows ``stop - 1`` down to ``start``: a BACKWARD fetch's order."""
+        import pyarrow as pa
+
+        out = []
+        for piece in reversed(self.rows(start, stop)):
+            if self.raw or self.row_form:
+                out.append(list(reversed(piece)))
+            else:
+                out.append(piece.take(pa.array(range(piece.num_rows - 1, -1, -1))))
+        return out
+
+    def drop(self, count: int) -> None:
+        """Forget the first ``count`` rows (a NO SCROLL cursor never reads behind it)."""
+        kept = self.rows(count, self._size)
+        self._chunks, self._size = kept, self._size - count
+
+
+def _fetched_rows(fetched: list[Any]) -> int:
+    return sum(ResultData._size(chunk) for chunk in fetched)
+
+
 @dataclass
 class _CursorState:  # REQ-1862
     """A named SQL cursor's live state, owned by the pgwire session that DECLAREd it.
 
-    ``source`` is the DECLARE SELECT's row generator (``ProvisaQueryResult.rows()``), drained
-    forward-only and on demand.
+    ``source`` is the DECLARE SELECT's batches (``ProvisaQueryResult.data()``), drained
+    forward-only and on demand into ``buffer``.
 
     ``scrollable`` reflects whether the cursor was DECLAREd ``SCROLL`` (PostgreSQL's default is
     ``NO SCROLL`` when neither keyword is given — REQ-1862 amendment). A ``SCROLL`` cursor
@@ -755,16 +1618,21 @@ class _CursorState:  # REQ-1862
     the full result (e.g. an 80M-row FETCH FORWARD scan) — see REQ-1862 amendment 2026-09-25.
 
     ``pos`` is the 0-indexed boundary *within the current buffer*: the last row returned to the
-    client is ``buffer[pos - 1]``. For a NO SCROLL cursor, ``pos`` is reset to 0 whenever consumed
-    rows are trimmed from the front of ``buffer``, so it never grows with the amount already
-    fetched.
+    client is row ``pos - 1`` of ``buffer``. For a NO SCROLL cursor, ``pos`` is reset to 0
+    whenever consumed rows are trimmed from the front of ``buffer``, so it never grows with the
+    amount already fetched.
     """
 
     name: str
     query_result: ProvisaQueryResult
-    source: Iterator[list]
+    source: Iterator[Any]
+    buffer: _RowBuffer
     scrollable: bool = False
-    buffer: list = _dc_field(default_factory=list)
+    # What pg_cursors lists of it (REQ-2167): the DECLARE as written, WITH HOLD, BINARY, and when.
+    statement: str = ""
+    holdable: bool = False
+    binary: bool = False
+    created: datetime.datetime | None = None
     pos: int = 0
     source_exhausted: bool = False
 
@@ -774,18 +1642,17 @@ def _cursor_fill(cs: _CursorState, upto) -> None:
 
     ``upto`` may be ``float("inf")`` to fully drain the cursor (FETCH/MOVE ALL, or an ABSOLUTE/
     LAST position counted from the end)."""
-    _sentinel = object()
     while not cs.source_exhausted and len(cs.buffer) < upto:
-        row = next(cs.source, _sentinel)
-        if row is _sentinel:
+        chunk = next(cs.source, None)
+        if chunk is None:
             cs.source_exhausted = True
             break
-        cs.buffer.append(row)
+        cs.buffer.add(chunk)
 
 
-def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
-    """Advance ``cs`` per FETCH/MOVE semantics and return the rows the client should see
-    (already in client-visible order — BACKWARD returns most-recent-first, like real PG).
+def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list[Any]:
+    """Advance ``cs`` per FETCH/MOVE semantics and return the rows the client should see, as
+    batches (already in client-visible order — BACKWARD returns most-recent-first, like real PG).
 
     A NO SCROLL cursor (``cs.scrollable`` False) only permits forward movement — PRIOR, BACKWARD,
     ABSOLUTE, LAST, and RELATIVE with a negative count raise ``_CursorNotScrollableError``, same as
@@ -804,17 +1671,17 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
         else:
             _cursor_fill(cs, cs.pos + count)
             end = min(cs.pos + count, len(cs.buffer))
-        out = cs.buffer[cs.pos : end]
+        out = cs.buffer.rows(cs.pos, end)
         cs.pos = end
         if not cs.scrollable:
             # Forward-only cursor: rows behind pos can never be needed again (BACKWARD/ABSOLUTE
             # are rejected above), so drop them instead of retaining the entire result in memory.
-            del cs.buffer[: cs.pos]
+            cs.buffer.drop(cs.pos)
             cs.pos = 0
         return out
     if direction == "backward":
         start = 0 if count is None else max(0, cs.pos - count)
-        out = list(reversed(cs.buffer[start : cs.pos]))
+        out = cs.buffer.reversed_rows(start, cs.pos)
         cs.pos = start
         return out
     if direction == "absolute":
@@ -825,7 +1692,7 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
                 cs.pos = len(cs.buffer)
                 return []
             cs.pos = k
-            return [cs.buffer[k - 1]]
+            return cs.buffer.rows(k - 1, k)
         if k == 0:
             cs.pos = 0
             return []
@@ -835,7 +1702,7 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
             cs.pos = 0 if idx < 0 else len(cs.buffer)
             return []
         cs.pos = idx + 1
-        return [cs.buffer[idx]]
+        return cs.buffer.rows(idx, idx + 1)
     if direction == "relative":
         n = count or 0
         return _cursor_move(cs, "forward", n) if n >= 0 else _cursor_move(cs, "backward", -n)
@@ -907,9 +1774,151 @@ def _normalize_cursor_name(raw: str) -> str:
     return raw.lower()
 
 
+def _columns_of(result: Any) -> list[xml_mapping.Column]:
+    """A described or executed result's columns: their names, type OIDs and text writers."""
+    columns = []
+    kinds = result.kinds() or [None] * result.column_count()
+    for index in range(result.column_count()):
+        name, bvtype = result.column(index)
+        oid = result.column_type_oid(index) or BVTYPE_TO_OID.get(bvtype, PG_UNKNOWN_OID)
+        columns.append(xml_mapping.Column(name, oid, _text_writer(bvtype, kinds[index])))
+    return columns
+
+
+def _text_writer(bvtype: Any, kind: str | None = None) -> Callable[[Any], str]:  # REQ-2194
+    """A value's PostgreSQL text form as the wire's encoder writes it (REQ-2195: from the value
+    as it is; ``kind`` the engine's type name of a row result's column, as the wire passes it)."""
+    from provisa._encoders import pgwire as encoder
+
+    types = [wire_type_name(bvtype)]
+    kinds = [kind]
+
+    def text(value: Any) -> str:
+        message = encoder.encode_rows([(value,)], types, [0], None, kinds)
+        (cell,) = _data_row_cells(message)
+        if cell is None:
+            raise ValueError(f"no text form of {value!r}")
+        return cell.decode("utf-8")
+
+    return text
+
+
+def _data_row_cells(message: bytes) -> list[bytes | None]:
+    """The cells of one DataRow message."""
+    (count,) = struct.unpack_from("!h", message, 5)
+    cells: list[bytes | None] = []
+    at = 7
+    for _ in range(count):
+        (size,) = struct.unpack_from("!i", message, at)
+        at += 4
+        if size < 0:
+            cells.append(None)
+            continue
+        cells.append(message[at : at + size])
+        at += size
+    return cells
+
+
+def _python_rows(result: Any, chunks: Iterator[Any], raw: bool, row_form: bool) -> list[tuple]:
+    """A result's batches as Python rows, each value brought to its described type: what
+    query_to_xml and its kin write an XML document from (they are not the wire's DataRow path).
+    ``raw`` and ``row_form`` say the form the batches have (``ResultData.raw``/``.rows``): a
+    passthrough's DataRow messages, or a row result's rows (REQ-2195), else Arrow."""
+    from provisa.core.ir_arrow import column_values
+
+    if raw:
+        raise ValueError("a passthrough's DataRow messages have no values to map to XML")
+    rows: list[tuple] = []
+    coerce = getattr(result, "_coerce", ())
+    for chunk in chunks:
+        if row_form:
+            columns = [list(column) for column in zip(*chunk, strict=True)]
+        else:
+            columns = [column_values(column) for column in chunk.columns]
+        for i, coercer in coerce:
+            columns[i] = [None if v is None else coercer(v) for v in columns[i]]
+        rows.extend(zip(*columns, strict=True))
+    return rows
+
+
+class _SessionReads:  # REQ-2167
+    """What query_to_xml and its kin read, as the session reads it: a statement of the session
+    through its governed path, and the catalog of its role."""
+
+    def __init__(self, session: "ProvisaSession") -> None:
+        self._session = session
+        self.warnings: list[Any] = []
+
+    @property
+    def database(self) -> str:
+        from provisa.api.app import state
+        from provisa.pgwire.catalog_populate import served_database_name
+
+        return served_database_name(state)
+
+    def rows(self, sql: str) -> tuple[list[xml_mapping.Column], list[Any]]:
+        result = self._session._execute_sql_bound(sql, None, None)
+        try:
+            data = result.data()
+            read = _columns_of(result), _python_rows(result, data.take(), data.raw, data.rows)
+            self.warnings.extend((*result.warnings, *result.late_warnings()))
+            return read
+        finally:
+            result.close()
+
+    def shape(self, sql: str) -> list[xml_mapping.Column]:
+        return _columns_of(self._session._describe_bound(sql, None))
+
+    def _cursor(self, name: str) -> "_CursorState":
+        found = self._session.cursors.get(name)
+        if found is None:
+            raise ValueError(f'{MARK} 34000: cursor "{name}" does not exist')
+        return found
+
+    def cursor_rows(self, name: str, count: int) -> tuple[list[xml_mapping.Column], list[Any]]:
+        cursor = self._cursor(name)
+        fetched = _cursor_move(cursor, "forward", count)
+        rows = _python_rows(
+            cursor.query_result, iter(fetched), cursor.buffer.raw, cursor.buffer.row_form
+        )
+        return _columns_of(cursor.query_result), rows
+
+    def cursor_shape(self, name: str) -> list[xml_mapping.Column]:
+        return _columns_of(self._cursor(name).query_result)
+
+    def catalog(self, sql: str, parameters: list[Any]) -> list[tuple]:
+        from provisa.api.app import state
+        from provisa.pgwire.catalog_populate import catalog_db_for
+
+        cursor = catalog_db_for(self._session.role_id or "", state).cursor()
+        try:
+            return [tuple(row) for row in cursor.execute(sql, parameters).fetchall()]
+        finally:
+            cursor.close()
+
+
 class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
-    def __init__(self) -> None:
+    def __init__(self, peers: dict | None = None) -> None:
         super().__init__()
+        # REQ-2167: the server's connections, by backend process id -- what pg_cancel_backend and
+        # pg_terminate_backend name. A session made outside a server has none.
+        self.peers: dict = {} if peers is None else peers
+        # REQ-2167: what pg_stat_activity lists of this connection.
+        self.backend_start = datetime.datetime.now(datetime.timezone.utc)
+        self.application_name = ""
+        # REQ-2167: what this session's set_config(name, value, false) set, by name, which its
+        # current_setting reads back as PostgreSQL's does.
+        self.client_settings: dict[str, str] = {}
+        # REQ-2167: the protocol portal whose statement is running, which pg_cursors lists
+        # beside the DECLAREd cursors: its name, statement, whether binary, and when bound.
+        self.open_portal: tuple[str, str, bool, datetime.datetime] | None = None
+        self.portal_bound: dict[str, datetime.datetime] = {}
+        # REQ-2167: this connection's two ends, (host, port), set when it starts.
+        self.client_end: tuple = ()
+        # REQ-2167: the statements this connection has run, which pg_stat_database lists as its
+        # commits.
+        self.queries = 0
+        self.server_end: tuple = ()
         self.role_id: str | None = None
         # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
         # their meta-role, made again in this session's org before each statement (a model rebuild
@@ -924,6 +1933,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # user_id. Set wherever role_id is set (trust mode: the startup packet's user; secured
         # modes: the validated identity), so an authenticated session always has both.
         self.user_id: str | None = None
+        # REQ-2171: what system_user answers, the method and the name the session authenticated
+        # by; None in trust mode, as PostgreSQL's is.
+        self.system_user: str | None = None
+        # REQ-2171: the zone the session is on; startup replaces it with the one it names.
+        self.zone = SessionZone()
         # REQ-1266: the org this session is bound to, set when it is admitted. None until then: a
         # session not yet admitted is served no org's runtime.
         self.org_id: str | None = None
@@ -937,6 +1951,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1882: the connection thread that created this session and runs its loop.
         self._owner_thread: int | None = threading.get_ident()
         self._close_requested = False
+        # Between BEGIN and COMMIT/ROLLBACK: ReadyForQuery reports 'T' (see _transaction_open).
+        self.transaction_open = False
+        # The deadline of the statement cycle in flight, for a CancelRequest from another
+        # connection to expire (ProvisaHandler._cancel); None between cycles.
+        self.statement_deadline: request_deadline.Deadline | None = None
         # REQ-1194/REQ-1224 (amended 2026-10-04): the forced redirect this connection asked for
         # (startup parameter, ``options`` or SET); never automatic on this streaming transport.
         self.redirect: bool = False
@@ -944,6 +1963,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2110: the session's time travel (SET provisa.as_of / provisa.as_recorded).
         self.as_of_setting: str | None = None
         self.as_recorded_setting: str | None = None
+        # REQ-2167: the last identity or serial value an INSERT of this session made its source
+        # generate -- what lastval() answers. None until one has (lastval then raises 55000).
+        self.last_generated: int | None = None
 
     def apply_redirect_settings(self, settings: dict[str, bool | str | None]) -> None:
         """Hold the ``provisa.redirect*`` settings read from the startup packet or a SET."""
@@ -1009,6 +2031,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
     def close_owned(self):
         """Release cursors on the owning connection thread (its loop is bound here)."""
+        advisory_locks.LOCKS.end_session(self)  # REQ-2167: a session's locks end with it
         # REQ-1862: release every still-open cursor's underlying stream (server-side cursor /
         # pooled connection) — a client that disconnects mid-cursor must not leak it.
         for cs in self.cursors.values():
@@ -1030,7 +2053,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             )
 
     def in_transaction(self) -> bool:
-        return False
+        return self.transaction_open
 
     def load_df_function(self, table: str):
         del table
@@ -1043,6 +2066,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         continues from it instead of governing again); ``shape`` is the result shape that Describe
         told the client, which the rows are encoded to. Both are None for a statement that was
         never described (the simple protocol, or a Bind with no Describe(Statement))."""
+        self.queries += 1
         return self._with_org(
             lambda: self._execute_sql_bound(sql, params, result_fmt, prepared=prepared, shape=shape)
         )
@@ -1059,12 +2083,63 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         Execute is."""
         return self._with_org(lambda: self._describe_bound(sql, params))
 
+    def _with_source_enums(self, sql: str) -> str:
+        """``sql`` with its enum functions written over what the source declares (REQ-2171)."""
+        from provisa.transpiler.pg_forms_enum import marked_source_casts, with_source_enums
+
+        from provisa.api.app import state
+
+        enums = state.pg_source_enums
+        return marked_source_casts(with_source_enums(sql, enums, self._registered_native), enums)
+
+    def _registered_native(self, table: Any, name: str) -> str | None:
+        """The type the source gives a column of the table a statement names, read as governance
+        reads that name: two tables may hold one name, and only its schema tells them apart."""
+        from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
+
+        from provisa.api.app import state
+        from provisa.compiler.naming import table_id_of
+        from provisa.compiler.stage2 import context_table_map
+
+        ctx = state.contexts.get(self.role_id) if self.role_id is not None else None
+        if ctx is None:
+            return None
+        said = normalize_identifiers(table.copy(), dialect="postgres")
+        names = context_table_map(ctx)
+        if said.db:  # a schema no table of that name is in names none of them
+            names = {name: held for name, held in names.items() if "." in name}
+        table_id = table_id_of(said, names)
+        for column in state.schema_build_cache["column_types"].get(table_id, ()):
+            if column.column_name.lower() == name.lower():
+                return column.native_type
+        return None
+
     def _describe_bound(self, sql: str, params) -> BVQueryResult:
         from provisa.pgwire.catalog import classify
 
+        said = sql.strip()  # what the client sent: audit and logs record this, the engine reads sql
+        sql = self._with_source_enums(sql)
         stripped = sql.strip()
+        refuse_notifications(stripped)  # REQ-2167
+        if _embedded_advisory_calls(stripped) is not None and not _placeholder_count(stripped):
+            # REQ-2167: answered as its Execute is, as a statement that only calls one is.
+            return self._execute_sql_bound(sql, params, None, said=said)
+        refuse_server_function(stripped)  # REQ-2167
+        if xml_mapping.calls_one(stripped):
+            # REQ-2167: answered as its Execute is. With a parameter to come it is described with
+            # no reads: the result is not held for that Execute.
+            if _placeholder_count(stripped):
+                undescribed = xml_mapping.undescribed(stripped)
+                return self._execute_sql_bound(undescribed, None, None, said=said)
+            return self._execute_sql_bound(stripped, params, None, said=said)
+        advisory = _advisory_call(stripped)
+        if advisory is not None and _placeholder_count(stripped):
+            # Described with example values: the lock is taken by the Execute, with the Bind's.
+            return ProvisaQueryResult(self._advisory_shape(advisory), stripped)
+        if advisory is not None or _SERVER_FUNCTION_RE.match(stripped):
+            return self._execute_sql_bound(sql, params, None, said=said)
         if classify(stripped) == "INTERCEPT":
-            return self._execute_sql_bound(sql, params, None)
+            return self._execute_sql_bound(sql, params, None, said=said)
         if self.role_id is None:
             raise RuntimeError("Not authenticated")
         if self.user_id is None:
@@ -1083,6 +2158,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         self.user_id,
                         "pgwire",
                         describe_pgwire_statement(stripped, self.role_id, as_of=self.time_travel()),
+                        statement=said,
                     ),
                 ),
                 timeout=request_timeout_for("pgwire"),
@@ -1090,15 +2166,176 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
-            _log_statement_failure("DESCRIBE", stripped, exc)
+            _log_statement_failure("DESCRIBE", said, exc)
             raise RuntimeError(str(exc)) from exc
         if self.redirect:
             # REQ-1194: a redirected statement answers where its result was delivered, not its
             # rows; that one row is the shape the client is told.
             if described.governed is None:
                 raise RuntimeError(_COMMAND_NOT_REDIRECTED)
-            return _StatementDescription(_REDIRECT_SHAPE, described.governed, stripped)
-        return _StatementDescription(described.shape, described.governed, stripped)
+            shape = _REDIRECT_SHAPE
+        else:
+            shape = described.shape
+        return _StatementDescription(shape, described.governed, stripped, described.parameters)
+
+    @staticmethod
+    def _advisory_shape(call: _AdvisoryCall) -> Any:
+        from provisa.executor.result import QueryResult
+
+        returns_bool = "try" in call.name or "unlock" in call.name and call.args
+        return QueryResult(
+            rows=[],
+            column_names=[call.column],
+            column_types=["BOOLEAN" if returns_bool else "void"],
+        )
+
+    def _advisory_answer(self, call: _AdvisoryCall, sql: str, params: Any) -> ProvisaQueryResult:
+        """An advisory lock function, on this server's locks. Strict: a NULL key takes no lock."""
+        answer = self._advisory_shape(call)
+        value, warnings = self._advisory_value(call.name, call.args, params)
+        if call.name in _ADVISORY_LOCKS and _ADVISORY_LOCKS[call.name][2]:
+            if not self.transaction_open:
+                advisory_locks.LOCKS.end_transaction(self)  # the statement was its own transaction
+        answer.rows.append((value,))
+        result = ProvisaQueryResult(answer, sql)
+        result.warnings = warnings
+        return result
+
+    def _advisory_value(
+        self, name: str, args: tuple[str, ...], params: Any
+    ) -> tuple[Any, tuple[Any, ...]]:
+        """What advisory lock function ``name`` of ``args`` answers, on this server's locks, and
+        what it warns of. Strict: a NULL key takes no lock."""
+        locks = advisory_locks.LOCKS
+        keys = _evaluated_keys(tuple(_substitute_params(a, params) for a in args)) if args else ()
+        warnings: tuple[Any, ...] = ()
+        if name == "pg_advisory_unlock_all":
+            locks.release_all(self)
+            value: Any = ""
+        elif any(k is None for k in keys):
+            value = None
+        else:
+            key = (self.org_id, *keys)  # a one-argument key is another space than a two-argument
+            if name in _ADVISORY_UNLOCKS:
+                mode = _ADVISORY_UNLOCKS[name]
+                value = locks.release(key, mode, self)
+                if not value:
+                    warnings = (_PostgresWarning(f"you don't own a lock of type {mode}"),)
+            else:
+                mode, wait, transaction = _ADVISORY_LOCKS[name]
+                if wait:
+                    locks.acquire(key, mode, self, transaction=transaction)
+                    value = ""
+                else:
+                    value = locks.try_acquire(key, mode, self, transaction=transaction)
+        return value, warnings
+
+    def _listed_cursors(self) -> tuple[dict[str, Any], ...]:
+        """What pg_cursors lists of this session: each DECLAREd cursor, and the protocol portal
+        whose statement is running, as PostgreSQL lists a portal a Bind created (REQ-2167)."""
+        listed = [
+            {
+                "name": c.name,
+                "statement": c.statement,
+                "is_holdable": c.holdable,
+                "is_binary": c.binary,
+                "is_scrollable": c.scrollable,
+                "creation_time": c.created.isoformat() if c.created else None,
+            }
+            for c in self.cursors.values()
+        ]
+        if self.open_portal is not None:
+            name, statement, binary, bound = self.open_portal
+            listed.append(
+                {
+                    "name": name,
+                    "statement": statement,
+                    "is_holdable": False,
+                    "is_binary": binary,
+                    "is_scrollable": False,
+                    "creation_time": bound.isoformat(),
+                }
+            )
+        return tuple(listed)
+
+    def _with_advisory_answered(self, sql: str, params: Any) -> str | None:
+        """``sql`` with each advisory lock function it calls among other things answered, each
+        lock taken (or released) in the order the statement names them; None where it calls none,
+        or one with a key that is not a constant, which refuse_server_function refuses. The keys
+        are constants: evaluating them reads nothing governance would govern."""
+        import sqlglot.expressions as exp
+
+        embedded = _embedded_advisory_calls(sql)
+        if embedded is None:
+            return None
+        tree, calls = embedded
+        for fn in calls:
+            args = tuple(a.sql(dialect="postgres") for a in fn.expressions)
+            value, _ = self._advisory_value(fn.name.lower(), args, params)
+            written = (
+                exp.null()
+                if value is None
+                else exp.Boolean(this=value)
+                if isinstance(value, bool)
+                else exp.Literal.string(value)
+            )
+            holder = fn.parent if isinstance(fn.parent, exp.Dot) else fn
+            holder.replace(written)
+        return tree.sql(dialect="postgres")
+
+    def _server_function(self, match: re.Match[str]) -> Any:  # REQ-2167
+        """pg_backend_pid(), pg_cancel_backend(pid) or pg_terminate_backend(pid[, timeout]), on
+        this server's pgwire connections: a pid this server has no connection of answers false,
+        as PostgreSQL's does for a pid that is no backend of its."""
+        from provisa.executor.result import QueryResult
+
+        name = match["name"].lower()
+        column = match["alias"] or name
+        if name.startswith("inet_"):
+            # This connection's own ends, as PostgreSQL answers them for a TCP connection.
+            host, port = (self.client_end if "client" in name else self.server_end)[:2]
+            answer = (host, "INET") if name.endswith("addr") else (port, "INTEGER")
+            return QueryResult(rows=[(answer[0],)], column_names=[column], column_types=[answer[1]])
+        if name == "pg_backend_pid":
+            return QueryResult(
+                rows=[(self.process_id,)], column_names=[column], column_types=["INTEGER"]
+            )
+        pid = _evaluated_pid(match["args"])
+        if pid is None:
+            return QueryResult(rows=[(None,)], column_names=[column], column_types=["BOOLEAN"])
+        target = self.peers.get(pid)
+        if target is None:
+            return QueryResult(rows=[(False,)], column_names=[column], column_types=["BOOLEAN"])
+        peer = cast(ProvisaSession, target.session)
+        if not self._may_end(peer):
+            raise PermissionError(
+                f"{name}: the connection with pid {pid} is another user's; ending it takes the "
+                "user_management right in its org"
+            )
+        if name == "pg_cancel_backend":
+            deadline = peer.statement_deadline
+            if deadline is not None:
+                deadline.expire("canceling statement due to user request")
+        else:
+            deadline = peer.statement_deadline
+            if deadline is not None:
+                deadline.expire("terminating connection due to administrator command")
+            target.connection.shutdown(socket.SHUT_RDWR)
+        return QueryResult(rows=[(True,)], column_names=[column], column_types=["BOOLEAN"])
+
+    def _may_end(self, peer: "ProvisaSession") -> bool:
+        """Whether this session may cancel or end ``peer``'s statement: its own user's in its org,
+        or any of its org's for a caller with the user_management right. Another org's session is
+        never one (REQ-2167)."""
+        if peer.org_id != self.org_id:
+            return False
+        if peer.user_id is not None and peer.user_id == self.user_id:
+            return True
+        from provisa.api.app import state
+        from provisa.security.rights import Capability
+
+        claims = getattr(self.identity, "roles", []) or []
+        return Capability.USER_MANAGEMENT in capabilities_for_claims(claims, state.roles)
 
     def _with_org(self, fn: Callable[[], Any]) -> Any:
         # REQ-1266: bind this session's org on the connection thread so the sync state.X reads
@@ -1160,29 +2397,101 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         else:
             self.role_id = ensure_meta_role(state, list(self.role_set))
 
+    def _catalog_read(self, read):
+        """A catalog statement's read, as this connection: its org, its principal, its loop."""
+        if self.user_id is None:
+            raise RuntimeError("Authenticated session has no principal")
+        from provisa.audit.context import with_audit_identity
+        from provisa.core.connection_loop import current_connection_loop
+
+        return current_connection_loop().run(
+            _run_with_org(self.org_id, with_audit_identity(self.user_id, "pgwire", read)),
+            timeout=request_timeout_for("pgwire"),
+        )
+
     def _execute_sql_bound(
-        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
+        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None, said=None
     ) -> ProvisaQueryResult:
-        from provisa.pgwire.catalog import answer, classify
+        """``said`` is the statement as the client sent it, where ``sql`` is one this session wrote
+        from it: what audit, logs and current_query() record, whatever is written for the engine."""
+        from provisa.pgwire.catalog import CatalogSession, answer, classify
 
         # REQ-589: the statement keeps its $N placeholders and the client's values stay BOUND all
         # the way to the engine/source (govern_pgwire_plan(params=...)) — never spliced in here, so
         # every value shares one SQL text (server-side prepares, SQL-text-keyed caches) and a value
         # can never change the governed shape. Only the INTERCEPT catalog emulation (not a governed
         # query) reads the values inline.
+        said = said or sql.strip()
+        sql = self._with_source_enums(sql)
+        if self.last_generated is not None:
+            from provisa.pgwire.generated_keys import answered_lastval
+
+            # REQ-2167: lastval() is the session's own; a statement its Describe governed with
+            # the call in it is governed again with the value held now.
+            answered = answered_lastval(sql, self.last_generated)
+            if answered is not None:
+                sql, prepared = answered, None
         stripped = sql.strip()
+        if xml_mapping.calls_one(stripped):
+            # REQ-2167: each read the call makes is a statement of this session, governed here,
+            # and what such a read warns of (rows cut at the limit) the statement warns of.
+            reads = _SessionReads(self)
+            folded = xml_mapping.fold(stripped, reads, params)
+            result = self._execute_sql_bound(folded, None, result_fmt, said=said)
+            result.warnings = (*result.warnings, *reads.warnings)
+            return result
         bound = list(params) if params else None
+        refuse_notifications(stripped)  # REQ-2167
+        answered = self._with_advisory_answered(stripped, params)  # REQ-2167
+        if answered is not None:
+            try:
+                return self._execute_sql_bound(answered, params, result_fmt, said=said)
+            finally:
+                if not self.transaction_open:
+                    advisory_locks.LOCKS.end_transaction(self)  # its own transaction ended
+        refuse_server_function(stripped)  # REQ-2167
+        refuse_other_zone(stripped, self.zone.current)  # REQ-2171
+        advisory = _advisory_call(stripped)
+        if advisory is not None:
+            return self._advisory_answer(advisory, stripped, params)
+        server_function = _SERVER_FUNCTION_RE.match(stripped)
+        if server_function is not None:
+            return ProvisaQueryResult(self._server_function(server_function), stripped)
+        stripped = _current_query_said(stripped, said)
         # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
         if self._set_redirect(stripped) or self._set_time_travel(stripped):
             from provisa.executor.result import QueryResult
 
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
+        was_open = self.transaction_open
+        self.transaction_open = _transaction_open(stripped, was_open)
+        self.zone.note(stripped, was_open, self.transaction_open)  # REQ-2171
+        if was_open and not self.transaction_open:
+            advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
         if disposition == "INTERCEPT":
             from provisa.api.app import state
 
             stripped = _substitute_params(stripped, params)
-            result = answer(stripped, self.role_id or "", state)
+            result = answer(
+                stripped,
+                self.role_id or "",
+                state,
+                session=CatalogSession(
+                    self.process_id,
+                    self.application_name,
+                    self.backend_start,
+                    self.system_user,
+                    self.zone.current,
+                    self.zone,
+                    self.org_id,
+                    self.client_settings,
+                    self._listed_cursors(),
+                    self.client_end,
+                    self.queries,
+                ),
+                run=self._catalog_read,
+            )
             log.debug(
                 "[RESULT] cols=%r rows=%r",
                 result.column_names,
@@ -1219,6 +2528,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # read up in the response cache BEFORE routing; a hit comes back as a Route.CACHE plan and
         # is served by the _execute_plan branch below (decoded rows, or the raw DataRow replay
         # written for these codes).
+        result_fmt = raw_row_formats(result_fmt, self.zone.current)  # REQ-2171
         _formats = list(result_fmt) if result_fmt else None
         # REQ-1194/REQ-1224 (amended 2026-10-04): a forced redirect is the session's setting; this
         # streaming transport is never delivered automatically.
@@ -1249,14 +2559,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 governed = cl.run(
                     _run_with_org(
                         self.org_id,
-                        with_audit_identity(self.user_id, "pgwire", to_plan),
+                        with_audit_identity(self.user_id, "pgwire", to_plan, statement=said),
                     ),
                     timeout=request_timeout_for("pgwire"),
                 )
             except PermissionError as exc:
                 raise PermissionError(str(exc)) from exc
             except Exception as exc:
-                _log_statement_failure("statement", stripped, exc)
+                _log_statement_failure("statement", said, exc)
                 raise RuntimeError(str(exc)) from exc
         # Parse/govern/route timing, isolated from physical execution below, so the pure-Python
         # compile-path cost (parse → govern_pgwire_plan → routing decision) can be measured
@@ -1264,17 +2574,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # normal operation.
         _t_govern1 = time.perf_counter()
 
-        from buenavista.postgres import BVTYPE_TO_PGTYPE
-
         from provisa.transpiler.router import Route
 
         # The type OIDs the client was told at Describe (None when the statement was not described)
         # — a raw-DataRow passthrough forwards the source's bytes only where they have that layout.
-        described_oids = (
-            [BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(t)][0] for _, t in shape]
-            if shape is not None
-            else None
-        )
+        described_oids = [_described_oid(t) for _, t in shape] if shape is not None else None
 
         from provisa.pgwire._pipeline import serve_stream_through_cache
 
@@ -1296,7 +2600,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 elif isinstance(governed, _Plan) and (
                     governed.writes_tables
                     or governed.temp is not None
-                    or not streams_from_terminal(governed)  # REQ-2002: rows embedded after read
+                    # REQ-2002: rows embedded after read. REQ-2131: column transforms are applied as
+                    # the rows stream, by serve_stream_through_cache, which every stream below takes.
+                    or not streams_from_terminal(governed, applies_columns=True)
                 ):
                     # A data write executes once, through the one terminal every surface's write
                     # passes (its after-write step and audit), and answers its count. It never
@@ -1306,6 +2612,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         _run_with_org(self.org_id, _execute_plan(governed)),
                         timeout=request_timeout_for("pgwire"),
                     )
+                    if getattr(result, "generated_key", None) is not None:
+                        self.last_generated = result.generated_key  # REQ-2167
                 elif isinstance(governed, _Plan) and governed.route == Route.ENGINE:
                     # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                     # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
@@ -1470,16 +2778,16 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 raise PermissionError(str(exc)) from exc
             except Exception as exc:
                 self._finalize_audit(governed, 500)
-                _log_statement_failure("statement", stripped, exc)
+                _log_statement_failure("statement", said, exc)
                 raise RuntimeError(str(exc)) from exc
         _t_execute1 = time.perf_counter()
         log.debug(
             "[PGWIRE TIMING] govern=%.1fms execute=%.1fms sql=%r",
             (_t_govern1 - _t_govern0) * 1000,
             (_t_execute1 - _t_govern1) * 1000,
-            stripped[:80],
+            said[:80],
         )
-        _annotate_request(db__statement=stripped[:1000])  # recorded in debug detail only
+        _annotate_request(db__statement=said[:1000])  # recorded in debug detail only
 
         # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
         # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
@@ -1488,11 +2796,16 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # is not recorded again.
         self._finalize_audit(governed, 200, defer_to_drain=True)
         try:
+            plan = governed if isinstance(governed, _Plan) else None
             return ProvisaQueryResult(
-                result, stripped, shape, plan=governed if isinstance(governed, _Plan) else None
+                result,
+                stripped,
+                shape,
+                plan=plan,
+                read_shape=_undescribed_read_shape(plan, shape),
             )
         except Exception:
-            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+            log.warning("[PGWIRE] EXCEPTION sql=%r", said[:300], exc_info=True)
             raise
 
     def _finalize_audit(self, governed, status_code: int, *, defer_to_drain: bool = False) -> None:
@@ -1513,8 +2826,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
 
 class ProvisaConnection(Connection):  # REQ-529
+    def __init__(self) -> None:
+        super().__init__()
+        # The server's connections by backend process id (ProvisaServer.ctxts is this dict).
+        self.peers: dict = {}
+
     def new_session(self) -> ProvisaSession:
-        return ProvisaSession()
+        return ProvisaSession(self.peers)
 
     def parameters(self) -> dict[str, str]:
         # Startup ParameterStatus set. server_version declares PG 14, so we
@@ -1541,6 +2859,48 @@ class ProvisaConnection(Connection):  # REQ-529
         }
 
 
+class _SourceFailed(Exception):
+    """The error (its cause) a result's source raised as its rows were read for the client --
+    an engine error met past the statement's run, in a later batch -- as against one met writing
+    them to the client's socket. The statement is answered with it; the connection goes on."""
+
+
+class _ReadData:
+    """A result's ``ResultData``, each failure of its source as it is read a ``_SourceFailed``. A
+    timeout is raised as it is: the request's deadline answers it (``ProvisaHandler._timed_out``)."""
+
+    def __init__(self, data: Any) -> None:
+        self._data = data
+        self.raw = data.raw
+        self.rows = data.rows
+
+    def take(self, limit: int = 0) -> Iterator[Any]:
+        batches = self._data.take(limit)
+        while True:
+            try:
+                batch = next(batches)
+            except StopIteration:
+                return
+            except TimeoutError:
+                raise
+            except Exception as error:
+                raise _SourceFailed() from error
+            yield batch
+
+
+class _ReadResult:
+    """``result``, its rows read through ``_ReadData``."""
+
+    def __init__(self, result: Any) -> None:
+        self._result = result
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._result, name)
+
+    def data(self) -> _ReadData:
+        return _ReadData(self._result.data())
+
+
 class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
 
@@ -1557,6 +2917,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     _sasl: "ScramExchange | None" = None
     # The session this connection's startup created (REQ-1882: closed on this thread).
     _session: "ProvisaSession | None" = None
+    # REQ-2171: the TimeZone the client was last told, so a change is reported once.
+    _reported_zone: str | None = None
     # REQ-1910: the request span of the statement cycle in flight — one simple Query, or one
     # extended-protocol cycle from its first Parse/Bind/Describe/Execute to the Sync that ends it.
     # Held, not a block: the cycle's messages are dispatched one by one by the vendor's loop.
@@ -1576,6 +2938,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if self._deadline is None:
             self._deadline = request_deadline.open_request("pgwire")
             request_deadline.hold(self._deadline)
+            if self._session is not None:
+                self._session.statement_deadline = self._deadline  # what a CancelRequest ends
 
     def _close_request(self) -> None:
         # Ending the cycle's deadline scope is a release section: a raise that landed between
@@ -1585,10 +2949,24 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         with shield.lock:
             shield.settle()
             deadline, self._deadline = self._deadline, None
+            if self._session is not None:
+                self._session.statement_deadline = None
             if deadline is not None:
                 request_deadline.release(deadline, shield)
             shield.quiesce()
         self._request.close()
+
+    def _cancel(self, process_id: int, secret_key: int) -> None:
+        """A CancelRequest: end the statement the named connection is running, as PostgreSQL
+        does -- it fails with 57014 and the connection stays open. The request's deadline is
+        expired (REQ-1905), which cancels the statement through its driver. A key that does not
+        match, or a connection running nothing, is ignored, as PostgreSQL ignores it."""
+        ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
+        if ctx is None or ctx.secret_key != secret_key:
+            return
+        deadline = ctx.session.statement_deadline
+        if deadline is not None:
+            deadline.expire("canceling statement due to user request")
 
     def _timed_out(self, exc: BaseException) -> "TimeoutError | None":
         """The cycle's timeout, when ``exc`` is it: the deadline's own error, or the watchdog's
@@ -1607,12 +2985,22 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         simple and the extended protocol alike; anything else as the base class sends it."""
         from provisa.compiler.definitions import definition_refusal
 
+        answered = from_engine(exception)  # REQ-2167: PostgreSQL's own error, from the engine
+        if answered is not None:
+            self._send_pg_error("ERROR", answered.sqlstate, str(answered))
+            if ctx:
+                ctx.mark_error()
+            return
         refusal = definition_refusal(exception)
         if refusal is None:
-            # REQ-2087: the base class writes str(exception); it is given the redacted text.
-            super().send_error(_Said(str(exception)), ctx)
-            return
-        self._send_pg_error("ERROR", "0A000", str(refusal))
+            # REQ-2087: the text the client is given -- model names, redacted. The session's org
+            # names its tables; an error before a session has none. Severity, code and message,
+            # as PostgreSQL sends every error.
+            org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
+            said = str(_Said(str(exception), org_id))
+            self._send_pg_error("ERROR", _sqlstate_of(exception), said)
+        else:
+            self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
             ctx.mark_error()
 
@@ -1621,17 +3009,67 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # statement_timeout ended. The message names the transport and the setting.
         self._send_pg_error("ERROR", "57014", str(exc))
 
+    # After an error in an extended-query cycle, PostgreSQL discards every message up to the Sync
+    # (the Execute already is, by the base class). An error in Parse or Bind is answered with an
+    # ErrorResponse and the cycle goes on to its Sync; the connection stays usable.
+
     def handle_parse(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
-        super().handle_parse(ctx, payload)
+        if ctx.has_error:
+            return
+        try:
+            payload = _with_spaced_placeholders(payload)
+            _refuse_bad_syntax(_parse_message_sql(payload))
+            super().handle_parse(ctx, payload)
+        except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse
+            self.send_error(exc, ctx)
 
     def handle_bind(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
-        super().handle_bind(ctx, payload)
+        if ctx.has_error:
+            return
+        try:
+            _refuse_wrong_parameter_count(ctx, payload)
+            if self._session is not None:
+                portal = bytes(payload[: payload.index(0)]).decode("utf-8")
+                self._session.portal_bound[portal] = datetime.datetime.now(datetime.timezone.utc)
+            super().handle_bind(ctx, payload)
+        except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse
+            self.send_error(exc, ctx)
+
+    def handle_close(self, ctx: BVContext, payload: bytes) -> None:
+        if ctx.has_error:
+            return
+        super().handle_close(ctx, payload)
+
+    def send_parameter_status(self, params: dict[str, str]) -> None:
+        # REQ-2171: the zone the session is on, never the server's. Where it cannot be told nothing
+        # is reported of it.
+        if "TimeZone" in params and self._session is not None:
+            self._reported_zone = self._session.zone.shown()
+            del params["TimeZone"]
+            if self._reported_zone is not None:
+                params["TimeZone"] = self._reported_zone
+        super().send_parameter_status(params)
+
+    def _report_zone(self) -> None:
+        """As PostgreSQL's GUC_REPORT: a TimeZone that changed is reported ahead of ReadyForQuery."""
+        session = self._session
+        if session is None:
+            return
+        shown = session.zone.shown()
+        if shown is not None and shown != self._reported_zone:
+            self.send_parameter_status({"TimeZone": shown})
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
+        # So does the cycle's error: a Query sends no Sync, and one whose statement failed left
+        # the next extended cycle's every message discarded, unanswered. A failed transaction is
+        # not cleared with it: ReadyForQuery reports 'E' until ROLLBACK (BVContext.transaction_failed).
+        if ctx is not None:
+            ctx.sync()
         try:
+            self._report_zone()
             super().send_ready_for_query(ctx)
         finally:
             with self._shield.lock:  # entered without a Python frame: see _close_request
@@ -1639,6 +3077,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self._close_request()
 
     def _send_warning(self, warning: Any) -> None:
+        if isinstance(warning, _PostgresWarning):
+            self._send_pg_notice(warning.message, severity="WARNING")
+            return
         self._send_pg_notice(
             warning.message,
             json.dumps({"code": warning.code, "params": warning.params}, ensure_ascii=True),
@@ -1659,7 +3100,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             query_result.warnings = ()  # a later Execute of the same portal says it once
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
-            sent = super().send_data_rows(query_result, limit)
+            session = self._session
+            read = query_result if session is None else in_session_zone(query_result, session.zone)
+            # An error the source raises as its rows are read is the statement's, answered to the
+            # client by the message handler (_SourceFailed); one writing them is the connection's.
+            sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
@@ -1703,9 +3148,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.wfile = self._meter
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
-        from provisa.security.redaction import redact
+        from provisa.api.engine_error_names import client_text
 
-        message = redact(message)  # REQ-2087: every message a client is sent
+        # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
+        message = client_text(message)
         buf = BVBuffer()
         for field, value in (
             (b"S", severity),
@@ -1717,18 +3163,26 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             buf.write_string(value)
         buf.write_bytes(b"\x00")
         out = buf.get_value()
-        self.wfile.write(struct.pack("!ci", ServerResponse.ERROR_RESPONSE, len(out) + 4))
-        self.wfile.write(out)
+        # One write: a deadline's raise lands between Python bytecodes, never inside the one
+        # call, so a message is sent whole or not at all.
+        self.wfile.write(struct.pack("!ci", ServerResponse.ERROR_RESPONSE, len(out) + 4) + out)
         self.wfile.flush()
 
-    def _send_pg_notice(self, message: str, detail: str | None = None) -> None:
+    def _send_pg_notice(
+        self,
+        message: str,
+        detail: str | None = None,
+        *,
+        severity: str = "NOTICE",
+        sqlstate: str = "01000",  # SQLSTATE warning class
+    ) -> None:
         """Send a NoticeResponse (a non-fatal, out-of-band message) — never touches result rows.
         ``detail`` goes in the Detail field."""
         buf = BVBuffer()
         fields = [
-            (b"S", "NOTICE"),
-            (b"V", "NOTICE"),
-            (b"C", "01000"),  # SQLSTATE warning class
+            (b"S", severity),
+            (b"V", severity),
+            (b"C", sqlstate),
             (b"M", message),
         ]
         if detail is not None:
@@ -1738,8 +3192,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             buf.write_string(value)
         buf.write_bytes(b"\x00")
         out = buf.get_value()
-        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4))
-        self.wfile.write(out)
+        # One write: a deadline's raise lands between Python bytecodes, never inside the one
+        # call, so a message is sent whole or not at all.
+        self.wfile.write(struct.pack("!ci", ServerResponse.NOTICE_RESPONSE, len(out) + 4) + out)
         self.wfile.flush()
 
     def handle_post_auth(self, ctx):  # type: ignore[override]
@@ -1784,12 +3239,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.wfile.flush()
             return self.handle_startup(conn)
         elif code == _CANCEL_REQUEST_CODE:
-            process_id = self.r.read_uint32()
-            secret_key = self.r.read_uint32()
-            ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
-            if ctx and ctx.secret_key == secret_key:
-                self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
-                del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
+            self._cancel(self.r.read_uint32(), self.r.read_uint32())
             return None
         elif code == _PROTOCOL_VERSION_3:
             msg = [x.decode("utf-8") for x in self.r.read_bytes(msglen - 4).split(b"\x00")]
@@ -1799,6 +3249,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             )
             ctx = BVContext(conn.create_session(), None, params)
             self._session = ctx.session  # type: ignore[assignment]
+            ctx.session.application_name = params.get("application_name", "")  # type: ignore[attr-defined]
+            ctx.session.zone = SessionZone(startup_time_zone(params))  # type: ignore[attr-defined]
+            try:
+                ctx.session.zone.shown()  # type: ignore[attr-defined]
+            except PostgresError as exc:
+                self._send_pg_error("FATAL", exc.sqlstate, str(exc))
+                return None
+            ctx.session.client_end = self.client_address  # type: ignore[attr-defined]
+            ctx.session.server_end = self.request.getsockname()  # type: ignore[attr-defined]
             try:
                 # REQ-1194: provisa.redirect / provisa.redirect_format named at connect.
                 ctx.session.apply_redirect_settings(startup_redirect_settings(params))  # type: ignore[attr-defined]
@@ -1846,8 +3305,24 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return False
-        acting = named[0] if len(named) == 1 else meta_role_id(named)
-        ctx.session.act_as(acting, tuple(named))  # type: ignore[attr-defined]
+        # REQ-2057: a named declared derived role is held, as on the unsecured HTTP path
+        # (auth/middleware.py, named_unsecured); it qualifies the roles it is named with.
+        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+        from provisa.core.request_context import reset_current_org, set_current_org
+
+        # REQ-1266: the declarations read are the deployment org's, the org this session serves.
+        token = set_current_org(_state.org_id)
+        try:
+            declared = declared_derived_roles(_state)
+        finally:
+            reset_current_org(token)
+        roles, held_derived, _attributes = named_unsecured(named, declared)
+        qualifiers = tuple(sorted(held_derived))
+        if qualifiers:
+            acting = meta_role_id([*roles, *qualifiers])
+        else:
+            acting = roles[0] if len(roles) == 1 else meta_role_id(roles)
+        ctx.session.act_as(acting, tuple(roles), qualifiers)  # type: ignore[attr-defined]
         ctx.session.user_id = username  # type: ignore[attr-defined]
         # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
         ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
@@ -2071,6 +3546,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             )
             return
         login_throttle().record_success(subject_key(username, ""))
+        ctx.session.system_user = f"scram-sha-256:{username}"  # type: ignore[attr-defined]
         self._complete_auth(ctx, identity, auth_config)
 
     def _requested_org(self) -> str | None:  # REQ-1234
@@ -2219,16 +3695,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         if requested:
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
-            from provisa.auth.role_mapping import resolve_assignments
             from provisa.security.meta_role import (
                 RoleNotHeld,
                 acting_roles,
                 resolve_requested_role,
             )
 
-            permitted = {a.role_id for a in resolve_assignments(identity)} | {role}
             org_token = None
             org_id = getattr(ctx.session, "org_id", None)
+            permitted = _held_roles(_state, identity, role, org_id, run=run_on_connection_loop)
             if org_id is not None:
                 from provisa.core.request_context import set_current_org
 
@@ -2273,9 +3748,28 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
 
+    def _cursor_command(self, ctx: BVContext, kind: int, name: str) -> str | None:
+        """The DECLARE, CLOSE or MOVE a statement or portal holds, which has no rows to describe and
+        runs as the simple Query's does (REQ-1862, REQ-2167); None for any other statement."""
+        if kind == ord("P"):
+            if name not in ctx.portals:
+                return None
+            name = ctx.portals[name][0]
+        sql = ctx.stmts.get(name, ("",))[0]
+        if _DECLARE_CURSOR_RE.match(sql) or _CLOSE_CURSOR_RE.match(sql) or _MOVE_RE.match(sql):
+            return sql
+        return None
+
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
+        if ctx.has_error:
+            return
         ba = bytearray(payload)
+        if self._cursor_command(ctx, ba[0], ba[1 : len(ba) - 1].decode("utf-8")) is not None:
+            if ba[0] == ord("S"):
+                self.send_parameter_description([])
+            self.send_no_data()
+            return
         if ba[0] == ord("P"):
             portal = ba[1 : len(ba) - 1].decode("utf-8")
             stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
@@ -2284,38 +3778,27 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 return
         elif ba[0] == ord("S"):
             stmt = ba[1 : len(ba) - 1].decode("utf-8")
+            if stmt not in ctx.stmts:
+                self.send_error(UnknownStatement(stmt), ctx)
+                return
             sql = ctx.stmts[stmt][0]
             if not sql.strip():
                 self.send_parameter_description([])
                 self.send_no_data()
                 return
+            from provisa.pgwire.parameters import placeholder_oids, resolved_oids
+
             indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
+            stored_oids = ctx.stmts[stmt][1]
             if "typeinfo_tree" in sql.lower() and indices:
                 param_oids = [1028]
             elif "set_config" in sql.lower() and indices:
                 param_oids = [25] * len(indices)
             else:
-                stored_oids = ctx.stmts[stmt][1]
                 if stored_oids:
                     param_oids = stored_oids
-                elif indices:
-                    _CAST_OID = {
-                        "text": 25,
-                        "varchar": 25,
-                        "int": 23,
-                        "int4": 23,
-                        "int8": 20,
-                        "bigint": 20,
-                        "bool": 16,
-                        "float8": 701,
-                    }
-                    cast_map = {
-                        int(m): _CAST_OID.get(t.lower(), 25)
-                        for m, t in re.findall(r"\$(\d+)::(\w+)", sql)
-                    }
-                    param_oids = [cast_map.get(i, 20) for i in range(1, max(indices) + 1)]
                 else:
-                    param_oids = []
+                    param_oids = placeholder_oids(sql)
             # Update stored param_oids so describe_statement substitutes example values
             # instead of executing the SQL with unresolved $N placeholders.
             ctx.stmts[stmt] = (sql, param_oids)
@@ -2325,6 +3808,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.send_error(e, ctx)
                 return
             try:
+                if not stored_oids:
+                    # What only the statement's description says of an uncast parameter.
+                    param_oids = resolved_oids(
+                        param_oids,
+                        getattr(query_result, "parameter_types", {}),
+                        _described_oid,
+                        TYPE_OIDS,
+                    )
+                    ctx.stmts[stmt] = (sql, param_oids)
                 self.send_parameter_description(param_oids)
                 if query_result.has_results():
                     self.send_row_description(query_result)
@@ -2342,19 +3834,52 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     if closer is not None:
                         closer()
             return
-        super().handle_describe(ctx, payload)
+        with self._portal_open(
+            ctx, ba[1 : len(ba) - 1].decode("utf-8") if ba[0] == ord("P") else None
+        ):
+            super().handle_describe(ctx, payload)
+
+    @contextlib.contextmanager
+    def _portal_open(self, ctx: BVContext, portal: str | None):
+        """While a portal's statement runs, the session lists it as pg_cursors does (REQ-2167)."""
+        session = self._session
+        if portal is None or session is None or portal not in ctx.portals:
+            yield
+            return
+        stmt, _params, formats = ctx.portals[portal]
+        sql = ctx.stmts.get(stmt, ("",))[0]
+        bound = session.portal_bound.get(portal, datetime.datetime.now(datetime.timezone.utc))
+        session.open_portal = (portal, sql, bool(formats) and all(f == 1 for f in formats), bound)
+        try:
+            yield
+        finally:
+            session.open_portal = None
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
+        from provisa.compiler.sql_rewrite import holds_no_statement
+
         self._open_request()
         ba = bytearray(payload)
         portal_idx = ba.index(0)
         portal = ba[:portal_idx].decode("utf-8")
         stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
-        if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
+        if stmt_name is not None and holds_no_statement(ctx.stmts.get(stmt_name, ("x",))[0]):
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             return
+        command = self._cursor_command(ctx, ord("P"), portal)
+        if command is not None:
+            if ctx.has_error:
+                return
+            if _DECLARE_CURSOR_RE.match(command):
+                self._handle_declare_cursor(ctx, command)
+            elif _CLOSE_CURSOR_RE.match(command):
+                self._handle_close_cursor(ctx, command)
+            else:
+                self._handle_fetch_move(ctx, command)
+            return
         try:
-            super().handle_execute(ctx, payload)
+            with self._portal_open(ctx, portal):
+                super().handle_execute(ctx, payload)
         except TimeoutError as exc:
             # REQ-1905: the deadline passed while rows were being sent. The statement ends with
             # an ErrorResponse and the rest of the cycle is skipped up to its Sync.
@@ -2363,6 +3888,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 raise
             self._send_request_timeout(timed_out)
             ctx.mark_error()
+        except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
+            self.send_error(exc, ctx)
+        except _SourceFailed as exc:  # an engine error met as the rows were read
+            self.send_error(exc.__cause__, ctx)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
@@ -2397,6 +3926,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 raise
             self._send_request_timeout(timed_out)
             self.send_ready_for_query(ctx)
+        except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
+            self.send_error(exc, ctx)
+            self.send_ready_for_query(ctx)
+        except _SourceFailed as exc:  # an engine error met as the rows were read
+            self.send_error(exc.__cause__, ctx)
+            self.send_ready_for_query(ctx)
         finally:
             if _org_token is not None:
                 from provisa.core.request_context import reset_current_org
@@ -2427,11 +3962,17 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             existing = cursors.pop(name, None)
             if existing is not None:
                 existing.query_result.close()  # re-DECLARE of an open name replaces it
+            data = query_result.data()
             cursors[name] = _CursorState(
                 name=name,
                 query_result=query_result,
-                source=query_result.rows(),
+                source=data.take(),
+                buffer=_RowBuffer(data.raw, data.rows),
                 scrollable=scrollable,
+                statement=stmt,
+                holdable=re.search(r"\bWITH\s+HOLD\b", stmt, re.IGNORECASE) is not None,
+                binary=re.search(r"\bBINARY\b", stmt.split("CURSOR")[0], re.IGNORECASE) is not None,
+                created=datetime.datetime.now(datetime.timezone.utc),
             )
             self.send_command_complete("DECLARE CURSOR\x00")
         except PermissionError as exc:
@@ -2468,13 +4009,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx.mark_error()
             return
         if is_fetch:
-            columns = [cs.query_result.column(i) for i in range(cs.query_result.column_count())]
-            result = _CursorRowsResult(columns, fetched)
+            result = _CursorRowsResult(cs, fetched)
             self.send_row_description(result)
             self.send_data_rows(result)
-            self.send_command_complete(f"FETCH {len(fetched)}\x00")
+            self.send_command_complete(f"FETCH {_fetched_rows(fetched)}\x00")
         else:
-            self.send_command_complete(f"MOVE {len(fetched)}\x00")
+            self.send_command_complete(f"MOVE {_fetched_rows(fetched)}\x00")
 
     def _handle_close_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1862
         """CLOSE cursor | CLOSE ALL — releases the underlying stream(s) and forgets the name(s)."""
@@ -2496,20 +4036,58 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self._send_pg_error("ERROR", "58000", str(exc))
             ctx.mark_error()
 
+    def _run_do_block(self, ctx: BVContext, stmt: str) -> None:
+        """A DO block of RAISE statements (``do_block``): each RAISE below EXCEPTION sent as a
+        notice at its level (SQLSTATE 00000, as PL/pgSQL raises it), an EXCEPTION as the error
+        that ends the block (P0001)."""
+        from provisa.compiler.definitions import NotAvailableHere
+        from provisa.pgwire.do_block import raised
+
+        try:
+            for r in raised(stmt):
+                if r.level == "EXCEPTION":
+                    self._send_pg_error("ERROR", "P0001", r.message)
+                    ctx.mark_error()
+                    return
+                self._send_pg_notice(r.message, severity=r.level, sqlstate="00000")
+        except NotAvailableHere as exc:
+            self._send_pg_error("ERROR", "0A000", str(exc))
+            ctx.mark_error()
+            return
+        except ValueError as exc:
+            self._send_pg_error("ERROR", "P0001", str(exc))
+            ctx.mark_error()
+            return
+        self.send_command_complete("DO\x00")
+
     def _process_query_stmts(self, ctx: BVContext, stmts: list[str]) -> None:
         for stmt in stmts:
+            from provisa.pgwire.do_block import is_do_block
+
+            if is_do_block(stmt):
+                self._run_do_block(ctx, stmt)
+                if ctx.has_error:
+                    break
+                continue
             if _COPY_RE.match(stmt):
+                from provisa.compiler.definitions import NotAvailableHere
                 from provisa.pgwire.copy_handler import CopyHandler
 
                 try:
                     ctx.session.bind_role()  # type: ignore[attr-defined]
-                    nrows = CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
+                    # As every statement of the session: its org and its temporary tables bound.
+                    nrows = cast(ProvisaSession, ctx.session)._with_org(
+                        lambda: CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
+                    )
                     self.send_command_complete(f"COPY {nrows}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
                     ctx.mark_error()
-                except Exception as exc:
+                except NotAvailableHere as exc:
                     self._send_pg_error("ERROR", "0A000", str(exc))
+                    ctx.mark_error()
+                except Exception as exc:
+                    self._send_pg_error("ERROR", _sqlstate_of(exc), str(exc))
                     ctx.mark_error()
                 break
             # A statement that defines a relation (CREATE TABLE [AS], CREATE VIEW, ALTER, DROP …)
@@ -2584,7 +4162,7 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}
-        self.ctxts: dict = {}
+        self.ctxts: dict = conn.peers
         self.auth = None
         self.ssl_ctx = ssl_ctx
 

@@ -2,6 +2,9 @@
   "sqlCanvasTableCard": {
     "removeTable": "{{tableName}} को कैनवास से हटाएँ",
     "toggleColumn": "कॉलम {{columnName}} का चयन टॉगल करें",
-    "connectColumn": "{{columnName}} से संबंध शुरू करें"
+    "connectColumn": "{{columnName}} से संबंध शुरू करें",
+    "allColumns": "सभी कॉलम ({{total}} में से {{selected}})",
+    "unjoined": "{{tables}} अन्य तालिकाओं से जुड़ी नहीं है",
+    "joinsUnavailable": "इस भूमिका द्वारा लिखे जा सकने वाले जॉइन पढ़े नहीं जा सके: {{reason}}"
   }
 }

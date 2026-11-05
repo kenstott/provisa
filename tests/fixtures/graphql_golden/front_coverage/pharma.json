@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:pharma/1-products-by-risk.graphql",
+  "root_field": "p__viewProductRiskGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:pharma/2-critical-products-at-risk.graphql",
+  "root_field": "p__viewProductRisk"
+ }
+]

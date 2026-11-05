@@ -1,11 +1,11 @@
 {
   "mcpExplore": {
     "title": "MCP",
-    "intro": "Chat with an AI assistant that explores the catalog and runs SQL for you through the governed MCP tools — the same tools external agents use.",
+    "intro": "Chat with an AI assistant that explores the catalog and runs SQL for you through the governed MCP tools that external agents use.",
     "roleNote": "Acting as role: {{role}}",
     "noRole": "(no role)",
     "thinking": "Assistant is working…",
-    "emptyState": "Ask about your data — e.g. \"which tables have customer email?\", \"top 10 orders by amount\", or \"what does the orders table look like?\"",
+    "emptyState": "Ask about your data, e.g. \"which tables have customer email?\", \"top 10 orders by amount\", or \"what does the orders table look like?\"",
     "inputPlaceholder": "Ask about your catalog or data…",
     "clear": "Clear input",
     "clearTooltip": "Clear the draft question without sending it. The conversation above is kept.",
@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} is running.",
     "toolDoneTooltip": "{{name}} finished. Its result was handed back to the assistant.",
     "toolErrorTooltip": "{{name}} failed. The assistant received the error and may retry with different arguments.",
-    "roleNoteHelpTitle": "The role this session runs as"
+    "roleNoteHelpTitle": "The role this session runs as",
+    "toolExplainTooltip": "{{name}} finished. Click to see the statement it sent and the one that ran.",
+    "explainTitle": "What the agent's query ran",
+    "explainSent": "The statement the agent sent",
+    "explainRan": "The statement that ran, governed for {{role}}"
   }
 }

@@ -32,14 +32,18 @@ same bulk route into one Provisa-owned glossary.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from provisa.api.metadata_export.atlas import (
+    ASSIGNMENT_SOURCE,
+    ROLE_ATTRIBUTE,
+    SEMANTIC_ASSIGNMENT,
     AtlasEntity,
     AtlasExport,
     _GuidCounter,
+    _is_provisa_assignment,
     to_entities,
 )
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
@@ -108,6 +112,16 @@ TERM_RELATION_MAP = {
 # ``certificateStatus = "DEPRECATED"`` — the construct Atlan consumers already surface,
 # matching this adapter's model-tag mapping — and Provisa clears only a DEPRECATED it
 # wrote; any other status is human curation and passes through the read-merge untouched.
+# REQ-1389 (amended): Provisa's own term-to-asset assignments are semantic assignments whose
+# ``source`` is Provisa -- the ownership test, as on Atlas. Atlan's assignment status is its own
+# enum, so none is set; ``source`` alone says who made it.
+ATLAN_ASSIGNMENT_ATTRIBUTES = {
+    "source": ASSIGNMENT_SOURCE,
+    "createdBy": ASSIGNMENT_SOURCE,
+    "description": "Assigned by Provisa from the term's grounding in the governed model.",
+}
+ASSET_TYPES = {"table": "Table", "column": "Column"}
+
 TERM_DEPRECATION_STATUS = "DEPRECATED"
 TERM_DEPRECATION_MESSAGE = "Deprecated in the Provisa registry."
 
@@ -116,13 +130,23 @@ TERM_DEPRECATION_MESSAGE = "Deprecated in the Provisa registry."
 class AtlanExport(AtlasExport):  # REQ-1069
     """Publish a snapshot to Atlan over its Atlas-shaped ingestion API.
 
+    Unproven against a live Atlan tenant: the routes and update semantics below are Atlas's, as
+    Atlan documents its Atlas-shaped API, and are exercised only by unit tests until a tenant
+    proves them (the provider is marked beta until then).
+
+    REQ-1389: the Atlas authorship merges apply here too. An update starts from the live
+    entity's attributes (``_canonicalize_identity``, by the stored binding: Atlan's basic-search
+    route is not used, so ``live_search`` is off) and the ``provisa_*`` classifications are
+    read-merged per entity (``classification_merge``); a failed live read refuses that entity.
+
     REQ-1443: contract checks ride the inherited Atlas governance document rather than Atlan's
-    own data-quality rules. That surface is addressed through routes this adapter has not
-    verified — the same reason ``_canonicalize_identity`` and ``classification_merge`` are off
-    here — so the checks publish where every Atlan consumer can already read them.
+    own data-quality rules, so the checks publish where every Atlan consumer can already read
+    them.
     """
 
     provider_name = "atlan"
+    # No live Atlan tenant has run its end-to-end test yet.
+    beta = True
 
     entity_bulk_path = "/api/meta/entity/bulk"
     typedefs_path = "/api/meta/types/typedefs"
@@ -130,15 +154,11 @@ class AtlanExport(AtlasExport):  # REQ-1069
     unique_attr_path = "/api/meta/entity/uniqueAttribute/type"
     entity_guid_path = "/api/meta/entity/guid"
     health_path = "/api/meta/types/typedefs/headers"
-    # Atlan's per-guid classification routes are unverified; REQ-1389 merge stays off here.
-    classification_merge = False
+    live_search = False
 
     async def _ensure_type_system(self, client, headers) -> None:
         """Atlan publishes through its own built-in types (REQ-1388's documented caveat:
         custom types get reduced native UI treatment there), so no provisa_* typedefs."""
-
-    async def _canonicalize_identity(self, client, headers, entities) -> None:
-        """Atlan's search route for the URN-canonical rebind is unverified; off until then."""
 
     def _connection_qn(self, snapshot: MetadataSnapshot) -> str:
         """Atlan's root address for everything this org publishes.
@@ -179,7 +199,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = await self._publish_entities(self._atlan_entities(snapshot), snapshot)
-        if snapshot.glossary_terms:
+        if snapshot.glossary_terms or self._departed_terms(snapshot):
             await self._publish_atlan_glossary(snapshot, result)
         return result
 
@@ -212,9 +232,10 @@ class AtlanExport(AtlasExport):  # REQ-1069
     def _apply_deprecation(attributes: dict, term: GlossaryTermAsset) -> None:
         """The documented convention: DEPRECATED asserted while the term is deprecated,
         and cleared only when the live value is the one Provisa itself writes."""
-        if term.deprecated:
+        if term.in_deprecation:
             attributes["certificateStatus"] = TERM_DEPRECATION_STATUS
-            attributes["certificateStatusMessage"] = TERM_DEPRECATION_MESSAGE
+            # REQ-2144: the curator's stated reason, when they gave one.
+            attributes["certificateStatusMessage"] = term.status_reason or TERM_DEPRECATION_MESSAGE
         elif attributes.get("certificateStatus") == TERM_DEPRECATION_STATUS:
             # Bulk updates replace the full attribute map, so dropping the pair clears it.
             del attributes["certificateStatus"]
@@ -230,6 +251,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
             # userDescription belongs to humans in Atlan's UI and is never written.
             "longDescription": term.definition or "",
             "provisaUri": term.semantic_uri,
+            "additionalAttributes": {ROLE_ATTRIBUTE: term.role},  # REQ-2141
         }
         self._apply_deprecation(attributes, term)
         return AtlasEntity(
@@ -238,8 +260,6 @@ class AtlanExport(AtlasExport):  # REQ-1069
             type_name=TERM_TYPE,
             guid=guid,
             attributes=attributes,
-            # REQ-1389: term-to-asset assignment is HUMAN-OWNED — ``assignedEntities`` is
-            # never written; ``term.refs`` stay Provisa-internal.
             relationships={"anchor": {"typeName": GLOSSARY_TYPE, "guid": glossary_guid}},
         )
 
@@ -247,23 +267,29 @@ class AtlanExport(AtlasExport):  # REQ-1069
         self,
         client: httpx.AsyncClient,
         headers: dict[str, str],
-        term: GlossaryTermAsset,
+        term: GlossaryTermAsset | None,
         binding: tuple[str, str],
         glossary_guid: str,
         result: PublishResult,
-    ) -> AtlasEntity | None:
-        """The read-merged update for a term Provisa already owns (REQ-1387/1389).
+    ) -> tuple[AtlasEntity, list[dict[str, Any]]] | None:
+        """The read-merged update for a term Provisa already owns (REQ-1387/1389), with its
+        live assignments.
 
         The binding's guid is the identity, so a Provisa-side rename UPDATES the same
         vendor term; the live qualifiedName is kept verbatim. A bound term whose live
         anchor is not the Provisa glossary is refused, never modified (ownership rule).
         """
         live_guid, _physical_key = binding
+        # A term that left the snapshot is addressed by its binding alone.
+        label = term.name if term is not None else live_guid
         fetch = await client.get(self._url(f"{self.entity_guid_path}/{live_guid}"), headers=headers)
+        if term is None and fetch.status_code == 404:
+            # A term that left the snapshot and is gone from the catalog holds no assignment.
+            return None
         if fetch.status_code >= 400:
             result.errors.append(
                 AssetError(
-                    asset=AssetRefStub(term.name),
+                    asset=AssetRefStub(label),
                     message=f"glossary term fetch failed: HTTP {fetch.status_code}",
                 )
             )
@@ -273,7 +299,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
         if anchor.get("guid") != glossary_guid:
             result.errors.append(
                 AssetError(
-                    asset=AssetRefStub(term.name),
+                    asset=AssetRefStub(label),
                     message="bound term is anchored outside the Provisa glossary; refusing "
                     "to modify it",
                 )
@@ -282,18 +308,82 @@ class AtlanExport(AtlasExport):  # REQ-1069
         # Read-merge: start from the live object, overlay only Provisa-authored fields —
         # userDescription and every other human field survive verbatim.
         attributes = {**(live.get("attributes") or {})}
-        attributes["name"] = term.name
-        attributes["longDescription"] = term.definition or ""
-        attributes["provisaUri"] = term.semantic_uri
-        self._apply_deprecation(attributes, term)
-        return AtlasEntity(
-            asset=AssetRefStub(term.name),
+        if term is not None:
+            attributes["name"] = term.name
+            attributes["longDescription"] = term.definition or ""
+            attributes["provisaUri"] = term.semantic_uri
+            # REQ-2141: Provisa's own key in the map; a steward's entries stand.
+            attributes["additionalAttributes"] = {
+                **(attributes.get("additionalAttributes") or {}),
+                ROLE_ATTRIBUTE: term.role,
+            }
+            self._apply_deprecation(attributes, term)
+        entity = AtlasEntity(
+            asset=AssetRefStub(label),
             kind="term",
             type_name=TERM_TYPE,
             guid=live_guid,
             attributes=attributes,
             relationships={"anchor": {"typeName": GLOSSARY_TYPE, "guid": glossary_guid}},
         )
+        assigned = (live.get("relationshipAttributes") or {}).get("assignedEntities") or []
+        return entity, assigned
+
+    @staticmethod
+    def _assign(
+        entity: AtlasEntity, wanted: dict[str, str], assigned: list[dict[str, Any]]
+    ) -> None:
+        """Add Provisa's assignments the term lacks and remove the ones it no longer grounds
+        (REQ-1389, amended). ``wanted`` is asset guid → Atlan type. An assignment from any
+        other source is a person's: never removed, never duplicated."""
+        ours = {a["guid"]: a for a in assigned if _is_provisa_assignment(a)}
+        held = {a["guid"] for a in assigned if not _is_provisa_assignment(a)}
+        add = [
+            {
+                "typeName": wanted[guid],
+                "guid": guid,
+                "relationshipType": SEMANTIC_ASSIGNMENT,
+                "relationshipAttributes": {
+                    "typeName": SEMANTIC_ASSIGNMENT,
+                    "attributes": ATLAN_ASSIGNMENT_ATTRIBUTES,
+                },
+            }
+            for guid in sorted(wanted)
+            if guid not in ours and guid not in held
+        ]
+        remove = [
+            {"typeName": ours[guid]["typeName"], "guid": guid}
+            for guid in sorted(ours)
+            if guid not in wanted
+        ]
+        if add:
+            entity.append_relationships["assignedEntities"] = add
+        if remove:
+            entity.remove_relationships["assignedEntities"] = remove
+
+    def _wanted_assets(
+        self, snapshot: MetadataSnapshot, term: GlossaryTermAsset, result: PublishResult
+    ) -> dict[str, str]:
+        """The catalog guids of the assets a term is assigned to: a Class its tables, a
+        Property its columns (REQ-1389)."""
+        uris = {table.ref.fqn(): table.semantic_uri for table in snapshot.tables}
+        uris.update({column.ref.fqn(): column.semantic_uri for column in snapshot.columns()})
+        wanted: dict[str, str] = {}
+        for ref in term.assigned_to():
+            bound = result.bindings.get(uris[ref.fqn()]) or self._bindings.get(uris[ref.fqn()])
+            if bound is None:
+                result.errors.append(
+                    AssetError(
+                        asset=ref,
+                        message=(
+                            f"term {term.name!r}: {ref.fqn()} has no catalog asset, so the term "
+                            "is not assigned to it"
+                        ),
+                    )
+                )
+                continue
+            wanted[bound[0]] = ASSET_TYPES[ref.kind.value]
+        return wanted
 
     async def _publish_atlan_glossary(
         self, snapshot: MetadataSnapshot, result: PublishResult
@@ -308,7 +398,8 @@ class AtlanExport(AtlasExport):  # REQ-1069
         Every term lands in the ONE glossary Provisa creates and owns. A vendor-side term
         is only ever addressed through a stored Provisa binding, nothing outside the
         Provisa glossary is read or written, and nothing is ever deleted — a term absent
-        from the snapshot is simply not sent (its vendor copy is left standing).
+        from the snapshot keeps its vendor copy and loses only Provisa's assignments. Each
+        term carries its assignments in the same bulk request (REQ-1389).
         """
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
@@ -334,16 +425,29 @@ class AtlanExport(AtlasExport):  # REQ-1069
             by_term_id: dict[int, AtlasEntity] = {}
             for term in snapshot.glossary_terms:
                 binding = self._bindings.get(term.semantic_uri)
+                assigned: list[dict[str, Any]] = []
                 if binding is None:
                     entity = self._new_term_entity(term, glossary_guid, glossary_qn, guid.next())
                 else:
-                    entity = await self._bound_term_entity(
+                    bound = await self._bound_term_entity(
                         client, headers, term, binding, glossary_guid, result
                     )
-                    if entity is None:
+                    if bound is None:
                         continue
+                    entity, assigned = bound
+                self._assign(entity, self._wanted_assets(snapshot, term, result), assigned)
                 by_term_id[term.term_id] = entity
                 entities.append(entity)
+            for binding in self._departed_terms(snapshot).values():
+                bound = await self._bound_term_entity(
+                    client, headers, None, (binding, ""), glossary_guid, result
+                )
+                if bound is None:
+                    continue
+                entity, assigned = bound
+                self._assign(entity, {}, assigned)
+                if entity.remove_relationships:
+                    entities.append(entity)
             for edge in snapshot.glossary_edges:
                 source = by_term_id.get(edge.from_term_id)
                 target = by_term_id.get(edge.to_term_id)

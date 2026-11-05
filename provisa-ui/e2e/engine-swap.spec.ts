@@ -70,9 +70,9 @@ import path from "node:path";
 import { WebSocketServer } from "ws";
 
 import { test, expect } from "./coverage";
+import { seedWarehouse } from "./cloud-warehouse";
 import { startDemoSources, removeDemoSources } from "./demo-source-containers";
 import {
-  CLOUD_WAREHOUSE_SEED,
   E2E_DRUID_BROKER_PORT,
   E2E_DRUID_COORD_PORT,
   E2E_EXASOL_FINGERPRINT_FILE,
@@ -549,10 +549,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
       "no live Snowflake credentials in this environment (SNOWFLAKE_ACCOUNT/SNOWFLAKE_USER/SNOWFLAKE_PASSWORD)",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "up"], { stdio: "pipe" });
+      seedWarehouse("snowflake", "up");
     });
     test.afterAll(async () => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "snowflake", "down"], { stdio: "pipe" });
+      seedWarehouse("snowflake", "down");
       await sweepZombieSwapSources();
     });
 
@@ -571,10 +571,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
       "no live Databricks credentials in this environment (DATABRICKS_SERVER_HOSTNAME/DATABRICKS_HTTP_PATH/DATABRICKS_TOKEN)",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "up"], { stdio: "pipe" });
+      seedWarehouse("databricks", "up");
     });
     test.afterAll(async () => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "databricks", "down"], { stdio: "pipe" });
+      seedWarehouse("databricks", "down");
       await sweepZombieSwapSources();
     });
 
@@ -598,10 +598,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
         "module docstring for the one-time az CLI command",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "up"], { stdio: "pipe" });
+      seedWarehouse("fabric", "up");
     });
     test.afterAll(async () => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "fabric", "down"], { stdio: "pipe" });
+      seedWarehouse("fabric", "down");
       await sweepZombieSwapSources();
     });
 
@@ -616,10 +616,10 @@ test.describe("engine swap: one registration answers every engine (REQ-1730)", (
       "no live GCP credentials in this environment (GOOGLE_CLOUD_PROJECT/GOOGLE_APPLICATION_CREDENTIALS)",
     );
     test.beforeAll(() => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "up"], { stdio: "pipe" });
+      seedWarehouse("bigquery", "up");
     });
     test.afterAll(async () => {
-      execFileSync(PYTHON, [CLOUD_WAREHOUSE_SEED, "bigquery", "down"], { stdio: "pipe" });
+      seedWarehouse("bigquery", "down");
       await sweepZombieSwapSources();
     });
 

@@ -26,28 +26,28 @@ Fontes de **materialização** também não têm conector federado. O Provisa bu
 
 ## Todas as Fontes {: #all-sources }
 
-O Provisa registra **73** tipos de fonte, os que o formulário de Fontes oferece. As tabelas abaixo cobrem os 73; o índice é a contagem.
+O Provisa registra **77** tipos de fonte, os que o formulário de Fontes oferece. As tabelas abaixo cobrem os 77; o índice é a contagem.
 
 | # | Grupo | Tipos de fonte |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Data warehouses em nuvem](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data lake / formatos de tabela aberta](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Fontes de código](code-sources.md) | `node`, `python` |
-| 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Receptor push](#push-receiver) | `ingest` |
-| 45–46 | [Grafo e semântico](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [Baseado em arquivo](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observabilidade e outros](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [Fontes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Verificadores de qualidade de dados](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [Data profiler](#data-profiler) | `data_profiler` |
-| 72 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [Data warehouses em nuvem](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data lake / formatos de tabela aberta](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [Fontes de código](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Receptor push](#push-receiver) | `ingest` |
+| 47–48 | [Grafo e semântico](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [Baseado em arquivo](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Observabilidade e outros](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [Fontes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Verificadores de qualidade de dados](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Data profiler](#data-profiler) | `data_profiler` |
+| 76 | [Conjuntos de dados Kaggle](#kaggle-datasets) | Kaggle (preparado pelo formulário de Fontes; registra-se como fonte `files` — veja [Conjuntos de dados Kaggle](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (registra-se como fonte `files` que percorre as páginas indicadas — veja [Wikipedia](#wikipedia)) |
 
 Referência para todo tipo de fonte que o Provisa suporta. "Driver direto" significa que consultas de fonte única são executadas contra a fonte nativamente (sub-100ms). "Nome do Conector" é o conector federado usado quando a fonte participa de JOINs multi-fonte.
 
@@ -1061,6 +1061,8 @@ O registro deriva quatro coisas desse texto:
 O agendamento não pede campos novos. `change_signal` mais `cache_ttl` definem a frequência de consulta, `mv_debounce_quiet` e `mv_debounce_max_delay` juntam uma rajada de mudanças a montante numa só varredura, uma granularidade de calendário a torna periódica e `expected_events` segura a varredura até que suas entradas estejam atualizadas em toda a janela. O loop de consulta é o agendador de varreduras.
 
 `outcome` é um de `pass`, `fail`, `warn`, `error` ou `skipped`. Nenhum deles impõe nada por si só. Se você quiser imposição, declare-a à parte: um preflight, ou uma MV sobre os resultados pousados. Uma observação pousada não precisa ser determinística, então aqui cabem verificações que nunca poderiam controlar um preflight, como uma pontuação de anomalia, uma variação numa janela móvel ou a atualidade medida em relação a agora.
+
+Uma exibição materializada pode impor as verificações das suas entradas com **Reter quando verificações falham**, na sua página de edição ao lado da sua verificação prévia. Uma atualização é então cancelada, e a view mantém a cópia anterior, quando a última execução de qualquer tabela de verificação que analisa uma das entradas físicas mais próximas da view falhou. Conta toda tabela de verificação sobre uma entrada, seja qual for o produto de dados ao qual está atribuída. O cancelamento nomeia cada tabela de verificação com falha e a entrada que ela analisa, e se propaga adiante como qualquer cancelamento de uma verificação prévia. A opção é código comum de verificação prévia que chama `provisa_services.dq`; **Mostrar o código** o exibe, e você pode copiá-lo para a verificação prévia da própria view para alterá-lo. Quando a view também tem uma verificação prévia própria, a atualização só é gravada se ambas continuarem.
 
 Você escreve o contrato na UI, no painel de qualidade de dados da página de edição da tabela, e o texto bruto do contrato ali é sempre a fonte da verdade. Uma execução de teste aplica o contrato à tabela ao vivo e mostra os resultados sem pousá-los. Use-a para pegar um contrato cujo nome de conjunto de dados foi resolvido num lugar inesperado e que, de outra forma, só pousaria linhas aprovadas.
 

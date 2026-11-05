@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Table, delete, select
 
 from provisa.core import schema_org as org
+from provisa.core.naming_rule_check import refuse_divergent_rule
 from provisa.core.env_classes import (
     BINDING_COLUMN,
     CARRIED,
@@ -63,6 +64,24 @@ from provisa.core.schema_org import metadata as org_metadata
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
     from provisa.core.env_conflicts import Conflict
+
+
+def _rights_in_two_rules(rules: list[dict[str, Any]]) -> list[str]:  # REQ-2188
+    """A right is in at most one rule of a role on a target: a deploy writes rows, past the save
+    that holds to it, so it is read from the tree here."""
+    seen: set[tuple[Any, ...]] = set()
+    problems: list[str] = []
+    for rule in rules:
+        target = (rule.get(k) for k in ("table_id", "domain_id", "action_name", "tag_id"))
+        scope = (rule.get("role_id"), *target)
+        for right in rule.get("rights", "R"):
+            if (*scope, right) in seen:
+                problems.append(
+                    f"role {rule.get('role_id')!r} has right {right!r} in two row rules on one "
+                    "target; a right is in at most one rule"
+                )
+            seen.add((*scope, right))
+    return problems
 
 
 class DeployError(Exception):
@@ -287,6 +306,11 @@ async def land(
     )
     if not apply:
         return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
+
+    # REQ-2190: the catalog's views apply a naming rule too, in PostgreSQL's regex engine.
+    names = [row["table_name"] for row in rows.get("registered_tables", [])]
+    for rule in rows.get("naming_rules", []):
+        await refuse_divergent_rule(conn, rule["pattern"], rule["replacement"], names)
 
     ordered = [t for t in org_metadata.sorted_tables if t.name in scope]
     await _apply(conn, ordered, schema, rows, delta)
@@ -564,13 +588,10 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                         "term_id": resolve_term(ref["term"], path),
                     }
                 )
-            for ref in nested["class_term"]:  # REQ-2130
-                rows["glossary_term_table_refs"].append(
-                    {
-                        "table_id": tid,
-                        "term_id": resolve_term(ref["term"], path),
-                        "derived": bool(ref.get("derived", False)),
-                    }
+            for ref in nested["class_term"]:  # REQ-2130: the table's own class_term_id
+                rows["registered_tables"][-1].update(
+                    class_term_id=resolve_term(ref["term"], path),
+                    class_term_derived=bool(ref.get("derived", False)),
                 )
             for link in nested["meta_links"]:
                 rows["table_meta_links"].append(
@@ -645,6 +666,19 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             for endpoint in nested["endpoints"]:
                 rows["api_endpoints"].append({**endpoint, "source_id": source})
 
+        elif table == "erd_layouts":  # REQ-2189
+            own, nested = _split(body, "domains", "tables")
+            name = _name_of(path)[0]
+            rows["erd_layouts"].append({**own, "name": name})
+            for domain in nested["domains"]:
+                named(path, "domain", domain.get("domain_id"), known_domains)
+                rows["erd_layout_domains"].append({**domain, "layout_name": name})
+            for placed in nested["tables"]:
+                at = placed.pop("table")
+                rows["erd_layout_tables"].append(
+                    {**placed, "layout_name": name, "table_id": resolve_table(at, path, "table")}
+                )
+
         elif table == "calendars":
             name, version = _name_of(path)
             rows["calendars"].append({**body, "name": name, "version": version})
@@ -670,7 +704,8 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             key = "name" if table == "metrics" else "id"
             entry = {**body, key: _name_of(path)[0]}
             if table == "roles":
-                named(path, "parent role", entry.get("parent_role_id"), roles)
+                for parent in entry.get("parents") or []:  # REQ-2155
+                    named(path, "parent role", parent, roles)
             rows[table].append(entry)
 
     # REQ-1363: the domain files state a tree. A parent that is no domain of this tree, or a
@@ -680,6 +715,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
     not_a_tree = tree_problem(parent_map(rows["domains"]))
     if not_a_tree is not None:
         problems.append(not_a_tree)
+    problems.extend(_rights_in_two_rules(rows["rls_rules"]))  # REQ-2188
     if problems:
         raise DeployError(problems)
     return rows

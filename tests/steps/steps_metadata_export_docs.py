@@ -82,12 +82,15 @@ def _navigable(shared_data):
     assert "metadata-export.md" not in excluded
 
 
-@then("the page states that publication is outbound only")
-def _outbound_only(shared_data):
+@then(
+    "the page states that metadata is published to a domain's catalogs and that only table "
+    "descriptions are read back from them"
+)
+def _what_flows_each_way(shared_data):
+    # REQ-1368 as amended by REQ-2122: publish out, descriptions alone come back.
     text = shared_data["text"].lower()
-    assert "outbound only" in text
-    # The claim that matters is the absence of an ingest path, not the phrase alone.
-    assert "reads an external catalog back" in text
+    assert "read back into provisa" in text
+    assert "governance (grants, row rules and masks) is never read from a catalog" in text
 
 
 @then("the page names every registered export provider")

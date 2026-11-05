@@ -18,6 +18,7 @@ import yaml
 
 from provisa.api.mcp import chat as chat_mod
 from provisa.api.mcp import tools as mcp_tools
+from provisa.core.request_context import current_org
 from tests.role_state import RoleState
 
 
@@ -884,6 +885,29 @@ class TestCurrentRoute:  # REQ-1800
         assert chat_mod._system_prompt(None) == chat_mod._SYSTEM
         assert chat_mod._system_prompt("") == chat_mod._SYSTEM
 
+    def test_a_sandbox_visitor_is_answered_shortly(self):
+        token = current_org.set("sbxabc123")
+        try:
+            prompt = chat_mod._system_prompt(None)
+        finally:
+            current_org.reset(token)
+        assert prompt == f"{chat_mod._SYSTEM}\n\n{chat_mod._DEMO_ANSWERS}"
+
+    def test_a_started_named_demo_is_answered_shortly(self, monkeypatch):
+        monkeypatch.setenv("PROVISA_DEMO", "1")
+        monkeypatch.setenv("PROVISA_NAMED_DEMO_DIR", "/demo/named/agentdata")
+        assert chat_mod._DEMO_ANSWERS in chat_mod._system_prompt("/explore")
+
+    @pytest.mark.parametrize("org", [None, "acme", "sbxtplagentdata"])
+    def test_outside_a_demo_the_prompt_is_unchanged(self, monkeypatch, org):
+        """An ordinary org, and a template whose stored answers the bake-off grades."""
+        monkeypatch.delenv("PROVISA_NAMED_DEMO_DIR", raising=False)
+        token = current_org.set(org)
+        try:
+            assert chat_mod._system_prompt(None) == chat_mod._SYSTEM
+        finally:
+            current_org.reset(token)
+
     def test_system_prompt_appends_the_route_when_given(self):
         prompt = chat_mod._system_prompt("/admin/ai-models")
         assert prompt.startswith(chat_mod._SYSTEM)
@@ -1225,19 +1249,19 @@ class TestEveryCallIsCapped:
         assert "max_tokens" not in call
 
     def test_each_provider_takes_the_cap_by_its_own_name(self):
-        assert chat_mod._output_cap("anthropic", custom_endpoint=True) == {
+        assert chat_mod.output_cap("anthropic", custom_endpoint=True) == {
             "max_tokens": chat_mod._MAX_TOKENS
         }
-        assert chat_mod._output_cap("ollama", custom_endpoint=False) == {
+        assert chat_mod.output_cap("ollama", custom_endpoint=False) == {
             "options": {"num_predict": chat_mod._MAX_TOKENS}
         }
-        assert chat_mod._output_cap("mistral", custom_endpoint=False) == {
+        assert chat_mod.output_cap("mistral", custom_endpoint=False) == {
             "max_tokens": chat_mod._MAX_TOKENS
         }
 
     def test_a_provider_that_drops_the_cap_is_refused(self):
         with pytest.raises(ValueError, match="cannot cap a Google model"):
-            chat_mod._output_cap("google", custom_endpoint=False)
+            chat_mod.output_cap("google", custom_endpoint=False)
 
     @pytest.mark.asyncio
     async def test_an_anthropic_call_is_capped_the_same(self, monkeypatch):

@@ -114,6 +114,24 @@ class TestRequireDomain:
         with pytest.raises(PermissionError, match="finance"):
             caps_mod.require_capability(info, "table_registration", domain_id="finance")
 
+    def test_the_domain_is_the_one_the_right_reaches_not_any_role_held(
+        self, multi_domain, monkeypatch
+    ):
+        # REQ-1944: create_relationship held in finance plus a read-only role in sales does not
+        # make create_relationship reach sales.
+        roles = {
+            "finance_modeler": {
+                "capabilities": ["create_relationship"],
+                "domain_access": ["finance"],
+            },
+            "sales_reader": {"capabilities": ["query_development"], "domain_access": ["sales"]},
+        }
+        monkeypatch.setattr("provisa.api.app.state", _State(roles), raising=False)
+        info = _Info(_Identity(["finance_modeler", "sales_reader"]))
+        caps_mod.require_capability(info, "create_relationship", domain_id="finance")
+        with pytest.raises(PermissionError, match="sales"):
+            caps_mod.require_capability(info, "create_relationship", domain_id="sales")
+
     def test_the_right_is_checked_before_the_domain(self, multi_domain, registry):
         with pytest.raises(PermissionError, match="Missing capability"):
             caps_mod.require_capability(

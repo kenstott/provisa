@@ -134,7 +134,7 @@ class TestNodeMergeStatements:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any("_provisa_id: 99" in s for s in stmts)
 
     @pytest.mark.asyncio
@@ -157,7 +157,7 @@ class TestNodeMergeStatements:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any("`Order`" in s for s in stmts)
 
     @pytest.mark.asyncio
@@ -180,7 +180,7 @@ class TestNodeMergeStatements:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any("`Invoice`" in s and "`Finance`" in s for s in stmts)
 
 
@@ -208,7 +208,7 @@ class TestNodeProperties:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any("SET n +=" in s and "name" in s and "age" in s for s in stmts)
 
     @pytest.mark.asyncio
@@ -231,7 +231,7 @@ class TestNodeProperties:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any("SET" not in s for s in stmts)
 
 
@@ -266,7 +266,7 @@ class TestEdgeMergeStatements:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any(
             "_provisa_id: 10" in s and "_provisa_id: 20" in s and "KNOWS" in s for s in stmts
         )
@@ -299,7 +299,7 @@ class TestEdgeMergeStatements:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         assert any("`Customer`" in s and "`Product`" in s for s in stmts)
 
 
@@ -504,8 +504,11 @@ class TestBatchingBehavior:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        assert len(captured) == 1, "Expected exactly one HTTP call to Neo4j"
-        stmts = captured[0]["statements"]
+        # The nodes and the edges go in one transaction; the index their lookups use is made first,
+        # in a transaction of its own (a schema change cannot share one with writes).
+        assert len(captured) == 2, "Expected the index call, then one data call to Neo4j"
+        assert all(s["statement"].startswith("CREATE INDEX") for s in captured[0]["statements"])
+        stmts = captured[-1]["statements"]
         assert len(stmts) == 3
 
     @pytest.mark.asyncio
@@ -531,7 +534,7 @@ class TestBatchingBehavior:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await neo4j_export(body)
 
-        stmts = [s["statement"] for s in captured[0]["statements"]]
+        stmts = [s["statement"] for s in captured[-1]["statements"]]
         node_idx = next(i for i, s in enumerate(stmts) if "MERGE (n:" in s)
         edge_idx = next(i for i, s in enumerate(stmts) if "MATCH (a:" in s)
         assert node_idx < edge_idx
@@ -552,3 +555,84 @@ class TestBatchingBehavior:
         data = json.loads(bytes(response.body))
         assert data["imported"] == 0
         assert data["errors"] == []
+
+
+class TestEdgeLookupIndex:
+    """An edge's endpoints are looked up by _provisa_id: indexed first, as its own transaction, so
+    a graph of thousands of edges is not a label scan per edge."""
+
+    @staticmethod
+    def _run(body):
+        captured: list[dict] = []
+
+        async def _fake_post(url, *, json, headers, timeout):
+            captured.append(json)
+            return _mock_neo4j_response()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=_fake_post)
+
+        async def go():
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                return await neo4j_export(body)
+
+        import asyncio
+
+        return asyncio.run(go()), captured
+
+    def test_edges_index_the_labels_they_match_before_the_export(self):
+        body = _make_request(
+            edges=[
+                {
+                    "start": 1,
+                    "end": 2,
+                    "type": "OWNS",
+                    "startNodeLabel": "Owner",
+                    "endNodeLabel": "Pet",
+                }
+            ],
+        )
+        _resp, captured = self._run(body)
+        assert len(captured) == 2
+        first = [s["statement"] for s in captured[0]["statements"]]
+        assert first == [
+            "CREATE INDEX IF NOT EXISTS FOR (n:`Owner`) ON (n._provisa_id)",
+            "CREATE INDEX IF NOT EXISTS FOR (n:`Pet`) ON (n._provisa_id)",
+        ]
+        assert any("MERGE (a)-[:`OWNS`]->(b)" in s["statement"] for s in captured[1]["statements"])
+
+    def test_nodes_alone_need_no_index(self):
+        body = _make_request(
+            nodes=[{"id": 1, "tableLabel": "Person", "label": "Person", "properties": {}}]
+        )
+        _resp, captured = self._run(body)
+        assert len(captured) == 1
+
+    def test_an_index_that_could_not_be_made_is_said(self):
+        body = _make_request(
+            edges=[{"start": 1, "end": 2, "type": "R", "startNodeLabel": "A", "endNodeLabel": "B"}]
+        )
+        calls = {"n": 0}
+
+        async def _fake_post(url, *, json, headers, timeout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _mock_neo4j_response(errors=[{"message": "no index syntax"}])
+            return _mock_neo4j_response()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(side_effect=_fake_post)
+
+        import asyncio
+        import json as _json
+
+        async def go():
+            with patch("httpx.AsyncClient", return_value=mock_client):
+                return await neo4j_export(body)
+
+        resp = asyncio.run(go())
+        assert _json.loads(bytes(resp.body))["errors"] == ["index on _provisa_id: no index syntax"]

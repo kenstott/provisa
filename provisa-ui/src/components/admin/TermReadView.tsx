@@ -13,6 +13,7 @@
 // from its columns and tables, the columns it names, the tables it is grounded in, its
 // relationships and its experts.
 
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Badge, Group, Stack, Table, Text, Title } from "@mantine/core";
 import {
@@ -21,14 +22,16 @@ import {
   removeGlossaryEdge,
   retypeGlossaryEdge,
   type GlossaryTermDetail,
+  type GlossaryTermTable,
 } from "../../api/glossary";
 import { DetailFields } from "../detail/DetailFields";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
 import { GlossaryRelationships } from "./GlossaryRelationships";
-import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
+import { TermGroundingChip, TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { RetiredTermRecord } from "./RetiredTermRecord";
+import { TermDag } from "./TermDag";
 
 type Option = { value: string; label: string };
 
@@ -47,6 +50,17 @@ export function TermReadView({
 }) {
   const { t } = useTranslation();
   const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
+  // REQ-2150: the graph draws the grounded tables the section below reads (no request of its own),
+  // kept with the term they were read for.
+  const [read, setRead] = useState<{ termId: number; tables: GlossaryTermTable[] } | null>(null);
+  const onTablesRead = useCallback(
+    (tables: GlossaryTermTable[]) => setRead({ termId: term.id, tables }),
+    [term.id],
+  );
+  const graphRelLabel = useCallback(
+    (relType: string) => relLabel(relTypeOptions, relType),
+    [relLabel, relTypeOptions],
+  );
   return (
     <Stack gap="md" pb="md">
       <DetailFields
@@ -91,6 +105,20 @@ export function TermReadView({
             label: t("glossaryTab.statusLabel"),
             value: <TermStatusBadge status={term.status} testId="glossary-detail-status" />,
           },
+          // REQ-1387: computed, beside the status a person set and never with it.
+          {
+            label: t("glossaryTab.groundingLabel"),
+            value: (
+              <Group gap={6} data-testid="glossary-detail-grounding">
+                <TermGroundingChip
+                  grounding={term.grounding}
+                  columns={term.ref_count}
+                  tables={term.table_count}
+                />
+                <Text size="sm">{t(`glossaryTab.groundingValue_${term.grounding}`)}</Text>
+              </Group>
+            ),
+          },
           // A deprecation or a retirement says why, who said so, and a deprecation when it ends.
           ...(term.status === "deprecated" || term.status === "retired"
             ? [
@@ -108,6 +136,14 @@ export function TermReadView({
       {term.status === "retired" && (
         <RetiredTermRecord term={term} navigateToTerm={navigateToTerm} />
       )}
+
+      <Title order={5}>{t("glossaryTab.termGraphTitle")}</Title>
+      <TermDag
+        term={term}
+        tables={read?.termId === term.id ? read.tables : null}
+        relLabel={graphRelLabel}
+        navigateToTerm={navigateToTerm}
+      />
 
       <Title order={5}>{t("glossaryTab.refsTitle")}</Title>
       {term.refs.length === 0 ? (
@@ -157,7 +193,12 @@ export function TermReadView({
       )}
 
       <Title order={5}>{t("glossaryTab.groundedTablesTitle")}</Title>
-      <GlossaryGroundedTables termId={term.id} canEdit={false} onChanged={() => undefined} />
+      <GlossaryGroundedTables
+        termId={term.id}
+        canEdit={false}
+        onChanged={() => undefined}
+        onRead={onTablesRead}
+      />
 
       <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
       <GlossaryRelationships

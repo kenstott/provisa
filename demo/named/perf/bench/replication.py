@@ -42,6 +42,7 @@ import contract_model
 import lookup
 import request_mix
 import setup_contract as sc
+from server_answer import checked
 
 AUDIT_BASELINE_SQL = "SELECT COALESCE(MAX(id), 0) FROM ops.queries"
 AUDIT_SINCE_SQL = (
@@ -205,7 +206,7 @@ class AdminReplication:
             json={"query": query, "variables": variables or {}},
             headers={"X-Provisa-Role": self._role},
         )
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         if body.get("errors"):
             raise ReplicationError(f"/admin/graphql: {str(body['errors'])[:300]}")
@@ -237,36 +238,39 @@ class AdminReplication:
     def _source_changes(
         self, sid: str, replicate: int | None, ttl: int | None, cache_enabled: bool
     ) -> list[_Change]:
+        # The TTL first: a replicated table needs one (the server refuses replicate without it),
+        # and the restores run in reverse, so replicate goes back before its TTL is cleared.
         return [
-            _Change(
-                MUTATIONS["source"],
-                {"sourceId": sid, "value": replicate},
-                "$sourceId: String!, $value: Int",
-                "sourceId: $sourceId, replicate: $value",
-            ),
             _Change(
                 MUTATIONS["source_cache"],
                 {"sourceId": sid, "enabled": cache_enabled, "ttl": ttl},
                 "$sourceId: String!, $enabled: Boolean!, $ttl: Int",
                 "sourceId: $sourceId, cacheEnabled: $enabled, cacheTtl: $ttl",
             ),
+            _Change(
+                MUTATIONS["source"],
+                {"sourceId": sid, "value": replicate},
+                "$sourceId: String!, $value: Int",
+                "sourceId: $sourceId, replicate: $value",
+            ),
         ]
 
     def _table_changes(
         self, table_id: int, replicate: int | None, ttl: int | None
     ) -> list[_Change]:
+        # The TTL first, as for a source (_source_changes).
         return [
-            _Change(
-                MUTATIONS["table"],
-                {"tableId": table_id, "value": replicate},
-                "$tableId: Int!, $value: Int",
-                "tableId: $tableId, replicate: $value",
-            ),
             _Change(
                 MUTATIONS["table_cache"],
                 {"tableId": table_id, "ttl": ttl},
                 "$tableId: Int!, $ttl: Int",
                 "tableId: $tableId, cacheTtl: $ttl",
+            ),
+            _Change(
+                MUTATIONS["table"],
+                {"tableId": table_id, "value": replicate},
+                "$tableId: Int!, $value: Int",
+                "tableId: $tableId, replicate: $value",
             ),
         ]
 

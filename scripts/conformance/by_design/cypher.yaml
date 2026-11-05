@@ -1,0 +1,91 @@
+# The openCypher TCK's scenarios skipped by design (REQ-2167, amended 2026-10-27 and
+# 2026-10-28), never counted as failed: each group quotes the rule of the requirement that
+# excludes it. scripts/conformance/by_design.py.
+#
+# Not here, by the amendment "SETUP THAT CREATES OBJECTS IS ADAPTED, NOT EXCLUDED": a scenario
+# that builds its graph, names a TCK graph or declares a procedure only as its setup is adapted
+# over a fixture model, and until it is, it counts as a failure. A write to a label the fixture
+# model registers is in scope (REQ-818), so writes are not excluded either.
+
+- group: REMOVE of a property
+  requirement: REQ-2176
+  decision: >-
+    "SET n:L and REMOVE n:L write node_labels rows on ephemeral or model nodes; a node never moves
+    table. SET of a property is a governed write on a model node (declared columns only)": a
+    REMOVE is a label write, and a REMOVE of a property is refused by name.
+  reason: "A REMOVE of a property is not written"
+
+- group: Labels the model does not have
+  requirement: REQ-778
+  decision: >-
+    A label no table the role reads has is refused by name (cypher.unknown_label), offering the
+    registered labels; it is never read as an empty match.
+  reason: "There is no label :"
+
+- group: Relationship types the model does not have
+  requirement: REQ-603
+  decision: >-
+    "SQL and Cypher queries that traverse a join not backed by a registered relationship are
+    rejected at compile time."
+  reason: "There is no relationship type :"
+
+- group: Temporal values below the microsecond
+  requirement: REQ-2173
+  decision: >-
+    "Every temporal value ... has microsecond precision ...; its nanosecond property is its
+    microseconds times 1000."
+  reason: "^expects digits below the microsecond"
+
+- group: Dates beyond the years Provisa holds
+  requirement: REQ-2173
+  decision: >-
+    TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA: a date beyond years 0001 to 9999 is
+    refused by name.
+  case: "^Temporal10 - .*::\\[(9|10)\\] Should handle large durations"
+  reason: "is beyond the dates Provisa holds, years 0001 to 9999"
+
+- group: Times at offsets beyond the engine's
+  requirement: REQ-2173
+  decision: >-
+    TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA: a time at an offset of 16 hours or more
+    is refused by name.
+  case: "^Temporal2 - .*::\\[3\\] Should parse time from string #8$"
+  reason: "is at an offset beyond the times Provisa holds"
+
+- group: Historical zone offsets as IANA gives them
+  requirement: REQ-2173
+  decision: >-
+    TEMPORAL VALUES ARE BOUNDED BY THE ENGINE AND IANA: a named zone's offset is the IANA time
+    zone database's (Europe/Stockholm in 1818 is +01:12:12), not another database's.
+  case: "^Temporal2 - .*::\\[6\\] Should parse date time with named time zone from string #5$"
+  reason: "1818-07-21T21:40:32\\.142\\+01:12:12\\[Europe/Stockholm\\]"
+
+- kind: adapted
+  group: Setups that build their graph
+  became: >-
+    the scenario's setup and its query run in one ephemeral session over Bolt, acting as a role
+    that reaches no model domain: the setup's CREATEs make the session's own nodes and
+    relationships, and the query reads them.
+  reason: "\\[in a session\\]$"
+
+- kind: adapted
+  group: The empty graph
+  became: >-
+    the query runs in a fresh ephemeral session over Bolt, acting as a role that reaches no model
+    domain: MATCH sees only the session's own nodes, of which there are none.
+  reason: "\\[in a session, empty graph\\]$"
+
+- kind: adapted
+  group: Named TCK graphs
+  became: >-
+    the named graph's CREATE script, from the TCK's graphs directory, runs in one ephemeral session
+    over Bolt, acting as a role that reaches no model domain, and the query reads what it made.
+  reason: "\\[in a session, named graph\\]$"
+
+- kind: adapted
+  group: Test procedures
+  became: >-
+    the procedure is a statement command of the fixture model, bound in Cypher to the procedure's
+    name, with the procedure's arguments and outputs, answering the scenario's rows for the
+    arguments given; the query's CALL invokes it.
+  reason: "\\[procedure as a command\\]"

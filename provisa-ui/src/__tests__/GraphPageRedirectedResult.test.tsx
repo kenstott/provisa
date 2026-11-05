@@ -144,6 +144,7 @@ describe("GraphFrame — a result delivered to a file", () => {
             frame={frame}
             onClose={() => {}}
             onRerun={() => {}}
+            schemaRels={[]}
             colorOverrides={{}}
             sizeOverrides={{}}
             labelProperty={{}}

@@ -20,6 +20,8 @@ tests pin what the endpoint asks for and how it shapes what comes back."""
 
 from __future__ import annotations
 
+import json
+
 from types import SimpleNamespace
 from typing import Any
 
@@ -29,6 +31,7 @@ from provisa.compiler.directives import CacheHint
 from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 from provisa.executor.result import QueryResult
 from provisa.transpiler.router import Route
+from tests.unit.json_encoder.rows import field_answer
 
 _HINT = CacheHint(opt_in=True, ttl=30, debug_trace=False)
 
@@ -88,7 +91,6 @@ async def _field(compiled, *, delivery=None, output_format="json", **over):
 
     args = dict(
         delivery=delivery,
-        as_of="TIMESTAMP '2026-01-01 00:00:00'",
         steward_hint="engine",
         query_session_props={"query_max_run_time": "1m"},
         cache_hint=_HINT,
@@ -111,7 +113,7 @@ async def test_the_field_asks_the_pipeline_with_what_the_request_carried(pipelin
     assert call["serve_cached"] is True  # an inline read may be answered from the cache
     assert call["buffered"] is True  # REQ-1224: inlined under the threshold, landed over it
     assert call["deliver"] is None
-    assert call["as_of"] == "TIMESTAMP '2026-01-01 00:00:00'"
+    assert "as_of" not in call  # a field's time is its relation's argument, in its SQL
     assert call["steward_hint"] == "engine"
     assert call["session_props"] == {"query_max_run_time": "1m"}
 
@@ -123,7 +125,12 @@ async def test_rows_are_shaped_under_the_fields_own_alias(pipeline):
     for alias in ("a", "b"):
         pipeline.results.append(QueryResult(rows=rows, column_names=["id"]))
         root, field_rows, redirect, hit = await _field(_compiled(alias))
-        assert (root, field_rows, redirect, hit) == (alias, [{"id": 1}, {"id": 2}], None, None)
+        assert (root, json.loads(field_rows.body), redirect, hit) == (
+            alias,
+            [{"id": 1}, {"id": 2}],
+            None,
+            None,
+        )
 
 
 async def test_a_cache_hit_reports_its_record(pipeline):
@@ -131,7 +138,7 @@ async def test_a_cache_hit_reports_its_record(pipeline):
     pipeline.plans.append(_plan(route=Route.CACHE, cache_hit=([], record)))
     pipeline.results.append(QueryResult(rows=[(7,)], column_names=["id"]))
     root, field_rows, redirect, hit = await _field(_compiled())
-    assert field_rows == [{"id": 7}] and redirect is None and hit is record
+    assert json.loads(field_rows.body) == [{"id": 7}] and redirect is None and hit is record
 
 
 async def test_a_forced_delivery_answers_with_its_handle(pipeline):
@@ -146,26 +153,32 @@ async def test_a_forced_delivery_answers_with_its_handle(pipeline):
     assert call["serve_cached"] is False  # a delivery is never answered from the cache
 
 
-async def test_an_aggregate_reads_its_nodes_through_a_second_plan(pipeline):
+async def test_an_aggregate_reads_its_nodes_in_its_one_plan(pipeline):
+    # Its nodes are a column of its one statement's one row (aggregates._nodes_column).
     compiled = _compiled(
-        sql='SELECT COUNT(*) AS "count" FROM "sales"."orders"',
-        columns=[ColumnRef(None, "count", "count", None)],
-        nodes_sql='SELECT "id" FROM "sales"."orders"',
-        nodes_params=[3],
-        nodes_columns=[ColumnRef(None, "id", "id", None)],
+        sql='SELECT COUNT(*) AS "count", json_agg(json_object(KEY \'id\' VALUE "id")) AS "nodes" '
+        'FROM "sales"."orders"',
+        columns=[
+            ColumnRef(None, "count", "count", "aggregate"),
+            ColumnRef(
+                None, "nodes", "nodes", None, cardinality="one-to-many", is_agg=True, json=True
+            ),
+        ],
+        has_nodes=True,
         api_args={"region": "EU"},
-        gql_remote_extra_selections={"orders": {"x": "y"}},
         agg_alias="aggregate",
     )
-    pipeline.results.append(QueryResult(rows=[(2,)], column_names=["count"]))
-    pipeline.results.append(QueryResult(rows=[(1,), (2,)], column_names=["id"]))
+    pipeline.results.append(
+        QueryResult(rows=[(2, '[{"id": 1}, {"id": 2}]')], column_names=["count", "nodes"])
+    )
     root, field_rows, redirect, hit = await _field(compiled)
-    first, nodes = pipeline.asked
-    assert first["buffered"] is False  # an aggregate's answer is always small
-    assert nodes["sql"] == compiled.nodes_sql and nodes["exec_params"] == [3]
-    assert nodes["api_args"] == {"region": "EU"}
-    assert nodes["extra_selections"] == {"orders": {"x": "y"}}
-    assert field_rows == {"aggregate": {"count": 2}, "nodes": [{"id": 1}, {"id": 2}]}
+    (only,) = pipeline.asked
+    assert only["buffered"] is False  # the rows it aggregates may be many
+    assert only["compiled"] is compiled
+    assert json.loads(field_rows.body) == {
+        "aggregate": {"count": 2},
+        "nodes": [{"id": 1}, {"id": 2}],
+    }
 
 
 async def test_a_refused_field_reaches_the_caller_as_403():
@@ -233,7 +246,6 @@ def test_the_complexity_refusal_keeps_the_apps_413(monkeypatch):
 def test_every_graphql_answer_is_encoded_by_orjson(monkeypatch):
     """REQ-1867: /data/graphql returns its body as an orjson response, never a dict for FastAPI's
     jsonable_encoder pass: a query, a redirect handle and a mutation's body alike."""
-    import decimal
 
     from provisa.api.data import endpoint
     from provisa.api.json_response import OrjsonResponse
@@ -242,14 +254,14 @@ def test_every_graphql_answer_is_encoded_by_orjson(monkeypatch):
     h = _endpoint_harness(monkeypatch)
 
     async def _rows(compiled, *args, **kwargs):
-        return compiled.root_field, [{"amount": decimal.Decimal("2.50")}], None, None
+        return compiled.root_field, field_answer([{"amount": "2.50"}]), None, None
 
     monkeypatch.setattr(endpoint, "_execute_one_field", _rows)
     answered = h.call()
     assert isinstance(answered, OrjsonResponse)
-    assert (
-        bytes(answered.body) == b'{"data":{"orders":[{"amount":2.5}]}}'
-    )  # as jsonable_encoder gives it
+    # A Decimal as the string of its exact digits (REQ-1867, amended 2026-11-02); before, the
+    # float jsonable_encoder gave.
+    assert bytes(answered.body) == b'{"data":{"orders":[{"amount":"2.50"}]}}'
 
     async def _redirected(compiled, *args, **kwargs):
         return compiled.root_field, None, {"redirect_url": "https://x/r", "row_count": 3}, None

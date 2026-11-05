@@ -42,6 +42,7 @@ from starlette.routing import Route
 from provisa.api.flight.server import ProvisaFlightServer
 from provisa.grpc.auth import AuthInterceptor
 from provisa.security.high_security import KMS_KEY_HEADER, HighSecurityMiddleware
+from provisa.api.flight.relay import serve_in_background
 
 pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
@@ -71,6 +72,9 @@ def _high_state() -> SimpleNamespace:
         server_cfg={},
         hostname="127.0.0.1",
         org_id="test",
+        # the bound org's settings and config, as every org runtime carries them (REQ-2078)
+        settings_overrides={},
+        config=None,
     )
 
 
@@ -181,8 +185,7 @@ def flight_location():
     port = _free_port()
     # Each RPC runs on its handler thread's own loop (REQ-1882); no shared loop to hand it.
     server = ProvisaFlightServer(_high_state(), location=f"grpc://127.0.0.1:{port}")
-    serve_thread = threading.Thread(target=server.serve, daemon=True)
-    serve_thread.start()
+    serve_thread = serve_in_background(server)
     yield f"grpc://127.0.0.1:{port}"
     server.shutdown()
     serve_thread.join(timeout=10)

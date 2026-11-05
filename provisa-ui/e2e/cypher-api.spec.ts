@@ -7,12 +7,16 @@
 
 import { test, expect, BACKEND_URL } from "./coverage";
 
+// Node reads name a label. An unlabelled MATCH (n) reads every label, the trace telemetry view
+// among them, and a read of that view fails while a compaction removes a batch it listed
+// (native_traces.traces_scan's known limitation): 503 "Cannot open file" (run 40365790222).
+
 // REQ-345: POST /query/cypher endpoint accepts Cypher SELECT query and optional named parameters
 test("REQ-345: POST /data/cypher executes basic Cypher SELECT query", async ({
   request,
 }) => {
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
-    data: { query: "MATCH (n) RETURN n LIMIT 1" },
+    data: { query: "MATCH (n:Pets) RETURN n LIMIT 1" },
     headers: { "Content-Type": "application/json" },
   });
 
@@ -29,7 +33,7 @@ test("REQ-345: POST /data/cypher accepts optional named parameters", async ({
 }) => {
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
     data: {
-      query: "MATCH (n) WHERE n.id = $id RETURN n LIMIT 1",
+      query: "MATCH (n:Pets) WHERE n.id = $id RETURN n LIMIT 1",
       params: { id: 1 },
     },
     headers: { "Content-Type": "application/json" },
@@ -47,7 +51,7 @@ test("REQ-345: POST /data/cypher accepts Cypher query without params field", asy
   request,
 }) => {
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
-    data: { query: "MATCH (n) RETURN COUNT(n) as count" },
+    data: { query: "MATCH (n:Pets) RETURN COUNT(n) as count" },
     headers: { "Content-Type": "application/json" },
   });
 
@@ -241,7 +245,7 @@ test("REQ-642: POST /data/graph-analytics response includes elapsed_ms", async (
 }) => {
   const resp = await request.post(`${BACKEND_URL}/data/graph-analytics`, {
     data: {
-      query: "MATCH (n) RETURN n LIMIT 1",
+      query: "MATCH (n:Pets) RETURN n LIMIT 1",
       algorithm: "pagerank",
     },
     headers: { "Content-Type": "application/json" },
@@ -308,7 +312,7 @@ test("REQ-750: Cypher nodes returned with id, label, tableLabel, and properties"
   request,
 }) => {
   const resp = await request.post(`${BACKEND_URL}/data/cypher`, {
-    data: { query: "MATCH (n) RETURN n LIMIT 1" },
+    data: { query: "MATCH (n:Pets) RETURN n LIMIT 1" },
     headers: { "Content-Type": "application/json" },
   });
 

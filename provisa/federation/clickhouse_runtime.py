@@ -48,6 +48,7 @@ from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
 from provisa.federation.land_guard import LandGuard
+from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
@@ -187,7 +188,8 @@ class _ServerBackend:
         qid = str(uuid.uuid4())
         with request_deadline.cancel_on_deadline(lambda: self._kill(qid)):
             res = self._client.query(sql, parameters=params or None, settings={"query_id": qid})
-        return [tuple(r) for r in res.result_rows], list(res.column_names)
+            names = result_names(self._client, sql, params or None, res.column_names)
+        return [tuple(r) for r in res.result_rows], names
 
     def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
         # clickhouse-connect requests FORMAT Arrow and returns a native pyarrow Table — no row
@@ -313,6 +315,18 @@ class _NativeBackend:
         self._client.disconnect()
 
 
+def _answer_of(raw: bytes) -> pa.Table:
+    """The table of a chdb answer. A statement that failed leaves its stream, a schema and no rows,
+    in the session's buffer ahead of the next statement's: the answer is the last stream."""
+    import pyarrow as pa
+
+    buffer = pa.BufferReader(raw)
+    table = pa.ipc.open_stream(buffer).read_all()
+    while buffer.tell() < len(raw):
+        table = pa.ipc.open_stream(buffer).read_all()
+    return table
+
+
 class _EmbeddedBackend:
     """chdb — the ClickHouse engine in-process. ``path`` persists the store; None is in-memory."""
 
@@ -332,27 +346,21 @@ class _EmbeddedBackend:
     # chdb runs the query in-process inside one blocking C call and exposes no cancel/interrupt API
     # (chdb/session/state.py: query/send_query only), so the request deadline cannot pre-empt it.
     def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
-        import io
-
-        import pyarrow as pa
-
         raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return [], []
-        table = pa.ipc.open_stream(io.BytesIO(raw)).read_all()
+        table = _answer_of(raw)
         cols = table.column_names
         rows = [tuple(d[c] for c in cols) for d in table.to_pylist()]
         return rows, list(cols)
 
     def query_arrow(self, sql: str, params: dict | None = None) -> pa.Table:
-        import io
-
         import pyarrow as pa
 
         raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return pa.table({})
-        return pa.ipc.open_stream(io.BytesIO(raw)).read_all()
+        return _answer_of(raw)
 
     def query_arrow_stream(
         self, sql: str, params: dict | None = None
@@ -360,21 +368,14 @@ class _EmbeddedBackend:
         # chdb hands back the whole ArrowStream buffer at once, so this is pseudo-streaming: the
         # result is already materialized in-process. We still expose it as a batch iterator so the
         # Flight ARROW_STREAM transport is uniform across backends (REQ-986).
-        import io
-
         import pyarrow as pa
 
         raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             empty = pa.table({})
             return empty.schema, iter(())
-        reader = pa.ipc.open_stream(io.BytesIO(raw))
-        schema = reader.schema
-
-        def _batches() -> Iterator[pa.RecordBatch]:
-            yield from reader
-
-        return schema, _batches()
+        table = _answer_of(raw)
+        return table.schema, iter(table.to_batches())
 
     def insert_arrow(
         self, database: str, table: str, columns: list[tuple[str, str]], batch: pa.RecordBatch
@@ -592,6 +593,20 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
             ),
         )
 
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` (``schema`` is the database) exists, from ClickHouse's own
+        listing (``system.tables``). Absent is False; a listing that cannot be read raises."""
+        from provisa.federation.clickhouse_store import _lit
+
+        def _run() -> bool:
+            rows, _ = self._backend.query(
+                f"SELECT 1 FROM system.tables WHERE database = {_lit(schema)} "
+                f"AND name = {_lit(table)}"
+            )
+            return bool(rows)
+
+        return await self._land_guard.run(_run)
+
     async def land_table(
         self,
         *,
@@ -696,3 +711,11 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     def close(self) -> None:
         self._backend.close()
+
+
+def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+    """REQ-778: clickhouse-connect says a statement the server refused as a DatabaseError (its
+    "Code: N." text) and a lost server as an OperationalError, which is read first."""
+    import clickhouse_connect.driver.exceptions as ch
+
+    return (ch.OperationalError, ch.InterfaceError), (ch.DatabaseError,)

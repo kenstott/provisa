@@ -36,6 +36,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
 import { ResponseTableOverlay } from "../plugins/table-view";
 import { setLastQueryElapsedMs, subscribeQueryTiming } from "../query-timing";
+import { noteRun } from "../plugins/graphqlResponseStore";
 import { prewarmEngine } from "../lib/engineWake";
 import { HeadersQuickInsert } from "../plugins/headers-quick-insert";
 import {
@@ -49,7 +50,7 @@ import {
 import { Explorer } from "graphiql-explorer";
 import { useDomains } from "../hooks/useAdminQueries";
 import { serverMessage } from "../i18n/serverMessage";
-import { domainGqlAlias } from "../types/admin";
+import { domainAliasMap, SYSTEM_SCHEMA_GQL_PREFIX } from "../types/admin";
 import { localizedStreamFrame } from "./streamErrors";
 import { getStored, scopedStorage, setStored, storageKey } from "../lib/browserStorage";
 import { useNamedDemo } from "../context/NamedDemoContext";
@@ -326,7 +327,7 @@ export function SyncedExplorerContent() {
   const { domains } = useDomains();
   const domainLabels = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const d of domains) map[domainGqlAlias(d)] = d.id;
+    for (const [id, alias] of Object.entries(domainAliasMap(domains))) if (alias) map[alias] = id;
     return map;
   }, [domains]);
   // Canonical per-tab query from the store — reliable during tab switches
@@ -367,6 +368,7 @@ export function SyncedExplorerContent() {
       styles={explorerStyles}
       title=""
       domainLabels={domainLabels}
+      systemSchemaPrefixes={SYSTEM_SCHEMA_GQL_PREFIX}
     />
   );
 }
@@ -774,6 +776,8 @@ export function QueryPage() {
       fetch: createProvisaFetch(settingsRef),
     });
     return async function* (request, opts) {
+      // The response this run shows is kept with this query.
+      noteRun(request.query ?? "");
       // Detect subscription operations and stream via SSE
       let isSubscription = false;
       try {

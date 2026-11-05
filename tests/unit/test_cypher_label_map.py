@@ -66,8 +66,10 @@ def test_first_column_fallback():
     assert _resolve_id_column("Thing", ["ref", "name", "code"], {}) == "ref"
 
 
-def test_empty_columns_returns_hard_fallback():
-    assert _resolve_id_column("Ghost", [], {}) == "id"
+def test_a_table_with_no_column_is_refused_naming_it():
+    # No identity is invented for a node with no column (no "id" it does not have).
+    with pytest.raises(ValueError, match="'Ghost' has no column to identify its rows by"):
+        _resolve_id_column("Ghost", [], {})
 
 
 def test_type_not_in_target_pk_uses_column_heuristic():
@@ -553,7 +555,8 @@ def _map_property_label_map() -> CypherLabelMap:
 @pytest.mark.parametrize(
     "cypher, column",
     [
-        ("MATCH (o:Orders) RETURN o.shipTo, o.note", "shipto"),
+        # An unaliased property is named as written (o.shipTo); its kind is keyed lower-cased.
+        ("MATCH (o:Orders) RETURN o.shipTo, o.note", "o.shipto"),
         ("MATCH (o:Orders) RETURN o.shipTo AS address, o.note", "address"),
     ],
 )
@@ -571,9 +574,9 @@ def test_a_returned_map_property_is_a_map_whatever_form_the_engine_gives(cypher,
     _, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
     assert graph_vars == {column: GraphVarKind.MAP}
 
-    as_text = {column: '{"city": "Oslo"}', "note": '{"not": "a map"}'}
-    as_decoded = {column: {"city": "Oslo"}, "note": '{"not": "a map"}'}
+    as_text = {column: '{"city": "Oslo"}', "o.note": '{"not": "a map"}'}
+    as_decoded = {column: {"city": "Oslo"}, "o.note": '{"not": "a map"}'}
     for row in (as_text, as_decoded):
         assert assemble_rows([row], graph_vars) == [
-            {column: {"city": "Oslo"}, "note": '{"not": "a map"}'}
+            {column: {"city": "Oslo"}, "o.note": '{"not": "a map"}'}
         ]

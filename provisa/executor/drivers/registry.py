@@ -106,6 +106,12 @@ def _make_trino() -> DirectDriver:  # remote Trino/Presto coordinator as a SOURC
     return SQLAlchemyDriver("trino")  # trino.sqlalchemy dialect; database part is the catalog
 
 
+def _make_jdbc_source() -> DirectDriver:  # REQ-2191: any SQLAlchemy URL, the source's own
+    from provisa.executor.drivers.jdbc_source import JdbcSourceDriver
+
+    return JdbcSourceDriver()
+
+
 def _make_hiveserver2() -> DirectDriver:  # HiveServer2 over Thrift, via impyla
     from provisa.executor.drivers.hive import HiveDriver
 
@@ -122,6 +128,12 @@ def _make_neo4j() -> DirectDriver:  # GitHub issue #119: single-source Cypher DI
     from provisa.executor.drivers.neo4j import Neo4jDriver
 
     return Neo4jDriver()
+
+
+def _make_code() -> DirectDriver:  # REQ-2100: a single-source read of a code source's tables
+    from provisa.codesource.direct import CodeDriver
+
+    return CodeDriver()
 
 
 # source_type → factory function
@@ -153,12 +165,16 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     # Trino/Presto as a SOURCE (not just an engine): a remote coordinator Provisa reads via the
     # SQLAlchemy trino dialect, then lands — reachable as a REPLICA on ANY engine, like GraphQL/REST.
     "trino": _make_trino,
-    # REQ-2100: a read of one code table runs its function and applies the rest of the statement
-    # to its rows; a read across sources is the engine's.
+    # REQ-2100: a read of one code source's tables runs their functions and applies the rest of
+    # the statement to their rows; a read across sources is the engine's.
+    "node": _make_code,
+    "python": _make_code,
     # REQ-1731: a HiveServer2/Exasol endpoint reached directly (not through Trino's own lake-scan
     # hive connector or JDBC exasol connector) — read-then-land on ANY engine, same shape as the
     # warehouse drivers above.
     "hiveserver2": _make_hiveserver2,
+    # REQ-2191: a database with no named type, at the URL its source names.
+    "jdbc": _make_jdbc_source,
     "exasol": _make_exasol,
     # GitHub issue #119: registered so SourcePool holds a Neo4jDriver instance per neo4j source —
     # NOT a general routing signal. "neo4j" stays in router.py's VIRTUAL_SOURCES, so decide_route

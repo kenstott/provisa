@@ -42,6 +42,12 @@ class _ColMeta:
     column_name: str
     data_type: str
     is_nullable: bool
+    subtype: str | None = None  # REQ-2171
+    native_type: str | None = None  # REQ-1965, REQ-1961
+
+
+#: What every table lists beside its registered columns (REQ-2190).
+VIRTUAL_COLUMNS = ("_name_", "_domain_", "table_query_name")
 
 
 def _make_state(tables: dict, col_types: dict) -> Any:
@@ -244,7 +250,7 @@ class TestAnswerPgCatalog:
     def test_pg_roles_contains_role(self):
         state = self._state_with_table()
         result = answer("SELECT * FROM pg_catalog.pg_roles", "testrole", state)
-        rolnames = [r[1] for r in result.rows]
+        rolnames = [r[0] for r in result.rows]  # PostgreSQL's order: rolname first, oid last
         assert "testrole" in rolnames
 
     def test_join_pg_class_pg_namespace(self):
@@ -269,12 +275,13 @@ class TestAnswerPgCatalog:
         )
         assert result.rows == [] or all(r[0] is None for r in result.rows)
 
-    def test_pg_constraint_column_types_include_integerarray(self):
+    def test_pg_constraint_column_types_include_smallintarray(self):
         """answer() must return column_types for pg_constraint even when 0 rows.
 
         DBeaver's Statement Describe step runs the constraint query with a fake
         conrelid (no rows returned). ProvisaQueryResult must still send the
-        correct OID (1007, int4[]) for conkey/confkey rather than OID 25 (text).
+        correct OID (1005, int2[], as PostgreSQL declares them) for conkey/confkey rather than
+        OID 25 (text).
         This requires column_types to carry DuckDB's schema-level type info.
         """
         state = self._state_with_table()
@@ -287,15 +294,15 @@ class TestAnswerPgCatalog:
         col_idx = {n: i for i, n in enumerate(result.column_names)}
         assert "conkey" in col_idx, f"conkey missing from columns: {result.column_names}"
         assert "confkey" in col_idx, f"confkey missing from columns: {result.column_names}"
-        assert result.column_types[col_idx["conkey"]] == "INTEGER[]", (
-            f"conkey must be INTEGER[], got {result.column_types[col_idx['conkey']]}"
+        assert result.column_types[col_idx["conkey"]] == "smallint[]", (
+            f"conkey must be smallint[], got {result.column_types[col_idx['conkey']]}"
         )
-        assert result.column_types[col_idx["confkey"]] == "INTEGER[]", (
-            f"confkey must be INTEGER[], got {result.column_types[col_idx['confkey']]}"
+        assert result.column_types[col_idx["confkey"]] == "smallint[]", (
+            f"confkey must be smallint[], got {result.column_types[col_idx['confkey']]}"
         )
 
     def test_provisaqueryresult_uses_column_types_for_empty_rows(self):
-        """ProvisaQueryResult must emit INTEGERARRAY for conkey even with 0 rows."""
+        """ProvisaQueryResult must emit SMALLINTARRAY (int2[]) for conkey even with 0 rows."""
         from buenavista.core import BVType
         from provisa.pgwire.server import ProvisaQueryResult
 
@@ -310,7 +317,7 @@ class TestAnswerPgCatalog:
         col_idx = {result.column_names[i]: i for i in range(len(result.column_names))}
         assert "conkey" in col_idx, f"conkey missing: {result.column_names}"
         _, bvtype = qr.column(col_idx["conkey"])
-        assert bvtype == BVType.INTEGERARRAY, f"Expected INTEGERARRAY for conkey, got {bvtype}"
+        assert bvtype == BVType.SMALLINTARRAY, f"Expected SMALLINTARRAY for conkey, got {bvtype}"
 
 
 def _make_pet_store_state() -> Any:
@@ -413,7 +420,7 @@ class TestDBeaverERDiagram:
             "testrole",
             state,
         )
-        col_names = [r[0] for r in result.rows]
+        col_names = [r[0] for r in result.rows if r[0] not in VIRTUAL_COLUMNS]
         assert "id" in col_names, f"id missing: {col_names}"
         assert "name" in col_names, f"name missing: {col_names}"
         assert "registered_table_id" in col_names, f"registered_table_id missing: {col_names}"
@@ -431,7 +438,8 @@ class TestDBeaverERDiagram:
             "testrole",
             state,
         )
-        assert len(result.rows) == 6, (
+        columns = [r for r in result.rows if r[1] not in VIRTUAL_COLUMNS]
+        assert len(columns) == 6, (
             f"expected 6 cols (4 pets + 2 reg), got {len(result.rows)}: {result.rows}"
         )
         col_names = [r[1] for r in result.rows]
@@ -477,3 +485,192 @@ class TestDBeaverERDiagram:
         assert conkey[0] == expected_attnum, (
             f"conkey[0]={conkey[0]} must equal registered_table_id attnum={expected_attnum}"
         )
+
+
+class TestIndexVectorSubscripts:
+    """int2vector and oidvector (pg_index.indkey, indclass, indoption, ...) are subscripted from 0,
+    as PostgreSQL does, where an array is subscripted from 1 (REQ-2167). The queries are the ones
+    clients send to list an index's columns."""
+
+    @pytest.fixture
+    def state(self):
+        return _make_pet_store_state()
+
+    def test_the_first_key_column_is_indkey_0(self, state):
+        result = answer(
+            "SELECT a.attname FROM pg_catalog.pg_index i "
+            "JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0] "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [("id",)]
+
+    def test_pgadmins_index_columns_query(self, state):
+        # pgAdmin's indexes/sql/default/column_details.sql: attnum from 1 to array_upper + 1,
+        # each column indkey[attnum - 1] and its options indoption[attnum - 1].
+        result = answer(
+            "SELECT i.attnum, a.attname, i.indoption[i.attnum - 1] AS option FROM "
+            "(SELECT *, generate_series(1, array_upper(indkey, 1) + 1) AS attnum "
+            "FROM pg_catalog.pg_index) i "
+            "JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "JOIN pg_catalog.pg_attribute a "
+            "ON a.attrelid = i.indrelid AND a.attnum = i.indkey[i.attnum - 1] "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(1, "id", 0)]
+
+    def test_a_vectors_bounds_and_subscripts_start_at_0(self, state):
+        result = answer(
+            "SELECT array_lower(i.indkey, 1), array_upper(i.indkey, 1), "
+            "generate_subscripts(i.indkey, 1), i.indkey[0:0] "
+            "FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid = i.indrelid "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(0, 0, 0, [1])]
+
+    def test_an_arrays_bounds_start_at_1(self, state):
+        result = answer(
+            "SELECT array_lower(conkey, 1), array_upper(conkey, 1), conkey[1] "
+            "FROM pg_catalog.pg_constraint WHERE contype = 'p' "
+            "AND conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'pets')",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(1, 1, 1)]
+
+
+# pgjdbc's PgDatabaseMetaData.getIndexInfo (server 9.6+), for table meta.pets.
+_PGJDBC_GET_INDEX_INFO = (
+    "SELECT tmp.TABLE_CAT, tmp.TABLE_SCHEM, tmp.TABLE_NAME, tmp.NON_UNIQUE, tmp.INDEX_QUALIFIER, "
+    "tmp.INDEX_NAME, tmp.TYPE, tmp.ORDINAL_POSITION, "
+    "trim(both '\"' from pg_catalog.pg_get_indexdef(tmp.CI_OID, tmp.ORDINAL_POSITION, false)) "
+    "AS COLUMN_NAME, "
+    "CASE tmp.AM_NAME WHEN 'btree' THEN CASE tmp.I_INDOPTION[tmp.ORDINAL_POSITION - 1] & 1::smallint "
+    "WHEN 1 THEN 'D' ELSE 'A' END ELSE NULL END AS ASC_OR_DESC, "
+    "tmp.CARDINALITY, tmp.PAGES, tmp.FILTER_CONDITION "
+    "FROM (SELECT NULL AS TABLE_CAT, n.nspname AS TABLE_SCHEM, ct.relname AS TABLE_NAME, "
+    "NOT i.indisunique AS NON_UNIQUE, NULL AS INDEX_QUALIFIER, ci.relname AS INDEX_NAME, "
+    "CASE i.indisclustered WHEN true THEN 1 ELSE CASE am.amname WHEN 'hash' THEN 2 ELSE 3 END "
+    "END AS TYPE, "
+    "(information_schema._pg_expandarray(i.indkey)).n AS ORDINAL_POSITION, "
+    "ci.reltuples AS CARDINALITY, ci.relpages AS PAGES, "
+    "pg_catalog.pg_get_expr(i.indpred, i.indrelid) AS FILTER_CONDITION, "
+    "ci.oid AS CI_OID, i.indoption AS I_INDOPTION, am.amname AS AM_NAME "
+    "FROM pg_catalog.pg_class ct "
+    "JOIN pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid) "
+    "JOIN pg_catalog.pg_index i ON (ct.oid = i.indrelid) "
+    "JOIN pg_catalog.pg_class ci ON (ci.oid = i.indexrelid) "
+    "JOIN pg_catalog.pg_am am ON (ci.relam = am.oid) "
+    "WHERE true AND n.nspname = 'meta' AND ct.relname = 'pets' "
+    ") AS tmp ORDER BY NON_UNIQUE, TYPE, INDEX_NAME, ORDINAL_POSITION"
+)
+
+
+class TestPgjdbcIndexInfo:
+    """pgjdbc's getIndexInfo, which DBeaver lists a table's indexes with, expands indkey through
+    information_schema._pg_expandarray and names each column by pg_get_indexdef(index, n)."""
+
+    @pytest.fixture
+    def state(self):
+        return _make_pet_store_state()
+
+    def test_get_index_info_lists_the_primary_keys_column(self, state):
+        result = answer(_PGJDBC_GET_INDEX_INFO, "testrole", state)
+        rows = [dict(zip([c.lower() for c in result.column_names], r)) for r in result.rows]
+        assert [
+            (
+                r["table_name"],
+                r["non_unique"],
+                r["ordinal_position"],
+                r["column_name"],
+                r["asc_or_desc"],
+            )
+            for r in rows
+        ] == [("pets", False, 1, "id", "A")]
+
+    def test_the_renamed_indoption_is_subscripted_from_0(self):
+        from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb
+
+        out = _rewrite_for_duckdb(_PGJDBC_GET_INDEX_INFO, "testrole", "provisa")
+        assert "tmp.I_INDOPTION[(tmp.ORDINAL_POSITION - 1) + 1]" in out
+
+    def test_pg_expandarray_gives_each_element_and_its_ordinal(self, state):
+        result = answer(
+            "SELECT e.x, e.n FROM pg_catalog.pg_index i "
+            "JOIN pg_catalog.pg_class c ON c.oid = i.indrelid, "
+            "information_schema._pg_expandarray(i.indkey) e "
+            "WHERE i.indisprimary AND c.relname = 'pets'",
+            "testrole",
+            state,
+        )
+        assert [tuple(r) for r in result.rows] == [(1, 1)]
+
+
+class TestDerivedSystemViews:
+    """The PostgreSQL 17 system views Provisa answers from what its catalog already holds."""
+
+    @pytest.fixture
+    def state(self):
+        return _make_pet_store_state()
+
+    def _rows(self, sql, state):
+        return [tuple(r) for r in answer(sql, "testrole", state).rows]
+
+    def test_pg_indexes_gives_each_key_index_and_its_definition(self, state):
+        rows = self._rows(
+            "SELECT schemaname, tablename, indexdef FROM pg_catalog.pg_indexes "
+            "WHERE tablename = 'pets'",
+            state,
+        )
+        assert len(rows) == 1
+        schema, table, definition = rows[0]
+        assert (schema, table) == ("meta", "pets")
+        assert definition.startswith("CREATE UNIQUE INDEX ")
+        assert definition.endswith(" ON meta.pets USING btree (id)")
+
+    def test_check_constraints_lists_not_null_columns_as_postgresql_17_does(self, state):
+        pets_oid = self._rows("SELECT oid FROM pg_catalog.pg_class WHERE relname = 'pets'", state)
+        meta_oid = self._rows(
+            "SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'meta'", state
+        )
+        rows = self._rows(
+            "SELECT constraint_schema, constraint_name, check_clause "
+            "FROM information_schema.check_constraints ORDER BY constraint_name",
+            state,
+        )
+        assert ("meta", f"{meta_oid[0][0]}_{pets_oid[0][0]}_1_not_null", "id IS NOT NULL") in rows
+
+    def test_constraint_usage_names_the_referenced_table_of_a_foreign_key(self, state):
+        tables = self._rows(
+            "SELECT table_name, constraint_name FROM information_schema.constraint_table_usage",
+            state,
+        )
+        columns = self._rows(
+            "SELECT table_name, column_name, constraint_name "
+            "FROM information_schema.constraint_column_usage",
+            state,
+        )
+        fk = [
+            name
+            for (name,) in self._rows(
+                "SELECT conname FROM pg_catalog.pg_constraint WHERE contype = 'f'", state
+            )
+        ]
+        assert fk and ("registered_tables", fk[0]) in tables
+        assert ("registered_tables", "id", fk[0]) in columns
+
+    def test_character_sets_and_the_catalog_name_are_the_databases(self, state):
+        assert self._rows(
+            "SELECT character_set_name, character_repertoire, form_of_use "
+            "FROM information_schema.character_sets",
+            state,
+        ) == [("UTF8", "UCS", "UTF8")]
+        assert self._rows(
+            "SELECT catalog_name FROM information_schema.information_schema_catalog_name", state
+        ) == [("provisa",)]

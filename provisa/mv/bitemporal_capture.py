@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.mv.bitemporal import MODE_DELTA, BitemporalSpec
 from provisa.mv.bitemporal_inherit import InheritedBuild
 from provisa.mv.bitemporal_tables import VersionedTable
+from provisa.mv.store_shape import shape_probe
 
 if TYPE_CHECKING:
     from provisa.federation.execution_auth import SystemAuth
@@ -209,7 +210,8 @@ async def capture_build(
         dataclasses.replace(mv, sql=scoped, semantic_sql=scoped), engine
     )
     shape = await engine.execute_engine(
-        f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
+        shape_probe(select_sql),
+        authorization=authorization,
     )
     managed = {c for c, _ in system_columns_ddl(spec)}
     if list(shape.column_names) != [c for c in existing if c not in managed]:
@@ -218,20 +220,27 @@ async def capture_build(
     return InheritedBuild(select_sql, tombstones=False)
 
 
-def reads_a_log(table_ids: Any, state: Any, as_of: str | None) -> bool:
-    """Whether a statement reading the tables ``table_ids`` under ``as_of`` reads a version log:
-    it is then computed by the engine, which reads the store the log is kept in."""
-    if as_of is None:
+def reads_a_log(table_ids: Any, state: Any, travel: Any) -> bool:
+    """Whether a statement reading the tables ``table_ids`` under ``travel`` (a
+    ``time_travel.Travel``, or one time for every reference) reads a version log: it is then
+    computed by the engine, which reads the store the log is kept in."""
+    from provisa.mv.time_travel import as_travel  # noqa: PLC0415
+
+    if not as_travel(travel).travels():
         return False
     captured = captured_table_rows(getattr(state, "tables", None) or [])
     return any(tid in captured for tid in table_ids)
 
 
-def read_logs(sql: str, state: Any, ctx: Any, as_of: str | None) -> str:
+def read_logs(sql: str, state: Any, ctx: Any, travel: Any) -> str:
     """``sql`` (governed, catalog-physical) with every reference to a table updated in place read
-    from its version log under ``as_of``; unchanged when ``as_of`` is None (a plain read reads the
-    table). Each reference keeps its alias, so what governance put around it applies."""
-    if as_of is None:
+    from its version log at that reference's time (``travel``: per alias, else the request's;
+    REQ-1163); a reference read at no time reads the table. Each reference keeps its alias, so
+    what governance put around it applies."""
+    from provisa.mv.time_travel import as_travel  # noqa: PLC0415
+
+    travel = as_travel(travel)
+    if not travel.travels():
         return sql
     tables = getattr(state, "tables", None) or []
     captured = captured_table_rows(tables)
@@ -261,9 +270,13 @@ def read_logs(sql: str, state: Any, ctx: Any, as_of: str | None) -> str:
     ]
     if not found:
         return sql
-    point = AsOf.from_key(as_of)
     columns = {row["id"]: [c["column_name"] for c in row.get("columns") or []] for row in tables}
     for node, tid in found:
+        alias = node.alias or node.name
+        at = travel.at(alias)
+        if at is None:
+            continue  # this reference reads the table as it is
+        point = AsOf.from_key(at)
         mv = state.mv_registry.get(log_id(tid))
         if mv is None or mv.bitemporal is None:
             raise RuntimeError(f"table {tid} keeps its versions but has no version log registered")
@@ -278,6 +291,5 @@ def read_logs(sql: str, state: Any, ctx: Any, as_of: str | None) -> str:
             f"SELECT {cols} FROM ({view_read_sql(log_ref, mv.bitemporal, point)}) AS _provisa_log",
             read="postgres",
         )
-        alias = node.alias or node.name
         node.replace(exp.Subquery(this=read, alias=exp.TableAlias(this=exp.to_identifier(alias))))
     return tree.sql(dialect="postgres")

@@ -17,11 +17,41 @@ import logging
 from typing import Any
 
 import psycopg2
+import psycopg2.errors
 
+from provisa.core.read_refusal import ReadRefused
 from provisa.federation.native_backend import NativeEngineBackend
 from provisa.federation.pg_runtime import PgFederationRuntime
 
 _log = logging.getLogger(__name__)
+
+
+class TryCastNeedsPostgres16(ReadRefused):  # REQ-778
+    """toInteger, toFloat or toBoolean of a value that may not convert, on a PostgreSQL engine
+    older than 16: it has no ``pg_input_is_valid``, which the null-on-failure cast is written by."""
+
+    code = "cypher.try_cast_needs_postgres_16"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 "
+            "or later on this engine"
+        )
+        self.params = {}
+
+
+def _database_of(dsn: str) -> tuple[str, str, int, str | None]:
+    """What names one PostgreSQL database in ``dsn``: its server and name, whatever the driver,
+    role or password. Another store kind never equals one."""
+    from sqlalchemy import make_url
+
+    url = make_url(dsn)
+    return (
+        url.get_backend_name(),
+        (url.host or "").lower(),
+        url.port or 5432,
+        url.database,
+    )
 
 
 class PgBackend(NativeEngineBackend):
@@ -39,6 +69,21 @@ class PgBackend(NativeEngineBackend):
     #: REQ-1195: Postgres writes a result file in CSV (``COPY ... TO STDOUT``).
     local_result_formats = frozenset({"csv"})
 
+    def refusal_of(self, exc: Exception) -> ReadRefused | None:
+        """REQ-778: a null-on-failure cast is written ``pg_input_is_valid`` for PostgreSQL
+        (``transpile.postgres_try_casts``), which a server older than 16 does not have."""
+        if isinstance(exc, psycopg2.errors.UndefinedFunction) and "pg_input_is_valid" in str(exc):
+            return TryCastNeedsPostgres16()
+        return None
+
+    def _driver_errors(
+        self,
+    ) -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:
+        """REQ-778: psycopg2's own (PEP 249)."""
+        from provisa.federation.dbapi_errors import dbapi_errors
+
+        return dbapi_errors(psycopg2)
+
     def write_result_file(
         self, state: Any, physical_sql: str, output_format: str, params: list | None, path: str
     ) -> int:
@@ -47,6 +92,20 @@ class PgBackend(NativeEngineBackend):
 
         result_sink.require_format(self.engine.name, output_format, self.local_result_formats)
         return self._runtime_for(state).write_result_csv(physical_sql, params, path)
+
+    def require_readable_store(self, store_dsn: str) -> None:
+        """Every statement runs in the engine's one database and PostgreSQL has no cross-database
+        query, so a store anywhere else is written and never read. The database a built runtime
+        holds decides; before that, the one it will connect to."""
+        from provisa.federation.engine import StoreOutsideEngineDatabase
+
+        runs_in = (
+            self._runtime._engine_dsn
+            if self._runtime is not None
+            else self.engine.default_materialize_store()
+        )
+        if runs_in is not None and _database_of(runs_in) != _database_of(store_dsn):
+            raise StoreOutsideEngineDatabase(self.engine.name, runs_in, store_dsn)
 
     def replica_engine(
         self, state: Any, source: Any, table: Any, *, address: Any, args: Any
@@ -76,8 +135,13 @@ class PgBackend(NativeEngineBackend):
             merged,
             address=address,
             columns=args.columns,
-            # REQ-1965: a natively array/struct/map column is copied as PostgreSQL's own JSON.
-            projection=source_projection(table.columns, "postgres"),
+            # REQ-1965: a natively array/struct/map column is copied as PostgreSQL's own JSON;
+            # REQ-2171: a subtyped one in its own form, and one not landed left out.
+            projection=source_projection(
+                table.columns,
+                "postgres",
+                frozenset(name for name, _subtype, _reader in args.not_landed),
+            ),
             where=landing_where(table, lambda: "postgres"),  # REQ-2062
         )
 
@@ -95,6 +159,13 @@ class PgBackend(NativeEngineBackend):
             engine_writes_store=EngineRun.STATEMENT in engine.caps.runs,
             native_vectors=True,  # REQ-424: the engine reads its replicas in its own database
         )
+
+    def session_rows(self, state: Any) -> Any:
+        """REQ-2176: a session's tables are in this engine's own database, written there in
+        place."""
+        from provisa.federation.session_rows import SqlAlchemySessionRows
+
+        return SqlAlchemySessionRows(self._runtime_for(state)._engine_dsn)
 
     def replica_indexer(self, state: Any, *, address: Any) -> Any:
         """REQ-2015: a replica in this engine's own database is indexed there, and read through
@@ -126,14 +197,9 @@ class PgBackend(NativeEngineBackend):
         return rewrite_json_object_to_build_object(transpile(pg_sql, self.dialect))
 
     def _new_runtime(self) -> Any:
-        from provisa.federation.engine import configured_engine_url
-
-        raw = configured_engine_url() or self.engine.default_materialize_store()
-        if raw is None:
+        dsn = self.engine.default_materialize_store()
+        if dsn is None:
             raise RuntimeError(
                 "pg engine requires a Postgres URL (federation_engine_url) or a platform database"
             )
-        # libpq/psycopg2 want a driver-agnostic DSN (strip a SQLAlchemy '+driver' suffix).
-        scheme, sep, rest = raw.partition("://")
-        dsn = f"{scheme.split('+', 1)[0]}://{rest}" if sep else raw
         return PgFederationRuntime(engine_dsn=dsn)

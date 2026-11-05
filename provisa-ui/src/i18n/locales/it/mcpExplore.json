@@ -13,6 +13,10 @@
     "toolRunningTooltip": "{{name}} è in esecuzione.",
     "toolDoneTooltip": "{{name}} è terminato. Il risultato è stato restituito all'assistente.",
     "toolErrorTooltip": "{{name}} non è riuscito. L'assistente ha ricevuto l'errore e potrebbe riprovare con argomenti diversi.",
-    "roleNoteHelpTitle": "Il ruolo con cui gira questa sessione"
+    "roleNoteHelpTitle": "Il ruolo con cui gira questa sessione",
+    "toolExplainTooltip": "{{name}} ha finito. Fai clic per vedere l'istruzione inviata e quella eseguita.",
+    "explainTitle": "Cosa ha eseguito la query dell'agente",
+    "explainSent": "L'istruzione inviata dall'agente",
+    "explainRan": "L'istruzione eseguita, governata per {{role}}"
   }
 }

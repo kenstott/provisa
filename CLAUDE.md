@@ -31,7 +31,7 @@ Each has its own control plane, config, ports, and volumes. Before any command t
 
 ## Requirements Tracking
 
-On any new requirement, constraint, feature, or design decision: spawn a background haiku agent. It reads `.claude/agents/requirements-tracker.md` for format, then appends to `docs/arch/requirements.md`. Silent — skip implementation details, bugs, questions.
+On any new requirement, constraint, feature, or design decision: the lead records it in `docs/arch/requirements.yaml` with the `req-new` or `req-amend` skill, through a scripted edit that is validated (`scripts/validate_requirements.py`) and regenerated (`gen_requirements_md.py`, `gen_features_doc.py`) before it is committed. Workers never edit requirements; they report the decision to the lead. Skip implementation details, bugs and questions.
 
 ## Documentation
 
@@ -45,6 +45,6 @@ Both agents read `.claude/refs/prose-quality.md` before acting. The PostToolUse 
 
 After confirming a bug (reproduced or root-caused): use the `github-issue` skill (`.claude/skills/github-issue/SKILL.md`) to deduplicate and file. Never create an issue for an unverified bug.
 
-## Swarm Mode & Teammate Spawning
+## Swarm Mode: one job, one agent
 
 @.claude/refs/swarm-mode.md

@@ -55,7 +55,7 @@ def _table(table_id: int, name: str, columns: list[str]) -> dict:
         "domain_id": "sales",
         "schema_name": "sales",
         "table_name": name,
-        "columns": [{"column_name": c, "visible_to": []} for c in columns],
+        "columns": [{"column_name": c, "visible_to": ["analyst"]} for c in columns],
     }
 
 

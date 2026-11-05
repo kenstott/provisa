@@ -26,28 +26,28 @@
 
 ## Все источники {: #all-sources }
 
-Provisa регистрирует **73** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 73; индекс — это счётчик.
+Provisa регистрирует **77** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 77; индекс — это счётчик.
 
 | # | Группа | Типы источников |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Облачные хранилища данных](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Аналитика / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data lake / открытые табличные форматы](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Источники на основе кода](code-sources.md) | `node`, `python` |
-| 41–43 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Приёмник push-данных](#push-receiver) | `ingest` |
-| 45–46 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [Профайлер данных](#data-profiler) | `data_profiler` |
-| 72 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [Облачные хранилища данных](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Аналитика / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data lake / открытые табличные форматы](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [Источники на основе кода](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Приёмник push-данных](#push-receiver) | `ingest` |
+| 47–48 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Профайлер данных](#data-profiler) | `data_profiler` |
+| 76 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
 
 Справочник по каждому типу источника, поддерживаемому Provisa. «Прямой драйвер» означает, что однопоточные запросы выполняются напрямую к источнику (менее 100 мс). «Имя коннектора» — это федеративный коннектор, используемый, когда источник участвует в многопоточных (multi-source) JOIN.
 
@@ -1075,6 +1075,8 @@ tables:
 Для расписания новые поля не нужны. `change_signal` вместе с `cache_ttl` задают частоту опроса, `mv_debounce_quiet` и `mv_debounce_max_delay` сворачивают всплеск изменений выше по потоку в одно сканирование, календарное зерно делает его периодическим, а `expected_events` задерживает сканирование, пока его входы не станут актуальными на всё окно. Цикл опроса и есть планировщик сканирований.
 
 `outcome` принимает значения `pass`, `fail`, `warn`, `error` или `skipped`. Ни одно из них само по себе ничего не запрещает. Если нужно принуждение, объявите его отдельно: preflight или MV над загруженными результатами. Загруженное наблюдение не обязано быть детерминированным, поэтому здесь допустимы проверки, которые никогда не смогли бы управлять preflight, например оценка аномальности, изменение за скользящее окно или актуальность относительно текущего момента.
+
+Материализованное представление может требовать соблюдения проверок своих входов с помощью **Удерживать при неудачных проверках** на своей странице редактирования рядом со своей предварительной проверкой. Тогда обновление прерывается, а представление сохраняет прежнюю копию, если последний запуск любой таблицы проверок, сканирующей один из ближайших физических входов представления, завершился неудачей. Учитывается каждая таблица проверок на входе, какому бы продукту данных она ни была назначена. Прерывание называет каждую неудачную таблицу проверок и вход, который она сканирует, и распространяется вниз по потоку, как любое прерывание предварительной проверки. Параметр — обычный код предварительной проверки, вызывающий `provisa_services.dq`; **Показать код** показывает его, и его можно скопировать в собственную предварительную проверку представления, чтобы изменить. Если у представления есть и своя предварительная проверка, обновление сохраняется, только если обе продолжают.
 
 Контракт пишется в интерфейсе, в панели качества данных на странице редактирования таблицы, и сырой текст контракта там всегда является источником истины. Пробный запуск выполняет контракт против живой таблицы и показывает результаты, не загружая их. Так вы поймаете контракт, чьё имя набора данных разрешилось в неожиданное место и который иначе загружал бы одни успешные строки.
 

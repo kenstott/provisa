@@ -79,7 +79,7 @@ def _dbapi_cancel(
 
     psycopg2/psycopg/oracledb cancel the running statement from another thread via the
     connection (psycopg2 also serves redshift, greenplum, yugabytedb, cockroachdb, openGauss);
-    pyodbc (mssql, SAP ASE) via the cursor, created before execute; sqlite3 via ``interrupt()``;
+    pyodbc (mssql) via the cursor, created before execute; sqlite3 via ``interrupt()``;
     PyMySQL/mysqlclient (mysql, mariadb, tidb) via ``KILL QUERY`` on a second connection; the
     Exasol websocket DBAPI via its pyexasol connection's ``abort_query()`` (thread-safe by design,
     pyexasol/connection.py)."""
@@ -103,7 +103,7 @@ def _dbapi_cancel(
 def _deadline_bounded(cancel: Callable[[], None] | None) -> Iterator[None]:
     if cancel is None:
         # Drivers not wired above are not installed here, so their cancel API is unconfirmed:
-        # ibm_db (db2), vertica_python, teradatasql, hdbcli (SAP HANA), sqlanydb, pymonetdb, fdb /
+        # ibm_db (db2), vertica_python, hdbcli (SAP HANA), pymonetdb, fdb /
         # firebird-driver, singlestoredb. Their statement ends at the driver's own timeout.
         yield
         return
@@ -305,6 +305,16 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _run)
+
+    async def landed_table_exists(self, *, schema: str, table: str) -> bool:
+        """Whether ``schema.table`` of THIS engine's own store exists, from its catalog through
+        SQLAlchemy's inspector in the product's own dialect. Absent is False; a catalog that
+        cannot be read raises."""
+        import asyncio
+
+        from sqlalchemy import inspect
+
+        return await asyncio.to_thread(lambda: bool(inspect(self._sa).has_table(table, schema)))
 
     async def land_table(
         self,

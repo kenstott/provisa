@@ -10,7 +10,7 @@ The other suites test each piece; this drives the whole read chain end-to-end th
 components (no mocks of the compiler): refresh_mv materializes the append log on a DuckDB engine, the
 view's inline-expansion entry is the view_read_sql reconstruction (as app_rebuild wires it), a query
 referencing the view is put through the REAL expand_views, and the expanded SQL is executed on the
-engine. It asserts current-by-default reads and X-Provisa-As-Of time-travel reads return the right
+engine. It asserts current-by-default reads and as-of time-travel reads return the right
 rows — the live create->materialize->query path, minus only the HTTP/control-plane layer.
 """
 
@@ -145,7 +145,7 @@ async def test_current_read_through_expand_and_engine(monkeypatch, mode):
 @pytest.mark.parametrize("mode", ["snapshot", "delta"])
 async def test_as_of_read_through_overlay_expand_and_engine(monkeypatch, mode):
     con, view_sql_map, reads, _spec = await _materialize(monkeypatch, mode)
-    # X-Provisa-As-Of: 2026-02-01 → the state after STEP2 (id=2 still present, id=1 updated to 15)
+    # As of 2026-02-01 → the state after STEP2 (id=2 still present, id=1 updated to 15)
     as_of_ts = parse_as_of("2026-02-01T00:00:00")
     overlaid = as_of_view_map(view_sql_map, reads, as_of_ts)
     sql = _query(overlaid)
@@ -154,3 +154,23 @@ async def test_as_of_read_through_overlay_expand_and_engine(monkeypatch, mode):
     # And as-of the very first refresh → the original rows.
     sql_t1 = _query(as_of_view_map(view_sql_map, reads, parse_as_of("2026-01-01T00:00:00")))
     assert set(con.execute(sql_t1).fetchall()) == {(1, "west", 10), (2, "east", 20)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["snapshot", "delta"])
+async def test_two_references_read_the_view_at_two_times(monkeypatch, mode):
+    """REQ-1163 (amended 2026-10-25): time travel is an argument of the view, so one statement
+    reads it at two times through two references, each lifted to its alias and read at it."""
+    from provisa.mv.time_travel import lift
+    from provisa.mv.view_read import read_views_at
+
+    con, _view_sql_map, reads, _spec = await _materialize(monkeypatch, mode)
+    sql, travel = lift(
+        f"SELECT a.id, a.amount AS before, b.amount AS after "
+        f"FROM {VIEW_REF}(as_of => '2026-01-01T00:00:00') a "
+        f"JOIN {VIEW_REF}(as_of => '2026-02-01T00:00:00') b ON a.id = b.id",
+        lambda table: "bitemporal" if table.name == VIEW else None,
+    )
+    read = read_views_at(sql, SimpleNamespace(bitemporal_view_reads=reads), travel)
+    assert VIEW_REF not in read  # both references were read from the log at their own times
+    assert set(con.execute(read).fetchall()) == {(1, 10, 15), (2, 20, 20)}

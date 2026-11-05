@@ -21,10 +21,12 @@ import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from provisa.api_source import caller
 from provisa.api_source.caller import (
+    ApiAnswerNotJson,
     ApiCallError,
     ApiNotFoundError,
     _apply_auth,
@@ -48,6 +50,16 @@ from provisa.core.auth_models import (
     ApiKeyLocation,
 )
 from provisa.core.paging import PaginationConfig, PaginationType
+
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A call resolves its secret references, which asks whether the deployment holds many
+    organisations; the API layer says so at its import, which these tests do not make. A
+    deployment of one, as each test here sets its own references."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
 
 def _col(
@@ -542,6 +554,29 @@ class TestPaginate:
         # If .json() ran inline on the loop, ticker would have been starved for the whole 0.2s
         # decode and accumulated far fewer than 20 ticks by the time _paginate returned.
         assert ticks >= 15
+
+    @pytest.mark.asyncio
+    async def test_an_answer_that_is_not_json_says_what_it_is(self):
+        """A SPARQL endpoint asked for no format answers XML (Wikidata): the error names the
+        call, its status, the answer's content type and its start, not a decoder's position."""
+        endpoint = _endpoint(pagination=None)
+        client = MagicMock()
+        client.request = AsyncMock(
+            return_value=httpx.Response(
+                200,
+                content=b"<?xml version='1.0'?><sparql/>",
+                headers={"content-type": "application/sparql-results+xml"},
+                request=httpx.Request("POST", "https://query.example/sparql"),
+            )
+        )
+        with pytest.raises(ApiAnswerNotJson) as failed:
+            await _paginate(client, endpoint, "/sparql", {}, {}, None, 30.0)
+        message = str(failed.value)
+        assert message.startswith(
+            "POST https://query.example/sparql answered 200 application/sparql-results+xml, "
+            "not JSON ("
+        )
+        assert message.endswith("\"<?xml version='1.0'?><sparql/>\"")
 
 
 # ---------------------------------------------------------------------------

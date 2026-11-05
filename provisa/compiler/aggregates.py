@@ -126,6 +126,16 @@ def _collect_agg_aliases(
     return agg_key, func_aliases, col_aliases
 
 
+#: REQ-1867: the aggregates whose result over an integer column is an integer (an engine's SUM of
+#: one may be a wider integer, DuckDB's HUGEINT); AVG, STDDEV and VARIANCE are not.
+_INTEGER_OF_INTEGER = frozenset({"sum", "min", "max"})
+
+
+def _integer_result(func_name: str, table_id: int, phys: str, ctx: CompilationContext) -> bool:
+    """Whether ``func_name`` over column ``phys`` is an integer (REQ-1867)."""
+    return func_name in _INTEGER_OF_INTEGER and (table_id, phys.lower()) in ctx.integer_columns
+
+
 def _build_agg_func_parts(
     sql_func: str,
     func_name: str,
@@ -134,14 +144,14 @@ def _build_agg_func_parts(
     func_aliases: dict[str, str],
     col_aliases: dict[str, dict[str, str]],
     table_id: int,
-    exposed_to_physical: dict[tuple[int, str], str],
+    ctx: CompilationContext,
 ) -> tuple[list[str], list[ColumnRef]]:
     """Build SELECT parts and ColumnRefs for one aggregate function (SUM/AVG/MIN/MAX)."""
     select_parts: list[str] = []
     columns: list[ColumnRef] = []
     fn_key = func_aliases.get(func_name, func_name)
     for col_name in cols:
-        phys = exposed_to_physical.get((table_id, col_name), col_name)
+        phys = ctx.exposed_to_physical.get((table_id, col_name), col_name)
         field_name = col_aliases.get(func_name, {}).get(col_name, col_name)
         expr = f"{sql_func}({_q(phys)})"
         if field_name != col_name:
@@ -149,7 +159,11 @@ def _build_agg_func_parts(
         select_parts.append(expr)
         columns.append(
             ColumnRef(
-                alias=None, column=phys, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+                alias=None,
+                column=phys,
+                field_name=field_name,
+                nested_in=f"{agg_key}.{fn_key}",
+                integer=_integer_result(func_name, table_id, phys, ctx),
             )
         )
     return select_parts, columns
@@ -210,25 +224,21 @@ _AGGREGATE_ARGS = frozenset({"where"})
 _GROUP_BY_ARGS = frozenset({"by", "where", "order_by", "limit", "offset", "distinct_on", "having"})
 
 
-def _build_nodes_subquery(
+def _nodes_column(
     field_node: FieldNode,
-    ref: str,
-    args: dict,
     ctx: CompilationContext,
     table: TableMeta,
     variables: dict | None,
     use_catalog: bool,
-    by_cols: list[str] | None = None,
-    phys_by_cols: list[str] | None = None,
-    api_args: dict | None = None,
-) -> tuple[str | None, list[ColumnRef] | None, list, StatementSources]:
-    """Build the nodes sub-query SQL, columns, and params (or Nones when not requested).
+) -> tuple[str, ColumnRef, str | None, StatementSources] | None:
+    """An _aggregate / _group_by field's ``nodes`` as one column of its own statement: the rows it
+    aggregates (a group's, under group-by), each a JSON object of its selected fields --
+    ``json_agg(json_object(...)) AS nodes`` -- with each relationship field the correlated JSON
+    subquery a root field's is. Returns (the column's SQL, its ColumnRef, the alias the table is
+    read under, the tables it reads), or None when ``nodes`` is not selected. One statement: the
+    rows are never read again beside it, nor joined back to the groups (REQ-196)."""
+    from provisa.compiler.sql_selection import _empty_list_if_none
 
-    Scalar fields are emitted as plain columns; relationship fields are emitted as
-    correlated JSON subqueries (same shape as _compile_root_field). When relationships
-    are present, the nodes table is aliased so the subqueries can correlate to it.
-    by_cols/phys_by_cols append group-by join-key columns (nested_in="__join_key__").
-    """
     assert field_node.selection_set is not None
     nodes_sel: FieldNode | None = None
     for sel in field_node.selection_set.selections:
@@ -236,7 +246,7 @@ def _build_nodes_subquery(
             nodes_sel = sel
             break
     if nodes_sel is None or nodes_sel.selection_set is None:
-        return None, None, [], StatementSources(table)  # no nodes: nothing beyond the root table
+        return None
 
     has_rel = any(
         isinstance(s, FieldNode) and (table.type_name, s.name.value) in ctx.joins
@@ -245,18 +255,17 @@ def _build_nodes_subquery(
     root_alias: str | None = "t0" if has_rel else None
     alias_counter = 1
     sources = StatementSources(table)
-    _vvals = ctx.virtual_columns.get(table.table_id)
-
-    nodes_select_parts: list[str] = []
-    nodes_cols: list[ColumnRef] = []
 
     def _scalar_sql(phys: str) -> str:
         return f"{_q(root_alias)}.{_q(phys)}" if root_alias else _q(phys)
 
+    pairs: list[str] = []
+    json_text: set[str] = set()
     for node_sel in nodes_sel.selection_set.selections:
         if not isinstance(node_sel, FieldNode):
             continue
         sel_name = node_sel.name.value
+        key = node_sel.alias.value if node_sel.alias else sel_name
         join_key = (table.type_name, sel_name)
         if join_key in ctx.joins and node_sel.selection_set:
             assert root_alias is not None
@@ -268,9 +277,6 @@ def _build_nodes_subquery(
                 join_meta, root_alias, join_alias, ctx, table
             )
             _agg_limit = _sw._explicit_limit(node_sel, variables) or join_meta.default_limit
-            _from_clause = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
-            _where_expr = f"{tgt_expr} = {src_expr}"
-            _rel_key = node_sel.alias.value if node_sel.alias else sel_name
             _pv = (
                 join_meta.child_src_val
                 if join_meta.child_src_val is not None
@@ -282,8 +288,8 @@ def _build_nodes_subquery(
                 join_meta.target.type_name,
                 join_meta.target,
                 join_alias,
-                _from_clause,
-                _where_expr,
+                f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}",
+                f"{tgt_expr} = {src_expr}",
                 join_meta.cardinality,
                 _agg_limit,
                 use_catalog,
@@ -291,57 +297,30 @@ def _build_nodes_subquery(
                 sources,
                 variables,
                 parent_src_val=_pv,
+                json_text=json_text,
+                key_prefix=f"{key}.",
             )
-            nodes_select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
-            nodes_cols.append(
-                ColumnRef(
-                    alias=join_alias,
-                    column=_rel_key,
-                    field_name=_rel_key,
-                    nested_in=None,
-                    cardinality=join_meta.cardinality,
-                    is_agg=True,
-                )
-            )
+            json_text.add(key)
+            pairs.append(f"KEY '{key}' VALUE {json_expr}")
         else:
             phys = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
-            nodes_select_parts.append(_scalar_sql(phys))
-            nodes_cols.append(
-                ColumnRef(alias=root_alias, column=phys, field_name=sel_name, nested_in=None)
-            )
-
-    if by_cols and phys_by_cols:
-        for col, phys in zip(by_cols, phys_by_cols):
-            nodes_select_parts.append(_scalar_sql(phys))
-            nodes_cols.append(
-                ColumnRef(alias=root_alias, column=phys, field_name=col, nested_in="__join_key__")
-            )
-
-    if not nodes_select_parts:
-        return None, None, [], sources
-
-    from_sql = f"{ref} {_q(root_alias)}" if root_alias else ref
-    nodes_sql = f"SELECT {', '.join(nodes_select_parts)} FROM {from_sql}"
-    nodes_params: list = []
-    nodes_where: list[str] = []
-    if "where" in args:
-        nodes_collector = ParamCollector()
-        nodes_where.append(
-            _sw._compile_where(
-                args["where"],
-                nodes_collector,
-                root_alias,
-                _vvals,
-                table.table_id,
-                ctx.exposed_to_physical,
-            )
-        )
-        nodes_params = nodes_collector.params
-    # REQ-1986: the rows under the groups are read with the same parameters.
-    nodes_where += _sw.native_arg_conditions(api_args or {}, root_alias)
-    if nodes_where:
-        nodes_sql += f" WHERE {' AND '.join(nodes_where)}"
-    return nodes_sql, nodes_cols, nodes_params, sources
+            pairs.append(f"KEY '{key}' VALUE {_scalar_sql(phys)}")
+    if not pairs:
+        return None
+    nodes_key = nodes_sel.alias.value if nodes_sel.alias else "nodes"
+    objects = f"json_agg(json_object({', '.join(pairs)}))"
+    sql = f"{_empty_list_if_none(objects)} AS {_q(nodes_key)}"
+    column = ColumnRef(
+        alias=None,
+        column=nodes_key,
+        field_name=nodes_key,
+        nested_in=None,
+        cardinality="one-to-many",
+        is_agg=True,
+        json=True,
+        json_text=frozenset(json_text),
+    )
+    return sql, column, root_alias, sources
 
 
 def _compile_having(
@@ -498,7 +477,13 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     if agg_filter_where:
         _vvals = ctx.virtual_columns.get(table.table_id)
         filter_where_sql = _sw._compile_where(
-            agg_filter_where, collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+            agg_filter_where,
+            collector,
+            None,
+            _vvals,
+            table.table_id,
+            ctx.exposed_to_physical,
+            column_types=ctx.aggregate_columns,
         )
         filter_sql = f" FILTER (WHERE {filter_where_sql})"
 
@@ -508,7 +493,15 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 
     for col, phys in zip(by_cols, phys_by_cols):
         select_parts.append(_q(phys))
-        columns.append(ColumnRef(alias=None, column=phys, field_name=col, nested_in="groupKey"))
+        columns.append(
+            ColumnRef(
+                alias=None,
+                column=phys,
+                field_name=col,
+                nested_in="groupKey",
+                integer=(table.table_id, phys.lower()) in ctx.integer_columns,
+            )
+        )
 
     if has_count:
         select_parts.append(f"COUNT(*){filter_sql}")
@@ -534,6 +527,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                     # A selected column's alias names its result, as on the aggregate root.
                     field_name=col_aliases.get(func_name, {}).get(col_name, col_name),
                     nested_in=f"aggregate.{func_name}",
+                    integer=_integer_result(func_name, table.table_id, phys, ctx),
                 )
             )
 
@@ -556,11 +550,19 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
             )
         )
 
+    # Each group's rows, a column of the group's own row.
+    nodes = _nodes_column(field_node, ctx, table, variables, use_catalog)
+    if nodes is not None:
+        select_parts.append(nodes[0])
+        columns.append(nodes[1])
+        sources.merge(nodes[3])
+
     if not select_parts:
         select_parts = [_q(phys_by_cols[0])] if phys_by_cols else ["1"]
 
     ref = _table_ref(table, use_catalog)
-    sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
+    read_as = f"{ref} {_q(nodes[2])}" if nodes is not None and nodes[2] else ref
+    sql = f"SELECT {', '.join(select_parts)} FROM {read_as}"
 
     _vvals = ctx.virtual_columns.get(table.table_id)
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.
@@ -568,25 +570,18 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         args, _GROUP_BY_ARGS, ctx.native_filter_columns.get(table.table_id, {})
     )
     nf_conditions = _sw.native_arg_conditions(api_args)
-    if "where" in args and not agg_filter_where:
+    if "where" in args:
+        # After the aggregate filter's: its values are bound first, as its FILTER is written first.
         where_sql = _sw._compile_where(
-            args["where"], collector, None, _vvals, table.table_id, ctx.exposed_to_physical
+            args["where"],
+            collector,
+            None,
+            _vvals,
+            table.table_id,
+            ctx.exposed_to_physical,
+            column_types=ctx.aggregate_columns,
         )
         sql += f" WHERE {where_sql}"
-    elif "where" in args and agg_filter_where:
-        # FILTER params already consumed above; need a fresh sub-collector for WHERE
-        where_collector = ParamCollector()
-        where_sql = _sw._compile_where(
-            args["where"], where_collector, None, _vvals, table.table_id, ctx.exposed_to_physical
-        )
-        # Re-number params: append where params after filter params
-        _filter_count = len(collector.params)
-        renumbered = where_sql
-        for i in range(len(where_collector.params), 0, -1):
-            renumbered = renumbered.replace(f"${i}", f"${i + _filter_count}")
-        for p in where_collector.params:
-            collector._params.append(p)
-        sql += f" WHERE {renumbered}"
     if nf_conditions:
         sql += f" {'AND' if 'where' in args else 'WHERE'} {' AND '.join(nf_conditions)}"
 
@@ -616,22 +611,6 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     if "offset" in args:
         sql += f" OFFSET {collector.add(int(args['offset']))}"
 
-    # Build nodes subquery: plain SELECT with same WHERE, no GROUP BY.
-    # Group-by join key columns are appended last with nested_in="__join_key__".
-    nodes_sql, nodes_columns, nodes_params, nodes_sources = _build_nodes_subquery(
-        field_node,
-        ref,
-        args,
-        ctx,
-        table,
-        variables,
-        use_catalog,
-        by_cols=by_cols,
-        phys_by_cols=phys_by_cols,
-        api_args=api_args,
-    )
-    sources.merge(nodes_sources)
-
     return CompiledQuery(
         sql=sql,
         params=collector.params,
@@ -643,9 +622,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         is_group_by=True,
         group_by_columns=list(by_cols),
         api_args=api_args,
-        nodes_sql=nodes_sql,
-        nodes_columns=nodes_columns,
-        nodes_params=nodes_params,
+        has_nodes=nodes is not None,
     )
 
 
@@ -690,7 +667,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
             func_aliases,
             col_aliases,
             table.table_id,
-            ctx.exposed_to_physical,
+            ctx,
         )
         select_parts.extend(sp)
         columns.extend(cr)
@@ -714,11 +691,19 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
             )
         )
 
+    # The rows it aggregates, a column of its one row.
+    nodes = _nodes_column(field_node, ctx, table, variables, use_catalog) if has_nodes else None
+    if nodes is not None:
+        select_parts.append(nodes[0])
+        columns.append(nodes[1])
+        sources.merge(nodes[3])
+
     if not select_parts:
         select_parts.append("1")
 
     ref = _table_ref(table, use_catalog)
-    sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
+    read_as = f"{ref} {_q(nodes[2])}" if nodes is not None and nodes[2] else ref
+    sql = f"SELECT {', '.join(select_parts)} FROM {read_as}"
 
     # Process arguments (where)
     args = {}
@@ -731,7 +716,13 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     if "where" in args:
         where_parts.append(
             _sw._compile_where(
-                args["where"], collector, None, _agg_vvals, table.table_id, ctx.exposed_to_physical
+                args["where"],
+                collector,
+                None,
+                _agg_vvals,
+                table.table_id,
+                ctx.exposed_to_physical,
+                column_types=ctx.aggregate_columns,
             )
         )
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.
@@ -742,16 +733,6 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
     if where_parts:
         sql += f" WHERE {' AND '.join(where_parts)}"
 
-    # Build nodes SQL: plain SELECT with same WHERE, no aggregate functions
-    nodes_sql: str | None = None
-    nodes_columns: list[ColumnRef] | None = None
-    nodes_params: list = []
-    if has_nodes:
-        nodes_sql, nodes_columns, nodes_params, nodes_sources = _build_nodes_subquery(
-            field_node, ref, args, ctx, table, variables, use_catalog, api_args=api_args
-        )
-        sources.merge(nodes_sources)
-
     return CompiledQuery(
         sql=sql,
         params=collector.params,
@@ -760,9 +741,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
         columns=columns,
         sources=set(sources),
         table_ids=frozenset(sources.table_ids),
-        nodes_sql=nodes_sql,
-        nodes_columns=nodes_columns,
-        nodes_params=nodes_params,
+        has_nodes=nodes is not None,
         agg_alias=agg_key,
         api_args=api_args,
     )

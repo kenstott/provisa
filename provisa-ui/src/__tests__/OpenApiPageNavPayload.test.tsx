@@ -28,6 +28,7 @@ vi.mock("../context/DomainFilterContext", () => ({
 }));
 
 import { OpenApiPage } from "../pages/OpenApiPage";
+import { readScreen } from "../mcp/screenState";
 
 function Polly({ path }: { path: string }) {
   const navigate = useNavigate();
@@ -225,4 +226,112 @@ describe("OpenApiPage — docs that render after the frame has loaded", () => {
     stockDocs(frame.contentDocument!, opened);
     await waitFor(() => expect(opened).toContain("/pet-store/users"), { timeout: 2000 });
   }, 10000);
+});
+
+describe("OpenApiPage — what a handed call carries", () => {
+  function Hand({ state }: { state: Record<string, unknown> }) {
+    const navigate = useNavigate();
+    return <button onClick={() => navigate("/openapi", { state })}>hand</button>;
+  }
+
+  /** One operation as Swagger UI renders it: a free field, a JSON field, an enum multi-select. */
+  const OPERATION = `<div class="opblock"><span class="opblock-summary-method">GET</span>
+    <span data-path="/pet-store/users"></span><button class="opblock-summary-control"></button>
+    <table><tr data-param-name="limit"><td><input /></td></tr>
+    <tr data-param-name="filter" data-param-in="query"><td><button class="json-schema-form-item-add">Add object item</button></td></tr>
+    <tr data-param-name="fields"><td><select multiple><option value="id">id</option>
+      <option value="name">name</option><option value="age">age</option></select></td></tr>
+    </table></div>
+    <div class="opblock"><span class="opblock-summary-method">POST</span>
+    <span data-path="/pet-store/commands/ship"></span>
+    <button class="opblock-summary-control"></button>
+    <div class="opblock-section-request-body"><textarea></textarea></div></div>`;
+
+  async function page(state: Record<string, unknown>) {
+    const { container } = render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={["/openapi"]}>
+          <Hand state={state} />
+          <OpenApiPage />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+    const frame = await waitFor(() => {
+      const f = container.querySelector("iframe");
+      expect(f).not.toBeNull();
+      return f as HTMLIFrameElement;
+    });
+    (
+      frame.contentWindow as unknown as { Element: typeof Element }
+    ).Element.prototype.scrollIntoView = () => undefined;
+    const doc = frame.contentDocument!;
+    doc.body.innerHTML = OPERATION;
+    // Swagger UI's "Add item" editor: each press adds a field for one item.
+    const items = doc.querySelector('tr[data-param-name="filter"] td')!;
+    items.querySelector("button")!.addEventListener("click", () => {
+      items.appendChild(doc.createElement("textarea"));
+    });
+    doc.querySelectorAll(".opblock").forEach((block) => {
+      block.querySelector(".opblock-summary-control")!.addEventListener("click", () => {
+        block.classList.add("is-open");
+      });
+    });
+    fireEvent.load(frame);
+    act(() => screen.getByText("hand").click());
+    return doc;
+  }
+
+  async function inputs() {
+    const read = await readScreen(1000);
+    if (typeof read === "string") throw new Error(read);
+    return read.inputs;
+  }
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = () => undefined;
+    window.history.pushState({}, "", "/openapi");
+    HTMLElement.prototype.checkVisibility = () => true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html><body></body></html>", { status: 200 })),
+    );
+  });
+
+  const filter = '[{"field":"age","comparator":"gt","value":3}]';
+
+  it("fills fields, filter and limit in without running when autoRun is not asked", async () => {
+    const q = `limit=5&fields=id,name&filter=${encodeURIComponent(filter)}`;
+    await page({ openApiUrl: `GET /data/rest/pet-store/users?${q}` });
+    await waitFor(async () =>
+      expect(await inputs()).toMatchObject({
+        operation: "GET /pet-store/users",
+        parameters: { limit: "5", fields: "id,name", filter },
+        status: "idle",
+      }),
+    );
+  });
+
+  it("refuses a parameter the operation does not take, rather than run wider", async () => {
+    await page({ openApiUrl: "GET /data/rest/pet-store/users?region=EU", autoRun: true });
+    await waitFor(
+      async () =>
+        expect(await inputs()).toMatchObject({
+          status: "failed",
+          error: "GET /data/rest/pet-store/users has no parameter region",
+        }),
+      { timeout: 4000 },
+    );
+  });
+
+  it("writes a POST's body into its request body", async () => {
+    await page({
+      openApiUrl: "POST /data/rest/pet-store/commands/ship",
+      openApiBody: { id: 7 },
+    });
+    await waitFor(async () => {
+      const shown = await inputs();
+      expect(shown?.operation).toBe("POST /pet-store/commands/ship");
+      expect(JSON.parse(String(shown?.body))).toEqual({ id: 7 });
+    });
+  });
 });

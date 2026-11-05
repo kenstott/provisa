@@ -16,6 +16,7 @@ import { fetchProfilers, runProfileNow, type Profiler } from "../../api/profiler
 import { CollapsibleSection } from "./CollapsibleSection";
 import { ProfileRunsModal } from "./ProfileRunsModal";
 import { requiredParamColumns } from "../../components/nativeParams";
+import { ProfileClassificationsModal } from "./ProfileClassificationsModal";
 import { ProfileConstraintsModal } from "./ProfileConstraintsModal";
 
 // REQ-1934: a table's Data Profiler membership. Joining or leaving is a field of the table, saved
@@ -41,6 +42,7 @@ export function ProfilerPanel({
   const [runMessage, setRunMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [runsOpen, setRunsOpen] = useState(false);
   const [constraintsOpen, setConstraintsOpen] = useState(false);
+  const [classificationsOpen, setClassificationsOpen] = useState(false);
 
   const memberOf = editingTable.profilerSourceId ?? null;
   // Loaded when needed — to show a member's schedule, or when the picker opens — so an editor of a
@@ -154,6 +156,15 @@ export function ProfilerPanel({
               >
                 {t("profilerPanel.constraints")}
               </Button>
+              <Button
+                size="xs"
+                variant="light"
+                data-testid="profiler-classifications"
+                disabled={unsaved}
+                onClick={() => setClassificationsOpen(true)}
+              >
+                {t("profilerPanel.classifications")}
+              </Button>
             </Group>
           </>
         )}
@@ -180,6 +191,13 @@ export function ProfilerPanel({
           tableId={editingTable.id}
           tableName={editingTable.tableName}
           onClose={() => setConstraintsOpen(false)}
+        />
+      )}
+      {classificationsOpen && (
+        <ProfileClassificationsModal
+          tableId={editingTable.id}
+          tableName={editingTable.tableName}
+          onClose={() => setClassificationsOpen(false)}
         />
       )}
     </div>

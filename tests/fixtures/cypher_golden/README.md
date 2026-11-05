@@ -10,6 +10,10 @@ kinds it produced, or the refusal it raised. `tests/unit/test_cypher_golden_sql.
 one and requires the same result, byte for byte. A difference is a regression unless it is
 approved query by query.
 
-`approved.jsonl` holds those approved differences, captured from the checkout that makes them by
-`scripts/cypher_golden.py capture-approved-tests`, each with the approval it was given. An entry
-an approval replaces is removed from `entries.jsonl`.
+`approved.jsonl` holds the translations whose result was changed on purpose, each approved query by
+query: captured from the checkout that makes the change, with `capture-approved-tests` (a test's
+translations) or `capture-approved` (one statement over a model), with the approval recorded in
+the entry. An entry an approval replaces is removed from `entries.jsonl`.
+
+Capture with `PYTHONPATH` set to the checkout being captured: the shared venv's editable install
+extends `provisa` with another checkout's modules, whose code would otherwise be recorded.

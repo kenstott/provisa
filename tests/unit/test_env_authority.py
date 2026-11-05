@@ -14,11 +14,11 @@ import pytest
 
 from provisa.core import env_authority as auth
 from provisa.core import env_classes as ec
-from provisa.core.db import _SEED_ROLES
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from provisa.security.rights import Capability
 
-_ORG_ADMIN = frozenset(next(caps for role_id, caps in _SEED_ROLES if role_id == "org_admin"))
-_DEVELOPER = frozenset(next(caps for role_id, caps in _SEED_ROLES if role_id == "developer"))
+_ORG_ADMIN = frozenset(STANDARD_ROLE_RIGHTS["org_admin"])
+_DEVELOPER = frozenset(STANDARD_ROLE_RIGHTS["developer"])
 
 
 def test_the_grant_is_the_developer_role_minus_every_data_right():

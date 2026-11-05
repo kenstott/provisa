@@ -26,6 +26,10 @@ and record nothing, and the new table gets its own.
 
 Names are fixed by the replica and the columns (``index_name``), so a store holds at most one of
 each and a rebuild finds the one it made.
+
+A materialized view is indexed by this same rule, plan, record, lock and runner pass
+(``provisa.mv.view_indexes``); its index state is on its build row and its key is
+``replica_state.view_index_key``.
 """
 
 # Requirements: REQ-2015
@@ -155,6 +159,14 @@ async def join_columns(
             )
         ).fetchall()
     ]
+    return await joins_of(conn, ids, pk_columns)
+
+
+async def joins_of(
+    conn: Connection, ids: list[int], pk_columns: Iterable[str]
+) -> list[tuple[str, ...]]:
+    """The column sets the declared relationships join the table registered as ``ids`` on: a
+    replica's (:func:`join_columns`) or a materialized view's."""
     if not ids:
         return []
     r = relationships.c
@@ -195,6 +207,7 @@ async def join_columns(
 
 
 record_plan = replica_state.record_index_plan
+record_view_plan = replica_state.record_view_index_plan
 due = replica_state.due_indexes
 DueIndexes = replica_state.DueIndexes
 

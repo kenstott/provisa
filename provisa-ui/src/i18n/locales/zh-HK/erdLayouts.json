@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "版面:{{name}}",
+    "layouts": "版面",
+    "menuHint": "選擇、儲存或刪除此圖表的已儲存排列",
+    "automatic": "自動",
+    "save": "儲存",
+    "saveAs": "另存為…",
+    "delete": "刪除",
+    "unsaved": "未儲存",
+    "unsavedHint": "自儲存此版面以來,圖表已變更",
+    "saveAsTitle": "將版面另存為",
+    "name": "名稱",
+    "nameTaken": "名為 {{name}} 的版面已存在",
+    "deleteTitle": "刪除版面 {{name}}?",
+    "deleteConsequence": "此版面將對所有人刪除。它顯示的資料表和關係不會改變。",
+    "newSinceSaved_one": "自儲存版面以來新增 {{count}} 個資料表",
+    "newSinceSaved_other": "自儲存版面以來新增 {{count}} 個資料表",
+    "place": "放置",
+    "placeHint": "將資料表加入版面",
+    "notDrawn": "圖表尚未繪製"
+  }
+}

@@ -24,7 +24,7 @@ import os
 import time
 import uuid
 from collections import deque
-from collections.abc import MutableMapping
+from collections.abc import Collection, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -35,7 +35,7 @@ from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
-from provisa.api.role_surface import RoleSurface
+from provisa.api.role_surface import LazySurface, RoleSurface
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
@@ -43,6 +43,7 @@ from provisa.api.data.redirect_unwrap import router as redirect_unwrap_router
 from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
 from provisa.api.app_loaders import (
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
@@ -80,6 +81,7 @@ from provisa.api.app_startup import (
     _seed_sandbox_org,
     _start_background_tasks,
     _start_scheduler,
+    _log_http_surfaces,
     _start_servers,
     _warmup_readiness,
 )
@@ -194,11 +196,10 @@ class AppState:
     # narrow it; the routed `response_cache_default_ttl` property below resolves the org's value
     # over this one. Assigned by _load_and_build, never read directly by the query path.
     deployment_cache_default_ttl: int = 300
-    # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
-    # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
-    mcp_catalog_index: Any = None
     _mv_refresh_task: LongLived | None = None
     _grpc_server: Any | None = None
+    # The names in system_health.HTTP_SURFACES mounted on the app; set when it starts.
+    http_surfaces: Collection[str] = frozenset()
     _flight_server: Any | None = None  # ProvisaFlightServer
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
@@ -231,6 +232,8 @@ class AppState:
     _hot_refresh_task: LongLived | None = None
     _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
     _temp_keeper_task: LongLived | None = None  # REQ-1926: the keeper of sessions' temp tables
+    _graph_session_task: LongLived | None = None  # REQ-2176: the sweep of graph sessions
+    _term_scan_task: LongLived | None = None  # REQ-2179: the watch over document scans
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
@@ -665,6 +668,15 @@ class AppState:
         self._active_runtime().pg_enum_types = value
 
     @property
+    def pg_source_enums(self) -> dict:
+        """REQ-2171: (schema, name) → the PostgreSQL enum a source declares."""
+        return self._active_runtime().pg_source_enums
+
+    @pg_source_enums.setter
+    def pg_source_enums(self, value: dict) -> None:
+        self._active_runtime().pg_source_enums = value
+
+    @property
     def graphql_remote_sources(self) -> dict[str, dict]:
         """Source id → its GraphQL remote registration."""
         return self._active_runtime().graphql_remote_sources
@@ -772,10 +784,37 @@ class AppState:
         self._active_runtime().view_sql_map = value
 
     @property
+    def class_tables(self) -> dict[str, dict]:
+        """The ontology schema's Class tables by name (REQ-2163)."""
+        return self._active_runtime().class_tables
+
+    @class_tables.setter
+    def class_tables(self, value: dict[str, dict]) -> None:
+        self._active_runtime().class_tables = value
+
+    @property
+    def refused_classes(self) -> dict[int, str]:
+        """Each Class term the build could not offer as a table, with why (REQ-2163)."""
+        return self._active_runtime().refused_classes
+
+    @refused_classes.setter
+    def refused_classes(self, value: dict[int, str]) -> None:
+        self._active_runtime().refused_classes = value
+
+    @property
+    def class_bodies(self) -> dict:
+        """Each Class table's lowered body per reader's visibility of its tables (REQ-2163)."""
+        return self._active_runtime().class_bodies
+
+    @class_bodies.setter
+    def class_bodies(self, value: dict) -> None:
+        self._active_runtime().class_bodies = value
+
+    @property
     def bitemporal_view_reads(self) -> dict:
-        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a
-        request-level as-of (X-Provisa-As-Of) can overlay an as-of reconstruction over each one's
-        append log."""
+        """REQ-1163: bitemporal materialized views → (physical mv target ref, spec), so a reference
+        read at a time (its own as_of / as_recorded, or the session's) is read as of that time
+        from its append log."""
         return self._active_runtime().bitemporal_view_reads
 
     @bitemporal_view_reads.setter
@@ -881,7 +920,7 @@ class AppState:
         self._active_runtime().user_attributes = value
 
     @property
-    def surfaces(self) -> dict[str, RoleSurface]:
+    def surfaces(self) -> dict[str, RoleSurface | LazySurface]:
         """role id -> the role's whole data surface, from one build (api/role_surface.py)."""
         return self._active_runtime().surfaces
 
@@ -911,6 +950,15 @@ class AppState:
     @schemas.setter
     def schemas(self, value: dict[str, graphql.GraphQLSchema]) -> None:
         self._active_runtime().schemas = value
+
+    @property
+    def mcp_catalog_index(self) -> Any:
+        """REQ-1008: the bound org's MCP catalog search index; see OrgRuntime."""
+        return self._active_runtime().mcp_catalog_index
+
+    @mcp_catalog_index.setter
+    def mcp_catalog_index(self, value: Any) -> None:
+        self._active_runtime().mcp_catalog_index = value
 
     @property
     def contexts(self) -> MutableMapping[str, CompilationContext]:
@@ -1063,6 +1111,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def view_path_map(self) -> dict | None:
+        """The model-wide path map (OrgRuntime.view_path_map)."""
+        return self._active_runtime().view_path_map
+
+    @view_path_map.setter
+    def view_path_map(self, value: dict | None) -> None:
+        self._active_runtime().view_path_map = value
 
     @property
     def rls_contexts(self) -> MutableMapping[str, RLSContext]:
@@ -1246,11 +1303,13 @@ retire_hooks.append(_stop_retired_runtime_listeners)
 
 # REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
 # platform config through core.request_context, never by importing this module.
+from provisa.core import model_row_rules  # noqa: E402
 from provisa.core.request_context import (  # noqa: E402
     register_active_engine_url_provider,
     register_org_store_provider,
     register_platform_config_provider,
 )
+from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
 
 
 # The platform config as last read, with the config generation it was read under. Asked on request
@@ -1286,6 +1345,25 @@ def _org_store_of(side: str) -> Database:
 
 register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
+
+
+def _model_rule(role: str, table: str, right: str) -> model_row_rules.ModelRule | None:  # REQ-2188
+    """The rule a write of ``table`` is held to. The store asks of every UPDATE and DELETE a
+    person's request makes, and only a semantic object's table can carry one (the meta domain's, or
+    a glossary term's), in an org whose runtime is built: a platform write, or an org's first build,
+    has no rule to read and must not be refused for having no runtime to read it from."""
+    from provisa.api.app_loaders import _META_TABLES
+    from provisa.core.request_context import current_env, current_org
+
+    org_id = current_org.get()
+    if (table not in _META_TABLES and table not in MODEL_RW_RIGHTS) or org_id is None:
+        return None
+    if state.org_registry.get(runtime_key(org_id, current_env.get())) is None:
+        return None
+    return acting_model_rule(state, role, table, right)
+
+
+model_row_rules.register_rule_provider(_model_rule)
 
 # REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
 # the org whose request is running. `core` cannot import this ContextVar, so the API layer installs
@@ -1977,7 +2055,9 @@ async def ensure_serving_runtime(org_id: str, env: str | None = None) -> None:  
     await ensure_org_runtime(org_id, env)
 
 
-async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:  # REQ-1266
+async def ensure_org_runtime(
+    org_id: str, env: str | None = None, *, model_cloned: bool = False
+) -> OrgRuntime:  # REQ-1266
     """Get the org ENVIRONMENT's data-plane runtime, building it (once, under the lock) on a miss.
 
     The single seam every entrypoint (HTTP middleware AND the pgwire/bolt/flight/gRPC/MCP protocol
@@ -1990,7 +2070,11 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     own runtime under its own key. The org-level lane flags are the ORG's — an environment is a
     copy of the model, not a second tenant, so a branch runs on the same engine, the same shard and
     the same storage its org does; what differs is the schema it reads and the bindings its sources
-    resolve through. ``None`` and ``prod`` are the same environment and the same key."""
+    resolve through. ``None`` and ``prod`` are the same environment and the same key.
+
+    ``model_cloned`` (REQ-2006): on a miss the build is a cloned one (build_org_runtime's): the
+    environment was provisioned and its model copied a moment ago, in this process, from one this
+    release built -- a demo sandbox's Test (synthetic) environment, landed in its open."""
 
     # REQ-1574: the org's key ring is resolved BEFORE anything reads its encrypted columns --
     # _read_org_flags decrypts the org's engine and storage DSNs, and those were written under
@@ -1998,7 +2082,8 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     await ensure_org_encryption(org_id)
 
     runtime = await state.org_registry.get_or_build(
-        runtime_key(org_id, env), lambda _key: build_on_its_lane(org_id, env)
+        runtime_key(org_id, env),
+        lambda _key: build_on_its_lane(org_id, env, model_cloned=model_cloned),
     )
     # REQ-2087: the org's redaction rules and the secrets its model reaches, loaded once.
     from provisa.api.redaction_load import ensure_loaded
@@ -2007,7 +2092,9 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     return runtime
 
 
-async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-1266, REQ-1922
+async def build_on_its_lane(  # REQ-1266, REQ-1922
+    org_id: str, env: str | None, *, model_cloned: bool = False
+) -> OrgRuntime:
     """Build the org environment's runtime on the lane its admin-plane row and, in a region
     deployment, its model name: the engine and store it runs on. ``ensure_org_runtime`` builds
     through it, and provisioning builds an org again through it once that build has seeded the
@@ -2067,6 +2154,7 @@ async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-
         storage_url=storage_url,
         data_mode=_data_mode,
         mutation_handling=_mutation_handling,
+        model_cloned=model_cloned,
     )
 
 
@@ -2124,9 +2212,6 @@ async def _region_lane_of(org_id: str, env: str):
     read from its model store before its runtime (and so its engine) is built. None with no
     platform regions."""
     from provisa.core import process_region
-    from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import Capabilities, create_engine_from_url
-    from provisa.core.environments import org_schema
     from provisa.core.region_stores import region_lane
     from provisa.core.regions import DEFAULT_REGION
     from provisa.core.repositories.region import list_regions, list_stores
@@ -2134,6 +2219,22 @@ async def _region_lane_of(org_id: str, env: str):
     if process_region.region() == DEFAULT_REGION:
         # REQ-1922 amendment: the one implicit region names no engine; the lane decides as today.
         return None
+    async with org_model_store(org_id, env) as model_db:
+        async with model_db.acquire() as conn:
+            regions, stores = await list_regions(conn), await list_stores(conn)
+    return region_lane(org_id, regions, stores)
+
+
+@asynccontextmanager
+async def org_model_store(org_id: str, env: str):
+    """REQ-1922: the model store of ``org_id``'s environment ``env``, opened without building the
+    org's runtime: what the platform reads and writes of an org that this node may not serve (its
+    regions and stores). Its writes are committed to that environment's model (REQ-1524)."""
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.environments import org_schema
+    from provisa.core.model_change import ModelPlane
+
     shared = state.tenant_engine
     assert shared is not None, "tenant engine not built; _init_control_planes must run first"
     # A not-schema-capable backend keeps each org in its own file (see build_org_runtime).
@@ -2142,15 +2243,32 @@ async def _region_lane_of(org_id: str, env: str):
         cp = load_control_plane(config_path_str())
         owned = create_engine_from_url(cp.resolved_tenant_url(), pool_size=1, max_overflow=0)
     try:
-        model_db = Database(
-            owned or shared, name="org-model", search_path=org_schema(org_id, env), holds="model"
+        yield Database(
+            owned or shared,
+            name="org-model",
+            search_path=org_schema(org_id, env),
+            model=ModelPlane(org_id, env),
+            holds="model",
         )
-        async with model_db.acquire() as conn:
-            regions, stores = await list_regions(conn), await list_stores(conn)
     finally:
         if owned is not None:
             owned.dispose()
-    return region_lane(org_id, regions, stores)
+
+
+async def _sandbox_store(org_id: str, env: str, storage_url: str | None) -> str:
+    """REQ-2006, REQ-2068: the store a demo sandbox's or template's engine lands in: the file in
+    its folder (REQ-1992), or on the regions sandbox tier the store its region names (its own
+    schemas in that region's PostgreSQL). Asked once its model is loaded: a template's first build
+    loads the model that names its region's store."""
+    from provisa.api.demo_region_seed import regional
+    from provisa.federation.engine import embedded_store_dsn
+
+    if not regional():
+        return embedded_store_dsn(org_id)
+    if storage_url is not None:
+        return storage_url
+    bound = await _region_lane_of(org_id, env)
+    return embedded_store_dsn(org_id) if bound is None else bound.materialize_url
 
 
 async def _bind_region_stores(org_id: str, env: str, *, initialise: bool) -> None:
@@ -2253,6 +2371,15 @@ async def _require_org_serves_here(org_id: str) -> None:
         await require_serves_here(conn, org_id, process_region.region())
 
 
+async def _load_build_domains(conn: Any) -> list[dict]:
+    """The domains the schema build names from: id, description and the stored ``graphql_alias``
+    that ``domain_alias_map`` takes as the domain's own (REQ-471)."""
+    rows = await conn.execute_core(
+        select(_domains_t.c.id, _domains_t.c.description, _domains_t.c.graphql_alias)
+    )
+    return [dict(r._mapping) for r in rows.fetchall()]
+
+
 async def _unbound_sources(conn: Any) -> set[str]:
     """The ids of the environment's sources with no connection (REQ-1491, REQ-1942): they get no
     pool, because an empty host is not an absent one. Every other source's connection is the
@@ -2282,13 +2409,24 @@ async def build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+    model_cloned: bool = False,
+    provisioned: bool = False,
 ) -> OrgRuntime:  # REQ-1266, REQ-1524
     """Build the org's runtime (``_build_org_runtime``) as one model change.
 
     A build writes the org's model — its role grants, the built-in and demo rows it loads — and
     it is reached from every surface: an HTTP request (whose change it joins), a protocol server
     or a background job (none open one). Every model change commits (REQ-1524), so the build
-    opens its own scope; under an outer one it is part of that one."""
+    opens its own scope; under an outer one it is part of that one.
+
+    ``model_cloned`` (REQ-2006): the org's schema was provisioned and its model cloned, a moment
+    ago in this process, from an org this release built -- a demo sandbox's first build, from its
+    template. Its schema's script is not run again, and the built-in seed makes only what the
+    clone cannot carry (startup_seed._seed_built_in_sources).
+
+    ``provisioned``: the org's schema was created a moment ago, in this process
+    (orgs_router._provision_org_task), and holds none of the built-in views, which the seed makes
+    as one script."""
     async with model_change.scope(f"build org {org_id}/{env}"):
         return await _build_org_runtime(
             org_id,
@@ -2303,6 +2441,8 @@ async def build_org_runtime(
             engine_url=engine_url,
             shard=shard,
             storage_url=storage_url,
+            model_cloned=model_cloned,
+            provisioned=provisioned,
         )
 
 
@@ -2327,6 +2467,25 @@ def _shares_an_embedded_store(org_id: str, storage_url: str | None) -> bool:
     return configured_materialize_url() is None
 
 
+class _BuildClock:
+    """Each step of a runtime's build that was slow, at WARNING as a hosted tier logs: an open is
+    told apart by its "its runtime" stage alone, and that is its longest (REQ-2006)."""
+
+    _SLOW_S = 2.0
+
+    def __init__(self, key: str) -> None:
+        self._key = key
+        self._since = time.monotonic()
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        if now - self._since >= self._SLOW_S:
+            logging.getLogger(__name__).warning(
+                "runtime of %s: %s took %.1fs", self._key, step, now - self._since
+            )
+        self._since = now
+
+
 async def _build_org_runtime(
     org_id: str,
     *,
@@ -2341,6 +2500,8 @@ async def _build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+    model_cloned: bool = False,
+    provisioned: bool = False,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -2365,6 +2526,7 @@ async def _build_org_runtime(
     # REQ-2006: a demo sandbox's runtime opens its DuckDB file, so it is built by the sandbox tier
     # alone, and an ordinary org's never by the sandbox tier.
     require_this_tier(org_id)
+    clock = _BuildClock(runtime_key(org_id, env))
     from provisa.security.sandbox_egress import confined
 
     if confined(org_id):
@@ -2476,22 +2638,15 @@ async def _build_org_runtime(
             # orgs run on: the isolated-org seam (native_backend._attach_registered) lets an org
             # that owns its runtime run a native kind. This process is the only one that opens
             # the file (sandbox_tier.require_this_tier, above).
-            from provisa.federation.engine import build_engine, embedded_store_dsn
+            from provisa.federation.engine import build_engine
             from provisa.federation.runtime import EngineRuntime
 
             from provisa.core import settings_registry
 
             rt.isolated_engine = True
             rt.federation_engine = EngineRuntime(build_engine("duckdb"), state)
-            # REQ-2068: on the regions sandbox tier the org's region names its store (its own
-            # schemas in that region's PostgreSQL, the region lane's ``storage_url``).
-            from provisa.api.demo_region_seed import regional
-
-            rt.federation_engine.engine.pin_materialize_store(
-                storage_url
-                if regional() and storage_url is not None
-                else embedded_store_dsn(org_id)
-            )
+            # Its store is pinned once its model is loaded (_sandbox_store, below): the engine
+            # attaches it at its first landing, which the model's load does not make.
             rt.federation_engine.engine.memory_limit = int(
                 settings_registry.value("sandbox.memory_limit")
             )
@@ -2588,13 +2743,16 @@ async def _build_org_runtime(
             raise RuntimeError(
                 f"control-plane schema.sql missing from the package: {schema_sql_path}"
             )
-        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
+        if not model_cloned:  # provisioned a moment ago (org_provisioning.provision_org)
+            await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         # REQ-1623: asserted in the environment being built, whose roles table is its own.
         await apply_tenancy_role_grants(
             state.model_db, org_id, multitenancy=state.multitenancy, env=env
         )
-        await init_audit_schema(state.model_db, org_id=org_id, env=env)
+        if not model_cloned:
+            await init_audit_schema(state.model_db, org_id=org_id, env=env)
+        clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
@@ -2608,8 +2766,16 @@ async def _build_org_runtime(
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
         await _seed_built_in_sources(
-            host or "", port, database, username or "", org_id=org_id, env=env
+            host or "",
+            port,
+            database,
+            username or "",
+            org_id=org_id,
+            env=env,
+            cloned=model_cloned,
+            provisioned=provisioned,
         )
+        clock.mark("its built-in sources")
         state.source_dsns["provisa-admin"] = colocation_key(
             host or "", port, database, username or "", _pw or ""
         )
@@ -2652,11 +2818,18 @@ async def _build_org_runtime(
                     # The org's catalog names the registrations resolve under (REQ-1266).
                     _populate_source_catalog_names(seed)
                     async with bound_to_request_org():
-                        await rebuild_from_config(seed, conn, state.federation_engine)
-                    if is_template_org(org_id):
-                        from provisa.api.demo_templates import write_declared_vector_models
+                        if is_template_org(org_id):
+                            from provisa.api.demo_templates import rebuild_template
 
-                        await write_declared_vector_models(state.model_db, seed)
+                            await rebuild_template(
+                                seed_directory, seed, conn, state.federation_engine
+                            )
+                        else:
+                            await rebuild_from_config(seed, conn, state.federation_engine)
+                    if is_template_org(org_id):
+                        from provisa.api.demo_templates import write_declared_settings
+
+                        await write_declared_settings(state.model_db, seed)
                 async with bound_to_request_org():
                     org_config = await store_config(state.raw_config, conn)
                 unbound: set[str] = set()
@@ -2700,12 +2873,17 @@ async def _build_org_runtime(
                 )
             )
             await _resolve_pk_from_sources()
+        clock.mark("its sources")
 
         await _require_org_serves_here(org_id)  # REQ-1922
         await _bind_region_stores(org_id, env, initialise=True)
         from provisa.api.model_reload import prune_region_state
 
         await prune_region_state(rt)  # REQ-1922
+        if is_sandbox_tier_org(org_id):
+            rt.federation_engine.engine.pin_materialize_store(
+                await _sandbox_store(org_id, env, storage_url)
+            )
 
         # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
         # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
@@ -2719,15 +2897,10 @@ async def _build_org_runtime(
                 naming_override.get("default_domain", default),
             )
 
-        await _rebuild_schemas()
-        from provisa.api.sandbox_tier import is_template_org
-
-        if is_template_org(org_id) and env == PROD:
-            # REQ-2006: a demo template lands its replicas from the seed its bundle carries,
-            # before the wiring below starts its replica convergence.
-            from provisa.api.demo_templates import land_from_seed
-
-            await land_from_seed(org_id)
+        # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
+        await _rebuild_schemas(converge=False)
+        clock.mark("its schemas")
+        await _converge_after_seed(org_id, env)
 
         # REQ-1882 (amended 2026-09-29): the wiring below starts process-lifetime scheduler jobs and
         # listener tasks. Inline on the process loop; from a connection-thread loop (this org built
@@ -2808,9 +2981,38 @@ async def _build_org_runtime(
 # REQ-1882 (amended 2026-09-29): an org runtime built on first access from a pgwire/Bolt/Flight
 # connection thread rebuilds on that thread's own loop, so the serialization holds across loops.
 _rebuild_schemas_lock = CrossLoopLock()
+_SLOW_REBUILD_S = 2.0
 
 
-async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = True) -> None:
+def start_replica_convergence() -> None:
+    """REQ-1915: converge the bound org's replicas to the model just built, detached, in a process
+    that does background work (replica_converge.converge_logged)."""
+    from provisa.core import process_mode
+    from provisa.core.connection_loop import spawn_background
+    from provisa.federation.replica_converge import converge_logged
+
+    if process_mode.runs_background_work():
+        spawn_background(converge_logged(state), name="replica-converge")
+
+
+async def _converge_after_seed(org_id: str, env: str) -> None:
+    """In the runtime build of ``org_id``'s environment ``env``, its model built: a demo template
+    lands its replicas from the seed its bundle carries (REQ-2006), and only then is its replica
+    convergence started. Started before, it found no record of the seed's replicas and inserted a
+    requested one for each while the adoption deleted and inserted the same records: the two met
+    on replica_state's key and the template's provisioning failed."""
+    from provisa.api.sandbox_tier import is_template_org
+
+    if is_template_org(org_id) and env == PROD:
+        from provisa.api.demo_templates import land_from_seed
+
+        await land_from_seed(org_id)
+    start_replica_convergence()
+
+
+async def _rebuild_schemas(
+    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
+) -> None:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -2820,11 +3022,29 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
     # fetch happens after every prior rebuild's writes have committed and been published.
     #
     # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
+    # ``converge=False`` (REQ-2006) leaves the replica convergence to the caller: an org's runtime
+    # build starts it once a demo template's seed is adopted (_converge_after_seed).
+    #
+    # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
+    asked = time.monotonic()
     async with _rebuild_schemas_lock:
-        await _rebuild_schemas_impl(raw_config, announce=announce)
+        began = time.monotonic()
+        with model_row_rules.unnarrowed():
+            await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
+    # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
+    # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
+    if time.monotonic() - asked >= _SLOW_REBUILD_S:
+        logging.getLogger(__name__).warning(
+            "schema rebuild of %s: waited %.1fs for its turn, took %.1fs",
+            state._active_runtime().org_id,
+            began - asked,
+            time.monotonic() - began,
+        )
 
 
-async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
+async def _rebuild_schemas_impl(
+    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
+) -> None:
     # Rebuild per-role schemas from DB state. Column types come from the authoritative
     # table_columns store (introspect_tables does NOT query the engine), so this runs on any
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
@@ -2838,6 +3058,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # lands while the build reads leaves the runtime at the older stamp, so the config watcher
     # rebuilds once more; reading it afterwards would record a stamp newer than the model built.
     from provisa.core import config_stamp as _config_stamp
+    from provisa.core.relationship_names import store_effective_names
+
+    # REQ-351: every relationship's effective names, in the naming convention now in force: a build
+    # follows each save, configuration load and change of convention. Stored before the stamp is
+    # read, as each row it changes advances the stamp: read first, the runtime would be loaded at
+    # a stamp the model has already left, and no audit row could name its commit (REQ-1524).
+    async with state.model_db.acquire() as _names_conn:
+        await store_effective_names(cast("Connection", _names_conn))
 
     _stamped_runtime = state._active_runtime()
     _model_stamp = (await _config_stamp.read(state.model_db))[_config_stamp.MODEL]
@@ -2866,8 +3094,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # REQ-1914: the masking rules are NOT cleared here. Requests run on their own threads while
     # this build reads the control plane, and one that found the rules empty would be answered
     # unmasked; _load_masking_rules builds the new set aside and publishes it in one assignment.
-    # Invalidate the MCP catalog search index (REQ-1008) — the catalog is changing, so the
-    # server-lifetime HNSW index is stale; next search_catalog rebuilds it from the new catalog.
+    # Invalidate this org's MCP catalog search index (REQ-1008) — its catalog is changing, so the
+    # HNSW index is stale; its next search_catalog rebuilds it from the new catalog.
     state.mcp_catalog_index = None
 
     # REQ-1685: a graphql_remote source registered since boot (an applied import, the Sources
@@ -2927,7 +3155,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             dict(r._mapping)
             for r in (
                 await conn.execute_core(
-                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement)
+                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement).order_by(
+                        _naming_rules_t.c.id  # REQ-2190: in the order the catalog's views apply
+                    )
                 )
             ).fetchall()
         ]
@@ -2944,12 +3174,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             ).fetchall()
         ]
         state.table_cache = {r["id"]: r["cache_ttl"] for r in cache_rows}
-        domains = [
-            dict(r._mapping)
-            for r in (
-                await conn.execute_core(select(_domains_t.c.id, _domains_t.c.description))
-            ).fetchall()
-        ]
+        domains = await _load_build_domains(conn)
         # REQ-1373/1377: the DB is the source of truth for tags; refresh them into state.config
         # so consumers (metadata export builder) see admin-created tags, not just YAML-boot ones.
         from provisa.core.repositories import tag as _tag_repo
@@ -3102,7 +3327,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                         _roles_t.c.capabilities,
                         _roles_t.c.domain_access,
                         _roles_t.c.rate_limit,
-                        _roles_t.c.parent_role_id,  # REQ-1677
+                        _roles_t.c.parents,  # REQ-2155
                         # REQ-1921: the data_residency grant's covered values. state.roles feeds
                         # residency_values_for_claims (the region-edit gate); without this column a
                         # role holding data_residency resolves to a dict with no residency_values
@@ -3123,18 +3348,38 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # the inherited grants under the acting role's own id.
         from provisa.security.inheritance import (
             expand_column_grants,
+            expand_meta_grants,
             expand_write_grants,
             flatten_role_dicts,
+            narrow_own_domain_grants,
+            parent_map,
             role_chains,
+            with_own_domains,
         )
 
         role_chains_by_id = role_chains(roles)
-        # REQ-1363: then down the domain tree -- a role that lists a domain reaches every domain
-        # under it. state.roles carries the flattened list, so every reader of a role's
+        # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
+        role_parents_by_id = parent_map(roles)
+        # REQ-2188: naming a role in a product's Owner field gives it RW on data products, with the
+        # generated rules (row_filters.with_owner_grant); it folds to the role's children as a
+        # right does, and is gone from the next build once the role owns nothing.
+        from provisa.core.repositories import data_product as _data_product_repo
+        from provisa.security.row_filters import with_owner_grant
+
+        roles = with_owner_grant(roles, await _data_product_repo.owner_roles(conn))
+        # REQ-1363: down the domain tree before a role is narrowed -- a role that lists a domain
+        # reaches every domain under it, so a parent holds the subtree its child narrows
+        # (REQ-2155). state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
-        roles = _domain_tree.flatten_role_domains(flatten_role_dicts(roles), _domain_parents)
+        # REQ-2153: each role's own domain access is kept from before the tree, which an
+        # own-domain column's grant is narrowed by, once the grants are folded down the chains.
+        roles = flatten_role_dicts(
+            _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
+        )
         expand_column_grants(tables, role_chains_by_id)
-        expand_write_grants(tables, role_chains_by_id)  # REQ-2074
+        narrow_own_domain_grants([*tables, *draft_tables], roles)
+        expand_meta_grants(tables, roles)  # REQ-1132
+        expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
 
         # Merge PG-stored allowed_domains into state; inject source naming into table dicts.
@@ -3153,6 +3398,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         state.federation_engine.reseed_ops(_OPS_VIEWS)
 
         await _register_user_views_in_state(conn, raw_config, tables, draft_tables)
+        # REQ-2163: the ontology schema's Class tables, over the tables this build serves.
+        from provisa.api._ontology_classes import register_class_tables
+
+        await register_class_tables(conn, tables)
 
         # Schema-currency reconcile (REQ-846/932): converge this environment's own landing tables
         # to the registered shape before introspection reads them. Boot and post-mutation registration
@@ -3189,7 +3438,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
-            state.engine_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})}
+            state.engine_conn,
+            tables,
+            sources,
+            {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(kafka_physical or {})},
         )
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
@@ -3228,25 +3480,24 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
-            conn, raw_config, tables
+            conn, raw_config, tables, domains
         )
-        # REQ-1677: child-precedence RLS — the nearest role in the chain with a rule for a table
-        # (REQ-1679: or an action) supplies that predicate for the child.
-        from provisa.security.inheritance import expand_grants, materialize_rls
-
-        rls_rules = materialize_rls(
-            rls_rules, tables, role_chains_by_id, [*tracked_functions, *tracked_webhooks]
-        )
+        # REQ-1677, REQ-2155: child-precedence RLS -- a role's own rule for a table (REQ-1679: or
+        # an action) stands, else its parents' rules ORed.
         # REQ-1384: one predicate per (role, table) — the table's own or its domain's rule,
         # AND-ed with every rule on a tag the table carries and (REQ-1363) with the rule on every
         # domain above the table's. Resolved here so the governance
         # path reads the one table-keyed rule it always has.
+        # REQ-2188: each right resolved on its own.
         from provisa.core.repositories import tag as _tag_repo
-        from provisa.security.row_filters import resolve_table_rules
+        from provisa.security.inheritance import expand_grants
+        from provisa.security.row_filters import resolve_rules_by_right
 
-        rls_rules = resolve_table_rules(
+        rls_rules = resolve_rules_by_right(
             rls_rules,
             tables,
+            role_parents_by_id,
+            [*tracked_functions, *tracked_webhooks],
             role_chains_by_id,
             await _tag_repo.list_assignments(conn),
             _domain_parents,
@@ -3275,6 +3526,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         _metric_dicts = [m.model_dump() for m in _metric_models]
         expand_grants(_metric_dicts, role_chains_by_id)  # REQ-1677
         expand_grants(tracked_functions, role_chains_by_id)
+        # REQ-2131: a column transform is admitted like any command (action_exec.admit_command).
+        expand_grants(list(state.column_transforms.values()), role_chains_by_id)
         expand_grants(tracked_webhooks, role_chains_by_id)
 
         # REQ-1903: stable gRPC proto field numbers across schema regenerations — loaded from this
@@ -3314,24 +3567,28 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
                 )
             )
 
-        _checked = _build_and_register_schemas(
-            roles=roles,
-            tables=tables,
-            relationships=relationships,
-            col_types_converted=col_types_converted,
-            naming_rules=naming_rules,
-            domains=domains,
-            domain_prefix=domain_prefix,
-            kafka_physical=kafka_physical,
-            tracked_functions=tracked_functions,
-            tracked_webhooks=tracked_webhooks,
-            gql_object_cols=_gql_object_cols,
-            rls_rules=rls_rules,
-            metrics=_metric_dicts,  # REQ-1319
-            field_numbers=_field_numbers,
-            draft_tables=draft_tables,  # REQ-1921
-        )
+    # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
+    # phase: it runs with this rebuild's connection given back, so concurrent requests and the
+    # health probe are not kept waiting at the connection gate for all of it.
+    _checked = _build_and_register_schemas(
+        roles=roles,
+        tables=tables,
+        relationships=relationships,
+        col_types_converted=col_types_converted,
+        naming_rules=naming_rules,
+        domains=domains,
+        domain_prefix=domain_prefix,
+        kafka_physical=kafka_physical,
+        tracked_functions=tracked_functions,
+        tracked_webhooks=tracked_webhooks,
+        gql_object_cols=_gql_object_cols,
+        rls_rules=rls_rules,
+        metrics=_metric_dicts,  # REQ-1319
+        field_numbers=_field_numbers,
+        draft_tables=draft_tables,  # REQ-1921
+    )
 
+    async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
 
         # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
@@ -3344,11 +3601,23 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         await write_checker_targets(conn, _checked)
 
+    # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
+    # its roles) is ended.
+    from datetime import UTC as _UTC, datetime as _datetime
+
+    from provisa.api.graph_session import sweep as _sweep_graph_sessions
+
+    await _sweep_graph_sessions(state, _datetime.now(_UTC))
+
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
     # visible_columns and all_columns; without this assignment the list is always empty and
     # column visibility + masking are silently skipped on every raw-SQL transport.
     state.tables = tables
+    # REQ-2100: the identity a built code host accepts, where the engine attaching it reads it.
+    from provisa.codesource.attach import prepare as _prepare_code_hosts
+
+    await _prepare_code_hosts(state)
     # REQ-1132: publish the resolved relationship registry alongside tables so the raw-SQL
     # governance path can compute 1-hop meta row scoping.
     state.relationships = relationships
@@ -3376,7 +3645,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
-        "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+        "physical_table_map": {
+            **_META_TABLE_ALIAS,
+            **ONTOLOGY_TABLE_ALIAS,
+            **(kafka_physical or {}),
+        },
         "metrics": _metric_dicts,  # REQ-1319
     }
     state.schema_version += 1
@@ -3391,14 +3664,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # longer declares is retired. This is the one place: the boot build, the build after this
     # worker's own change, and the reload of another worker's change all pass here, so no save
     # or delete path asks for a build or a drop itself. Detached: the model build must not
-    # wait on, or be stopped by, a replica store or a source.
-    from provisa.core import process_mode as _process_mode
-
-    if _process_mode.runs_background_work():
-        from provisa.core.connection_loop import spawn_background as _spawn_background
-        from provisa.federation.replica_converge import converge_logged as _converge_replicas
-
-        _spawn_background(_converge_replicas(state), name="replica-converge")
+    # wait on, or be stopped by, a replica store or a source. An org's runtime build starts it
+    # itself (``converge=False``), once its template's seed is adopted.
+    if converge:
+        start_replica_convergence()
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.
@@ -3550,6 +3819,13 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         """Everything the boot writes to the control plane and the engine's shared catalogs."""
         await _load_and_build()
 
+        # REQ-2135: a local start's install step -- server.public_url, when unset, is stored as
+        # the address its server listens on, the operator setting Deployment settings shows.
+        if state.admin_db is not None:
+            from provisa.core.local_install import set_public_url
+
+            set_public_url(state.admin_db)
+
         # REQ-1267: when PROVISA_IDP names an identity provider (e.g. firebase from the
         # GCP/installer deploy) but the loaded config carries no auth section, configure it now —
         # BEFORE any request reaches the middleware — so the server enforces auth from its first
@@ -3649,6 +3925,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await _start_background_tasks(_log)
 
     await _start_servers(_log)
+    _log_http_surfaces(_app, _log)
+    from provisa.api.admin.system_health import serving_http_surfaces
+
+    state.http_surfaces = serving_http_surfaces(_app)
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
@@ -3788,6 +4068,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # Stop the Hot promotion evaluation (REQ-826)
     if state._replica_hot_task:
         await _stop_long_lived(state._replica_hot_task)
+    if state._graph_session_task:
+        await _stop_long_lived(state._graph_session_task)
+    if state._term_scan_task:
+        await _stop_long_lived(state._term_scan_task)
     if state._temp_keeper_task:
         await _stop_long_lived(state._temp_keeper_task)
     if state.hot_manager is not None:
@@ -3960,14 +4244,6 @@ def create_app() -> FastAPI:
     state.shared_federation_engine.write_config(config_path_str())
     _setup_otel(app)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     from fastapi import Request as _Request
     from fastapi.responses import JSONResponse as _JSONResponse
 
@@ -4014,6 +4290,47 @@ def create_app() -> FastAPI:
         """REQ-1965: a statement on a JSON column that cannot be answered correctly -- an
         operation its backend lacks, a float element with no JSON form. The statement is
         refused, by name; nothing has failed."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.transpiler.native_subtype import (
+        SubtypeOperationRefused as _SubtypeOperationRefused,
+    )
+
+    @app.exception_handler(_SubtypeOperationRefused)
+    async def _subtype_refused_handler(_req: _Request, exc: _SubtypeOperationRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        """REQ-2171: an operation on a subtyped column the routed dialect can neither run with the
+        subtype's own semantics nor emulate. Refused by name, never answered over its text form."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.transpiler.function_macros import FunctionRefused as _FunctionRefused
+
+    @app.exception_handler(_FunctionRefused)
+    async def _function_refused_handler(_req: _Request, exc: _FunctionRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        """REQ-2167: a function the routed dialect neither has nor has a form of: refused by name,
+        never an engine's error."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.transpiler.metadata_functions import (
+        MetadataFunctionRefused as _MetadataFunctionRefused,
+    )
+    from provisa.transpiler.metadata_settings import CatalogViewRefused as _CatalogViewRefused
+
+    @app.exception_handler(_CatalogViewRefused)
+    @app.exception_handler(_MetadataFunctionRefused)
+    async def _catalog_read_refused_handler(  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        _req: _Request, exc: _CatalogViewRefused | _MetadataFunctionRefused
+    ):
+        """REQ-2190: a catalog view off the admin terminal, or a function that would read the
+        control plane itself: refused by name, on HTTP as on pgwire."""
         return _JSONResponse(
             status_code=422,
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
@@ -4157,6 +4474,36 @@ def create_app() -> FastAPI:
             },
         )
 
+    from provisa.compiler.write_admission import (
+        ReturningNotSupported as _ReturningNotSupported,
+        WriteFormNotSupported as _WriteFormNotSupported,
+    )
+
+    @app.exception_handler(_WriteFormNotSupported)
+    async def _write_form_not_supported_handler(_req: _Request, exc: _WriteFormNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1981: a statement form (MERGE, ON CONFLICT, UPDATE ... FROM ...) the table's write
+        # route does not carry, refused by name like any write its source cannot take.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.write_form_not_supported",
+                "params": {"table": exc.table, "form": exc.form},
+            },
+        )
+
+    @app.exception_handler(_ReturningNotSupported)
+    async def _returning_not_supported_handler(_req: _Request, exc: _ReturningNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # A RETURNING the table's write route cannot answer, refused by name.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.returning_not_supported",
+                "params": {"table": exc.table},
+            },
+        )
+
     from provisa.executor.errors import SystemCatalogUnavailable as _SystemCatalogUnavailable
 
     @app.exception_handler(_SystemCatalogUnavailable)
@@ -4187,6 +4534,34 @@ def create_app() -> FastAPI:
                 "detail": str(exc),
                 "code": "data.table_is_draft",
                 "params": {"table": exc.table},
+            },
+        )
+
+    from provisa.security.rights import MissingDomainCapability as _MissingDomainCapability
+
+    from provisa.security.rights import ListedOnly as _ListedOnly
+
+    @app.exception_handler(_ListedOnly)
+    async def _listed_only_handler(_req: _Request, exc: _ListedOnly):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: list means metadata only, and the refusal says so.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.listed_only",
+                "params": {"role": exc.role_id, "table": exc.table},
+            },
+        )
+
+    @app.exception_handler(_MissingDomainCapability)
+    async def _missing_domain_capability_handler(_req: _Request, exc: _MissingDomainCapability):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: a system domain is held as a capability, and the refusal names it.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.capability_required",
+                "params": {"capability": exc.capability, "domain": exc.domain_id},
             },
         )
 
@@ -4244,7 +4619,10 @@ def create_app() -> FastAPI:
         content: dict = {"detail": str(exc)}
         if isinstance(code, str):
             reason = getattr(exc, "reason", None)
-            content.update(code=code, params={} if reason is None else {"reason": reason})
+            params = getattr(exc, "params", None)
+            if params is None:
+                params = {} if reason is None else {"reason": reason}
+            content.update(code=code, params=params)
         return _JSONResponse(status_code=403, content=content)
 
     from provisa.compiler.context import ModelNotServable as _ModelNotServable
@@ -4563,6 +4941,13 @@ def create_app() -> FastAPI:
     except ImportError:
         pass
 
+    # REQ-2193: the OData service. Its headers wrap the auth middleware, whose 401 carries none.
+    from provisa.api.odata.headers import ODataResponseHeaders
+    from provisa.api.odata.router import create_odata_router
+
+    app.include_router(create_odata_router(state))
+    app.add_middleware(ODataResponseHeaders)
+
     # Admin GraphQL API (Strawberry) at /admin/graphql
     async def _admin_graphql_context(request: HTTPConnection):
         # HTTPConnection, not Request: FastAPI supplies it to a WebSocket too, which the router
@@ -4662,6 +5047,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(metadata_export_router)
+    from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
+
+    app.include_router(catalogs_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )
@@ -4670,6 +5058,16 @@ def create_app() -> FastAPI:
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
+    from provisa.api.admin.reference_library_router import (  # REQ-2185
+        router as reference_library_router,
+    )
+
+    app.include_router(reference_library_router)
+    from provisa.api.admin.term_finding_router import (  # REQ-2179
+        router as term_finding_router,
+    )
+
+    app.include_router(term_finding_router)
     from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
 
     app.include_router(model_report_router)
@@ -4687,6 +5085,14 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
+        router as profiler_classifications_router,
+    )
+
+    app.include_router(profiler_classifications_router)
+    from provisa.api.admin.erd_layouts_router import router as erd_layouts_router  # REQ-2189
+
+    app.include_router(erd_layouts_router)
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)
@@ -4728,6 +5134,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.regions_router import router as regions_router
+
+    app.include_router(regions_router)  # REQ-1922
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
@@ -4759,6 +5168,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.debug_trace_router import router as debug_trace_router  # REQ-1910
 
     app.include_router(debug_trace_router)
+    from provisa.api.admin.data_addresses_router import router as data_addresses_router  # REQ-1916
+
+    app.include_router(data_addresses_router)
     from provisa.api.admin.audit_query_text_router import router as audit_text_router  # REQ-1910
 
     app.include_router(audit_text_router)
@@ -4771,6 +5183,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.roles_router import router as roles_router
 
     app.include_router(roles_router)
+    from provisa.api.admin.table_access_router import router as table_access_router  # REQ-2162
+
+    app.include_router(table_access_router)
     from provisa.api.admin.derived_roles_router import router as derived_roles_router
 
     app.include_router(derived_roles_router)  # REQ-2057
@@ -4799,10 +5214,17 @@ def create_app() -> FastAPI:
     # Cypher query endpoint (Phase AU)
     try:
         from provisa.api.rest.cypher_router import router as cypher_router
+        from provisa.api.rest.cypher_session import router as cypher_session_router
 
         app.include_router(cypher_router)
+        app.include_router(cypher_session_router)  # REQ-2176: the principal's graph session
     except ImportError:
         pass
+
+    # REQ-2135: the SPARQL 1.1 Protocol endpoint, beside Cypher's.
+    from provisa.api.rest.sparql_router import router as sparql_router
+
+    app.include_router(sparql_router)
 
     # Neo4j Browser compatibility layer (Query API v2 + discovery)
     try:
@@ -4857,6 +5279,11 @@ def create_app() -> FastAPI:
             response.status_code = 503
             return {"status": "warming"}
         return {"status": "ready"}
+
+    # REQ-2149: the leak test's view of this process, mounted only with PROVISA_LEAK_PROBE=1.
+    from provisa.api.leak_probe import mount as _mount_leak_probe
+
+    _mount_leak_probe(app)
 
     @app.api_route("/debug/logs", methods=["GET"])
     async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
@@ -4926,6 +5353,15 @@ def create_app() -> FastAPI:
     from provisa.api.coordinator_gate import CoordinatorDataGate
 
     app.add_middleware(CoordinatorDataGate)
+    # REQ-1916 (amended 2026-11-02): the mirror -- a query node answers the UI's backend with its
+    # refusal, naming the UI's address (mail.base_url, read per refusal: the config can reload).
+    from provisa.api.query_gate import QueryUiGate, is_ui_path
+
+    app.add_middleware(
+        QueryUiGate,
+        refuses=is_ui_path,
+        ui_address=lambda: state.config.mail.base_url if state.config is not None else None,
+    )
 
     from provisa.core.request_thread import RequestThreadMiddleware
 
@@ -4935,5 +5371,17 @@ def create_app() -> FastAPI:
     from provisa.api.error_redaction import ErrorRedactionMiddleware
 
     app.add_middleware(ErrorRedactionMiddleware)
+
+    # REQ-1916 (amended 2026-11-02): a coordinator-served UI sends its data calls to a query node,
+    # cross-origin, with its bearer. Outermost, so a browser's preflight (which carries no token) is
+    # answered before auth asks for one, and every answer -- a gate's refusal, auth's 401 -- carries
+    # the headers the UI needs to read it.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     return app

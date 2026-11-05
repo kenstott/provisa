@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from provisa.core.models import Column, Table
+from provisa.api.admin.read_rights import SERVICE_READER
 
 
 class _FakeConn:
@@ -79,7 +80,7 @@ async def test_graphql_native_filter_columns_carry_the_argument_type(monkeypatch
         }
     ]
     conn = _FakeConn()
-    await mod._upsert_tables_to_semantic_layer("gql", "d", tables, _fake_db(conn))
+    await mod._upsert_tables_to_semantic_layer("gql", "d", tables, _fake_db(conn), SERVICE_READER)
 
     cols = {c.name: c.data_type for c in captured[0].columns}
     assert cols == {"name": "varchar", "_nf_id": "varchar", "_nf_limit": "integer"}

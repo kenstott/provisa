@@ -73,6 +73,7 @@ async def test_the_reconcile_worklist_resolves_a_native_nested_column_as_json(mo
         "schema_name": "main",
         "table_name": "orders",
         "landing_filter": None,
+        "row_materialize": False,
         "columns": [
             {
                 "column_name": "id",

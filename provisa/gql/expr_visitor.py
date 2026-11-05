@@ -16,23 +16,30 @@ translator state (how a variable/property resolves to a physical column, how ``$
 graph pattern subquery is built) are delegated to an ``ExprContext`` the translator supplies; every
 context-free construct (operators, literals, CASE, list ops, comprehensions→lambda) is lowered here.
 
-Emission matches the current path so the A/B differential stays clean: ``STARTS WITH → starts_with()``,
-``ENDS WITH → (x LIKE CONCAT('%', y))``, ``CONTAINS → (strpos(x, y) > 0)``, ``=~ → regexp_like()``,
+Each string predicate matches as Cypher says, its value taken literally: ``STARTS WITH →
+starts_with()``, ``ENDS WITH → (right(x, length(y)) = y)``, ``CONTAINS → (strpos(x, y) > 0)``, and
+``=~`` a match of the whole string, ``regexp_like(x, '^(?:y)$')``,
 ``^ → POWER()``, list comprehensions/quantifiers/reduce → the engine's higher-order list functions.
 """
 
 from __future__ import annotations
 
-from typing import Protocol, cast
+import json
+import re
+from collections.abc import Callable
+from typing import Any, Protocol, cast
 
 import sqlglot.expressions as exp
 
+from provisa.gql.mistakes import invalid_regex, regex_problem, type_mismatch
 from provisa.gql.expr_ast import (
     Binary,
     Case,
     CypherExpr,
     FunctionCall,
     Index,
+    AxiomObject,
+    IriConst,
     IsNull,
     LabelPredicate,
     ListComprehension,
@@ -48,9 +55,100 @@ from provisa.gql.expr_ast import (
     Reduce,
     Slice,
     SubqueryExpr,
+    Term,
+    TermIri,
+    TypedLiteral,
     Unary,
     Variable,
+    walk,
 )
+from provisa.gql import spatial, temporal
+from provisa.gql.terms import axiom_table_iri
+from provisa.gql.translator_helpers import _and_all, _json_valued
+from provisa.gql.translator_types import UNION_NODE, CypherTranslateError
+
+#: A regex's leading inline flags, which PostgreSQL takes only at the regex's start.
+_REGEX_FLAGS = re.compile(r"^\(\?[a-zA-Z]+\)")
+
+
+def _whole_match(pattern: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``pattern`` matching the whole string, as Cypher's ``=~`` does, where regexp_like finds
+    the pattern anywhere in it: ``^(?:pattern)$``, any leading inline flags kept first."""
+    if isinstance(pattern, exp.Literal) and pattern.is_string:
+        text = pattern.this
+        flags = _REGEX_FLAGS.match(text)
+        head = flags.group() if flags else ""
+        return exp.Literal.string(f"{head}^(?:{text[len(head) :]})$")
+    return exp.Concat(expressions=[exp.Literal.string("^(?:"), pattern, exp.Literal.string(")$")])
+
+
+_XSD = "http://www.w3.org/2001/XMLSchema#"
+# REQ-2135: a typed literal's datatype as the SQL value it lowers to. A number is written as one;
+# the others are cast from their lexical form.
+_XSD_NUMBERS = {
+    f"{_XSD}{t}"
+    for t in (
+        "integer",
+        "int",
+        "long",
+        "short",
+        "byte",
+        "nonNegativeInteger",
+        "positiveInteger",
+        "nonPositiveInteger",
+        "negativeInteger",
+        "unsignedInt",
+        "unsignedLong",
+        "unsignedShort",
+        "unsignedByte",
+        "decimal",
+        "double",
+        "float",
+    )
+}
+_XSD_CASTS = {f"{_XSD}date": "DATE", f"{_XSD}dateTime": "TIMESTAMP", f"{_XSD}time": "TIME"}
+
+
+def _as_text(value: exp.Expression) -> exp.Expression:
+    """``value`` as the text a string + it joins: a property read by a key that is a value
+    (``n[key]``, its JSON) as its scalar's text, not its JSON (a string's quotes); any other as
+    it is."""
+    inner = value.this if isinstance(value, exp.Paren) else value
+    if isinstance(inner, exp.Anonymous) and str(inner.this).upper() == "JSON_EXTRACT":
+        return exp.Paren(this=_anon("JSON_EXTRACT_SCALAR", *(e.copy() for e in inner.expressions)))
+    return value
+
+
+def _json_text_of(e: exp.Expression) -> exp.Expression | None:
+    """The JSON a value is read as the text of (``JSON_EXTRACT_SCALAR(j, '$')``, a key of a map
+    inside a map a WITH carries, expr_context.resolve_property), or None for any other value."""
+    if not (isinstance(e, exp.Anonymous) and str(e.this).upper() == "JSON_EXTRACT_SCALAR"):
+        return None
+    if len(e.expressions) != 2:
+        return None
+    held, path = e.expressions
+    return held if isinstance(path, exp.Literal) and path.this == "$" else None
+
+
+def _element_or_map_key(held: exp.Expression, name: str) -> exp.Expression:
+    """``name`` of ``held``, a JSON value: a node's or relationship's property where it is one
+    (an object of ``properties`` and a ``label`` or ``type``), else the map's key; JSON null where
+    it has none."""
+    key = json.dumps(name)
+
+    def at(path: str) -> exp.Expression:
+        return _anon("JSON_EXTRACT", held.copy(), exp.Literal.string(path))
+
+    element = exp.and_(
+        exp.Not(this=exp.Is(this=at("$.properties"), expression=exp.Null())),
+        exp.or_(
+            exp.Not(this=exp.Is(this=at("$.label"), expression=exp.Null())),
+            exp.Not(this=exp.Is(this=at("$.type"), expression=exp.Null())),
+        ),
+    )
+    return exp.Case(
+        ifs=[exp.If(this=element, true=at(f"$.properties.{key}"))], default=at(f"$.{key}")
+    )
 
 
 class ExprContext(Protocol):
@@ -70,14 +168,62 @@ class ExprContext(Protocol):
         or a scalar extracted from an assembled row."""
         ...
 
+    def property_type(self, obj: exp.Expression, name: str) -> str | None:
+        """The registered data type of ``obj.name`` where it is a registered table's column."""
+        ...
+
     def resolve_parameter(self, name: str) -> exp.Expression:
         """A ``$param`` reference — the positional placeholder it binds to."""
+        ...
+
+    def temporal_kind(self, expr: CypherExpr) -> str | None:
+        """The temporal kind ``expr`` has (REQ-2173: date, time, ..., duration), or None."""
+        ...
+
+    def temporal_zone(self, expr: CypherExpr) -> str | None:
+        """The zone a time or date time the query builds names (REQ-2173), or None."""
+        ...
+
+    def is_text(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a string (size() of it counts its characters)."""
+        ...
+
+    def is_list(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a list (+ appends an element to it)."""
+        ...
+
+    def is_json_value(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is an item of a list of values of several types: its JSON."""
+        ...
+
+    def is_null(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is null as the statement writes it, or a variable bound to null."""
+        ...
+
+    def given_value(self, expr: CypherExpr) -> tuple[bool, object]:
+        """(True, the value) of a parameter the client gives, or of a variable a WITH binds to
+        one; (False, None) of anything else. Only its type may shape the SQL: a translation is
+        kept for every request giving its parameters values of the same types (cypher_plan)."""
+        ...
+
+    def resolve_term(self, node: Term) -> exp.Expression:
+        """``node.value`` as one RDF term of the answer (REQ-2135)."""
         ...
 
     def resolve_function(
         self, name: str, args: list[exp.Expression], *, distinct: bool
     ) -> exp.Expression:
         """A function call after its args are lowered (Cypher→engine renames/casts live here)."""
+        ...
+
+    def element_list_kind(self, expr: CypherExpr) -> str | None:
+        """ "node", "rel" or "path" where ``expr`` is a list of collected graph elements (their
+        JSON values), else None."""
+        ...
+
+    def element_property_type(self, expr: CypherExpr, name: str) -> exp.DataType | None:
+        """The one type property ``name`` of the elements the list ``expr`` collects has, where
+        their labels agree; None to read it as text."""
         ...
 
     def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:
@@ -88,8 +234,62 @@ class ExprContext(Protocol):
         """``n{.a, x: e, .*}`` — needs the variable's known properties."""
         ...
 
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:
+        """A bound node or relationship variable as its JSON object (what RETURN n or RETURN r
+        answers), None for any other name."""
+        ...
+
+    def is_json_property(self, expr: CypherExpr) -> bool:
+        """Whether ``expr`` is a property held as one JSON value (a column of type json)."""
+        ...
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:
+        """A bound node, relationship or path as the JSON object a list, a map or collect()
+        holds, None for any other name."""
+        ...
+
+    def graph_kind(self, name: str) -> str | None:
+        """What the pattern variable ``name`` binds -- "node", "relationship", "path", or "list"
+        (a variable-length relationship's relationships) -- else None."""
+        ...
+
+    def resolve_element_properties(self, name: str) -> exp.Expression | None:
+        """A bound node's or relationship's properties as one JSON object, None for any other
+        name."""
+        ...
+
+    def resolve_element_rows(
+        self, node: ListComprehension, source: exp.Expression
+    ) -> exp.Expression:
+        """``node`` over ``source``, a list of graph elements, read one row per item in order:
+        a comprehension whose body reads a subquery, which no lambda holds."""
+        ...
+
+    def is_bound(self, name: str) -> bool:
+        """Whether the statement binds ``name`` where an expression reads it: a node,
+        relationship or path variable, or any other value a clause before it names."""
+        ...
+
     def resolve_subquery(self, node: SubqueryExpr) -> exp.Expression:
         """``EXISTS/COUNT/COLLECT { … }`` — builds the correlated subquery."""
+        ...
+
+    def resolve_graph_identity(
+        self, name: str
+    ) -> tuple[tuple[str, ...], list[exp.Expression]] | None:
+        """A bound node or relationship variable's identity (#305): what kind of element it is (a
+        node's table, a relationship's type and ends' tables) and its keys, in one order for
+        every element of that kind; None for any other name."""
+        ...
+
+    def resolve_node_graph_identity(self, name: str) -> exp.Expression | None:
+        """A node variable's graph identity, "Label|key", for a comparison with a node of a union
+        of labels; None for any other name."""
+        ...
+
+    def resolve_graph_absent(self, name: str) -> exp.Expression | None:
+        """Where a bound node or relationship variable is null (an OPTIONAL MATCH bound none),
+        None for any other name (#304)."""
         ...
 
     def resolve_pattern_comprehension(self, node: PatternComprehension) -> exp.Expression:
@@ -115,6 +315,450 @@ _BINARY_CMP: dict[str, type[exp.Expression]] = {
 }
 
 
+#: The functions whose value openCypher types a float.
+_FLOAT_FUNCTIONS = frozenset({"tofloat", "tofloatornull"})
+#: The registered types of a column holding a non-integer number.
+_FLOAT_TYPES = re.compile(r"^(real|float|double|decimal|numeric)", re.I)
+
+
+def _float_division(left: exp.Expression, right: exp.Expression) -> exp.Expression:
+    """openCypher's float division: by zero, Infinity of the dividend's sign, or NaN for zero
+    (REQ-2167; SQL's division by zero is an error). Written as PostgreSQL SQL, so every engine
+    answers it so."""
+
+    def _float(text: str) -> exp.Expression:
+        return exp.cast(exp.Literal.string(text), exp.DataType.build("DOUBLE PRECISION"))
+
+    zero = exp.Literal.number(0)
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=right.copy(), expression=zero.copy()),
+                true=exp.Case(
+                    ifs=[
+                        exp.If(
+                            this=exp.GT(this=left.copy(), expression=zero.copy()),
+                            true=_float("Infinity"),
+                        ),
+                        exp.If(
+                            this=exp.LT(this=left.copy(), expression=zero.copy()),
+                            true=_float("-Infinity"),
+                        ),
+                        exp.If(
+                            this=exp.EQ(this=left.copy(), expression=zero.copy()),
+                            true=_float("NaN"),
+                        ),
+                    ]
+                ),
+            )
+        ],
+        default=exp.Div(this=left, expression=right),
+    )
+
+
+def _non_negative_literal(node: CypherExpr) -> bool:
+    return isinstance(node, Literal) and node.kind == "number" and cast(float, node.value) >= 0
+
+
+#: A value not written wholly in the statement (_written_value).
+_UNKNOWN = object()
+
+
+def _written_value(node: CypherExpr) -> object:
+    """``node``'s value where the statement writes it wholly -- a literal, or a list or map of
+    them -- else _UNKNOWN."""
+    if isinstance(node, Paren):
+        return _written_value(node.inner)
+    if isinstance(node, Literal):
+        return node.value if node.kind in ("number", "string", "boolean", "null") else _UNKNOWN
+    if isinstance(node, Unary) and node.op == "-":
+        inner = _written_value(node.operand)
+        is_number = isinstance(inner, (int, float)) and not isinstance(inner, bool)
+        return -inner if is_number else _UNKNOWN  # type: ignore[operator]
+    if isinstance(node, ListLiteral):
+        items = [_written_value(i) for i in node.items]
+        return _UNKNOWN if any(i is _UNKNOWN for i in items) else items
+    if isinstance(node, MapLiteral):
+        entries = {k: _written_value(v) for k, v in node.entries}
+        return _UNKNOWN if any(v is _UNKNOWN for v in entries.values()) else entries
+    if isinstance(node, Index):
+        items, at = _written_value(node.obj), _written_value(node.index)
+        if isinstance(items, list) and isinstance(at, int) and not isinstance(at, bool):
+            return items[at] if -len(items) <= at < len(items) else None
+        return _UNKNOWN
+    if isinstance(node, Binary) and node.op in ("=", "<>", "!=", "IN", "<", "<=", ">", ">="):
+        return _folded_equality(node)
+    if isinstance(node, Binary) and node.op == "+":
+        # A list + a list, an element or the other way round, of values written wholly.
+        left, right = _written_value(node.left), _written_value(node.right)
+        if left is _UNKNOWN or right is _UNKNOWN:
+            return _UNKNOWN
+        if isinstance(left, list):
+            return left + (right if isinstance(right, list) else [right])
+        if isinstance(right, list):
+            return [left, *right]
+    return _UNKNOWN
+
+
+def _cypher_equal(a: object, b: object, cross_kinds: str = "unequal") -> bool | None:
+    """a = b: null where either is null, or where nothing unequal decides it but a null inside a
+    list or map; values of two kinds (1 and '1', 1 and [1]) are unequal, or a type error (null)
+    where ``cross_kinds`` is "error" (Binary.cross_kinds)."""
+    if a is None or b is None:
+        return None
+    number_a = isinstance(a, (int, float)) and not isinstance(a, bool)
+    number_b = isinstance(b, (int, float)) and not isinstance(b, bool)
+    if number_a and number_b:
+        return a == b
+    if isinstance(a, list) and isinstance(b, list):
+        if len(a) != len(b):
+            return False
+        return _all_equal([_cypher_equal(x, y, cross_kinds) for x, y in zip(a, b, strict=True)])
+    if isinstance(a, dict) and isinstance(b, dict):
+        if set(a) != set(b):
+            return False
+        return _all_equal([_cypher_equal(a[k], b[k], cross_kinds) for k in a])
+    if number_a or number_b or type(a) is not type(b):
+        return None if cross_kinds == "error" else False
+    return a == b
+
+
+def _cypher_order(a: object, b: object) -> int | None:
+    """openCypher's order of a and b (-1, 0, 1): numbers, strings, booleans and lists by their
+    items in turn; null where either is null, or of two kinds, which have no order."""
+    if a is None or b is None:
+        return None
+    number_a = isinstance(a, (int, float)) and not isinstance(a, bool)
+    number_b = isinstance(b, (int, float)) and not isinstance(b, bool)
+    if number_a and number_b or (type(a) is type(b) and isinstance(a, (str, bool))):
+        return (a > b) - (a < b)  # type: ignore[operator]
+    if isinstance(a, list) and isinstance(b, list):
+        for x, y in zip(a, b, strict=False):
+            found = _cypher_order(x, y)
+            if found != 0:
+                return found
+        return (len(a) > len(b)) - (len(a) < len(b))
+    return None
+
+
+def _all_equal(results: list[bool | None]) -> bool | None:
+    if False in results:
+        return False
+    return None if None in results else True
+
+
+def _folded_equality(node: Binary) -> object:
+    """``a = b``, ``a <> b`` or ``a IN list`` of values the statement writes wholly, answered as
+    openCypher answers it -- across kinds and with nulls inside lists and maps, which an engine's
+    typed comparison cannot (it refuses [1, 2] IN [1, [1, 2]]) -- else _UNKNOWN."""
+    if node.op not in ("=", "<>", "!=", "IN", "<", "<=", ">", ">="):
+        return _UNKNOWN
+    left, right = _written_value(node.left), _written_value(node.right)
+    if node.op in ("<", "<=", ">", ">="):
+        if left is _UNKNOWN or right is _UNKNOWN:
+            return _UNKNOWN
+        found = _cypher_order(left, right)
+        if found is None:
+            return None
+        return {"<": found < 0, "<=": found <= 0, ">": found > 0, ">=": found >= 0}[node.op]
+    if node.op == "IN" and isinstance(right, list) and left is _UNKNOWN and not right:
+        return False  # nothing is in an empty list
+    if left is _UNKNOWN or right is _UNKNOWN:
+        return _UNKNOWN
+    if node.op == "IN":
+        if right is None:
+            return None
+        if not isinstance(right, list):
+            return _UNKNOWN
+        found = [_cypher_equal(left, item, node.cross_kinds) for item in right]
+        if True in found:
+            return True
+        return None if None in found else False
+    same = _cypher_equal(left, right, node.cross_kinds)
+    if node.op == "=" or same is None:
+        return same
+    return not same
+
+
+def _written(value: object) -> CypherExpr:
+    """A value written wholly in the statement (_written_value) as the literal that writes it."""
+    if value is None:
+        return Literal(None, "null")
+    if isinstance(value, bool):
+        return Literal(value, "boolean")
+    if isinstance(value, (int, float)):
+        return Literal(value, "number")
+    if isinstance(value, str):
+        return Literal(value, "string")
+    if isinstance(value, list):
+        return ListLiteral(items=[_written(v) for v in value])
+    if isinstance(value, dict):
+        return MapLiteral(entries=[(k, _written(v)) for k, v in value.items()])
+    raise CypherTranslateError(f"{value!r} is no value a statement writes")
+
+
+def _nan_guarded(op: str, left: exp.Expression, right: exp.Expression) -> exp.Expression:
+    """A comparison of floats as openCypher (and IEEE 754) has it: NaN is equal to nothing, itself
+    included, and has no order -- every comparison with it false, <> true -- where an engine
+    (DuckDB, PostgreSQL) reads NaN as equal to itself and the largest value. is_nan is one IR
+    operation each engine renders; a null side leaves the comparison null."""
+
+    def nan(side: exp.Expression) -> exp.Expression:
+        return _anon("is_nan", exp.Cast(this=side.copy(), to=exp.DataType.build("DOUBLE")))
+
+    either_null = exp.Or(
+        this=exp.Is(this=left.copy(), expression=exp.Null()),
+        expression=exp.Is(this=right.copy(), expression=exp.Null()),
+    )
+    either_nan = exp.Or(this=nan(left), expression=nan(right))
+    return exp.Case(
+        ifs=[
+            exp.If(this=either_null, true=exp.Null()),
+            exp.If(this=either_nan, true=exp.true() if op in ("<>", "!=") else exp.false()),
+        ],
+        default=_BINARY_CMP[op](this=left, expression=right),
+    )
+
+
+#: The deepest a list or map literal is written as nested ARRAY[ / MAP(: the SQL a statement
+#: becomes is parsed again on its way to the engine, and that parse's time doubles with every two
+#: levels of ARRAY[ (40 would not finish).
+_DEEPEST_NESTED = 8
+
+
+def _literal_depth(node: CypherExpr) -> int:
+    if isinstance(node, ListLiteral):
+        return 1 + max((_literal_depth(i) for i in node.items), default=0)
+    if isinstance(node, MapLiteral):
+        return 1 + max((_literal_depth(v) for _, v in node.entries), default=0)
+    return 0
+
+
+def _deep_written(
+    node: ListLiteral | MapLiteral, lower: Callable[[CypherExpr], exp.Expression]
+) -> exp.Expression | None:
+    """A list or map literal nested deeper than _DEEPEST_NESTED as its JSON (the answer decodes
+    it, GraphVarKind.JSON_VALUE): one JSON literal where the statement writes it wholly, else its
+    JSON text built from flat pieces -- the written structure as text, each computed item's JSON
+    joined in -- so the SQL holds no nesting of the literal's depth. None for a shallower one."""
+    if _literal_depth(node) <= _DEEPEST_NESTED:
+        return None
+    value = _written_value(node)
+    if value is not _UNKNOWN:
+        return exp.Cast(this=exp.Literal.string(json.dumps(value)), to=exp.DataType.build("JSON"))
+    pieces: list[str | exp.Expression] = []
+
+    def text(part: str) -> None:
+        if pieces and isinstance(pieces[-1], str):
+            pieces[-1] += part
+        else:
+            pieces.append(part)
+
+    def write(item: CypherExpr) -> None:
+        if isinstance(item, ListLiteral):
+            text("[")
+            for n, inner in enumerate(item.items):
+                text(", " if n else "")
+                write(inner)
+            text("]")
+        elif isinstance(item, MapLiteral):
+            text("{")
+            for n, (key, inner) in enumerate(item.entries):
+                text((", " if n else "") + json.dumps(key) + ": ")
+                write(inner)
+            text("}")
+        elif (written := _written_value(item)) is not _UNKNOWN:
+            text(json.dumps(written))
+        else:
+            # A computed item's JSON text; null where it is null (a null joined in is no text).
+            item_json = exp.Cast(
+                this=_anon("to_json", lower(item)), to=exp.DataType.build("VARCHAR")
+            )
+            pieces.append(exp.Coalesce(this=item_json, expressions=[exp.Literal.string("null")]))
+
+    write(node)
+    parts = [exp.Literal.string(p) if isinstance(p, str) else p for p in pieces]
+    joined = parts[0]
+    for part in parts[1:]:
+        joined = exp.DPipe(this=joined, expression=part)
+    return exp.Cast(this=exp.Paren(this=joined), to=exp.DataType.build("JSON"))
+
+
+def _reversed_list(items: exp.Expression) -> exp.Expression:
+    """A list's items last to first, in the engine functions the IR names (DuckDB's reverse takes
+    a string alone): each index from the last down to 1, read. An empty list is itself, as Trino's
+    sequence takes no step down from 0 to 1."""
+    size = _anon("cardinality", items.copy())
+    indexes = _anon("sequence", size, exp.Literal.number(1), exp.Literal.number(-1))
+    read = _lam("_i", _anon("element_at", items.copy(), exp.column("_i")))
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=size.copy(), expression=exp.Literal.number(0)),
+                true=items.copy(),
+            )
+        ],
+        default=_anon("transform", indexes, read),
+    )
+
+
+#: The kind of value a conversion function gives (_value_kind).
+_CONVERTED_KIND = {
+    "tointeger": "number",
+    "tofloat": "number",
+    "tostring": "text",
+    "toboolean": "boolean",
+}
+
+#: Cypher's conversions and the kinds of value each refuses with a TypeError (openCypher's
+#: InvalidArgumentValue): a value it cannot convert is no error but null (toInteger('x')); a value
+#: of a kind it takes none of is ([], {}, a node, a relationship, a path; toFloat a boolean,
+#: toBoolean a float). Their *OrNull forms answer null for both.
+_CONVERSION_REFUSES = {
+    "tointeger": frozenset({"list", "map", "node", "relationship", "path"}),
+    "tofloat": frozenset({"boolean", "list", "map", "node", "relationship", "path"}),
+    "toboolean": frozenset({"float", "list", "map", "node", "relationship", "path"}),
+    "tostring": frozenset({"list", "map", "node", "relationship", "path"}),
+}
+
+#: Each kind a value of a list of several types (its JSON) is of, as json_kind names it: a node,
+#: a relationship and a path are each a JSON object, as a map is.
+_JSON_KIND_OF = {
+    "list": "list",
+    "map": "map",
+    "node": "map",
+    "relationship": "map",
+    "path": "map",
+    "boolean": "boolean",
+}
+
+
+def _json_refused(item: exp.Expression, refused: frozenset[str]) -> exp.Expression | None:
+    """Where ``item`` (an item of a list of several types, its JSON) is of a kind in ``refused``,
+    read from it by the engine; None where no such kind can be read so."""
+    kinds = sorted({_JSON_KIND_OF[k] for k in refused if k in _JSON_KIND_OF})
+    tests: list[exp.Expression] = (
+        [
+            exp.In(
+                this=_anon("json_kind", item.copy()),
+                expressions=[exp.Literal.string(k) for k in kinds],
+            )
+        ]
+        if kinds
+        else []
+    )
+    if "float" in refused:
+        # A float is a JSON number written with a fraction or an exponent (1.0, 1e+20).
+        tests.append(
+            exp.And(
+                this=exp.EQ(
+                    this=_anon("json_kind", item.copy()), expression=exp.Literal.string("number")
+                ),
+                expression=exp.RegexpLike(
+                    this=_anon("JSON_EXTRACT_SCALAR", item.copy(), exp.Literal.string("$")),
+                    expression=exp.Literal.string("[.eE]"),
+                ),
+            )
+        )
+    if not tests:
+        return None
+    either = tests[0]
+    for test in tests[1:]:
+        either = exp.Or(this=either, expression=test)
+    return either
+
+
+#: What each conversion takes, as its refusal names it.
+_CONVERSION_TAKES = {
+    "tointeger": "a number, a string or a boolean",
+    "tofloat": "a number or a string",
+    "toboolean": "a boolean, a string or an integer",
+    "tostring": "a number, a string, a boolean or a temporal value",
+}
+
+
+def _conversion_refusal(name: str, kind: str) -> str:
+    return (
+        f"TypeError (InvalidArgumentValue): {name}() takes no {kind}; it converts "
+        f"{_CONVERSION_TAKES[name.lower()]}"
+    )
+
+
+#: A value kind (_value_kind) as json_kind names it, and the type its JSON is read as.
+_JSON_KIND = {
+    "number": ("number", "DOUBLE"),
+    "text": ("string", "TEXT"),
+    "boolean": ("boolean", "BOOLEAN"),
+}
+
+
+def _json_string(value: exp.Expression) -> exp.Expression:
+    """An item of a list of several types (its JSON) as a string: its text where it is a JSON
+    string, else null."""
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(
+                    this=_anon("json_kind", value), expression=exp.Literal.string("string")
+                ),
+                true=_anon("JSON_EXTRACT_SCALAR", value.copy(), exp.Literal.string("$")),
+            )
+        ]
+    )
+
+
+def _pattern_variables(body: Any) -> list[str]:
+    """The node and relationship variables a pattern predicate's statement names, in order."""
+    from provisa.gql.ir import MatchStep, PathPattern
+
+    found: list[str] = []
+    for step in getattr(body, "pipeline", []):
+        if not isinstance(step, MatchStep):
+            continue
+        for match in step.matches:
+            pattern = match.pattern
+            if not isinstance(pattern, PathPattern):
+                continue
+            for item in [*pattern.nodes, *pattern.rels]:
+                if item.variable and item.variable not in found:
+                    found.append(item.variable)
+    return found
+
+
+def _is_json_object(e: exp.Expression) -> bool:
+    """Whether ``e`` builds a JSON value itself (JSON_OBJECT or TO_JSON): a graph element held as
+    any other value (a node a union carries, a path that may be null) is put in a list as its
+    JSON by TO_JSON."""
+    return isinstance(e, exp.Anonymous) and str(e.this).upper() in ("JSON_OBJECT", "TO_JSON")
+
+
+def _json_equals(item: exp.Expression, other: exp.Expression, kind: str) -> exp.Expression:
+    """``item`` (an item of a list of several types, its JSON) = ``other`` (a value of ``kind``):
+    null where the item is null, false where it is of another kind, else their values compared."""
+    named, typed = _JSON_KIND[kind]
+    item_kind = _anon("json_kind", item)
+    value = exp.Cast(
+        this=_anon("JSON_EXTRACT_SCALAR", item.copy(), exp.Literal.string("$")),
+        to=exp.DataType.build(typed),
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.Or(
+                    this=exp.Is(this=item_kind, expression=exp.Null()),
+                    expression=exp.EQ(this=item_kind.copy(), expression=exp.Literal.string("null")),
+                ),
+                true=exp.Null(),
+            ),
+            exp.If(
+                this=exp.EQ(this=item_kind.copy(), expression=exp.Literal.string(named)),
+                true=exp.EQ(this=value, expression=other),
+            ),
+        ],
+        default=exp.false(),
+    )
+
+
 def _lam(var: str, body: exp.Expression) -> exp.Lambda:
     """An engine lambda ``var -> body`` (sqlglot ``Lambda``)."""
     return exp.Lambda(this=body, expressions=[exp.to_identifier(var)])
@@ -124,11 +768,155 @@ def _anon(name: str, *args: exp.Expression) -> exp.Anonymous:
     return exp.Anonymous(this=name, expressions=list(args))
 
 
+def _literal_kind(item: CypherExpr) -> str | None:
+    """A literal's Cypher type, None for null or an expression whose type is not written."""
+    if isinstance(item, Literal):
+        if item.value is None:
+            return None
+        if isinstance(item.value, bool):
+            return "boolean"
+        if isinstance(item.value, int):
+            return "integer"
+        if isinstance(item.value, float):
+            return "float"
+        return "string"
+    if isinstance(item, ListLiteral):
+        # A list of its items' type: [1] and ['a'] are lists of two types; [] is a list of any.
+        inner = {k for k in map(_literal_kind, item.items) if k is not None}
+        return f"list<{inner.pop() if len(inner) == 1 else ('mixed' if inner else '')}>"
+    if isinstance(item, MapLiteral):
+        return "map"
+    return None
+
+
+def _mixed_literal_kinds(items: list[CypherExpr]) -> bool:
+    """Whether a list literal's items are literals of more than one type."""
+    if not all(isinstance(i, (Literal, ListLiteral, MapLiteral)) for i in items):
+        return False
+    kinds = {k for k in map(_literal_kind, items) if k is not None}
+    if "list<>" in kinds and any(k.startswith("list<") and k != "list<>" for k in kinds):
+        kinds.discard("list<>")
+    return len(kinds) > 1 or "list<mixed>" in kinds
+
+
 class ExprLowering:
     """Lowers ``CypherExpr`` nodes to ``sqlglot.exp`` using an ``ExprContext`` for scoped leaves."""
 
     def __init__(self, ctx: ExprContext) -> None:
         self._ctx = ctx
+        #: The variables a comprehension or quantifier binds to an item of a list of JSON-encoded
+        #: values ([[1, 2], ['a']]): each item is its JSON.
+        self._json_vars: set[str] = set()
+        #: Each comprehension variable bound to the items of a list of collected graph elements
+        #: ("node", "rel" or "path"): its JSON value (translator._element_list_kind).
+        self._element_vars: dict[str, str] = {}
+        #: The list each such variable ranges over, as the statement writes it.
+        self._element_sources: dict[str, CypherExpr] = {}
+        #: The kinds of the items a comprehension or quantifier variable is bound to, where its list
+        #: is written in the statement ([x IN [1, []] | ...]): _static_kind of each.
+        self._item_kinds: dict[str, frozenset[str | None]] = {}
+        # Every lambda variable in scope (_over), innermost last
+        self._lambda_vars: list[str] = []
+
+    def _given_type(self, node: CypherExpr) -> type | None:
+        """The type of the value the client gives ``node`` (a parameter, or a variable bound to
+        one), else None. Its type, never the value: that is all a kept translation may vary by."""
+        found, value = self._ctx.given_value(node)
+        return type(value) if found else None
+
+    def _over(
+        self, var: str, source: exp.Expression, body: CypherExpr, written: CypherExpr
+    ) -> exp.Expression:
+        """``body`` lowered with ``var`` bound to each item of ``source``, the list ``written``
+        lowers to."""
+        kinds = self._item_kinds.get(var)
+        if isinstance(written, ListLiteral):
+            self._item_kinds[var] = frozenset(self._static_kind(i) for i in written.items)
+        else:
+            self._item_kinds.pop(var, None)
+        element = self._ctx.element_list_kind(written)
+        before = self._element_vars.get(var)
+        before_source = self._element_sources.get(var)
+        if element is not None:
+            self._element_vars[var] = element
+            self._element_sources[var] = written
+        else:
+            self._element_vars.pop(var, None)
+        self._lambda_vars.append(var)
+        try:
+            if element is not None:
+                return self.lower(body)
+            if _json_valued(source) != "list":
+                return self.lower(body)
+            held = var in self._json_vars
+            self._json_vars.add(var)
+            try:
+                return self.lower(body)
+            finally:
+                if not held:
+                    self._json_vars.discard(var)
+        finally:
+            self._lambda_vars.pop()
+            if kinds is None:
+                self._item_kinds.pop(var, None)
+            else:
+                self._item_kinds[var] = kinds
+            if before is None:
+                self._element_vars.pop(var, None)
+                self._element_sources.pop(var, None)
+            else:
+                self._element_vars[var] = before
+                if before_source is not None:
+                    self._element_sources[var] = before_source
+
+    def _json_item(self, node: CypherExpr) -> bool:
+        """Whether ``node`` is one value held as its JSON: an item of a list of several types, or
+        a property held so (a json column)."""
+        return self._ctx.is_json_value(node) or self._ctx.is_json_property(node)
+
+    def _static_kind(self, node: CypherExpr) -> str | None:
+        """The kind of value ``node`` is, where the statement says it -- "integer", "float",
+        "string", "boolean", "null", "list", "map", "node", "relationship" or "path" -- else None."""
+        if isinstance(node, Paren):
+            return self._static_kind(node.inner)
+        if isinstance(node, Literal):
+            if node.kind == "number":
+                return "float" if isinstance(node.value, float) else "integer"
+            return {"string": "string", "boolean": "boolean", "null": "null"}.get(node.kind)
+        if isinstance(node, ListLiteral):
+            return "list"
+        if isinstance(node, MapLiteral):
+            return "map"
+        if isinstance(node, Variable) and node.name not in self._item_kinds:
+            return self._ctx.graph_kind(node.name)
+        return None
+
+    def _checked_conversion(self, node: FunctionCall) -> exp.Expression | None:
+        """A conversion of a value of a kind it refuses (_CONVERSION_REFUSES): refused when the
+        statement says the value's kind, else -- an item of a list written with an item of such
+        a kind -- the conversion, refused by the engine for each item of a refused kind. None for
+        any other call."""
+        refused = _CONVERSION_REFUSES.get(node.name.lower())
+        if refused is None or len(node.args) != 1:
+            return None
+        given = node.args[0]
+        kind = self._static_kind(given)
+        if kind in refused:
+            raise CypherTranslateError(_conversion_refusal(node.name, kind))
+        if not isinstance(given, Variable):
+            return None
+        held = self._item_kinds.get(given.name, frozenset()) & refused
+        if not held or given.name not in self._json_vars:
+            return None
+        item = self.lower(given)
+        test = _json_refused(item, frozenset(k for k in held if k is not None))
+        if test is None:
+            return None
+        message = _conversion_refusal(node.name, " or ".join(sorted(k for k in held if k)))
+        return exp.Case(
+            ifs=[exp.If(this=test, true=_anon("type_refused", exp.Literal.string(message)))],
+            default=self._lower_call(node),
+        )
 
     def lower(self, node: CypherExpr) -> exp.Expression:
         method = getattr(self, f"_lower_{type(node).__name__}", None)
@@ -154,16 +942,52 @@ class ExprLowering:
         return self._ctx.resolve_parameter(node.name)
 
     def _lower_Property(self, node: Property) -> exp.Expression:
+        if isinstance(node.obj, Variable) and self._element_vars.get(node.obj.name) in (
+            "node",
+            "rel",
+        ):
+            # A property of a collected node or relationship: its value in the element's JSON,
+            # of the one type its labels give it, else its text.
+            value = _anon(
+                "JSON_EXTRACT_SCALAR",
+                exp.column(node.obj.name),
+                exp.Literal.string("$.properties." + json.dumps(node.name)),
+            )
+            held = self._ctx.element_property_type(self._element_sources[node.obj.name], node.name)
+            return value if held is None else exp.Cast(this=value, to=held)
+        if not isinstance(node.obj, (MapLiteral, Variable)):
+            held = self.lower(node.obj)
+            if _json_valued(held) == "value" or self._ctx.is_json_value(node.obj):
+                # A map read from a list of several types is its JSON: its key, read as JSON
+                # (null where it has none), bracketed as DuckDB's -> needs in a lambda.
+                # A node or relationship such a list holds is its JSON object: a property of it
+                # is read from its properties.
+                return exp.Paren(this=_element_or_map_key(held, node.name))
         if isinstance(node.obj, MapLiteral):
             # A map literal's key is its entry's own value; a key it has not is null (#287).
             for key, value in node.obj.entries:
                 if key == node.name:
                     return self.lower(value)
             return exp.Null()
+        held = self._ctx.temporal_kind(node.obj)
+        if held == spatial.POINT:
+            return spatial.point_property(self.lower(node.obj), node.name)
+        if held == temporal.DURATION:
+            return temporal.duration_property(self.lower(node.obj), node.name)
+        if held is not None:  # REQ-2173: a date's, a time's or a date time's own parts
+            zone = self._ctx.temporal_zone(node.obj)
+            return temporal.value_property(held, self.lower(node.obj), node.name, zone)
         return self._ctx.resolve_property(self.lower(node.obj), node.name)
 
     def _lower_LabelPredicate(self, node: LabelPredicate) -> exp.Expression:
-        return self._ctx.resolve_label_predicate(self.lower(node.operand), node.labels)
+        # A variable's label test is resolved by its name, wherever its row is held: lowered, a
+        # node a WITH carries is its CTE's row, which names no variable.
+        operand = (
+            exp.column(node.operand.name)
+            if isinstance(node.operand, Variable)
+            else self.lower(node.operand)
+        )
+        return self._ctx.resolve_label_predicate(operand, node.labels)
 
     # -- operators --------------------------------------------------------- #
 
@@ -177,17 +1001,236 @@ class ExprLowering:
         return exp.Neg(this=operand)
 
     def _is_text_identity(self, node: CypherExpr) -> bool:
-        """``x.id`` where ``x`` is not bound to one registered table — see ``_lower_Binary``."""
+        """``x.id`` where ``x`` is not bound to one registered table and is read as text — see
+        ``_lower_Binary``. A node drawn from several tables whose ``id`` is one number in each
+        reads it as that number."""
         if not (isinstance(node, Property) and node.name == "id"):
             return False
-        return not self._ctx.property_is_table_column(self.lower(node.obj), node.name)
+        obj = self.lower(node.obj)
+        if self._ctx.property_is_table_column(obj, node.name):
+            return False
+        held = self._ctx.property_type(obj, node.name)
+        return held is None or held.upper() in ("VARCHAR", "TEXT")
+
+    def _is_float(self, node: CypherExpr) -> bool:
+        """Whether ``node`` is a float as openCypher types it: a float literal, toFloat, a column
+        registered as a non-integer number, or arithmetic over one."""
+        if isinstance(node, Literal):
+            return isinstance(node.value, float)
+        if isinstance(node, FunctionCall):
+            return node.name.lower() in _FLOAT_FUNCTIONS
+        if isinstance(node, Property):
+            data_type = self._ctx.property_type(self.lower(node.obj), node.name)
+            return data_type is not None and bool(_FLOAT_TYPES.match(data_type))
+        if isinstance(node, Paren):
+            return self._is_float(node.inner)
+        if isinstance(node, Unary) and node.op == "-":
+            return self._is_float(node.operand)
+        if isinstance(node, Binary) and node.op in _BINARY_ARITH:
+            return self._is_float(node.left) or self._is_float(node.right)
+        return False
+
+    def _may_be_nan(self, node: CypherExpr) -> bool:
+        """Whether ``node`` can be NaN as the statement computes it: a float division (0.0 / 0.0)
+        within it. A column's own float is compared as the source holds it, so a comparison of
+        one still reaches the source."""
+        return any(
+            isinstance(n, Binary)
+            and n.op == "/"
+            and (self._is_float(n.left) or self._is_float(n.right))
+            for n in walk(node)
+        )
+
+    def _refuse_mismatched_comparison(self, node: Binary) -> None:
+        """REQ-778: a property compared with a literal its registered type never equals or orders
+        against is the user's mistake, refused here rather than by the engine."""
+        for prop, lit, prop_first in (
+            (node.left, node.right, True),
+            (node.right, node.left, False),
+        ):
+            if not (isinstance(prop, Property) and isinstance(lit, Literal)):
+                continue
+            data_type = self._ctx.property_type(self.lower(prop.obj), prop.name)
+            if data_type is None:
+                continue
+            mistake = type_mismatch(node.op, prop, data_type, lit, prop_first)
+            if mistake is not None:
+                raise mistake
+
+    def _json_ordered(  # REQ-345
+        self, node: Binary, left_kind: str | None, right_kind: str | None
+    ) -> exp.Expression | None:
+        """``<``, ``<=``, ``>`` or ``>=`` of an item of a list of several types (its JSON) and an
+        item or a value of a known kind: their values compared where both are numbers, strings
+        or booleans, else null -- openCypher orders no values of two kinds, nor null. Never their
+        JSON text (3.14 < 10). None where neither side is such an item."""
+        left_json = self._json_item(node.left)
+        right_json = self._json_item(node.right)
+        if not (left_json or right_json):
+            return None
+        if (not left_json and left_kind is None) or (not right_json and right_kind is None):
+            return None
+        compare = _BINARY_CMP[node.op]
+        left, right = self.lower(node.left), self.lower(node.right)
+        kinds = [k for k in (left_kind, right_kind) if k] or list(_JSON_KIND)
+        ifs: list[exp.If] = []
+        for kind in kinds:
+            named, typed = _JSON_KIND[kind]
+            tests: list[exp.Expression] = []
+            sides: list[exp.Expression] = []
+            for value, is_json in ((left, left_json), (right, right_json)):
+                if is_json:
+                    tests.append(
+                        exp.EQ(
+                            this=_anon("json_kind", value.copy()),
+                            expression=exp.Literal.string(named),
+                        )
+                    )
+                    value = exp.Cast(
+                        this=_anon("JSON_EXTRACT_SCALAR", value.copy(), exp.Literal.string("$")),
+                        to=exp.DataType.build(typed),
+                    )
+                sides.append(value)
+            ifs.append(
+                exp.If(
+                    this=exp.and_(*tests),
+                    true=compare(this=sides[0], expression=sides[1]),
+                )
+            )
+        if left_json and right_json and not (left_kind or right_kind):
+            # Two lists compare element by element (openCypher 9, "Comparability and
+            # orderability"): json_list_compare is -1, 0 or 1, null where an element pair cannot
+            # be compared.
+            ifs.append(
+                exp.If(
+                    this=exp.and_(
+                        *(
+                            exp.EQ(
+                                this=_anon("json_kind", v.copy()),
+                                expression=exp.Literal.string("list"),
+                            )
+                            for v in (left, right)
+                        )
+                    ),
+                    true=compare(
+                        this=_anon("json_list_compare", left.copy(), right.copy()),
+                        expression=exp.Literal.number(0),
+                    ),
+                )
+            )
+        return exp.Case(ifs=ifs, default=exp.Null())
+
+    def _value_kind(self, node: CypherExpr) -> str | None:
+        """A value's kind as the statement writes it -- "number", "text" or "boolean" -- where it
+        is known when the query is read, else None."""
+        if isinstance(node, Paren):
+            return self._value_kind(node.inner)
+        if isinstance(node, Literal):
+            return {"number": "number", "string": "text", "boolean": "boolean"}.get(node.kind)
+        if isinstance(node, Binary) and node.op in ("-", "*", "/", "%", "^"):
+            left, right = self._value_kind(node.left), self._value_kind(node.right)
+            return "number" if left == right == "number" else None
+        if isinstance(node, Binary) and node.op in ("AND", "OR", "XOR", *_BINARY_CMP):
+            return "boolean"
+        if isinstance(node, (IsNull, LabelPredicate)) or (
+            isinstance(node, Unary) and node.op == "NOT"
+        ):
+            return "boolean"
+        if self._ctx.is_text(node):
+            return "text"
+        if isinstance(node, FunctionCall) and len(node.args) == 1:
+            return _CONVERTED_KIND.get(node.name.lower())
+        return None
 
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
+        folded = _folded_equality(node)
+        if folded is not _UNKNOWN:
+            return {True: exp.true(), False: exp.false(), None: exp.Null()}[folded]
+        if op == "+":
+            built = _written_value(node)
+            if isinstance(built, list):
+                # A list the statement writes wholly ([1] + (2 IN [3]) + 4) is that list literal:
+                # of several types, each item its JSON, never one coerced to another's type.
+                return self._lower_ListLiteral(cast(ListLiteral, _written(built)))
+        if op in _BINARY_CMP:
+            same = self._same_element(node)
+            if same is not None:
+                return same
+            self._refuse_mismatched_comparison(node)
+            left_kind, right_kind = self._value_kind(node.left), self._value_kind(node.right)
+            if left_kind and right_kind and left_kind != right_kind:
+                # Values of two kinds ('1' and 1): never the engine's implicit cast of one to the
+                # other. A type error where the language says so (SPARQL), else never equal and
+                # of no order (openCypher).
+                if node.cross_kinds == "error":
+                    return exp.Null()
+                if op == "=":
+                    return exp.false()
+                if op in ("<>", "!="):
+                    return exp.true()
+                return exp.Null()
+            if op in ("=", "<>", "!="):
+                # An item of a list of several types beside a value of a known kind: equal only
+                # where the item is of that kind, never the engine's cast of its JSON to it.
+                for item, other, kind in (
+                    (node.left, node.right, right_kind),
+                    (node.right, node.left, left_kind),
+                ):
+                    if kind and self._json_item(item):
+                        same = _json_equals(self.lower(item), self.lower(other), kind)
+                        return same if op == "=" else exp.Not(this=exp.Paren(this=same))
+            else:
+                ordered = self._json_ordered(node, left_kind, right_kind)
+                if ordered is not None:
+                    return ordered
         left = self.lower(node.left)
         right = self.lower(node.right)
+        # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
+        if isinstance(node.left, IsNull) and op not in ("AND", "OR", "XOR"):
+            left = exp.Paren(this=left)
+        if isinstance(node.right, IsNull) and op not in ("AND", "OR", "XOR"):
+            right = exp.Paren(this=right)
         if op in _BINARY_ARITH:
+            # REQ-2173: a duration with a temporal value or another duration, as openCypher reads it.
+            left_kind = self._ctx.temporal_kind(node.left)
+            right_kind = self._ctx.temporal_kind(node.right)
+            moved = node.left if left_kind != temporal.DURATION else node.right
+            timed = temporal.arithmetic(
+                op, left, left_kind, right, right_kind, self._ctx.temporal_zone(moved)
+            )
+            if timed is not None:
+                return timed
+            if op == "/" and (self._is_float(node.left) or self._is_float(node.right)):
+                return _float_division(left, right)
+            if op == "+" and (self._ctx.is_text(node.left) or self._ctx.is_text(node.right)):
+                if not (self._ctx.is_list(node.left) or self._ctx.is_list(node.right)):
+                    # A string + a value is the two as one string (SQL's + adds numbers alone).
+                    return exp.DPipe(this=_as_text(left), expression=_as_text(right))
+            if op == "+" and self._ctx.is_list(node.left) != self._ctx.is_list(node.right):
+                # A list + an element appends it, an element + a list prepends it (SQL's + of a
+                # list and a value is no operator).
+                if self._ctx.is_list(node.left):
+                    return _anon("array_append", left, right)
+                return _anon("array_prepend", left, right)
+            if op == "/":
+                # An integer divided by an integer is an integer, as in SQL: typed, so sqlglot does
+                # not cast the dividend to DOUBLE PRECISION.
+                return exp.Div(this=left, expression=right, typed=True)
             return _BINARY_ARITH[op](this=left, expression=right)
+        left_kind = self._ctx.temporal_kind(node.left)
+        right_kind = self._ctx.temporal_kind(node.right)
+        if left_kind and right_kind and left_kind != right_kind and op in _BINARY_CMP:
+            # REQ-2173: values of two temporal kinds are never equal, and have no order.
+            if op == "=":
+                return exp.false()
+            if op in ("<>", "!="):
+                return exp.true()
+            return exp.Null()
+        if op in _BINARY_CMP and (self._may_be_nan(node.left) or self._may_be_nan(node.right)):
+            return _nan_guarded(op, left, right)
+        if op in ("=", "<>", "!=") and left_kind == right_kind == temporal.DURATION:
+            return temporal.equality("=" if op == "=" else "<>", left, right)
         if op in ("=", "<>", "!="):
             # The `id` of a node drawn from several tables is the graph's synthetic identity —
             # engine-typed VARCHAR (built via CAST(pk AS VARCHAR) across heterogeneous node types
@@ -213,45 +1256,331 @@ class ExprLowering:
         if op == "OR":
             return exp.Or(this=left, expression=right)
         if op == "XOR":
-            return exp.Xor(this=left, expression=right)
+            # Two booleans differ: null where either is null, as Cypher's XOR. exp.Xor is written
+            # `a XOR b`, which PostgreSQL SQL does not read, and its expansion on other dialects
+            # leaves its operands unbracketed.
+            return exp.Paren(
+                this=exp.NEQ(this=exp.Paren(this=left), expression=exp.Paren(this=right))
+            )
+        if op == "IN" and self._given_type(node.right) is type(None):
+            return exp.Null()  # x IN null is null (openCypher)
+        if op == "IN" and self._given_type(node.left) and self._given_type(node.right) is list:
+            # A value the client gives in a list it gives: three-valued, as Cypher's IN (null
+            # where an item or the value is null and none matches), never an engine's contains.
+            return _anon(
+                "any_match", right, _lam("_in", exp.EQ(this=exp.column("_in"), expression=left))
+            )
         if op == "IN":
             return self._lower_in(left, node.right, right)
+        if op in ("STARTS WITH", "ENDS WITH", "CONTAINS") and {
+            self._value_kind(node.left),
+            self._value_kind(node.right),
+        } & {"number", "boolean"}:
+            # A string predicate of a value that is no string is null (openCypher).
+            return exp.Null()
+        if op in ("STARTS WITH", "ENDS WITH", "CONTAINS"):
+            # An item of a list of several types is a string only where its JSON is one: any
+            # other is no string, and the predicate of it null (openCypher).
+            if self._ctx.is_json_value(node.left):
+                left = _json_string(left)
+            if self._ctx.is_json_value(node.right):
+                right = _json_string(right)
         if op == "STARTS WITH":
             return _anon("starts_with", left, right)
         if op == "ENDS WITH":
-            # Typed Concat so the engine dialect renders its own concat (e.g. Trino's null-safe form),
-            # matching the text path which emitted CONCAT(...) and let the serializer expand it.
-            concat = exp.Concat(expressions=[exp.Literal.string("%"), right])
-            return exp.Paren(this=exp.Like(this=left, expression=concat))
+            # The value's own characters, never LIKE wildcards: x LIKE '%' || y read a % or _ in y
+            # as a wildcard.
+            suffix = exp.Right(this=left, expression=exp.Length(this=right.copy()))
+            return exp.Paren(this=exp.EQ(this=suffix, expression=right))
         if op == "CONTAINS":
             strpos = _anon("strpos", left, right)
             return exp.Paren(this=exp.GT(this=strpos, expression=exp.Literal.number(0)))
         if op == "=~":
-            return _anon("regexp_like", left, right)
+            pattern = node.right
+            if isinstance(pattern, Literal) and pattern.kind == "string":
+                # REQ-778: a literal pattern no engine takes is the user's to put right, said here.
+                why = regex_problem(str(pattern.value))
+                if why is not None:
+                    raise invalid_regex(node.left, str(pattern.value), why)
+            return _anon("regexp_like", left, _whole_match(right))
         raise NotImplementedError(f"binary operator {op!r}")
+
+    def _same_element(self, node: Binary) -> exp.Expression | None:
+        """Two node or relationship variables compared (#305): by identity, the keys of one
+        table or one relationship type's ends; never equal across tables or types, and null where
+        either is. None where either side is no graph element."""
+        if not (isinstance(node.left, Variable) and isinstance(node.right, Variable)):
+            return None
+        left = self._ctx.resolve_graph_identity(node.left.name)
+        right = self._ctx.resolve_graph_identity(node.right.name)
+        if left is None or right is None:
+            return None
+        if node.op not in ("=", "<>", "!="):
+            raise CypherTranslateError(
+                f"{node.left.name} and {node.right.name} are nodes or relationships, which are "
+                "compared by = and <> only"
+            )
+        (left_kind, left_keys), (right_kind, right_keys) = left, right
+        if UNION_NODE in (left_kind, right_kind) and left_kind[0] == right_kind[0] == "node":
+            # A node of a union of labels and another node: the same where their graph
+            # identities are.
+            left_id = self._ctx.resolve_node_graph_identity(node.left.name)
+            right_id = self._ctx.resolve_node_graph_identity(node.right.name)
+            assert left_id is not None and right_id is not None  # both nodes, resolved above
+            left_kind = right_kind = UNION_NODE
+            left_keys, right_keys = [left_id], [right_id]
+        if left_kind == right_kind:
+            same = _and_all(
+                [exp.EQ(this=a, expression=b) for a, b in zip(left_keys, right_keys, strict=True)]
+            )
+        else:
+            # Unlike elements: never the same, and null where either is (as = of a null is).
+            left_null, right_null = (
+                exp.Is(this=keys[0].copy(), expression=exp.Null())
+                for keys in (left_keys, right_keys)
+            )
+            either_null = exp.Or(this=left_null, expression=right_null)
+            same = exp.Case(ifs=[exp.If(this=either_null, true=exp.Null())], default=exp.false())
+        return same if node.op == "=" else exp.Not(this=exp.Paren(this=same))
 
     def _lower_in(
         self, left: exp.Expression, raw_right: CypherExpr, right: exp.Expression
     ) -> exp.Expression:
-        # IN over a literal list becomes an IN (...) tuple; otherwise a membership over an array value.
+        # IN over a literal list becomes an IN (...) tuple; otherwise a membership over an array value:
+        # `x IN list`, or for a list computed by an operator `x = ANY((a + b))` (SQL reads no
+        # `x IN a + b`), bracketed as the comparison it is in SQL.
         if isinstance(raw_right, ListLiteral):
             return exp.In(this=left, expressions=[self.lower(i) for i in raw_right.items])
+        if isinstance(right.unnest(), exp.Array) and right.unnest().expressions:
+            # A list the statement writes wholly once read ([3] + [4]): its items, as a tuple.
+            return exp.In(this=left, expressions=list(right.unnest().expressions))
+        if isinstance(right.unnest(), exp.Binary):
+            member = exp.EQ(this=left, expression=exp.Any(this=exp.Paren(this=right.unnest())))
+            return exp.Paren(this=member)
         return exp.In(this=left, field=right)
 
     def _lower_IsNull(self, node: IsNull) -> exp.Expression:
+        if isinstance(node.operand, Variable):
+            # A node or relationship is null by its own row, not by a column of its name (#304).
+            absent = self._ctx.resolve_graph_absent(node.operand.name)
+            if absent is not None:
+                return exp.Not(this=exp.Paren(this=absent)) if node.negated else absent
         is_expr = exp.Is(this=self.lower(node.operand), expression=exp.Null())
         return exp.Not(this=is_expr) if node.negated else is_expr
 
     # -- calls / case ------------------------------------------------------ #
 
+    def _wall(self, node: CypherExpr, zone: str | None) -> exp.Expression:
+        """A date time as its wall clock in ``zone``, or in its own zone (REQ-2173)."""
+        return temporal.wall_clock(
+            self.lower(node), zone if zone is not None else self._ctx.temporal_zone(node)
+        )
+
+    def _wall_or_value(self, node: CypherExpr) -> exp.Expression:
+        """A date time's wall clock in its own zone; any other value as it is."""
+        if self._ctx.temporal_kind(node) == temporal.DATETIME:
+            return self._wall(node, None)
+        return self.lower(node)
+
+    def _from_epoch(self, clock: str, args: list[CypherExpr]) -> exp.Expression:
+        """datetime.fromepoch(seconds, nanoseconds) and datetime.fromepochmillis(milliseconds):
+        the instant that long after 1970-01-01T00:00Z, to the microsecond (REQ-2173)."""
+        if any(isinstance(a, Literal) and a.kind == "null" for a in args):
+            return exp.Null()
+        double = exp.DataType.build("DOUBLE")
+        if clock == "fromepochmillis":
+            if len(args) != 1:
+                raise CypherTranslateError("datetime.fromepochmillis() takes the milliseconds")
+            seconds = exp.Div(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Literal.number(1000),
+            )
+        else:
+            if len(args) != 2:
+                raise CypherTranslateError(
+                    "datetime.fromepoch() takes the seconds and the nanoseconds"
+                )
+            micros = exp.Cast(
+                this=exp.Anonymous(
+                    this="TRUNC",
+                    expressions=[
+                        exp.Div(
+                            this=exp.Cast(this=self.lower(args[1]), to=double),
+                            expression=exp.Literal.number(1000),
+                        )
+                    ],
+                ),
+                to=double,
+            )
+            seconds = exp.Add(
+                this=exp.Cast(this=self.lower(args[0]), to=double),
+                expression=exp.Div(this=micros, expression=exp.Literal.number(1_000_000)),
+            )
+        return _anon("TO_TIMESTAMP", seconds)
+
     def _lower_FunctionCall(self, node: FunctionCall) -> exp.Expression:
+        checked = self._checked_conversion(node)
+        return checked if checked is not None else self._lower_call(node)
+
+    def _lower_call(self, node: FunctionCall) -> exp.Expression:
         if node.star:
             return exp.Count(this=exp.Star())
+        if (
+            node.name.lower() in ("nodes", "relationships")
+            and len(node.args) == 1
+            and isinstance(node.args[0], Variable)
+            and self._element_vars.get(node.args[0].name) == "path"
+        ):
+            # A collected path's nodes or relationships: the lists its JSON holds.
+            member = "$.nodes" if node.name.lower() == "nodes" else "$.edges"
+            return exp.Cast(
+                this=_anon(
+                    "JSON_EXTRACT", exp.column(node.args[0].name), exp.Literal.string(member)
+                ),
+                to=exp.DataType.build("JSON[]"),
+            )
+        if (
+            node.name.lower() in ("max", "min")
+            and len(node.args) == 1
+            and not node.distinct
+            and self._ctx.is_json_value(node.args[0])
+        ):
+            # Values of several types, each its JSON, in openCypher's order (lists before
+            # strings before booleans before numbers), never the order of their text.
+            value = self.lower(node.args[0])
+            by = "max_by" if node.name.lower() == "max" else "min_by"
+            return _anon(by, value, _anon("json_order_key", value.copy()))
+        if node.name.lower() == "range" and len(node.args) == 3:
+            step = node.args[2]
+            if isinstance(step, Literal) and step.kind == "number" and step.value == 0:
+                # openCypher's ArgumentError (NumberOutOfRange): a range never steps by 0.
+                raise CypherTranslateError("range() takes a step other than 0, e.g. range(2, 8, 1)")
+        if node.name.lower() in ("tostring", "tostringornull") and len(node.args) == 1:
+            given = node.args[0]
+            if (
+                isinstance(given, Variable) and given.name in self._json_vars
+            ) or self._ctx.is_json_value(given):
+                # An item of a list of several types is its JSON: a string is its own text, never
+                # its quoted JSON ('apa', not '"apa"').
+                # Bracketed: DuckDB writes it x ->> '$', which in a lambda reads as (x -> x) ->> '$'.
+                held = self.lower(given)
+                text = _anon("JSON_EXTRACT_SCALAR", held.copy(), exp.Literal.string("$"))
+                if node.name.lower() == "tostring":
+                    # Of a list, a map or a graph element: refused by _checked_conversion.
+                    return exp.Paren(this=text)
+                # A list, a map, a node, a relationship or a path (each a JSON array or object)
+                # has no string: toStringOrNull() of it is null.
+                as_text = exp.Cast(this=held, to=exp.DataType.build("TEXT"))
+                composite = exp.Or(
+                    this=exp.Like(this=as_text, expression=exp.Literal.string("[%")),
+                    expression=exp.Like(this=as_text.copy(), expression=exp.Literal.string("{%")),
+                )
+                return exp.Paren(
+                    this=exp.Case(ifs=[exp.If(this=composite, true=exp.Null())], default=text)
+                )
+        if node.name.lower() == "properties" and len(node.args) == 1:
+            given = node.args[0]
+            # properties() of a map is the map itself; of null, null.
+            if isinstance(given, MapLiteral):
+                return self.lower(given)
+            if isinstance(given, Literal) and given.kind == "null":
+                return exp.Null()
+        if node.name.lower() == "keys" and len(node.args) == 1:
+            given = node.args[0]
+            if isinstance(given, MapLiteral):
+                return exp.Array(expressions=[exp.Literal.string(k) for k, _ in given.entries])
+            if self._given_type(given) is dict:
+                # The map the client gives: its keys, read from it by the engine -- never written
+                # into the SQL, which is kept for every request giving a map (cypher_plan).
+                return _anon("JSON_KEYS", _anon("TO_JSON", self.lower(given)))
+        if (
+            node.name.lower() == "reverse"
+            and len(node.args) == 1
+            and self._ctx.is_list(node.args[0])
+        ):
+            return _reversed_list(self.lower(node.args[0]))
+        if node.name.lower() == "size" and len(node.args) == 1:
+            # A list written in the statement is counted where it is written (its engine may not
+            # type an empty one), and the size of null is null (openCypher).
+            given = node.args[0]
+            if isinstance(given, ListLiteral):
+                return exp.Literal.number(len(given.items))
+            if isinstance(given, Literal) and given.kind == "null":
+                return exp.Null()
+            if isinstance(given, Variable) and given.name in self._json_vars:
+                # An item of a list of several types is its JSON: a list's items or a string's
+                # characters, counted by the engine from it.
+                return _anon("json_size", self.lower(given))
+            if self._ctx.is_text(given) and not isinstance(given, Literal):
+                # A string's size is its character count: counted as text on every engine, never
+                # as a list (PostgreSQL refuses CARDINALITY of text).
+                return exp.Length(this=self.lower(given))
+        if node.name.lower() == spatial.POINT:
+            return spatial.constructed(node.args, self.lower)
+        if node.name.lower() in temporal.DURATION_FUNCTIONS:  # REQ-2173
+            if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
+                return exp.Null()
+            kinds = [self._ctx.temporal_kind(a) for a in node.args]
+            zones = [self._ctx.temporal_zone(a) for a in node.args]
+            return temporal.duration_function(node.name, node.args, kinds, self.lower, zones)
+        kind, _, clock = node.name.lower().partition(".")
+        if kind == temporal.DATETIME and clock in ("fromepoch", "fromepochmillis"):
+            return self._from_epoch(clock, node.args)
+        if kind in temporal.SQL_TYPES and clock in ("transaction", "statement", "realtime"):
+            # REQ-2173: the current value, as the engine's clock reads it.
+            if any(isinstance(a, Literal) and a.kind == "null" for a in node.args):
+                return exp.Null()
+            if node.args:
+                raise CypherTranslateError(f"{node.name}() with a time zone is not supported")
+            return self._ctx.resolve_function(kind, [], distinct=False)
+        if kind in temporal.SQL_TYPES and clock == "truncate":  # REQ-2173
+            value_kind = self._ctx.temporal_kind(node.args[1]) if len(node.args) > 1 else None
+            return temporal.truncated(
+                kind, node.args, value_kind, self._wall_or_value, zone=self._ctx.temporal_zone(node)
+            )
+        if node.name.lower() in temporal.SQL_TYPES:  # REQ-2173: from text or a map
+            built = temporal.temporal_value(
+                node.name.lower(),
+                node.args,
+                self.lower,
+                self._ctx.temporal_kind,
+                zone=self._ctx.temporal_zone(node),
+                lower_wall=self._wall,
+                zone_of_entry=self._ctx.temporal_zone,
+            )
+            if built is not None:
+                return built
+        if (
+            node.name.lower() == "tostring"
+            and len(node.args) == 1
+            and self._ctx.temporal_kind(node.args[0]) == temporal.DURATION
+        ):
+            return temporal.iso_text(self.lower(node.args[0]))
         args = [self.lower(a) for a in node.args]
+        if (
+            node.name.lower() == "range"
+            and len(args) == 3
+            and not isinstance(node.args[2], Literal)
+        ):
+            # A step the query computes is refused at 0 by the engine (range_step, one IR
+            # operation each engine renders), never stepped as the engine's own range would.
+            args[2] = _anon("range_step", args[2])
         return self._ctx.resolve_function(node.name, args, distinct=node.distinct)
 
     def _lower_Case(self, node: Case) -> exp.Expression:
-        ifs = [exp.If(this=self.lower(cond), true=self.lower(res)) for cond, res in node.whens]
+        whens = node.whens
+        if node.subject is not None:
+            # A WHEN of another kind than the subject ('0' and 0) never matches (openCypher): never
+            # the engine's cast of one to the other.
+            subject_kind = self._value_kind(node.subject)
+            whens = [
+                (cond, res)
+                for cond, res in whens
+                if not (subject_kind and self._value_kind(cond) not in (None, subject_kind))
+            ]
+            if not whens:
+                return self.lower(node.default) if node.default is not None else exp.Null()
+        ifs = [exp.If(this=self.lower(cond), true=self.lower(res)) for cond, res in whens]
         case = exp.Case(ifs=ifs)
         if node.subject is not None:
             case.set("this", self.lower(node.subject))
@@ -262,29 +1591,132 @@ class ExprLowering:
     # -- structures -------------------------------------------------------- #
 
     def _lower_ListLiteral(self, node: ListLiteral) -> exp.Expression:
-        return exp.Array(expressions=[self.lower(i) for i in node.items])
+        deep = _deep_written(node, self.lower)
+        if deep is not None:
+            return deep
+        elements = [
+            self._ctx.resolve_element_value(i.name) if isinstance(i, Variable) else None
+            for i in node.items
+        ]
+        graph = [isinstance(i, Variable) and self._ctx.graph_kind(i.name) for i in node.items]
+        if all(e is None for e in elements) and (all(graph) or not any(graph)):
+            if _mixed_literal_kinds(node.items):
+                # [1, 'a', true]: one engine type only as each value's JSON (GraphVarKind.JSON_LIST).
+                return exp.Array(expressions=[_anon("to_json", self.lower(i)) for i in node.items])
+            return exp.Array(expressions=[self.lower(i) for i in node.items])
+        # A list of nodes and relationships ([r, m]) holds each as its JSON object, and anything
+        # beside them as JSON too: one list of one type. So does a list of a value beside a node,
+        # a relationship or a path the read holds as its JSON already ([1, n]).
+        return exp.Array(
+            expressions=[
+                _anon("to_json", self.lower(i) if e is None else e)
+                if e is None or not _is_json_object(e)
+                else e
+                for i, e in zip(node.items, elements, strict=True)
+            ]
+        )
 
     def _lower_MapLiteral(self, node: MapLiteral) -> exp.Expression:
+        deep = _deep_written(node, self.lower)
+        if deep is not None:
+            return deep
         # {k: v, ...} → MAP(ARRAY['k',...], ARRAY[to_json(v), ...]) — encode each value to a JSON value
         # so a heterogeneous map survives as a single array type (matches the text path's bare-map
         # rewrite). to_json, NOT CAST(v AS JSON): in the IR dialect (Postgres) CAST AS JSON *parses*
         # the input as JSON text, so a bare string 'Siamese' fails; to_json *encodes* any scalar.
         keys = [exp.Literal.string(k) for k, _ in node.entries]
-        values = [_anon("to_json", self.lower(v)) for _, v in node.entries]
+        # A node, relationship or path is its JSON object, as a list literal holds one.
+        elements = [
+            self._ctx.resolve_element_value(v.name) if isinstance(v, Variable) else None
+            for _, v in node.entries
+        ]
+        values = [
+            e if e is not None else _anon("to_json", self.lower(v))
+            for (_, v), e in zip(node.entries, elements, strict=True)
+        ]
         return _anon("MAP", exp.Array(expressions=keys), exp.Array(expressions=values))
 
     def _lower_Index(self, node: Index) -> exp.Expression:
+        if self._ctx.is_null(node.obj) or self._ctx.is_null(node.index):
+            return exp.Null()  # null[k] and m[null] are null (openCypher)
+        if (
+            isinstance(node.obj, (MapLiteral, Variable))
+            and isinstance(node.index, Literal)
+            and node.index.kind == "string"
+        ):
+            # m['k'] is m.k: the key's value as it is, not its JSON.
+            return self.lower(Property(obj=node.obj, name=str(node.index.value)))
+        key = node.index
+        if isinstance(key, FunctionCall) and key.name.lower() == "tostring" and len(key.args) == 1:
+            key = key.args[0]
+        if self._given_type(node.obj) is dict and self._given_type(key) is str:
+            # A map the client gives read by a key the client gives: read by the engine from the
+            # map's JSON (the answer decodes it), the key a value, never written into the SQL.
+            path = exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string('$."'), expression=self.lower(key)),
+                expression=exp.Literal.string('"'),
+            )
+            read = _anon("JSON_EXTRACT", _anon("TO_JSON", self.lower(node.obj)), path)
+            return exp.Paren(this=read)
+        held = (
+            self._ctx.resolve_element_properties(node.obj.name)
+            if isinstance(node.obj, Variable)
+            else None
+        )
+        if held is not None:
+            # n[key] of a node or a relationship: its property of that name, read by the engine
+            # from its properties' JSON (the answer decodes it), the key a value.
+            path = exp.DPipe(
+                this=exp.DPipe(this=exp.Literal.string('$."'), expression=self.lower(key)),
+                expression=exp.Literal.string('"'),
+            )
+            return exp.Paren(this=_anon("JSON_EXTRACT", held, path))
+        if self._ctx.is_text(node.obj):
+            # openCypher's TypeError (InvalidArgumentType): a string has no elements to index.
+            raise CypherTranslateError(
+                "A string cannot be indexed like a list; use substring(s, i, 1) for a character"
+            )
         # Cypher lists are 0-indexed; the engine element_at is 1-indexed → shift positive indices.
         base = self.lower(node.obj)
+        held_json = _json_text_of(base)
+        if (
+            held_json is not None
+            and isinstance(node.index, Literal)
+            and node.index.kind == "number"
+            and int(cast("int | float", node.index.value)) >= 0
+        ):
+            # An item of a list a map inside a carried map holds: read from its JSON, as JSON
+            # (the answer decodes it), never a character of its text.
+            path = f"$[{int(cast('int | float', node.index.value))}]"
+            return exp.Paren(this=_anon("JSON_EXTRACT", held_json, exp.Literal.string(path)))
         idx = self.lower(node.index)
         if isinstance(node.index, Literal) and node.index.kind == "number":
             idx = exp.Literal.number(int(cast("int | float", node.index.value)) + 1)
+        elif not (isinstance(node.index, Unary) and node.index.op == "-") and (
+            self._ctx.is_list(node.obj) or self._value_kind(node.index) == "number"
+        ):
+            # A computed index into a list: from the start shifted to the engine's 1-based one,
+            # from the end (negative) as it is.
+            idx = exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.GTE(this=idx.copy(), expression=exp.Literal.number(0)),
+                        true=exp.Add(this=idx.copy(), expression=exp.Literal.number(1)),
+                    )
+                ],
+                default=idx,
+            )
         return _anon("element_at", base, idx)
 
     def _lower_Slice(self, node: Slice) -> exp.Expression:
         # Cypher's list[a..b] is 0-based with b excluded; the engine's slice(list, start, length)
         # starts at 1: start a + 1, length b - a.
         base = self.lower(node.obj)
+        if any(
+            bound is not None and not _non_negative_literal(bound)
+            for bound in (node.start, node.stop)
+        ):
+            return self._slice_from_either_end(base, node)
         first = self.lower(node.start) if node.start is not None else exp.Literal.number(0)
         if node.start is None:
             start = exp.Literal.number(1)
@@ -298,20 +1730,69 @@ class ExprLowering:
             return _anon("slice", base, start, length)
         return _anon("slice", base, start, _anon("cardinality", base))
 
+    def _slice_from_either_end(self, base: exp.Expression, node: Slice) -> exp.Expression:
+        """list[a..b] with a bound that may be negative: a negative one counts from the end
+        (list[-3..-1] is the third- and second-last items), each is held to the list, and a slice
+        that ends before it starts is empty (openCypher)."""
+        size = _anon("cardinality", base.copy())
+        zero = exp.Literal.number(0)
+
+        def held(bound: CypherExpr | None, default: exp.Expression) -> exp.Expression:
+            if bound is None:
+                return default
+            value = self.lower(bound)
+            from_end = exp.Add(this=size.copy(), expression=value.copy())
+            placed = exp.Case(
+                ifs=[exp.If(this=exp.LT(this=value.copy(), expression=zero.copy()), true=from_end)],
+                default=value,
+            )
+            return exp.Greatest(
+                this=zero.copy(), expressions=[exp.Least(this=placed, expressions=[size.copy()])]
+            )
+
+        first = held(node.start, zero.copy())
+        last = held(node.stop, size.copy())
+        length = exp.Greatest(
+            this=zero.copy(), expressions=[exp.Sub(this=last, expression=first.copy())]
+        )
+        start = exp.Add(this=first, expression=exp.Literal.number(1))
+        sliced = _anon("slice", base, start, length)
+        bounds = [self.lower(b) for b in (node.start, node.stop) if b is not None]
+        # A null bound slices to null (an engine's GREATEST skips a null).
+        missing = [exp.Is(this=b, expression=exp.Null()) for b in bounds]
+        either = missing[0]
+        for more in missing[1:]:
+            either = exp.Or(this=either, expression=more)
+        return exp.Case(ifs=[exp.If(this=either, true=exp.Null())], default=sliced)
+
     # -- comprehensions / quantifiers / reduce (engine list functions) ----- #
 
     def _lower_ListComprehension(self, node: ListComprehension) -> exp.Expression:
         source = self.lower(node.source)
+        if self._ctx.element_list_kind(node.source) is not None and any(
+            isinstance(e, (SubqueryExpr, PatternComprehension))
+            for part in (node.predicate, node.projection)
+            if part is not None
+            for e in walk(part)
+        ):
+            # An engine reads no subquery inside a lambda: each item a row of its own instead.
+            return self._ctx.resolve_element_rows(node, source)
         result = source
         if node.predicate is not None:
-            result = _anon("filter", result, _lam(node.var, self.lower(node.predicate)))
+            predicate = self._over(node.var, source, node.predicate, node.source)
+            result = _anon("filter", result, _lam(node.var, predicate))
         if node.projection is not None:
-            result = _anon("transform", result, _lam(node.var, self.lower(node.projection)))
+            projection = self._over(node.var, source, node.projection, node.source)
+            result = _anon("transform", result, _lam(node.var, projection))
         return result
 
     def _lower_Quantifier(self, node: Quantifier) -> exp.Expression:
         source = self.lower(node.source)
-        pred = _lam(node.var, self.lower(node.predicate)) if node.predicate is not None else None
+        pred = (
+            _lam(node.var, self._over(node.var, source, node.predicate, node.source))
+            if node.predicate is not None
+            else None
+        )
         if node.kind == "ANY":
             return _anon("any_match", source, pred) if pred else _anon("any_match", source)
         if node.kind == "ALL":
@@ -320,7 +1801,30 @@ class ExprLowering:
             return _anon("none_match", source, pred) if pred else _anon("none_match", source)
         # SINGLE → cardinality(filter(list, pred)) = 1
         filtered = _anon("filter", source, pred) if pred else source
-        return exp.EQ(this=_anon("cardinality", filtered), expression=exp.Literal.number(1))
+        one = exp.EQ(this=_anon("cardinality", filtered), expression=exp.Literal.number(1))
+        if node.predicate is None:
+            return one
+        # Three-valued: a second true decides false; otherwise a null predicate value leaves it null.
+        unknown = _lam(
+            node.var,
+            exp.Is(
+                this=exp.Paren(this=self._over(node.var, source, node.predicate, node.source)),
+                expression=exp.Null(),
+            ),
+        )
+        return exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.GT(
+                        this=_anon("cardinality", filtered.copy()),
+                        expression=exp.Literal.number(1),
+                    ),
+                    true=exp.false(),
+                ),
+                exp.If(this=_anon("any_match", source.copy(), unknown), true=exp.Null()),
+            ],
+            default=one,
+        )
 
     def _lower_Reduce(self, node: Reduce) -> exp.Expression:
         # reduce(list, init, (acc, x) -> step, acc -> acc)
@@ -339,7 +1843,62 @@ class ExprLowering:
         return self._ctx.resolve_map_projection(node)
 
     def _lower_SubqueryExpr(self, node: SubqueryExpr) -> exp.Expression:
+        if node.predicate:
+            # openCypher: a pattern predicate introduces no variable (UndefinedVariable).
+            unbound = [
+                v
+                for v in _pattern_variables(node.body)
+                if v not in self._lambda_vars and not self._ctx.is_bound(v)
+            ]
+            if unbound:
+                raise CypherTranslateError(
+                    f"A pattern predicate introduces no variable: {unbound[0]} is not bound "
+                    "before it; match it first, or write EXISTS { MATCH ... }"
+                )
         return self._ctx.resolve_subquery(node)
+
+    # -- RDF values (REQ-2135) ---------------------------------------------- #
+
+    def _lower_TypedLiteral(self, node: TypedLiteral) -> exp.Expression:
+        dt = node.datatype
+        if dt is None or node.lang is not None or dt == f"{_XSD}string":
+            return exp.Literal.string(node.lexical)
+        if dt in _XSD_NUMBERS:
+            return exp.Literal.number(node.lexical)
+        if dt == f"{_XSD}boolean":
+            if node.lexical not in ("true", "false", "1", "0"):
+                raise CypherTranslateError(f"{node.lexical!r} is not an xsd:boolean")
+            return exp.true() if node.lexical in ("true", "1") else exp.false()
+        if dt in _XSD_CASTS:
+            return exp.Cast(
+                this=exp.Literal.string(node.lexical), to=exp.DataType.build(_XSD_CASTS[dt])
+            )
+        raise CypherTranslateError(f"A literal of datatype <{dt}> has no SQL value")
+
+    def _lower_IriConst(self, node: IriConst) -> exp.Expression:
+        raise CypherTranslateError(
+            f"<{node.iri}> is a value of the answer only: a subject is compared through its key"
+        )
+
+    def _lower_TermIri(self, node: TermIri) -> exp.Expression:
+        # Compared, ordered or filtered on, a term is its name (REQ-2163).
+        return self.lower(node.value)
+
+    def _lower_AxiomObject(self, node: AxiomObject) -> exp.Expression:
+        # Compared, ordered or filtered on, an axiom's object is whichever value its row holds.
+        return exp.Coalesce(
+            this=self.lower(Property(Variable(node.node), "object")),
+            expressions=[
+                self.lower(Property(Variable(node.node), "object_iri")),
+                axiom_table_iri(
+                    self.lower(Property(Variable(node.node), "object_table_id")), node.table_iris
+                ),
+                self.lower(Property(Variable(node.node), "object_literal")),
+            ],
+        )
+
+    def _lower_Term(self, node: Term) -> exp.Expression:
+        return self._ctx.resolve_term(node)
 
     def _lower_PatternComprehension(self, node: PatternComprehension) -> exp.Expression:
         return self._ctx.resolve_pattern_comprehension(node)

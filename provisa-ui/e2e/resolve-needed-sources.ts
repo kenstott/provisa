@@ -50,8 +50,17 @@ const TITLE_SCOPED_FILES = [SOURCE_TO_QUERY_FILE];
 // exactly this one file — see neo4j-container.ts's own module comment.
 const NEO4J_EXPORT_FILE = "neo4j-docker-export.spec.ts";
 
+// A spec argument may carry a line (and column) filter -- `e2e/x.spec.ts:144` -- which the CI's
+// targeted reruns always pass. Matching only a bare `.spec.ts` suffix dropped those arguments, so a
+// targeted run of neo4j-docker-export.spec.ts:144 never started the export container (run
+// 40693926851: "No such container").
+const SPEC_ARG = /^(.+\.spec\.ts)(?::\d+){0,2}$/;
+
 function argSpecFiles(): string[] {
-  return process.argv.filter((a) => a.endsWith(".spec.ts")).map((a) => path.basename(a));
+  return process.argv.flatMap((a) => {
+    const m = SPEC_ARG.exec(a);
+    return m ? [path.basename(m[1])] : [];
+  });
 }
 
 function grepPattern(): string | undefined {
@@ -69,6 +78,11 @@ function titleScopedNeeds(file: string, grep: string | undefined): DemoSource[] 
   const matched = grep ? titles.filter((t) => new RegExp(grep).test(t)) : titles;
   const leadingNames = matched.map((t) => t.split(":")[0].trim());
   return DEMO_SOURCES.filter((s) => leadingNames.includes(s));
+}
+
+/** The demo sources source-to-query.spec.ts reads: one per test whose title names one. */
+export function sourceToQueryNeeds(): DemoSource[] {
+  return titleScopedNeeds(SOURCE_TO_QUERY_FILE, undefined);
 }
 
 export interface NeededSources {
@@ -98,14 +112,18 @@ function argProjects(): string[] {
  * Splunk, Fuseki and Mongo up for its whole run with no spec in it reading them (run
  * 38050265191: about 5 GB and a share of four cores on a runner at load 15-20).
  */
-function projectNeeds(projects: string[], grep: string | undefined): NeededSources | undefined {
+function projectNeeds(projects: string[]): NeededSources | undefined {
   if (projects.length !== 1) return undefined;
   if (projects[0] === "core") {
     const fixed = new Set<DemoSource>(Object.values(FIXED_FILE_NEEDS).flat());
     return { sources: DEMO_SOURCES.filter((s) => fixed.has(s)), neo4jExport: true };
   }
   if (projects[0] === "core-provisioning") {
-    return { sources: titleScopedNeeds(SOURCE_TO_QUERY_FILE, grep), neo4jExport: false };
+    // None: source-to-query.spec.ts starts its demo sources itself and removes them when it ends
+    // (sourceToQueryNeeds), so the project's other specs -- each starting a source of its own --
+    // never run beside the whole set (run 40120866556: Exasol beside Elasticsearch, Cassandra and
+    // Splunk ran the 16 GB runner out of memory).
+    return { sources: [], neo4jExport: false };
   }
   return undefined;
 }
@@ -113,7 +131,7 @@ function projectNeeds(projects: string[], grep: string | undefined): NeededSourc
 export function resolveNeededSources(): NeededSources {
   const files = argSpecFiles();
   if (files.length === 0) {
-    const byProject = projectNeeds(argProjects(), grepPattern());
+    const byProject = projectNeeds(argProjects());
     if (byProject) return byProject;
     // No positional spec-file filter — a whole-suite run. Every prior behavior is preserved:
     // start everything, since some file in the run needs each of them.

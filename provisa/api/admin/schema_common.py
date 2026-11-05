@@ -265,8 +265,9 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     KaggleFormSection.tsx at creation, or set the same way by an MCP proposal) — not by
     input.type, since a caller could set anything there.
 
-    Must run inside `bound_to_request_org()` (same requirement as search_kaggle_datasets) — a
-    reference the Kaggle token setting holds resolves against whichever org's vault is bound."""
+    The token is the source's own credential field (``password``), as the operator entered it --
+    a value, or a reference they typed -- resolved here, and again at each refresh. Must run
+    inside `bound_to_request_org()`: a reference resolves against whichever org's vault is bound."""
     import json as _json
 
     hints = _json.loads(input.federation_hints_json or "{}")
@@ -274,9 +275,18 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
     if not owner or not ref:
         return None
 
-    from provisa.kaggle.downloader import UnsupportedKaggleDataset, api_token, stage_dataset
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kaggle.downloader import UnsupportedKaggleDataset, stage_dataset
 
-    token = api_token()
+    if not input.password:
+        return MutationResult(
+            success=False,
+            message=f"Kaggle dataset {owner}/{ref}: the source holds no Kaggle API token; "
+            "add it on the Sources form, where its token is entered",
+            code="schema.kaggle_token_missing",
+            params={"owner": owner, "ref": ref},
+        )
+    token = resolve_secrets(input.password)
     try:
         staged_root = await stage_dataset(token, owner, ref)
     except UnsupportedKaggleDataset as exc:
@@ -320,6 +330,56 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
             code="schema.google_workspace_invalid",
             params={"source": input.id, "error": str(exc)},
         )
+    return None
+
+
+def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-2191
+    """Why a JDBC source's settings cannot be a source, or None: for another source type,
+    and for settings that can. The settings are the source's federation hints
+    (provisa.jdbc_source.settings); its URL is checked as it will be connected to
+    (provisa.jdbc_source.url), so a file it names is held to the org's folder (REQ-1997)."""
+    import json as _json
+
+    from provisa.jdbc_source import SOURCE_TYPE
+    from provisa.jdbc_source.settings import InvalidJdbcSource, parse
+    from provisa.jdbc_source.jdbc import JdbcRefused
+    from provisa.jdbc_source.url import DriverOptionsRefused, FileUrlRefused, check
+
+    if input.type != SOURCE_TYPE:
+        return None
+    try:
+        settings = parse(_json.loads(input.federation_hints_json or "{}"))
+        check(settings.url)
+    except FileUrlRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_file_refused",
+            params={"source": input.id, "path": exc.path, "error": str(exc)},
+        )
+    except JdbcRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_driver_refused",
+            params={"source": input.id},
+        )
+    except DriverOptionsRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_options_refused",
+            params={"source": input.id, "options": ", ".join(exc.options)},
+        )
+    except InvalidJdbcSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    # Attach turned on is kept: the source attaches as the built-in type its URL names where the
+    # engine has that type's attach, and lands where it has not (provisa.jdbc_source.attach).
     return None
 
 
@@ -431,6 +491,27 @@ def logs_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1996
             message=f"Logs source {input.id!r}: {exc}",
             code="schema.logs_path_refused",
             params={"source": input.id, "reason": str(exc)},
+        )
+    return None
+
+
+def excel_hints_refusal(input: SourceInput) -> Optional[MutationResult]:
+    """Why a files source's Excel hints cannot be taken, naming the hint, or None: for another
+    source type, and for hints the reader takes."""
+    import json as _json
+
+    from provisa.file_source.excel_hints import InvalidExcelHints, excel_hints_operand
+
+    if input.type != "files":
+        return None
+    try:
+        excel_hints_operand(input.id, _json.loads(input.mapping_json or "{}"))
+    except InvalidExcelHints as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code="schema.excel_hints_invalid",
+            params={"source": input.id, "error": str(exc)},
         )
     return None
 
@@ -783,13 +864,15 @@ def _drop_source_on_engine(state, source_id: str) -> None:
     # Trino/dynamic-catalog seam, not this one). Confirmed live: a `files` source deleted and
     # recreated under the same id kept serving the FIRST server's model.json, so the "new" source
     # never picked up a changed path or format. No-ops when no server was ever started.
+    # REQ-1824: a stop that fails is logged by the source's name at error level: the server may
+    # still be running.
     from provisa.federation.pgwire_replica import stop_endpoint
 
     try:
         stop_endpoint(source_id)
     except Exception as _pgwire_err:
-        logging.getLogger(__name__).warning(
-            "pgwire endpoint teardown for %r failed: %s", source_id, _pgwire_err
+        logging.getLogger(__name__).error(
+            "pgwire server of deleted source %r was not stopped: %s", source_id, _pgwire_err
         )
 
 
@@ -819,7 +902,7 @@ async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> N
 
 def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     """Schedule background catalog indexing for NL table search (REQ-464)."""
-    from provisa.discovery.catalog_cache import index_source as _index_source
+    from provisa.discovery.catalog_cache import index_source as _index_source, index_task_name
 
     from provisa.core.connection_loop import spawn_background
 
@@ -833,7 +916,7 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
             state.source_types,
             state,
         ),
-        name=f"catalog-index:{input.id}",
+        name=index_task_name("index", input.id),
     )
 
 
@@ -895,6 +978,9 @@ async def _sync_view_mv(
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
+    hold_on_failing_checks: bool = False,  # REQ-2133
+    table_id: int | None = None,  # REQ-2133: the view table this build is of
+    product_id: str | None = None,  # REQ-2133: that table's data product
     business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
     valid_time: str | None = None,  # REQ-2109: the column its reads travel on
     recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
@@ -956,6 +1042,7 @@ async def _sync_view_mv(
         target_schema=target_schema,
         target_catalog_qualified=state.federation_engine.engine.catalog_qualified,
         target_table=f"mv_{table_name}",
+        view_table=table_name,  # REQ-1918: the view it builds
         refresh_interval=refresh_interval,
         enabled=True,
         sql=view_sql,
@@ -969,6 +1056,9 @@ async def _sync_view_mv(
         debounce_max_delay=debounce_max_delay,  # REQ-963
         consistency=consistency,  # REQ-879
         preprocess=preprocess,  # REQ-957
+        hold_on_failing_checks=hold_on_failing_checks,  # REQ-2133
+        table_id=table_id,  # REQ-2133
+        product_id=product_id,  # REQ-2133
         bitemporal=bitemporal,  # REQ-1162
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970

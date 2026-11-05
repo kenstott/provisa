@@ -21,6 +21,7 @@ import {
   type RelLineOverride,
   type GNode,
   type GEdge,
+  type DropNotice,
 } from "../components/graph/graph-model";
 import {
   useRelationships,
@@ -30,8 +31,30 @@ import {
 } from "../hooks/useAdminQueries";
 import { tableRef } from "../components/relationships/relationship-types";
 import { useAuth } from "../context/AuthContext";
+import { uuid } from "../lib/uuid";
 import "./GraphPage.css";
-import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
+import {
+  useLocalStorage,
+  graphStateOf,
+  saveGraphState,
+  useSavedGraphState,
+  settingKey,
+  type GraphLanguage,
+} from "../components/graph/graph-persistence";
+import {
+  pickedQuery,
+  pillQuery,
+  refusalOf,
+  sparqlStatement,
+  SPARQL_ACCEPT,
+  withUsedPrefixes,
+} from "../components/graph/sparql";
+import { useSparqlExplorer } from "../components/graph/useSparqlExplorer";
+import { SparqlEndpointBar } from "../components/graph/SparqlEndpointBar";
+import {
+  SparqlVocabularyPanel,
+  type VocabularyPick,
+} from "../components/graph/SparqlVocabularyPanel";
 import type { Favorite } from "../components/graph/graph-persistence";
 import type {
   SchemaNodeLabel,
@@ -40,17 +63,28 @@ import type {
   GraphCounts,
 } from "../components/graph/graph-schema-types";
 import { Sidebar } from "../components/graph/GraphSidebar";
+import { SessionPills } from "../components/graph/SessionPills";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
-import { Neo4jExportModal } from "../components/graph/Neo4jExportModal";
-import { buildDropExpansion, withExpansion } from "./graph-drop";
-import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { GraphExportModal } from "../components/graph/GraphExportModal";
+import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-drop";
+import { useFramePaths } from "./use-frame-paths";
+import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
-import { frameStatement, showing, type CypherAnswer } from "../components/graph/frameStatements";
+import {
+  cypherError,
+  frameStatement,
+  showing,
+  type CypherAnswer,
+} from "../components/graph/frameStatements";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-export function GraphPage() {
+export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } = {}) {
   const { t } = useTranslation();
+  // REQ-2135: Cypher and SPARQL share this page, each with its own frames, history, favorites and
+  // settings; SPARQL's vocabulary stands where Cypher's labels are.
+  const graphState = graphStateOf(language);
+  const sparql = language === "sparql";
   const { role, selectedRoles, loading: authLoading } = useAuth();
   // REQ-1620: under "Role: All" the acting set is every active role, sent as one
   // comma-separated X-Provisa-Role so the server unions their domain_access — sending only
@@ -72,7 +106,7 @@ export function GraphPage() {
     seq: number;
     view?: FrameView;
   } | null>(() => {
-    const pending = getStored("provisa.graph.pending_query");
+    const pending = getStored(settingKey(language, "pending_query"));
     return pending ? { query: pending, seq: 0 } : null;
   });
   const ranSeqRef = useRef<number | null>(null);
@@ -81,6 +115,8 @@ export function GraphPage() {
   const [frames, setFrames] = useState<FrameData[]>(graphState.frames);
   const [history, setHistory] = useState<string[]>(graphState.history);
   const [historyQuery, setHistoryQuery] = useState<string | null>(null);
+  // The saved frames live in IndexedDB: the page renders at once and they arrive just after.
+  useSavedGraphState(graphState, setFrames, setHistory, setHistoryQuery);
   // A view a navigation asks for, by frame: applied by the frame once per seq.
   const [frameViews, setFrameViews] = useState<Record<string, FrameView>>({});
   const viewSeqRef = useRef(0);
@@ -104,37 +140,50 @@ export function GraphPage() {
   // The viewer's max-nodes setting: the most distinct nodes a frame draws.
   const [maxNodes, setMaxNodes] = useMaxNodes();
   const [schemaLoading, setSchemaLoading] = useState(true);
+  // Why /data/graph-schema gave no schema (a refused request, or none reached); null when it did.
+  const [schemaError, setSchemaError] = useState<string | null>(null);
   // What /data/graph-counts last said for this role and domain selection; null until it has.
   const [counts, setCounts] = useState<GraphCounts | null>(null);
+  // Why /data/graph-counts gave no counts (a refused request, or none reached); null when it did.
+  const [countsError, setCountsError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
-    "provisa.graph.sidebarWidth",
-    240,
+    settingKey(language, "sidebarWidth"),
+    // SPARQL's vocabulary carries more than Cypher's labels: nested sections, and prefixed names.
+    sparql ? 340 : 240,
   );
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
+  // How many statements said they changed the graph session (REQ-2176).
+  const [sessionChanges, setSessionChanges] = useState(0);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
-    "provisa.graph.colorOverrides",
+    settingKey(language, "colorOverrides"),
     {},
   );
   const [sizeOverrides, setSizeOverrides] = useLocalStorage<Record<string, number>>(
-    "provisa.graph.sizeOverrides",
+    settingKey(language, "sizeOverrides"),
     {},
   );
   const [labelProperty, setLabelProperty] = useLocalStorage<Record<string, string>>(
-    "provisa.graph.labelProperty",
+    settingKey(language, "labelProperty"),
     {},
   );
   const [sizeByProperty, setSizeByProperty] = useLocalStorage<Record<string, string>>(
-    "provisa.graph.sizeByProperty",
+    settingKey(language, "sizeByProperty"),
     {},
   );
   const [sizeMultiplier, setSizeMultiplier] = useLocalStorage<Record<string, number>>(
-    "provisa.graph.sizeMultiplier",
+    settingKey(language, "sizeMultiplier"),
     {},
   );
-  const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
-  const [favorites, setFavorites] = useLocalStorage<Favorite[]>("provisa.graph.favorites", []);
+  const [autoImpute, setAutoImpute] = useLocalStorage<boolean>(
+    settingKey(language, "autoImpute"),
+    false,
+  );
+  const [favorites, setFavorites] = useLocalStorage<Favorite[]>(
+    settingKey(language, "favorites"),
+    [],
+  );
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>(
-    "provisa.graph.relLineOverrides",
+    settingKey(language, "relLineOverrides"),
     {},
   );
   const { relationships: adminRels, refetch: refetchRelationships } = useRelationships();
@@ -146,13 +195,13 @@ export function GraphPage() {
   const { relationships: graphRels } = useAllRelationships();
   const { upsertRelationship } = useUpsertRelationship();
   // The name a relationship's save takes for each table: its alias, else its table name.
-  const { tables } = useTables();
+  const { tables } = useTables({ columns: false });
   const [nfModal, setNfModal] = useState<{
     label: string;
     filterColumns: { name: string; type: string }[];
     onConfirm: (params: Record<string, string>) => void;
   } | null>(null);
-  const [showNeo4jModal, setShowNeo4jModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const effectiveDataRef = useRef<
     Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
   >(new Map());
@@ -206,13 +255,45 @@ export function GraphPage() {
     [favorites],
   );
 
+  // REQ-2135: what a frame's expansion or drop merges changes that frame.
+  const changeFrame = useCallback(
+    (id: string, change: (frame: FrameData) => Partial<FrameData>) => {
+      setFrames((f) => {
+        const next = f.map((fr) => (fr.id === id ? { ...fr, ...change(fr) } : fr));
+        graphState.frames = next;
+        saveGraphState(graphState);
+        return next;
+      });
+    },
+    [graphState],
+  );
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
+  const {
+    vocabulary,
+    vocabularyError,
+    prefixes,
+    framePrefixes,
+    classProperties,
+    prefixEdits,
+    setPrefixEdits,
+    expandResource,
+    describeResource,
+    describeResources,
+  } = useSparqlExplorer({ active: sparql, roleHeader: roleHeaderValue, framesRef, changeFrame });
+
   // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
+    if (sparql) return;
     setSchemaLoading(true);
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     fetch("/data/graph-schema", { headers })
-      .then((r) => r.json())
+      .then(async (r) => {
+        // A refused request's body is its error, never a schema.
+        if (!r.ok) throw new Error(refusalOf(await r.text()));
+        return r.json();
+      })
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
           (n: {
@@ -252,12 +333,21 @@ export function GraphPage() {
             seenRel.add(key);
             return true;
           })
-          .map((r: { type: string; source: string; target: string; properties?: string[] }) => ({
-            type: r.type,
-            source: r.source ?? "",
-            target: r.target ?? "",
-            properties: r.properties ?? [],
-          }));
+          .map(
+            (r: {
+              type: string;
+              source: string;
+              target: string;
+              properties?: string[];
+              join: string;
+            }) => ({
+              type: r.type,
+              source: r.source ?? "",
+              target: r.target ?? "",
+              properties: r.properties ?? [],
+              join: r.join,
+            }),
+          );
         const seen = new Set<string>();
         const uniqueNodeLabels = nodeLabels.filter((n) => {
           const key = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
@@ -277,42 +367,79 @@ export function GraphPage() {
         clusterMapRef.current = newClusterMap;
         setSchemaNodeLabels(uniqueNodeLabels);
         setSchemaRels(rels.sort((a, b) => a.type.localeCompare(b.type)));
+        setSchemaError(null);
       })
-      .catch(() => {})
+      .catch((e: unknown) => {
+        setSchemaNodeLabels([]);
+        setSchemaRels([]);
+        setSchemaError(e instanceof Error ? e.message : String(e));
+      })
       .finally(() => setSchemaLoading(false));
-  }, [roleHeaderValue]);
+  }, [roleHeaderValue, sparql]);
 
   useEffect(() => {
     if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
     const domainsKey = [...checkedDomains].sort().join(",");
-    // v2: each entry is a count or why it is none (a v1 entry held bare numbers).
-    const countsKey = `provisa.graph.counts.v2.${role?.id ?? "default"}.${domainsKey}`;
-    try {
-      const cached = getStored(countsKey);
-      setCounts(cached ? (JSON.parse(cached) as GraphCounts) : null);
-    } catch {
-      setCounts(null);
-    }
+    // v3: only counts are stored (a v2 entry could hold a refused request's error body).
+    const countsKey = `provisa.graph.counts.v3.${roleHeaderValue ?? "default"}.${domainsKey}`;
+    setCounts(getStoredJson<GraphCounts>(countsKey));
     const domainsParam = checkedDomains.size > 0 ? `?domains=${[...checkedDomains].join(",")}` : "";
     fetch(`/data/graph-counts${domainsParam}`, { headers })
-      .then((r) => r.json())
-      .then((data: GraphCounts) => {
-        setCounts(data);
-        try {
-          setStored(countsKey, JSON.stringify(data));
-        } catch {
-          /* quota */
-        }
+      .then(async (r) => {
+        // A refused request's body is its error, never counts: shown, and not stored.
+        if (!r.ok) throw new Error(refusalOf(await r.text()));
+        return (await r.json()) as GraphCounts;
       })
-      .catch(() => {});
-    /* eslint-disable-next-line react-hooks/exhaustive-deps -- refetch counts only on the listed schema/role/domain inputs; other referenced setters are stable */
-  }, [schemaNodeLabels, schemaRels, role?.id, checkedDomains]);
+      .then((data) => {
+        setCounts(data);
+        setCountsError(null);
+        setStored(countsKey, JSON.stringify(data));
+      })
+      .catch((e: unknown) => {
+        setCounts(null);
+        setCountsError(e instanceof Error ? e.message : String(e));
+      });
+  }, [schemaNodeLabels, schemaRels, roleHeaderValue, checkedDomains]);
 
   // Run ``query`` and put what it answered in frame ``id``: one result per statement it holds.
   const answer = useCallback(
     async (id: string, query: string, start: number) => {
+      if (sparql) {
+        // REQ-2135: one SPARQL query, answered in the form it asks for (rows, or triples drawn).
+        const hdrs: Record<string, string> = {
+          "Content-Type": "application/sparql-query",
+          Accept: SPARQL_ACCEPT,
+        };
+        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
+        let statement;
+        try {
+          const res = await fetch("/data/sparql", { method: "POST", headers: hdrs, body: query });
+          statement = await sparqlStatement(query, res, framePrefixes);
+        } catch (err) {
+          statement = null;
+          const message = String(err);
+          setFrames((f) => {
+            const next = f.map((fr) =>
+              fr.id === id ? { ...fr, status: "error" as const, error: message } : fr,
+            );
+            graphState.frames = next;
+            saveGraphState(graphState);
+            return next;
+          });
+        }
+        if (statement === null) return;
+        const elapsed = Date.now() - start;
+        const shown = statement;
+        setFrames((f) => {
+          const next = f.map((fr) => (fr.id === id ? { ...fr, ...showing(shown), elapsed } : fr));
+          graphState.frames = next;
+          saveGraphState(graphState);
+          return next;
+        });
+        return;
+      }
       try {
         const hdrs: Record<string, string> = { "Content-Type": "application/json" };
         if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
@@ -327,15 +454,17 @@ export function GraphPage() {
         const elapsed = Date.now() - start;
         if (!res.ok) {
           const text = await res.text();
-          let msg: string;
+          let refused: { error: string; violations?: string[] };
           try {
-            msg = (JSON.parse(text) as { error?: string }).error ?? text;
+            refused = cypherError(JSON.parse(text), res.status);
           } catch {
-            msg = text;
+            refused = { error: text }; // no JSON body (a proxy's page): the response as it came
           }
           setFrames((f) => {
             const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr,
+              fr.id === id
+                ? { ...fr, status: "error" as const, violations: undefined, ...refused }
+                : fr,
             );
             graphState.frames = next;
             saveGraphState(graphState);
@@ -343,7 +472,12 @@ export function GraphPage() {
           });
           return;
         }
-        const { results } = (await res.json()) as { results: CypherAnswer[] };
+        const { results, session_changed } = (await res.json()) as {
+          results: CypherAnswer[];
+          session_changed?: boolean;
+        };
+        // A statement that changed the user's graph session: its pills are read again.
+        if (session_changed) setSessionChanges((n) => n + 1);
         const statements = results.map((r) => frameStatement(r, maxNodes, clusterMapRef.current));
         setFrames((f) => {
           const next = f.map((fr) =>
@@ -374,7 +508,14 @@ export function GraphPage() {
         });
       }
     },
-    [roleHeaderValue, maxNodes],
+    [roleHeaderValue, maxNodes, sparql, framePrefixes, graphState],
+  );
+
+  // REQ-2135: what a SPARQL query is sent as, and so what its frame shows: the panel's prefixes it
+  // uses and does not declare, written out, so the text stands alone wherever it is copied.
+  const asSent = useCallback(
+    (query: string) => (sparql ? withUsedPrefixes(query, framePrefixes) : query),
+    [sparql, framePrefixes],
   );
 
   // One statement's result, of the frame's, shown: its drawing, rows and error.
@@ -389,12 +530,13 @@ export function GraphPage() {
       saveGraphState(graphState);
       return next;
     });
-  }, []);
+  }, [graphState]);
 
   const runQuery = useCallback(
-    async (query: string, view?: FrameView, frameId?: string) => {
-      if (!query) return;
-      const id = frameId ?? crypto.randomUUID();
+    async (typed: string, view?: FrameView, frameId?: string) => {
+      if (!typed) return;
+      const query = asSent(typed);
+      const id = frameId ?? uuid();
       if (view) setFrameViews((views) => ({ ...views, [id]: view }));
       const start = Date.now();
       setFrames((f) => {
@@ -422,7 +564,7 @@ export function GraphPage() {
       });
       await answer(id, query, start);
     },
-    [answer],
+    [answer, asSent, graphState],
   );
 
   // Auto-execute a query forwarded from another page (e.g. NL "Open in Cypher", or the Cypher panel).
@@ -433,12 +575,12 @@ export function GraphPage() {
     // has resolved, then run exactly once with the correct role.
     if (authLoading || !forwarded || ranSeqRef.current === forwarded.seq) return;
     ranSeqRef.current = forwarded.seq;
-    removeStored("provisa.graph.pending_query");
+    removeStored(settingKey(language, "pending_query"));
     setHistoryQuery(forwarded.query);
-    const frameId = crypto.randomUUID();
+    const frameId = uuid();
     setHandoffFrameId(frameId);
     runQuery(forwarded.query, forwarded.view, frameId);
-  }, [runQuery, authLoading, forwarded]);
+  }, [runQuery, authLoading, forwarded, language]);
 
   const closeFrame = useCallback((id: string) => {
     setFrames((f) => {
@@ -447,7 +589,7 @@ export function GraphPage() {
       saveGraphState(graphState);
       return next;
     });
-  }, []);
+  }, [graphState]);
 
   const handlePin = useCallback((id: string) => {
     setFrames((f) => {
@@ -456,7 +598,7 @@ export function GraphPage() {
       saveGraphState(graphState);
       return next;
     });
-  }, []);
+  }, [graphState]);
 
   // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
   const { pkMap, labelToTableLabel, labelToTableId } = useMemo(() => {
@@ -476,14 +618,18 @@ export function GraphPage() {
   }, [schemaNodeLabels]);
 
   const rerunFrame = useCallback(
-    async (id: string, query: string) => {
-      if (!query) return;
+    async (id: string, typed: string, drop?: { notices: DropNotice[]; limit?: number }) => {
+      if (!typed) return;
+      const query = asSent(typed);
       const start = Date.now();
       setFrames((f) => {
         const next = f.map((fr) =>
           fr.id === id
             ? {
                 ...fr,
+                dropped: drop !== undefined,
+                dropNotices: drop?.notices,
+                dropLimit: drop?.limit,
                 query,
                 status: "loading" as const,
                 nodes: new Map(),
@@ -496,6 +642,9 @@ export function GraphPage() {
                 truncated: undefined,
                 statements: undefined,
                 statementIndex: undefined,
+                sparqlExpansions: undefined,
+                sparqlMerge: undefined,
+                sparqlDescribed: undefined,
               }
             : fr,
         );
@@ -505,45 +654,7 @@ export function GraphPage() {
       });
       await answer(id, query, start);
     },
-    [answer],
-  );
-
-  const framesRef = useRef(frames);
-  framesRef.current = frames;
-
-  const NUMERIC_TYPES = new Set([
-    "integer",
-    "bigint",
-    "int",
-    "int4",
-    "int8",
-    "smallint",
-    "float",
-    "double precision",
-    "numeric",
-    "decimal",
-    "real",
-    "float4",
-    "float8",
-  ]);
-
-  const buildNfWhereClauses = useCallback(
-    (
-      varName: string,
-      filterColumns: { name: string; type: string }[],
-      params: Record<string, string>,
-    ) =>
-      filterColumns
-        .filter((col) => params[col.name] !== "")
-        .map(({ name, type }) => {
-          const v = params[name];
-          const lit = NUMERIC_TYPES.has((type ?? "").toLowerCase())
-            ? v
-            : `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-          return `${varName}._nf_${name} = ${lit}`;
-        }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- pure string builder with no reactive deps; memoized once
-    [],
+    [answer, asSent, graphState],
   );
 
   const onTableDrop = useCallback(
@@ -551,40 +662,31 @@ export function GraphPage() {
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame) return;
 
-      const { query: newQueryBase, targetVars } = buildDropExpansion(
-        frame.query,
-        compoundLabel,
-        graphRels,
-        labelToTableLabel,
+      const parameterized = new Set(
+        schemaNodeLabels
+          .filter((n) => n.nativeFilterColumns.length > 0)
+          .map((n) => (n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel)),
       );
-
-      const droppedNode = schemaNodeLabels.find((n) => {
-        const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
-        return cl === compoundLabel;
-      });
-      if (droppedNode && droppedNode.nativeFilterColumns.length > 0) {
-        // Every hop lands on its own copy of the same parameterized node, so the arguments the
-        // steward supplies once have to bind on each of them — an unbound copy is not a filter
-        // that matched nothing, it is a pattern the binder cannot satisfy.
-        const tvs = targetVars;
-        const nfc = droppedNode.nativeFilterColumns;
-        setNfModal({
-          label: droppedNode.tableLabel,
-          filterColumns: nfc,
-          onConfirm: (params) => {
-            setNfModal(null);
-            const clauses = tvs.flatMap((tv) => buildNfWhereClauses(tv, nfc, params));
-            const whereStr = clauses.length > 0 ? `\nWHERE ${clauses.join(" AND ")}` : "";
-            const finalQuery = newQueryBase.replace(/(\nRETURN )/, `${whereStr}$1`);
-            rerunFrame(frameId, finalQuery);
-          },
-        });
-      } else {
-        rerunFrame(frameId, newQueryBase);
+      const done = buildDropExpansion(frame.query, compoundLabel, schemaRels, parameterized);
+      if ("refused" in done) {
+        const { refused } = done;
+        changeFrame(frameId, () => ({ dropNotices: [refused], dropLimit: undefined }));
+        return;
       }
+      rerunFrame(frameId, done.query, { notices: done.notices });
     },
-    [rerunFrame, graphRels, schemaNodeLabels, buildNfWhereClauses, labelToTableLabel],
+    [changeFrame, rerunFrame, schemaRels, schemaNodeLabels],
   );
+
+  const { onSparqlDrop, onNodePath } = useFramePaths({
+    framesRef,
+    vocabulary,
+    prefixes,
+    pkMap,
+    changeFrame,
+    rerunFrame,
+    runQuery,
+  });
 
   const onDomainDrop = useCallback(
     (frameId: string, domainLabel: string) => {
@@ -725,6 +827,24 @@ export function GraphPage() {
   };
 
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
+
+  // REQ-2135: a SPARQL vocabulary pill starts a new frame, as a Cypher label pill does; a prefix or
+  // a domain has no query of its own, so it declares its PREFIX in the bar (pickedQuery).
+  const handleVocabularyPick = useCallback(
+    (pick: VocabularyPick) => {
+      if (!vocabulary) return;
+      const named = { ...vocabulary, prefixes };
+      if (pick.kind !== "prefix") {
+        runQuery(pillQuery(pick, named));
+        return;
+      }
+      const next = pickedQuery(graphState.currentQuery, pick, named);
+      graphState.currentQuery = next;
+      saveGraphState(graphState);
+      setHistoryQuery(next);
+    },
+    [vocabulary, prefixes, graphState, runQuery],
+  );
   const handleDomainClick = useCallback(
     (domainId: string) => {
       runQuery(`MATCH (n:${domainId}) RETURN n LIMIT 25`);
@@ -747,7 +867,7 @@ export function GraphPage() {
           filterColumns: node.nativeFilterColumns,
           onConfirm: (params) => {
             setNfModal(null);
-            const clauses = buildNfWhereClauses("n", node.nativeFilterColumns, params);
+            const clauses = nativeFilterClauses("n", node.nativeFilterColumns, params);
             const whereStr = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
             runQuery(`MATCH (n:${compoundLabel})${whereStr} RETURN n LIMIT 25`);
           },
@@ -756,7 +876,7 @@ export function GraphPage() {
         runQuery(`MATCH (n:${compoundLabel}) RETURN n LIMIT 25`);
       }
     },
-    [runQuery, schemaNodeLabels, buildNfWhereClauses],
+    [runQuery, schemaNodeLabels],
   );
 
   const handleRelClick = useCallback(
@@ -796,32 +916,21 @@ export function GraphPage() {
           onCancel={() => setNfModal(null)}
         />
       )}
-      {showNeo4jModal &&
-        (() => {
-          const allNodes = new Map<string, GNode>();
-          const allEdges = new Map<string, GEdge>();
-          for (const f of frames) {
-            const effective = effectiveDataRef.current.get(f.id);
-            if (effective) {
-              effective.nodes.forEach((n, k) => allNodes.set(k, n));
-              effective.edges.forEach((e, k) => allEdges.set(k, e));
-            } else {
-              f.nodes.forEach((n, k) => allNodes.set(k, n));
-              f.edges.forEach((e, k) => allEdges.set(k, e));
-            }
-          }
-          return (
-            <Neo4jExportModal
-              nodes={[...allNodes.values()]}
-              edges={[...allEdges.values()]}
-              onClose={() => setShowNeo4jModal(false)}
-            />
-          );
-        })()}
+      {showExportModal && (
+        <GraphExportModal
+          sparql={sparql}
+          frames={frames}
+          effective={effectiveDataRef.current}
+          roleHeader={roleHeaderValue}
+          prefixes={prefixes}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
       <Sidebar
         schemaNodeLabels={visibleNodeLabels}
         schemaRels={visibleSchemaRels}
         schemaLoading={schemaLoading}
+        schemaError={schemaError}
         history={history}
         colorOverrides={colorOverrides}
         sizeOverrides={sizeOverrides}
@@ -850,18 +959,54 @@ export function GraphPage() {
         onSizeMultiplierChange={handleSizeMultiplierChange}
         onRelLineChange={handleRelLineChange}
         numericPropsByLabel={numericPropsByLabel}
-        onNeo4jExport={() => setShowNeo4jModal(true)}
+        onExport={() => setShowExportModal(true)}
+        exportLabel={t(sparql ? "graphSidebar.tabExportSparql" : "graphSidebar.tabExport")}
         width={sidebarWidth}
         onWidthChange={setSidebarWidth}
         highlightedLabel={activeLabel}
         propertyKeys={cypherSchema.propertyKeys}
         onPropertyKeyClick={handlePropertyKeyClick}
         counts={counts}
+        countsError={countsError}
         maxNodes={maxNodes}
         onMaxNodesChange={setMaxNodes}
+        session={
+          sparql ? undefined : (
+            <SessionPills
+              roleHeader={roleHeaderValue}
+              changed={sessionChanges}
+              onLabelClick={handleLabelClick}
+              onRelClick={handleRelClick}
+            />
+          )
+        }
+        vocabulary={
+          sparql
+            ? (openClassMenu, openRelMenu) => (
+                <SparqlVocabularyPanel
+                  vocabulary={vocabulary}
+                  prefixes={prefixes}
+                  error={vocabularyError}
+                  onPick={handleVocabularyPick}
+                  colorOverrides={colorOverrides}
+                  checkedDomains={checkedDomains}
+                  onClassMenu={openClassMenu}
+                  onRelMenu={openRelMenu}
+                />
+              )
+            : undefined
+        }
       />
 
       <div className="graph-content">
+        {sparql && vocabulary && (
+          <SparqlEndpointBar
+            base={vocabulary.base}
+            prefixes={prefixes}
+            edits={prefixEdits}
+            onEdit={setPrefixEdits}
+          />
+        )}
         <QueryBar
           onRun={runQuery}
           initialQuery={historyQuery ?? graphState.currentQuery}
@@ -872,6 +1017,7 @@ export function GraphPage() {
           cypherSchema={schemaLoading ? undefined : cypherSchema}
           autoImpute={autoImpute}
           onToggleAutoImpute={() => setAutoImpute((v) => !v)}
+          language={language}
           key={historyQuery ?? "initial"}
         />
 
@@ -886,7 +1032,7 @@ export function GraphPage() {
               <div className="graph-stream-empty-icon" aria-hidden="true">
                 ⬡
               </div>
-              <Text component="div">{t("graphPage.emptyStateHint")}</Text>
+              <Text component="div">{t(language === "sparql" ? "graphPage.emptyStateHintSparql" : "graphPage.emptyStateHint")}</Text>
               <Text component="div" className="graph-stream-hint">
                 {t("graphPage.emptyStateShortcut")}
               </Text>
@@ -901,8 +1047,12 @@ export function GraphPage() {
                 requestedView={frameViews[frame.id]}
                 onClose={closeFrame}
                 onRerun={rerunFrame}
-                onTableDrop={onTableDrop}
-                onDomainDrop={onDomainDrop}
+                // A drop, an expansion and an exclusion write Cypher against the model's labels and
+                // relationships; a SPARQL drop edits its query, its expansion merges a DESCRIBE.
+                onTableDrop={sparql ? undefined : onTableDrop}
+                onDomainDrop={sparql ? undefined : onDomainDrop}
+                onSparqlDrop={sparql ? onSparqlDrop : undefined}
+                onNodePath={sparql ? undefined : (a, b) => onNodePath(frame.id, a, b)}
                 colorOverrides={colorOverrides}
                 sizeOverrides={sizeOverrides}
                 labelProperty={labelProperty}
@@ -913,9 +1063,16 @@ export function GraphPage() {
                 pkMap={pkMap}
                 labelToTableLabel={labelToTableLabel}
                 labelToTableId={labelToTableId}
-                relationships={adminRels}
-                graphRelationships={graphRels}
+                relationships={sparql ? [] : adminRels}
+                graphRelationships={sparql ? [] : graphRels}
+                schemaRels={sparql ? [] : schemaRels}
                 autoImpute={autoImpute}
+                language={language}
+                sparqlPrefixes={sparql ? framePrefixes : undefined}
+                classProperties={sparql ? classProperties : undefined}
+                onExpandResource={sparql ? expandResource : undefined}
+                onDescribeResource={sparql ? describeResource : undefined}
+                onDescribeResources={sparql ? describeResources : undefined}
                 onSaveEdgeAlias={handleSaveEdgeAlias}
                 onSelectedLabelChange={setActiveLabel}
                 onEffectiveDataChange={onEffectiveDataChange}

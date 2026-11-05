@@ -27,6 +27,7 @@ reaches the other tier is refused by name rather than opening the file a second 
 
 from __future__ import annotations
 
+import re
 import secrets
 
 from provisa.api.errors import ApiError
@@ -44,6 +45,7 @@ __all__ = [
     "is_demo_sandbox",
     "is_sandbox_tier_org",
     "is_template_org",
+    "is_this_nodes_sandbox",
     "new_sandbox_org_id",
     "require_this_tier",
     "serves_sandboxes",
@@ -58,13 +60,30 @@ def template_org_id(demo: str) -> str:
 
 def new_sandbox_org_id() -> str:
     """A fresh sandbox org id: ``sbx`` and 12 random hex digits (``t`` is not one, so a sandbox's
-    id never begins as a template's) -- ``sbxr`` and them on the regions sandbox tier (REQ-2068),
-    so the UI server routes it there by its id."""
-    from provisa.api.demo_region_seed import regional
-    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+    id never begins as a template's) -- on the regions sandbox tier (REQ-2068) ``sbxr``, this
+    node's region and them, so the UI server routes it to this node by its id."""
+    from provisa.api.demo_region_seed import here, regional
+    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX, SANDBOX_HEX_DIGITS
 
-    prefix = REGIONS_SANDBOX_PREFIX if regional() else SANDBOX_PREFIX
-    return f"{prefix}{secrets.token_hex(6)}"
+    prefix = f"{REGIONS_SANDBOX_PREFIX}{here()}" if regional() else SANDBOX_PREFIX
+    return f"{prefix}{secrets.token_hex(SANDBOX_HEX_DIGITS // 2)}"
+
+
+#: The id of a sandbox as it is minted (new_sandbox_org_id), its region's on the regions tier; a tier's
+#: own deployment org (sbxrtier) and a template are named, not minted, and are no node's alone.
+_MINTED = re.compile(r"sbx(r[a-z]+)?[0-9a-f]{12}")
+
+
+def is_this_nodes_sandbox(org_id: str) -> bool:
+    """Whether sandbox ``org_id`` is this node's to serve and reap: on the regions sandbox tier,
+    one this node's region minted (REQ-2068); on the other tier, any that is not the regions
+    tier's."""
+    from provisa.api.demo_region_seed import here, regional
+    from provisa.core.org_ids import is_regions_sandbox, regions_sandbox_region
+
+    if regional():
+        return regions_sandbox_region(org_id) == here()
+    return not is_regions_sandbox(org_id)
 
 
 def serves_sandboxes() -> bool:
@@ -82,6 +101,15 @@ def require_this_tier(org_id: str) -> None:
     not serve it -- a sandbox opened here would be its DuckDB file opened by a second process."""
     sandbox = is_sandbox_tier_org(org_id)
     if sandbox == serves_sandboxes():
+        if sandbox and _MINTED.fullmatch(org_id) and not is_this_nodes_sandbox(org_id):
+            # REQ-2068: each sandbox's file and stores are one node's, and the demos each serves
+            # are its own: built elsewhere it failed as an unpublished demo, and answered 500.
+            raise ApiError(
+                421,
+                "sandbox.wrong_tier",
+                f"Demo sandbox {org_id!r} is served by another node of the sandbox tier",
+                org=org_id,
+            )
         return
     raise ApiError(
         421,

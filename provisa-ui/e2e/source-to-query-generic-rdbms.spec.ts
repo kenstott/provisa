@@ -110,6 +110,10 @@ function provision(cmd: "up" | "down", source: string): void {
     PROVISA_DEMO_MARIADB_PORT: String(E2E_MARIADB_PORT),
     PROVISA_DEMO_TIDB_PORT: String(E2E_TIDB_PORT),
     PROVISA_DEMO_COCKROACHDB_PORT: String(E2E_COCKROACHDB_PORT),
+    // CockroachDB's defaults take a quarter of the host's memory for its cache and another for SQL;
+    // the runner was out of memory during this source's test (run 40115205350).
+    PROVISA_DEMO_COCKROACHDB_CACHE: "256MiB",
+    PROVISA_DEMO_COCKROACHDB_SQL_MEMORY: "256MiB",
     PROVISA_DEMO_YUGABYTEDB_PORT: String(E2E_YUGABYTEDB_PORT),
     PROVISA_DEMO_CLICKHOUSE_PORT: String(E2E_CLICKHOUSE_PORT),
     PROVISA_DEMO_SQLSERVER_PORT: String(E2E_SQLSERVER_PORT),

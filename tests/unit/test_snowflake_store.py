@@ -60,11 +60,10 @@ class _Cursor:
         pass
 
 
-def test_ddl_type_maps_ir_and_raises_on_unknown():
+def test_ddl_type_maps_ir_and_a_type_naming_none_as_text():
     assert store.ddl_type("bigint") == "NUMBER(38,0)"
     assert store.ddl_type("json") == "VARIANT"
-    with pytest.raises(ValueError):
-        store.ddl_type("geometry_of_doom")
+    assert store.ddl_type("geometry_of_doom") == store.ddl_type("text")  # REQ-2171
 
 
 def test_create_ddl_carries_the_declared_primary_key():

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from graphql import (
+    DirectiveLocation,
     GraphQLArgument,
     GraphQLField,
     GraphQLList,
@@ -32,7 +33,6 @@ from graphql import (
     print_schema,
 )
 
-from provisa.compiler.introspect import ColumnMetadata
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 
@@ -41,14 +41,28 @@ GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 FEDERATION_LINK_URL = "https://specs.apollo.dev/federation/v2.3"
 FEDERATION_IMPORTS = ["@key", "@shareable", "@external"]
 
+#: Where a directive applies to an operation a client sends, never to the schema.
+_EXECUTABLE = frozenset(
+    {
+        DirectiveLocation.QUERY,
+        DirectiveLocation.MUTATION,
+        DirectiveLocation.SUBSCRIPTION,
+        DirectiveLocation.FIELD,
+        DirectiveLocation.FRAGMENT_DEFINITION,
+        DirectiveLocation.FRAGMENT_SPREAD,
+        DirectiveLocation.INLINE_FRAGMENT,
+        DirectiveLocation.VARIABLE_DEFINITION,
+    }
+)
 
-@dataclass
-class FederationConfig:  # REQ-259
-    """Configuration for Apollo Federation v2 subgraph support."""
 
-    enabled: bool = False
-    version: int = 2
-    service_name: str = "provisa"
+def _subgraph_schema(schema: GraphQLSchema) -> GraphQLSchema:
+    """``schema`` as a subgraph publishes it: without Provisa's operation directives (@join,
+    @route, @cached, ...). A router plans the operations it sends a subgraph itself and passes no
+    client's operation directive on, and their names are the supergraph's own: Provisa's @join
+    is the name of the federation join spec, which composition cannot print back."""
+    kept = [d for d in schema.directives if not set(d.locations) <= _EXECUTABLE]
+    return GraphQLSchema(**{**schema.to_kwargs(), "directives": kept})
 
 
 @dataclass
@@ -68,48 +82,6 @@ _AnyScalar = GraphQLScalarType(
     parse_value=lambda v: v,
     parse_literal=lambda v, _variables=None: v,
 )
-
-
-def extract_pk_columns(  # REQ-393, REQ-394
-    tables: list[dict],
-    column_types: dict[int, list[ColumnMetadata]],
-) -> dict[int, list[str]]:
-    """Extract primary key columns for each table from the engine metadata.
-
-    Returns table_id -> list of PK column names.
-    Heuristic: columns whose column_name is 'id' or ends with '_id' at position 0,
-    or all columns marked as non-nullable in single-column tables.
-
-    In practice, the engine INFORMATION_SCHEMA does not expose PK constraints directly.
-    This uses the convention that tables declare PK columns via a 'primary_key'
-    field in the registration config. Falls back to first non-nullable column.
-    """
-    result: dict[int, list[str]] = {}
-    for table in tables:
-        table_id = table["id"]
-        # Prefer explicit primary_key from table registration
-        explicit_pk = table.get("primary_key")
-        if explicit_pk:
-            if isinstance(explicit_pk, str):
-                result[table_id] = [explicit_pk]
-            else:
-                result[table_id] = list(explicit_pk)
-            continue
-
-        # Fallback: first column named 'id', or first non-nullable column
-        cols = column_types.get(table_id, [])
-        id_cols = [c for c in cols if c.column_name == "id"]
-        if id_cols:
-            result[table_id] = ["id"]
-            continue
-
-        non_nullable = [c for c in cols if not c.is_nullable]
-        if non_nullable:
-            result[table_id] = [non_nullable[0].column_name]
-        elif cols:
-            result[table_id] = [cols[0].column_name]
-
-    return result
 
 
 def build_federation_schema(  # REQ-259
@@ -162,14 +134,16 @@ def build_federation_schema(  # REQ-259
         entity_types.append(entity)
         type_name_to_entity[type_name] = entity
 
-    if not entity_types:
-        raise ValueError("No entity types found for federation")
-
-    # _Entity union of all entity types
-    entity_union = GraphQLUnionType(
-        "_Entity",
-        types=[e.gql_type for e in entity_types],
-        description="Federation entity union.",
+    # A subgraph whose role sees no table with a designated primary key has no entities: it
+    # offers _service alone, as the Federation spec has it (no _Entity union, no _entities).
+    entity_union = (
+        GraphQLUnionType(
+            "_Entity",
+            types=[e.gql_type for e in entity_types],
+            description="Federation entity union.",
+        )
+        if entity_types
+        else None
     )
 
     # Store key directive metadata as extensions on entity types
@@ -199,22 +173,36 @@ def build_federation_schema(  # REQ-259
             GraphQLNonNull(service_type),
             resolve=lambda _obj, _info: {"sdl": fed_sdl},
         )
-        fields["_entities"] = GraphQLField(
-            GraphQLNonNull(GraphQLList(entity_union)),
-            args={
-                "representations": GraphQLArgument(
-                    GraphQLNonNull(GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, _AnyScalar))))
-                ),
-            },
-        )
+        if entity_union is not None:
+            # Resolved by provisa/api/data/federation.py, through the governed pipeline.
+            fields["_entities"] = GraphQLField(
+                GraphQLNonNull(GraphQLList(entity_union)),
+                args={
+                    "representations": GraphQLArgument(
+                        GraphQLNonNull(
+                            GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, _AnyScalar)))
+                        )
+                    ),
+                },
+            )
         return fields
 
     new_query = cast(GraphQLObjectType, GraphQLObjectType("Query", make_query_fields))
+    extra = [_AnyScalar, service_type] + ([entity_union] if entity_union is not None else [])
 
     return GraphQLSchema(
         query=new_query,
         mutation=base_schema.mutation_type,
-        types=[_AnyScalar, entity_union, service_type],
+        subscription=base_schema.subscription_type,
+        types=[
+            *(
+                t
+                for name, t in base_schema.type_map.items()
+                if not name.startswith("__") and t is not query_type
+            ),
+            *extra,
+        ],
+        directives=base_schema.directives,
     )
 
 
@@ -231,7 +219,7 @@ def generate_federation_sdl(  # REQ-259
     Returns:
         Federation-annotated SDL string.
     """
-    base_sdl = print_schema(schema)
+    base_sdl = print_schema(_subgraph_schema(schema))
 
     lines: list[str] = []
 

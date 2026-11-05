@@ -217,7 +217,9 @@ def test_an_aggregate_is_answered_from_the_view_and_as_the_table_answers(server,
 
     expected = {"us": (3, Decimal(45)), "eu": (1, Decimal(7))}
     assert _table(source_pg) == expected
-    assert _sql(server) == expected
+    answered = _sql(server)
+    # The server's log says which relation answered: the view's stored rows or the table.
+    assert answered == expected, f"{answered}\n{server.dump_stderr_debug()[-12000:]}"
     assert _graphql(server) == expected
 
     with psycopg.connect(source_pg.dsn(), autocommit=True) as conn:

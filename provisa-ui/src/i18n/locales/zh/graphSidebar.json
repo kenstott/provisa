@@ -4,10 +4,17 @@
     "tabHistory": "历史记录",
     "tabFavorites": "收藏",
     "tabExport": "导出到 Neo4j",
+    "tabExportSparql": "导出 RDF 或 SPARQL 结果",
     "domainLabels": "域标签",
     "nodeLabels": "节点标签",
     "relationshipTypes": "关系类型",
     "propertyKeys": "属性键",
+    "session": "会话",
+    "sessionFailed": "无法读取会话：{{error}}",
+    "sessionEmpty": "此会话中尚未创建任何内容。",
+    "sessionClear": "清除会话",
+    "sessionLabelTip": "会话中有 {{nodes}} 个节点，{{tagged}} 个模型节点已标记",
+    "sessionTypeTip": "会话中有 {{count}} 个关系",
     "loading": "加载中…",
     "noLabelsFound": "未找到标签",
     "noRelTypesFound": "未找到关系类型",
@@ -30,6 +37,8 @@
     "tabSettings": "视图设置",
     "maxNodes": "最大节点数",
     "maxNodesHint": "一次查询最多绘制的节点数",
-    "notCounted": "未计数：{{list}}"
+    "notCounted": "未计数：{{list}}",
+    "countsFailed": "无法获取计数：{{error}}",
+    "schemaFailed": "无法获取架构：{{error}}"
   }
 }

@@ -48,6 +48,7 @@ function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
       sql_generation: "claude-opus-4-6",
       table_selection: "claude-haiku-4-5-20251001",
       mcp_chat: "claude-opus-4-8",
+      glossary_term_finding: "",
     },
     vector_models: [
       {
@@ -113,7 +114,11 @@ describe("AiModelsTab", () => {
   it("saves a vector model's stated version", async () => {
     // REQ-2002: the version recorded with every use of the model, where its provider reports none.
     mockFetch.mockResolvedValue(state());
-    mockSet.mockResolvedValue({ success: true, updated: ["vector_models"], restart_required: true });
+    mockSet.mockResolvedValue({
+      success: true,
+      updated: ["vector_models"],
+      restart_required: true,
+    });
     render(<AiModelsTab />);
 
     const version = await screen.findByRole("textbox", { name: "Version" });
@@ -294,7 +299,7 @@ describe("AiModelsTab", () => {
     );
     render(<AiModelsTab />);
 
-    await waitFor(() => expect(screen.getAllByText(/set an API key for anthropic/).length).toBe(6));
+    await waitFor(() => expect(screen.getAllByText(/set an API key for anthropic/).length).toBe(7));
     fireEvent.change(screen.getByTestId("ai-model-sql_generation"), {
       target: { value: "some-custom-model" },
     });

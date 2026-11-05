@@ -22,7 +22,7 @@ from __future__ import annotations
 # source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
 # for callers near the view definitions.
 from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import DERIVED_TAGS, SYSTEM_TAGS
+from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
 from provisa.dq.contract import CHECKERS
 
 # REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
@@ -31,6 +31,18 @@ from provisa.dq.contract import CHECKERS
 import json as _json
 
 from provisa.compiler.sql_literals import sql_literal
+from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
+from provisa.api._pg_catalog_views import (
+    CATALOG_BASE_VIEWS,
+    CATALOG_COLUMN_VIEWS,
+    CATALOG_KEY_VIEWS,
+    CATALOG_VIEWS,
+    LISTED_TABLE,
+    SERVED_COLUMN_NAMES,
+    registered_column_sql_name,
+)
+from provisa.transpiler.metadata_settings import asked_sql
+from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
 
 
 def _system_tag_rows_sql() -> str:
@@ -163,19 +175,18 @@ def _data_product_edges_sql() -> str:
     product's member tables through tables that belong to no product. It stops at another
     product's member, and the row targets that product; a table that belongs to no product is a
     target only where nothing reachable through it is another product's member (otherwise it
-    supports that product's row). A lineage edge is a relation the product's members derive from,
-    all the way up, or one that derives from them, one hop down, read from the lineage edge table
-    the model build writes (REQ-2129); a checker member's results are about a member, not part of
-    its data flow, so they start no lineage.
+    supports that product's row). A related edge is a table one declared relationship from a
+    member, not one of the product's own. A product's lineage is no row here: it is cut to its
+    caller's read rights, so it is served by the product lineage endpoint (REQ-2156).
 
     Everything is computed from reachability, never by enumerating routes: the path count is the
-    number of distinct relationships (or derivations) leaving the members that lead on to the
-    target, the hops are the shortest distance, and the aliases and supporting tables are those on
-    any walk from a member to the target. Each recursion's rows are bounded by the model's tables
-    (or relations), so the cost grows with the model, not with the routes through it.
+    number of distinct relationships leaving the members that lead on to the target, the hops are
+    the shortest distance, and the aliases and supporting tables are those on any walk from a
+    member to the target. Each recursion's rows are bounded by the model's tables, so the cost
+    grows with the model, not with the routes through it.
 
-    Every table a row names -- a supporting table, a view a lineage edge goes through -- is named
-    as the model names it: its domain and its alias, or its name when it has none."""
+    Every supporting table a row names is named as the model names it: its domain and its alias,
+    or its name when it has none."""
     return """
         CREATE OR REPLACE VIEW data_product_edges AS
         WITH RECURSIVE
@@ -338,129 +349,29 @@ def _data_product_edges_sql() -> str:
             JOIN model_names t ON t.table_id = s.node
             GROUP BY s.product_id, s.target_product_id, s.target_table_id
         ),
-        ledges AS (
-            SELECT DISTINCT source_relation AS src, target_relation AS tgt, via
-            FROM lineage_edges
-            WHERE source_relation <> target_relation
-        ),
-        relation_tables AS (
-            SELECT DISTINCT source_relation AS relation, source_table_id AS table_id
-            FROM lineage_edges WHERE source_table_id IS NOT NULL
-            UNION
-            SELECT DISTINCT target_relation, target_table_id
-            FROM lineage_edges WHERE target_table_id IS NOT NULL
-        ),
-        member_relations AS (
-            SELECT DISTINCT m.product_id, rt.relation
+        -- Every table one declared relationship from a member that is not one of the product's
+        -- own: the panel's Related.
+        related AS (
+            SELECT m.product_id, l.b AS table_id,
+                   COUNT(DISTINCT l.rel_id) AS path_count,
+                   STRING_AGG(DISTINCT r.alias, ', ' ORDER BY r.alias) AS aliases,
+                   STRING_AGG(DISTINCT r.id, ', ' ORDER BY r.id) AS relationship_ids
             FROM members m
-            JOIN relation_tables rt ON rt.table_id = m.table_id
-            WHERE m.dq_contract IS NULL
-        ),
-        -- (product, the derivation into its member, a relation reached upstream).
-        upstream (product_id, first_edge, relation) AS (
-            SELECT mr.product_id, e.src || ' > ' || e.via || ' > ' || e.tgt, e.src
-            FROM member_relations mr
-            JOIN ledges e ON e.tgt = mr.relation
-            UNION
-            SELECT u.product_id, u.first_edge, e.src
-            FROM upstream u
-            JOIN ledges e ON e.tgt = u.relation
-        ),
-        up_dist (product_id, relation, hops) AS (
-            SELECT mr.product_id, e.src, 1
-            FROM member_relations mr
-            JOIN ledges e ON e.tgt = mr.relation
-            UNION
-            SELECT u.product_id, e.src, u.hops + 1
-            FROM up_dist u
-            JOIN ledges e ON e.tgt = u.relation
-            WHERE u.hops < (SELECT COUNT(*) FROM relation_tables)
-        ),
-        -- (product, an upstream relation, a relation its derivations reach on the way down to a
-        -- member): the chain each upstream row stands for.
-        chain (product_id, origin, relation) AS (
-            SELECT DISTINCT u.product_id, u.relation, u.relation
-            FROM upstream u
-            UNION
-            SELECT c.product_id, c.origin, e.tgt
-            FROM chain c
-            JOIN ledges e ON e.src = c.relation
-            JOIN upstream u ON u.product_id = c.product_id AND u.relation = e.tgt
-        ),
-        -- The views and commands on that chain: each derivation out of a relation on it, into a
-        -- relation on it or into a member.
-        up_vias AS (
-            SELECT DISTINCT c.product_id, c.origin AS relation, e.via
-            FROM chain c
-            JOIN ledges e ON e.src = c.relation
-            WHERE EXISTS (SELECT 1 FROM member_relations mr
-                          WHERE mr.product_id = c.product_id AND mr.relation = e.tgt)
-               OR EXISTS (SELECT 1 FROM upstream u
-                          WHERE u.product_id = c.product_id AND u.relation = e.tgt)
-        ),
-        lineage_paths AS (
-            SELECT u.product_id, 'upstream' AS direction, u.relation, u.first_edge
-            FROM upstream u
+            JOIN links l ON l.a = m.table_id
+            JOIN relationships r ON r.id = l.rel_id
             WHERE NOT EXISTS (
-                SELECT 1 FROM member_relations mr
-                WHERE mr.product_id = u.product_id AND mr.relation = u.relation)
-            UNION ALL
-            SELECT mr.product_id, 'downstream', e.tgt,
-                   e.src || ' > ' || e.via || ' > ' || e.tgt
-            FROM member_relations mr
-            JOIN ledges e ON e.src = mr.relation
-            WHERE NOT EXISTS (
-                  SELECT 1 FROM member_relations own
-                  WHERE own.product_id = mr.product_id AND own.relation = e.tgt)
-              AND NOT EXISTS (
-                  SELECT 1 FROM upstream up
-                  WHERE up.product_id = mr.product_id AND up.relation = e.tgt)
-              AND NOT EXISTS (
-                  SELECT 1 FROM relation_tables rt
-                  JOIN members chk ON chk.table_id = rt.table_id AND chk.dq_contract IS NOT NULL
-                  WHERE rt.relation = e.tgt)
-        ),
-        lineage_rows AS (
-            SELECT l.product_id, l.direction, l.relation,
-                   COUNT(DISTINCT l.first_edge) AS path_count,
-                   CASE WHEN l.direction = 'downstream' THEN 1
-                        ELSE (SELECT MIN(d.hops) FROM up_dist d
-                              WHERE d.product_id = l.product_id AND d.relation = l.relation)
-                   END AS hops
-            FROM lineage_paths l
-            GROUP BY l.product_id, l.direction, l.relation
-        ),
-        -- A view a derivation goes through, by its model name; a command, by its own name; a
-        -- relation the model has not registered, by the name the lineage records.
-        via_names AS (
-            SELECT DISTINCT e.via, COALESCE(n.model_name, e.via) AS via_name
-            FROM lineage_edges e
-            LEFT JOIN relation_tables rt ON e.via_kind = 'view' AND rt.relation = e.via
-            LEFT JOIN model_names n ON n.table_id = rt.table_id
-        ),
-        lineage_vias AS (
-            SELECT u.product_id, 'upstream' AS direction, u.relation,
-                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name) AS vias
-            FROM up_vias u
-            JOIN via_names n ON n.via = u.via
-            GROUP BY u.product_id, u.relation
-            UNION ALL
-            SELECT mr.product_id, 'downstream', e.tgt,
-                   STRING_AGG(DISTINCT n.via_name, ', ' ORDER BY n.via_name)
-            FROM member_relations mr
-            JOIN ledges e ON e.src = mr.relation
-            JOIN via_names n ON n.via = e.via
-            GROUP BY mr.product_id, e.tgt
+                SELECT 1 FROM members own
+                WHERE own.table_id = l.b AND own.product_id = m.product_id)
+            GROUP BY m.product_id, l.b
         )
         SELECT r.product_id || ':relationship:'
                    || CASE WHEN r.target_product_id IS NOT NULL
                            THEN 'product:' || r.target_product_id
                            ELSE 'table:' || CAST(r.target_table_id AS TEXT) END AS id,
-               r.product_id, 'relationship' AS kind, CAST(NULL AS TEXT) AS direction,
-               r.target_product_id, r.target_table_id, CAST(NULL AS TEXT) AS target_relation,
+               r.product_id, 'relationship' AS kind,
+               r.target_product_id, r.target_table_id,
                CASE WHEN r.hops = 1 THEN TRUE ELSE FALSE END AS direct,
-               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables,
-               CAST(NULL AS TEXT) AS vias
+               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables
         FROM rel_rows r
         JOIN rel_detail d
           ON d.product_id = r.product_id
@@ -471,18 +382,285 @@ def _data_product_edges_sql() -> str:
          AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
          AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
         UNION ALL
-        SELECT l.product_id || ':lineage:' || l.relation,
-               l.product_id, 'lineage', l.direction,
-               (SELECT m.product_id FROM members m JOIN relation_tables rt
-                  ON rt.table_id = m.table_id WHERE rt.relation = l.relation),
-               (SELECT rt.table_id FROM relation_tables rt WHERE rt.relation = l.relation),
-               l.relation,
-               CASE WHEN l.hops = 1 THEN TRUE ELSE FALSE END,
-               l.hops, l.path_count, NULL, NULL, NULL, v.vias
-        FROM lineage_rows l
-        JOIN lineage_vias v
-          ON v.product_id = l.product_id AND v.direction = l.direction
-         AND v.relation = l.relation
+        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT),
+               rl.product_id, 'related', o.product_id, rl.table_id,
+               TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL
+        FROM related rl
+        LEFT JOIN members o ON o.table_id = rl.table_id
+    """
+
+
+def _table_inputs_sql() -> str:
+    """REQ-2126: each registered table's nearest physical inputs -- an internal control-plane
+    view, read by provisa.lineage.inputs, so the walk is
+    written once.
+
+    From a table, its lineage (the lineage edge table, REQ-2129) is walked upstream through plain
+    views, which are expanded at query time and so are no input, and stops at the first physical
+    dataset on each path: a source table or a materialized view. A materialized view's inputs are
+    what its refresh reads, found the same way. A relation that is not registered ends a path."""
+    return """
+        CREATE OR REPLACE VIEW table_inputs AS
+        WITH RECURSIVE ledges AS (
+            SELECT DISTINCT source_relation AS src, source_table_id AS src_id,
+                   target_relation AS tgt, target_table_id AS tgt_id
+            FROM lineage_edges
+            WHERE source_relation <> target_relation
+        ),
+        kinds AS (
+            SELECT t.id, t.source_id, t.schema_name, t.table_name,
+                   CASE WHEN t.source_id <> '{derived}' THEN 'source_table'
+                        WHEN t.materialize THEN 'materialized_view'
+                        ELSE 'view' END AS kind
+            FROM registered_tables t
+            WHERE NOT t.draft
+        ),
+        walk (table_id, relation, relation_id) AS (
+            SELECT e.tgt_id, e.src, e.src_id
+            FROM ledges e
+            WHERE e.tgt_id IS NOT NULL
+            UNION
+            SELECT w.table_id, e.src, e.src_id
+            FROM walk w
+            JOIN kinds k ON k.id = w.relation_id AND k.kind = 'view'
+            JOIN ledges e ON e.tgt = w.relation
+        )
+        SELECT DISTINCT w.table_id, w.relation_id AS input_table_id,
+               w.relation AS input_relation, k.kind AS input_kind,
+               k.source_id || '/' || k.schema_name || '/' || k.table_name AS input_address
+        FROM walk w
+        JOIN kinds k ON k.id = w.relation_id AND k.kind IN ('source_table', 'materialized_view')
+    """.replace("{derived}", DERIVED_SOURCE_ID)
+
+
+def _table_details_sql() -> str:
+    """REQ-2190: what a registered table's catalog entry holds that registered_tables_meta does
+    not list: its modeling role and history, and its comment -- its description with the suffix
+    provisa.core.modeling_tags.append_modeling_tag writes, the role, the history and the tag ids
+    in code-point order."""
+    return """
+        CREATE OR REPLACE VIEW table_details AS
+        WITH table_tags AS (
+            SELECT table_id, STRING_AGG(tag_id, ', ' ORDER BY tag_id COLLATE "C") AS tags
+            FROM tag_assignments
+            WHERE object_type = 'table' AND table_id IS NOT NULL
+            GROUP BY table_id
+        ),
+        suffixes AS (
+            SELECT rt.id, rt.description, rt.modeling_role, rt.modeling_history,
+                   NULLIF(CONCAT_WS(', ', NULLIF(rt.modeling_role, ''),
+                                    CASE WHEN rt.modeling_role <> ''
+                                         THEN NULLIF(rt.modeling_history, '') END,
+                                    t.tags), '') AS suffix
+            FROM registered_tables rt
+            LEFT JOIN table_tags t ON t.table_id = rt.id
+            WHERE NOT rt.draft
+        )
+        SELECT id, modeling_role, modeling_history,
+               CASE WHEN suffix IS NULL THEN NULLIF(description, '')
+                    ELSE COALESCE(NULLIF(description, '') || ' ', '') || '[' || suffix || ']'
+               END AS comment
+        FROM suffixes
+    """
+
+
+def _column_details_sql() -> str:
+    """REQ-2190: what a registered column's catalog entry holds that table_columns_meta does not
+    list: its place in the table (the order every SQL surface expands ``*`` in), the subtype and
+    native type its catalog type is read from, and its comment -- its description, with the
+    suffix provisa.core.modeling_tags.column_comment writes where the column carries a tag."""
+    return """
+        CREATE OR REPLACE VIEW column_details AS
+        WITH column_tags AS (
+            SELECT table_id, column_name,
+                   STRING_AGG(tag_id, ', ' ORDER BY tag_id COLLATE "C") AS tags
+            FROM tag_assignments
+            WHERE object_type = 'column' AND table_id IS NOT NULL AND column_name IS NOT NULL
+            GROUP BY table_id, column_name
+        )
+        SELECT tc.id, tc.table_id, tc.column_name,
+               CAST(ROW_NUMBER() OVER (PARTITION BY tc.table_id ORDER BY tc.id) AS INTEGER)
+                   AS ordinal_position,
+               tc.subtype, tc.native_type,
+               CASE WHEN t.tags IS NULL THEN NULLIF(tc.description, '')
+                    ELSE COALESCE(NULLIF(tc.description, '') || ' ', '') || '['
+                         || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
+               END AS comment
+        FROM table_columns tc
+        JOIN registered_tables rt ON rt.id = tc.table_id AND NOT rt.draft
+        LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
+    """
+
+
+def _table_keys_sql() -> str:
+    """REQ-2190: a registered table's keys, one row per column of each, which is what a catalog
+    lists as constraints and their indexes. A key is numbered by ``key_id``, table id * 4096 plus
+    its slot: 0 the primary key, 1 and up a declared unique key in the order declared, 1025 and up
+    a foreign key in the order of its relationship's id. The same model numbers its keys the same
+    on every build.
+
+    A foreign key is a registered many-to-one or one-to-one relationship whose target columns are
+    a key of its target, as PostgreSQL requires of one: relationships hold one column each, so the
+    relationships between two tables that cover the target's composite primary key once are one
+    foreign key, its columns in the primary key's order; any other is one foreign key where its
+    target column is a one-column key. A relationship to any other column is a semantic join,
+    and no key. Each row names its columns' aliases, so a reader needs no join to table_columns,
+    which a relationship would have to approve (REQ-603). A table's link to its registration is
+    the foreign key slot 1024 holds, as catalog_constraints publishes it.
+
+    A statement about some tables reads their keys alone, after the numbering, so a key has one
+    number whatever a statement asks; each index goes by its own name as well as its table's."""
+    asked = asked_sql("t.table_name", "'pk_' || t.table_name", "k.key_name")
+    table_asked = asked_sql("t.table_name", "'pk_' || t.table_name")
+    unique_asked = asked_sql("u.key_name")
+    registration_asked = asked_sql("'uq_registered_tables_table_query_name'")
+    return f"""
+        CREATE OR REPLACE VIEW table_keys AS
+        WITH tables AS (
+            SELECT table_id, domain_id, schema_name, table_name
+            FROM catalog_tables WHERE table_id IS NOT NULL
+        ),
+        served AS (
+            SELECT id, domain_id FROM registered_tables rt WHERE {LISTED_TABLE}
+        ),
+        registrations AS (
+            SELECT rt.id AS table_id
+            FROM registered_tables rt
+            JOIN served s ON s.id = rt.id
+            WHERE rt.domain_id = 'meta' AND rt.table_name = 'registered_tables'
+        ),
+        unique_keys AS (
+            SELECT t.id AS table_id, CAST(u.slot AS INTEGER) AS slot,
+                   u.definition ->> 'name' AS key_name, k.column_name,
+                   CAST(k.position AS INTEGER) AS position
+            FROM registered_tables t
+            JOIN served d ON d.id = t.id
+            CROSS JOIN LATERAL jsonb_array_elements(CAST(t.unique_constraints AS JSONB))
+                WITH ORDINALITY AS u(definition, slot)
+            CROSS JOIN LATERAL jsonb_array_elements_text(u.definition -> 'columns')
+                WITH ORDINALITY AS k(column_name, position)
+        ),
+        wanted AS (
+            SELECT t.table_id FROM tables t WHERE {table_asked}
+            UNION SELECT u.table_id FROM unique_keys u WHERE {unique_asked}
+            UNION SELECT r.table_id FROM registrations r WHERE {registration_asked}
+        ),
+        links AS (
+            SELECT MIN(r.id) AS relationship_id, r.source_table_id, r.source_column,
+                   r.target_table_id, r.target_column
+            FROM relationships r
+            JOIN served s ON s.id = r.source_table_id
+            JOIN served t ON t.id = r.target_table_id
+            JOIN table_columns sc
+              ON sc.table_id = r.source_table_id AND sc.column_name = r.source_column
+            WHERE r.target_column IS NOT NULL
+              AND r.source_table_id IN (SELECT table_id FROM wanted)
+              AND r.cardinality IN ('many-to-one', 'one-to-one')
+            GROUP BY r.source_table_id, r.source_column, r.target_table_id, r.target_column
+        ),
+        primary_keys AS (
+            SELECT c.table_id, c.column_name,
+                   CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
+                       AS position
+            FROM table_columns c
+            JOIN served s ON s.id = c.table_id
+            WHERE c.is_primary_key
+              AND c.table_id IN (SELECT table_id FROM wanted
+                                 UNION SELECT target_table_id FROM links)
+        ),
+        primary_sizes AS (
+            SELECT table_id, COUNT(*) AS size FROM primary_keys GROUP BY table_id
+        ),
+        single_column_keys AS (
+            SELECT table_id, column_name FROM primary_keys
+            WHERE table_id IN (SELECT table_id FROM primary_sizes WHERE size = 1)
+            UNION
+            SELECT u.table_id, u.column_name FROM unique_keys u
+            WHERE NOT EXISTS (
+                SELECT 1 FROM unique_keys o
+                WHERE o.table_id = u.table_id AND o.slot = u.slot AND o.position > 1)
+        ),
+        composites AS (
+            SELECT l.source_table_id, l.target_table_id, MIN(l.relationship_id) AS relationship_id
+            FROM links l
+            JOIN primary_sizes z ON z.table_id = l.target_table_id AND z.size >= 2
+            LEFT JOIN primary_keys p
+              ON p.table_id = l.target_table_id AND p.column_name = l.target_column
+            GROUP BY l.source_table_id, l.target_table_id, z.size
+            HAVING COUNT(p.column_name) = z.size AND COUNT(DISTINCT p.column_name) = z.size
+        ),
+        foreign_keys AS (
+            SELECT l.source_table_id AS table_id, l.target_table_id, c.relationship_id,
+                   l.source_column, l.target_column, p.position
+            FROM links l
+            JOIN composites c
+              ON c.source_table_id = l.source_table_id AND c.target_table_id = l.target_table_id
+            JOIN primary_keys p
+              ON p.table_id = l.target_table_id AND p.column_name = l.target_column
+            UNION ALL
+            SELECT l.source_table_id, l.target_table_id, l.relationship_id,
+                   l.source_column, l.target_column, 1
+            FROM links l
+            JOIN single_column_keys k
+              ON k.table_id = l.target_table_id AND k.column_name = l.target_column
+            WHERE NOT EXISTS (
+                SELECT 1 FROM composites c
+                JOIN primary_keys p ON p.table_id = c.target_table_id
+                WHERE c.source_table_id = l.source_table_id
+                  AND c.target_table_id = l.target_table_id
+                  AND p.column_name = l.target_column)
+        ),
+        all_keys AS (
+            SELECT table_id, 0 AS slot, 'p' AS kind, CAST(NULL AS TEXT) AS key_name,
+                   table_id AS referenced_table_id, position, column_name,
+                   CAST(NULL AS TEXT) AS referenced_column
+            FROM primary_keys
+            UNION ALL
+            SELECT table_id, slot, 'u', key_name, table_id, position, column_name, NULL
+            FROM unique_keys
+            UNION ALL
+            SELECT table_id,
+                   {FOREIGN_KEY_SLOT} + CAST(DENSE_RANK() OVER (
+                       PARTITION BY table_id ORDER BY relationship_id) AS INTEGER),
+                   'f', NULL, target_table_id, position, source_column, target_column
+            FROM foreign_keys
+            UNION ALL
+            -- Each registration's key, the pair every table's _meta link matches, and that link.
+            SELECT table_id, {UNIQUE_QUERY_NAME_SLOT}, 'u',
+                   'uq_registered_tables_table_query_name', table_id, q.position, q.column_name,
+                   NULL
+            FROM registrations
+            CROSS JOIN (VALUES (1, 'domain_id'), (2, 'table_query_name'))
+                AS q(position, column_name)
+            UNION ALL
+            SELECT t.id, {FOREIGN_KEY_SLOT}, 'f', NULL, r.table_id, q.position,
+                   q.column_name, q.referenced_column
+            FROM served t
+            JOIN wanted w ON w.table_id = t.id
+            CROSS JOIN registrations r
+            CROSS JOIN (VALUES (1, '_domain_', 'domain_id'), (2, '_name_', 'table_query_name'))
+                AS q(position, column_name, referenced_column)
+            WHERE t.domain_id <> 'meta'
+        )
+        SELECT CAST(k.table_id * {KEY_SLOTS} + k.slot AS TEXT) || ':' || CAST(k.position AS TEXT)
+                   AS id,
+               k.table_id * {KEY_SLOTS} + k.slot AS key_id, k.kind, k.key_name, k.table_id,
+               t.schema_name, t.table_name, k.referenced_table_id,
+               r.schema_name AS referenced_schema_name, r.table_name AS referenced_table_name,
+               k.position, k.column_name,
+               COALESCE({registered_column_sql_name("c")}, k.column_name) AS column_sql_name,
+               k.referenced_column,
+               COALESCE({registered_column_sql_name("rc")}, k.referenced_column)
+                   AS referenced_column_sql_name
+        FROM all_keys k
+        JOIN tables t ON t.table_id = k.table_id
+        JOIN tables r ON r.table_id = k.referenced_table_id
+        LEFT JOIN table_columns c
+          ON c.table_id = k.table_id AND c.column_name = k.column_name
+        LEFT JOIN table_columns rc
+          ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
+        WHERE (c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES})
+          AND {asked}
     """
 
 
@@ -521,25 +699,36 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN sources s ON s.id = rt.source_id
         WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
     """,
+    # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
+    # authored -- parsed once at registration (provisa.dq.registration) and stored on the table.
+    "dq_rules": """
+        CREATE OR REPLACE VIEW dq_rules AS
+        SELECT CAST(rt.id AS TEXT) || ':' || CAST(r.position AS TEXT) AS id,
+               rt.id AS table_id, rt.domain_id, s.type AS checker, r.position,
+               r.rule ->> 'column_name' AS column_name,
+               r.rule ->> 'check_type' AS check_type,
+               r.rule ->> 'definition' AS definition,
+               rt.tenant_id
+        FROM registered_tables rt
+        JOIN sources s ON s.id = rt.source_id
+        CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft
+    """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
     # kind.
+    # REQ-2126: each table's nearest physical inputs; internal, read by the views below and by
+    # provisa.lineage.inputs. Registered in no catalog.
+    "table_inputs": _table_inputs_sql(),
     "data_product_edges": _data_product_edges_sql(),
-    # REQ-2129: the model's column lineage, one row per edge whose two ends are registered
-    # columns, keyed to table_columns by the same column_key the glossary and tags join on.
-    "column_lineage_edges": """
-        CREATE OR REPLACE VIEW column_lineage_edges AS
-        SELECT e.id, e.source_relation, e.source_column, e.target_relation, e.target_column,
-               e.via, e.via_kind, e.source_table_id, e.source_column_name,
-               e.target_table_id, e.target_column_name,
-               CAST(e.source_table_id AS TEXT) || ':' || e.source_column_name
-                   AS source_column_key,
-               CAST(e.target_table_id AS TEXT) || ':' || e.target_column_name
-                   AS target_column_key
-        FROM lineage_edges e
-        JOIN registered_tables s ON s.id = e.source_table_id AND NOT s.draft
-        JOIN registered_tables t ON t.id = e.target_table_id AND NOT t.draft
+    # REQ-2188: the governed metrics, named metric_definitions because ops already has a "metrics"
+    # table (OTel points) and the catalog's descriptions are keyed by table name. The role list
+    # (visible_to) is a governance column, so a reader without view_governance does not see it.
+    "metric_definitions": """
+        CREATE OR REPLACE VIEW metric_definitions AS
+        SELECT name, expression, datatype, description, ai_context, visible_to, from_fact
+        FROM metrics
     """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
@@ -592,166 +781,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM tag_assignments
         WHERE expires_on IS NOT NULL
     """,
-    # REQ-1591: each term's domains by the one rule (provisa.core.repositories.glossary.
-    # term_domains): the domains of the tables its refs point at while it holds refs, its declared
-    # rows otherwise. "*" is the enterprise scope (REQ-1592). term_domains is the term's whole set
-    # as |a|b|, the column every glossary view's readable-term row scope tests (REQ-1593); it is
-    # first because the other glossary views read it.
-    "glossary_term_domains": """
-        CREATE OR REPLACE VIEW glossary_term_domains_meta AS
-        WITH d AS (
-            SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
-            FROM (SELECT term_id, table_id, tenant_id FROM glossary_term_refs
-                  UNION
-                  SELECT term_id, table_id, tenant_id FROM glossary_term_table_refs) r
-            JOIN registered_tables rt ON rt.id = r.table_id
-            UNION ALL
-            SELECT g.term_id, g.domain_id, g.tenant_id
-            FROM glossary_term_domains g
-            WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
-              AND NOT EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = g.term_id)
-        ),
-        s AS (
-            SELECT term_id, '|' || STRING_AGG(domain_id, '|') || '|' AS term_domains
-            FROM d
-            GROUP BY term_id
-        )
-        SELECT CAST(d.term_id AS TEXT) || ':' || d.domain_id AS id, d.term_id, d.domain_id,
-               d.tenant_id, s.term_domains
-        FROM d
-        JOIN s ON s.term_id = d.term_id
-    """,
-    # REQ-1584: the business glossary as queryable metadata. `live` restates the export's
-    # admission rule (provisa.core.glossary.live_term_ids) in SQL rather than approximating it:
-    # in service, defined, and connected over in-service edges to a term holding a physical ref --
-    # a column, or a whole table (REQ-1387, GROUNDED TO A TABLE).
-    # Grounding is transitive, so it needs the recursive CTE — every control-plane dialect the
-    # meta domain is served from (PostgreSQL, SQLite, MySQL) supports WITH RECURSIVE in a view.
-    # `rooted` here counts EVERY ref, which is the repository's reading of it; the exporter's
-    # narrower count (refs whose column actually publishes) is a property of the export, not of
-    # the glossary, and belongs in the export.
-    # retired and export_excluded are COLUMNS, never predicates — meta is the internal surface and
-    # withholding is the export's job; a view that filtered them would disagree with the admin
-    # surface it mirrors.
-    "glossary_terms": """
-        CREATE OR REPLACE VIEW glossary_terms_meta AS
-        WITH RECURSIVE in_service AS (
-            SELECT id FROM glossary_terms WHERE retired = FALSE AND deprecated = FALSE
-        ),
-        conducting_edges AS (
-            SELECT e.from_term_id AS a, e.to_term_id AS b
-            FROM glossary_term_edges e
-            JOIN in_service sa ON sa.id = e.from_term_id
-            JOIN in_service sb ON sb.id = e.to_term_id
-            UNION ALL
-            SELECT e.to_term_id, e.from_term_id
-            FROM glossary_term_edges e
-            JOIN in_service sa ON sa.id = e.from_term_id
-            JOIN in_service sb ON sb.id = e.to_term_id
-        ),
-        grounded AS (
-            SELECT DISTINCT r.term_id AS id
-            FROM (SELECT term_id FROM glossary_term_refs
-                  UNION
-                  SELECT term_id FROM glossary_term_table_refs) r
-            JOIN in_service s ON s.id = r.term_id
-            UNION
-            SELECT ce.b
-            FROM grounded g
-            JOIN conducting_edges ce ON ce.a = g.id
-        ),
-        -- A class term grounded in several tables is a curation gap until same-entity
-        -- relationships join them all -- every one reached from one of them (identity.py's
-        -- identity_gap_ids is the same rule).
-        same_entity_edges AS (
-            SELECT r.source_table_id AS a, r.target_table_id AS b
-            FROM relationships r WHERE r.same_entity
-            UNION ALL
-            SELECT r.target_table_id, r.source_table_id
-            FROM relationships r WHERE r.same_entity
-        ),
-        identity_reach (term_id, table_id) AS (
-            SELECT term_id, MIN(table_id) FROM glossary_term_table_refs GROUP BY term_id
-            UNION
-            SELECT ir.term_id, se.b
-            FROM identity_reach ir
-            JOIN same_entity_edges se ON se.a = ir.table_id
-            JOIN glossary_term_table_refs gt ON gt.term_id = ir.term_id AND gt.table_id = se.b
-        )
-        SELECT t.id, t.name, t.definition,
-               CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
-                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
-                    THEN FALSE ELSE TRUE END AS is_abstract,
-               t.deprecated, t.retired,
-               t.export_excluded,
-               (SELECT COUNT(*) FROM glossary_term_refs r WHERE r.term_id = t.id) AS ref_count,
-               CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
-                      OR EXISTS (SELECT 1 FROM glossary_term_table_refs r WHERE r.term_id = t.id)
-                    THEN TRUE ELSE FALSE END AS is_rooted,
-               CASE WHEN t.id IN (SELECT id FROM grounded)
-                     AND TRIM(COALESCE(t.definition, '')) <> ''
-                    THEN TRUE ELSE FALSE END AS live,
-               t.tenant_id,
-               CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded,
-               CASE WHEN t.retired THEN 'retired'
-                    WHEN t.deprecated OR t.deprecation_asserted THEN 'deprecated'
-                    WHEN t.id IN (SELECT id FROM grounded)
-                     AND TRIM(COALESCE(t.definition, '')) <> '' THEN 'live'
-                    ELSE 'draft' END AS status,
-               t.status_reason, t.retire_on,
-               CASE WHEN (SELECT COUNT(*) FROM glossary_term_table_refs r WHERE r.term_id = t.id)
-                         > (SELECT COUNT(*) FROM identity_reach ir WHERE ir.term_id = t.id)
-                    THEN TRUE ELSE FALSE END AS identity_gap,
-               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = t.id) AS term_domains
-        FROM glossary_terms t
-    """,
-    "glossary_term_refs": """
-        CREATE OR REPLACE VIEW glossary_term_refs_meta AS
-        SELECT r.id, r.term_id, r.table_id, r.column_name,
-               CAST(r.table_id AS TEXT) || ':' || r.column_name AS column_key,
-               rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
-               r.tenant_id,
-               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
-        FROM glossary_term_refs r
-        JOIN registered_tables rt ON rt.id = r.table_id
-    """,
-    # REQ-2130: a class term's tables and views, resolved to their address.
-    "glossary_term_table_refs": """
-        CREATE OR REPLACE VIEW glossary_term_table_refs_meta AS
-        SELECT r.id, r.term_id, r.table_id,
-               rt.source_id, rt.schema_name, rt.table_name, rt.domain_id,
-               r.tenant_id,
-               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = r.term_id) AS term_domains
-        FROM glossary_term_table_refs r
-        JOIN registered_tables rt ON rt.id = r.table_id
-    """,
-    "glossary_term_edges": """
-        CREATE OR REPLACE VIEW glossary_term_edges_meta AS
-        SELECT e.id, e.from_term_id, e.to_term_id, e.rel_type,
-               f.name AS from_term, t.name AS to_term,
-               e.tenant_id,
-               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = e.from_term_id) AS from_term_domains,
-               (SELECT MAX(x.term_domains) FROM glossary_term_domains_meta x WHERE x.term_id = e.to_term_id) AS to_term_domains
-        FROM glossary_term_edges e
-        JOIN glossary_terms f ON f.id = e.from_term_id
-        JOIN glossary_terms t ON t.id = e.to_term_id
-    """,
-    # user_id is the only identity data in the glossary set. It is exposed and governed by the
-    # ordinary column visibility rule rather than omitted — a governance query that cannot name
-    # the expert cannot route a question to them.
-    "glossary_term_experts": """
-        CREATE OR REPLACE VIEW glossary_term_experts_meta AS
-        SELECT x.id, x.term_id, x.user_id, x.kind, t.name AS term_name, x.tenant_id
-        FROM glossary_term_experts x
-        JOIN glossary_terms t ON t.id = x.term_id
-    """,
     # REQ-2125: dq_contract tells a product's checker members from its output tables, and
     # checked_table_id names the table a checker's contract scans, as the model build resolved
     # it (checker_targets). profiled_table_id names, for a profile result table, the member table
     # it profiles: the
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
-    # replaced in place.
+    # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
+    # REQ-2158: contract, a product member's declared contract, is last too.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -769,12 +806,24 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
                    AS checked_table_id,
-               -- The table's class term, NULL when none grounds it. Last, like the two
-               -- above, so an existing view is replaced in place.
-               (SELECT g.term_id FROM glossary_term_table_refs g WHERE g.table_id = rt.id)
-                   AS class_term_id
+               -- The table's class term, NULL when none grounds it.
+               rt.class_term_id,
+               -- A checker table's latest scan. Last, like the columns above, so an
+               -- existing view is replaced in place.
+               (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
+                   AS latest_outcome,
+               (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
+                   AS latest_run_at,
+               -- A product member's contract, its output port; last, as above.
+               rt.contract
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
+    """,
+    # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
+    # table's rules are parsed with. Its connection settings stay out of the catalog.
+    "sources": """
+        CREATE OR REPLACE VIEW sources_meta AS
+        SELECT id, type FROM sources
     """,
     # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
     # product -- members, commands, tags, terms, profiles -- is reached through meta-domain
@@ -782,7 +831,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "data_products": """
         CREATE OR REPLACE VIEW data_products_meta AS
         SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
-               version, status, sla, support, support_contact, publish, custom_properties
+               version, status, status_reason, retire_on, successor_id, support,
+               support_contact, custom_properties,
+               -- when the product was created; last, so the view is replaced in place.
+               created_at
         FROM data_products
     """,
     "table_columns": """
@@ -806,12 +858,33 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
-        SELECT id, parent_role_id, org_id,
+        SELECT id, org_id,
                capabilities,
                tenant_id,
                'meta' AS domain_id,
                description
         FROM roles
+    """,
+    # REQ-2153: the names of every listed column, for the catalog of a reader outside its domain --
+    # names only, by construction; what a reader reaches is in registered_tables/table_columns.
+    "listed_names": """
+        CREATE OR REPLACE VIEW listed_names AS
+        SELECT CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS id,
+               rt.domain_id AS listed_domain, rt.table_name, tc.column_name,
+               'meta' AS domain_id
+        FROM table_columns tc
+        JOIN registered_tables rt ON rt.id = tc.table_id
+        WHERE tc.scope = 'listed' AND NOT rt.draft
+    """,
+    # REQ-2155: a role's parents, one row per (role, parent), in declared order.
+    "roles_parents": """
+        CREATE OR REPLACE VIEW roles_parents AS
+        SELECT r.id || ':' || p.parent_role_id AS id,
+               r.id AS role_id, p.parent_role_id, p.position::int AS position,
+               'meta' AS domain_id
+        FROM roles r
+        CROSS JOIN LATERAL jsonb_array_elements_text(r.parents)
+            WITH ORDINALITY AS p(parent_role_id, position)
     """,
     "roles_domain_access": """
         CREATE OR REPLACE VIEW roles_domain_access AS
@@ -841,6 +914,17 @@ _META_TABLE_VIEWS: dict[str, str] = {
                product_id
         FROM tracked_functions
     """,
+    # REQ-2190: what pgwire's catalog presents that the views above do not list. SQL alone serves
+    # these (security.rights.SQL_ONLY_TABLES), and a role reads their rows as it reads
+    # table_columns_meta's (security.rights.META_ROW_SCOPED_VIEWS).
+    "table_details": _table_details_sql(),
+    "column_details": _column_details_sql(),
+    **CATALOG_BASE_VIEWS,
+    **CATALOG_COLUMN_VIEWS,
+    "table_keys": _table_keys_sql(),
+    **CATALOG_KEY_VIEWS,
+    # REQ-2190: meta is a superset of pg_catalog and information_schema, each relation a view.
+    **CATALOG_VIEWS,
 }
 
 # REQ-884: Internal operational/observability logs exposed as first-class tables in
@@ -1217,5 +1301,35 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         FROM query_audit_log q
         WHERE q.logged_at >= now() - INTERVAL '1 hour'
         HAVING COUNT(*) > 0
+    """,
+    # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): the glossary measured from the model, by
+    # domain and by steward. They read the ontology schema's views, which the seed creates first.
+    **ONTOLOGY_QUALITY_VIEWS,
+    # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT): every sensitive column, its tags, whether
+    # a fake covers it, and why not -- read from the meta view sensitive_coverage, which the seed
+    # creates first. Named apart from it: both are relations of the one schema under provisa-admin.
+    # REQ-2147 (CONTAINED VALUES ARE HINTS): with them, every column a scan found a sensitive kind
+    # inside and that nothing restricts -- no sensitive tag and no mask (what a profile treats as
+    # restricted) -- status hinted, its hints the reason. A hint is never a classification: the
+    # column is listed for a person to decide on, and nothing is applied to it.
+    "sensitive_column_coverage": """
+        CREATE OR REPLACE VIEW sensitive_column_coverage AS
+        SELECT sc.column_key AS id, sc.table_id, sc.table_name, sc.domain_id, sc.column_name,
+               sc.tags, sc.status, sc.reason
+        FROM sensitive_coverage sc
+        UNION ALL
+        SELECT CAST(h.table_id AS TEXT) || ':' || h.physical_column AS id, h.table_id,
+               rt.table_name, rt.domain_id, h.physical_column AS column_name,
+               CAST(NULL AS TEXT) AS tags, 'hinted' AS status,
+               STRING_AGG(h.evidence, '; ' ORDER BY h.kind) AS reason
+        FROM profiler_sensitive_hints h
+        JOIN registered_tables rt ON rt.id = h.table_id
+        JOIN table_columns tc ON tc.table_id = h.table_id AND tc.column_name = h.physical_column
+        WHERE jsonb_array_length(tc.masks) = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM sensitive_coverage s
+              WHERE s.table_id = h.table_id AND s.column_name = h.physical_column
+          )
+        GROUP BY h.table_id, rt.table_name, rt.domain_id, h.physical_column
     """,
 }

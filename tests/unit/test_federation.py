@@ -24,17 +24,10 @@ from graphql import (
 )
 
 from provisa.compiler.federation import (
-    FederationConfig,
     build_federation_schema,
-    extract_pk_columns,
     generate_federation_sdl,
 )
-from provisa.compiler.introspect import ColumnMetadata
-from provisa.api.data.federation import (
-    compile_entity_query,
-    group_representations,
-    resolve_entities,
-)
+from provisa.core.models import FederationConfig, ProvisaConfig, Role
 
 
 # --- Helpers ---
@@ -85,51 +78,37 @@ class TestFederationConfig:
     def test_defaults(self):
         cfg = FederationConfig()
         assert cfg.enabled is False
-        assert cfg.version == 2
-        assert cfg.service_name == "provisa"
+        assert cfg.subgraph_name == "provisa"
+        assert cfg.role is None
 
     def test_disabled_by_default(self):
         """Federation features absent when federation.enabled is false."""
         cfg = FederationConfig()
         assert not cfg.enabled
 
+    def test_enabled_names_its_role(self):
+        """A subgraph is an endpoint with a declared role: enabling it without one is refused."""
+        with pytest.raises(ValueError, match="no role"):
+            FederationConfig(enabled=True)
 
-# --- extract_pk_columns ---
-
-
-class TestExtractPKColumns:
-    def test_explicit_primary_key_string(self):
-        tables = [{"id": 1, "primary_key": "order_id"}]
-        column_types: dict[int, list[ColumnMetadata]] = {}
-        result = extract_pk_columns(tables, column_types)
-        assert result == {1: ["order_id"]}
-
-    def test_explicit_primary_key_list(self):
-        tables = [{"id": 1, "primary_key": ["col1", "col2"]}]
-        result = extract_pk_columns(tables, {})
-        assert result == {1: ["col1", "col2"]}
-
-    def test_fallback_to_id_column(self):
-        tables = [{"id": 1}]
-        column_types = {
-            1: [
-                ColumnMetadata("name", "varchar", True),
-                ColumnMetadata("id", "integer", False),
-            ]
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result == {1: ["id"]}
-
-    def test_fallback_to_first_non_nullable(self):
-        tables = [{"id": 1}]
-        column_types = {
-            1: [
-                ColumnMetadata("order_num", "integer", False),
-                ColumnMetadata("name", "varchar", True),
-            ]
-        }
-        result = extract_pk_columns(tables, column_types)
-        assert result == {1: ["order_num"]}
+    def test_role_is_one_of_the_config(self):
+        role = Role(id="partner", description="d", capabilities=[], domain_access=["*"])
+        ok = ProvisaConfig(
+            sources=[],
+            domains=[],
+            tables=[],
+            roles=[role],
+            federation=FederationConfig(enabled=True, role="partner"),
+        )
+        assert ok.federation.role == "partner"
+        with pytest.raises(ValueError, match="not a role of this configuration"):
+            ProvisaConfig(
+                sources=[],
+                domains=[],
+                tables=[],
+                roles=[role],
+                federation=FederationConfig(enabled=True, role="nobody"),
+            )
 
 
 # --- build_federation_schema ---
@@ -257,159 +236,28 @@ class TestGenerateFederationSDL:
         assert "@key(fields:" not in sdl
 
 
-# --- group_representations ---
+# --- Operation directives ---
 
 
-class TestGroupRepresentations:
-    def test_groups_by_type(self):
-        reps = [
-            {"__typename": "Orders", "id": 1},
-            {"__typename": "Customers", "id": 10},
-            {"__typename": "Orders", "id": 2},
-        ]
-        type_to_table = {"Orders": 1, "Customers": 2}
-        type_to_keys = {"Orders": ["id"], "Customers": ["id"]}
-        plans = group_representations(reps, type_to_table, type_to_keys)
-        assert len(plans) == 2
-        orders_plan = next(p for p in plans if p.type_name == "Orders")
-        assert len(orders_plan.key_values) == 2
-        assert orders_plan.positions == [0, 2]
+def test_the_subgraph_sdl_leaves_out_provisas_operation_directives():
+    """A router composes the subgraph SDL into its supergraph, where @join is the federation join
+    spec's own name: a subgraph that defined Provisa's @join (an operation directive) failed
+    composition with a syntax error. A router passes no client's operation directive on, so the
+    subgraph publishes none; a directive on the schema is kept."""
+    from graphql import DirectiveLocation, GraphQLArgument, GraphQLDirective
 
-    def test_missing_typename_raises(self):
-        with pytest.raises(ValueError, match="missing __typename"):
-            group_representations([{"id": 1}], {"Orders": 1}, {"Orders": ["id"]})
-
-    def test_unknown_type_raises(self):
-        with pytest.raises(ValueError, match="Unknown entity type"):
-            group_representations(
-                [{"__typename": "Unknown", "id": 1}],
-                {"Orders": 1},
-                {"Orders": ["id"]},
-            )
-
-    def test_missing_key_field_raises(self):
-        with pytest.raises(ValueError, match="missing key field"):
-            group_representations(
-                [{"__typename": "Orders"}],
-                {"Orders": 1},
-                {"Orders": ["id"]},
-            )
-
-
-# --- compile_entity_query ---
-
-
-class TestCompileEntityQuery:
-    def test_single_pk(self):
-        sql, params = compile_entity_query("pg", "public", "orders", ["id"], [{"id": 1}, {"id": 2}])
-        assert '"id" IN ($1, $2)' in sql
-        assert params == [1, 2]
-        assert '"pg"."public"."orders"' in sql
-
-    def test_composite_pk(self):
-        sql, params = compile_entity_query(
-            "pg",
-            "public",
-            "orders",
-            ["region", "order_id"],
-            [{"region": "us", "order_id": 1}],
-        )
-        assert '("region", "order_id") IN' in sql
-        assert params == ["us", 1]
-
-
-# --- resolve_entities ---
-
-
-class TestResolveEntities:
-    @pytest.mark.asyncio
-    async def test_resolves_by_pk(self):
-        reps = [{"__typename": "Orders", "id": 1}]
-        type_to_table = {"Orders": 1}
-        type_to_keys = {"Orders": ["id"]}
-        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
-
-        async def mock_execute(sql, params, rls_ctx):
-            return [{"id": 1, "amount": 100}]
-
-        results = await resolve_entities(
-            reps, type_to_table, type_to_keys, table_meta, mock_execute
-        )
-        assert len(results) == 1
-        assert results[0]["id"] == 1
-        assert results[0]["__typename"] == "Orders"
-
-    @pytest.mark.asyncio
-    async def test_batch_resolution_groups_by_type(self):
-        """Multiple representations resolved with single query per type."""
-        reps = [
-            {"__typename": "Orders", "id": 1},
-            {"__typename": "Customers", "id": 10},
-            {"__typename": "Orders", "id": 2},
-        ]
-        type_to_table = {"Orders": 1, "Customers": 2}
-        type_to_keys = {"Orders": ["id"], "Customers": ["id"]}
-        table_meta = {
-            1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"},
-            2: {"catalog": "pg", "schema_name": "public", "table_name": "customers"},
-        }
-
-        call_count = {"n": 0}
-
-        async def mock_execute(sql, params, rls_ctx):
-            call_count["n"] += 1
-            if "orders" in sql:
-                return [
-                    {"id": 1, "amount": 100},
-                    {"id": 2, "amount": 200},
-                ]
-            return [{"id": 10, "name": "Alice"}]
-
-        results = await resolve_entities(
-            reps, type_to_table, type_to_keys, table_meta, mock_execute
-        )
-        # Should be 2 queries: one for Orders, one for Customers
-        assert call_count["n"] == 2
-        assert results[0]["id"] == 1
-        assert results[1]["id"] == 10
-        assert results[2]["id"] == 2
-
-    @pytest.mark.asyncio
-    async def test_rls_context_passed_to_executor(self):
-        """RLS context is forwarded to the execution function."""
-        reps = [{"__typename": "Orders", "id": 1}]
-        type_to_table = {"Orders": 1}
-        type_to_keys = {"Orders": ["id"]}
-        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
-
-        captured_rls = {}
-
-        async def mock_execute(sql, params, rls_ctx):
-            captured_rls["ctx"] = rls_ctx
-            return [{"id": 1, "amount": 50}]
-
-        rls_sentinel = {"role": "analyst", "filter": "region = 'us'"}
-        await resolve_entities(
-            reps,
-            type_to_table,
-            type_to_keys,
-            table_meta,
-            mock_execute,
-            rls_context=rls_sentinel,
-        )
-        assert captured_rls["ctx"] is rls_sentinel
-
-    @pytest.mark.asyncio
-    async def test_unresolved_returns_none(self):
-        reps = [{"__typename": "Orders", "id": 999}]
-        type_to_table = {"Orders": 1}
-        type_to_keys = {"Orders": ["id"]}
-        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
-
-        async def mock_execute(sql, params, rls_ctx):
-            return []  # no rows found
-
-        results = await resolve_entities(
-            reps, type_to_table, type_to_keys, table_meta, mock_execute
-        )
-        assert results == [None]
+    base = _make_base_schema()
+    join = GraphQLDirective(
+        "join",
+        [DirectiveLocation.QUERY, DirectiveLocation.SUBSCRIPTION],
+        {"strategy": GraphQLArgument(GraphQLNonNull(GraphQLString))},
+    )
+    watermark = GraphQLDirective("watermark", [DirectiveLocation.FIELD])
+    on_schema = GraphQLDirective("label", [DirectiveLocation.FIELD_DEFINITION])
+    schema = GraphQLSchema(
+        **{**base.to_kwargs(), "directives": [*base.directives, join, watermark, on_schema]}
+    )
+    sdl = generate_federation_sdl(schema, {"Orders": "id"})
+    assert "directive @join" not in sdl and "directive @watermark" not in sdl
+    assert "directive @label on FIELD_DEFINITION" in sdl
+    assert 'type Orders @key(fields: "id") {' in sdl

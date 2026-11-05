@@ -49,6 +49,7 @@ PROFILER_RUN_DEFAULTS: dict = {
     "correlation_max_columns": 20,
     "joint_max_distinct": 20,
     "category_max_columns": 10,
+    "classification_sample": 500,
 }
 
 
@@ -275,7 +276,8 @@ def governance_for_role(
             "schema_name": m.schema_name,
             "table_name": m.table_name,
             "columns": [
-                {"column_name": name, "data_type": dtype, "visible_to": []}
+                # REQ-2154: the role reads the columns it is granted; here, every one.
+                {"column_name": name, "data_type": dtype, "visible_to": [role_id]}
                 for name, dtype in (column_types or {}).get(tid, [])
             ],
         }

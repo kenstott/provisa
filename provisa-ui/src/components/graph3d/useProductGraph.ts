@@ -18,16 +18,19 @@ import {
   RoleSchema,
   dataGraphql,
   rootFields,
+  rowsOf,
   type Introspection,
   type MetaReader,
 } from "../../api/metaGraph";
+import { fetchProductLineage } from "../../api/lineage";
 import type { GraphData, QueryScope } from "./graphModel";
 import {
   NO_PRODUCT_FILTERS,
   productGraph,
   productGraphQuery,
+  withProductLineage,
   type ProductFilters,
-  type ProductRow,
+  type ProductGraphRows,
 } from "./productGraphData";
 
 // One read of each role's schema for the page's life: it changes only with the model.
@@ -47,7 +50,8 @@ export function metaReader(role: string): Promise<MetaReader> {
 }
 
 /** ``product``'s graph (every product's for null) as its one query keeps it by ``f``, with that
- * query (REQ-2136); null when the role cannot read the products. */
+ * query (REQ-2136); null when the role cannot read the products. One product's graph carries its
+ * lineage, from the product lineage endpoint (REQ-2156). */
 export async function loadProductGraph(
   role: string,
   product: string | null,
@@ -55,12 +59,17 @@ export async function loadProductGraph(
 ): Promise<{ data: GraphData; query: string } | null> {
   const query = productGraphQuery(await metaReader(role), product, f);
   if (query === null) return null;
-  const { data_products: products } = await dataGraphql<{ data_products: ProductRow[] }>(
+  const [{ data_products: products, _term_edges: ranks }, lineage] = await Promise.all([
+    dataGraphql<ProductGraphRows>(query, {}, role),
+    product === null ? null : fetchProductLineage(product),
+  ]);
+  // The rank edges are absent when the role cannot read them: no hierarchy is drawn.
+  const data = productGraph(products, rowsOf(ranks) ?? []);
+  const tables = products.flatMap((p) => p.memberTables ?? []);
+  return {
+    data: lineage && product ? withProductLineage(data, product, lineage, tables) : data,
     query,
-    {},
-    role,
-  );
-  return { data: productGraph(products), query };
+  };
 }
 
 const EMPTY: GraphData = { nodes: [], edges: [] };

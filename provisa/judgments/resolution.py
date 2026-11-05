@@ -177,6 +177,22 @@ async def dismiss(conn: Any, finding: dict, *, note: str, by: str | None, at: dt
     await fq.resolve(conn, finding["id"], by=by, resolution=f"{DISMISSED}: {note}", at=at)
 
 
+def finding_column(finding: dict) -> tuple[int, str] | None:
+    """The (table id, physical column) a finding is on -- a column, a mask entry, or a tag
+    assignment on a column -- or None for a finding on anything else."""
+    kind, key = finding["object_type"], finding["object_key"]
+    if kind == "tag_assignment":
+        object_key = key.split("@", 1)[1]
+        if not object_key.startswith("column:"):
+            return None
+        _, tid, column = object_key.split(":", 2)
+    elif kind in ("column", "mask_entry"):
+        tid, column = key.partition("#")[0].split(":", 1)
+    else:
+        return None
+    return int(tid), column
+
+
 async def is_sensitive(conn: Any, finding: dict) -> bool:
     """Whether the finding is on a sensitive column (or a tag assignment on one)."""
     from provisa.core.schema_org import (
@@ -188,22 +204,16 @@ async def is_sensitive(conn: Any, finding: dict) -> bool:
     )
     from provisa.security.sensitive import sensitive_assignments
 
-    kind, key = finding["object_type"], finding["object_key"]
-    if kind == "tag_assignment":
-        object_key = key.split("@", 1)[1]
-        if not object_key.startswith("column:"):
-            return False
-        _, tid, column = object_key.split(":", 2)
-    elif kind in ("column", "mask_entry"):
-        tid, column = key.partition("#")[0].split(":", 1)
-    else:
+    on = finding_column(finding)
+    if on is None:
         return False
+    table_id, column = on
     sens = sensitive_assignments(
         tag_assignments, registered_tables, tags, glossary_term_refs, glossary_terms
     ).subquery()
     row = (
         await conn.execute_core(
-            select(sens.c.table_id).where(sens.c.table_id == int(tid), sens.c.column_name == column)
+            select(sens.c.table_id).where(sens.c.table_id == table_id, sens.c.column_name == column)
         )
     ).fetchone()
     return row is not None

@@ -26,28 +26,28 @@ Los orígenes de **materialización** tampoco tienen conector federado. Provisa 
 
 ## Todos los orígenes {: #all-sources }
 
-Provisa registra **73** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 73; el índice es el recuento.
+Provisa registra **77** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 77; el índice es el recuento.
 
 | # | Grupo | Tipos de origen |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Almacenes de datos en la nube](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analítica / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data lake / Formatos de tabla abiertos](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Fuentes de código](code-sources.md) | `node`, `python` |
-| 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Receptor push](#push-receiver) | `ingest` |
-| 45–46 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [Orígenes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [Perfilador de datos](#data-profiler) | `data_profiler` |
-| 72 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [Almacenes de datos en la nube](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analítica / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data lake / Formatos de tabla abiertos](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [Fuentes de código](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Receptor push](#push-receiver) | `ingest` |
+| 47–48 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [Orígenes de API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Perfilador de datos](#data-profiler) | `data_profiler` |
+| 76 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
 
 Referencia de todos los tipos de origen que soporta Provisa. "Controlador directo" significa que las consultas de un solo origen se ejecutan de forma nativa contra el origen (menos de 100 ms). "Nombre del conector" es el conector federado que se usa cuando el origen participa en JOIN entre varios orígenes.
 
@@ -1045,6 +1045,8 @@ El registro deriva cuatro cosas de ese texto:
 El calendario no necesita campos nuevos. `change_signal` más `cache_ttl` fijan cada cuánto se consulta, `mv_debounce_quiet` y `mv_debounce_max_delay` agrupan una ráfaga de cambios previos en un solo escaneo, un grano de calendario lo hace periódico y `expected_events` retiene el escaneo hasta que sus entradas estén frescas en toda la ventana. El bucle de sondeo es el planificador de escaneos.
 
 `outcome` es uno de `pass`, `fail`, `warn`, `error` o `skipped`. Ninguno impone nada por sí solo. Si quiere imponer algo, declárelo aparte: un preflight o una MV sobre los resultados aterrizados. Una observación aterrizada no tiene que ser determinista, así que aquí caben comprobaciones que nunca podrían controlar un preflight, como una puntuación de anomalía, un cambio en una ventana móvil o la frescura medida respecto a ahora.
+
+Una vista materializada puede hacer cumplir las comprobaciones de sus entradas con **Retener si fallan las comprobaciones**, en su página de edición junto a su comprobación previa. Entonces se cancela una actualización, y la vista conserva su copia anterior, cuando la última ejecución de cualquier tabla de comprobación que analiza una de las entradas físicas más cercanas de la vista falló. Cuenta cada tabla de comprobación sobre una entrada, sea cual sea el producto de datos al que esté asignada. La cancelación nombra cada tabla de comprobación fallida y la entrada que analiza, y se propaga aguas abajo como cualquier cancelación de una comprobación previa. La opción es código ordinario de comprobación previa que llama a `provisa_services.dq`; **Mostrar su código** lo muestra, y puede copiarlo en la comprobación previa de la propia vista para cambiarlo. Si la vista también tiene una comprobación previa propia, la actualización se guarda solo si ambas continúan.
 
 El contrato se escribe en la UI, en el panel de calidad de datos de la página de edición de la tabla, y el texto del contrato que hay ahí es siempre la fuente de verdad. Una ejecución de prueba aplica el contrato a la tabla en vivo y muestra los resultados sin aterrizarlos. Úsela para detectar un contrato cuyo nombre de conjunto de datos se resolvió en un sitio inesperado y que, de otro modo, solo aterrizaría filas que pasan.
 

@@ -376,6 +376,25 @@ def test_each_environment_has_its_own_build_pass_and_prod_keeps_its_own(monkeypa
         reset_current_org(org_token)
 
 
+def test_a_rewired_runner_stops_the_one_it_replaces(monkeypatch, tmp_path):
+    """REQ-1915: a re-applied config wires the org's runner again; the replaced one starts
+    nothing more, so a build of its still running chains into no pass after shutdown."""
+    monkeypatch.setattr(replica_builds, "make_runner", lambda state, org, url: _Runner())
+    monkeypatch.setattr(replica_builds, "_runners", {})
+    scheduler = _Scheduler()
+    url = f"sqlite+pysqlite:///{tmp_path / 'cp.db'}"
+    process_mode.set_mode(process_mode.EVERY)
+    org_token = set_current_org("acme")
+    try:
+        replica_builds.wire_replica_runner(scheduler, state=object(), platform_url=url)
+        first = replica_builds._runners[("acme", "prod")]
+        replica_builds.wire_replica_runner(scheduler, state=object(), platform_url=url)
+        second = replica_builds._runners[("acme", "prod")]
+        assert second is not first and first.stopped and not second.stopped
+    finally:
+        reset_current_org(org_token)
+
+
 class _Runner:
     def __init__(self):
         self.passed = object()

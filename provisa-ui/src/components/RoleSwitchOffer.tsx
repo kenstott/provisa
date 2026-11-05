@@ -28,7 +28,7 @@ export function RoleSwitchOffer({
 }) {
   const { t } = useTranslation();
   const { availableRoles, selectRole } = useAuth();
-  const granting = availableRoles.filter((r) => meetsRequirement(r.capabilities, requirement));
+  const granting = availableRoles.filter((r) => meetsRequirement(r.effectiveCapabilities, requirement));
   return (
     <Stack gap={0} data-testid="role-switch-offer">
       {children}

@@ -28,6 +28,7 @@ const ADMIN_ROLE: Role = {
   id: "admin",
   description: "What admin is for.",
   capabilities: ["user_management", "access_config"] as Capability[],
+  effectiveCapabilities: ["user_management", "access_config"] as Capability[],
   demonstrated: [],
   domain_access: ["*"],
 };
@@ -36,6 +37,7 @@ const ANALYST_ROLE: Role = {
   id: "analyst",
   description: "What analyst is for.",
   capabilities: ["query_development", "full_results"] as Capability[],
+  effectiveCapabilities: ["query_development", "full_results"] as Capability[],
   demonstrated: [],
   domain_access: ["sales"],
 };
@@ -56,6 +58,7 @@ function makeAuthValue(overrides: {
     role: selectedRole === "all" ? (availableRoles[0] ?? null) : selectedRole,
     selectedRoles: selectedRole === "all" ? availableRoles : [selectedRole as Role],
     capabilities: ["user_management", "access_config"] as Capability[],
+    effectiveCapabilities: ["user_management", "access_config"] as Capability[],
     domainAccess: ["*"],
     demonstrated: [] as Capability[],
     selectedRole,

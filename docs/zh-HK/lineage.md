@@ -211,10 +211,10 @@ ORDER BY refreshed_at
 
 ## 檢視當時的樣子，以及當時記錄的樣子 {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-將來源嘅欄映射為 `business_key`、`valid_time` 同 `recorded_time` 嘅檢視會保留佢擁有過嘅每個版本：每次刷新都係附加，任何儲存上都唔會改寫任何版本。普通讀取返回當前狀態。兩個請求標頭讀取佢嘅過去：
+普通讀取返回現時狀態。視圖的兩個參數寫在語句提到它的地方，用於讀取它的過去：
 
-- `X-Provisa-As-Of` 按某個時間或某個時間範圍讀取檢視。
-- `X-Provisa-As-Recorded` 按 Provisa 在某個時間點所記錄的樣子讀取檢視。該時間之後記錄的版本不計入，因此之後記錄的更正不會改變對過去的重播。
+- `as_of` 在某個時間或某個範圍內讀取視圖：`"reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00')`。
+- `as_recorded` 按 Provisa 在某個時間的記錄讀取它。在該時間之後記錄的版本被排除，因此之後記錄的更正不會改變對過去的重播。
 
 截至 9 月 30 日、按 10 月 1 日的記錄讀取得到原始數字；按 10 月 5 日的記錄讀取得到更正後的數字。每條陳述式的稽核記錄都保存這兩個時間（`as_of`、`as_recorded`），因此報表可以按其首次產生時的樣子重現。[帶歷史的檢視](configuration.md#views-with-history-time-travel)說明呢三項宣告（附示例），以及接受這兩個值的每個介面。
 

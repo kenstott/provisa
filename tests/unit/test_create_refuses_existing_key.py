@@ -51,6 +51,8 @@ async def plane(monkeypatch, control_plane) -> Database:
 
     monkeypatch.setattr(capabilities, "require_capability", lambda _info, _cap: None)
     monkeypatch.setattr(capabilities, "require_right_in_domains", lambda _i, _r, _d: None)
+    # REQ-2155: the data product gate reads the caller from the resolver info; none is dev mode.
+    monkeypatch.setattr(capabilities, "_identity_from_info", lambda _info: None)
     return db
 
 
@@ -103,6 +105,24 @@ async def test_a_data_product_update_changes_one_that_exists_and_refuses_one_tha
     result = await mutation.update_data_product(None, _product("missing_product", "Nothing"))
     assert (result.success, result.code) == (False, "schema.data_product_not_found")
     assert await _rows(plane, data_products) == before
+
+
+async def test_a_data_product_update_saves_its_support_contact(plane):
+    # REQ-1635: the support contact a catalog listing requires is set on the product's form.
+    mutation: Any = schema_mutation.Mutation()
+    product = _product("orders_product", "Orders")
+    product.support_contact = "data-team@acme.example"
+    result = await mutation.update_data_product(None, product)
+    assert (result.success, result.code) == (True, "schema.data_product_updated")
+    async with plane.acquire() as conn:
+        stored = (
+            await conn.execute_core(
+                select(data_products.c.support_contact).where(
+                    data_products.c.id == "orders_product"
+                )
+            )
+        ).scalar_one()
+    assert stored == "data-team@acme.example"
 
 
 async def test_a_tag_create_on_an_existing_id_is_refused_and_an_update_changes_it(

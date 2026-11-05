@@ -23,7 +23,6 @@ import sqlglot
 from graphql import parse, validate
 
 from provisa.api.admin import dev_queries
-from provisa.compiler.params import embed_params_comment
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
 from provisa.cypher.parser import parse_cypher
@@ -62,16 +61,14 @@ def con() -> duckdb.DuckDBPyConnection:
     return c
 
 
-def _per_root(ctx, doc, roots, *, flat_sql: bool = False) -> list[tuple[str | None, str | None]]:
+def _per_root(
+    ctx, doc, roots, *, flat: bool = False, node_only: bool = False
+) -> list[tuple[str | None, str | None]]:
     state = SimpleNamespace(schema_build_cache={}, source_catalogs=None)
-    out = []
-    for i, root in enumerate(roots):
-        semantic = make_semantic_sql(embed_params_comment(root.sql, root.params), ctx)
-        cypher, error, _nodes = dev_queries._compile_cypher_for_result(
-            root, ctx, state, ROLE, doc, None, semantic, flat_sql, False, False, i
-        )
-        out.append((cypher, error))
-    return out
+    return [
+        dev_queries._compile_cypher_for_result(ctx, state, ROLE, doc, None, flat, node_only, i)
+        for i in range(len(roots))
+    ]
 
 
 def _rows(con, sql: str) -> list[tuple]:
@@ -101,9 +98,10 @@ def test_each_root_field_is_its_own_cypher_statement_running_to_its_sql_s_rows(c
         assert sql_rows and _cypher_rows(con, ctx, cypher) == sql_rows
 
 
-def test_the_flat_sql_view_translates_each_root_not_the_first_twice(compiled):
+@pytest.mark.parametrize(("flat", "node_only"), [(True, False), (False, True)])
+def test_each_projection_translates_each_root_not_the_first_twice(compiled, flat, node_only):
     ctx, doc, roots = compiled
-    (customers, _), (orders, _) = _per_root(ctx, doc, roots, flat_sql=True)
+    (customers, _), (orders, _) = _per_root(ctx, doc, roots, flat=flat, node_only=node_only)
     assert customers is not None and orders is not None
     assert "Customers" in customers and "Orders" in orders
 

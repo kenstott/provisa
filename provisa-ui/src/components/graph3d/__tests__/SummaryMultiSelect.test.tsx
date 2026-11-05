@@ -50,6 +50,13 @@ describe("a graph filter picking several values", () => {
     expect(screen.getByTestId("pick")).toHaveTextContent("All edge types");
   });
 
+  it("keeps its summary to one line, the whole of it in the tooltip", () => {
+    render(<Picker start={["SYNONYM_OF"]} />);
+    const text = screen.getByTestId("pick").querySelector(".g3d-summary") as HTMLElement;
+    expect(text).toHaveTextContent("Synonym of");
+    expect(text).toHaveAttribute("title", "Synonym of");
+  });
+
   it("narrows a long list by what is typed in its search", async () => {
     render(<Picker start={[]} searchable />);
     fireEvent.click(screen.getByTestId("pick"));

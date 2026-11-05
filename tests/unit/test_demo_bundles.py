@@ -293,3 +293,88 @@ def test_a_published_bundle_in_an_older_format_is_refused_before_its_layer(tmp_p
     with pytest.raises(db.OldDemoFormat, match="pull its latest"):
         make().pull("weblogs", db.LATEST, tmp_path / "pulled", running="0.1.0a483")
     assert not (tmp_path / "pulled").exists()
+
+
+# --- a bundle needing a newer runtime is refused by name; one this build satisfies loads ---
+
+
+def _bundle_dir(directory, manifest: db.BundleManifest) -> None:
+    directory.mkdir(parents=True)
+    (directory / db.MANIFEST_FILE).write_text(
+        json.dumps(
+            {
+                "demo": manifest.demo,
+                "version": manifest.version,
+                "commit": manifest.commit,
+                "requires_provisa": manifest.requires_provisa,
+                "format": manifest.format,
+            }
+        )
+    )
+
+
+def test_a_bundle_needing_a_newer_release_is_refused_by_name_at_load(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "running_provisa", lambda: "0.1.0a495")
+    pulled = tmp_path / "agentdata" / "202610281400-b6900f87a"
+    _bundle_dir(
+        pulled, db.BundleManifest("agentdata", "202610281400-b6900f87a", "b" * 40, "0.1.0a496")
+    )
+    with pytest.raises(db.NeedsNewerProvisa) as refused:
+        db.check_directory(pulled)
+    assert str(refused.value) == (
+        "demo agentdata 202610281400-b6900f87a needs Provisa 0.1.0a496 or newer; "
+        "this is Provisa 0.1.0a495"
+    )
+
+
+def test_a_bundle_in_a_newer_demo_format_is_refused_by_name_at_load(tmp_path, monkeypatch):
+    # A build that is no release reports the unstamped version, newer than every alpha, so only the
+    # format can say the bundle needs code this build does not have.
+    monkeypatch.setattr(db, "running_provisa", lambda: "0.1.0")
+    pulled = tmp_path / "churnprod" / "202611011200-abcdef1"
+    newer = db.DEMO_FORMAT + 1
+    _bundle_dir(
+        pulled,
+        db.BundleManifest("churnprod", "202611011200-abcdef1", "a" * 40, "0.1.0a496", newer),
+    )
+    with pytest.raises(db.NewerDemoFormat) as refused:
+        db.check_directory(pulled)
+    assert str(refused.value) == (
+        f"demo churnprod 202611011200-abcdef1 is in demo format {newer}; this Provisa reads "
+        f"format {db.DEMO_FORMAT}: it needs a newer Provisa"
+    )
+
+
+def test_a_published_bundle_in_a_newer_format_is_refused_before_its_layer(tmp_path, registry_pair):
+    _fake, make = registry_pair
+    newer = db.BundleManifest(
+        "weblogs", "202611011200-abcdef1", "a" * 40, "0.1.0a483", format=db.DEMO_FORMAT + 1
+    )
+    make(_PUBLISHER).push(newer, db.pack(_demo(tmp_path), newer))
+    with pytest.raises(db.NewerDemoFormat, match="needs a newer Provisa"):
+        make().pull("weblogs", db.LATEST, tmp_path / "pulled", running="0.1.0")
+    assert not (tmp_path / "pulled").exists()
+
+
+def test_a_bundle_this_build_satisfies_loads(tmp_path):
+    # The real running version: a build from this checkout carries what its demos use.
+    pulled = tmp_path / "agentdata" / "202610281400-b6900f87a"
+    _bundle_dir(
+        pulled, db.BundleManifest("agentdata", "202610281400-b6900f87a", "b" * 40, "0.1.0a496")
+    )
+    db.check_directory(pulled)
+
+
+@pytest.mark.parametrize(
+    "name", ["agentdata", "churnprod", "cloudpolicy", "files", "hasuramigration"]
+)
+def test_this_build_runs_each_demo_it_carries(name):
+    import yaml
+
+    from pathlib import Path
+
+    home = Path(__file__).resolve().parents[2] / "demo" / "named" / name
+    required = yaml.safe_load((home / "demo.yaml").read_text())["requires_provisa"]
+    db.check_runs_here(
+        db.BundleManifest(name, "202610281400-b6900f87a", "b" * 40, required), db.running_provisa()
+    )

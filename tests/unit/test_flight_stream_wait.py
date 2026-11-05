@@ -127,6 +127,7 @@ def _stream(server, cached=None):
         tier_caps=None,
         tier_plan=None,
         result_shape=None,
+        columns=None,  # as _Plan: no column transform (REQ-2131)
     )
     _cache_answer.table = cached
     try:
@@ -283,3 +284,65 @@ def test_every_place_do_get_reaches_the_engine_or_a_source_takes_a_slot():
     assert src.count("self._native_read_in_slot(") == 2
     assert src.count("self._delivered_stream(plan)") == 3
     assert "slots_for(global_cap).slot(" not in src
+
+
+def test_a_column_transform_plan_streams_its_answer_from_the_engine(monkeypatch):
+    """REQ-2131: the engine's Arrow stream of the calls' inputs goes through the transform's
+    workers as it arrives and on as Arrow typed as the statement's result -- the first batch
+    before the engine is read through -- and its slot is held until the stream is drained."""
+    from provisa.codesource import columns as columns_mod
+    from provisa.codesource.columns_fold import ColumnsCall, Folded
+
+    class _Worker:
+        def columns(self, function, batch, names, *, schema):
+            return [{"label": f"#{v}"} for v in batch[0]]
+
+    async def prepared(_state, _source_id):
+        return SimpleNamespace(manifest=None, workers=2, worker=lambda slot: _Worker())
+
+    monkeypatch.setattr(columns_mod, "_prepared", prepared)
+    monkeypatch.setattr(
+        columns_mod,
+        "_columns_export",
+        lambda manifest, function: SimpleNamespace(parameters=[SimpleNamespace(name="v")]),
+    )
+    monkeypatch.setattr("provisa.codesource.arrow_rows.row_schema", lambda m, e: None)
+    monkeypatch.setattr("provisa.codesource.arrow_rows.schema_text", lambda schema: "s")
+    inputs = pa.schema([("id", pa.int64()), ("__provisa_columns_0_0", pa.int64())])
+    pulled: list[int] = []
+
+    class _InputEngine:
+        def execute_engine_stream(self, _sql, _params):
+            def gen():
+                for i in range(0, 10000, 500):
+                    pulled.append(i)
+                    ids = pa.array(list(range(i, i + 500)))
+                    yield pa.record_batch([ids, ids], schema=inputs)
+
+            return inputs, gen()
+
+    server = _server(1, _InputEngine())
+    server._state.column_transforms = {
+        "label": {"function_name": "label", "source_id": "code", "output_columns": []}
+    }
+    call = ColumnsCall(
+        command="label", inputs=("__provisa_columns_0_0",), outputs=(("label", "text"),)
+    )
+    plan = SimpleNamespace(
+        physical_sql="SELECT id, v FROM t",
+        live_caps=(),
+        live_caps_org=None,
+        tier_caps=None,
+        tier_plan=None,
+        result_shape=None,
+        columns=Folded("SELECT id, v AS __provisa_columns_0_0 FROM t", (call,)),
+    )
+    _hit, schema, batches = run_rpc(lambda: server._engine_arrow_through_cache(plan, []))
+    assert schema.names == ["id", "label"]
+    first = next(iter(batches))
+    assert first.to_pylist()[0] == {"id": 0, "label": "#0"}
+    assert len(pulled) < 20  # answered before the engine is read through
+    assert _free(1) == 0  # the slot is held while the stream is drained
+    rest = [row for batch in batches for row in batch.to_pylist()]
+    assert rest[-1] == {"id": 9999, "label": "#9999"}
+    assert _free(1) == 1

@@ -20,6 +20,8 @@ YAML loader and the admin mutations -- call :func:`derive_result_table`.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 from typing import Any
 
 from provisa.profiler.schema import (
@@ -109,14 +111,70 @@ def validate_config(config: Any) -> None:
             raise ValueError(f"Table {table.table_name!r}: {sid!r} is not a Data Profiler source")
 
 
-async def apply_registration(conn: Any, model: Any) -> None:
-    """The admin half: derive a result table registered on a profiler, and check membership."""
+async def profile_reach_refusal(
+    conn: Any, model: Any, serves_every_column: "Callable[[int], Awaitable[bool]]"
+) -> str | None:
+    """Why ``model``'s save is refused to a caller not served every column of the table it
+    profiles, or None (REQ-2152, ruling Q6a). A profile describes every column of its table and
+    its result tables' row rules name each one, so a result table of a member's profile is
+    registered, and a table joins a profiler, only by a caller served all of it.
+    ``serves_every_column(table_id)`` answers that for the caller. A refused result table is
+    answered as one whose table is not a member; neither refusal names a column."""
     from sqlalchemy import select
-    from sqlalchemy.schema import CreateTable
 
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import sources
-    from provisa.profiler.schema import result_sa_table
+
+    row = (
+        await conn.execute_core(select(sources.c.type).where(sources.c.id == model.source_id))
+    ).fetchone()
+    if row is not None and is_profiler_source_type(row[0]):
+        member, member_id, _kind = result_of(model)
+        found = (
+            await conn.execute_core(
+                select(rt.c.id).where(
+                    rt.c.table_name == member,
+                    rt.c.profiler_source_id == model.source_id,
+                    *(() if member_id is None else (rt.c.id == member_id,)),
+                )
+            )
+        ).fetchone()
+        if found is not None and not await serves_every_column(found[0]):
+            return (
+                f"Table {model.table_name!r}: {member!r} (id {found[0]}) is not a member of "
+                f"profiler {model.source_id!r}, so it has no such profile to expose"
+            )
+        return None
+    if model.profiler_source_id is None:
+        return None
+    stored = (
+        await conn.execute_core(
+            select(rt.c.id, rt.c.profiler_source_id).where(
+                rt.c.source_id == model.source_id,
+                rt.c.schema_name == model.schema_name,
+                rt.c.table_name == model.table_name,
+            )
+        )
+    ).fetchone()
+    # A table not yet registered is registration (its registrant sets the first grants); one
+    # staying in its profiler changes no membership.
+    if stored is None or stored[1] == model.profiler_source_id:
+        return None
+    if not await serves_every_column(stored[0]):
+        return (
+            f"table {model.table_name!r} cannot join a Data Profiler: a profile describes every "
+            "column of its table, and the acting role does not read every one"
+        )
+    return None
+
+
+async def apply_registration(conn: Any, model: Any) -> None:
+    """The admin half: derive a result table registered on a profiler, and check membership."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as rt
+    from provisa.core.schema_org import sources
+    from provisa.profiler.schema import ensure_result_table
     from provisa.profiler.source import check_membership
 
     row = (
@@ -144,9 +202,7 @@ async def apply_registration(conn: Any, model: Any) -> None:
             )
         # The relation exists, empty, before the member's first run, so the registered table
         # compiles and reads as an empty history.
-        await conn.execute_core(
-            CreateTable(result_sa_table(member, member_id, kind), if_not_exists=True)
-        )
+        await ensure_result_table(conn, member, member_id, kind)
         # The run writes the relation into the org's control-plane schema (provisa.profiler.run),
         # the location the compiler reaches a profiler's tables through, as for ingest (REQ-1771).
         model.schema_name = active_org_schema(state.org_id, "")

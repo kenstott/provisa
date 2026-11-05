@@ -41,6 +41,21 @@ def test_the_sandbox_vm_runs_the_tier_alone_against_the_coordinator():
     assert "desired_status = null" in startup
 
 
+def test_the_sandbox_disk_grows_without_replacing_the_vm():
+    """google 5.45.2 forces a replacement on initialize_params.size (terraform plan, 2026-10-31:
+    50 -> 100 # forces replacement): the size is left out of terraform's changes, and an existing
+    VM's disk is grown with gcloud."""
+    sandbox = (_TF / "sandbox.tf").read_text()
+    variables = (_TF / "variables.tf").read_text()
+    instance = sandbox[sandbox.index('resource "google_compute_instance" "sandbox"') :]
+    instance = instance[: instance.index('resource "google_project_iam_custom_role"')]
+    assert "ignore_changes = [boot_disk[0].initialize_params[0].size]" in instance
+    declared = variables[variables.index('variable "sandbox_disk_gb"') :]
+    declared = declared[: declared.index("\n}\n")]
+    assert "default     = 100" in declared
+    assert "gcloud compute disks resize" in declared
+
+
 def test_the_coordinator_hands_the_tier_over_only_when_asked():
     sandbox = (_TF / "sandbox.tf").read_text()
     main = (_TF / "main.tf").read_text()
@@ -52,8 +67,9 @@ def test_the_coordinator_hands_the_tier_over_only_when_asked():
     for line in (
         "export COMPOSE_PROFILES=control",
         'export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"',
-        # REQ-2068: the regions sandbox tier, on the same VM.
-        'export PROVISA_SANDBOX_REGIONS_API_URL="https://${var.sandbox_internal_ip}:8100"',
+        # REQ-2068: the regions sandbox tier's nodes, on the same VM.
+        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,'
+        'warehouse=https://${var.sandbox_internal_ip}:8101"',
     ):
         assert line in sandbox, line
     variables = (_TF / "variables.tf").read_text()
@@ -70,19 +86,24 @@ def test_the_vm_may_be_started_and_stopped_by_the_node_account_and_on_it_alone()
     assert "instance_name = google_compute_instance.sandbox[0].name" in sandbox
 
 
-def test_the_vm_runs_the_retail_demos_stores():
-    """REQ-2068: the regions tier's demo is the VM's to run beside the sandbox tier's; its stores
-    are synced once it has a bundle."""
+def test_the_vm_runs_the_regions_demos_stores():
+    """REQ-2068: the regions tier's demos are the VM's to run beside the sandbox tier's; their
+    stores are synced once each has a bundle."""
     sandbox = (_TF / "sandbox.tf").read_text()
     lists = _TF.parents[1] / "packaging" / "linux" / "demo-stores"
-    assert "retail" in (lists / "regions-tier-bundles").read_text().strip().split(",")
+    listed = (lists / "regions-tier-bundles").read_text().strip().split(",")
+    assert "retail" in listed
     # The sync takes both tiers' demos, through the one composition deploy-cloud.sh shares.
     assert (
         'for d in split(",", "${local.sandbox_tier_bundles},${local.regions_tier_bundles}") : d'
         in sandbox
     )
-    # Published on the VM's VPC address, where the coordinator reaches it.
+    # Each node published on the VM's VPC address, where the coordinator reaches it.
     assert 'export PROVISA_SANDBOX_REGIONS_PUBLISH="${var.sandbox_internal_ip}:8100"' in sandbox
+    assert (
+        'export PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH="${var.sandbox_internal_ip}:8101"'
+        in sandbox
+    )
 
 
 # --- the sync's settings, at boot and at a patch ---------------------------------------------------
@@ -166,7 +187,7 @@ def test_a_patch_rewrites_the_vm_sync_settings_when_they_differ_and_runs_the_syn
     deploy = _DEPLOY.read_text()
     body = deploy[deploy.index("deploy_sandbox_vm() {") :]
     body = body[: body.index("\n}\n")]
-    assert "push_demo_stores; push_demo_stores_env; push_overlay" in body
+    assert "push_demo_stores; push_demo_stores_env; push_compose; push_overlay" in body
     push = _function("push_demo_stores_env")
     assert 'demo_stores_env > "$STAGE/demo-stores.env"' in push
     assert '[ "$want" = "$have" ]' in push  # rewritten only when it differs

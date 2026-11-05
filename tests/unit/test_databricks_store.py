@@ -70,15 +70,14 @@ class _FakeCursor:
         return " | ".join(s for s, _ in self.sql)
 
 
-def test_ddl_type_maps_ir_and_raises_on_unknown():
+def test_ddl_type_maps_ir_and_a_type_naming_none_as_text():
     assert _ddl_type("bigint") == "BIGINT"
     assert _ddl_type("text") == "STRING"
     assert _ddl_type("json") == "STRING"
     assert _ddl_type("numeric") == "DECIMAL(38,9)"
     assert _ddl_type("timestamptz") == "TIMESTAMP"  # native spelling normalizes through to_ir
-    # A type outside the IR vocabulary raises (via to_ir) rather than silently widening.
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        _ddl_type("geography")
+    # REQ-2171: a type naming none of the IR's lands as text.
+    assert _ddl_type("hierarchyid") == _ddl_type("text")
 
 
 def test_reconcile_creates_catalog_schema_and_table():

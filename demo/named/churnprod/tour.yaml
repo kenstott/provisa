@@ -45,7 +45,7 @@ steps:
     SELECT customer_id, email, region, plan, score, reasons FROM "churn"."view_at_risk"
     ORDER BY score DESC LIMIT 20
 - key: churnprodAnalyst
-  role: analyst
+  role: churn_analyst
 - key: churnprodMasked
   sql: >-
     SELECT customer_id, email, region, plan, score, reasons FROM "churn"."view_at_risk"

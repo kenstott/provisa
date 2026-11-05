@@ -39,7 +39,7 @@ import { fetchSettingsCatalog, updateSettingsCatalog } from "../../api/admin";
 import type { CatalogSetting, SettingsCatalog } from "../../api/admin";
 import { SaveRow } from "./settingsCards";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
-import { CARD_GROUPS } from "./settingGroups";
+import { CARD_GROUPS, GROUPS_OPEN_AT_FIRST } from "./settingGroups";
 import { FormChecks, FormField, FormFooter, FormLayout, LabelWithHelp } from "../form/FormLayout";
 import { useHelpNaming } from "../form/useHelpNaming";
 
@@ -700,7 +700,7 @@ export function CatalogCard({
                 <CollapsibleItem
                   key={g.id}
                   value={g.id}
-                  defaultOpen={false}
+                  defaultOpen={GROUPS_OPEN_AT_FIRST.has(g.id)}
                   // A group holding a value the save would refuse is kept open.
                   forceOpen={g.settings.some(hasError)}
                   controlTestId={`settings-group-${g.id}-toggle`}

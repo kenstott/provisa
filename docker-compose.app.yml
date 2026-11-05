@@ -50,6 +50,11 @@ services:
       # Kafka client properties, which can hold a SASL password: a tmpfs this container and the
       # engine share (trino_kafka_client below), so they never reach a disk.
       - trino_kafka_client:/app/trino-host/kafka-client
+      # REQ-2100: the remote-host identity a built code host accepts, for the engine that attaches
+      # it -- Trino's (trino_codehost_client) and the Postgres engine's (pg_codehost_client), each a
+      # tmpfs this container and that engine share (provisa/codesource/engine_identity.py).
+      - trino_codehost_client:/app/trino-host/codehost-client
+      - pg_codehost_client:/app/pg-engine-files
       # The data directory, on a named volume: it holds the master key the product mints at the
       # first stored secret (and its other on-disk state). Kept only in the container's own
       # filesystem, the key is lost when the container is replaced (a rebuild, an image
@@ -61,6 +66,10 @@ services:
     environment:
       PROVISA_DATA_DIR: /var/lib/provisa
       PROVISA_FAKE_KEY_DIR: /etc/provisa/fake-key  # REQ-1494
+      # REQ-2100: the directory the app shares with the Postgres engine's server, and where the
+      # server reads it (pg_codehost_client).
+      PROVISA_PG_ENGINE_FILES: /app/pg-engine-files
+      PROVISA_PG_ENGINE_FILES_AT: /etc/provisa/codehost-client
       # The deployment's master key, when the operator supplies one (a 32-byte key, base64):
       # it is used ahead of any key in the data directory. Unset, the key in the volume is used.
       PROVISA_ENCRYPTION_KEY: "${PROVISA_ENCRYPTION_KEY:-}"
@@ -139,10 +148,18 @@ services:
   trino:
     volumes:
       - trino_kafka_client:/etc/trino/kafka-client:ro
+      - trino_codehost_client:/etc/trino/codehost-client:ro
 
   trino-worker:
     volumes:
       - trino_kafka_client:/etc/trino/kafka-client:ro
+      - trino_codehost_client:/etc/trino/codehost-client:ro
+
+  # REQ-2100: the Postgres engine reads the remote-host identity from the tmpfs the app writes it
+  # into, in place of core's host directory.
+  postgres:
+    volumes:
+      - pg_codehost_client:/etc/provisa/codehost-client:ro
 
   provisa-ui:
     restart: unless-stopped
@@ -172,6 +189,20 @@ volumes:
       type: tmpfs
       device: tmpfs
       o: "uid=1000,gid=1000,mode=0700"
+  # REQ-2100: memory-backed, the remote-host identity each engine presents to a built code host;
+  # Trino's owned by Trino's user, the Postgres engine's by the postgres image's.
+  trino_codehost_client:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=1000,gid=1000,mode=0700"
+  pg_codehost_client:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=999,gid=999,mode=0700"
   # The API's data directory (PROVISA_DATA_DIR). `docker compose down -v` removes it, and with
   # it a minted master key — the secrets vault in the control-plane database then cannot be
   # opened. Keep it, or set PROVISA_ENCRYPTION_KEY.

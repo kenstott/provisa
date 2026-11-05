@@ -8,7 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { ListOrdered } from "lucide-react";
+import { PageTitle } from "../components/PageTitle";
 import { useEffect, useState } from "react";
+import { useRememberedChoice } from "../hooks/useRememberedChoice";
 import { useTranslation } from "react-i18next";
 import { FormField, FormFooter, FormLayout } from "../components/form/FormLayout";
 import {
@@ -23,7 +26,6 @@ import {
   Table,
   Tabs,
   Text,
-  Title,
   VisuallyHidden,
 } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -99,9 +101,11 @@ async function apiReject(id: number, reason: string): Promise<{ status: string }
   });
 }
 
+const REQUEST_TABS = ["pending", "resolved"] as const;
+
 export function RequestsPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"pending" | "resolved">("pending");
+  const [tab, setTab] = useRememberedChoice("filter.requests.tab", REQUEST_TABS, "pending");
   const [rows, setRows] = useState<CreationRequest[]>([]);
   const [reasons, setReasons] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);
@@ -247,7 +251,7 @@ export function RequestsPage() {
   return (
     <Stack gap="md" className="page">
       <Group justify="space-between" wrap="wrap" align="center">
-        <Title order={2}>{t("requestsPage.title")}</Title>
+        <PageTitle icon={ListOrdered}>{t("requestsPage.title")}</PageTitle>
         <FilterInput
           value={search}
           onChange={(v) => {

@@ -133,8 +133,13 @@ class TestResolveDb:
     def test_completely_arbitrary_db_returns_none(self):
         """REQ-808: arbitrary string not matching any pattern → None."""
         session, _ = _make_session(["analyst"])
-        result = session._resolve_db("neo4j")
+        result = session._resolve_db("not_a_database")
         assert result is None
+
+    def test_neo4j_names_the_home_database(self):
+        """REQ-807: neo4j is an alias of the home database, not an unknown name."""
+        session, _ = _make_session(["analyst"])
+        assert session._resolve_db("neo4j") == ("analyst", False)
 
 
 # ---------------------------------------------------------------------------
@@ -196,10 +201,10 @@ class TestSystemDomainIds:
         assert "ops" in domain_policy.system_domain_ids()
 
     def test_system_domain_ids_stable_set(self):
-        """The canonical set from REQ-808 is {"", "meta", "ops"}."""
+        """The canonical set from REQ-808 is {"", "meta", "ops"}, and ontology (REQ-2163)."""
         from provisa.core.domain_policy import _SYSTEM_DOMAIN_IDS
 
-        assert set(_SYSTEM_DOMAIN_IDS) == {"", "meta", "ops"}
+        assert set(_SYSTEM_DOMAIN_IDS) == {"", "meta", "ops", "ontology"}
 
 
 # ---------------------------------------------------------------------------

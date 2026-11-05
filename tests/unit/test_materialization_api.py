@@ -54,6 +54,19 @@ from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
 PETS = 7  # the registered id of the ``pets`` table these statements read
 
 
+def _pets_row(source_id: str, **table) -> dict:
+    """The registered ``pets`` row a statement reads (``table_ids=[PETS]``): no parameter, kept
+    for its own TTL (REQ-1986)."""
+    return {
+        "id": PETS,
+        "source_id": source_id,
+        "table_name": "pets",
+        "columns": [{"column_name": "id"}],
+        "cache_ttl": 300,
+        **table,
+    }
+
+
 def _hot_manager() -> SimpleNamespace:
     """A stand-in hot-table manager: ``hold`` keeps the entry under its table id, as the real
     one does; nothing is hot yet."""
@@ -268,11 +281,10 @@ class TestMatFetchRowsFromRest:
                 ["id"],
                 MagicMock(),
                 None,
-                "src",
-                SimpleNamespace(source_cache={}, response_cache_default_ttl=300),
                 loc,
                 "r_abc",
                 cache_rewrites,
+                ttl=300,
             )
         assert out is None
         assert cache_rewrites["pets"] == (loc, "r_abc")
@@ -292,11 +304,10 @@ class TestMatFetchRowsFromRest:
                 ["id", "name"],
                 MagicMock(),
                 None,
-                "src",
-                SimpleNamespace(source_cache={}, response_cache_default_ttl=300),
                 loc,
                 "r_abc",
                 cache_rewrites,
+                ttl=300,
             )
         assert out == [{"id": 1, "name": "Fido"}]
         assert cache_rewrites == {}
@@ -578,7 +589,15 @@ class TestMatApiEpTable:
         ):
             m_loc.return_value = CacheLocation("cat", "sch", "relational")
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
@@ -603,7 +622,15 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_known_live", return_value=True),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
 
@@ -630,7 +657,15 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert "pets" in values_cte_entries
         assert values_cte_entries["pets"].rows == [{"id": 1}]
@@ -660,7 +695,15 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), {}, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                {},
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
 
         # The projection is the col_set the step asks the fills for, which dropped `status` while
@@ -696,6 +739,7 @@ class TestMatApiEpTable:
                 set(),
                 cache_rewrites,
                 values_cte_entries,
+                registration=_pets_row("src"),
             )
             # REQ-1882: promotion is detached onto a background worker thread — wait (bounded)
             # for it, with the fills still standing in for the store.
@@ -727,7 +771,15 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_exists", return_value=True),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
 
@@ -753,7 +805,15 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
@@ -797,6 +857,7 @@ class TestMatApiEpTable:
                 cache_rewrites,
                 values_cte_entries,
                 nf_args={"petId": "1"},
+                registration=_pets_row("src"),
             )
         assert values_cte_entries["pets"].rows == [{"id": 1}]
         assert m_handle.await_args is not None
@@ -829,7 +890,15 @@ class TestMatApiEpTable:
             ),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
         assert values_cte_entries == {}
@@ -863,7 +932,15 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert values_cte_entries["pets"].rows == [{"id": 7}]
 
@@ -890,7 +967,15 @@ class TestMatApiEpTable:
             pytest.raises(RuntimeError, match="store down"),
         ):
             await _mat_api_ep_table(
-                "pets", _ep([_col("id")]), state, _statement_hot(), 500, set(), {}, {}
+                "pets",
+                _ep([_col("id")]),
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                {},
+                {},
+                registration=_pets_row("src"),
             )
         rest.assert_not_awaited()
 
@@ -924,7 +1009,15 @@ class TestMatApiEpTable:
             pytest.raises(RuntimeError, match="rest down"),
         ):
             await _mat_api_ep_table(
-                "pets", ep, state, _statement_hot(), 500, set(), cache_rewrites, values_cte_entries
+                "pets",
+                ep,
+                state,
+                _statement_hot(),
+                500,
+                set(),
+                cache_rewrites,
+                values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
@@ -944,6 +1037,17 @@ def _gql_tbl():
         "name": "Pet",
         "field_name": "pets",
         "columns": [{"name": "id", "type": "integer"}, {"name": "name", "type": "text"}],
+    }
+
+
+def _gql_registration(**table):
+    """The registered ``pets`` table: no parameter, so it keeps for the TTL chain (REQ-1986)."""
+    return {
+        "table_name": "pets",
+        "source_id": "ghsrc",
+        "columns": [{"column_name": "id"}, {"column_name": "name"}],
+        "cache_ttl": 300,
+        **table,
     }
 
 
@@ -975,6 +1079,7 @@ class TestMatGqlRemoteTable:
                 500,
                 cache_rewrites,
                 values_cte_entries,
+                registration=_gql_registration(),
             )
         assert cache_rewrites == {}
         assert values_cte_entries["pets"].rows == [{"id": 1, "name": "Fido"}]
@@ -1007,6 +1112,7 @@ class TestMatGqlRemoteTable:
                 500,
                 cache_rewrites,
                 values_cte_entries,
+                registration=_gql_registration(),
             )
         assert "pets" in cache_rewrites
         assert values_cte_entries == {}
@@ -1045,6 +1151,7 @@ class TestMatGqlRemoteTable:
                 500,
                 cache_rewrites,
                 values_cte_entries,
+                registration=_gql_registration(),
             )
         # Small result (1 row <= hot threshold) → inlined as VALUES CTE, not cache rewrite.
         assert values_cte_entries["pets"].rows == [{"id": 1, "name": "Fido"}]
@@ -1073,8 +1180,62 @@ class TestMatGqlRemoteTable:
         ):
             with pytest.raises(RuntimeError, match="GQL remote fetch failed"):
                 await _mat_gql_remote_table(
-                    "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(), 500, {}, {}
+                    "pets",
+                    _gql_reg(),
+                    _gql_tbl(),
+                    state,
+                    _statement_hot(),
+                    500,
+                    {},
+                    {},
+                    registration=_gql_registration(),
                 )
+
+    async def test_landing_failure_fails_the_read(self):
+        """A landing that fails is raised (REQ-1661), never logged and the statement rewritten to
+        the cache table it did not write: no rewrite, no inline rows, no drop scheduled."""
+        state = SimpleNamespace(
+            graphql_remote_sources={},
+            org_id="default",
+            federation_engine=SimpleNamespace(
+                materialize_store_dsn=lambda: "postgresql://x/y",
+                cache_catalog=lambda: "cat",
+                isolated_sync=_fake_isolated_sync,
+            ),
+            config=SimpleNamespace(
+                graphql_remote=SimpleNamespace(max_list_items=100, max_rows=10000)
+            ),
+        )
+        cache_rewrites: dict = {}
+        values_cte_entries: dict = {}
+        drop = MagicMock()
+        with (
+            patch("provisa.api_source.engine_cache.ensure_cache_schema"),
+            patch("provisa.api_source.engine_cache.table_known_live", return_value=False),
+            patch(
+                "provisa.graphql_remote.executor.execute_remote",
+                new=AsyncMock(return_value=RemoteAnswer([{"id": 1, "name": "Fido"}])),
+            ),
+            patch(
+                "provisa.api_source.engine_cache.land_api_cache",
+                new=AsyncMock(side_effect=OSError("store refused")),
+            ),
+            patch("provisa.api_source.engine_cache.schedule_drop", new=drop),
+        ):
+            with pytest.raises(RuntimeError, match="GQL remote landing failed for 'pets'"):
+                await _mat_gql_remote_table(
+                    "pets",
+                    _gql_reg(),
+                    _gql_tbl(),
+                    state,
+                    _statement_hot(),
+                    500,
+                    cache_rewrites,
+                    values_cte_entries,
+                    registration=_gql_registration(),
+                )
+        assert cache_rewrites == {} and values_cte_entries == {}
+        drop.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -1255,6 +1416,7 @@ class TestMaterializeApiToEngineCache:
             ],
         }
         state = SimpleNamespace(
+            tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
             graphql_remote_sources={"gh": reg},
@@ -1292,6 +1454,7 @@ class TestMaterializeApiToEngineCache:
             ],
         }
         state = SimpleNamespace(
+            tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
             graphql_remote_sources={"gh": reg},
@@ -1331,6 +1494,7 @@ class TestMaterializeApiToEngineCache:
             ],
         }
         state = SimpleNamespace(
+            tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
             graphql_remote_sources={"gh": reg},
@@ -1392,7 +1556,12 @@ class TestMaterializeApiToEngineCache:
     async def test_a_failed_grpc_branch_fails_the_query(self):
         """REQ-1661 (amended 2026-09-30): a failed gRPC remote fetch fails the query instead of
         dropping its UNION branch. (An OpenAPI table is an API endpoint: the endpoint tests.)"""
-        state = SimpleNamespace(hot_manager=None, api_endpoints={}, graphql_remote_sources={})
+        state = SimpleNamespace(
+            tables=[_pets_row("grpc_src")],
+            hot_manager=None,
+            api_endpoints={},
+            graphql_remote_sources={},
+        )
         m = "provisa.api.data.materialization"
         reg = ("grpcsrc", object(), object())
         with (
@@ -1440,10 +1609,26 @@ class TestMatGqlRemoteTableCut:
             patch("provisa.api_source.engine_cache.schedule_drop", new=MagicMock()),
         ):
             await _mat_gql_remote_table(
-                "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(hot_mgr), 500, {}, first
+                "pets",
+                _gql_reg(),
+                _gql_tbl(),
+                state,
+                _statement_hot(hot_mgr),
+                500,
+                {},
+                first,
+                registration=_gql_registration(),
             )
             await _mat_gql_remote_table(
-                "pets", _gql_reg(), _gql_tbl(), state, _statement_hot(hot_mgr), 500, {}, {}
+                "pets",
+                _gql_reg(),
+                _gql_tbl(),
+                state,
+                _statement_hot(hot_mgr),
+                500,
+                {},
+                {},
+                registration=_gql_registration(),
             )
         assert len(set(landed)) == 2  # each cut statement lands its own, found by no other
         assert hot_mgr._hot_tables == {}
@@ -1504,6 +1689,7 @@ class TestMatApiEpTableCut:
                 set(),
                 cache_rewrites,
                 values_cte_entries,
+                registration=_pets_row("src"),
             )
         assert any("__cut__" in args for args in named), named  # a name of this statement's own
         assert values_cte_entries["pets"].rows == [{"id": 1}]  # the statement reads its rows
@@ -1535,7 +1721,16 @@ async def test_a_first_read_of_a_table_with_a_parameter_column_is_stored_once_an
     def isolated_sync():
         yield EngineSession(con, dialect="duckdb", placeholder="?")
 
-    engine = SimpleNamespace(isolated_sync=isolated_sync)
+    async def landed_table_exists(*, schema: str, table: str) -> bool:
+        # The store is this DuckDB connection: its own catalog says what is landed.
+        return bool(
+            con.execute(
+                "SELECT 1 FROM duckdb_tables() WHERE schema_name = ? AND table_name = ?",
+                [schema, table],
+            ).fetchall()
+        )
+
+    engine = SimpleNamespace(isolated_sync=isolated_sync, landed_table_exists=landed_table_exists)
     state = SimpleNamespace(
         api_sources={"src": ApiSource(id="src", type="openapi", base_url="https://pay.test")},
         org_id="default",
@@ -1572,14 +1767,34 @@ async def test_a_first_read_of_a_table_with_a_parameter_column_is_stored_once_an
             return_value=httpx.Response(200, json=customers)
         )
         first: dict = {}
-        await _mat_api_ep_table("customers", ep, state, _statement_hot(), 1, set(), first, {})
+        await _mat_api_ep_table(
+            "customers",
+            ep,
+            state,
+            _statement_hot(),
+            1,
+            set(),
+            first,
+            {},
+            registration=_pets_row("src"),
+        )
         (_loc, table) = first["customers"]  # above the hot threshold: read from the cache table
         stored = con.execute(f'SELECT id, name FROM memory.api_cache."{table}" ORDER BY id')
         assert stored.fetchall() == [(c["id"], c["name"]) for c in customers]  # once, not twice
         assert [d[0] for d in stored.description] == ["id", "name"]
 
         again: dict = {}
-        await _mat_api_ep_table("customers", ep, state, _statement_hot(), 1, set(), again, {})
+        await _mat_api_ep_table(
+            "customers",
+            ep,
+            state,
+            _statement_hot(),
+            1,
+            set(),
+            again,
+            {},
+            registration=_pets_row("src"),
+        )
         assert again == first and route.call_count == 1  # a hit: the remote is not called again
     engine_cache._SCHEMA_EXISTS_CACHE.clear()
     engine_cache._TABLE_EXISTS_CACHE.clear()

@@ -30,14 +30,14 @@ says this copy IS the creation (``seed``). Afterwards they are the environment's
 may do what (REQ-1539).
 """
 
-# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539
+# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539, REQ-2201
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import MetaData, Table, delete, select
+from sqlalchemy import MetaData, Table, case, delete, insert, literal, select
 
 from provisa.core.env_classes import (
     BINDING_COLUMN,
@@ -56,7 +56,7 @@ from provisa.core.env_conflicts import Conflict
 from provisa.core.environments import org_schema
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import org_settings
-from provisa.core.schema_org import roles as org_roles
+from provisa.core.org_forget import on_forget, schema_of_org
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -66,6 +66,12 @@ if TYPE_CHECKING:
 _MAX_BIND_PARAMS = 30000
 
 _scoped_metadata: dict[str, MetaData] = {}
+
+
+@on_forget(size=lambda: len(_scoped_metadata))
+def _forget_scoped_metadata(org_id: str) -> None:
+    for schema in [s for s in _scoped_metadata if schema_of_org(org_id, s)]:
+        _scoped_metadata.pop(schema, None)
 
 
 def _scoped(table: Table, schema: str) -> Table:
@@ -256,60 +262,6 @@ async def copy_model(
     return report
 
 
-async def adopt_role_definition(
-    db: "Database",
-    org_id: str,
-    env: str | None,
-    *,
-    target: str,
-    source: str,
-) -> None:
-    """In ``env`` alone, ``target``'s capabilities and demonstrated list become ``source``'s.
-
-    REQ-1597 defines the sandbox visitor by subtraction from ``org_admin``, and the subtraction has
-    to happen against the NAME the model's grants carry, not against a name of its own. A column is
-    visible to a role when ``table_columns.visible_to`` NAMES that role
-    (``schema_gen._build_visible_tables``), and every grant in a copied model names the roles the
-    model was authored against. A role id no grant mentions therefore sees no column on any table,
-    and ``schema_gen`` then drops each table that has none -- leaving a visitor exactly the tables
-    whose API path/query parameters are exempt from the gate, and nothing else. The schema was not
-    incomplete; it was correctly empty for a name nobody had granted anything to.
-
-    So the visitor holds ``sandbox`` AND ``org_admin`` (``seat_redeemed_roles``), and the withholding
-    happens HERE, against ``org_admin``, in the visitor's own environment -- capabilities resolve as
-    the union over the holder's roles, so the union is the sandbox definition and no wider. The
-    definition is not restated: it is read from this environment's own ``sandbox`` row, so
-    REQ-1597's denylist and REQ-1602's demonstrated list keep exactly one author. Prod's
-    ``org_admin`` is untouched -- REQ-1539 makes ``roles`` the environment's own answer once it has
-    one, and this writes only the schema ``env`` names.
-    """
-    schema = org_schema(org_id, env)
-    scoped = _scoped(org_roles, schema)
-    async with db.acquire() as conn, conn.transaction():
-        row = (
-            await conn.execute_core(
-                select(scoped.c.capabilities, scoped.c.demonstrated).where(scoped.c.id == source)
-            )
-        ).fetchone()
-        if row is None:
-            raise ValueError(f"{schema} has no role {source!r} to define {target!r} from")
-        await conn.execute_core(
-            scoped.update()
-            .where(scoped.c.id == target)
-            .values(
-                capabilities=row._mapping["capabilities"],
-                demonstrated=row._mapping["demonstrated"],
-                # REQ-1624: and the derivation is RECORDED, not just applied. The tenancy seam
-                # (db.apply_tenancy_role_grants) re-asserts org_admin's own rights into every
-                # environment schema on every runtime build, so a subtraction applied once here was
-                # given back on the visitor's next request -- environment_management among them,
-                # which is how a sandbox visitor reached the org's environments surface. The column
-                # is what that seam re-reads the definition from, so the subtraction survives it.
-                defined_from=source,
-            )
-        )
-
-
 async def _copy(
     conn: "Connection",
     org_id: str,
@@ -360,6 +312,7 @@ async def clone_model(
             conn, src_schema, dst_schema, report, REPLACE, True, True, False, landing, apply=True
         )
         await copy_profile_results(conn, src_schema, dst_schema)
+        await copy_term_scans(conn, src_schema, dst_schema)
         return report
 
 
@@ -369,10 +322,13 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
     A run's results are relations of the org's schema of their own (``<table>_<id>_profile_<kind>``,
     provisa.profiler.schema), not model tables, so the model copy does not move them; a sandbox
     is cloned with its template's table ids, so each keeps its name. Each is replaced whole.
-    Returns the relations copied."""
+    A relation no table of ``src_schema``'s model names (profiler.schema.superseded_results) is
+    not copied. Returns the relations copied."""
     from sqlalchemy import text
 
-    from provisa.profiler.schema import is_result_table_name
+    from provisa.profiler.schema import is_result_table_name, superseded_results
+
+    superseded = set(await superseded_results(conn, src_schema))
 
     names = [
         r[0]
@@ -384,7 +340,7 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
                 ).bindparams(schema=src_schema)
             )
         ).fetchall()
-        if is_result_table_name(r[0])
+        if is_result_table_name(r[0]) and r[0] not in superseded
     ]
     for name in names:
         src, dst = f'"{src_schema}"."{name}"', f'"{dst_schema}"."{name}"'
@@ -392,6 +348,40 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
         await conn.execute_core(text(f"CREATE TABLE {dst} (LIKE {src} INCLUDING ALL)"))
         await conn.execute_core(text(f"INSERT INTO {dst} SELECT * FROM {src}"))
     return names
+
+
+#: REQ-2201: a library document, its domains and passages, and the scans of it with their drafts,
+#: in the order their foreign keys need.
+_SCAN_TABLES = (
+    "reference_documents",
+    "reference_document_domains",
+    "reference_passages",
+    "glossary_term_scans",
+    "glossary_term_drafts",
+)
+
+
+async def copy_term_scans(conn: "Connection", src_schema: str, dst_schema: str) -> list[str]:
+    """REQ-2201: the reference library and the scans of it of ``src_schema``, carried into
+    ``dst_schema``: a demo's template holds the scans its bundle carries (provisa.term_finding.carry),
+    and a sandbox opens on them. They are the environment's own (env_classes.NEVER_RUNTIME), so the
+    model copy does not move them; a sandbox is cloned with its template's glossary term ids, so
+    each row keeps its ids. Each table is replaced whole. Returns the tables copied."""
+    tables = [org_metadata.tables[name] for name in _SCAN_TABLES]
+    for table in reversed(tables):
+        await conn.execute_core(delete(_scoped(table, dst_schema)))
+    for table in tables:
+        src, dst = _scoped(table, src_schema), _scoped(table, dst_schema)
+        columns = [c.name for c in table.columns]
+        await conn.execute_core(
+            insert(dst).from_select(columns, select(*(src.c[c] for c in columns)))
+        )
+    await _resync_sequences(conn, tables, dst_schema)
+    # REQ-2185: the copied passages searchable under their dimension's vector index.
+    from provisa.reference_library import store
+
+    await store.index_vectors(conn, dst_schema)
+    return list(_SCAN_TABLES)
 
 
 async def _copy_schemas(
@@ -459,6 +449,9 @@ async def _copy_table(
     dst = _scoped(table, dst_schema)
     columns = _carried_columns(table, strip_identities)
     delta = TableDelta(table.name)
+    if apply and not (table.name in IDENTITY_ONLY and strip_identities):
+        if not await _holds_rows(conn, dst):
+            return await _copy_into_empty(conn, src, dst, columns, src_schema, dst_schema, delta)
 
     source_rows = {
         k: _rebase(r, src_schema, dst_schema) for k, r in (await _rows(conn, src)).items()
@@ -519,6 +512,41 @@ async def _copy_table(
     for key, values in updates:
         await conn.execute_core(dst.update().where(_where(dst, key)).values(**values))
     await _insert_rows(conn, dst, inserts)
+    return delta
+
+
+async def _holds_rows(conn: "Connection", table: Table) -> bool:
+    return (
+        await conn.execute_core(select(literal(1)).select_from(table).limit(1))
+    ).first() is not None
+
+
+async def _copy_into_empty(
+    conn: "Connection",
+    src: Table,
+    dst: Table,
+    columns: list[str],
+    src_schema: str,
+    dst_schema: str,
+    delta: TableDelta,
+) -> TableDelta:
+    """A table the target holds no row of, copied in one statement on the server: every source row
+    arrives as the row-by-row path would insert it, a value naming the source's own schema rebased
+    onto the target's (``_rebase``). The rows are never carried here and back: a sandbox's open
+    copied its template's model three times over (prod and two environments), each time 2,722
+    rows of table_columns, nearly all the built-in tables', through one statement of a value a
+    parameter (REQ-2006). A row whose binding a copy decides (IDENTITY_ONLY, stripped) never
+    comes here."""
+    picked = {
+        c: case((src.c[c] == src_schema, literal(dst_schema)), else_=src.c[c]).label(c)
+        if c == _SCHEMA_COLUMN
+        else src.c[c]
+        for c in columns
+    }
+    keys = await conn.execute_core(select(*(picked[c.name] for c in src.primary_key.columns)))
+    delta.added = [_render(tuple(key)) for key in keys.fetchall()]
+    if delta.added:
+        await conn.execute_core(insert(dst).from_select(columns, select(*picked.values())))
     return delta
 
 

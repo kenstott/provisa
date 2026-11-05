@@ -44,34 +44,55 @@ def demo_config(request) -> dict:
         return yaml.safe_load(fh)
 
 
+def _chains(demo_config) -> dict[str, list[str]]:
+    """Each role's ancestors (REQ-2155): the standard roles and the config's own."""
+    from provisa.core.db import standard_role_dicts
+    from provisa.security.inheritance import role_chains
+
+    own = [
+        {
+            "id": r["id"],
+            "capabilities": r.get("capabilities") or [],
+            "parents": r.get("parents") or [],
+        }
+        for r in demo_config.get("roles") or []
+    ]
+    return role_chains([*standard_role_dicts(), *own])
+
+
 def test_org_admin_has_full_domain_access_from_the_seed(demo_config):
-    # REQ-1349: the guarantee moved out of the configs. They redefined org_admin WITHOUT
-    # org_settings/observability, and config load runs after apply_tenancy_role_grants and
-    # overwrites capabilities wholesale — so the definition is schema.sql's alone and no config
-    # may carry an org_admin role block.
+    # REQ-1349, REQ-2155: org_admin is a standard role, Provisa's alone -- no config may carry an
+    # org_admin role block -- and its definition reaches every domain with the org-scoped rights.
+    from provisa.core.db import STANDARD_ROLE_RIGHTS, STANDARD_ROLES
+
     assert "org_admin" not in {r["id"] for r in demo_config.get("roles") or []}
-    with open(os.path.join(os.path.dirname(_CONFIG_DIR), "provisa", "core", "schema.sql")) as fh:
-        seed = fh.read()
-    block = seed[seed.index("    'org_admin',") :]
-    block = block[: block.index("ON CONFLICT")]
     for right in ("org_settings", "observability"):
-        assert f'"{right}"' in block, right
-    assert "'[\"*\"]'::jsonb" in block, block
+        assert right in STANDARD_ROLE_RIGHTS["org_admin"], right
+    assert STANDARD_ROLES["org_admin"].domain_access == ("*",)
 
 
 def test_every_restricted_demo_column_is_visible_to_org_admin(demo_config):
+    """A grant reaches org_admin when it names org_admin or a role it inherits (REQ-2155)."""
+    from provisa.security.inheritance import holds_grant
+
+    chains = _chains(demo_config)
     hidden = [
         f"{t['table']}.{c['name']}"
         for t in demo_config["tables"]
         for c in t["columns"]
-        if c.get("visible_to") and "org_admin" not in c["visible_to"]
+        if c.get("visible_to") and not holds_grant("org_admin", c["visible_to"], chains)
     ]
     assert not hidden, hidden
 
 
 def test_every_restricted_demo_function_and_webhook_is_visible_to_org_admin(demo_config):
+    from provisa.security.inheritance import holds_grant
+
+    chains = _chains(demo_config)
     callables = (demo_config.get("functions") or []) + (demo_config.get("webhooks") or [])
     hidden = [
-        c["name"] for c in callables if c.get("visible_to") and "org_admin" not in c["visible_to"]
+        c["name"]
+        for c in callables
+        if c.get("visible_to") and not holds_grant("org_admin", c["visible_to"], chains)
     ]
     assert not hidden, hidden

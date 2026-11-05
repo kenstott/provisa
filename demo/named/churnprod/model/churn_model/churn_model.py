@@ -70,21 +70,27 @@ def reasons_for(row) -> list[str]:
     return [_WORDS[FEATURES[i]] for i in held[:3]]
 
 
-def churn_risk(
-    customer_id: str,
-    plan: str,
-    region: str,
-    tenure_months: int,
-    logins_per_month: float,
-    tickets: int,
-    as_of: date | None = None,
-) -> list[RiskRow]:
+@dataclass
+class RiskInputs:
+    customer_id: str
+    plan: str
+    region: str
+    tenure_months: int
+    logins_per_month: float
+    tickets: int
+    as_of: date | None = None
+
+
+def churn_risk(inputs: RiskInputs) -> list[RiskRow]:
     """How likely a customer is to cancel, from the features the churn analysis trained on, and
     what raises it most.
 
     @table
     """
-    row = features(plan, region, tenure_months, logins_per_month, tickets)
+    row = features(
+        inputs.plan, inputs.region, inputs.tenure_months, inputs.logins_per_month, inputs.tickets
+    )
     score = float(_MODEL.predict_proba(row.reshape(1, -1))[0, 1])
+    as_of = inputs.as_of
     stamped = datetime.combine(as_of, time(), UTC) if as_of else datetime.now(UTC)
-    return [RiskRow(str(customer_id), round(score, 4), reasons_for(row), stamped)]
+    return [RiskRow(str(inputs.customer_id), round(score, 4), reasons_for(row), stamped)]

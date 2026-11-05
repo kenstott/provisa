@@ -10,19 +10,7 @@ name: NixOS
 # in packaging/nixos). Every step after the boot runs in the guest through packaging/nixos/vm-run.
 
 on:
-  # Not on every push: a run is seven jobs, six of them a core shard in a guest, and what it tests changes with the
-  # NixOS configuration, not with the product. Product drift is caught weekly.
-  push:
-    branches: [main]
-    paths:
-      - "packaging/nixos/**"
-      - "packaging/linux/**"
-      - "install.sh"
-      - "scripts/provisa"
-      - ".github/actions/nixos-vm/**"
-      - ".github/workflows/nixos.yml"
-  schedule:
-    - cron: "0 9 * * 0"
+  # e2e and integration runs start only on request (maintainer 2026-10-29): pushes run unit tests only.
   workflow_dispatch:
     inputs:
       lanes:

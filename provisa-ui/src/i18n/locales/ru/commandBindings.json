@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "Разделы команды",
+    "section_command": "Команда",
+    "section_bindings": "Привязки",
+    "language": "Язык",
+    "name": "Имя",
+    "leaveOut": "Исключена",
+    "nameIn": "Имя в {{language}}",
+    "leaveOutOf": "Исключить из {{language}}",
+    "notOffered": "Не предлагается",
+    "sqlAlways": "Предлагается всегда",
+    "hint": "Команда предлагается в каждом языке под собственным именем. Переименуйте её в языке или исключите из него. SQL предлагается всегда.",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

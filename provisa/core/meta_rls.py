@@ -47,6 +47,7 @@ META_TABLES = frozenset(
         "table_write_grants",  # REQ-2074
         "roles",
         "roles_domain_access",
+        "roles_parents",  # REQ-2155
         "tracked_webhooks",
         "tracked_functions",
     }

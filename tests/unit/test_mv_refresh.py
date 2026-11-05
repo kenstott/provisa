@@ -61,6 +61,11 @@ def _model_holds_the_joined_tables(monkeypatch):
     views join, registered on source ``src``."""
     from provisa.api.app import state
 
+    # The model is read whole -- registered tables, the model-wide context, source catalogs and
+    # the view registry -- so each is this test's own, never what an earlier test left.
+    monkeypatch.setattr(state, "view_context", None)
+    monkeypatch.setattr(state, "source_catalogs", {})
+    monkeypatch.setattr(state, "mv_registry", MVRegistry())
     monkeypatch.setattr(
         state,
         "tables",
@@ -156,7 +161,7 @@ def _register_the_joined_tables(monkeypatch, *, customers: list[str] | None) -> 
         raising=False,
     )
 
-    async def _tables(_state):
+    async def _tables(_state, *, catalog=False):
         if customers is None:
             return []
         return [
@@ -200,8 +205,8 @@ class TestBuildRefreshSQL:
 
         platform = {
             "regions": [
-                {"id": "eu", "address": "https://eu.example.com"},
-                {"id": "us", "address": "https://us.example.com"},
+                {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+                {"id": "us", "description": "The us region", "purposes": ["residency"]},
             ]
         }
         mv = _sql_mv()
@@ -210,7 +215,7 @@ class TestBuildRefreshSQL:
             "AND team = current_setting('provisa.team')"
         )
 
-        async def _govern_and_route(sql, _role, *, session_vars, route_hint):
+        async def _govern_and_route(sql, _role, *, session_vars, route_hint, building):
             resolved = _pipeline._resolve_session_settings(sql, session_vars, "postgres")
             return SimpleNamespace(
                 route=Route.ENGINE, physical_sql=resolved, exec_params=None, columns=None
@@ -388,6 +393,53 @@ class TestRefreshMV:
         assert any("CREATE TABLE" in c for c in engine.sqls)
         assert mv.status == MVStatus.FRESH
         assert mv.row_count == 42
+
+    async def test_a_first_build_lands_into_the_store_table_keyed_as_its_reconcile_keys_it(self):
+        # ci/green-batch1: a GROUP BY view built by CREATE TABLE AS had no key; the event loop's
+        # reconcile, keying it by its GROUP BY (REQ-970), then found it drifted, dropped it and
+        # re-created it empty -- the view read as fresh and answered nothing.
+        mv = _sql_mv()
+        registry = MVRegistry()
+        registry.register(mv)
+
+        class _Keyed(_FakeEngine):
+            def __init__(self):
+                super().__init__(count=3, side_effect=self._probe)
+                self.engine = SimpleNamespace(catalog_qualified=True, dialect="postgres")
+                self.reconciled: list[dict] = []
+
+            def _probe(self, sql):
+                # The target does not exist until the reconcile makes it.
+                target_probe = '"mv_cache".' in sql and sql.endswith("LIMIT 0")
+                if target_probe and "_shape" not in sql and not self.reconciled:
+                    raise Exception("TABLE_NOT_FOUND")
+
+            async def execute_engine(self, sql, *a, **k):
+                if "_mv_probe" in sql:
+                    self.sqls.append(sql)
+                    return QueryResult(
+                        rows=[],
+                        column_names=["customer_id", "name", "order_count"],
+                        column_types=["integer", "varchar", "bigint"],
+                    )
+                return await super().execute_engine(sql, *a, **k)
+
+            async def reconcile_mv_table(self, **kw):
+                self.reconciled.append(kw)
+                return "created"
+
+        engine = _Keyed()
+        await refresh_mv(engine, mv, registry)
+
+        assert [r["pk_columns"] for r in engine.reconciled] == [["customer_id", "name"]]
+        assert [c for c, _t in engine.reconciled[0]["columns"]] == [
+            "customer_id",
+            "name",
+            "order_count",
+        ]
+        assert not any(c.startswith("CREATE TABLE") for c in engine.sqls)
+        assert any(c.startswith("INSERT INTO") for c in engine.sqls)
+        assert mv.status == MVStatus.FRESH
 
     async def test_subsequent_refresh_deletes_and_inserts(self):
         mv = _jp_mv()

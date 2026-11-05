@@ -1,0 +1,24 @@
+{
+  "profileClassificationsModal": {
+    "title": "{{table}} 的分类",
+    "suggested": "最近一次运行的建议",
+    "none": "最近一次运行未建议任何分类。",
+    "column": "列",
+    "kindHeader": "看起来像",
+    "evidence": "依据",
+    "sensitive": "敏感",
+    "suggestion": "{{table}}.{{column}} 看起来像{{kind}}：{{share}} 的抽样值通过了它的检验。",
+    "accept": "接受",
+    "reject": "拒绝",
+    "status_suggested": "已建议",
+    "status_accepted": "已接受",
+    "status_rejected": "已拒绝",
+    "decided": "决定",
+    "noneDecided": "尚无已接受或已拒绝的建议。",
+    "withdraw": "撤回",
+    "linked": "该列现在表示 {{term}}。",
+    "keyColumn": "该列保留其类术语：键列的含义就是它的类术语。",
+    "markedPii": "已标记为 PII。",
+    "maskOffered": "建议的掩码：{{mask}}。请在该列的掩码中添加。"
+  }
+}

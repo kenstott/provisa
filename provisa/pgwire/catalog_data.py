@@ -18,7 +18,19 @@ through ``typeinfo()`` / ``pg_type_rows()`` so all OID resolution flows one path
 
 from __future__ import annotations
 
+from provisa.core.pg_money import LC_MONETARY
+from provisa.core.ir_types import SUBTYPES
+from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
+from provisa.pgwire.catalog_pg17_tables import (
+    CLIENT_RELATIONS,
+    OBJECT_TYPE_RELATIONS,
+    STATISTICS_RELATIONS,
+    served_table,
+)
+from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
 from provisa.pgwire.ext_surfaces import surface_pg_type_rows, surface_typeinfo
+from provisa.pgwire.catalog_pg17_acl import PG17_ROLE_MEMBERS, PG17_ROLES
+from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID
 
 
 _PG_TYPE_ROWS = [
@@ -40,6 +52,41 @@ _PG_TYPE_ROWS = [
     (1700, "numeric", 11, -1, "b", "N", False, 0, False, "i", "m"),
     (3802, "jsonb", 11, -1, "b", "U", False, 0, False, "i", "x"),
     (2950, "uuid", 11, 16, "b", "U", False, 0, False, "c", "p"),
+    # REQ-2171: the subtypes' types, as PostgreSQL's pg_type has them.
+    (26, "oid", 11, 4, "b", "N", False, 0, True, "i", "p"),
+    (142, "xml", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    (143, "_xml", 11, -1, "b", "A", False, 0, False, "i", "x"),
+    (600, "point", 11, 16, "b", "G", False, 0, False, "d", "p"),
+    (650, "cidr", 11, -1, "b", "I", False, 0, False, "i", "m"),
+    (790, "money", 11, 8, "b", "N", False, 0, True, "d", "p"),
+    (829, "macaddr", 11, 6, "b", "U", False, 0, False, "i", "p"),
+    (869, "inet", 11, -1, "b", "I", False, 0, False, "i", "m"),
+    (774, "macaddr8", 11, 8, "b", "U", False, 0, False, "i", "p"),
+    (628, "line", 11, 24, "b", "G", False, 0, False, "d", "p"),
+    (601, "lseg", 11, 32, "b", "G", False, 0, False, "d", "p"),
+    (603, "box", 11, 32, "b", "G", False, 0, False, "d", "p"),
+    (602, "path", 11, -1, "b", "G", False, 0, False, "d", "x"),
+    (604, "polygon", 11, -1, "b", "G", False, 0, False, "d", "x"),
+    (718, "circle", 11, 24, "b", "G", False, 0, False, "d", "p"),
+    (3904, "int4range", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (3926, "int8range", 11, -1, "r", "R", False, 0, False, "d", "x"),
+    (3906, "numrange", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (3908, "tsrange", 11, -1, "r", "R", False, 0, False, "d", "x"),
+    (3910, "tstzrange", 11, -1, "r", "R", False, 0, False, "d", "x"),
+    (3912, "daterange", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (4451, "int4multirange", 11, -1, "m", "R", False, 0, False, "i", "x"),
+    (4536, "int8multirange", 11, -1, "m", "R", False, 0, False, "d", "x"),
+    (4532, "nummultirange", 11, -1, "m", "R", False, 0, False, "i", "x"),
+    (4533, "tsmultirange", 11, -1, "m", "R", False, 0, False, "d", "x"),
+    (4534, "tstzmultirange", 11, -1, "m", "R", False, 0, False, "d", "x"),
+    (4535, "datemultirange", 11, -1, "m", "R", False, 0, False, "i", "x"),
+    (1560, "bit", 11, -1, "b", "V", False, 0, False, "i", "x"),
+    (1562, "varbit", 11, -1, "b", "V", False, 0, False, "i", "x"),
+    (3614, "tsvector", 11, -1, "b", "U", False, 0, False, "i", "x"),
+    # PostGIS's types, at Provisa's own OIDs (ir_types.SUBTYPES); present whether or not the
+    # PostGIS surface is enabled, since a registered column may be one.
+    (8310, "geometry", 11, -1, "b", "U", False, 0, False, "d", "m"),
+    (8311, "geography", 11, -1, "b", "U", False, 0, False, "d", "m"),
 ]
 
 # OID → (attlen, attbyval, attalign, attstorage)
@@ -61,6 +108,38 @@ _PG_OID_ATTR_META: dict[int, tuple[int, bool, str, str]] = {
     1700: (-1, False, "i", "m"),  # numeric
     3802: (-1, False, "i", "x"),  # jsonb
     2950: (16, False, "c", "p"),  # uuid
+    # REQ-2171: the subtypes' types
+    26: (4, True, "i", "p"),  # oid
+    142: (-1, False, "i", "x"),  # xml
+    600: (16, False, "d", "p"),  # point
+    650: (-1, False, "i", "m"),  # cidr
+    790: (8, True, "d", "p"),  # money
+    829: (6, False, "i", "p"),  # macaddr
+    869: (-1, False, "i", "m"),  # inet
+    774: (8, False, "i", "p"),  # macaddr8
+    628: (24, False, "d", "p"),  # line
+    601: (32, False, "d", "p"),  # lseg
+    603: (32, False, "d", "p"),  # box
+    602: (-1, False, "d", "x"),  # path
+    604: (-1, False, "d", "x"),  # polygon
+    718: (24, False, "d", "p"),  # circle
+    3904: (-1, False, "i", "x"),  # int4range
+    3926: (-1, False, "d", "x"),  # int8range
+    3906: (-1, False, "i", "x"),  # numrange
+    3908: (-1, False, "d", "x"),  # tsrange
+    3910: (-1, False, "d", "x"),  # tstzrange
+    3912: (-1, False, "i", "x"),  # daterange
+    4451: (-1, False, "i", "x"),  # int4multirange
+    4536: (-1, False, "d", "x"),  # int8multirange
+    4532: (-1, False, "i", "x"),  # nummultirange
+    4533: (-1, False, "d", "x"),  # tsmultirange
+    4534: (-1, False, "d", "x"),  # tstzmultirange
+    4535: (-1, False, "i", "x"),  # datemultirange
+    1560: (-1, False, "i", "x"),  # bit
+    1562: (-1, False, "i", "x"),  # varbit
+    3614: (-1, False, "i", "x"),  # tsvector
+    8310: (-1, False, "d", "m"),  # geometry
+    8311: (-1, False, "d", "m"),  # geography
 }
 
 _TYPEINFO_COLS = [
@@ -122,6 +201,38 @@ _TYPEINFO: dict[int, tuple] = {
     1700: ("pg_catalog", "numeric", "b", None, None, None, None),
     2950: ("pg_catalog", "uuid", "b", None, None, None, None),
     3802: ("pg_catalog", "jsonb", "b", None, None, None, None),
+    # REQ-2171: the subtypes' types (oid is above)
+    142: ("pg_catalog", "xml", "b", None, None, None, None),
+    600: ("pg_catalog", "point", "b", None, None, None, None),
+    650: ("pg_catalog", "cidr", "b", None, None, None, None),
+    790: ("pg_catalog", "money", "b", None, None, None, None),
+    829: ("pg_catalog", "macaddr", "b", None, None, None, None),
+    869: ("pg_catalog", "inet", "b", None, None, None, None),
+    774: ("pg_catalog", "macaddr8", "b", None, None, None, None),
+    628: ("pg_catalog", "line", "b", None, None, None, None),
+    601: ("pg_catalog", "lseg", "b", None, None, None, None),
+    603: ("pg_catalog", "box", "b", None, None, None, None),
+    602: ("pg_catalog", "path", "b", None, None, None, None),
+    604: ("pg_catalog", "polygon", "b", None, None, None, None),
+    718: ("pg_catalog", "circle", "b", None, None, None, None),
+    # A range type names the type of its bounds.
+    3904: ("pg_catalog", "int4range", "r", None, None, None, 23),
+    3926: ("pg_catalog", "int8range", "r", None, None, None, 20),
+    3906: ("pg_catalog", "numrange", "r", None, None, None, 1700),
+    3908: ("pg_catalog", "tsrange", "r", None, None, None, 1114),
+    3910: ("pg_catalog", "tstzrange", "r", None, None, None, 1184),
+    3912: ("pg_catalog", "daterange", "r", None, None, None, 1082),
+    4451: ("pg_catalog", "int4multirange", "m", None, None, None, None),
+    4536: ("pg_catalog", "int8multirange", "m", None, None, None, None),
+    4532: ("pg_catalog", "nummultirange", "m", None, None, None, None),
+    4533: ("pg_catalog", "tsmultirange", "m", None, None, None, None),
+    4534: ("pg_catalog", "tstzmultirange", "m", None, None, None, None),
+    4535: ("pg_catalog", "datemultirange", "m", None, None, None, None),
+    1560: ("pg_catalog", "bit", "b", None, None, None, None),
+    1562: ("pg_catalog", "varbit", "b", None, None, None, None),
+    3614: ("pg_catalog", "tsvector", "b", None, None, None, None),
+    8310: ("public", "geometry", "b", None, None, None, None),
+    8311: ("public", "geography", "b", None, None, None, None),
     # Array types
     199: ("pg_catalog", "_json", "b", None, 114, ",", None),
     1000: ("pg_catalog", "_bool", "b", None, 16, ",", None),
@@ -158,6 +269,7 @@ _KNOWN_SETTINGS = {
     "search_path": 'public, "$user"',
     "extra_float_digits": "0",
     "application_name": "",
+    "lc_monetary": LC_MONETARY,  # REQ-2171: money is read and written under it, and no other
     "is_superuser": "on",
     "session_authorization": "org_admin",
     # PG-14 startup ParameterStatus fields (see PG protocol §54.2).
@@ -165,17 +277,9 @@ _KNOWN_SETTINGS = {
     "in_hot_standby": "off",
 }
 
-_PG_SYSTEM_ROLES: list[tuple] = [
-    # OID, name, super, inherit, createrole, createdb, canlogin, replication, connlimit, bypassrls
-    (3386, "pg_monitor", False, True, False, False, False, False, -1, False),
-    (3387, "pg_read_all_settings", False, True, False, False, False, False, -1, False),
-    (3388, "pg_read_all_stats", False, True, False, False, False, False, -1, False),
-    (3389, "pg_stat_scan_tables", False, True, False, False, False, False, -1, False),
-    (4200, "pg_signal_backend", False, True, False, False, False, False, -1, False),
-    (4569, "pg_read_server_files", False, True, False, False, False, False, -1, False),
-    (4570, "pg_write_server_files", False, True, False, False, False, False, -1, False),
-    (4571, "pg_execute_server_program", False, True, False, False, False, False, -1, False),
-]
+#: PostgreSQL 17's predefined roles and their memberships (catalog_pg17_acl).
+_PG_SYSTEM_ROLES: list[tuple] = list(PG17_ROLES)
+PG_SYSTEM_ROLE_MEMBERS = PG17_ROLE_MEMBERS
 
 _PG_SETTINGS_ROWS: list[tuple] = [
     (
@@ -368,6 +472,25 @@ _PG_SETTINGS_ROWS: list[tuple] = [
         None,
         False,
     ),
+    (
+        "lc_monetary",
+        LC_MONETARY,
+        None,
+        "Client Connection Defaults / Locale and Formatting",
+        "Sets the locale for formatting monetary amounts.",
+        None,
+        "user",
+        "string",
+        "default",
+        None,
+        None,
+        None,
+        LC_MONETARY,
+        LC_MONETARY,
+        None,
+        None,
+        False,
+    ),
 ]
 
 
@@ -394,7 +517,7 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_settings"): "_pg_settings",
     ("pg_catalog", "pg_tables"): "_pg_tables",
     ("pg_catalog", "pg_stat_user_tables"): "_pg_stat_user_tables",
-    ("pg_catalog", "pg_statio_user_tables"): "_pg_stat_user_tables",
+    ("pg_catalog", "pg_statio_user_tables"): "_pg_statio_user_tables",
     ("pg_catalog", "pg_am"): "_pg_am",
     ("pg_catalog", "pg_tablespace"): "_pg_tablespace",
     ("pg_catalog", "pg_conversion"): "_pg_conversion",
@@ -446,7 +569,71 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("information_schema", "applicable_roles"): "_is_applicable_roles",
 }
 
+# REQ-2167: the PostgreSQL 17-shaped relations clients browse with (catalog_pg17_tables).
+_TABLE_MAP.update(
+    {
+        key: served_table(*key)
+        for key in (*CLIENT_RELATIONS, *STATISTICS_RELATIONS, *OBJECT_TYPE_RELATIONS)
+    }
+)
+
+# Every other PostgreSQL 17 relation (catalog_pg17_tables, tier 4).
+UNQUERIED_RELATIONS: tuple[tuple[str, str], ...] = tuple(
+    key for key in RELATIONS if key not in _TABLE_MAP
+)
+_TABLE_MAP.update({key: served_table(*key) for key in UNQUERIED_RELATIONS})
+
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
+
+_NAMESPACE_OIDS = {"pg_catalog": PG_CATALOG_OID, "information_schema": INFORMATION_SCHEMA_OID}
+
+
+def _array_element(oid: int) -> int:
+    """An array type's element type (oidvector's and int2vector's too); 0 for any other type."""
+    _ns, _name, _len, _kind, category, *_, element, _delim, _fmt = TYPES[oid]
+    return element if category == "A" else 0
+
+
+def _with_underlying_types(oids: set[int]) -> set[int]:
+    """The types, with the types they are domains over and arrays of."""
+    under = {TYPES[oid][6] for oid in oids} | {_array_element(oid) for oid in oids}
+    under.discard(0)
+    return oids if under <= oids else _with_underlying_types(oids | under)
+
+
+# REQ-2167: every type a PostgreSQL 17 catalog column has, and the types under them, listed as
+# PostgreSQL 17 records them, so a client that looks up the type of a catalog column it was sent
+# (in pg_type, or by asyncpg's type introspection) finds it.
+_DESCRIBED_TYPE_OIDS = sorted(
+    _with_underlying_types(
+        {oid for columns in RELATIONS.values() for _, _, oid in columns}
+        | set(CATALOG_TYPE_OIDS.values())
+        # The types a result column is sent as besides: a cast's (cast_types) and an object
+        # identifier's (catalog_regs).
+        | {1042, 2205, 2206, 4089}
+        # REQ-2171: a registered column of a built-in type is sent as it.
+        | {sub.pg_oid for sub in SUBTYPES.values() if sub.pg_oid in TYPES}
+    )
+    - {row[0] for row in _PG_TYPE_ROWS}
+)
+for _oid in _DESCRIBED_TYPE_OIDS:
+    _ns, _name, _len, _kind, _category, _notnull, _base, _byval, _align, _storage, *_ = TYPES[_oid]
+    _PG_TYPE_ROWS.append(
+        (_oid, _name, _NAMESPACE_OIDS[_ns], _len, _kind, _category, _notnull, _base, _byval)
+        + (_align, _storage)
+    )
+    _element = _array_element(_oid)
+    _TYPEINFO.setdefault(
+        _oid,
+        (_ns, _name, _kind, _base or None, _element or None, TYPES[_oid][11] if _element else None)
+        + (None,),
+    )
+
+# REQ-2171: a registered column of a built-in type is stored as PostgreSQL 17 stores it.
+for _sub in SUBTYPES.values():
+    if _sub.pg_oid in TYPES:
+        _, _, _len, _, _, _, _, _byval, _align, _storage, *_ = TYPES[_sub.pg_oid]
+        _PG_OID_ATTR_META.setdefault(_sub.pg_oid, (_len, _byval, _align, _storage))
 
 
 def typeinfo() -> dict[int, tuple]:
@@ -456,4 +643,18 @@ def typeinfo() -> dict[int, tuple]:
 
 def pg_type_rows() -> list[tuple]:
     """Built-in _pg_type rows merged with enabled extension-surface type rows (REQ-892)."""
-    return [*_PG_TYPE_ROWS, *surface_pg_type_rows()]
+    # REQ-2171: the PostGIS surface declares types the subtypes already hold; each OID once.
+    held = {row[0] for row in _PG_TYPE_ROWS}
+    return [*_PG_TYPE_ROWS, *(row for row in surface_pg_type_rows() if row[0] not in held)]
+
+
+def served_database_name(state) -> str:  # REQ-1235
+    """The database a pgwire client is connected to. Under multi-tenancy that is the bound org,
+    which the client named (database name or TLS hostname); a single-tenant deployment has one
+    database, ``provisa``."""
+    from provisa.api.org_resolve import DEFAULT_DATABASE
+    from provisa.core.request_context import require_current_org
+
+    if getattr(state, "multitenancy", False):
+        return require_current_org()
+    return DEFAULT_DATABASE

@@ -141,6 +141,44 @@ def test_a_delete_filters_by_the_physical_column(built):
 
 
 @pytest.mark.parametrize(
+    ("where", "condition", "params"),
+    [
+        ('{givenName: {like: "An%"}}', '"first_name" LIKE %s', ["An%"]),
+        ('{givenName: {neq: "Ana"}}', '"first_name" != %s', ["Ana"]),
+        ("{totalCents: {gt: 5}}", '"total_cents" > %s', [5]),
+        ("{totalCents: {gte: 5}}", '"total_cents" >= %s', [5]),
+        ("{totalCents: {lt: 5}}", '"total_cents" < %s', [5]),
+        ("{totalCents: {lte: 5}}", '"total_cents" <= %s', [5]),
+        ("{totalCents: {in: [1, 2]}}", '"total_cents" IN (%s, %s)', [1, 2]),
+        ("{givenName: {is_null: true}}", '"first_name" IS NULL', []),
+        (
+            '{totalCents: {gt: 1}, givenName: {like: "A%"}}',
+            '"total_cents" > %s AND "first_name" LIKE %s',
+            [1, "A%"],
+        ),
+        (
+            '{_or: [{totalCents: {eq: 1}}, {givenName: {eq: "Ana"}}]}',
+            '("total_cents" = %s OR "first_name" = %s)',
+            [1, "Ana"],
+        ),
+    ],
+)
+@pytest.mark.parametrize("verb", ["update", "delete"])
+def test_a_writes_where_takes_every_operator_a_read_does(built, verb, where, condition, params):
+    """Each operator the where input offers is the condition written; none is dropped, so a
+    write never reaches rows its where did not select."""
+    set_arg = 'set: {givenName: "Anita"}, ' if verb == "update" else ""
+    m = _compiled(
+        built, f"mutation {{ {verb}Customers({set_arg}where: {where}) {{ affected_rows }} }}"
+    )
+    placeholders = condition.replace("%s", "{}").format(
+        *[f"${i}" for i in range(2 if verb == "update" else 1, len(params) + 3)]
+    )
+    assert f"WHERE {placeholders} RETURNING" in m.sql, m.sql
+    assert m.params == (["Anita"] if verb == "update" else []) + params
+
+
+@pytest.mark.parametrize(
     "sql",
     [
         'INSERT INTO "store"."customers" ("givenName", total_cents) VALUES (\'Ana\', 5)',

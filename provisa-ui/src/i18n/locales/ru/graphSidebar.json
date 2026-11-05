@@ -4,10 +4,17 @@
     "tabHistory": "История",
     "tabFavorites": "Избранное",
     "tabExport": "Экспорт в Neo4j",
+    "tabExportSparql": "Экспорт в RDF или результаты SPARQL",
     "domainLabels": "Метки доменов",
     "nodeLabels": "Метки узлов",
     "relationshipTypes": "Типы связей",
     "propertyKeys": "Ключи свойств",
+    "session": "Сессия",
+    "sessionFailed": "Не удалось прочитать сессию: {{error}}",
+    "sessionEmpty": "В этой сессии ничего не создано.",
+    "sessionClear": "Очистить сессию",
+    "sessionLabelTip": "{{nodes}} узлов в сессии, помечено узлов модели: {{tagged}}",
+    "sessionTypeTip": "Связей в сессии: {{count}}",
     "loading": "Загрузка…",
     "noLabelsFound": "Метки не найдены",
     "noRelTypesFound": "Типы связей не найдены",
@@ -30,6 +37,8 @@
     "tabSettings": "Настройки вида",
     "maxNodes": "Макс. узлов",
     "maxNodesHint": "Максимум узлов, которые рисует запрос",
-    "notCounted": "Не подсчитано: {{list}}"
+    "notCounted": "Не подсчитано: {{list}}",
+    "countsFailed": "Подсчёт недоступен: {{error}}",
+    "schemaFailed": "Схема недоступна: {{error}}"
   }
 }

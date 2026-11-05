@@ -29,7 +29,12 @@ const edge: GEdge = {
   startNode: from,
   endNode: to,
 };
-const rel = { id: 7, alias: "PLACED_BY", graphqlAlias: null } as unknown as Relationship;
+const rel = {
+  id: 7,
+  alias: "PLACED_BY",
+  graphqlAlias: null,
+  cypherType: "PLACED_BY",
+} as unknown as Relationship;
 
 function show(selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge }) {
   render(
@@ -41,7 +46,6 @@ function show(selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GE
       width={320}
       onResizeStart={() => {}}
       relationships={[rel]}
-      pkMap={{}}
       labelToTableId={{ "sales:Order": 41 }}
     />,
   );
@@ -64,5 +68,22 @@ describe("the inspector's link", () => {
   it("offers none for a node whose label reads no registered table", () => {
     show({ kind: "node", data: to });
     expect(screen.queryByTestId("inspector-open")).toBeNull();
+  });
+});
+
+describe("a SPARQL node in the inspector", () => {
+  it("names a property compactly, with its whole IRI on hover", () => {
+    show({
+      kind: "node",
+      data: {
+        ...to,
+        properties: { "sales:customers#name": "Ann" },
+        propertyIris: { "sales:customers#name": "https://x/vocab/sales/customers#name" },
+      },
+    });
+    expect(screen.getByText("sales:customers#name")).toHaveAttribute(
+      "title",
+      "https://x/vocab/sales/customers#name",
+    );
   });
 });

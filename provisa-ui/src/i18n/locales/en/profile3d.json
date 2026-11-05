@@ -3,6 +3,7 @@
     "expand": "Expand view",
     "webglError": "The 3D view could not start: {{error}}",
     "hint": "Drag to orbit · scroll to zoom · right-drag to pan",
+    "hintFlat": "Drag to pan · scroll to zoom",
     "rotate": "Rotate",
     "resetView": "Reset view",
     "zoomTo": "Zoom to this column",

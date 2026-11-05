@@ -58,6 +58,13 @@ export default defineConfig([
         selector: "CallExpression[callee.object.name='client'][callee.property.name=/^(query|mutate)$/]",
         message: 'Use useQuery/useLazyQuery/useMutation (src/hooks/useAdminQueries.ts), never client.query/client.mutate. See react-graphql SKILL.md.',
       }],
+      // crypto.randomUUID exists only in a secure context (https or localhost); a page served over
+      // plain http from another host has none. src/lib/uuid.ts builds the id in every context.
+      'no-restricted-properties': ['error', {
+        object: 'crypto',
+        property: 'randomUUID',
+        message: 'crypto.randomUUID is undefined outside a secure context. Use uuid() from src/lib/uuid.ts.',
+      }],
       // The raw Apollo client may only be imported by App.tsx (to wire <ApolloProvider>).
       // Everywhere else, importing it is the escape hatch that hides imperative GraphQL.
       'no-restricted-imports': ['error', {

@@ -38,6 +38,7 @@ from tests.integration.metadata_export_server import (
     SOURCE,
     publish,
     published_server,
+    refused,
 )
 
 pytestmark = [
@@ -78,6 +79,18 @@ def _rows(conn, sql: str) -> list[tuple]:
         cur.close()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warehouse_awake():
+    """The server's engine is the project's SQL warehouse: running before anything in this module
+    connects, and stopped again after the module however it ends, if this module started it
+    (REQ-254). Module-scoped autouse: set up before, and torn down after, ``published``."""
+    from tests.integration.databricks_warehouse import warehouse_running
+
+    _credentials()  # a missing credential fails here, by name
+    with warehouse_running():
+        yield
+
+
 @pytest.fixture(scope="module")
 async def published():
     creds = _credentials()
@@ -106,7 +119,7 @@ async def published():
                 assert read.status_code == 200, read.text
             result = await publish(client, {"provider": "unity_catalog", "delta_share": True})
         # What the publish refused is the finding: read back only what it says it published.
-        assert result["ok"], result["errors"]
+        assert result["ok"], refused(result)
         conn = _connect(creds)
         try:
             views = {
@@ -146,7 +159,7 @@ async def published():
 
 async def test_the_publish_reports_the_product_its_views_and_its_share(published):
     result = published[0]
-    assert result["ok"], result["errors"]
+    assert result["ok"], refused(result)
     assert result["published"] == {"data_products": 1, "views": 2, "shares": 1}
 
 

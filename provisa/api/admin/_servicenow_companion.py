@@ -81,6 +81,10 @@ async def sync_companion(conn: "Connection", source_id: str) -> None:
     await store_openapi_auth(
         conn, cid, {"type": "basic", "username": source.username, "password": source.password}
     )
+    from provisa.api.app import state
+
+    # Held by this process as every saved source is, so its operations are offered at once.
+    state.source_types[cid] = SourceType.openapi.value
     _forget_spec(cid)
 
 

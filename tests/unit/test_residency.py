@@ -114,12 +114,14 @@ class TestResolveLandingArgs:
             ("ts", "timestamptz"),  # REQ-2050: an instant
         ]
 
-    def test_unmapped_native_type_raises(self):
-        # REQ-846: an unmapped native type is a vocabulary gap — raise, never a silent varchar default.
-        with pytest.raises(ValueError, match="not in the IR vocabulary"):
-            resolve_landing_args(
-                _source(), _table(columns=[_col("x", "geometry")]), platform="trino"
-            )
+    def test_a_subtype_and_a_type_naming_no_ir_type_land_as_text(self):
+        # REQ-2171: a subtype lands as its base; a type that fits no IR type is text.
+        args = resolve_landing_args(
+            _source(),
+            _table(columns=[_col("x", "geometry"), _col("y", "hyperloglog")]),
+            platform="trino",
+        )
+        assert args.columns == [("x", "text"), ("y", "text")]
 
     def test_table_signal_overrides_source(self):
         args = resolve_landing_args(_source(change_signal="ttl"), _table(change_signal="debezium"))

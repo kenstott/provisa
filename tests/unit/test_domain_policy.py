@@ -82,15 +82,15 @@ class TestResolveDomainId:
 
 class TestSystemDomainIds:
     def test_legacy_system_ids(self):
-        assert domain_policy.system_domain_ids() == ["", "meta", "ops"]
+        assert domain_policy.system_domain_ids() == ["", "meta", "ops", "ontology"]
 
     def test_single_domain_appends_default(self):
         domain_policy.configure(False, "global")
-        assert domain_policy.system_domain_ids() == ["", "meta", "ops", "global"]
+        assert domain_policy.system_domain_ids() == ["", "meta", "ops", "ontology", "global"]
 
     def test_namespaced_keeps_legacy_ids(self):
         domain_policy.configure(True, "default")
-        assert domain_policy.system_domain_ids() == ["", "meta", "ops"]
+        assert domain_policy.system_domain_ids() == ["", "meta", "ops", "ontology"]
 
 
 class TestImportDefault:

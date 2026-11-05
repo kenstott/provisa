@@ -283,9 +283,13 @@ def test_governance_rls_applied_analyst_gets_zero_order_rows(airport_server_port
     """Server-side RLS governance: analyst's orders are row-filtered to empty (deny-by-default)
     while admin reads all orders — through the real DuckDB airport client."""
     admin_orders = _run_airport_client(airport_server_port, "org_admin", _SCHEMA, "orders")
-    analyst_orders = _run_airport_client(airport_server_port, "analyst", _SCHEMA, "orders")
+    analyst_orders = _run_airport_client(
+        airport_server_port, "sales_analytics_analyst", _SCHEMA, "orders"
+    )
     # analyst can still read a non-RLS table — proving the role isn't globally broken.
-    analyst_customers = _run_airport_client(airport_server_port, "analyst", _SCHEMA, _TABLE)
+    analyst_customers = _run_airport_client(
+        airport_server_port, "sales_analytics_analyst", _SCHEMA, _TABLE
+    )
 
     assert len(admin_orders["rows"]) > 0, "admin should read order rows"
     assert len(analyst_orders["rows"]) == 0, (
@@ -435,7 +439,7 @@ def test_update_denied_for_non_visible_row_is_governed_noop(airport_server_port)
     # analyst attempts to mutate that order — RLS denies row visibility, so nothing changes.
     _run_sql(
         airport_server_port,
-        "analyst",
+        "sales_analytics_analyst",
         [f"""UPDATE provisa."{_SCHEMA}"."orders" SET status = 'hacked' WHERE id = {oid}"""],
         fetch=False,
     )

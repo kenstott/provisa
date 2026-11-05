@@ -35,22 +35,26 @@ RPCS = (
 def _redacted(method: Any) -> Any:
     import pyarrow.flight as flight
 
-    from provisa.security.redaction import redact
+    # What the client is told: redacted, in the model's names of the org the RPC bound (REQ-2087,
+    # REQ-2152) -- held past the handler, which resets its binding before the error reaches here.
+    from provisa.api.engine_error_names import client_text
+    from provisa.core.request_context import answering_org
 
     @functools.wraps(method)
     def call(*args: Any, **kwargs: Any) -> Any:
-        try:
-            return method(*args, **kwargs)
-        except flight.FlightError as exc:  # pyright: ignore[reportPrivateImportUsage]
-            said = redact(str(exc))
-            if said == str(exc):
-                raise
-            raise type(exc)(said, exc.extra_info) from None
-        except Exception as exc:  # noqa: BLE001  # allow-blind-except: pyarrow sends any other exception's text to the client as a server error; only its text is redacted, and the error stays a server error
-            said = redact(str(exc))
-            if said == str(exc):
-                raise
-            raise flight.FlightServerError(said) from None  # pyright: ignore[reportPrivateImportUsage]
+        with answering_org() as answered:
+            try:
+                return method(*args, **kwargs)
+            except flight.FlightError as exc:  # pyright: ignore[reportPrivateImportUsage]
+                said = client_text(str(exc), answered.org_id)
+                if said == str(exc):
+                    raise
+                raise type(exc)(said, exc.extra_info) from None
+            except Exception as exc:  # noqa: BLE001  # allow-blind-except: pyarrow sends any other exception's text to the client as a server error; only its text is redacted, and the error stays a server error
+                said = client_text(str(exc), answered.org_id)
+                if said == str(exc):
+                    raise
+                raise flight.FlightServerError(said) from None  # pyright: ignore[reportPrivateImportUsage]
 
     return call
 

@@ -109,11 +109,12 @@ async def test_a_none_value_deletes_the_override(tenant_db):
 
 async def test_a_non_overridable_key_is_refused_before_any_write(tenant_db):
     # The rejection must be atomic with respect to the batch: a request mixing an owned key with a
-    # deployment-wide one must not half-apply.
+    # deployment-wide one must not half-apply. ``federation_engine`` is the deployment's engine;
+    # ``federation`` is the org's own subgraph block (REQ-259), which an org may override.
     with pytest.raises(ValueError, match="not org-overridable"):
         await write_org_overrides(
             tenant_db,
-            {"nl": {"rate_limit": 5}, "federation": {"engine": "trino"}},
+            {"nl": {"rate_limit": 5}, "federation_engine": "trino"},
             updated_by="alice",
         )
 

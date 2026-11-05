@@ -738,6 +738,7 @@ L'entrée principale d'enregistrement de table. Champs clés au-delà des bases 
 | `mvRefreshInterval` | Secondes entre les rafraîchissements |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Maintenance incrémentale |
+| `mvHoldOnFailingChecks` | Suspendre si des contrôles échouent : une actualisation est annulée, et la vue garde sa copie précédente, tant qu'une table de contrôle qui analyse l'une de ses entrées a échoué à sa dernière exécution |
 | `businessKey` | Colonnes qui identifient la même chose d'une version à l'autre ; déclarée avec `validTime` et `recordedTime`, les trois ou aucune |
 | `validTime` | Colonne contenant la date que l'activité donne à l'enregistrement |
 | `recordedTime` | Colonne contenant le moment où cette version a été saisie ou modifiée |

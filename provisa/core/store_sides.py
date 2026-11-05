@@ -82,6 +82,8 @@ STATE: frozenset[str] = frozenset(
         "file_source_mtimes",
         # REQ-1926: the schemas this region's sessions hold temporary tables in, in its own store.
         "session_temp_schemas",
+        # REQ-2176: each principal's graph session, whose tables are in this region's store.
+        "graph_sessions",
     }
 )
 

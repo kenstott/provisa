@@ -46,6 +46,7 @@ const KINDS = [
   "joint_counts",
   "constraints",
   "constraint_checks",
+  "classifications",
   "duplicates",
   "repeats",
 ] as const;
@@ -98,7 +99,8 @@ export function ProfileRunsModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  // REQ-1620: the selected roles, the "Role: All" set included, as the run is shown to them.
+  const { actingRoles } = useAuth();
   const [runs, setRuns] = useState<ProfileRun[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   // The results of one run, kept with the run they answer: a selection whose results have not come
@@ -119,11 +121,11 @@ export function ProfileRunsModal({
   }, [tableId]);
 
   useEffect(() => {
-    if (selected == null || !role) return;
-    fetchProfileRun(tableId, selected, role.id)
+    if (selected == null || !actingRoles) return;
+    fetchProfileRun(tableId, selected, actingRoles)
       .then((data) => setLoaded({ runId: selected, data }))
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, [tableId, selected, role]);
+  }, [tableId, selected, actingRoles]);
 
   // The runs as the grid shows them: one plain value per column, each row keeping its run's id.
   const runColumns = [
@@ -229,21 +231,21 @@ export function ProfileRunsModal({
             ) : tab === "driftStrata" ? (
               selected != null &&
               runs != null &&
-              role && (
+              actingRoles && (
                 <ProfileDriftStrata
                   tableId={tableId}
-                  role={role.id}
+                  role={actingRoles}
                   runs={runs}
                   selectedRunId={selected}
                   results={results}
                   tableName={tableName}
                 />
               )
-            ) : tab === "drift" && selected != null && role ? (
+            ) : tab === "drift" && selected != null && actingRoles ? (
               <ProfileDriftPanel
                 tableId={tableId}
                 runId={selected}
-                role={role.id}
+                role={actingRoles}
                 rows={results.drift ?? []}
               />
             ) : (

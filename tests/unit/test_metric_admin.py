@@ -17,6 +17,8 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+import provisa.api.app  # noqa: F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
+
 from provisa.core.models import Metric
 from provisa.core.repositories import metric as metric_repo
 
@@ -96,7 +98,7 @@ async def test_upsert_get_list_delete_roundtrip(control_plane):
             derived = await metric_repo.get(conn, "sales_amount_sum")
             assert derived is not None
             assert derived["from_fact"] == "Sales"
-            assert derived["visible_to"] == ["*"]  # model default
+            assert derived["visible_to"] == []  # model default: no role (REQ-2153)
 
             assert await metric_repo.delete(conn, "net_revenue") is True
             assert await metric_repo.get(conn, "net_revenue") is None

@@ -13,6 +13,7 @@
 
 import * as THREE from "three";
 import { BaseScene, type SceneCallbacks, type SceneTheme, type VectorScene } from "../baseScene";
+import type { ViewNode } from "../bestView";
 import type { RelEdge, RelationsModel, RelNode } from "./relationsModel";
 
 export type RelHover = { kind: "node"; id: string } | { kind: "edge"; id: string };
@@ -54,15 +55,19 @@ export class RelationsScene extends BaseScene<RelHover> {
   // ---------- public ----------
 
   setData(model: RelationsModel, edges: RelEdge[], resetCamera: boolean) {
+    this.invalidate();
     this.model = model;
     this.edges = edges;
     this.rebuild();
+    this.settleView();
     if (resetCamera) this.resetView(true);
   }
 
   setEdges(edges: RelEdge[]) {
+    this.invalidate();
     this.edges = edges;
     this.rebuild();
+    this.settleView();
   }
 
   /** Columns, relationships and arrowheads, flat (an SVG export). */
@@ -78,30 +83,63 @@ export class RelationsScene extends BaseScene<RelHover> {
   }
 
   setSelected(id: string | null) {
+    this.invalidate();
     this.selected = id;
     this.paint();
   }
 
   setHover(h: RelHover | null) {
+    this.invalidate();
     if (h?.kind === this.hover?.kind && h?.id === this.hover?.id) return;
     this.hover = h;
     this.paint();
   }
 
+  /** REQ-2174: the best view of the columns, from the distance that fits them. */
   resetView(instant = false) {
-    const dist = this.aspect < 1.1 ? 30 / Math.max(this.aspect, 0.5) : 24;
+    this.invalidate();
+    const view = this.best ?? this.settleView();
+    if (!view) throw new Error("a relations scene always has a view");
     this.flyTo(
-      new THREE.Vector3(dist * 0.45, dist * 0.35, dist * 0.82),
+      view.dir.clone().multiplyScalar(this.fitDistance()),
       new THREE.Vector3(0, 0, 0),
       instant,
+      view.up,
     );
   }
 
   focus(id: string) {
+    this.invalidate();
     const n = this.nodes.find((x) => x.node.id === id);
-    if (!n) return;
+    const view = this.best;
+    if (!n || !view) return;
     const tgt = n.mesh.position.clone();
-    this.flyTo(tgt.clone().add(new THREE.Vector3(3.5, 2.5, 6.5)), tgt, false);
+    this.flyTo(tgt.clone().add(view.dir.clone().multiplyScalar(8)), tgt, false, view.up);
+  }
+
+  protected viewContent(): { nodes: ViewNode[]; edges: [number, number][] } {
+    const index = new Map(this.nodes.map((n, i) => [n.node.id, i]));
+    // A label's width at the resting distance: a monospace character is 0.6 of the 10.5px font.
+    const height = Math.max(1, (this.canvas.parentElement as HTMLElement).clientHeight);
+    const perUnit =
+      height / (2 * this.fitDistance() * Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2)));
+    return {
+      nodes: this.nodes.map((n) => ({
+        at: n.mesh.position.clone(),
+        radius: (n.mesh.geometry as THREE.SphereGeometry).parameters.radius,
+        label: (n.node.id.length * 10.5 * 0.6) / perUnit,
+      })),
+      edges: this.edges.flatMap((e) => {
+        const a = index.get(e.a);
+        const b = index.get(e.b);
+        return a === undefined || b === undefined ? [] : [[a, b] as [number, number]];
+      }),
+    };
+  }
+
+  /** How far back the camera stands for the whole graph. */
+  private fitDistance(): number {
+    return this.aspect < 1.1 ? 30 / Math.max(this.aspect, 0.5) : 24;
   }
 
   // ---------- BaseScene ----------
@@ -208,8 +246,9 @@ export class RelationsScene extends BaseScene<RelHover> {
       mesh.castShadow = true;
       mesh.userData.node = node.id;
       world.add(mesh);
+      // Above its node on screen, whichever way the view stands.
       const label = this.pin(node.id, "p3d-label p3d-node-label", () =>
-        mesh.position.clone().add(new THREE.Vector3(0, r + 0.25, 0)),
+        mesh.position.clone().add(this.camera.up.clone().multiplyScalar(r + 0.25)),
       );
       this.nodes.push({ node, mesh, label });
     }

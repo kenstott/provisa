@@ -54,6 +54,10 @@ _ALL_DRIFTING_SQL = (
 )
 
 
+_RUNS_SQL = next(s["sql"] for s in _STEPS if s["key"] == "profilingRuns")
+_AS_THE_BROWSER = "runsAsTheBrowser"
+
+
 @pytest.fixture(scope="module")
 def registry():
     from tests.integration.demo_registry import DemoRegistry
@@ -128,18 +132,33 @@ def _close(org_id: str) -> None:
         engine.dispose()
 
 
-def _sql(tier, sandbox: dict, sql: str, travel: dict[str, str]) -> list[dict[str, Any]]:
+def _sql(tier, sandbox: dict, sql: str, env: str) -> list[dict[str, Any]]:
     headers = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
-    if travel.get("as_of"):
-        headers["X-Provisa-As-Of"] = travel["as_of"]
-    if travel.get("as_recorded"):
-        headers["X-Provisa-As-Recorded"] = travel["as_recorded"]
     # The environment the tour's switcher last picked; prod is a request naming none.
-    if travel.get("env", "prod") != "prod":
-        headers["x-provisa-env"] = travel["env"]
+    if env != "prod":
+        headers["x-provisa-env"] = env
     resp = httpx.post(f"{tier.base_url}/data/sql", json={"sql": sql}, headers=headers, timeout=300)
     assert resp.status_code == 200, f"{sql}: HTTP {resp.status_code}: {resp.text}"
     return resp.json()["data"]["sql"]
+
+
+def _as_the_browser(tier, sandbox: dict, sql: str) -> list[list[Any]]:
+    """``sql`` as the SQL explorer sends it: one answer per statement, as the set of roles the
+    visitor acts as under "Role: All", from what /auth/me says of them."""
+    headers = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
+    me = httpx.get(f"{tier.base_url}/auth/me", headers=headers, timeout=60)
+    assert me.status_code == 200, me.text
+    roles = sorted({a["role_id"] for a in me.json()["assignments"]})
+    resp = httpx.post(
+        f"{tier.base_url}/data/sql",
+        json={"sql": sql, "results": "each"},
+        headers={**headers, "X-Provisa-Role": ",".join(roles)},
+        timeout=300,
+    )
+    assert resp.status_code == 200, f"{roles}: HTTP {resp.status_code}: {resp.text}"
+    [answer] = resp.json()["results"]
+    assert "error" not in answer or answer["error"] is None, answer
+    return answer["data"]
 
 
 @pytest.fixture(scope="module")
@@ -156,20 +175,15 @@ def answers(tmp_path_factory, registry) -> dict[str, list[dict[str, Any]]]:
     try:
         sandbox = _open(tier)
         try:
-            travel: dict[str, str] = {}
+            env = "prod"
             out: dict[str, list[dict[str, Any]]] = {}
             for step in _STEPS:
-                if "as_of" in step:
-                    travel["as_of"] = step["as_of"]
-                if "env" in step:
-                    travel["env"] = step["env"]
-                if "as_recorded_from" in step:
-                    taken = step["as_recorded_from"]
-                    travel["as_recorded"] = str(out[taken["step"]][taken["row"]][taken["column"]])
+                env = step.get("env", env)
                 if "sql" in step:
-                    out[step["key"]] = _sql(tier, sandbox, step["sql"], dict(travel))
+                    out[step["key"]] = _sql(tier, sandbox, step["sql"], env)
                 if step["key"] == "profilingDrift":
-                    out[_ALL_DRIFTING] = _sql(tier, sandbox, _ALL_DRIFTING_SQL, dict(travel))
+                    out[_ALL_DRIFTING] = _sql(tier, sandbox, _ALL_DRIFTING_SQL, env)
+            out[_AS_THE_BROWSER] = _as_the_browser(tier, sandbox, _RUNS_SQL)
             return out
         finally:
             _close(sandbox["org_id"])
@@ -181,6 +195,10 @@ def test_a_new_sandbox_shows_the_templates_profile_runs(answers):
     runs = answers["profilingRuns"]
     assert runs, "the sandbox holds no profile run"
     assert all(r["status"] for r in runs), runs
+
+
+def test_a_new_sandbox_shows_the_runs_as_the_browser_asks(answers):
+    assert answers[_AS_THE_BROWSER], "the visitor's roles read no profile run"
 
 
 def test_the_second_run_finds_the_column_setup_changed_drifting(answers):

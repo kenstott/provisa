@@ -1,0 +1,450 @@
+[
+ {
+  "columns": [
+   "id",
+   "placed_at",
+   "status",
+   "customer"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:testdata/1-orders-by-customer.graphql",
+  "root_field": "s__orders",
+  "rows": [
+   [
+    108,
+    "2026-09-28 02:55:00",
+    "cancelled",
+    {
+     "city": "Exeter",
+     "email": "kofi.moreau29@example.com",
+     "name": "Kofi Moreau"
+    }
+   ],
+   [
+    110,
+    "2026-09-07 01:36:00",
+    "paid",
+    {
+     "city": "York",
+     "email": "elena.tanaka22@example.com",
+     "name": "Elena Tanaka"
+    }
+   ],
+   [
+    115,
+    "2026-09-15 23:48:00",
+    "delivered",
+    {
+     "city": "Ipswich",
+     "email": "nia.brandt38@example.com",
+     "name": "Nia Brandt"
+    }
+   ],
+   [
+    22,
+    "2026-09-19 23:07:00",
+    "placed",
+    {
+     "city": "Bath",
+     "email": "quinn.moreau5@example.com",
+     "name": "Quinn Moreau"
+    }
+   ],
+   [
+    39,
+    "2026-09-10 15:39:00",
+    "shipped",
+    {
+     "city": "Leeds",
+     "email": "kofi.brandt26@example.com",
+     "name": "Kofi Brandt"
+    }
+   ],
+   [
+    62,
+    "2026-09-17 05:00:00",
+    "delivered",
+    {
+     "city": "Brighton",
+     "email": "hana.navarro20@example.com",
+     "name": "Hana Navarro"
+    }
+   ],
+   [
+    69,
+    "2026-09-17 18:00:00",
+    "delivered",
+    {
+     "city": "Cambridge",
+     "email": "gus.navarro9@example.com",
+     "name": "Gus Navarro"
+    }
+   ],
+   [
+    7,
+    "2026-09-23 12:44:00",
+    "delivered",
+    {
+     "city": "Brighton",
+     "email": "hana.navarro20@example.com",
+     "name": "Hana Navarro"
+    }
+   ],
+   [
+    73,
+    "2026-09-17 14:53:00",
+    "placed",
+    {
+     "city": "Ipswich",
+     "email": "nia.brandt38@example.com",
+     "name": "Nia Brandt"
+    }
+   ],
+   [
+    92,
+    "2026-09-13 16:03:00",
+    "delivered",
+    {
+     "city": "Gloucester",
+     "email": "dev.varga3@example.com",
+     "name": "Dev Varga"
+    }
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "id",
+   "placed_at",
+   "status",
+   "customer"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:testdata/1-orders-by-customer.graphql",
+  "root_field": "s__orders",
+  "rows": [
+   [
+    108,
+    "2026-09-28 02:55:00",
+    "cancelled",
+    {
+     "city": "Exeter",
+     "email": "kofi.moreau29@example.com",
+     "name": "Kofi Moreau"
+    }
+   ],
+   [
+    110,
+    "2026-09-07 01:36:00",
+    "paid",
+    {
+     "city": "York",
+     "email": "elena.tanaka22@example.com",
+     "name": "Elena Tanaka"
+    }
+   ],
+   [
+    115,
+    "2026-09-15 23:48:00",
+    "delivered",
+    {
+     "city": "Ipswich",
+     "email": "nia.brandt38@example.com",
+     "name": "Nia Brandt"
+    }
+   ],
+   [
+    22,
+    "2026-09-19 23:07:00",
+    "placed",
+    {
+     "city": "Bath",
+     "email": "quinn.moreau5@example.com",
+     "name": "Quinn Moreau"
+    }
+   ],
+   [
+    39,
+    "2026-09-10 15:39:00",
+    "shipped",
+    {
+     "city": "Leeds",
+     "email": "kofi.brandt26@example.com",
+     "name": "Kofi Brandt"
+    }
+   ],
+   [
+    62,
+    "2026-09-17 05:00:00",
+    "delivered",
+    {
+     "city": "Brighton",
+     "email": "hana.navarro20@example.com",
+     "name": "Hana Navarro"
+    }
+   ],
+   [
+    69,
+    "2026-09-17 18:00:00",
+    "delivered",
+    {
+     "city": "Cambridge",
+     "email": "gus.navarro9@example.com",
+     "name": "Gus Navarro"
+    }
+   ],
+   [
+    7,
+    "2026-09-23 12:44:00",
+    "delivered",
+    {
+     "city": "Brighton",
+     "email": "hana.navarro20@example.com",
+     "name": "Hana Navarro"
+    }
+   ],
+   [
+    73,
+    "2026-09-17 14:53:00",
+    "placed",
+    {
+     "city": "Ipswich",
+     "email": "nia.brandt38@example.com",
+     "name": "Nia Brandt"
+    }
+   ],
+   [
+    92,
+    "2026-09-13 16:03:00",
+    "delivered",
+    {
+     "city": "Gloucester",
+     "email": "dev.varga3@example.com",
+     "name": "Dev Varga"
+    }
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "region",
+   "category",
+   "orders",
+   "revenue"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:testdata/2-sales-by-region.graphql",
+  "root_field": "s__viewSalesByRegion",
+  "rows": [
+   [
+    "East",
+    "Books",
+    21,
+    "1111"
+   ],
+   [
+    "East",
+    "Games",
+    19,
+    "961"
+   ],
+   [
+    "East",
+    "Garden",
+    21,
+    "764.50"
+   ],
+   [
+    "East",
+    "Kitchen",
+    22,
+    "1998"
+   ],
+   [
+    "North",
+    "Books",
+    2,
+    "87"
+   ],
+   [
+    "North",
+    "Games",
+    4,
+    "146"
+   ],
+   [
+    "North",
+    "Garden",
+    5,
+    "149.50"
+   ],
+   [
+    "North",
+    "Kitchen",
+    2,
+    "37.50"
+   ],
+   [
+    "South",
+    "Books",
+    16,
+    "793"
+   ],
+   [
+    "South",
+    "Games",
+    15,
+    "506"
+   ],
+   [
+    "South",
+    "Garden",
+    19,
+    "527"
+   ],
+   [
+    "South",
+    "Kitchen",
+    17,
+    "1536"
+   ],
+   [
+    "West",
+    "Books",
+    9,
+    "464"
+   ],
+   [
+    "West",
+    "Games",
+    13,
+    "352"
+   ],
+   [
+    "West",
+    "Garden",
+    14,
+    "469.50"
+   ],
+   [
+    "West",
+    "Kitchen",
+    9,
+    "445.50"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "region",
+   "category",
+   "orders",
+   "revenue"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:testdata/2-sales-by-region.graphql",
+  "root_field": "s__viewSalesByRegion",
+  "rows": [
+   [
+    "East",
+    "Books",
+    21,
+    "1111"
+   ],
+   [
+    "East",
+    "Games",
+    19,
+    "961"
+   ],
+   [
+    "East",
+    "Garden",
+    21,
+    "764.50"
+   ],
+   [
+    "East",
+    "Kitchen",
+    22,
+    "1998"
+   ],
+   [
+    "North",
+    "Books",
+    2,
+    "87"
+   ],
+   [
+    "North",
+    "Games",
+    4,
+    "146"
+   ],
+   [
+    "North",
+    "Garden",
+    5,
+    "149.50"
+   ],
+   [
+    "North",
+    "Kitchen",
+    2,
+    "37.50"
+   ],
+   [
+    "South",
+    "Books",
+    16,
+    "793"
+   ],
+   [
+    "South",
+    "Games",
+    15,
+    "506"
+   ],
+   [
+    "South",
+    "Garden",
+    19,
+    "527"
+   ],
+   [
+    "South",
+    "Kitchen",
+    17,
+    "1536"
+   ],
+   [
+    "West",
+    "Books",
+    9,
+    "464"
+   ],
+   [
+    "West",
+    "Games",
+    13,
+    "352"
+   ],
+   [
+    "West",
+    "Garden",
+    14,
+    "469.50"
+   ],
+   [
+    "West",
+    "Kitchen",
+    9,
+    "445.50"
+   ]
+  ]
+ }
+]

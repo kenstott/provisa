@@ -39,17 +39,17 @@ naming:
   rules: []
 roles:
 - id: bidder_a
+  parents: [analyst]
   description: 'Bidder A''s clean team: reads the data room''s aggregate views, profiles, quality scores
     and masked samples, never a customer''s identity. Granted until the deal date.'
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - dataroom
 - id: bidder_b
+  parents: [analyst]
   description: 'Bidder B''s clean team: reads the data room''s aggregate views, profiles, quality scores
     and masked samples, never a customer''s identity. Granted until the deal date.'
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - dataroom
 server:
@@ -92,6 +92,7 @@ sources:
     correlation_max_columns: 20
     joint_max_distinct: 20
     category_max_columns: 10
+    classification_sample: 500
 tables:
 - source_id: finance
   domain_id: dataroom
@@ -105,7 +106,7 @@ tables:
     data_type: integer
     description: The customer's number
     visible_to: &id001
-    - org_admin
+    - data_steward
     - bidder_a
     - bidder_b
     is_primary_key: true
@@ -113,7 +114,7 @@ tables:
     data_type: varchar
     description: The customer's name; never shown to a bidder
     visible_to: &id002
-    - org_admin
+    - data_steward
   - name: email
     data_type: varchar
     description: The customer's email address; its name part masked for a bidder
@@ -126,6 +127,7 @@ tables:
         type: regex
         pattern: ^[^@]+
         replace: '***'
+    - mask: null
   - name: phone
     data_type: varchar
     description: The customer's phone number; its digits masked for a bidder
@@ -138,6 +140,7 @@ tables:
         type: regex
         pattern: '[0-9]'
         replace: X
+    - mask: null
   - name: segment
     data_type: varchar
     description: consumer, small business or enterprise
@@ -290,7 +293,7 @@ tables:
   - name: run_id
     data_type: varchar
     visible_to: &id003
-    - org_admin
+    - data_steward
     - bidder_a
     - bidder_b
   - name: run_time
@@ -788,7 +791,7 @@ views:
     data_type: varchar
     description: The accounts' industry
     visible_to: &id004
-    - org_admin
+    - data_steward
     - bidder_a
     - bidder_b
   - name: stage

@@ -52,6 +52,14 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+
+def _member_surface(held: Any) -> Any:
+    """A member role's surface, built on first read (api/role_surface.LazySurface)."""
+    from provisa.api.role_surface import built_surface
+
+    return built_surface(held)
+
+
 META_PREFIX = "meta:"
 _LOCK = threading.Lock()
 
@@ -86,6 +94,14 @@ def refuse_named_meta_role(requested: list[str]) -> None:
             )
 
 
+def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
+    """The roles ``role_id`` names: a meta-role's, from its id (:func:`meta_role_id`), else
+    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
+    if not is_meta_role_id(role_id):
+        return (role_id,)
+    return tuple(role_id[len(META_PREFIX) :].split("+"))
+
+
 def acting_roles(state: Any, role_id: str) -> tuple[str, ...]:
     """The roles ``role_id`` acts as: its members for a meta-role, else itself."""
     return tuple(state.meta_roles[role_id]) if is_meta_role_id(role_id) else (role_id,)
@@ -104,21 +120,27 @@ def meta_description(members: list[dict]) -> str:  # REQ-2080
 
 
 def _role(members: list[dict], meta_id: str) -> dict:
+    from provisa.security.inheritance import OWN_DOMAIN_ACCESS
+    from provisa.security.rights import normalized_reach
+
     caps: set[str] = set()
     domains: set[str] = set()
+    own_domains: set[str] = set()
     for m in members:
         caps.update(m.get("capabilities") or [])
         domains.update(m.get("domain_access") or [])
+        own_domains.update(m[OWN_DOMAIN_ACCESS])  # REQ-2153: every built role carries it
     return {
         "id": meta_id,
         "description": meta_description(members),  # REQ-2080
         "capabilities": sorted(caps),
-        "domain_access": ["*"] if "*" in domains else sorted(domains),
+        "domain_access": normalized_reach(domains),
+        OWN_DOMAIN_ACCESS: normalized_reach(own_domains),
         "max_rows": _least_restrictive([m.get("max_rows") for m in members]),
         "rate_limit": _least_restrictive([m.get("rate_limit") for m in members]),
         # Each member's constants are inlined into its own filter term (_inlined), not merged here.
         "session_vars": {},
-        "parent_role_id": None,
+        "parents": [],
     }
 
 
@@ -173,17 +195,9 @@ def _fold_write_grants(
             def _folded(stated: str) -> str | None:
                 terms: list[str] = []
                 for g in holders:
-                    member = by_id[g["role"]]
-                    expr = g.get(stated)
-                    if expr is None:
-                        ctx = state.surfaces[member["id"]].rls
-                        expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(
-                            t.get("domain_id") or ""
-                        )
-                    if _every_row(expr):
+                    terms.append(_own(g, stated))
+                    if terms[-1] == "TRUE":
                         return "TRUE"
-                    assert expr is not None
-                    terms.append(_inlined(expr, member.get("session_vars") or {}))
                 return _or(terms)
 
             first = {p["column"]: p for p in holders[0]["presets"]}
@@ -196,14 +210,18 @@ def _fold_write_grants(
             def _own(g: dict, stated: str) -> str:
                 """One holder's own predicate, as _folded reads it: TRUE for every row."""
                 member = by_id[g["role"]]
+                ctx = _member_surface(state.surfaces[member["id"]]).rls
                 expr = g.get(stated)
                 if expr is None:
-                    ctx = state.surfaces[member["id"]].rls
                     expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(t.get("domain_id") or "")
-                if _every_row(expr):
+                # REQ-2188: the member's U or D rule holds the rows only it writes: a member
+                # holding no grant is no holder, so its rule, or its lack of one, changes nothing.
+                rule = ctx.write_rules.get(operation, {}).get(t["id"]) if stated == "rows" else None
+                terms = [p for p in (expr, rule) if p is not None and not _every_row(p)]
+                if not terms:
                     return "TRUE"
-                assert expr is not None
-                return _inlined(expr, member.get("session_vars") or {})
+                held = terms[0] if len(terms) == 1 else f"({terms[0]}) AND ({terms[1]})"
+                return _inlined(held, member.get("session_vars") or {})
 
             t["write_grants"].append(
                 {
@@ -237,7 +255,7 @@ def _member_reads(
     column is decided by its own chain (its ancestors) and the derived roles the set was named
     with, which contribute grants only."""
     from provisa.compiler.rls import HIDDEN, PLAIN, MemberReads
-    from provisa.security.masking import entry_for, rule_of
+    from provisa.security.masking import entry_for, resolve
     from provisa.security.rights import column_served, reaches_domain
 
     from provisa.security.masking import MaskType
@@ -257,14 +275,17 @@ def _member_reads(
         readers = [
             m
             for m in members
-            if any(tm.table_id == t["id"] for tm in state.surfaces[m["id"]].context.tables.values())
+            if any(
+                tm.table_id == t["id"]
+                for tm in _member_surface(state.surfaces[m["id"]]).context.tables.values()
+            )
         ]
         if not readers:
             continue
         domain = t.get("domain_id")
         flags: list[str] = []
         for m in readers:
-            ctx = state.surfaces[m["id"]].rls
+            ctx = _member_surface(state.surfaces[m["id"]]).rls
             expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(domain or "")
             flags.append("TRUE" if expr is None else _inlined(expr, m.get("session_vars") or {}))
         columns: dict[str, tuple[tuple[int, Any, str], ...]] = {}
@@ -285,11 +306,14 @@ def _member_reads(
                     rule, fake_type = faked[(t["id"], name)]
                     treatments.append((1, rule, fake_type))
                     continue
-                i = entry_for(masks, [*chains[m["id"]], *qualifiers])
-                if i is None or masks[i].get("mask") is None:
+                chain = [*chains[m["id"]], *qualifiers]
+                rule = resolve(masks, chain, dtype)
+                if rule is None:
                     treatments.append((PLAIN, None, dtype))
-                else:
-                    treatments.append((1 + i, rule_of(masks[i]["mask"]), dtype))
+                    continue
+                i = entry_for(masks, chain)
+                # REQ-2059: no entry held is the complete mask, ranked after every entry.
+                treatments.append((1 + (len(masks) if i is None else i), rule, dtype))
             columns[name] = tuple(treatments)
         out[t["id"]] = MemberReads(flags=tuple(flags), columns=columns)
     return out
@@ -309,7 +333,9 @@ def _rls(
         terms: list[str] = []
         lifted = False
         for m in members:
-            member = state.surfaces[m["id"]]  # one snapshot: context and filters of one build
+            member = _member_surface(
+                state.surfaces[m["id"]]
+            )  # one snapshot: context and filters of one build
             reads = any(tm.table_id == t["id"] for tm in member.context.tables.values())
             if not reads:
                 continue
@@ -435,11 +461,30 @@ def _build(
     )
     _fold_write_grants(state, meta_id, member_roles, inputs["tables"])  # REQ-2074
     role = _role(member_roles, meta_id)
+    role["acting_chain"] = chains[meta_id][1:]  # REQ-2188: its members and their ancestors
     state.masking_rules = {**state.masking_rules, **masks}
     state.roles[meta_id] = role
     register_role_surface(state, role, rls)
     state.meta_roles[meta_id] = tuple(member_ids)
     state.meta_qualifiers[meta_id] = tuple(qualifiers)
+
+
+def fold_tables(state: Any, meta_id: str, tables: list[dict]) -> Any:  # REQ-1620, REQ-1921
+    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a draft its
+    steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
+    service -- every grant to a member reaches it, expanded on ``tables`` in place -- and its row
+    filters and member reads folded from its members' as :func:`_build` folds them. ``state`` is
+    a view whose members' surfaces read ``tables``. Returns the folded RLSContext."""
+    from provisa.security.inheritance import expand_grants
+
+    member_ids = list(state.meta_roles[meta_id])
+    qualifiers = tuple(state.meta_qualifiers.get(meta_id, ()))
+    chains = {
+        meta_id: meta_chain(meta_id, member_ids, state.role_build_inputs["role_chains"], qualifiers)
+    }
+    for t in tables:
+        expand_grants(t.get("columns") or [], chains)
+    return _rls(state, [state.roles[m] for m in member_ids], tables, qualifiers)
 
 
 def ensure_meta_role(state: Any, members: list[str], qualifiers: tuple[str, ...] = ()) -> str:

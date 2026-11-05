@@ -36,11 +36,18 @@ def landed_group(source_id: str) -> str:
     """The group the bound org's (and environment's) landings of ``source_id``'s tables commit
     where they stopped under: each org lands a topic into its own table, at its own time. Named
     where the org is bound, and handed to what reads the topic onward."""
-    from provisa.core.environments import PROD
     from provisa.core.request_context import active_env, require_current_org
 
-    org, env = require_current_org(), active_env()
-    if env == PROD:
+    return landed_group_of(require_current_org(), active_env(), source_id)
+
+
+def landed_group_of(org: str, env: str | None, source_id: str) -> str:
+    """:func:`landed_group` of org ``org``'s environment ``env`` (None or prod: the org's own),
+    named where that org is not the one bound: a demo sandbox's, recorded as its open copies its
+    template's landed rows (REQ-2049)."""
+    from provisa.core.environments import PROD
+
+    if env is None or env == PROD:
         return f"{LANDED_GROUP_PREFIX}-{org}-{source_id}"
     return f"{LANDED_GROUP_PREFIX}-{org}-{env}-{source_id}"
 
@@ -54,8 +61,12 @@ def _consumer(bootstrap: str, group: str | None) -> Any:
 async def _partitions(consumer: Any, topic: str) -> list[Any]:
     from aiokafka import TopicPartition  # type: ignore[import-untyped]
 
-    await consumer.topics()  # the cluster's metadata, which names the topic's partitions
-    return [TopicPartition(topic, p) for p in sorted(consumer.partitions_for_topic(topic) or ())]
+    # The cluster's metadata as fetched now, which names the topic's partitions. Not
+    # consumer.topics() and partitions_for_topic(): the first returns only the names of the
+    # metadata it fetched, and the second reads the client's own, which for a consumer
+    # subscribed to nothing names no topic at all.
+    cluster = await consumer._client.fetch_all_metadata()  # noqa: SLF001
+    return [TopicPartition(topic, p) for p in sorted(cluster.partitions_for_topic(topic) or ())]
 
 
 async def _committed(consumer: Any, partitions: list[Any]) -> dict[Any, int]:
@@ -105,6 +116,16 @@ async def recorded(bootstrap: str, landed: str, topic: str) -> dict[int, int]:
         return {tp.partition: o for tp, o in (await _committed(consumer, partitions)).items()}
     finally:
         await consumer.stop()
+
+
+async def carry(bootstrap: str, read_by: str, landed: str, topic: str) -> None:
+    """Record, under the landing group ``landed``, that a landing stopped on ``topic`` where the
+    group ``read_by`` has read to: a copy of the table ``read_by``'s reader keeps, made after this,
+    continues from there (a demo sandbox's of its template's, REQ-2049)."""
+    from aiokafka import TopicPartition  # type: ignore[import-untyped]
+
+    read = await recorded(bootstrap, read_by, topic)
+    await record(bootstrap, landed, {TopicPartition(topic, p): o for p, o in read.items()})
 
 
 async def start_where_landed(bootstrap: str, group: str, topic: str, landed: str) -> None:

@@ -1,0 +1,12 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:storefront/1-order-history.graphql",
+  "root_field": "s__orders"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:storefront/2-late-shipments-by-carrier.graphql",
+  "root_field": "s__viewLateShipmentsByCarrier"
+ }
+]

@@ -59,7 +59,7 @@ export function ProfileConstraintsModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { role } = useAuth();
+  const { actingRoles } = useAuth();
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<ConstraintDecision[]>([]);
@@ -84,7 +84,7 @@ export function ProfileConstraintsModal({
   }, [reload]);
 
   useEffect(() => {
-    if (!role) return;
+    if (!actingRoles) return;
     fetchProfileRuns(tableId)
       .then(async (runs) => {
         const latest = runs.find((r) => r.status === "succeeded");
@@ -92,12 +92,12 @@ export function ProfileConstraintsModal({
           setProposals([]);
           return;
         }
-        const results = await fetchProfileRun(tableId, latest.run_id, role.id);
+        const results = await fetchProfileRun(tableId, latest.run_id, actingRoles);
         setRunId(latest.run_id);
         setProposals(results.constraints ?? []);
       })
       .catch((e: unknown) => setNotice({ ok: false, text: message(e) }));
-  }, [tableId, role]);
+  }, [tableId, actingRoles]);
 
   const decide = async (p: Proposal, status: "accepted" | "dismissed", definition?: string) => {
     if (runId == null) return;

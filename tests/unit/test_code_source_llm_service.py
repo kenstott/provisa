@@ -266,3 +266,88 @@ def test_the_openai_sdk_reaches_the_service_through_the_proxy_with_no_key(servic
     finally:
         proxy.stop()
         services.revoke(token)
+
+
+# -- the role's LLM budget (REQ-1174) -------------------------------------------------------------
+
+
+@pytest.fixture
+def budgeted(service, monkeypatch, control_plane):
+    """The calls serve a request acting as ``analyst``, whose LLM budget ``roles`` holds, counted
+    in a real control plane."""
+    from provisa.security.llm_budget import Guard
+
+    model_db = control_plane.org()
+    roles: dict = {"analyst": {"id": "analyst", "rate_limit": {}}}
+    monkeypatch.setattr(llm_service, "_budget", lambda role, _db: Guard(model_db, roles, [role]))
+    return roles, model_db
+
+
+def _role_token() -> str:
+    return services.issue(
+        services.ServiceGrant(org_id="acme", source_id="scorer", admin_db=None, role="analyst")
+    )
+
+
+def test_a_call_whose_roles_window_is_spent_is_refused_before_the_model_is_asked(service, budgeted):
+    import asyncio
+
+    from provisa.security.llm_budget import Spend, debit
+
+    roles, model_db = budgeted
+    roles["analyst"]["rate_limit"] = {"llm_windows": {"day": {"amount": 1000, "unit": "tokens"}}}
+    asyncio.run(debit(model_db, "analyst", Spend(1000, 0)))
+    status, answered = _chat(_role_token(), "provisa:sql_generation")
+    assert status == 429
+    assert answered["error"]["message"].startswith(
+        "role 'analyst' has spent its LLM budget for the day: 1,000 tokens of 1,000 tokens"
+    )
+    assert "sent" not in service
+
+
+def test_a_call_within_its_roles_budget_is_counted_against_it(service, budgeted):
+    import asyncio
+    from datetime import UTC, datetime
+
+    from provisa.security.llm_budget import budget_of, usage
+
+    roles, model_db = budgeted
+    roles["analyst"]["rate_limit"] = {"llm_windows": {"hour": {"amount": 1000, "unit": "tokens"}}}
+    assert _chat(_role_token(), "provisa:sql_generation")[0] == 200
+    (hour,) = asyncio.run(
+        usage(model_db, "analyst", budget_of(roles["analyst"]), datetime.now(UTC))
+    )
+    assert hour.used == 128  # 120 in, 8 out
+
+
+def test_a_call_is_held_to_its_roles_allowance_and_answered(service, budgeted):
+    import asyncio
+    from datetime import UTC, datetime
+
+    from provisa.security.llm_budget import Budget, Limit, usage
+
+    roles, model_db = budgeted
+    roles["analyst"]["rate_limit"] = {"llm_call_cap": {"amount": 100, "unit": "tokens"}}
+    status, answered = _chat(_role_token(), "provisa:sql_generation")
+    # The model itself stops at the cap; what it answers is returned, and counted.
+    assert status == 200 and answered["choices"][0]["message"]["content"] == "churn is 4%"
+    assert service["sent"]["params"]["max_tokens"] == 100
+    held = Budget(None, {"hour": Limit(10**6, "tokens")})
+    assert asyncio.run(usage(model_db, "analyst", held, datetime.now(UTC)))[0].used == 128
+
+
+def test_a_requests_own_output_limit_is_lowered_to_the_allowance_never_raised(service, budgeted):
+    roles, _model_db = budgeted
+    roles["analyst"]["rate_limit"] = {
+        "llm_call_cap": {"amount": 500, "unit": "tokens"},
+        "llm_windows": {"hour": {"amount": 300, "unit": "tokens"}},
+    }
+    assert _chat(_role_token(), "provisa:sql_generation", max_tokens=4000)[0] == 200
+    assert service["sent"]["params"]["max_tokens"] == 300  # the hour's room, below the cap
+    assert _chat(_role_token(), "provisa:sql_generation", max_tokens=50)[0] == 200
+    assert service["sent"]["params"]["max_tokens"] == 50
+
+
+def test_a_call_of_a_role_with_no_budget_keeps_its_own_output_limit(service, budgeted):
+    assert _chat(_role_token(), "provisa:sql_generation", max_tokens=4000)[0] == 200
+    assert service["sent"]["params"] == {"max_tokens": 4000}

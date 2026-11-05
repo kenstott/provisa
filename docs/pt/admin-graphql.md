@@ -738,6 +738,7 @@ O input principal de registro de tabela. Campos-chave além do básico:
 | `mvRefreshInterval` | Segundos entre atualizações |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenção incremental |
+| `mvHoldOnFailingChecks` | Reter quando verificações falham: uma atualização é cancelada, e a view mantém a cópia anterior, enquanto uma tabela de verificação que analisa uma de suas entradas falhou na última execução |
 | `businessKey` | Colunas que identificam a mesma coisa entre versões; declarada com `validTime` e `recordedTime`, as três ou nenhuma |
 | `validTime` | Coluna com a data que o negócio dá ao registro |
 | `recordedTime` | Coluna com o momento em que esta versão foi inserida ou alterada |

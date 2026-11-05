@@ -57,19 +57,19 @@ steps:
     SELECT e.desk, e.exposure, e.valid_from, e.recorded_at
     FROM "reproduce"."view_exposure" AS e
     ORDER BY e.desk
-- key: reproduceAsOf
-  as_of: "2026-09-30T12:00:00"
 - key: reproduceAsOfNow
   sql: >-
     SELECT e.desk, e.exposure, e.recorded_at
-    FROM "reproduce"."view_exposure" AS e
+    FROM "reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00') AS e
     ORDER BY e.desk
+# The time the filed figures were recorded at, taken from the refresh that answered it, is bound
+# to the next statement's $1.
 - key: reproduceAsFiled
   as_recorded_from: {step: reproduceRefreshes, row: 0, column: refreshed_at}
 - key: reproduceFiled
   sql: >-
     SELECT e.desk, e.exposure, e.recorded_at
-    FROM "reproduce"."view_exposure" AS e
+    FROM "reproduce"."view_exposure"(as_of => '2026-09-30T12:00:00', as_recorded => $1) AS e
     ORDER BY e.desk
 - key: reproduceAudit
   sql: >-

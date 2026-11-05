@@ -8,11 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { TableAccessPanel } from "./TableAccessPanel";
 import { maskSpecLabel, maskToLabel } from "../../lib/masks";
 import { grantLabel } from "../../lib/grants";
 import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { ChartColumn, DatabaseZap, Eye, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { ChartColumn, DatabaseZap, Eye, Pencil, ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { ActionIcon, Badge, Box, Button, Checkbox, Group, Table, Text } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
@@ -26,9 +27,10 @@ import { OwnerResolutionIcon } from "../../components/OwnerResolution";
 import { LatestProfilePanel } from "./LatestProfilePanel";
 import { ProfileRunsButton } from "./ProfileRunsButton";
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
-import { toIrType } from "../../irTypes";
+import { shownType } from "../../irTypes";
 import { TableSectionTabs } from "./TableSectionTabs";
 import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useTableSection, type TableSection } from "./tableSections";
@@ -61,7 +63,8 @@ interface TableReadViewProps {
   deployViewToDb: (id: number) => Promise<{ success: boolean; message: string }>;
   reload: () => void;
   startEditing: (t: RegisteredTable) => void;
-  handleDelete: (id: number) => void;
+  /** REQ-2198: resolves once the table is deleted and the list read again (PanelDelete). */
+  handleDelete: (id: number) => Promise<boolean | void>;
   handleProfile: (id: number) => void;
   /** REQ-1944: a governance-only viewer: no registration, deploy, profiling or delete. */
   hidingOnly?: boolean;
@@ -281,17 +284,14 @@ export function TableReadView({
             <Pencil size={14} />
           </ActionIcon>
           {!hidingOnly && (
-            <ActionIcon
-              color="red"
-              aria-label={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
-              data-testid="table-read-view-delete"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(table.id);
-              }}
-            >
-              <Trash2 size={14} />
-            </ActionIcon>
+            <PanelDelete
+              itemKey={table.id}
+              title={t("tableReadView.deleteTitle", { name: table.tableName })}
+              consequence={t("tableReadView.deleteConsequence")}
+              ariaLabel={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
+              testId="table-read-view-delete"
+              onDelete={() => handleDelete(table.id)}
+            />
           )}
           {/* REQ-1921: draft is set and cleared here, beside the table's other actions. It needs
               the right to register tables in the table's domain; without it the box only shows
@@ -591,7 +591,7 @@ export function TableReadView({
                               },
                               {
                                 label: t("tableEditForm.dataTypeHeader"),
-                                value: c.dataType ? toIrType(c.dataType) : "",
+                                value: shownType(c.dataType, c.subtype),
                               },
                               { label: t("tableReadView.colPk"), value: c.isPrimaryKey ? "✓" : "" },
                               {
@@ -665,9 +665,7 @@ export function TableReadView({
                         )}
                         {tab === "type" && (
                           <>
-                            <Table.Td ff="monospace">
-                              {c.dataType ? toIrType(c.dataType) : ""}
-                            </Table.Td>
+                            <Table.Td ff="monospace">{shownType(c.dataType, c.subtype)}</Table.Td>
                             <Table.Td ta="center">
                               {c.isPrimaryKey && (
                                 <Text span c="blue">
@@ -783,6 +781,8 @@ export function TableReadView({
             {t("tableReadView.draftPreviewNote")}
           </Text>
         )}
+        {/* REQ-2162: who can read or write each column. */}
+        {section === "access" && <TableAccessPanel tableId={table.id} />}
         {section === "writes" && (
           // REQ-2074: what each role may write to the table.
           <WriteGrantsPanel

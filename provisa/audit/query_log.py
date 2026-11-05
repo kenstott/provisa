@@ -76,7 +76,7 @@ async def init_audit_schema(
     *,
     region: str | None = None,  # REQ-1922: the record a region keeps, in its own schema
 ) -> None:  # REQ-074, REQ-1488
-    from provisa.core.db import SCHEMA_LOCK_KEY, _validate_org_id
+    from provisa.core.db import _validate_org_id, schema_lock_key
     from provisa.core.environments import org_schema
 
     _validate_org_id(org_id)
@@ -89,7 +89,7 @@ async def init_audit_schema(
         # outside the org registry's per-org lock, so a request that lazily builds the same org's
         # runtime overlaps it). CREATE TABLE IF NOT EXISTS is NOT race-safe in PostgreSQL: two
         # transactions both pass the catalog check and the loser raises DuplicateTable. Serialize.
-        async with conn.advisory_lock(SCHEMA_LOCK_KEY):
+        async with conn.advisory_lock(schema_lock_key(schema_name)):
             await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
             await conn.execute(f"SET search_path TO {schema_name}")
             # multi-statement script (CREATE TABLE + DO $$ RULEs + indexes); raw

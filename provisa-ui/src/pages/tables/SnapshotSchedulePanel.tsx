@@ -73,7 +73,8 @@ export function SnapshotSchedulePanel({
                   }
                   data={calendars.map((c) => ({
                     value: c.name,
-                    label: `${c.name} (v${c.version}, ${c.baseSystem}, ${c.tz})`,
+                    // A version is named whole ("v1"); it carries its own prefix.
+                    label: `${c.name} (${c.version}, ${c.baseSystem}, ${c.tz})`,
                   }))}
                   value={editingTable.mvCalendar}
                   onChange={(v) => setEditingTable({ ...editingTable, mvCalendar: v || null })}

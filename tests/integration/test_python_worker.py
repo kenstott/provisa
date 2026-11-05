@@ -72,8 +72,15 @@ def _rows(started: w.Worker, code: Path, runtimes, export: str, args: list) -> l
     """The export's rows, batch by batch, sent against its row type's schema (REQ-2098)."""
     python, python_home, _uv, _lib = runtimes
     manifest = read_code(python=python, python_home=python_home, code=code, entry="orders")
-    schema = schema_text(row_schema(manifest, manifest.export(export)))
-    return list(started.rows(export, "table", args, schema=schema))
+    table = manifest.export(export)
+    schema = schema_text(row_schema(manifest, table))
+    # REQ-2100: its inputs object's fields, those not given absent; and an empty read context.
+    names = [p.name for p in table.parameters]
+    given = [*args, *([w.ABSENT] * (len(names) - len(args)))]
+    empty = {"filters": [], "order_by": [], "limit": None, "columns": [], "keys": None}
+    return list(
+        started.rows(export, "table", given, names, schema=schema, takes=table.takes, context=empty)
+    )
 
 
 def test_the_code_is_read_inside_the_sandbox(code, runtimes):

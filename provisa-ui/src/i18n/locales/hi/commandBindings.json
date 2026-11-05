@@ -1,0 +1,21 @@
+{
+  "commandBindings": {
+    "sectionsLabel": "कमांड अनुभाग",
+    "section_command": "कमांड",
+    "section_bindings": "बाइंडिंग",
+    "language": "भाषा",
+    "name": "नाम",
+    "leaveOut": "छोड़ा गया",
+    "nameIn": "{{language}} में नाम",
+    "leaveOutOf": "{{language}} से छोड़ें",
+    "notOffered": "प्रस्तावित नहीं",
+    "sqlAlways": "हमेशा प्रस्तावित",
+    "hint": "कमांड हर भाषा में अपने नाम से प्रस्तावित होता है। किसी भाषा में उसका नाम बदलें, या उसे किसी भाषा से छोड़ दें। SQL हमेशा प्रस्तावित होता है।",
+    "lang_sql": "SQL",
+    "lang_cypher": "Cypher",
+    "lang_graphql": "GraphQL",
+    "lang_rest": "REST",
+    "lang_mcp": "MCP",
+    "lang_sparql": "SPARQL"
+  }
+}

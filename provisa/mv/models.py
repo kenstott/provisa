@@ -137,6 +137,10 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # refreshed and kept only by that region (``replica_converge.builds_here``); other regions
     # read that copy where it is kept. One naming none is built by every region into its own.
     region: str | None = None
+    # REQ-1918: the registered view (its table name) this is the build of, set where a view's
+    # build is registered; None for a materialized view declared on its own. A rebuild unregisters
+    # a build whose view is deleted or no longer materialized, by this and never by the id.
+    view_table: str | None = None
     # The registered tables (bare names) a SQL-defined view reads, from its SEMANTIC SQL — taken
     # before ``sql`` is lowered to physical. A write to any of them marks the view stale
     # (registry.mark_stale); ``source_tables`` stays what the event graph is built from.
@@ -211,6 +215,13 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # preprocess(rows, ctx) -> rows. Run after the MV SQL and before land. None = identity.
     # Purity-checked at registration and compiled to a callable at boot (provisa.mv.preprocess).
     preprocess: str | None = None
+    # REQ-2133: the registered view table this build is of (None for a configured or automatic
+    # view, which is no table), its data product, and its Hold on failing checks option: a built-in
+    # preflight that holds a refresh while a checker scanning one of its nearest physical inputs
+    # failed its latest run, combined with ``preprocess`` (both must continue).
+    table_id: int | None = None
+    product_id: str | None = None
+    hold_on_failing_checks: bool = False
 
     # REQ-877 (MAY): opt-in per-MV ROW-LEVEL delta capture. Off by default (the hash/diff path is the
     # expensive case). When on, each refresh that changed rows appends insert/update/delete events to

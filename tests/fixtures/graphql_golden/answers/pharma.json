@@ -1,0 +1,22 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:pharma/1-products-by-risk.graphql",
+  "reads": [
+   "govdata",
+   "pharmacy"
+  ],
+  "root_field": "p__viewProductRiskGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:pharma/2-critical-products-at-risk.graphql",
+  "reads": [
+   "govdata",
+   "pharmacy"
+  ],
+  "root_field": "p__viewProductRisk"
+ }
+]

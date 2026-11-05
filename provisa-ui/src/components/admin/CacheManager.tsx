@@ -130,7 +130,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
   const unknown = t("cacheManager.response.unknown");
   const { cacheStats: stats, refetch: refetchStats } = useCacheStats();
   const { cacheTableStats, refetch: refetchTableStats } = useCacheTableStats();
-  const { tables } = useTables();
+  const { tables } = useTables({ inPage: true, columns: false });
   const entriesByTable = new Map(cacheTableStats.map((s) => [s.tableId, s.cachedEntries]));
   const { purgeCache } = usePurgeCache();
   const { purgeCacheByTable } = usePurgeCacheByTable();

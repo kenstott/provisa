@@ -1,0 +1,22 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:insider/1-review-queue.graphql",
+  "root_field": "b__viewReviewQueue"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:insider/2-cases-by-reviewer.graphql",
+  "root_field": "b__viewReviewQueueGroupBy"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:insider/3-matches-by-deal.graphql",
+  "root_field": "b__dealMatchGroupBy"
+ },
+ {
+  "lowered": true,
+  "origin": "demo:insider/4-customer-reads-by-employee.graphql",
+  "root_field": "b__customerAccessGroupBy"
+ }
+]

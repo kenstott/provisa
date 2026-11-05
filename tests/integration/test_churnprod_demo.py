@@ -248,7 +248,7 @@ def test_the_example_query_answers_the_at_risk_list_masked(server):
     resp = httpx.post(
         f"{server.base_url}/data/graphql",
         json={"query": query},
-        headers={"X-Provisa-Role": "analyst"},
+        headers={"X-Provisa-Role": "churn_analyst"},
         timeout=300,
     )
     assert resp.status_code == 200, resp.text

@@ -8,10 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import type { ResultRedirect } from "../../types/resultRedirect";
-import type { FrameData, FrameStatement, GNode, GEdge } from "./graph-model";
-import { getStored, setStored } from "../../lib/browserStorage";
+import type { FrameData, FrameStatement, GNode, GEdge, SparqlForm } from "./graph-model";
+import type { SelectPairing, Triple } from "./sparql";
+import {
+  getStoredJson,
+  reportStorageFailure,
+  setStored,
+  storageKey,
+} from "../../lib/browserStorage";
+import { readBulk, writeBulk } from "../../lib/bulkStorage";
+import { stableNodeIdsLoaded } from "./stableNodeId";
 
 export type Favorite = { id: string; query: string; label: string; ts: number };
 
@@ -20,24 +28,13 @@ export function useLocalStorage<T>(
   key: string,
   initial: T,
 ): [T, (v: T | ((prev: T) => T)) => void] {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const raw = getStored(key);
-      return raw !== null ? (JSON.parse(raw) as T) : initial;
-    } catch {
-      return initial;
-    }
-  });
+  const [value, setValue] = useState<T>(() => getStoredJson<T>(key) ?? initial);
 
   const set = useCallback(
     (v: T | ((prev: T) => T)) => {
       setValue((prev) => {
         const next = typeof v === "function" ? (v as (p: T) => T)(prev) : v;
-        try {
-          setStored(key, JSON.stringify(next));
-        } catch {
-          /* quota */
-        }
+        setStored(key, JSON.stringify(next));
         return next;
       });
     },
@@ -47,11 +44,26 @@ export function useLocalStorage<T>(
   return [value, set];
 }
 
-// ── Module-level state (survives SPA navigation, persisted to localStorage) ───
-const LS_KEY = "provisa.graph.state";
-export const DEFAULT_QUERY = "MATCH (n) RETURN n LIMIT 25";
+// ── Module-level state (survives SPA navigation, persisted to IndexedDB) ──────
+/** The graph visualizer's query languages (REQ-2135): Cypher, and SPARQL with its own vocabulary. */
+export type GraphLanguage = "cypher" | "sparql";
+
+/** Each language's own frames, history and query, kept apart. */
+const LS_KEY: Record<GraphLanguage, string> = {
+  cypher: "provisa.graph.state",
+  sparql: "provisa.sparql.state",
+};
+export const DEFAULT_QUERY: Record<GraphLanguage, string> = {
+  cypher: "MATCH (n) RETURN n LIMIT 25",
+  sparql: "SELECT * WHERE {\n  ?s ?p ?o\n}\nLIMIT 25",
+};
+
+/** A setting's key in the browser, kept apart per language: Cypher's as it always was. */
+export const settingKey = (language: GraphLanguage, name: string): string =>
+  language === "cypher" ? `provisa.graph.${name}` : `provisa.sparql.${name}`;
 
 export interface GraphState {
+  language: GraphLanguage;
   frames: FrameData[];
   history: string[];
   currentQuery: string;
@@ -72,6 +84,10 @@ interface SerializedFrame {
   pinned?: boolean;
   statements?: SerializedStatement[];
   statementIndex?: number;
+  sparqlForm?: SparqlForm;
+  sparqlTriples?: Triple[];
+  sparqlPairing?: SelectPairing;
+  sparqlExpansions?: Record<string, Triple[]>;
 }
 
 interface SerializedStatement {
@@ -112,6 +128,10 @@ function serializeFrame(f: FrameData): SerializedFrame {
       truncated: p.truncated,
     })),
     statementIndex: f.statementIndex,
+    sparqlForm: f.sparqlForm,
+    sparqlTriples: f.sparqlTriples,
+    sparqlPairing: f.sparqlPairing,
+    sparqlExpansions: f.sparqlExpansions,
   };
 }
 
@@ -126,38 +146,95 @@ function deserializeFrame(s: SerializedFrame): FrameData {
   };
 }
 
+type SavedGraphState = {
+  frames?: SerializedFrame[];
+  history?: string[];
+  currentQuery?: string;
+};
+
+/** A state whose saved copy has not been read back yet: saving it now would overwrite that copy. */
+const unread = new WeakSet<GraphState>();
+
 export function saveGraphState(state: GraphState): void {
-  try {
-    setStored(
-      LS_KEY,
-      JSON.stringify({
-        frames: state.frames.map(serializeFrame),
-        history: state.history,
-        currentQuery: state.currentQuery,
-      }),
-    );
-  } catch {
-    /* quota */
-  }
+  if (unread.has(state)) return;
+  const saved: SavedGraphState = {
+    frames: state.frames.map(serializeFrame),
+    history: state.history,
+    currentQuery: state.currentQuery,
+  };
+  void writeBulk(LS_KEY[state.language], saved);
 }
 
-function loadGraphState(): GraphState {
+export async function loadGraphState(language: GraphLanguage): Promise<GraphState> {
+  const s = await readBulk<SavedGraphState>(LS_KEY[language]);
+  const empty = { language, frames: [], history: [], currentQuery: DEFAULT_QUERY[language] };
   try {
-    const raw = getStored(LS_KEY);
-    if (!raw) return { frames: [], history: [], currentQuery: DEFAULT_QUERY };
-    const s = JSON.parse(raw) as {
-      frames?: SerializedFrame[];
-      history?: string[];
-      currentQuery?: string;
-    };
     return {
-      frames: (s.frames ?? []).map(deserializeFrame),
-      history: s.history ?? [],
-      currentQuery: s.currentQuery ?? DEFAULT_QUERY,
+      ...empty,
+      frames: (s?.frames ?? []).map(deserializeFrame),
+      history: s?.history ?? [],
+      currentQuery: s?.currentQuery ?? empty.currentQuery,
     };
-  } catch {
-    return { frames: [], history: [], currentQuery: DEFAULT_QUERY };
+  } catch (e) {
+    reportStorageFailure("parse", LS_KEY[language], e);
+    return empty;
   }
 }
 
-export const graphState: GraphState = loadGraphState();
+// Module-level, so each survives SPA navigation. Per scope, as everything saved is (REQ-2008).
+const states = new Map<string, GraphState>();
+const reads = new WeakMap<GraphState, Promise<void>>();
+
+/** The language's state: at once and empty the first time, for the page's first render, and
+ * filled in by `readGraphState`. */
+export function graphStateOf(language: GraphLanguage): GraphState {
+  const at = storageKey(LS_KEY[language]);
+  let state = states.get(at);
+  if (!state) {
+    state = { language, frames: [], history: [], currentQuery: DEFAULT_QUERY[language] };
+    states.set(at, state);
+    unread.add(state);
+  }
+  return state;
+}
+
+/** Read the state's saved copy into it, once. What the page did meanwhile stands: a frame run
+ * comes ahead of the saved ones, and a query typed stays in the editor. */
+export function readGraphState(state: GraphState): Promise<void> {
+  let read = reads.get(state);
+  if (!read) {
+    read = Promise.all([loadGraphState(state.language), stableNodeIdsLoaded()]).then(([saved]) => {
+      state.frames = [...state.frames, ...saved.frames];
+      state.history = [...new Set([...state.history, ...saved.history])];
+      if (state.currentQuery === DEFAULT_QUERY[state.language]) {
+        state.currentQuery = saved.currentQuery;
+      }
+      unread.delete(state);
+      saveGraphState(state);
+    });
+    reads.set(state, read);
+  }
+  return read;
+}
+
+/** Show the state's saved copy once it has been read: the frames, history and the query. */
+export function useSavedGraphState(
+  state: GraphState,
+  setFrames: (frames: FrameData[]) => void,
+  setHistory: (history: string[]) => void,
+  setQuery: (query: string) => void,
+): void {
+  useEffect(() => {
+    let live = true;
+    const shown = state.currentQuery;
+    void readGraphState(state).then(() => {
+      if (!live) return;
+      setFrames(state.frames);
+      setHistory(state.history);
+      if (state.currentQuery !== shown) setQuery(state.currentQuery);
+    });
+    return () => {
+      live = false;
+    };
+  }, [state, setFrames, setHistory, setQuery]);
+}

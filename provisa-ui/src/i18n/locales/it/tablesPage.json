@@ -11,8 +11,12 @@
     "addViewTitle": "Crea una nuova vista nell'esploratore SQL",
     "model": "+ Modello",
     "modelTitle": "Modella un'entità o un fatto (schema a stella / Data Vault)",
+    "modelMenu": "Scegli come modellare",
+    "modelEntityFact": "Entità/Fatto",
+    "modelStarSchema": "Schema a stella",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Cartella di lavoro",
-    "reportXlsxTitle": "Scarica il modello come foglio di calcolo per la revisione: origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate e termini dell'ontologia, un foglio ciascuno",
+    "reportXlsxTitle": "Scarica il modello come foglio di calcolo per la revisione: origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate, ontologia, prodotti dati, contratti dati, qualità dei dati e profili dei dati, un foglio ciascuno",
     "viewErd": "Visualizza ERD",
     "colSource": "Origine",
     "colDomain": "Dominio",
@@ -46,6 +50,8 @@
     "nextPage": "Pagina successiva",
     "firstPage": "Prima pagina",
     "lastPage": "Ultima pagina",
+    "listedElsewhere": "Elencato in altri domini",
+    "listedElsewhereHint": "Nomi che altri domini elencano. Chiedi a quel dominio l'accesso per leggerli.",
     "pageOf": "Pagina {{page}} / {{totalPages}}",
     "loadFailed": "Impossibile caricare le tabelle registrate: {{message}}",
     "editViewDefinitionTitle": "Modifica definizione della vista",
@@ -56,6 +62,7 @@
       "impliedDimensionTitle": "Dimensione implicita — «Abilita Group By» è attivo per questa tabella"
     },
     "derived": "derivata",
+    "endpointUnread": "Impossibile leggere il documento API della sua origine",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -81,6 +88,8 @@
     "panelRegisterTable": "Registra tabella",
     "panelNewView": "Nuova vista",
     "panelNewModel": "Nuovo modello",
+    "panelStarSchema": "Nuovo schema a stella",
+    "panelDataVault": "Nuovo Data Vault",
     "history": {
       "badge": "cronologia",
       "title": "Conserva la cronologia: interrogala a una data o come registrata (Viaggio nel tempo)"

@@ -17,9 +17,19 @@ import { useTranslation } from "react-i18next";
 import { Table, Text } from "@mantine/core";
 import { CopySymbolButton } from "../CopyButton";
 import { toCSV } from "./graph-export";
+import { isRdfCell } from "./sparql";
+
+/** What a cell's hover says of an RDF term: an IRI whole, a literal's datatype whole. */
+function cellTitle(v: unknown): string | undefined {
+  if (!isRdfCell(v)) return undefined;
+  if (v.rdfTerm === "iri") return v.value;
+  return v.rdfTerm === "literal" ? v.datatype : undefined;
+}
 
 function cellText(v: unknown): string {
   if (v === null || v === undefined) return "";
+  // A SPARQL answer's term: an IRI compacted by its prefix (the whole IRI is the cell's title).
+  if (isRdfCell(v)) return v.shown;
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
@@ -116,11 +126,26 @@ export function TableView({
             {rows.map((r, i) => (
               <Table.Tr key={i}>
                 <Table.Td className="gf-td-rownum">{i + 1}</Table.Td>
-                {columns.map((c) => (
-                  <Table.Td key={c} className={wrap ? "gf-td-wrap" : ""}>
-                    {cellText(r[c])}
-                  </Table.Td>
-                ))}
+                {columns.map((c) => {
+                  const cell = r[c];
+                  const iri = isRdfCell(cell) && cell.rdfTerm === "iri" ? cell.value : null;
+                  return (
+                    <Table.Td
+                      key={c}
+                      className={`${wrap ? "gf-td-wrap" : ""}${iri ? " gf-td-iri" : ""}`}
+                      title={cellTitle(cell)}
+                    >
+                      {cellText(cell)}
+                      {iri && (
+                        <CopySymbolButton
+                          text={iri}
+                          className="gf-td-copy-iri"
+                          title={t("graphTableView.copyIri")}
+                        />
+                      )}
+                    </Table.Td>
+                  );
+                })}
               </Table.Tr>
             ))}
           </Table.Tbody>

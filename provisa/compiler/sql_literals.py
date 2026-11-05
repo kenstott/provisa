@@ -58,7 +58,10 @@ def _string(text: str, dialect: str) -> str:
 
     if "\x00" in text:
         raise UnencodableLiteral(text, dialect, "it holds a NUL character")
-    return exp.Literal.string(text).sql(dialect=_STANDARD_STRING_DIALECTS.get(dialect, dialect))
+    # A literal made here is no one else's tree: it is rendered as is, never copied first.
+    return exp.Literal.string(text).sql(
+        dialect=_STANDARD_STRING_DIALECTS.get(dialect, dialect), copy=False
+    )
 
 
 def _typed(text: str, sql_type: str, dialect: str) -> str:
@@ -68,7 +71,7 @@ def _typed(text: str, sql_type: str, dialect: str) -> str:
     if "\x00" in text:
         raise UnencodableLiteral(text, dialect, "it holds a NUL character")
     cast = exp.cast(exp.Literal.string(text), sql_type)
-    return cast.sql(dialect=_STANDARD_STRING_DIALECTS.get(dialect, dialect))
+    return cast.sql(dialect=_STANDARD_STRING_DIALECTS.get(dialect, dialect), copy=False)
 
 
 def _float(value: float, dialect: str) -> str:

@@ -21,12 +21,12 @@ def resolve_graphql_field_name(*, domain_id: str, schema_name: str, table_name: 
     compiled schema currently exposes it (startup, or every role's data capabilities exclude it)."""
     from provisa.api.app import state
 
-    for path_map in state.table_path_maps.values():
-        for field_name, info in path_map.items():
-            if (
-                info["domain_id"] == domain_id
-                and info["schema_name"] == schema_name
-                and info["table_name"] == table_name
-            ):
-                return field_name
+    # The model-wide path map (no role's surface is built to read it).
+    for field_name, info in (state.view_path_map or {}).items():
+        if (
+            info["domain_id"] == domain_id
+            and info["schema_name"] == schema_name
+            and info["table_name"] == table_name
+        ):
+            return field_name
     return None

@@ -17,7 +17,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { get as idbGet, set as idbSet } from "idb-keyval";
+import { keepResponse, restoreResponse } from "./graphqlResponseStore";
 import { Copy } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEditorContext } from "@graphiql/react";
@@ -217,19 +217,20 @@ export function ResponseTableOverlay() {
 
   useEffect(() => subscribeQueryStats(setQueryStats), []);
 
-  // Restore persisted response on first editor mount
+  // Restore the kept response on first editor mount, beside the query that produced it only.
   useEffect(() => {
     const editor = editorContext.responseEditor;
-    if (!editor) return;
+    const queryEditor = editorContext.queryEditor;
+    if (!editor || !queryEditor) return;
     if (!editor.getValue()) {
-      idbGet<string>("provisa.graphql.response").then((saved) => {
-        if (saved) {
+      restoreResponse(queryEditor.getValue() ?? "").then((saved) => {
+        if (saved !== null) {
           (editor as { setValue?: (v: string) => void }).setValue?.(saved);
           setResponseText(saved);
         }
       });
     }
-  }, [editorContext.responseEditor]);
+  }, [editorContext.responseEditor, editorContext.queryEditor]);
 
   // Poll for response editor value since GraphiQL doesn't re-render on content change
   useEffect(() => {
@@ -295,11 +296,14 @@ export function ResponseTableOverlay() {
     return () => clearInterval(interval);
   }, [editorContext.responseEditor]);
 
-  // Persist response and reset sort/tab/expanded rows when response changes
+  // Keep the response with the query that produced it.
   useEffect(() => {
-    if (responseText) {
-      idbSet("provisa.graphql.response", responseText);
-    }
+    const queryEditor = editorContext.queryEditor;
+    if (responseText && queryEditor) void keepResponse(queryEditor.getValue() ?? "", responseText);
+  }, [responseText, editorContext.queryEditor]);
+
+  // Reset sort/tab/expanded rows when the response changes
+  useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- reset user interaction state (sort/tab/expansion/page) when underlying response data changes */
     setSortCol(null);
     setActiveTab(0);

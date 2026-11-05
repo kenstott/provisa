@@ -26,7 +26,12 @@ from pathlib import Path
 
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.sandbox import sandboxed
-from provisa.codesource.worker import CODE_HASH_ENV, HostCommand, private_environment
+from provisa.codesource.worker import (
+    CODE_HASH_ENV,
+    CONNECTIONS_ENV,
+    HostCommand,
+    private_environment,
+)
 from provisa.node.install import code_command
 
 HOST = Path(__file__).with_name("host.mjs")
@@ -115,8 +120,10 @@ def host_command(
                 f"--allow-read={readable}",
                 f"--allow-write={socket.parent}",
                 # The hello names its code; the Arrow library is found by its path (REQ-2098);
-                # the services' address and the proxy its fetch goes through (REQ-2106).
+                # the services' address and the proxy its fetch goes through (REQ-2106); how
+                # many connections it makes, and the pool its descriptors' reads wait in.
                 f"--allow-env={CODE_HASH_ENV},PROVISA_HOST_LIB,{SERVICES_ENV},"
+                f"{CONNECTIONS_ENV},UV_THREADPOOL_SIZE,"
                 "HTTP_PROXY,HTTPS_PROXY,http_proxy,https_proxy",
                 f"--import-map={SERVICES_IMPORT_MAP}",
             ]

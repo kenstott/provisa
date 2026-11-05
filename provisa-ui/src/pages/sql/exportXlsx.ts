@@ -21,6 +21,7 @@
 import writeXlsxFile from "write-excel-file";
 import type { Row, SheetData } from "write-excel-file";
 import { parseInstant } from "./formatCell";
+import { columnLabel } from "../../lib/columnKeys";
 
 /** One recorded fact about how the exported rows were produced. */
 export interface ProvenanceEntry {
@@ -67,7 +68,7 @@ export function columnType(values: unknown[]): CellType {
 /** The typed data sheet: a bold header row, then one row per result row. */
 export function dataSheet(columns: string[], rows: Record<string, unknown>[]): SheetData {
   const types = new Map(columns.map((c) => [c, columnType(rows.map((r) => r[c]))]));
-  const header: Row = columns.map((c) => ({ value: c, type: String, ...HEADER }));
+  const header: Row = columns.map((c) => ({ value: columnLabel(c), type: String, ...HEADER }));
   const body: Row[] = rows.map((row) =>
     columns.map((c) => {
       const v = row[c];

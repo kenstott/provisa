@@ -39,11 +39,18 @@ class Alias:
     fifa_code: str | None
 
 
-def country_alias(name: str) -> list[Alias]:
+@dataclass
+class AliasInputs:
+    #: The team's name, as a tournament's records spell it.
+    name: str
+
+
+def country_alias(inputs: AliasInputs) -> list[Alias]:
     """The FIFA member a team's name stands for: West Germany and Germany FR are Germany.
 
     @table
     """
+    name = inputs.name
     reply = anthropic.Anthropic().messages.create(
         model="claude-sonnet-5-5",
         max_tokens=2000,

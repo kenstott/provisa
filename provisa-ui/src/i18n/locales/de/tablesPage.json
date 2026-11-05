@@ -11,8 +11,12 @@
     "addViewTitle": "Neue Sicht im SQL-Explorer erstellen",
     "model": "+ Modell",
     "modelTitle": "Entität oder Fakt modellieren (Sternschema / Data Vault)",
+    "modelMenu": "Modellierungsart wählen",
+    "modelEntityFact": "Entität/Fakt",
+    "modelStarSchema": "Sternschema",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Arbeitsmappe",
-    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten und Ontologiebegriffe, je ein Blatt",
+    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten, Ontologie, Datenprodukte, Data Contracts, Datenqualität und Datenprofile, je ein Blatt",
     "viewErd": "ERD anzeigen",
     "colSource": "Quelle",
     "colDomain": "Domäne",
@@ -46,6 +50,8 @@
     "nextPage": "Nächste Seite",
     "firstPage": "Erste Seite",
     "lastPage": "Letzte Seite",
+    "listedElsewhere": "In anderen Domänen gelistet",
+    "listedElsewhereHint": "Namen, die andere Domänen listen. Bitten Sie diese Domäne um Zugriff, um sie zu lesen.",
     "pageOf": "Seite {{page}} / {{totalPages}}",
     "loadFailed": "Registrierte Tabellen konnten nicht geladen werden: {{message}}",
     "editViewDefinitionTitle": "Sichtdefinition bearbeiten",
@@ -56,6 +62,7 @@
       "impliedDimensionTitle": "Implizite Dimension — „Group By aktivieren“ ist für diese Tabelle aktiviert"
     },
     "derived": "abgeleitet",
+    "endpointUnread": "Das API-Dokument der Quelle konnte nicht gelesen werden",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -81,6 +88,8 @@
     "panelRegisterTable": "Tabelle registrieren",
     "panelNewView": "Neue Ansicht",
     "panelNewModel": "Neues Modell",
+    "panelStarSchema": "Neues Sternschema",
+    "panelDataVault": "Neuer Data Vault",
     "history": {
       "badge": "Historie",
       "title": "Führt Historie: zum Stand eines Datums oder wie erfasst abfragen (Time Travel)"

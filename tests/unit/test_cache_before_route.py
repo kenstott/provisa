@@ -77,6 +77,7 @@ def pipe(monkeypatch, bind_org):
     state.source_cache = {}
     state.table_cache = {}
     state.settings_overrides = {}
+    state.config = None  # as a first start reads it: no config declares a derived role (REQ-2057)
     state.org_id = "org-a"
     state.model_stamp = 1
     state.tenant_db = None
@@ -117,7 +118,14 @@ def pipe(monkeypatch, bind_org):
         patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_counted_route)),
         audit_identity_scope("u-1", "analyst"),
     ):
-        yield SimpleNamespace(state=state, mod=_pipeline, counts=counts, audits=audits)
+        # REQ-2176: every Cypher statement reads its principal's graph session; the stand-in
+        # state has no control plane to hold one, so each is given an empty one, and counted.
+        from tests.unit.graph_session_double import empty_graph_sessions
+
+        sessions = empty_graph_sessions(monkeypatch)
+        yield SimpleNamespace(
+            state=state, mod=_pipeline, counts=counts, audits=audits, sessions=sessions
+        )
 
 
 async def _raw(p, sql, params, **kw):
@@ -305,7 +313,13 @@ async def test_a_hit_carries_the_shape_its_miss_was_typed_by(pipe):
 
     # The registry's column types, as a schema build keeps them: orders.id is an integer.
     pipe.state.schema_build_cache = {
-        "column_types": {1: [SimpleNamespace(column_name="id", data_type="integer")]}
+        "column_types": {
+            1: [
+                SimpleNamespace(
+                    column_name="id", data_type="integer", subtype=None, native_type=None
+                )
+            ]
+        }
     }
     miss, _ = await _raw(pipe, _CACHED, [7])
     hit = await pipe.mod._govern_and_route(_CACHED, "analyst", params=[7], serve_cached=True)

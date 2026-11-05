@@ -1,0 +1,18 @@
+{
+  "roleLlmBudget": {
+    "heading": "LLM 予算",
+    "hint": "トークン、またはモデル価格表に基づく USD。複数のロールで動作するユーザーには最も緩いロールが適用されます。空欄は無制限です。",
+    "callCap": "1 回の呼び出しあたり",
+    "window_hour": "1 時間あたり",
+    "window_day": "1 日あたり",
+    "window_week": "1 週間あたり",
+    "window_month": "30 日あたり",
+    "unit_tokens": "トークン",
+    "unit_usd": "USD",
+    "unitOf": "{{limit}} の単位",
+    "noLimit": "無制限",
+    "tokens": "{{amount}} トークン",
+    "used": "{{limit}} 中 {{used}} を使用",
+    "freesAt": "{{at}} に空きが出ます"
+  }
+}

@@ -12,6 +12,8 @@ import pytest
 
 from provisa.core.ir_types import (
     IR_TYPES,
+    ColumnTyping,
+    column_typing,
     is_ir_type,
     to_ir,
     to_physical,
@@ -35,9 +37,9 @@ def test_platform_translators_native_to_ir():
     # common types fall through to generic aliases regardless of platform
     assert to_ir("integer", "trino") == "integer"
     assert to_ir("varchar", "duckdb") == "text"
-    # a platform-specific spelling is unknown without the platform
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        to_ir("uniqueidentifier")
+    # a platform-specific spelling names no IR type without the platform: text (REQ-2171)
+    assert to_ir("uniqueidentifier") == "text"
+    assert not is_ir_type("uniqueidentifier") and is_ir_type("uniqueidentifier", "sqlserver")
 
 
 def test_value_transform_passthrough_default_and_sql_expression():
@@ -70,6 +72,14 @@ def test_a_registered_nvarchar_column_lands_as_text_with_no_platform_named():
     assert to_ir("NVARCHAR(256)") == "text"
 
 
+def test_an_exasol_text_column_names_its_character_set_after_its_size():
+    """Exasol reports VARCHAR(64) UTF8 / CHAR(2) ASCII; with its size taken out the type name
+    keeps the character set, and a replica of an Exasol table lands it as text (swap lane)."""
+    for native in ("VARCHAR(64) UTF8", "VARCHAR(2000000) ASCII", "CHAR(2) UTF8", "CHAR(1) ASCII"):
+        assert to_ir(native, "duckdb") == "text"
+        assert to_ir(native) == "text"
+
+
 def test_strips_qualifier_and_lowercases():
     assert to_ir("VARCHAR(255)") == "text"
     assert to_ir("Numeric(10, 2)") == "numeric"
@@ -92,14 +102,18 @@ def test_a_character_type_s_character_set_names_its_base_type(exasol, platform):
     assert to_ir(exasol, platform) == "text"
 
 
-def test_a_character_set_after_a_type_that_is_not_character_is_still_refused():
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        to_ir("integer utf8")
+def test_a_character_set_after_a_type_that_is_not_character_names_no_ir_type():
+    assert not is_ir_type("integer utf8")
+    assert to_ir("integer utf8") == "text"  # REQ-2171
 
 
-def test_unknown_type_raises_no_varchar_default():
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        to_ir("geography")
+def test_a_type_naming_none_of_the_irs_is_text():
+    """REQ-2171: every source type maps onto the IR; one that fits none is text, holding the
+    source's own text form, and registration never fails on it."""
+    assert to_ir("hierarchyid") == "text"
+    assert to_ir("hierarchyid", "sqlserver") == "text"
+    assert column_typing("hierarchyid", "sqlserver") == ColumnTyping("text")
+    assert column_typing("hyperloglog", "athena") == ColumnTyping("text")
 
 
 def test_to_sqlalchemy_maps_ir_and_native():
@@ -112,7 +126,7 @@ def test_to_sqlalchemy_maps_ir_and_native():
 
 def test_is_ir_type():
     assert is_ir_type("varchar") and is_ir_type("timestamp with time zone")
-    assert not is_ir_type("geography")
+    assert not is_ir_type("hierarchyid")
 
 
 def test_to_physical_renders_per_dialect():
@@ -181,8 +195,7 @@ def test_a_native_array_struct_or_map_is_json_without_a_platform(native, platfor
 
 
 def test_a_scalar_whose_name_starts_like_a_nested_type_is_not_json():
-    with pytest.raises(ValueError, match="not in the IR vocabulary"):
-        to_ir("arraylike")
+    assert to_ir("arraylike") == "text"  # REQ-2171: it names no IR type
     assert to_ir("text") == "text"
     assert to_ir("varchar(3)") == "text"
 

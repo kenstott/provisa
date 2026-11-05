@@ -16,16 +16,31 @@
  * backs several types at once (its discriminator column names each edge), which is exactly the case
  * where answering with the first type found would draw one kind of edge and hide the rest.
  *
+ * A drop that no path can join says so by name and changes nothing, as a SPARQL frame's does
+ * (REQ-2135): a parameterized table is never what a path adds.
+ *
  * Kept out of the page component so the pattern it writes can be read back in a test.
  */
-import { tableLabel as dbTableLabel, cypherRelType } from "../naming";
-import type { Relationship } from "../types/admin";
+import type { DropNotice, GNode } from "../components/graph/graph-model";
+import type { SchemaRel } from "../components/graph/graph-schema-types";
+import {
+  MAX_SCHEMA_HOPS,
+  MAX_SCHEMA_PATHS,
+  shortestSchemaPaths,
+} from "../components/graph/schemaPath";
 
 export interface DropExpansion {
   /** The rewritten query, before any native-filter WHERE clause is spliced in. */
   query: string;
-  /** Every variable bound to the dropped label, one per hop. */
+  /** Every variable bound to the dropped label, one per path. */
   targetVars: string[];
+  /** What the drop says on its frame: the tied paths it left out. */
+  notices: DropNotice[];
+}
+
+/** A drop that changes nothing, and why. */
+export interface DropRefused {
+  refused: DropNotice;
 }
 
 /**
@@ -56,65 +71,80 @@ export function withExpansion(
 export function buildDropExpansion(
   query: string,
   compoundLabel: string,
-  adminRels: Relationship[],
-  labelToTableLabel: Record<string, string>,
-): DropExpansion {
-  const droppedTableName = labelToTableLabel[compoundLabel] ?? compoundLabel;
-
-  // Map each declared Cypher label → its query variable by parsing the MATCH
-  // clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch that
-  // returned no rows still declares its label and must remain matchable.
-  const varByLabel: Record<string, string> = {};
-  for (const m of query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
+  schemaRels: SchemaRel[],
+  parameterized: ReadonlySet<string>,
+): DropExpansion | DropRefused {
+  // Map each label the query declares, as written (a compound label whole), to every variable bound
+  // to it, by parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch
+  // that returned no rows still declares its label and must remain matchable. A label bound twice
+  // anchors from both variables.
+  const varsByLabel: Record<string, string[]> = {};
+  for (const m of query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*(?:\{[^}]*\}\s*)?\)/g)) {
     const [, varName, labels] = m;
-    labels.split(":").forEach((l) => {
-      varByLabel[l] = varName;
+    const vars = (varsByLabel[labels] ??= []);
+    if (!vars.includes(varName)) vars.push(varName);
+  }
+
+  // The relationship types are the server's, from the acting role's label map
+  // (/data/graph-schema, the sidebar's Relationship Types): only a type it registers on the way from
+  // a label the query declares to the dropped one is written, so the translator never meets a type
+  // it does not know (REQ-1586). EVERY type that reaches the dropped label, from EVERY variable the
+  // query binds to the other end's label -- not the first type, nor the first variable. One
+  // junction table backs several types at once, and a query can reach the dropped label from
+  // several of its nodes (a domain and its products). Each (anchor, types) is its own path, with its
+  // own relationship and target variables: a target shared across anchors would require one node
+  // to be reached from all of them and hide every row that is not. The graph merges the nodes
+  // several paths reach by identity. A label no relationship touches is reached by the shortest
+  // paths through others (REQ-2135), the ties among them capped; a hop's ties stay whole.
+  if (parameterized.has(compoundLabel))
+    return {
+      refused: { key: "graphFrame.sparqlDropParameterized", values: { name: compoundLabel } },
+    };
+  const held = Object.keys(varsByLabel);
+  if (held.length === 0) return { refused: { key: "graphFrame.sparqlDropNoClass" } };
+  const { paths, hops } = shortestSchemaPaths(schemaRels, held, [compoundLabel], parameterized);
+  if (paths.length === 0) {
+    const classes = held.join(", ");
+    return {
+      refused:
+        hops === null
+          ? { key: "graphFrame.sparqlDropNoPath", values: { name: compoundLabel, classes } }
+          : {
+              key: "graphFrame.sparqlDropTooFar",
+              values: { name: compoundLabel, classes, hops, most: MAX_SCHEMA_HOPS },
+            },
+    };
+  }
+  const seen = new Set<string>();
+  const routes = paths.flatMap((steps) =>
+    varsByLabel[steps[0].from].flatMap((anchor) => {
+      const key = [anchor, ...steps.map((s) => `${s.edge.type} ${s.to}`)].join(" ");
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ anchor, steps }];
+    }),
+  );
+  const kept = hops === 1 ? routes : routes.slice(0, MAX_SCHEMA_PATHS);
+  const notices: DropNotice[] = [];
+  if (kept.length < routes.length)
+    notices.push({
+      key: "graphFrame.sparqlDropLeftOut",
+      values: { shown: kept.length, total: routes.length },
     });
-  }
 
-  // Find a relationship whose one endpoint is the dropped table and whose other
-  // endpoint is a label already declared in the query. Comparison is exact: the
-  // dropped label and dbTableLabel(table_name) are both produced by the same
-  // label-derivation function on registered_tables.table_name.
-  // REQ-1586: collect EVERY relationship type that reaches the dropped table from a label the
-  // query already declares, not just the first. One junction table backs several types at once
-  // (a discriminator column names each edge), so stopping at the first match would draw KIND_OF
-  // and quietly hide RELATED_TO between the very same two tables.
-  let sourceVar: string | undefined;
-  const relAliases: string[] = [];
-  for (const r of adminRels) {
-    if (r.disableCypher) continue;
-    const srcLabel = dbTableLabel(r.sourceTableName);
-    const tgtLabel = r.targetTableName ? dbTableLabel(r.targetTableName) : null;
-    // dropped node is the relationship target; existing query node is the source
-    const asTarget = tgtLabel === droppedTableName && varByLabel[srcLabel];
-    // dropped node is the relationship source; existing query node is the target
-    const asSource = srcLabel === droppedTableName && tgtLabel && varByLabel[tgtLabel];
-    if (!asTarget && !asSource) continue;
-    const anchor = asTarget ? varByLabel[srcLabel] : varByLabel[tgtLabel as string];
-    // Every hop hangs off one anchor variable — the first one found. A second relationship
-    // reaching the dropped table from a DIFFERENT existing node is a different question.
-    if (sourceVar === undefined) sourceVar = anchor;
-    else if (anchor !== sourceVar) continue;
-    const relType = cypherRelType(r);
-    if (relType && !relAliases.includes(relType)) relAliases.push(relType);
-  }
-  if (!sourceVar) {
-    // No known relationship — fall back to first MATCH variable
-    const nodeVarMatch = query.match(/\bMATCH\s*\(\s*(\w+)/i);
-    sourceVar = nodeVarMatch?.[1] ?? "n";
-  }
-
-  const suffix = droppedTableName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
   const trimmed = query.trim();
   const taken = (v: string) =>
     trimmed.includes(`[${v}`) || trimmed.includes(` ${v}`) || trimmed.includes(`(${v}`);
-  // One free (rel, target) variable pair per type. Each type gets its own OPTIONAL MATCH: a
+  const nameOf = (label: string) =>
+    (label.split(":").pop() ?? label).replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
+  // One free (rel, target) variable pair per step. Each path gets its own OPTIONAL MATCH: a
   // single-hop pattern resolves one relationship mapping, so alternation is not a spelling the
   // translator accepts.
   const pairs: { relVar: string; targetVar: string }[] = [];
-  let counter = 1;
-  for (let k = 0; k < Math.max(relAliases.length, 1); k++) {
+  const counters = new Map<string, number>();
+  const freshPair = (label: string) => {
+    const suffix = nameOf(label);
+    let counter = counters.get(suffix) ?? 1;
     let relVar = `r${suffix}`;
     let targetVar = `m${suffix}`;
     while (
@@ -126,25 +156,99 @@ export function buildDropExpansion(
       relVar = `r${suffix}${counter}`;
       targetVar = `m${suffix}${counter}`;
     }
-    pairs.push({ relVar, targetVar });
-  }
-  const optMatchPatterns =
-    relAliases.length > 0
-      ? relAliases.map(
-          (a, k) =>
-            `(${sourceVar})-[${pairs[k].relVar}:${a}]-(${pairs[k].targetVar}:${compoundLabel})`,
-        )
-      : [`(${pairs[0].targetVar}:${compoundLabel})`];
-  const extraReturn =
-    relAliases.length > 0
-      ? relAliases.map((_, k) => `, ${pairs[k].relVar}, ${pairs[k].targetVar}`).join("")
-      : `, ${pairs[0].targetVar}`;
-  const optMatchBlock = optMatchPatterns.map((p) => `OPTIONAL MATCH ${p}`).join("\n");
+    counters.set(suffix, counter);
+    const pair = { relVar, targetVar };
+    pairs.push(pair);
+    return pair;
+  };
+  const written = kept.map(({ anchor, steps }) => {
+    const walked = steps.map((s) => ({ ...freshPair(s.to), type: s.edge.type, label: s.to }));
+    const chain = walked
+      .map((w) => `-[${w.relVar}:${w.type}]-(${w.targetVar}:${w.label})`)
+      .join("");
+    return { anchor, pattern: `(${anchor})${chain}`, walked };
+  });
+  const extraReturn = written
+    .flatMap((w) => w.walked.map((x) => `, ${x.relVar}, ${x.targetVar}`))
+    .join("");
+  const anchors = [...new Set(written.map((w) => w.anchor))];
+  const optMatchBlock = written.map((w) => `OPTIONAL MATCH ${w.pattern}`).join("\n");
   const newQueryBase = withExpansion(
     trimmed,
     optMatchBlock,
     extraReturn,
-    `${sourceVar}${extraReturn}`,
+    `${anchors.join(", ")}${extraReturn}`,
   );
-  return { query: newQueryBase, targetVars: pairs.map((p) => p.targetVar) };
+  return {
+    query: newQueryBase,
+    targetVars: written.map((w) => w.walked[w.walked.length - 1].targetVar),
+    notices,
+  };
+}
+
+/** The most rows the paths between two dropped nodes are read to. */
+const NODE_PATH_ROWS = 25;
+
+/**
+ * The query a node dragged onto another runs (REQ-2135): every shortest path of the data between the
+ * two, within MAX_SCHEMA_HOPS, through any relationship. Null where a node's key is not known, which
+ * is what names it: ``key`` is a label's key column.
+ */
+export function nodePathQuery(
+  from: GNode,
+  to: GNode,
+  key: (label: string) => string | undefined,
+): string | null {
+  const keyed = ([variable, node]: [string, GNode]) => {
+    const column = key(node.label);
+    const value = column === undefined ? undefined : node.properties[column];
+    if (value === undefined || value === null) return null;
+    const literal =
+      typeof value === "number"
+        ? value
+        : `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+    return `${variable}.${column} = ${literal}`;
+  };
+  const a = keyed(["a", from]);
+  const b = keyed(["b", to]);
+  if (a === null || b === null) return null;
+  return [
+    `MATCH p = allShortestPaths((a:${from.label})-[*..${MAX_SCHEMA_HOPS}]-(b:${to.label}))`,
+    `WHERE ${a} AND ${b}`,
+    "RETURN p",
+    `LIMIT ${NODE_PATH_ROWS}`,
+  ].join("\n");
+}
+
+const NUMERIC_TYPES = new Set([
+  "integer",
+  "bigint",
+  "int",
+  "int4",
+  "int8",
+  "smallint",
+  "float",
+  "double precision",
+  "numeric",
+  "decimal",
+  "real",
+  "float4",
+  "float8",
+]);
+
+/** The WHERE clauses binding a parameterized node's native filter columns, for those given a value. */
+export function nativeFilterClauses(
+  varName: string,
+  filterColumns: { name: string; type: string }[],
+  params: Record<string, string>,
+): string[] {
+  return filterColumns
+    .filter((col) => params[col.name] !== "")
+    .map(({ name, type }) => {
+      const v = params[name];
+      const lit = NUMERIC_TYPES.has((type ?? "").toLowerCase())
+        ? v
+        : `'${v.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+      return `${varName}._nf_${name} = ${lit}`;
+    });
 }

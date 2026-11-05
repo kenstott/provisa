@@ -55,9 +55,15 @@ class _Conn:
         return result
 
 
-def _row(table: str, domain: str, column: str, steward: bool = False) -> SimpleNamespace:
+def _row(
+    table: str, domain: str, column: str, steward: bool = False, grant: list[str] | None = None
+) -> SimpleNamespace:
     return SimpleNamespace(
-        table_name=table, domain_id=domain, column_name=column, required_by_steward=steward
+        table_name=table,
+        domain_id=domain,
+        column_name=column,
+        required_by_steward=steward,
+        visible_to=list(grant or []),
     )
 
 
@@ -87,7 +93,12 @@ async def test_a_source_with_nothing_registered_writes_no_table(written):
 
 async def test_only_registered_tables_are_brought_up_to_date(written):
     registered = {
-        "ns__OrderService__ListOrders": ("sales", {"id", "_nf_customer_id"}, {"_nf_customer_id"})
+        "ns__OrderService__ListOrders": (
+            "sales",
+            {"id", "_nf_customer_id"},
+            {"_nf_customer_id"},
+            {"id": ["analyst", "viewer"], "_nf_customer_id": []},
+        )
     }
     n_tables = await router._register_schema(
         "g", [_query("ListOrders"), _query("GetOrder")], _Conn(), "ns", "d", registered
@@ -104,12 +115,18 @@ async def test_only_registered_tables_are_brought_up_to_date(written):
     }
     # REQ-1986: a parameter a steward made required stays required when the proto is re-read.
     assert [c.name for c in table.columns if c.required_by_steward] == ["_nf_customer_id"]
+    # REQ-2154: each column keeps who it is granted to when the proto is re-read; an empty
+    # grant is no role, so a refresh writing none would take the table from every reader.
+    assert {c.name: c.visible_to for c in table.columns} == {
+        "id": ["analyst", "viewer"],
+        "_nf_customer_id": [],
+    }
 
 
 async def test_the_registered_set_is_read_from_the_registry():
     conn = _Conn(
         [
-            _row("ns__OrderService__ListOrders", "sales", "id"),
+            _row("ns__OrderService__ListOrders", "sales", "id", grant=["analyst", "viewer"]),
             _row("ns__OrderService__ListOrders", "sales", "total"),
             _row("ns__OrderService__ListOrders", "sales", "_nf_customer_id", steward=True),
             _row("ns__OrderService__GetOrder", "", "id"),
@@ -120,8 +137,9 @@ async def test_the_registered_set_is_read_from_the_registry():
             "sales",
             {"id", "total", "_nf_customer_id"},
             {"_nf_customer_id"},
+            {"id": ["analyst", "viewer"], "total": [], "_nf_customer_id": []},
         ),
-        "ns__OrderService__GetOrder": ("", {"id"}, set()),
+        "ns__OrderService__GetOrder": ("", {"id"}, set(), {"id": []}),
     }
 
 

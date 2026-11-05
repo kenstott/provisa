@@ -82,7 +82,6 @@ def schema_comment(product: "DataProductAsset") -> str:
     for heading, text in (
         ("Limitations", product.limitations),
         ("Usage", product.usage),
-        ("Service level", product.sla),
         ("Support", product.support),
         ("Support contact", product.support_contact),
         ("Documentation", product.documentation_url),

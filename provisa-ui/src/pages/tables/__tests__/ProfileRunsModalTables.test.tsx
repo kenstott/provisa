@@ -16,7 +16,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ role: { id: "admin" } }) }));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "admin" }) }));
 vi.mock("../../sql/exportXlsx", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../sql/exportXlsx")>()),
   downloadXlsx: vi.fn(),

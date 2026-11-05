@@ -128,14 +128,25 @@ def format_entities(entities: list, table_roles: dict[str, str] | None = None) -
     return "\n".join(lines)
 
 
+#: A best-effort retry's second sentence (non-strict NL): only an error saying part of the question
+#: cannot be expressed falls back to the closest expressible query; any other error is fixed.
+BEST_EFFORT_RETRY = (
+    "If the error says part of the question cannot be expressed in this language, answer with "
+    "the closest query it can express."
+)
+
+
 def build_prompt(  # REQ-355, REQ-356
     nl_query: str,
     target: NlTarget,
     schema_sdl: str,
     prior_error: str | None = None,
     relevant_entities: str = "",
+    best_effort: bool = False,
 ) -> str:
-    """Build the full LLM prompt for a single generation iteration."""
+    """Build the full LLM prompt for a single generation iteration. ``best_effort`` (non-strict):
+    a retry whose error says part of the question cannot be expressed in the language is answered
+    with the closest query it can express; every other error is fixed."""
     instructions = _TARGET_INSTRUCTIONS[target]
 
     parts = [f"INSTRUCTIONS:\n{instructions}"]
@@ -150,6 +161,7 @@ def build_prompt(  # REQ-355, REQ-356
         parts.append(
             f"\nPREVIOUS ATTEMPT FAILED WITH ERROR:\n{prior_error}\n"
             "Correct the query to fix this error."
+            + (f" {BEST_EFFORT_RETRY}" if best_effort else "")
         )
 
     return "\n".join(parts)
