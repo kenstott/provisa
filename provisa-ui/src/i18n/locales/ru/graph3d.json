@@ -147,6 +147,6 @@
     "factMembers": "Таблицы-участники",
     "factColumns": "Столбцы",
     "grounding_grounded": "Привязан",
-    "grounding_grounded_pending": "Привязан, ожидает утверждения"
+    "grounding_grounded_pending": "Привязан, через черновик"
   }
 }

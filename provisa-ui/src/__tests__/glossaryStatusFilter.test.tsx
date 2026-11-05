@@ -213,7 +213,7 @@ describe("glossary status and grounding filters", () => {
   it("narrows the list by grounding, in the words findings use", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    await pick("glossary-grounding-filter", "Grounded · path pending approval");
+    await pick("glossary-grounding-filter", "Grounded · via a draft");
     const list = screen.getByTestId("glossary-list");
     expect(within(list).queryByTestId("glossary-item-1")).not.toBeInTheDocument();
     expect(within(list).getByTestId("glossary-item-2")).toBeInTheDocument();

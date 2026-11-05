@@ -147,6 +147,6 @@
     "factMembers": "成员表",
     "factColumns": "列",
     "grounding_grounded": "已锚定",
-    "grounding_grounded_pending": "已锚定，待批准"
+    "grounding_grounded_pending": "已锚定，经由草稿"
   }
 }
