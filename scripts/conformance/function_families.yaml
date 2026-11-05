@@ -2,7 +2,8 @@
 # time (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS). First match wins: a function is in a family by its
 # name (names, pattern), an argument type (argument) or its result type (returns), each matched
 # against format_type. Read by pgwire_function_probe.py; a family says what a function is, never
-# that it may go unserved.
+# that it may go unserved. btrim stays out of "Index support", and so do the hash functions: a
+# client calls those directly (hashtext for an advisory lock key).
 
 - family: Trigger
   # called only by the trigger manager
@@ -17,22 +18,19 @@
   pattern: '^(ascii|big5|euc|gb18030|gbk|iso|johab|koi8|latin|mic|shift_jis|sjis|uhc|utf8|win)\w*_to_\w+$'
 
 - family: Index support
-  pattern: '^(bt|brin|gin|gist|spg|hash|gtsvector|gtsquery|inet_gist|inet_spg|multirange_gist|range_gist)|(am|index_am|tableam|_tableam)_?handler$|^amvalidate$'
+  pattern: '^(bt(?!rim$)|brin|gin|gist|spg|hashhandler$|gtsvector|gtsquery|inet_gist|inet_spg|multirange_gist|range_gist)|(am|index_am|tableam|_tableam)_?handler$|^amvalidate$'
   names: [
-    brin_bloom_summary_send, brin_minmax_multi_summary_send, brin_summarize_new_values,
-    btboolcmp, btbpchar_pattern_cmp, btcharcmp, btequalimage, btfloat48cmp, btfloat4cmp,
-    btfloat84cmp, btfloat8cmp, btint24cmp, btint28cmp, btint2cmp, btint42cmp, btint48cmp,
-    btint4cmp, btint82cmp, btint84cmp, btint8cmp, btnamecmp, btnametextcmp, btoidcmp,
-    btoidvectorcmp, bttext_pattern_cmp, bttextcmp, bttextnamecmp, bttidcmp, btvarstrequalimage,
-    gin_clean_pending_list, gin_cmp_tslexeme, gin_compare_jsonb, hash_aclitem,
-    hash_aclitem_extended, hash_numeric, hash_numeric_extended, hashbpchar, hashbpcharextended,
-    hashchar, hashcharextended, hashfloat4, hashfloat4extended, hashfloat8, hashfloat8extended,
-    hashinet, hashinetextended, hashint2, hashint2extended, hashint4, hashint4extended,
-    hashint8, hashint8extended, hashmacaddr, hashmacaddr8, hashmacaddr8extended,
-    hashmacaddrextended, hashname, hashnameextended, hashoid, hashoidextended, hashoidvector,
-    hashoidvectorextended, hashtext, hashtextextended, hashtid, hashtidextended,
-    spg_poly_quad_compress
+    brin_bloom_summary_send, brin_minmax_multi_summary_send, brin_summarize_new_values, btboolcmp,
+    btbpchar_pattern_cmp, btcharcmp, btequalimage, btfloat48cmp, btfloat4cmp, btfloat84cmp,
+    btfloat8cmp, btint24cmp, btint28cmp, btint2cmp, btint42cmp, btint48cmp, btint4cmp, btint82cmp,
+    btint84cmp, btint8cmp, btnamecmp, btnametextcmp, btoidcmp, btoidvectorcmp, bttext_pattern_cmp,
+    bttextcmp, bttextnamecmp, bttidcmp, btvarstrequalimage, gin_clean_pending_list,
+    gin_cmp_tslexeme, gin_compare_jsonb, spg_poly_quad_compress
   ]
+
+- family: Hash
+  # general functions a client can call, not only a hash index's support
+  pattern: '^hash'
 
 - family: Planner support
   # selectivity, sort support and statistics callbacks

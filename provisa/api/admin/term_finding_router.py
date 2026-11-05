@@ -8,27 +8,36 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Find terms in a document: the glossary's API for it (REQ-2179, REQ-2185).
+"""Find terms in a document or a registered table: the glossary's API for it (REQ-2179,
+REQ-2185, REQ-2202).
 
 A steward picks a reference library document they may read, or gives a new one as a file or an
 http(s) URL, which joins the library as a proposed document in the domains the steward is working
 in (a document already in the library is not added again: the scan reads the library's copy).
 The scan runs in the background with the org's AI model, held to the role's LLM budget, and its
 candidates land as drafts in the review queue, where the steward edits, accepts, merges or
-rejects each, or accepts several at once. Scanning a document again is a new scan whose drafts
-show the candidates the glossary does not hold yet and those that match or duplicate its terms
-and synonyms; nothing is re-reviewed automatically.
+rejects each, or accepts several at once. A scan always ends: it finishes, or it stops saying why
+-- refused at the start when its model cannot run, failed by a model call that stalls or a budget
+that refuses, cancelled by a person, or given up on by :func:`keep` when its server restarted or it
+stopped moving. A registered table that holds definitions or documentation is read as the
+steward's acting role (term_finding_table.py): a table of terms and their definitions is queued at
+once with no model call; a table of text is scanned as a document is. Either is a scan only, and
+joins no library. Scanning a document again
+is a new scan whose drafts show the candidates the glossary does not hold yet and those that
+match or duplicate its terms and synonyms; nothing is re-reviewed automatically.
 
 Curation's rules hold throughout (glossary_router.py): the queue takes ``glossary_rw``; a term is
 added only in domains the caller curates; a draft merges only into a term the caller may change.
 """
 
-# Requirements: REQ-2179, REQ-2185
+# Requirements: REQ-2179, REQ-2185, REQ-2201, REQ-2202
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Query, Request
@@ -36,21 +45,36 @@ from fastapi import APIRouter, Query, Request
 from provisa.api.admin import glossary_router as glossary
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.errors import ApiError
+from provisa.core.connection_loop import spawn_background
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.llm.client import CALL_TIMEOUT_S
 from provisa.reference_library import library, store
-from provisa.term_finding import queue, review, scan
+from provisa.term_finding import model, queue, review, scan
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Coroutine
 
     from provisa.core.database import Connection, Database
+    from provisa.term_finding.model import Held
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/glossary/term-finding", tags=["admin", "glossary"])
 
-#: The scans running now, held so none is collected before it finishes.
-_RUNNING: set[asyncio.Task] = set()
+#: How often scans left behind are looked for, in seconds; the first look is at startup.
+KEEP_EVERY_S = 30
+#: A running scan that has not moved on for this long has failed: a step is one model call, tried
+#: on the model and on its fallback, and each is held to CALL_TIMEOUT_S.
+STALLED_AFTER = timedelta(seconds=2 * CALL_TIMEOUT_S + 60)
+#: This process, when it is not one of a launch's workers (provisa.core.boot_lock).
+_PROCESS = uuid.uuid4().hex
+
+RESTARTED = "the server restarted while the scan was running; scan the document again"
+STOPPED = "the server stopped while the scan was running; scan the document again"
+STALLED = (
+    f"the scan made no progress for {STALLED_AFTER.total_seconds():g} seconds; "
+    "scan the document again"
+)
 
 
 def _pool() -> Database:
@@ -93,7 +117,9 @@ def _scan(s: queue.ScanRow, counts: dict[str, int] | None = None) -> dict[str, A
         "document_title": s.document_title,
         "document_source": s.document_source,
         # REQ-2185: a removed document's citations stay, marked as citing a removed document.
-        "document_removed": s.document_id is None,
+        "document_removed": s.document_id is None and s.source_table is None,
+        # REQ-2202: a table's scan names its domain, table, id column and text column.
+        "source_table": s.source_table,
         "domains": s.domains,
         "status": s.status,
         "error": s.error,
@@ -101,6 +127,11 @@ def _scan(s: queue.ScanRow, counts: dict[str, int] | None = None) -> dict[str, A
         "started_by": s.started_by,
         "started_at": _iso(s.started_at),
         "finished_at": _iso(s.finished_at),
+        "model": s.model,
+        "step": s.step,
+        "batch": s.batch,
+        "batches": s.batches,
+        "budget_limit": s.budget_limit,
         "counts": counts or {},
     }
 
@@ -169,38 +200,67 @@ async def _new_document(
 # -- scanning -----------------------------------------------------------------------------------
 
 
-async def _model(request: Request) -> Callable[[str, int], Awaitable[str]]:
+def this_launch() -> str:
+    """The launch a scan starts in: a launch's workers, respawned ones included, share it."""
+    from provisa.core.boot_lock import launch_id
+
+    return launch_id() or _PROCESS
+
+
+async def _model(request: Request) -> Held:
     from provisa.api.admin.capabilities import acting_role_of_request
     from provisa.api.app import state
-    from provisa.term_finding import model
 
     return await model.for_role(state, acting_role_of_request(request))
+
+
+async def _match(conn: Connection, candidates: list[scan.Candidate]) -> None:
+    """Mark ``candidates`` with the glossary's terms and synonyms they duplicate or name again."""
+    terms = [
+        {"id": t["id"], "name": t["name"]}
+        for t in await glossary_repo.list_terms(cast("Connection", conn))
+    ]
+    edges = await glossary_repo.term_edges(cast("Connection", conn))
+    scan.match(candidates, terms, [(f, t) for f, t, rel in edges if rel == review.SYNONYM_OF])
 
 
 async def run_scan(
     pool: Database,
     scan_id: int,
-    document_id: int,
+    document_id: int | None,
     title: str,
-    call: Callable[[str, int], Awaitable[str]],
+    call: Held,
+    *,
+    rows: list[scan.Passage] | None = None,
 ) -> None:
-    """Scan the document and queue its candidates; a scan that cannot finish is marked failed,
-    naming why."""
-    try:
+    """Scan the document -- or a table's ``rows``, already read as the steward (REQ-2202) -- and
+    queue its candidates; a scan that cannot finish is marked failed,
+    naming why. Each step is recorded on the scan's row, and a scan whose row has been ended (a
+    person cancelled it, :func:`keep` gave up on it) stops there: the row is what every worker
+    reads, and the worker running a scan need not be the one that was asked."""
+
+    async def report(step: str, batch: int, batches: int) -> None:
         async with pool.acquire() as conn:
-            rows = await store.passages(conn, document_id)
-        result = await scan.run(title, [scan.Passage(*r) for r in rows], call)
-        async with pool.acquire() as conn:
-            terms = [
-                {"id": t["id"], "name": t["name"]}
-                for t in await glossary_repo.list_terms(cast("Connection", conn))
-            ]
-            edges = await glossary_repo.term_edges(cast("Connection", conn))
-            scan.match(
-                result.candidates,
-                terms,
-                [(f, t) for f, t, rel in edges if rel == review.SYNONYM_OF],
+            moved_on = await queue.record_progress(
+                conn,
+                scan_id,
+                step=step,
+                batch=batch,
+                batches=batches,
+                budget_limit=call.limited_to,
             )
+        if not moved_on:
+            raise scan.ScanStopped
+
+    try:
+        if rows is None:
+            async with pool.acquire() as conn:
+                stored = await store.passages(conn, cast("int", document_id))
+            result = await scan.run(title, [scan.Passage(*r) for r in stored], call, report)
+        else:
+            result = await scan.run(title, rows, call, report, scan.TABLE)
+        async with pool.acquire() as conn:
+            await _match(conn, result.candidates)
             summary = {
                 "passages": result.passages,
                 "mentions": result.mentions,
@@ -210,34 +270,179 @@ async def run_scan(
             }
             async with conn.transaction():
                 await queue.finish_scan(conn, scan_id, result.candidates, summary)
+    except scan.ScanStopped:
+        log.info("term-finding scan %s stopped: its row has ended", scan_id)
+    except asyncio.CancelledError:  # the process is shutting down (shutdown_background)
+        async with pool.acquire() as conn:
+            await queue.fail_scan(conn, scan_id, STOPPED)
+        raise
     except Exception as exc:  # the scan is marked failed with what stopped it, never left running
         log.exception("term-finding scan %s failed", scan_id)
+        reason = str(exc) or type(exc).__name__
+        if call.limited_to is not None:
+            reason += f" (the role's LLM budget held a call to {call.limited_to} output tokens)"
         async with pool.acquire() as conn:
-            await queue.fail_scan(conn, scan_id, str(exc) or type(exc).__name__)
+            await queue.fail_scan(conn, scan_id, reason)
 
 
-def _launch(work: Awaitable[None]) -> None:
-    task = asyncio.ensure_future(work)
-    _RUNNING.add(task)
-    task.add_done_callback(_RUNNING.discard)
+def _launch(work: Coroutine[Any, Any, None]) -> None:
+    """Run the scan on a background worker. A request's own loop stops when the request ends and
+    cancels what is left on it (provisa.core.connection_loop), and a scan outlives its request."""
+    spawn_background(work, name="term-finding-scan")
+
+
+async def give_up_on_left_behind(pool: Database, launch: str) -> None:
+    """Fail the scans no server is running any more: those of an earlier launch, and those that
+    have stopped moving (a worker of this launch that died, whatever else nothing here foresaw)."""
+    async with pool.acquire() as conn:
+        restarted = await queue.fail_left_behind(conn, launch, RESTARTED)
+        stalled = await queue.fail_stalled(conn, STALLED_AFTER, STALLED)
+    if restarted or stalled:
+        log.warning(
+            "term-finding scans given up on: %d left by a restart, %d stalled", restarted, stalled
+        )
+
+
+async def keep(state: Any) -> None:
+    """A worker's watch over the scans of every org environment it holds a runtime of. Runs until
+    the worker stops, its first pass at startup; any worker's pass may end any scan."""
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
+
+    while True:
+        for runtime in state.org_registry.runtimes():
+            org, env = set_current_org(runtime.org_id), set_current_env(runtime.env)
+            try:
+                await give_up_on_left_behind(state.model_db, this_launch())
+            except Exception:  # noqa: BLE001 -- the watch outlives a failed pass; it says so
+                log.exception(
+                    "term-finding scan watch failed in %s/%s; it runs again",
+                    runtime.org_id,
+                    runtime.env,
+                )
+            finally:
+                reset_current_env(env)
+                reset_current_org(org)
+        await asyncio.sleep(KEEP_EVERY_S)
+
+
+def _no_rows(source: Any, column: str) -> ApiError:
+    return ApiError(
+        409,
+        "term_finding.no_rows",
+        f"{source.name} holds no row with text in {column!r} to scan",
+        table=source.name,
+    )
+
+
+async def _import_terms(request: Request, source: Any, declared: set[str]) -> dict[str, Any]:
+    """Offer a table of terms and their definitions (REQ-2202, explicit): its rows read as the
+    steward's acting role, each a term with its definition, matched against the glossary and
+    queued for review at once. No model is asked, so none need be set and no budget is spent."""
+    from provisa.api.admin import term_finding_table as table
+    from provisa.api.admin.capabilities import acting_role_of_request
+    from provisa.api.app import state
+
+    candidates = scan.defined(await table.rows(state, source, acting_role_of_request(request)))
+    if not candidates:
+        raise _no_rows(source, source.term_column)
+    async with _pool().acquire() as conn:
+        await _match(conn, candidates)
+        async with conn.transaction():
+            scan_id = await queue.start_scan(
+                conn,
+                document_id=None,
+                document_title=source.name,
+                document_source=source.name,
+                domains=sorted(declared),
+                started_by=glossary._caller_id(request),
+                model=None,
+                launch=this_launch(),
+                source_table=source.as_dict(),
+            )
+            rows = sum(len(c.passages) for c in candidates)
+            summary = {
+                "passages": rows,
+                "mentions": rows,
+                "candidates": len(candidates),
+                "calls": 0,
+                "left_out": scan.LeftOut().as_dict(),
+            }
+            await queue.finish_scan(conn, scan_id, candidates, summary)
+        done = await queue.scan(conn, scan_id)
+        counts = (await queue.draft_counts(conn)).get(scan_id)
+    assert done is not None
+    return {"scan": _scan(done, counts)}
+
+
+async def _start_table_scan(
+    request: Request, source: Any, declared: set[str], call: Held
+) -> dict[str, Any]:
+    """Scan a registered table (REQ-2202, inferred): its rows read as the steward's acting role,
+    refused before the scan starts when the role's LLM budget has no room for them."""
+    from provisa.api.admin import term_finding_table as table
+    from provisa.api.admin.capabilities import acting_role_of_request
+    from provisa.api.app import state
+
+    rows = await table.read(state, source, acting_role_of_request(request))
+    if not rows:
+        raise _no_rows(source, source.text_column)
+    try:
+        await call.require_room(scan.reading_prompts(source.name, rows, scan.TABLE), source.name)
+    except model.OverBudget as exc:
+        raise ApiError(409, "term_finding.over_budget", str(exc)) from None
+    pool = _pool()
+    async with pool.acquire() as conn:
+        scan_id = await queue.start_scan(
+            conn,
+            document_id=None,
+            document_title=source.name,
+            document_source=source.name,
+            domains=sorted(declared),
+            started_by=glossary._caller_id(request),
+            model=call.name,
+            launch=this_launch(),
+            source_table=source.as_dict(),
+        )
+        started = await queue.scan(conn, scan_id)
+    _launch(run_scan(pool, scan_id, None, source.name, call, rows=rows))
+    assert started is not None
+    return {"scan": _scan(started)}
 
 
 @router.post("/scans")
 async def start_scan(request: Request) -> dict:
-    """Scan a library document (``document_id``) or a new one (``url``, or ``file_name`` with
-    ``content_b64``), in the steward's working ``domains``."""
+    """Scan a library document (``document_id``), a new one (``url``, or ``file_name`` with
+    ``content_b64``) or a registered table (``table``: its ``domain``, ``table``, ``id_column``
+    and ``text_column``), in the steward's working ``domains``."""
     glossary._require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
-    given = [k for k in ("document_id", "url", "content_b64") if body.get(k) is not None]
+    given = [k for k in ("document_id", "url", "content_b64", "table") if body.get(k) is not None]
     if len(given) != 1:
         raise ApiError(
             400,
             "term_finding.one_document",
-            "a scan reads one document: a library document, a URL or a file",
+            "a scan reads one source: a library document, a URL, a file or a table",
         )
     declared = glossary._declared_domains(request, body.get("domains"), current=set())
+    from provisa.api.admin import term_finding_table as table
+
+    source = table.source_of(body["table"]) if given == ["table"] else None
+    if isinstance(source, table.TermsSource):
+        return await _import_terms(request, source, declared)
     pool = _pool()
+    # Before anything is written: a scan that could not run adds no document to the library.
+    try:
+        call = await _model(request)
+    except model.ModelRefused as exc:
+        raise ApiError(409, "term_finding.no_model", str(exc)) from None
+    if source is not None:
+        return await _start_table_scan(request, source, declared, call)
     try:
         async with pool.acquire() as conn:
             if body.get("document_id") is not None:
@@ -257,7 +462,6 @@ async def start_scan(request: Request) -> dict:
                     "auth.domain_denied",
                     f"{document.title!r} is in the reference library, outside your domains",
                 )
-            call = await _model(request)
             scan_id = await queue.start_scan(
                 conn,
                 document_id=document.id,
@@ -265,6 +469,8 @@ async def start_scan(request: Request) -> dict:
                 document_source=document.source,
                 domains=sorted(declared),
                 started_by=glossary._caller_id(request),
+                model=call.name,
+                launch=this_launch(),
             )
             started = await queue.scan(conn, scan_id)
     except (library.LibraryRefused, review.ReviewRefused) as exc:
@@ -272,6 +478,22 @@ async def start_scan(request: Request) -> dict:
     _launch(run_scan(pool, scan_id, document.id, document.title, call))
     assert started is not None
     return {"scan": _scan(started), "document": _document(document)}
+
+
+@router.post("/carried-scans")
+async def load_carried_scans(request: Request) -> dict:
+    """REQ-2201: load the scans the bundle of the demo this server was started as carries, as its
+    hosted template loads them (a bundled demo's setup calls this in place of scanning)."""
+    glossary._require_glossary_rw(request)
+    require_active_org_id(request)
+    from provisa.core.demo import started_demo_directory
+    from provisa.term_finding.carry import load_bundle_scans
+
+    async with _pool().acquire() as conn, conn.transaction():
+        try:
+            return {"loaded": await load_bundle_scans(conn, started_demo_directory())}
+        except ValueError as exc:
+            raise ApiError(409, "term_finding.carried_scans_refused", str(exc)) from exc
 
 
 @router.get("/scans")
@@ -349,6 +571,25 @@ async def get_scan(scan_id: int, request: Request) -> dict:
         names = await _term_names(conn, request)
         counts = (await queue.draft_counts(conn)).get(scan_id)
     return {"scan": _scan(found, counts), "drafts": [_draft_view(d, names) for d in drafts]}
+
+
+@router.post("/scans/{scan_id}/cancel")
+async def cancel_scan(scan_id: int, request: Request) -> dict:
+    """End a running scan now, naming who did. It stops before its next model call; a call under
+    way finishes, and is counted against the role's budget, with nothing queued from it."""
+    glossary._require_glossary_rw(request)
+    require_active_org_id(request)
+    async with _pool().acquire() as conn:
+        found = await _scan_held(conn, scan_id, request)
+        who = glossary._caller_id(request)
+        reason = f"cancelled by {who}" if who else "cancelled"
+        if not await queue.fail_scan(conn, scan_id, reason):
+            raise ApiError(
+                409, "term_finding.refused", f"scan {found.id} has already ended: {found.status}"
+            )
+        ended = await queue.scan(conn, scan_id)
+    assert ended is not None
+    return {"scan": _scan(ended)}
 
 
 # -- deciding on drafts -------------------------------------------------------------------------

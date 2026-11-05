@@ -11,14 +11,14 @@
 title: Product reviews
 description: >-
   An electronics shop's catalog in MongoDB, its customers' reviews in Elasticsearch and who bought
-  what in Neo4j, joined on the product: which products do reviews say the battery dies on, and
+  what in Neo4j, joined on the product. Which products do reviews say the battery dies on, and
   what else did their buyers buy?
 screenshot: card.png
 published: true
 group: backend
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release carrying its
 # document, search and graph stores and the fixes it relies on.
-requires_provisa: 0.1.0a496
+requires_provisa: 0.1.0a497
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Use Your Tools"

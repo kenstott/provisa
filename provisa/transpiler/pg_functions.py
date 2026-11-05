@@ -13,8 +13,8 @@ PGWIRE'S CATALOG FUNCTIONS); a rewrite of a name is a row of provisa.transpiler.
 
 ``before`` reads the PostgreSQL statement, ahead of sqlglot's transpile, for the calls that
 transpile drops arguments of or sends to a DuckDB function of the same name and another meaning:
-``random(min, max)``, ``regexp_matches``, ``substring(text FROM pattern)``, ``sha256`` (DuckDB's
-answers hex text, PostgreSQL's the digest), ``btrim`` of a bytea, and so on. ``after`` writes, on
+``random(min, max)``, ``regexp_matches``, ``substring(text FROM pattern)``, ``btrim`` of a bytea,
+and so on. ``after`` writes, on
 the DuckDB statement, what PostgreSQL's parser would not keep (it reads ``->`` as a JSON operator,
 a third REGEXP_EXTRACT argument as a position, and DATE_PART as EXTRACT): those calls cross the transpile as a
 placeholder function."""
@@ -24,13 +24,14 @@ placeholder function."""
 from __future__ import annotations
 
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
-from sqlglot.errors import ParseError
+from sqlglot.dialects.postgres import Postgres
 
-from provisa.transpiler import function_macros, pg_forms_json, pg_xml
+from provisa.transpiler import function_macros, pg_syntax, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -58,10 +59,16 @@ _UDF_CALLS = {
     ("regexp_split_to_array", 3): "PROVISA_REGEXP_SPLIT",
 }
 
+#: How a row reads its argument, by the type that opens the row's name.
+_SPELLED = {
+    "numeric": lambda node: _numeric_digits(node),
+    "jsonb": lambda node: _jsonb_digits(node),
+}
+
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
-    r"\b(sha(224|256|384|512)|random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
-    r"|overlay|substring|extract|decode|encode|pg_size_pretty|current_schemas)\b",
+    r"\b(random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
+    r"|overlay|substring|extract|date_part|decode|encode|pg_size_pretty|current_schemas)\b",
     re.IGNORECASE,
 )
 #: The statements ``typed_calls`` has anything to do in.
@@ -74,15 +81,14 @@ _CALLED = re.compile(
                 *_SIZED_CALLS,
                 *(n for n, _ in _UDF_CALLS),
                 *(n for n, _, _ in function_macros.OVERLOADS),
-                *pg_forms_json.CALLS,
-                *pg_forms_json.TABLE_FUNCTIONS,
             }
         )
     )
     + r"|bit_count|get_bit|set_bit|substr|substring|overlay|gcd|lcm|factorial|generate_series"
     r"|isfinite|date_add|timezone|length|string_agg|position|sum|char|chr|bit|xid|age|like"
     r"|notlike|like_escape|convert|json_object|unnest|trunc|pg_get_object_address"
-    r"|regexp_split_to_table|strpos|pg_typeof)\"?\s*\(",
+    r"|regexp_split_to_table|strpos|pg_typeof|make_interval|overlaps|random_normal|trim_scale"
+    r"|min_scale|int2vectorsend)\"?\s*\(",
     re.IGNORECASE,
 )
 
@@ -95,7 +101,25 @@ _HELD_AS_ANOTHER = {
     exp.DataType.Type.NAME: "name",
 }
 
+#: make_interval's parameters, and what one not given is.
+_MAKE_INTERVAL = ("years", "months", "weeks", "days", "hours", "mins", "secs")
+_NO_INTERVAL = ("0", "0", "0", "0", "0", "0", "0.0")
+
 _RANDOM_BOUNDS = "lower bound must be less than or equal to upper bound"
+
+
+#: The names PostgreSQL reads a part of a second as (datetktbl).
+_SECOND_PARTS = frozenset({"s", "sec", "secs", "second", "seconds"})
+
+
+def _of_a_second(node: exp.Extract) -> bool:
+    """Whether ``node`` reads a second (of a value that has one: PostgreSQL refuses a date's)."""
+    part = node.this.this if isinstance(node.this, exp.Cast) else node.this
+    named = part.name if isinstance(part, exp.Var) else part.this if part.is_string else None
+    if not isinstance(named, str) or named.strip().lower() not in _SECOND_PARTS:
+        return False
+    value = node.expression
+    return not (isinstance(value, exp.Cast) and value.to.is_type("date"))
 
 
 def _is_null(node: exp.Expr) -> bool:
@@ -231,18 +255,18 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
     written: str | None = None
     if isinstance(node, exp.CurrentSchemas):
         # The search path's schemas (pgwire's catalog: public), not DuckDB's.
-        implicit = node.this
-        if not isinstance(implicit, exp.Boolean):
+        implicit = node.this.unnest()
+        while isinstance(implicit, exp.Cast) and implicit.to.is_type(exp.DataType.Type.BOOLEAN):
+            implicit = implicit.this.unnest()  # true::boolean says what true does
+        if isinstance(implicit, exp.Boolean):
+            written = "ARRAY['pg_catalog', 'public']" if implicit.this else "ARRAY['public']"
+        elif isinstance(implicit, exp.Null):
             written = "CAST(NULL AS TEXT[])"  # strict: a NULL argument
-        elif implicit.this:
-            written = "ARRAY['pg_catalog', 'public']"
         else:
-            written = "ARRAY['public']"
-    elif isinstance(node, exp.SHA2):
-        length = node.args.get("length")
-        bits = length.this if isinstance(length, exp.Literal) else "256"
-        value = text(node.this)
-        written = f"UNHEX(SHA256({value}))" if bits == "256" else f"PROVISA_SHA{bits}({value})"
+            written = (
+                f"CASE WHEN {text(node.this)} THEN ARRAY['pg_catalog', 'public'] "
+                f"WHEN NOT {text(node.this)} THEN ARRAY['public'] END"
+            )
     elif isinstance(node, exp.Rand) and node.args.get("lower") is not None:
         low, high = node.this, node.args["lower"]
         written = _random(text(low), text(high), (low, high))
@@ -273,6 +297,13 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
         and _is_text(node.args["start"])
     ):
         written = _regex_substring(text(node.this), node.args["start"])
+    elif isinstance(node, exp.Extract) and _of_a_second(node):
+        # DuckDB's second is a whole number: PostgreSQL's keeps its fraction, the second's
+        # microseconds over a million, a numeric of scale 6 for EXTRACT and a float8 for
+        # date_part (whose part is a text).
+        micros = f"{_DATE_PART}('microseconds', {text(node.expression)})"
+        exact = f"(CAST({micros} AS DECIMAL(20, 0)) * CAST(0.000001 AS DECIMAL(7, 6)))"
+        written = exact if isinstance(node.this, exp.Var) else f"CAST({exact} AS DOUBLE PRECISION)"
     elif isinstance(node, exp.Extract) and not isinstance(node.this, exp.Var):
         written = f"{_DATE_PART}({text(node.this)}, {text(node.expression)})"
     elif isinstance(node, exp.Encode) and node.args.get("charset") is not None:
@@ -282,11 +313,7 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
     elif isinstance(node, exp.Anonymous):
         name = node.name.lower()
         args = node.expressions
-        if name == "sha224" and len(args) == 1:
-            written = (
-                f"PROVISA_SHA224({text(args[0])})"  # sha256's kin: a UDF, as it is not DuckDB's
-            )
-        elif name == "timezone" and len(args) == 1:
+        if name == "timezone" and len(args) == 1:
             written = f"TIMEZONE(CURRENT_SETTING('TimeZone'), {text(args[0])})"
         elif name == "regexp_matches":
             written = f"{_REGEXP_MATCHES}({', '.join(text(a) for a in args)})"
@@ -332,6 +359,44 @@ def _is_numeric(node: exp.Expr) -> bool:
     return _cast_to(node, exp.DataType.Type.DECIMAL) or _scale(node) is not None
 
 
+def _digits(text: str) -> str | None:
+    """A number's text as numeric_out writes it; None for what numeric_in would refuse."""
+    try:
+        number = Decimal(text.strip())
+    except InvalidOperation:
+        return None
+    if number.is_nan():
+        return "NaN"
+    if number.is_infinite():
+        return "Infinity" if number > 0 else "-Infinity"
+    return f"{number:f}"
+
+
+def _numeric_digits(node: exp.Expr) -> str:
+    """An argument of a numeric row: its digits. A cast to the engine's DECIMAL would keep three of
+    a fraction, and could not hold a NaN, an infinity or more than 38 digits, so a numeric of no
+    stated size reaches the row uncast: what it reads is its text."""
+    if not (isinstance(node, exp.Cast) and _cast_to(node, exp.DataType.Type.DECIMAL)):
+        return _sql(node)
+    if node.to.expressions:
+        return _sql(node)
+    held = node.this.unnest()
+    digits = _digits(held.this) if isinstance(held, exp.Literal) else None
+    if digits is None:
+        return _sql(node.this)
+    return exp.Literal.string(digits).sql(dialect="postgres")
+
+
+def _jsonb_digits(node: exp.Expr) -> str:
+    """An argument of a jsonb row: a number's digits as jsonb_out writes them, which is how a
+    refusal of it quotes it. A string, an object and the like are left as they are."""
+    if _cast_to(node, exp.DataType.Type.JSONB) and isinstance(node.this, exp.Literal):
+        digits = _digits(node.this.this)
+        if digits is not None and digits.lstrip("-")[0].isdigit():
+            return f"CAST({exp.Literal.string(digits).sql(dialect='postgres')} AS JSONB)"
+    return _sql(node)
+
+
 def _sql(node: exp.Expr) -> str:
     return node.transform(_call).sql(dialect="postgres")
 
@@ -360,17 +425,33 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
     if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
         value, typmod = _sql(args[0]), _sql(args[1])
-        return f"CASE WHEN ({typmod}) < 0 THEN {value} ELSE LEFT({value}, ({typmod}) - 4) END"
+        # A typmod below the header says no length; a character(n) is padded to it.
+        sized = "RPAD({v}, ({t}) - 4, ' ')" if name == "bpchar" else "LEFT({v}, ({t}) - 4)"
+        return f"CASE WHEN ({typmod}) < 4 THEN {value} ELSE {sized.format(v=value, t=typmod)} END"
     if name == "bit" and len(args) == 3 and _is_null(args[1]):  # noqa: PLR2004
         return "CAST(NULL AS BIT)"
     if name == "bit" and len(args) == 2:  # noqa: PLR2004 -- an integer, as so many bits
         value, width = _sql(args[0]), _sql(args[1])
         bits = f"CAST({value} AS HUGEINT) & ((CAST(1 AS HUGEINT) << ({width})) - 1)"
-        return f"CAST(FORMAT('{{:b}}', {bits}) AS BIT)"
+        return f"CAST(LPAD(FORMAT('{{:b}}', {bits}), {width}, '0') AS BIT)"
     return None
 
 
+def _int2vector(value: exp.Expr) -> str:
+    """An int2vector's value: the engine holds a list, and its literal is its numbers."""
+    if isinstance(value, exp.Literal):
+        numbers = ", ".join(value.this.split())
+        return f"CAST(ARRAY[{numbers}] AS SMALLINT[])"
+    return f"CAST({_sql(value)} AS SMALLINT[])"
+
+
 def _numeric_call(name: str, args: list[exp.Expr]) -> str | None:
+    if name in ("trim_scale", "min_scale") and len(args) == 1:
+        return f"{name}({_numeric_digits(args[0])})"
+    if name == "int2vectorsend" and len(args) == 1 and _is_kind(args[0], "int2vector"):
+        return f"int2vectorsend({_int2vector(args[0].this)})"
+    if name == "random_normal" and any(isinstance(a, exp.Kwarg) for a in args):
+        return f"random_normal({_by_keyword(('mean', 'stddev'), ('0.0', '1.0'), args)})"
     if name in ("gcd", "lcm") and len(args) == 2 and any(map(_is_numeric, args)):  # noqa: PLR2004
         return f"PROVISA_NUMERIC_{name.upper()}({_as_text(args[0])}, {_as_text(args[1])})"
     if name == "factorial" and len(args) == 1:
@@ -420,9 +501,46 @@ def _bit_call(name: str, args: list[exp.Expr]) -> str | None:
     return None
 
 
-def _time_call(name: str, args: list[exp.Expr]) -> str | None:
+def _by_keyword(names: tuple[str, ...], defaults: tuple[str, ...], args: list[exp.Expr]) -> str:
+    """A call's arguments in the order of its parameters: by position, then named as ``=>`` names
+    them, with each default for one not given."""
+    given = dict(zip(names, defaults))
+    for position, arg in enumerate(args):
+        if isinstance(arg, exp.Kwarg):
+            given[arg.this.name.lower()] = _sql(arg.expression)
+        else:
+            given[names[position]] = _sql(arg)
+    return ", ".join(given.values())
+
+
+def _ended_at(start: str, end: exp.Expr) -> str:
+    """An end of an overlaps period; pg_proc writes an interval's overload as start + interval."""
+    is_interval = isinstance(end, exp.Interval) or _cast_to(end, exp.DataType.Type.INTERVAL)
+    return f"{start} + {_sql(end)}" if is_interval else _sql(end)
+
+
+def _time_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 -- one per form
     interval = exp.DataType.Type.INTERVAL
+    if name == "make_interval":
+        return f"make_interval_fields({_by_keyword(_MAKE_INTERVAL, _NO_INTERVAL, args)})"
     written = [_sql(a) for a in args]
+    if name == "time" and len(args) == 1:  # a value whose type the statement does not say
+        return f"CAST({written[0]} AS TIME)"
+    if name == "time" and len(args) == 2:  # noqa: PLR2004
+        return f"time_scale({written[0]}, {written[1]})"
+    if name == "interval" and len(args) == 1:  # pg_proc's other overload takes a typmod
+        return f"time_interval({written[0]})"
+    if name == "interval" and len(args) == 2:  # noqa: PLR2004
+        return f"interval_scale({written[0]}, {written[1]})"
+    if name == "timestamp" and len(args) == 2:  # noqa: PLR2004
+        row = "datetime_pl" if _cast_to(args[1], exp.DataType.Type.TIME) else "timestamp_scale"
+        return f"{row}({written[0]}, {written[1]})"
+    if name == "overlaps" and len(args) == 4:  # noqa: PLR2004
+        first, second = written[0], written[2]
+        return (
+            f"overlaps_timestamp({first}, {_ended_at(first, args[1])}, "
+            f"{second}, {_ended_at(second, args[3])})"
+        )
     if (
         name == "isfinite"
         and len(args) == 1
@@ -450,16 +568,29 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:
             return f"TIMEZONE({written[0]}, {written[1]})"
         return f"(CAST({written[1]} - {written[0]} AS TIMESTAMP) AT TIME ZONE 'UTC')"
     if name == "sum" and len(args) == 1 and _cast_to(args[0], interval):
-        return f"TO_SECONDS(SUM(EPOCH({written[0]})))"
+        # Field by field, as interval_accum adds: a day does not become 24 hours.
+        value = written[0]
+        return (
+            f"TO_MONTHS(CAST(SUM(EXTRACT(YEAR FROM {value}) * 12 + EXTRACT(MONTH FROM {value})) "
+            f"AS INT)) + TO_DAYS(CAST(SUM(EXTRACT(DAY FROM {value})) AS INT)) + "
+            f"TO_MICROSECONDS(CAST(SUM(EXTRACT(HOUR FROM {value}) * 3600000000 + "
+            f"EXTRACT(MINUTE FROM {value}) * 60000000 + EXTRACT(MICROSECOND FROM {value})) "
+            "AS BIGINT))"
+        )
     return None
 
 
 def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call of a function a parser class stands for."""
     if isinstance(node, exp.Anonymous):
-        return node.name.lower(), list(node.expressions)
-    if isinstance(node, exp.Chr):
-        return "char", list(node.expressions)
+        name = node.name.lower()
+        # pg_syntax reads a call of overlaps as its routine's; its overloads are overlaps' own.
+        return "overlaps" if name == pg_syntax.OVERLAPS else name, list(node.expressions)
+    if isinstance(node, exp.Overlaps):
+        periods = (node.this, node.expression)
+        if not all(isinstance(p, exp.Tuple) for p in periods):
+            return None  # && of two values of a range or a shape
+        return "overlaps", [e for p in periods for e in p.expressions]
     if isinstance(node, exp.Normalize):
         form = node.args.get("form")
         if isinstance(form, (exp.Column, exp.Var)):
@@ -471,7 +602,7 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         exp.ExplodingGenerateSeries: ("generate_series", ("start", "end", "step")),
         exp.GenerateSeries: ("generate_series", ("start", "end", "step")),
         exp.Getbit: ("get_bit", ("this", "expression")),
-        exp.Trunc: ("trunc", ("this",)),
+        exp.Trunc: ("trunc", ("this", "decimals")),
         exp.Explode: ("unnest", ("this",)),
         exp.Unnest: ("unnest", ("expressions",)),
         exp.Overlay: ("overlay", ("this", "expression", "from_", "for_")),
@@ -480,6 +611,12 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         exp.StrPosition: ("position", ("this", "substr")),
         exp.Sum: ("sum", ("this",)),
         exp.DateAdd: ("date_add", ("this", "expression", "unit")),
+        exp.Time: ("time", ("this", "zone")),
+        exp.Timestamp: ("timestamp", ("this", "zone")),
+        exp.MakeInterval: (
+            "make_interval",
+            ("year", "month", "week", "day", "hour", "minute", "second"),
+        ),
     }.get(type(node))
     if args is None:
         return None
@@ -500,6 +637,20 @@ def _type_said(value: exp.Expr) -> str | None:
     return "regtype" if named is not None and named[0] == "pg_typeof" else None
 
 
+#: The collations every PostgreSQL 17 has, whatever its locales (initdb), by name.
+_BUILT_IN_COLLATIONS = frozenset({"default", "C", "POSIX", "ucs_basic", "unicode", "pg_c_utf8"})
+
+
+def _collation_named(value: exp.Collate) -> exp.Expr | None:
+    """pg_collation_for of a value a COLLATE clause gives a built-in collation: its name, as
+    quote_ident writes it ("default" is a keyword, so quoted); None for any other collation."""
+    name = value.expression.name
+    if name not in _BUILT_IN_COLLATIONS:
+        return None
+    bare = re.fullmatch(r"[a-z_][a-z0-9_$]*", name) is not None and name != "default"
+    return exp.Literal.string(name if bare else '"' + name.replace('"', '""') + '"')
+
+
 def _call(node: exp.Expr) -> exp.Expr:
     """A call of an overload DuckDB's function of the name does not take."""
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
@@ -514,13 +665,14 @@ def _call(node: exp.Expr) -> exp.Expr:
     xml = pg_xml.rewritten(node, _sql)
     if xml is not None:
         return xml
-    if isinstance(node, exp.Table):
-        table = pg_forms_json.table_form(node, _sql)
-        return node if table is None else table
     named = _named(node)
     if named is None:
         return node
     name, args = named
+    if name == "pg_collation_for" and len(args) == 1 and isinstance(args[0], exp.Collate):
+        collated = _collation_named(args[0])
+        if collated is not None:
+            return collated
     if name == "pg_typeof" and len(args) == 1:
         said = _type_said(args[0])
         return node if said is None else exp.Literal.string(said)
@@ -529,11 +681,11 @@ def _call(node: exp.Expr) -> exp.Expr:
         return sqlglot.parse_one(written, read="postgres")
     chosen = function_macros.overload(name, args)
     if chosen != name:  # REQ-2171: by the type the statement says, while the cast is there to read
-        written = f"{chosen}({', '.join(_sql(a) for a in args)})"
+        spell = _SPELLED.get(chosen.split("_")[0], _sql)
+        written = f"{chosen}({', '.join(spell(a) for a in args)})"
         return sqlglot.parse_one(written, read="postgres")
     written = (
-        pg_forms_json.call(name, args, _sql)
-        or _type_call(name, args)
+        _type_call(name, args)
         or _numeric_call(name, args)
         or _bytea_call(name, args)
         or _bit_call(name, args)
@@ -568,30 +720,60 @@ def _call(node: exp.Expr) -> exp.Expr:
     return node if written is None else sqlglot.parse_one(written, read="postgres")
 
 
-#: What sqlglot's parser cannot read as a call: CONVERT's and JSON_OBJECT's own syntax.
-_UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-_JSON_OBJECT_OF_ARRAYS = re.compile(r"\bjson_object\s*\(\s*(?='\{|ARRAY\[)", re.IGNORECASE)
+#: What sqlglot's parser reads as syntax of its own (pg_syntax): PostgreSQL's calls of the name.
+_SYNTAX_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
+_BIT_VARYING = re.compile(r"\bbit\s+varying\b", re.IGNORECASE)
+#: sqlglot reads to_hex as DuckDB's HEX of any value; a form's HEX of its bytes is written the same.
+_TO_HEX = re.compile(r"\"?\bto_hex\"?\s*\(", re.IGNORECASE)
 _SPECIAL_LITERAL = re.compile(r"\bB'[01]*'|\bU&'", re.IGNORECASE)
 
 
+class _HexKept(Postgres):
+    """PostgreSQL, with to_hex read as the call it is (not sqlglot's HEX of any value)."""
+
+    class Parser(Postgres.Parser):
+        FUNCTIONS = {
+            **Postgres.Parser.FUNCTIONS,
+            "TO_HEX": lambda args: exp.Anonymous(this="to_hex", expressions=args),
+        }
+
+
+#: PostgreSQL's calls sqlglot reads as syntax of its own, and the form DuckDB's engine has of each.
+_FORMS = {"convert": "pg_convert", "json_object": "pg_json_object", "to_hex": "pg_to_hex"}
+
+
 def readable(pg_sql: str) -> str:
-    """``pg_sql`` with a call of a function sqlglot reads as syntax spelled as a plain call: a
-    statement that parses is left as it is. ``bit varying``, which sqlglot reads as a bit and an
-    alias, is the bit string the engine holds it as."""
-    pg_sql = _JSON_OBJECT_OF_ARRAYS.sub("pg_json_object(", _BIT_VARYING.sub("::bit", pg_sql))
-    if _UNPARSED_CALLS.search(pg_sql) is None:
+    """``pg_sql`` with a call of a function sqlglot reads as syntax its plain call of the form the
+    engine has (pg_syntax reads each as PostgreSQL's call): a statement with none is left as it
+    is. ``bit varying`` is the bit string the engine holds it as."""
+    if not any(p.search(pg_sql) for p in (_SYNTAX_CALLS, _BIT_VARYING, _TO_HEX)):
         return pg_sql
-    try:
-        sqlglot.parse_one(pg_sql, read="postgres")
-    except ParseError:
-        return postgres_literals(_UNPARSED_CALLS.sub(lambda m: f"pg_{m[1].lower()}(", pg_sql))
-    return pg_sql
+    converted = False
+
+    def held(node: exp.Expr) -> exp.Expr:
+        nonlocal converted
+        if isinstance(node, exp.DataType) and node.this == exp.DataType.Type.USERDEFINED:
+            if node.args["kind"].name.lower() == "varbit":
+                return exp.DataType(this=exp.DataType.Type.BIT, expressions=node.expressions)
+        if isinstance(node, exp.Anonymous) and node.name.lower() in _FORMS:
+            converted = converted or node.name.lower() == "convert"
+            return exp.Anonymous(this=_FORMS[node.name.lower()], expressions=node.expressions)
+        return node
+
+    tree = sqlglot.parse_one(pg_sql, read=_HexKept)
+    written = tree.transform(held)
+    if written == tree:
+        return pg_sql
+    return (
+        postgres_literals(written.sql(dialect="postgres"))
+        if converted
+        else written.sql(dialect="postgres")
+    )
 
 
 def typed_calls(pg_sql: str) -> str:
     """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
-    pg_sql = pg_forms_json.spelled(readable(pg_sql))
+    pg_sql = readable(pg_sql)
     if (
         _CALLED.search(pg_sql) is None
         and _SPECIAL_LITERAL.search(pg_sql) is None

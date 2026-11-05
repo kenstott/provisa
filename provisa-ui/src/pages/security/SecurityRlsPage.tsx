@@ -17,8 +17,7 @@ import { RULE_RIGHTS, RULE_RIGHT_LABEL } from "./ruleRights";
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { Trash2, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import {
   Alert,
   Button,
@@ -40,6 +39,7 @@ import { baseTagId, type RLSRule, type RuleRight } from "../../types/admin";
 import { useTags, useTagAssignments } from "../../hooks/useTagQueries";
 import { fetchActions } from "../../api/actions";
 import { useDomainFilter } from "../../context/DomainFilterContext";
+import { assignableDomainIds } from "../../lib/internalDomains";
 import { PageLoading } from "../../components/PageLoading";
 import {
   ListTable,
@@ -50,6 +50,7 @@ import {
 } from "../../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
@@ -212,25 +213,19 @@ export function SecurityRlsPage() {
     }
   };
 
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the rule.
   const handleDeleteRule = async (rule: RLSRule) => {
-    setSaving(true);
     setError("");
-    try {
-      await deleteRlsRule(
-        rule.roleId,
-        rule.tableId,
-        rule.domainId,
-        rule.actionName ?? null,
-        rule.tagId ?? null,
-        rule.id,
-      );
-      if (expandedRule === rule.id) setExpandedRule(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    await deleteRlsRule(
+      rule.roleId,
+      rule.tableId,
+      rule.domainId,
+      rule.actionName ?? null,
+      rule.tagId ?? null,
+      rule.id,
+    );
+    await reload();
   };
 
   const startEditingRule = (rule: RLSRule) => {
@@ -401,7 +396,10 @@ export function SecurityRlsPage() {
               <Select
                 label={t("securityPage.domain")}
                 placeholder={t("securityPage.selectPlaceholder")}
-                data={domains.map((d) => ({ value: d.id, label: d.id }))}
+                data={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                  value: id,
+                  label: id,
+                }))}
                 value={ruleForm.domainFilter || null}
                 onChange={(v) => setRuleForm({ ...ruleForm, domainFilter: v ?? "", tableId: "" })}
                 data-testid="rule-domain-select"
@@ -571,29 +569,16 @@ export function SecurityRlsPage() {
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
-                <ConfirmDialog
+                <PanelDelete
+                  itemKey={r.id}
                   title={t("securityPage.deleteRuleTitle")}
                   consequence={t("securityPage.deleteRuleConsequence", {
                     role: r.roleId,
                   })}
-                  onConfirm={() => handleDeleteRule(r)}
-                >
-                  {(open) => (
-                    <Tip text={t("securityPage.delete")} named>
-                      <ActionIcon
-                        color="red"
-                        aria-label={t("securityPage.delete")}
-                        data-testid={`delete-rule-${r.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          open();
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </ActionIcon>
-                    </Tip>
-                  )}
-                </ConfirmDialog>
+                  ariaLabel={t("securityPage.delete")}
+                  testId={`delete-rule-${r.id}`}
+                  onDelete={() => handleDeleteRule(r)}
+                />
               </Group>
             </fieldset>
           </PanelActions>

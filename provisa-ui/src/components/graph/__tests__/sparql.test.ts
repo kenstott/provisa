@@ -22,6 +22,7 @@ import {
   triplesGraph,
   pickedQuery,
   relationshipPattern,
+  type RdfCell,
   type SparqlVocabulary,
   iriTail,
   sparqlDrawn,
@@ -122,10 +123,10 @@ describe("a CONSTRUCT's triples", () => {
     const byIri = (iri: string) =>
       [...nodes.values()].find((n) => n.properties.iri === `${BASE}/id/sales/orders/${iri}`);
     expect(byIri("1")?.properties).toMatchObject({
-      "sales:amount": '"12.50"^^xsd:decimal',
+      "sales:amount": "12.50",
       "sales:note": '"said "hi""@en',
     });
-    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": '"12.50"^^xsd:decimal' });
+    expect(byIri("2")?.properties).toMatchObject({ "sales:amount": "12.50" });
   });
 
   it("hold a predicate's several literals as a list", () => {
@@ -150,9 +151,9 @@ describe("a CONSTRUCT's triples", () => {
     ]);
     // The same literal under two subjects is two nodes.
     expect(literals.map((n) => n.properties.name).sort()).toEqual([
-      '"12.50"^^xsd:decimal',
-      '"12.50"^^xsd:decimal',
       '"said "hi""@en',
+      "12.50",
+      "12.50",
     ]);
     expect([...edges.values()].map((e) => e.type).sort()).toEqual([
       "rdf:type",
@@ -251,12 +252,16 @@ const PETS: SparqlVocabulary = {
       iri: `${BASE}/vocab/pet-store/owners`,
       kind: "table",
       labels: ["pet-store:owners"],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
     },
     {
       iri: `${BASE}/vocab/pet-store/pets`,
       kind: "table",
       labels: ["pet-store:pets"],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
     },
   ],
@@ -268,6 +273,7 @@ const PETS: SparqlVocabulary = {
       type: "HAS_PETS",
       source: "pet-store:owners",
       target: "pet-store:pets",
+      join: "HAS_PETS",
     },
   ],
   concepts: [],
@@ -374,7 +380,7 @@ describe("a SELECT of resources", () => {
     expect(st.sparqlPairing).toEqual({ subject: "s", predicate: "p", object: "o" });
     const drawn = sparqlDrawn({ id: "f", ...st } as FrameData, false, true);
     expect(drawn.nodes.size).toBe(2);
-    expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["rel:knows", "rel:likes"]);
+    expect([...drawn.edges.values()].map((e) => e.type)).toEqual(["knows", "likes"]);
   });
 
   it("stays a table where a literal has no predicate, a term is unbound, or it is no pair", async () => {
@@ -484,5 +490,120 @@ describe("a drawn resource's caption", () => {
       ["pets/1", "sales:orders"],
       ["pets/2", "sales/items"],
     ]);
+  });
+});
+
+describe("a SELECT a dropped path widened", () => {
+  const NS = { rel: "https://x/rel/", ps: "https://x/ps/" };
+  const QUERY = `SELECT * WHERE {
+  ?s a ps:pets .
+  ?s rel:HAS_INQUIRY ?o .
+  ?o a ps:inquiries .
+  OPTIONAL { ?u rel:SUBMITTED ?o . ?u a ps:users . }
+}`;
+  const iri = (value: string): RdfCell => ({ rdfTerm: "iri", value, shown: value });
+  const rows = [
+    { s: iri("https://x/pets/1"), o: iri("https://x/inq/1"), u: iri("https://x/users/1") },
+    { s: iri("https://x/pets/2"), o: iri("https://x/inq/2"), u: null },
+  ];
+  const columns = ["s", "o", "u"];
+  const answer = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      headers: { "content-type": "application/sparql-results+json" },
+    });
+  const term = (value: string) => ({ type: "uri", value });
+
+  it("still pairs, each of its patterns joining two columns", async () => {
+    const statement = await sparqlStatement(
+      QUERY,
+      answer({
+        head: { vars: columns },
+        results: {
+          bindings: [
+            { s: term("https://x/pets/1"), o: term("https://x/inq/1"), u: term("https://x/users/1") },
+            { s: term("https://x/pets/2"), o: term("https://x/inq/2") },
+          ],
+        },
+      }),
+      NS,
+    );
+    expect(statement.sparqlPairing).toMatchObject({
+      subject: "s",
+      object: "o",
+      iri: "https://x/rel/HAS_INQUIRY",
+      more: [{ subject: "u", object: "o", iri: "https://x/rel/SUBMITTED" }],
+    });
+  });
+
+  const drawn = () =>
+    sparqlDrawn(
+      {
+        id: "f",
+        query: QUERY,
+        status: "done",
+        nodes: new Map(),
+        edges: new Map(),
+        rows,
+        columns,
+        sparqlForm: "rows",
+        sparqlPairing: {
+          subject: "s",
+          predicate: null,
+          object: "o",
+          iri: "https://x/rel/HAS_INQUIRY",
+          more: [{ subject: "u", predicate: null, object: "o", iri: "https://x/rel/SUBMITTED" }],
+        },
+      },
+      false,
+      true,
+      NS,
+    );
+
+  it("draws what the OPTIONAL reached as edges, the rows it missed staying", () => {
+    const { edges, nodes } = drawn();
+    expect([...edges.values()].map((e) => e.type).sort()).toEqual([
+      "HAS_INQUIRY",
+      "HAS_INQUIRY",
+      "SUBMITTED",
+    ]);
+    expect(nodes.size).toBe(5);
+    expect([...nodes.values()].map((n) => n.label).sort()).toEqual([
+      "ps:inquiries",
+      "ps:inquiries",
+      "ps:pets",
+      "ps:pets",
+      "ps:users",
+    ]);
+  });
+
+  it("keeps a node nothing joined, drawn alone", () => {
+    const alone = sparqlDrawn(
+      { ...drawn(), rows: [{ s: iri("https://x/pets/3"), o: null, u: null }] },
+      false,
+      true,
+      NS,
+    );
+    expect([...alone.nodes.values()].map((n) => n.label)).toEqual(["ps:pets"]);
+    expect(alone.edges.size).toBe(0);
+  });
+
+  it("leaves a wide SELECT of literals a table", async () => {
+    const statement = await sparqlStatement(
+      "SELECT ?s ?a ?b WHERE { ?s ps:a ?a OPTIONAL { ?s ps:b ?b } }",
+      answer({
+        head: { vars: ["s", "a", "b"] },
+        results: {
+          bindings: [
+            {
+              s: term("https://x/1"),
+              a: { type: "literal", value: "1" },
+              b: { type: "literal", value: "2" },
+            },
+          ],
+        },
+      }),
+      NS,
+    );
+    expect(statement.sparqlPairing).toBeUndefined();
   });
 });

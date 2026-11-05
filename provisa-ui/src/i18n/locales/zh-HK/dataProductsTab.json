@@ -187,6 +187,10 @@
       "slaRemove": "移除服務級別",
       "slaAdd": "新增服務級別",
       "notDeclared": "未聲明",
+      "notDeclaredList": "未聲明：{{names}}",
+      "versionSaved": "儲存",
+      "versionChanges": "變更",
+      "constraints": "約束",
       "breakingWarning": "v{{version}} 中有破壞性變更，尚未生效",
       "breaking": "破壞性",
       "savedBy": "由 {{who}} 於 {{when}} 儲存",
@@ -217,7 +221,7 @@
         "quality": "質素",
         "sla": "SLA",
         "support": "支援與團隊",
-        "servers": "伺服器",
+        "howToUse": "使用方式",
         "pricing": "定價",
         "custom": "自訂屬性和標籤"
       },
@@ -252,7 +256,49 @@
         "sla": "SLA 與新鮮度",
         "quality": "承諾",
         "consumers": "消費方",
-        "versions": "版本與變更"
+        "versions": "版本與變更",
+        "roles": "角色",
+        "history": "版本歷史"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "介面",
+          "address": "位址",
+          "how": "使用方式",
+          "link": "範例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任何 PostgreSQL 用戶端，例如 psql 或 DBeaver。資料庫 {{database}}，結構描述 {{schema}}。",
+          "flight-sql": "任何 Arrow Flight SQL 用戶端，例如 ADBC 驅動程式。資料庫 {{database}}，結構描述 {{schema}}。",
+          "grpc": "任何 gRPC 用戶端，呼叫服務 {{service}}，並附上中繼資料 authorization: Bearer <token>。",
+          "graphql": "任何 GraphQL 用戶端：對此資料表 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。",
+          "rest": "任何 HTTP 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "openapi": "僅包含此資料表的描述：可載入 Swagger UI、Postman 或用戶端產生器。",
+          "jsonapi": "任何 JSON:API 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "sparql": "任何 SPARQL 1.1 用戶端：對此資料表的類別 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "須由 {{approvers}} 授予存取權後才能使用。",
+          "noApprover": "須由 {{roles}} 的持有人授予存取權後才能使用。此合約沒有指定審批人。",
+          "undeclared": "須授予存取權後才能使用。此合約沒有指定角色或審批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申請存取權",
+          "roles": "向 {{roles}} 的持有人申請存取權",
+          "nobody": "此合約沒有指定可聯絡的人"
+        },
+        "open": "開啟範例",
+        "openAria": "開啟 {{table}} 的 {{surface}} 範例"
       }
     }
   }

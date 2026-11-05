@@ -8,8 +8,32 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { GNode } from "../graph-model";
+import { propertyValue, type GNode } from "../graph-model";
 import type { CyInstance, CyElement } from "../cytoscape-types";
+
+/** The node drawn at a point of the canvas, by the canvas's own coordinates. */
+function nodeAt(cy: CyInstance, x: number, y: number, except?: CyElement): GNode | null {
+  let found: GNode | null = null;
+  cy.nodes().forEach((n) => {
+    const gn = n.data("_node") as GNode | undefined;
+    if (!gn || n.id() === except?.id()) return;
+    const box = n.renderedBoundingBox();
+    if (x >= box.x1 && x <= box.x2 && y >= box.y1 && y <= box.y2) found = gn;
+  });
+  return found;
+}
+
+/** The node drawn at a point of the page. */
+export function nodeAtPoint(cy: CyInstance, pageX: number, pageY: number): GNode | null {
+  const box = cy.container().getBoundingClientRect();
+  return nodeAt(cy, pageX - box.left, pageY - box.top);
+}
+
+/** The node ``dragged`` was let go on. */
+export function nodeUnder(cy: CyInstance, dragged: CyElement): GNode | null {
+  const { x, y } = dragged.renderedPosition();
+  return nodeAt(cy, x, y, dragged);
+}
 
 export function resolveNodeLabel(n: GNode): string {
   if ("name" in n.properties) return String(n.properties["name"]);
@@ -31,7 +55,7 @@ export function computeLabelSizeRanges(
     if (!sby) return;
     const gn = nd.data("_node") as GNode | undefined;
     if (!gn) return;
-    const v = Number(gn.properties[sby]);
+    const v = Number(propertyValue(gn, sby));
     if (isNaN(v)) return;
     const cur = ranges.get(sby);
     if (!cur) {
@@ -59,7 +83,7 @@ export function applyNodeSize(
   let sz: number;
   if (sby && gn) {
     const range = ranges.get(sby);
-    const v = Number(gn.properties[sby]);
+    const v = Number(propertyValue(gn, sby));
     if (range && !isNaN(v) && range.max > range.min) {
       const t = (v - range.min) / (range.max - range.min);
       sz = base * (1 + t * (multiplier - 1)) * (inCluster ? 0.5 : 1);

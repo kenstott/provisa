@@ -156,3 +156,53 @@ def test_the_built_lock_and_wheels_carry_networkx_and_its_dependencies(tmp_path,
         assert name in written
         assert f"{name}.whl" in fetched
     assert "unshipped" not in written
+
+
+def _windows_default_text_encoding(monkeypatch):
+    """Makes an unnamed text encoding mean cp1252, as it does on a Windows build runner."""
+    import pathlib
+
+    read_text, write_text = pathlib.Path.read_text, pathlib.Path.write_text
+
+    def read(self, encoding=None, errors=None, **kw):
+        return read_text(self, encoding or "cp1252", errors, **kw)
+
+    def write(self, data, encoding=None, errors=None, newline=None):
+        return write_text(self, data, encoding or "cp1252", errors, newline)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", read)
+    monkeypatch.setattr(pathlib.Path, "write_text", write)
+
+
+def test_the_core_bundle_is_patched_as_utf8_whatever_the_os_default(tmp_path, monkeypatch):
+    from provisa_notebook.build import _patch_splash
+
+    _windows_default_text_encoding(monkeypatch)
+    (tmp_path / "build").mkdir()
+    bundle = tmp_path / "build" / "jlab_core.abc123.js"
+    # U+03CF encodes as CF 8F; 0x8f has no cp1252 mapping, as in the failing Windows build.
+    bundle.write_bytes(("const k='Ϗ';" + _SPLASH_JS).encode("utf-8"))
+    _patch_splash(tmp_path)
+    out = bundle.read_bytes().decode("utf-8")
+    assert out.startswith("const k='Ϗ';")
+    assert "s.remove()" in out
+
+
+def test_every_text_read_and_write_in_the_build_names_its_encoding():
+    import ast
+    import inspect
+
+    from provisa_notebook import build
+
+    calls = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(build)))
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Attribute) and node.func.attr in ("read_text", "write_text"))
+            or (isinstance(node.func, ast.Name) and node.func.id == "open")
+        )
+    ]
+    assert calls
+    unnamed = [node.lineno for node in calls if not any(k.arg == "encoding" for k in node.keywords)]
+    assert unnamed == []

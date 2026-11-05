@@ -109,8 +109,15 @@ def server():
                 {
                     "id": "reader",
                     "description": "Reads the shelter's staff, not its payroll.",
-                    "capabilities": ["query_development", "full_results"],
-                    "parents": ["analyst"],
+                    "capabilities": [
+                        "catalog_read",
+                        "data_product_read",
+                        "glossary_read",
+                        "query_development",
+                        "usage",
+                        "full_results",
+                    ],
+                    "parents": ["developer"],
                     "domain_access": ["shelter"],
                 }
             ],

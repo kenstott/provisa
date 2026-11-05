@@ -393,6 +393,7 @@ export function OrgsTab() {
             setInvitePage(1);
           }}
           placeholder={t("orgsTab.invitesFilterPlaceholder")}
+          remember="invites"
         />
         {!showInviteForm && (
           <Button onClick={() => setShowInviteForm(true)} data-testid="invite-create-toggle">

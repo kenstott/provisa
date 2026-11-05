@@ -65,10 +65,16 @@ def _state(capabilities: list[str], other_role_grant: bool = False) -> Any:
     ]
     ctx = MagicMock()
     ctx.tables = {"dogs": dogs, "cats": cats}
+    # The auditor, another model role, is served dogs alone and may write.
+    auditor = MagicMock()
+    auditor.tables = {"dogs": dogs}
     state = MagicMock()
     state.multitenancy = False
-    state.contexts = {"analyst": ctx}
-    state.roles = {"analyst": {"id": "analyst", "capabilities": capabilities}}
+    state.contexts = {"analyst": ctx, "auditor": auditor}
+    state.roles = {
+        "analyst": {"id": "analyst", "capabilities": capabilities},
+        "auditor": {"id": "auditor", "capabilities": ["query_development", "write"]},
+    }
     state.schema_build_cache = {"column_types": col_types, "tables": raw_tables}
     return state
 
@@ -155,10 +161,36 @@ def test_the_user_argument_is_the_session_role(writer):
     ) == [(True, False)]
 
 
-def test_another_roles_grants_are_not_held_by_this_catalog(writer):
-    # The auditor's delete grant on dogs is not the session role's, and the session catalog
-    # holds nothing to answer for the auditor with.
-    assert _rows("SELECT has_table_privilege('auditor', 'dogs', 'DELETE')", writer) == [(None,)]
+def test_another_model_role_answers_from_its_own_grants(writer):
+    # REQ-2167 (amended 2026-11-03): the auditor's grants in the model, never NULL: its delete
+    # grant on dogs, no insert grant, and cats not served to it.
+    assert _rows(
+        "SELECT has_table_privilege('auditor', 'dogs', 'DELETE'), "
+        "has_table_privilege('auditor', 'dogs', 'INSERT'), "
+        "has_table_privilege('auditor', 'dogs', 'SELECT'), "
+        "has_table_privilege('auditor', 'cats', 'SELECT'), "
+        "has_column_privilege('auditor', 'dogs', 'legs', 'SELECT'), "
+        "has_any_column_privilege('auditor', 'dogs', 'DELETE')",
+        writer,
+    ) == [(True, False, True, False, True, True)]
+
+
+def test_a_system_catalog_is_written_by_no_role(writer):
+    # REQ-2167 (amended 2026-11-03): nobody writes a system catalog through Provisa.
+    assert _rows(
+        "SELECT has_table_privilege('pg_catalog.pg_namespace', 'INSERT'), "
+        "has_table_privilege('auditor', 'pg_catalog.pg_namespace', 'UPDATE'), "
+        "has_column_privilege('pg_catalog.pg_namespace', 'nspname', 'UPDATE'), "
+        "has_table_privilege('auditor', 'pg_catalog.pg_class', 'SELECT')",
+        writer,
+    ) == [(False, False, False, True)]
+
+
+def test_a_role_name_no_role_has_is_refused_as_postgresql_refuses_it(writer):
+    with pytest.raises(Exception, match='role "nosuch" does not exist'):
+        _rows("SELECT has_table_privilege('nosuch', 'dogs', 'SELECT')", writer)
+    with pytest.raises(Exception, match='role "nosuch" does not exist'):
+        _rows("SELECT has_database_privilege('nosuch', current_database(), 'CONNECT')", writer)
 
 
 def test_a_client_filters_the_tables_it_lists_by_privilege(writer):
@@ -201,6 +233,8 @@ def test_a_column_with_no_default_has_no_attrdef_and_a_null_expression(writer):
         ("owner", True, "current_setting('app.user')"),
         ("created", True, "now()"),
         ("legs", True, "4"),
+        ("_name_", False, None),
+        ("_domain_", False, None),
     ]
 
 

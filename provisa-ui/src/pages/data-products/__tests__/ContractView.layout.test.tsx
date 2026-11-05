@@ -8,10 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2158: a contract's cards flow in 320px columns -- Details, Versions & changes, Columns, SLAs &
-// freshness, Consumers -- and the Promises card runs full width beneath them. jsdom lays nothing
-// out, so this proves the structure and the column styles that make the layout.
+// REQ-2158: a contract's panels in three tiers -- key-value panels in a grid, tables in two flowing
+// columns, then How to use, Columns and Promises across the full width. Who consumes a port is the
+// owner's, not the contract's (REQ-2160). jsdom lays nothing out, so this proves the structure and
+// the stylesheet's rules that make the layout.
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "../../../test-utils/render";
 import { ContractView } from "../ContractView";
@@ -40,6 +43,12 @@ const PROMISES = [
   promise(6, "owners", "pass"),
 ];
 
+const PORT = {
+  table: { domainId: "pet-store", tableName: "pets", alias: null },
+  reader: null,
+  viewer: { held: new Set<string>(), acting: "analyst" },
+};
+
 function renderView() {
   render(
     <ContractView
@@ -47,22 +56,84 @@ function renderView() {
       versions={[]}
       tableId={7}
       promises={PROMISES}
-      consumers={[]}
+      {...PORT}
     />,
   );
 }
 
 describe("a contract's card layout", () => {
-  it("flows the top cards in 320px columns, in order, with Promises full width below", () => {
+  it("lays the panels out in their tiers, top to bottom", () => {
     renderView();
     const root = screen.getByTestId("data-contract-7");
-    const [flow, promises] = Array.from(root.children) as HTMLElement[];
-    expect(flow.style.columnWidth).toBe("320px");
-    expect(Array.from(flow.children).map((c) => c.getAttribute("data-testid"))).toEqual(
-      ["details", "versions", "fields", "sla", "consumers"].map((k) => `data-contract-7-${k}`),
+    const [small, medium, howToUse, columns, promises] = Array.from(root.children) as HTMLElement[];
+    const keys = (tier: HTMLElement) =>
+      Array.from(tier.children).map((c) => c.getAttribute("data-testid"));
+    expect(small).toHaveClass("contract-tier--small");
+    expect(keys(small)).toEqual(
+      ["details", "versions", "pricing", "custom"].map((k) => `data-contract-7-${k}`),
     );
+    expect(medium).toHaveClass("contract-tier--medium");
+    expect(keys(medium)).toEqual(
+      ["roles", "sla", "support", "history"].map((k) => `data-contract-7-${k}`),
+    );
+    expect(howToUse).toBe(screen.getByTestId("data-contract-7-howToUse"));
+    expect(columns).toBe(screen.getByTestId("data-contract-7-fields"));
     expect(promises).toBe(screen.getByTestId("data-contract-7-quality"));
-    expect(promises.style.breakInside).toBe("");
-    expect(flow.contains(promises)).toBe(false);
+    for (const wide of [howToUse, columns, promises]) {
+      expect(wide.style.marginTop).toBe("var(--mantine-spacing-sm)");
+    }
+  });
+
+  it("grids the small tier and flows the medium tier in two columns", () => {
+    const css = readFileSync(resolve(__dirname, "../ContractLayout.css"), "utf8");
+    expect(css).toMatch(/\.contract-tier--small \{[^}]*display: grid/);
+    expect(css).toMatch(/\.contract-tier--medium \{[^}]*columns: 2 /);
+  });
+
+  it("labels fields on the shared grid, in no code font", () => {
+    renderView();
+    const details = screen.getByTestId("data-contract-7-details");
+    expect(details.querySelector("dl.detail-fields")).not.toBeNull();
+    const label = details.querySelector("dt") as HTMLElement;
+    expect(label).toHaveTextContent("id");
+    expect(label.getAttribute("style") ?? "").not.toMatch(/monospace/);
+  });
+
+  it("folds what is not declared into one line; an empty panel is that line alone", () => {
+    renderView();
+    expect(screen.getByTestId("data-contract-7-details-not-declared")).toHaveTextContent(
+      "Not declared: name, domain, dataProduct, tenant, purpose, limitations, usage",
+    );
+    const pricing = screen.getByTestId("data-contract-7-pricing");
+    expect(pricing.querySelector("dl, table")).toBeNull();
+    expect(screen.getByTestId("data-contract-7-pricing-not-declared")).toHaveTextContent(
+      "Not declared: priceAmount, priceCurrency, priceUnit",
+    );
+    expect(screen.getByTestId("data-contract-7-howToUse-not-declared")).toHaveTextContent(
+      "Not declared: servers",
+    );
+  });
+
+  it("has no Consumers card", () => {
+    renderView();
+    expect(screen.queryByTestId("data-contract-7-consumers")).toBeNull();
+    expect(screen.queryByTestId("data-contract-consumers-7")).toBeNull();
+    expect(screen.getByTestId("data-contract-7")).not.toHaveTextContent("Consumers");
+  });
+
+  it("heads each further section as a card of its own, none of them inside Details", () => {
+    renderView();
+    const details = screen.getByTestId("data-contract-7-details");
+    const labels = {
+      support: "Support and team",
+      howToUse: "How to use",
+      pricing: "Pricing",
+      custom: "Custom properties and tags",
+    };
+    for (const [key, label] of Object.entries(labels)) {
+      const card = screen.getByTestId(`data-contract-7-${key}`);
+      expect(details.contains(card)).toBe(false);
+      expect(screen.getByTestId(`data-contract-7-${key}-toggle`)).toHaveTextContent(label);
+    }
   });
 });

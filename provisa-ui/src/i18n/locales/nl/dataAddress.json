@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Dataknooppunt",
+    "heading": "Gegevensverzoeken sturen naar",
+    "none": "Geen dataknooppunt",
+    "noneOffered": "Voor deze regio is geen dataknooppunt vermeld. Typ hieronder een adres.",
+    "typedLabel": "Adres van het dataknooppunt",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Voer een http- of https-adres in",
+    "use": "Gebruiken",
+    "loadError": "De dataknooppunten konden niet worden geladen"
+  }
+}

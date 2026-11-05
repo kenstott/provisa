@@ -10,6 +10,7 @@
 
 import type { NavigateFunction } from "react-router-dom";
 import { awaitRun } from "../dataScience/runReports";
+import { readBack } from "./readBack";
 import { readScreen } from "./screenState";
 import { parseUiActions, runUiActions } from "./uiActions";
 
@@ -17,6 +18,10 @@ import { parseUiActions, runUiActions } from "./uiActions";
  * waits for its element while the screen mounts. */
 const UI_STEP_PACE_MS = 700;
 const UI_ELEMENT_WAIT_MS = 10_000;
+
+/** How long a page may take to show what navigate handed it. A docs frame's first load and a
+ * query on a loaded demo answer in seconds, and the OpenAPI page gives each a minute. */
+const READ_BACK_WAIT_MS = 60_000;
 
 /** REQ-2071: Explore's Python and Notebook tabs, whose runs report back to the model. */
 const RUN_ROUTES: Record<string, string> = {
@@ -186,13 +191,24 @@ export async function executeClientTool(
     const actions = input.actions === undefined ? [] : parseUiActions(input.actions);
     if (typeof actions === "string") return { success: false, message: `navigate: ${actions}` };
     ctx.navigate(route, state ? { state } : undefined);
-    if (actions.length === 0) return { success: true, message: `Navigated to ${route}` };
+    // Handed state is on the page only when the screen shows it: never "Navigated" on faith. A
+    // link's query is state too, on a page that keeps its state in its URL.
+    const asked = state ?? (route.includes("?") ? {} : null);
+    const opened = asked ? await readBack(route, asked, READ_BACK_WAIT_MS) : null;
+    const seen = opened?.screen ? `\nThe screen: ${JSON.stringify(opened.screen)}` : "";
+    if (opened && !opened.shown) {
+      const refused = `navigate: ${route} did not take what it was handed: ${opened.difference}.`;
+      return { success: false, message: `${refused}${seen}`.slice(0, ANSWER_LIMIT) };
+    }
+    if (actions.length === 0) {
+      return { success: true, message: `Navigated to ${route}${seen}`.slice(0, ANSWER_LIMIT) };
+    }
     const { success, steps } = await runUiActions(actions, {
       confirm: async (question) => (await ctx.presentChoice({ question, mode: "yes_no" })) === true,
       paceMs: UI_STEP_PACE_MS,
       waitMs: UI_ELEMENT_WAIT_MS,
     });
-    return { success, message: [`Navigated to ${route}.`, ...steps].join("\n") };
+    return { success, message: [`Navigated to ${route}.${seen}`, ...steps].join("\n") };
   }
 
   if (name === "refresh_mv") {

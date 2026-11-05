@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "Layout: {{name}}",
+    "layouts": "Layouts",
+    "menuHint": "Escolher, salvar ou excluir uma disposição salva deste diagrama",
+    "automatic": "Automático",
+    "save": "Salvar",
+    "saveAs": "Salvar como…",
+    "delete": "Excluir",
+    "unsaved": "Não salvo",
+    "unsavedHint": "O diagrama mudou desde que este layout foi salvo",
+    "saveAsTitle": "Salvar layout como",
+    "name": "Nome",
+    "nameTaken": "Já existe um layout chamado {{name}}",
+    "deleteTitle": "Excluir o layout {{name}}?",
+    "deleteConsequence": "O layout é removido para todos. As tabelas e relacionamentos que ele mostra não são alterados.",
+    "newSinceSaved_one": "{{count}} tabela nova desde que o layout foi salvo",
+    "newSinceSaved_other": "{{count}} tabelas novas desde que o layout foi salvo",
+    "place": "Posicionar",
+    "placeHint": "Adicionar a tabela ao layout",
+    "notDrawn": "O diagrama ainda não foi desenhado"
+  }
+}

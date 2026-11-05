@@ -63,9 +63,7 @@ describe("a role's read view", () => {
     expect(fields("role-read-fields")).toEqual([
       ["Role ID", "data_steward"],
       ["Description", "What data_steward is for."],
-      ["Capabilities", "data_residency, masking_config"],
-      ["Demonstrated capabilities", "create_relationship"],
-      ["Region values covered", "eu, no_region"],
+      ["Capabilities", "data_residency: eu, No region, masking_config"],
       ["Domain Access", "All Domains"],
       ["Inherits from", "analyst"],
       ["Session values", "tier = golddesk = 7"],
@@ -117,9 +115,7 @@ describe("a role's read view", () => {
       ["Role ID", "guest"],
       ["Description", "What guest is for."],
       ["Capabilities", "—"],
-      ["Demonstrated capabilities", "—"],
-      ["Region values covered", "—"],
-      ["Domain Access", "no domains — reaches no data"],
+      ["Domain Access", "no domains: reaches no data"],
       ["Inherits from", "—"],
       ["Session values", "—"],
     ]);

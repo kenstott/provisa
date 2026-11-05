@@ -21,6 +21,8 @@ import type { GlossaryTermSummary } from "../api/glossary";
 vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   // A term with no findings: the findings list names none.
@@ -31,8 +33,6 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 const auth = { capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
-
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 
 const filter = {
   domains: [],
@@ -176,10 +176,44 @@ describe("glossary status and grounding filters", () => {
     expect(mockList.mock.calls.length).toBe(callsBefore);
   });
 
+  it("shows the terms of every status picked", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    await pick("glossary-status-filter", "Draft");
+    await pick("glossary-status-filter", "Retired");
+    expect(screen.queryByTestId("glossary-item-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-2")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+  });
+
+  it("offers each status once, and shows every term when none is left picked", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    await pick("glossary-status-filter", "Draft");
+    expect(screen.queryByTestId("glossary-item-1")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "Draft", hidden: true }));
+    expect(await screen.findByTestId("glossary-item-1")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("option", { hidden: true })
+        .map((option) => option.textContent)
+        .filter((name) => ["Draft", "Approved", "Deprecated", "Retired"].includes(name ?? "")),
+    ).toEqual(["Draft", "Approved", "Deprecated", "Retired"]);
+  });
+
+  it("explains the status filter in a tooltip", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    const filter = screen.getByTestId("glossary-status-filter").closest(".mantine-MultiSelect-root");
+    fireEvent.mouseEnter(filter!.parentElement!);
+    expect(await screen.findByText("Show only these statuses")).toBeInTheDocument();
+  });
+
   it("narrows the list by grounding, in the words findings use", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    await pick("glossary-grounding-filter", "Grounded · path pending approval");
+    await pick("glossary-grounding-filter", "Grounded · via a draft");
     const list = screen.getByTestId("glossary-list");
     expect(within(list).queryByTestId("glossary-item-1")).not.toBeInTheDocument();
     expect(within(list).getByTestId("glossary-item-2")).toBeInTheDocument();
@@ -192,11 +226,21 @@ describe("glossary status and grounding filters", () => {
     const { unmount } = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     await pick("glossary-status-filter", "Approved");
-    expect(window.localStorage.getItem(scopedKey("glossary.status"))).toBe("approved");
+    await pick("glossary-status-filter", "Retired");
+    expect(window.localStorage.getItem(scopedKey("glossary.status"))).toBe("approved,retired");
     unmount();
 
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     expect(screen.queryByTestId("glossary-item-2")).not.toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+  });
+
+  it("keeps no choice for the removed Deprecated checkbox", async () => {
+    window.localStorage.setItem(scopedKey("glossary.showDeprecated"), "false");
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    expect(mockList).toHaveBeenCalledWith("", true, null);
+    expect(screen.queryByTestId("glossary-show-deprecated")).toBeNull();
   });
 });

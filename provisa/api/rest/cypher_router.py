@@ -245,9 +245,9 @@ async def _execute_multi_call(
     combined: list[dict] = [{}]
     for rs in all_rows:
         combined = [{**a, **b} for a in combined for b in (rs or [{}])]
-    from provisa.gql.assembler import take_cut
+    from provisa.gql.assembler import take_overrun
 
-    combined = take_cut(combined, None)  # rows of several plans: the request's collector
+    combined = take_overrun(combined)
 
     try:
         assembled = assemble_rows(combined, merged_graph_vars)
@@ -434,21 +434,13 @@ def access_violations(
     """The 403 naming each access violation of a graph statement the role sent, or None: the
     validation every graph surface over HTTP runs before the pipeline (Cypher's, SPARQL's)."""
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.security.rights import effective_domain_access_role
 
     role = effective_domain_access_role(role_id, state.roles)
     ctx = surface.context
-    governance = build_governance_context(
-        role_id,
-        surface.rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-    )
+    governance = role_governance(state, surface, role_id)
     violations = validate_sql(
         semantic_sql,
         ctx,
@@ -1044,9 +1036,9 @@ async def _answer(
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    from provisa.gql.assembler import take_cut
+    from provisa.gql.assembler import take_overrun
 
-    rows = take_cut(_dict_rows(_executed), plan.warnings)
+    rows = take_overrun(_dict_rows(_executed))
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize
@@ -1170,6 +1162,8 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     # FK/PK-backed edge, which is how a client tells the two apart.
                     "junction_table_name": r.via.table_name if r.via else None,
                     "properties": sorted(r.properties.keys()),
+                    # REQ-2135: what it joins, the same for a join declared from both ends.
+                    "join": r.join,
                 }
                 for r in label_map.relationships.values()
             ],
@@ -1271,12 +1265,12 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         rows = _dict_rows(executed)
         return {"count": int(rows[0]["cnt"]) if rows else 0}
 
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import reaches_domain
 
     _domain_access = state.roles[role_id]["domain_access"]
 
     def _reads_domain(domain_id: str | None) -> bool:
-        return not domain_id or reaches_all_domains(_domain_access) or domain_id in _domain_access
+        return not domain_id or reaches_domain(_domain_access, domain_id)
 
     node_labels, rel_types = _countable_labels(label_map, filtered_domains, _reads_domain)
 

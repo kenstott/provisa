@@ -17,11 +17,15 @@ that adds, keeps, rescopes, refreshes, replaces and removes them."""
 from __future__ import annotations
 
 import base64
+import math
 import re
+import struct
 import types
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import insert, select
 
 from provisa.api.admin import reference_library_router as router
@@ -190,6 +194,101 @@ def test_a_word_document_is_read_by_its_headings_with_its_tables_in_place():
 def test_a_pdf_or_word_file_that_is_not_one_is_refused_by_name(media, name, says):
     with pytest.raises(extract.UnreadableDocument, match=says):
         extract.read(b"not a document", media, name)
+
+
+ECFR = Path(__file__).resolve().parents[1] / "fixtures" / "ecfr"
+
+
+def test_ecfr_xml_is_read_by_its_section_heading():
+    """31 CFR 1010.311 as eCFR's API serves it (versioner/v1/full/<date>/title-31.xml)."""
+    document = extract.read(
+        (ECFR / "31-cfr-1010.311.xml").read_bytes(), extract.XML, "title-31.xml"
+    )
+    heading = "§ 1010.311 Filing obligations for reports of transactions in currency."
+    assert document.title == heading
+    assert [s.heading for s in document.sections] == [heading]
+    [paragraph] = document.sections[0].paragraphs
+    assert paragraph.startswith(
+        "Each financial institution other than a casino shall file a report of each deposit,"
+    )
+    assert paragraph.endswith("the purchase of postage or philatelic products.")
+    [passage] = cut(document)
+    assert passage.section == heading and passage.text == paragraph
+
+
+def test_ecfr_definitions_are_each_read_under_their_own_heading():
+    document = extract.read(
+        (ECFR / "31-cfr-1010.100.xml").read_bytes(), extract.XML, "title-31.xml"
+    )
+    sections = {s.heading: s.paragraphs for s in document.sections}
+    assert document.title == "§ 1010.100 General definitions."
+    assert sections["§ 1010.100 General definitions."][0].startswith(
+        "When used in this chapter and in forms prescribed under this chapter"
+    )
+    assert sections["§ 1010.100 General definitions — (i) Business day"] == [
+        "(i) Business day. As used in this chapter with respect to banks, business day means "
+        "that day, as normally communicated to its depository customers, on which a bank "
+        "routinely posts a particular transaction to its customer's account."
+    ]
+    institution = sections["§ 1010.100 General definitions — (t) Financial institution"]
+    assert institution[0].startswith("(t) Financial institution. Each agent, agency, branch")
+    assert "(3) A money services business as defined in paragraph (ff) of this section;" in (
+        institution
+    )
+    # a term defined inside another definition is headed by its own term
+    assert "§ 1010.100 General definitions — (6)(i) Card club" in sections
+    text = " ".join(p for paragraphs in sections.values() for p in paragraphs)
+    # eCFR's amendment links and source citation are not the regulation's text
+    assert "Link to an amendment" not in text and "75 FR 65812" not in text
+
+
+async def test_an_ecfr_api_address_is_read_into_passages_with_their_sections():
+    url = (
+        "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml"
+        "?part=1010&section=1010.311"
+    )
+    media, charset = extract.media_type_of_response("text/xml", url)
+    content = library.Content((ECFR / "31-cfr-1010.311.xml").read_bytes(), media, charset, url)
+    read = await library._read(content, EMBEDDER)
+    assert read.title == "§ 1010.311 Filing obligations for reports of transactions in currency."
+    assert [p.section for p in read.passages] == [read.title]
+    assert read.passages[0].text.startswith("Each financial institution other than a casino")
+
+
+def test_xml_is_read_as_its_content_type_or_name_says():
+    assert extract.media_type_of_response("text/xml", "https://x/t.xml") == (extract.XML, None)
+    assert extract.media_type_of_response("application/xml; charset=utf-8", "https://x/t") == (
+        extract.XML,
+        "utf-8",
+    )
+    assert extract.media_type_of_name("title-31.XML") == extract.XML
+
+
+@pytest.mark.parametrize(
+    ("content", "says"),
+    [
+        (
+            b"<rss><channel><title>News</title></channel></rss>",
+            "'feed.xml' is XML the library does not read",
+        ),
+        (b"<DIV8><HEAD>x</HEAD><P>unclosed", "'feed.xml' is not XML that can be read"),
+        (b"<DIV8 N='1'><HEAD>Empty</HEAD></DIV8>", "'feed.xml' holds no text"),
+    ],
+)
+def test_xml_the_reader_cannot_read_is_refused_by_name(content, says):
+    with pytest.raises(extract.UnreadableDocument, match=says):
+        extract.read(content, extract.XML, "feed.xml")
+
+
+def test_ecfr_xml_does_not_resolve_its_entities(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not read me")
+    content = (
+        f'<?xml version="1.0"?><!DOCTYPE DIV8 [<!ENTITY x SYSTEM "file://{secret}">]>'
+        "<DIV8 N='1'><HEAD>H</HEAD><P>before &x; after</P></DIV8>"
+    ).encode()
+    document = extract.read(content, extract.XML, "t.xml")
+    assert "do not read me" not in " ".join(document.sections[0].paragraphs)
 
 
 def test_passages_keep_to_one_section_and_a_long_paragraph_is_cut_at_its_sentences():
@@ -516,7 +615,240 @@ async def test_the_mcp_tool_searches_for_the_callers_role(db, monkeypatch):
         "page",
         "quote",
         "score",
+        "ordinal",
+        "reached",
+        # REQ-2185 (GRAPH RETRIEVAL): a glossary candidate's term and definition; None otherwise
+        "term",
+        "term_definition",
     }
+
+
+# -- neighbours (REQ-2185, THE LIBRARY'S STORE AND RETRIEVAL) -----------------------------------
+
+ACCOUNTS = b"""# Accounts
+
+A client holds an account.
+
+## Records
+
+Account records are kept for a client.
+
+## Payments
+
+A payment carries a currency.
+
+## Settlement
+
+A payment settles in its currency.
+
+## Contracts
+
+A contract binds the client.
+"""
+
+SETTLEMENT = b"""# Settlement terms
+
+A payment settles in its currency.
+
+## Fees
+
+A contract fee is charged.
+"""
+
+
+async def test_a_passage_s_adjacent_passages_are_read_from_its_document(db):
+    async with db.acquire() as conn:
+        accounts = await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        other = await _add(conn, "spec.md", SPEC, ["*"])
+        ids = [accounts, other]
+        assert [o for o, *_ in await store.passages(conn, accounts)] == [0, 1, 2, 3, 4]
+
+        async def beside(ordinal: int, n: int = 1) -> list[tuple[int, int]]:
+            found = await store.adjacent_passages(conn, accounts, ordinal, ids, n)
+            return [(p.document_id, p.ordinal) for p in found]
+
+        assert await beside(2) == [(accounts, 1), (accounts, 3)]
+        assert await beside(0) == [(accounts, 1)]
+        assert await beside(4) == [(accounts, 3)]
+        assert await beside(2, 2) == [(accounts, o) for o in (0, 1, 3, 4)]
+        (after,) = [
+            p for p in await store.adjacent_passages(conn, accounts, 2, ids) if p.ordinal == 3
+        ]
+        assert (after.section, after.text) == ("Settlement", "A payment settles in its currency.")
+        with pytest.raises(ValueError, match="not among the documents being searched"):
+            await store.adjacent_passages(conn, accounts, 2, [other])
+        with pytest.raises(ValueError, match="n must be a positive integer"):
+            await store.adjacent_passages(conn, accounts, 2, ids, 0)
+
+        from sqlalchemy.dialects import postgresql
+
+        query = store.adjacent_query(accounts, 2, 1).compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {query}"))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert "reference_passages_document_id_ordinal" in plan
+
+
+async def test_the_passages_nearest_a_passage_are_those_the_cosine_says_but_itself(db):
+    async with db.acquire() as conn:
+        ids = [
+            await _add(conn, "accounts.md", ACCOUNTS, ["*"]),
+            await _add(conn, "policy.html", POLICY, ["*"]),
+        ]
+        held = [
+            (document_id, ordinal, text_)
+            for document_id in ids
+            for ordinal, _, _, text_ in await store.passages(conn, document_id)
+        ]
+        for seed_document, seed_ordinal, seed_text in held[:3]:
+            seed = _float4(_vector(seed_text))
+            expected = sorted(
+                (-_old_cosine(seed, _float4(_vector(t))), d, o, t)
+                for d, o, t in held
+                if (d, o) != (seed_document, seed_ordinal)
+            )[:3]
+            hits = await store.near_passage(conn, seed_document, seed_ordinal, ids, 3)
+            assert [(h.document_id, h.ordinal, h.text) for h in hits] == [
+                (d, o, t) for _, d, o, t in expected
+            ]
+            for hit, (negative, *_rest) in zip(hits, expected, strict=True):
+                assert hit.score == pytest.approx(-negative, rel=FLOAT4)
+
+        # only the documents searched are reached, and the seed's must be one of them
+        only = await store.near_passage(conn, ids[0], 2, [ids[0]], 10)
+        assert {h.document_id for h in only} == {ids[0]}
+        assert [h.ordinal for h in only if h.ordinal == 2] == []
+        with pytest.raises(ValueError, match="not among the documents being searched"):
+            await store.near_passage(conn, ids[0], 2, [ids[1]], 3)
+        with pytest.raises(ValueError, match="has no passage 99"):
+            await store.near_passage(conn, ids[0], 99, ids, 3)
+
+        sql, params = store.near_passage_sql(ids[0], 2, len(VOCABULARY), ids, 3)
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {sql}").bindparams(**params))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert f"reference_passages_vector_{len(VOCABULARY)}" in plan
+
+
+def _keys(found: list[retrieve.Citation]) -> list[tuple[int, int]]:
+    return [(c.document_id, c.ordinal) for c in found]
+
+
+async def test_neighbours_fill_the_budget_after_the_question_s_passages_in_order(db):
+    async with db.acquire() as conn:
+        accounts = await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        question = "When does a payment settle?"
+        (hit,) = await retrieve.retrieve(conn, question, None, EMBEDDER, k=1)
+        assert (hit.ordinal, hit.reached) == (3, retrieve.NEAREST_QUESTION)
+        near = await store.near_passage(conn, accounts, 3, [accounts], retrieve.NEAR_PER_PASSAGE)
+        # the passage nearest the settlement passage is the one before it, already given
+        assert near[0].ordinal == 2
+
+        found = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=1, budget=5
+        )
+        named = "passage 3 in 'Accounts'"
+        assert [(c.ordinal, c.reached) for c in found] == [
+            (3, retrieve.NEAREST_QUESTION),
+            (4, f"after {named}"),
+            (2, f"before {named}"),
+            *[(h.ordinal, f"near {named}") for h in near[1:]],
+        ]
+        assert found[0] == hit
+        assert all(c.score is None for c in found[1:])
+        # four, under the budget of five: the passage before was also the nearest, given once
+        assert len(found) == 4 and len(set(_keys(found))) == len(found)
+        assert found[1].quote == "A contract binds the client." and found[1].section == "Contracts"
+
+        # the budget cuts the neighbours, in their order
+        cut_short = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=1, budget=2
+        )
+        assert _keys(cut_short) == _keys(found)[:2]
+
+
+async def test_neighbours_never_displace_the_question_s_passages_nor_repeat_them(db):
+    async with db.acquire() as conn:
+        await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        question = "payment currency"
+        hits = await retrieve.retrieve(conn, question, None, EMBEDDER, k=2)
+        # the two nearest the question sit side by side: each is the other's neighbour
+        assert sorted(c.ordinal for c in hits) == [2, 3]
+
+        full = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=2, budget=2
+        )
+        assert full == hits
+        found = await retrieve.retrieve_with_neighbours(conn, question, None, EMBEDDER, k=2)
+        assert found[:2] == hits
+        assert len(found) == 4
+        assert len(set(_keys(found))) == len(found)
+        assert {c.ordinal for c in found[2:]} == {1, 4}
+        assert all(c.reached != retrieve.NEAREST_QUESTION for c in found[2:])
+        with pytest.raises(ValueError, match="cannot hold the 2 nearest the question"):
+            await retrieve.retrieve_with_neighbours(conn, question, None, EMBEDDER, k=2, budget=1)
+
+
+async def test_a_role_never_gets_a_neighbour_from_a_document_it_cannot_read(db):
+    async with db.acquire() as conn:
+        accounts = await _add(conn, "accounts.md", ACCOUNTS, ["sales"])
+        settlement = await _add(conn, "settlement.md", SETTLEMENT, ["finance"])
+        question = "When does a payment settle?"
+
+        everyone = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=1, budget=20
+        )
+        # with both documents readable, the other document's passages are reached
+        assert settlement in {c.document_id for c in everyone}
+
+        sales = await retrieve.retrieve_with_neighbours(
+            conn, question, frozenset({"sales"}), EMBEDDER, k=2, budget=20
+        )
+        assert sales and {c.document_id for c in sales} == {accounts}
+        finance = await retrieve.retrieve_with_neighbours(
+            conn, question, frozenset({"finance"}), EMBEDDER, k=1, budget=20
+        )
+        assert finance and {c.document_id for c in finance} == {settlement}
+
+
+async def _labelled_state(db, monkeypatch) -> Any:
+    from provisa.api.mcp import tools
+
+    async def embedder(state):
+        return EMBEDDER
+
+    monkeypatch.setattr(retrieve, "org_embedder", embedder)
+    monkeypatch.setattr(tools, "require_role", lambda role, state: role)
+    return types.SimpleNamespace(
+        model_db=db,
+        roles={"analyst": {"id": "analyst", "domain_access": ["sales"], "capabilities": []}},
+    )
+
+
+async def test_the_labels_reach_the_assistant_in_the_tool_result(db, monkeypatch):
+    from provisa.api.mcp import chat, tools
+
+    async with db.acquire() as conn:
+        await _add(conn, "accounts.md", ACCOUNTS, ["sales"])
+        await _add(conn, "settlement.md", SETTLEMENT, ["finance"])
+    state = await _labelled_state(db, monkeypatch)
+    question = "When does a payment settle?"
+
+    over_mcp = await tools.search_reference_library(state, "analyst", question, k=1)
+    in_chat = await chat._execute_tool(
+        state, "analyst", "search_reference_library", {"question": question, "k": 1}
+    )
+    assert in_chat == over_mcp
+    # k=1: the passage nearest the question and one neighbour, within the default budget of 2
+    assert [(f["ordinal"], f["reached"]) for f in in_chat] == [
+        (3, "nearest the question"),
+        (4, "after passage 3 in 'Accounts'"),
+    ]
+    assert {f["document_title"] for f in in_chat} == {"Accounts"}
 
 
 # -- re-embedding (REQ-2185, RE-EMBED) ----------------------------------------------------------
@@ -678,3 +1010,253 @@ async def test_the_admin_api_re_embeds_all_and_reports_each_failed_document(api,
     with pytest.raises(ApiError) as gone:
         await router.reembed_document(999, _request())
     assert gone.value.status_code == 404
+
+
+# -- the passages' vector index (REQ-2185, THE LIBRARY'S STORE AND RETRIEVAL) ---------------------
+
+
+def _old_cosine(a: list[float], b: list[float]) -> float:
+    """The library's search before the index: cosine similarity, in Python, over every passage."""
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return 0.0 if norm == 0 else dot / norm
+
+
+def _float4(vector: list[float]) -> list[float]:
+    """A vector as pgvector holds it: each component a single-precision float."""
+    return list(struct.unpack(f"{len(vector)}f", struct.pack(f"{len(vector)}f", *vector)))
+
+
+async def _vector_indexes(conn) -> set[str]:
+    rows = await conn.execute_core(
+        sa.text(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() "
+            "AND tablename = 'reference_passages' AND indexname LIKE 'reference_passages_vector_%'"
+        )
+    )
+    return {r[0] for r in rows.fetchall()}
+
+
+#: Stored with pgvector's single-precision floats, a similarity agrees with the double-precision
+#: cosine to about float32's epsilon (1.2e-7) per operation, not to 1e-14.
+FLOAT4 = 1e-6
+#: Ordered by the half-precision index, a similarity agrees to half precision's 2**-11 per value.
+HALF = 5e-3
+
+
+async def test_the_passages_vector_is_a_pgvector_column(db):
+    async with db.acquire() as conn:
+        found = await conn.execute_core(
+            sa.text(
+                "SELECT udt_schema, udt_name FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name = 'reference_passages' "
+                "AND column_name = 'vector'"
+            )
+        )
+        assert tuple(found.fetchone()) == ("public", "vector")
+
+
+async def test_indexed_search_returns_the_passages_the_cosine_did(db):
+    async with db.acquire() as conn:
+        ids = [
+            await _add(conn, "policy.html", POLICY, ["*"]),
+            await _add(conn, "spec.md", SPEC, ["*"]),
+            await _add(
+                conn, "glossary.txt", b"A contract binds a client.\n\nA client pays.", ["*"]
+            ),
+        ]
+        held = [
+            (document_id, ordinal, text_)
+            for document_id in ids
+            for ordinal, _, _, text_ in await store.passages(conn, document_id)
+        ]
+        for question in ("What is a client?", "When does a payment settle?", "contract records"):
+            query = _vector(question)
+            expected = sorted(
+                ((-_old_cosine(query, _float4(_vector(t))), d, o, t) for d, o, t in held),
+            )[:4]
+            hits = await store.nearest_passages(conn, query, ids, 4)
+            assert [(h.document_id, h.ordinal, h.text) for h in hits] == [
+                (d, o, t) for _, d, o, t in expected
+            ]
+            for hit, (negative, *_rest) in zip(hits, expected, strict=True):
+                assert hit.score == pytest.approx(-negative, rel=FLOAT4)
+
+
+async def test_the_search_is_served_by_the_dimension_s_index(db):
+    async with db.acquire() as conn:
+        document_id = await _add(conn, "policy.html", POLICY, ["*"])
+        assert await _vector_indexes(conn) == {f"reference_passages_vector_{len(VOCABULARY)}"}
+        sql, params = store.nearest_sql(_vector("client"), [document_id], 3)
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {sql}").bindparams(**params))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert f"reference_passages_vector_{len(VOCABULARY)}" in plan
+
+
+async def test_a_search_only_reads_the_documents_it_is_given(db):
+    async with db.acquire() as conn:
+        policy = await _add(conn, "policy.html", POLICY, ["*"])
+        await _add(conn, "spec.md", SPEC, ["*"])
+        hits = await store.nearest_passages(conn, _vector("payment currency"), [policy], 10)
+        assert {h.document_id for h in hits} == {policy}
+        assert await store.nearest_passages(conn, _vector("payment"), [], 10) == []
+
+
+async def test_a_question_of_another_dimension_is_refused_by_name(db):
+    async with db.acquire() as conn:
+        document_id = await _add(conn, "policy.html", POLICY, ["*"])
+        with pytest.raises(ValueError, match=r"7 dimensions; the question's have 3"):
+            await store.nearest_passages(conn, [1.0, 2.0, 3.0], [document_id], 3)
+
+
+async def test_re_embedding_with_another_dimension_indexes_that_dimension(db, monkeypatch):
+    async with db.acquire() as conn:
+        first = await _add(conn, "policy.html", POLICY, ["*"])
+        second = await _add(conn, "spec.md", SPEC, ["*"])
+        _no_rereading(monkeypatch)
+
+        await library.reembed(conn, first, OTHER)
+        # both dimensions are in use while the second document still has the earlier model's
+        assert await _vector_indexes(conn) == {
+            "reference_passages_vector_3",
+            f"reference_passages_vector_{len(VOCABULARY)}",
+        }
+        await library.reembed(conn, second, OTHER)
+        assert await _vector_indexes(conn) == {"reference_passages_vector_3"}
+
+        texts = [t for _, _, _, t in await store.passages(conn, second)]
+        hits = await store.nearest_passages(conn, _other_vector(texts[-1]), [first, second], 3)
+        assert hits[0].text == texts[-1]
+        assert hits[0].score == pytest.approx(1.0, rel=FLOAT4)
+
+
+async def test_removing_the_last_document_of_a_dimension_drops_its_index(db):
+    async with db.acquire() as conn:
+        document_id = await _add(conn, "policy.html", POLICY, ["*"])
+        await library.remove(conn, document_id)
+        assert await _vector_indexes(conn) == set()
+
+
+async def test_embeddings_beyond_the_half_precision_limit_are_refused_by_name(db):
+    async def wide(texts: list[str]) -> list[list[float]]:
+        return [[1.0] * 4097 for _ in texts]
+
+    async with db.acquire() as conn:
+        with pytest.raises(ValueError, match=r"4097 dimensions.*at most 4000"):
+            await library.add(
+                conn,
+                _file("glossary.txt", b"A contract binds a client."),
+                source_kind=store.FILE,
+                domains=["*"],
+                status=store.KEPT,
+                embedder=library.Embedder(model="wide", embed=wide),
+                added_by="alice",
+            )
+        assert await store.documents(conn) == []
+
+
+WIDE = 3072
+
+
+def _wide_vector(text: str) -> list[float]:
+    """The vocabulary vector in the first dimensions of a 3072-dimension space, the rest zero:
+    cosine between two of them is that of the narrow vectors."""
+    return _vector(text) + [0.0] * (WIDE - len(VOCABULARY))
+
+
+async def _embed_wide(texts: list[str]) -> list[list[float]]:
+    return [_wide_vector(t) for t in texts]
+
+
+async def test_a_3072_dimension_model_is_held_under_a_half_precision_index(db):
+    wide = library.Embedder(model="wide-embed", embed=_embed_wide)
+    async with db.acquire() as conn:
+        ids = [
+            await library.add(
+                conn,
+                _file(name, data),
+                source_kind=store.FILE,
+                domains=["*"],
+                status=store.KEPT,
+                embedder=wide,
+                added_by="alice",
+            )
+            for name, data in (("policy.html", POLICY), ("spec.md", SPEC))
+        ]
+        assert await _vector_indexes(conn) == {f"reference_passages_vector_{WIDE}"}
+        held = [
+            (document_id, ordinal, text_)
+            for document_id in ids
+            for ordinal, _, _, text_ in await store.passages(conn, document_id)
+        ]
+        for question in ("What is a client?", "When does a payment settle?"):
+            query = _wide_vector(question)
+            expected = sorted((-_old_cosine(query, _wide_vector(t)), d, o, t) for d, o, t in held)[
+                :3
+            ]
+            hits = await store.nearest_passages(conn, query, ids, 3)
+            assert [(h.document_id, h.ordinal, h.text) for h in hits] == [
+                (d, o, t) for _, d, o, t in expected
+            ]
+            for hit, (negative, *_rest) in zip(hits, expected, strict=True):
+                assert hit.score == pytest.approx(-negative, rel=HALF)
+
+        sql, params = store.nearest_sql(_wide_vector("client"), ids, 3)
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            await conn.execute_core(sa.text("SET LOCAL enable_sort = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {sql}").bindparams(**params))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert f"reference_passages_vector_{WIDE}" in plan
+        indexed = await conn.execute_core(
+            sa.text(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() "
+                f"AND indexname = 'reference_passages_vector_{WIDE}'"
+            )
+        )
+        definition = indexed.scalar()
+        assert "halfvec_cosine_ops" in definition
+        assert f"halfvec({WIDE})" in definition
+
+        await library.remove(conn, ids[0])
+        await library.remove(conn, ids[1])
+        assert await _vector_indexes(conn) == set()
+
+
+def test_the_library_refuses_to_start_without_pgvector(embedded_postgres):
+    """A control plane whose role cannot create pgvector -- a managed PostgreSQL without it, or a
+    role short of the right -- is refused at its layout, naming pgvector."""
+    import asyncio
+    import os
+
+    import psycopg
+
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.db import init_schema
+    from provisa.core.pgvector import PgvectorUnavailable
+    from tests.pg_control_plane import SCHEMA_SQL
+
+    role = f"no_pgvector_{os.getpid()}"
+    with psycopg.connect(embedded_postgres.dsn(), autocommit=True) as admin:
+        admin.execute(f'DROP DATABASE IF EXISTS "{role}" WITH (FORCE)')  # type: ignore[arg-type]
+        admin.execute(f'DROP ROLE IF EXISTS "{role}"')  # type: ignore[arg-type]
+        admin.execute(f"CREATE ROLE \"{role}\" LOGIN NOSUPERUSER PASSWORD 'x'")  # type: ignore[arg-type]
+        admin.execute(f'CREATE DATABASE "{role}" OWNER "{role}"')  # type: ignore[arg-type]
+    engine = create_engine_from_url(
+        f"postgresql+psycopg://{role}:x@127.0.0.1:{embedded_postgres.port}/{role}"
+    )
+    try:
+        with pytest.raises(PgvectorUnavailable, match=r"pgvector.*permission denied"):
+            asyncio.run(init_schema(Database(engine, name="layout"), SCHEMA_SQL, org_id="default"))
+        with engine.connect() as c:
+            assert (
+                c.exec_driver_sql("SELECT to_regclass('org_default.reference_passages')").scalar()
+                is None
+            )
+    finally:
+        engine.dispose()
+        with psycopg.connect(embedded_postgres.dsn(), autocommit=True) as admin:
+            admin.execute(f'DROP DATABASE IF EXISTS "{role}" WITH (FORCE)')  # type: ignore[arg-type]
+            admin.execute(f'DROP ROLE IF EXISTS "{role}"')  # type: ignore[arg-type]

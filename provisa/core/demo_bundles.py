@@ -107,8 +107,10 @@ class NewerDemoFormat(BundleError):
 #: exports take ``inputs`` (REQ-2100) and roles name ``parents`` (REQ-2155); a demo using either
 #: also sets requires_provisa to the release carrying it. A release older than that refuses it by
 #: requires_provisa; any build reading an older format (a checkout or app image, whose version is
-#: the unstamped one) refuses it by its format (NewerDemoFormat).
-DEMO_FORMAT = 3
+#: the unstamped one) refuses it by its format (NewerDemoFormat). 4: a role holds what it lists of
+#: what its parents hold (REQ-2155), so a role lists every right it holds and a bundle of an older
+#: format would lose rights or be refused at load: it is refused here by name (OldDemoFormat).
+DEMO_FORMAT = 4
 
 
 @dataclass(frozen=True)
@@ -619,6 +621,51 @@ def store_namespaces(directory: Path) -> dict[str, str]:
     }
 
 
+#: How long a store a demo's open asks after may take to answer: an open waits on each in turn.
+_STORE_PROBE_S = 3.0
+
+
+def unhealthy_stores(directory: Path) -> list[str]:
+    """What is wrong with the stores bundle ``directory`` runs, each named by its service, as the
+    tier reaches them now (stores.env): a store not accepting connections, and a search store whose
+    indices are red -- it accepts them and refuses every search (503). Yellow is healthy: a
+    single node holds no replica. None for a bundle running no stores."""
+    import socket
+
+    import yaml
+
+    run = directory / "docker-compose.run.yml"
+    if not run.is_file():
+        return []
+    where = stores_env(directory)
+    wrong: list[str] = []
+    for service, spec in (yaml.safe_load(run.read_text()).get("services") or {}).items():
+        labels = spec.get("labels") or {}
+        if not labels.get("com.provisa.demo.host_env"):
+            continue
+        host = where[labels["com.provisa.demo.host_env"]]
+        port = int(where[labels["com.provisa.demo.port_env"]])
+        try:
+            socket.create_connection((host, port), timeout=_STORE_PROBE_S).close()
+        except OSError as refused:
+            wrong.append(f"{service}: not reachable: {refused}")
+            continue
+        if labels.get("com.provisa.demo.role") == "search":
+            suffix = where[labels["com.provisa.demo.ns_env"]]
+            try:
+                health = httpx.get(
+                    f"http://{host}:{port}/_cluster/health/*{suffix}", timeout=_STORE_PROBE_S
+                )
+            except httpx.HTTPError as unanswered:
+                wrong.append(f"{service}: did not answer: {unanswered}")
+                continue
+            if health.status_code != 200:
+                wrong.append(f"{service}: answered {health.status_code}")
+            elif health.json()["status"] == "red":
+                wrong.append(f"{service}: its data is red")
+    return wrong
+
+
 def pull_into(spec: str, into: Path, registry_url: str) -> Path:
     """Pull ``<name>[@<version>]`` (its latest when no version is named) into
     ``into/<name>/<version>``, unless that version is there already -- a version names one bundle
@@ -650,7 +697,14 @@ def _main(argv: list[str] | None = None) -> int:
     q.add_argument("spec", help="<name> or <name>@<version>")
     q.add_argument("--into", type=Path, required=True)
     q.add_argument("--registry", default=os.environ.get("PROVISA_DEMO_REGISTRY", PUBLISHED_AT))
+    sub.add_parser("prune-engines", help="delete the engine releases this Provisa does not read")
     args = parser.parse_args(argv)
+    if args.command == "prune-engines":
+        from provisa.runtime_deps.pgwire_bundles import prune_releases
+
+        for release in prune_releases():
+            print(f"engine release {release} deleted")
+        return 0
     try:
         print(pull_into(args.spec, args.into, args.registry))
     except BundleError as refused:

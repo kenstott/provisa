@@ -24,8 +24,8 @@ type At = Map<string, [number, number, number]>;
  * Workforce Ops's, the shelter's first is Payroll's (a product of a domain no term is in). */
 function productOf(table: number) {
   if (table === 100 || table === 101)
-    return { id: "workforce_ops", name: "workforce_ops", domain_id: "shelter" };
-  if (table === 200) return { id: "payroll", name: "payroll", domain_id: "hr" };
+    return { id: "workforce_ops", name: "workforce_ops", domainId: "shelter" };
+  if (table === 200) return { id: "payroll", name: "payroll", domainId: "hr" };
   return null;
 }
 
@@ -37,19 +37,19 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
       id: 10 * (d + 1) + i,
       name: `${domain} term ${i}`,
       definition: null,
-      ref_count: 0,
+      refCount: 0,
       deprecated: false,
       retired: false,
       status: "approved",
       grounding: "grounded",
-      domains: [{ domain_id: domain }],
+      domains: [{ domainId: domain }],
       refs: ["id", "name"].map((column) => ({
-        column_key: `${table}:${column}`,
-        column_name: column,
-        table_id: table,
-        table_name: `t${table}`,
-        domain_id: domain,
-        table: { id: table, product: productOf(table) },
+        columnKey: `${table}:${column}`,
+        columnName: column,
+        tableId: table,
+        tableName: `t${table}`,
+        domainId: domain,
+        registeredTable: { id: table, product: productOf(table) },
       })),
     };
   }),

@@ -109,7 +109,6 @@ def test_an_overload_is_chosen_by_the_type_the_statement_says(sql, row):
     [
         "area('(1,1),(0,0)'::box)",
         "area('((0,0),(1,0),(1,1))'::path)",
-        "center('(1,1),(0,0)'::box)",
         "diagonal('(1,1),(0,0)'::box)",
         "height('(1,1),(0,0)'::box)",
         "width('(1,1),(0,0)'::box)",
@@ -123,6 +122,15 @@ def test_a_shape_on_trino_is_trinos_geometry_not_inline_arithmetic(sql):
     written = transpile(f"SELECT {sql} AS v", "trino")
     assert "ST_" in written.upper()
     assert "SQRT" not in written.upper()
+    sqlglot.parse_one(written, read="trino")
+
+
+def test_a_box_center_on_trino_writes_postgresqls_float_text():
+    """REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED: ST_Centroid's point written with format('%.6f')
+    keeps six places where PostgreSQL writes the shortest exact float, so the replayed form answers."""
+    written = transpile("SELECT center('(1,1),(0,0)'::box) AS v", "trino")
+    assert "ST_" not in written.upper() and "%.6f" not in written
+    assert "pg_geo_float_text" in written
     sqlglot.parse_one(written, read="trino")
 
 
@@ -141,6 +149,11 @@ def test_a_type_trino_holds_as_text_reaches_it_with_no_cast_to_the_type(sql):
     tree = sqlglot.parse_one(transpile(f"SELECT {sql} AS v", "trino"), read="trino")
     held = {"box", "path", "circle", "cidr", "inet", "tsvector", "lseg"}
     assert not {c.to.sql(dialect="trino").lower() for c in tree.find_all(exp.Cast)} & held
+
+
+@pytest.mark.parametrize("dialect", ["duckdb", "trino"])
+def test_the_cast_a_statement_says_chooses_the_overload_before_the_type_is_held(dialect):
+    assert "PI()" in transpile("SELECT area('<(0,0),1>'::circle) AS v", dialect).upper()
 
 
 def test_an_unaliased_overload_keeps_the_column_postgresql_names():

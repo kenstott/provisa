@@ -43,8 +43,7 @@ roles:
 - id: pharma_analyst
   parents: [analyst]
   description: "Queries the pharma domain's data."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pharma
 server:
@@ -70,7 +69,7 @@ sources:
   cache_ttl: -1
   replicate: 0
   description: Government data from AskAmerica -- FDA's drug shortages and recalls and Medicaid's
-    drug utilization, landed once when the demo is built
+    drug utilization
 tables:
 - source_id: pharmacy
   domain_id: pharma

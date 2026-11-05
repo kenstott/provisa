@@ -212,7 +212,7 @@ async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
             ],
         }
     }
-    load = make_graphql_remote_loader(gql_sources, max_rows=500)
+    load = make_graphql_remote_loader(gql_sources, max_rows=500, page_size=100)
     rows = await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
     assert rows == [{"id": 1}, {"id": 2}]
     assert captured["rows_path"] is None  # not a connection table
@@ -224,7 +224,7 @@ async def test_make_graphql_remote_loader_forwards_query(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_make_graphql_remote_loader_missing_registration_raises():
-    load = make_graphql_remote_loader({}, max_rows=500)
+    load = make_graphql_remote_loader({}, max_rows=500, page_size=100)
     with pytest.raises(UnsupportedSourceFetch, match="no matching"):
         await load(_src("gql", "graphql_remote"), _tbl("default", "orders"))
 
@@ -254,10 +254,11 @@ async def test_a_connection_tables_replica_source_reads_it_a_page_at_a_time(monk
     pulled: list[str] = []
 
     async def _pages(
-        url, auth, field_name, columns, rows_path, *, table, max_rows, error_policy, variables,
+        url, auth, field_name, columns, rows_path, *, table, page_size, max_rows, error_policy,
+        variables,
         required_args,
     ):  # fmt: skip
-        assert (table, max_rows) == ("gql.issues", 500)
+        assert (table, page_size, max_rows) == ("gql.issues", 100, 500)
         for page in ([{"id": 1}, {"id": 2}], [{"id": 3}]):
             pulled.append("page")
             yield page
@@ -276,7 +277,7 @@ async def test_a_connection_tables_replica_source_reads_it_a_page_at_a_time(monk
             ],
         }
     }
-    load = make_graphql_remote_loader(gql_sources, max_rows=500)
+    load = make_graphql_remote_loader(gql_sources, max_rows=500, page_size=100)
     source = load.replica_source(
         _src("gql", "graphql_remote"), _tbl("default", "issues"), [("id", "bigint")]
     )
@@ -301,7 +302,8 @@ async def test_a_connection_table_is_read_up_to_its_own_bound_when_it_sets_one(m
     bounds: list[int] = []
 
     async def _pages(
-        url, auth, field_name, columns, rows_path, *, table, max_rows, error_policy, variables,
+        url, auth, field_name, columns, rows_path, *, table, page_size, max_rows, error_policy,
+        variables,
         required_args,
     ):  # fmt: skip
         bounds.append(max_rows)
@@ -317,7 +319,7 @@ async def test_a_connection_table_is_read_up_to_its_own_bound_when_it_sets_one(m
             ],
         }
     }  # fmt: skip
-    load = make_graphql_remote_loader(gql_sources, max_rows=500)
+    load = make_graphql_remote_loader(gql_sources, max_rows=500, page_size=100)
     own = _tbl("default", "issues", PaginationConfig(max_rows=20))
     await load(_src("gql", "graphql_remote"), own)
     await load(_src("gql", "graphql_remote"), _tbl("default", "issues"))

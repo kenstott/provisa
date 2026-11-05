@@ -55,7 +55,11 @@ from pathlib import Path
 def _server(datadir: str):
     import pixeltable_pgserver  # lazy — optional dep; ImportError signals "not available"
 
-    return pixeltable_pgserver.get_server(Path(datadir), cleanup_mode=None)
+    pgdata = Path(datadir)
+    pgdata.parent.mkdir(
+        parents=True, exist_ok=True
+    )  # pgserver refuses a pgdata whose parent is missing
+    return pixeltable_pgserver.get_server(pgdata, cleanup_mode=None)
 
 
 class EmbeddedPostgresAsRoot(PermissionError):

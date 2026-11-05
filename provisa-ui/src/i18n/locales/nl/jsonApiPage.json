@@ -18,6 +18,7 @@
     "optionalHint": "optioneel",
     "fieldPlaceholder": "— veld —",
     "filterValuePlaceholder": "waarde",
+    "removeHandedParam": "{{param}} verwijderen",
     "sortAsc": "opl.",
     "sortDesc": "afl.",
     "paginationSectionTitle": "Paginering",

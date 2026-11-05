@@ -15,7 +15,7 @@
 // one JSON object per graph, holding only what the viewer changed.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getStored, removeStored, setStored } from "../../../lib/browserStorage";
+import { getStoredJson, removeStored, setStored } from "../../../lib/browserStorage";
 
 /** Which graph: its kind, and the table or product it shows (null for one of the whole org). */
 export interface GraphKey {
@@ -32,16 +32,31 @@ const keyOf = ({ kind, subject }: GraphKey) => `graph3d.${kind}.${subject ?? "or
 const CHANGED = "provisa:graph3d-settings";
 
 function readSaved(key: string): Record<string, unknown> {
+  const parsed = getStoredJson<unknown>(key);
+  return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {};
+}
+
+/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
+export const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
+
+/** ``graph``'s remembered settings as they stand, read where the graph itself is not open. */
+export function savedGraphSettings(graph: GraphKey): Record<string, unknown> {
+  return readSaved(keyOf(graph));
+}
+
+/** Sets ``graph``'s settings from outside it (Polly's navigate): remembered, so a graph opened
+ * later has them, and followed by a graph already open. */
+export function writeGraphSettings(graph: GraphKey, change: Record<string, unknown>): void {
+  const key = keyOf(graph);
+  const next = { ...readSaved(key), ...change };
   try {
-    const raw = getStored(key);
-    const parsed: unknown = raw ? JSON.parse(raw) : {};
-    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
+    setStored(key, JSON.stringify(next));
   } catch {
-    // A per-viewer convenience only: storage blocked, cleared or unreadable means the defaults.
-    return {};
+    // Blocked storage: the setting holds while the graph is open and is not kept.
   }
+  window.dispatchEvent(new CustomEvent(CHANGED, { detail: { key, settings: next } }));
 }
 
 /** A saved value kept only where it has its default's shape (a selection may also be every
@@ -90,22 +105,15 @@ export function useGraphSettings<S extends Record<string, SettingValue>>(
   const set = useCallback(
     <K extends keyof S & string>(name: K, value: S[K]) => {
       const next = { ...readSaved(key), [name]: value };
-      try {
-        setStored(key, JSON.stringify(next));
-      } catch {
-        // Blocked storage: the setting holds while the graph is open and is not kept.
-      }
+      // A refused write is logged and noticed there; the setting holds while the graph is open.
+      setStored(key, JSON.stringify(next));
       setSettings((prev) => ({ ...prev, [name]: value }));
       publish(next);
     },
     [key, publish],
   );
   const reset = useCallback(() => {
-    try {
-      removeStored(key);
-    } catch {
-      // Blocked storage held nothing to clear.
-    }
+    removeStored(key);
     setSettings(initial.current);
     publish({});
   }, [key, publish]);

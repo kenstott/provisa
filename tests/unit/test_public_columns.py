@@ -263,9 +263,10 @@ def test_the_shared_helper_and_the_schema_build_agree():
 
 def test_the_catalog_describes_a_published_table_to_a_role_outside_its_domain():
     """REQ-1132's row scope: a role's own tables, now including those published to it."""
-    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5}
+    # REQ-1132: a role lists what is listed, whatever it reaches.
+    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5, 6}
     assert compute_meta_row_scope(_role("hr_reader", HR), TABLES, []) == {1, 2, 4, 6}
-    assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) is None
+    assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) == {1, 2, 3, 4, 6}
 
 
 # --- scope is one of three values, on every path --------------------------------------------------

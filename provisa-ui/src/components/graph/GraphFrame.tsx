@@ -49,14 +49,15 @@ import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
-import { useLocalStorage, type GraphLanguage } from "./graph-persistence";
+import { settingKey, useLocalStorage, type GraphLanguage } from "./graph-persistence";
 import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
-import { frameMetaText } from "./frame/frame-meta";
+import { frameCode, frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
 import { useSparqlExpansion } from "./frame/use-sparql-expansion";
 import { useSparqlNodeProperties } from "./frame/use-sparql-node-properties";
-import { groupableAttributes } from "./frame/frame-meta";
+import { useSparqlStyledProperties } from "./frame/use-sparql-styled-properties";
+import { groupOptions, type ClassProperties } from "./frame/frame-meta";
 import {
   GraphViewIcon,
   TableViewIcon,
@@ -71,7 +72,16 @@ import {
 } from "./GraphIcons";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
-import { FrameError, FrameQueryActions, FrameRunning, FrameStatementTabs } from "./FrameParts";
+import {
+  FrameDropNotices,
+  FrameError,
+  FrameQueryActions,
+  FrameRunning,
+  FrameStatementTabs,
+} from "./FrameParts";
+import { nodeAtPoint } from "./canvas/canvas-helpers";
+import type { DropNode, SparqlDrop } from "./sparqlDrop";
+import { useFrameDrop } from "./frame/use-frame-drop";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -82,6 +92,10 @@ interface GraphFrameProps {
   onRerun: (id: string, query: string) => void;
   onTableDrop?: (frameId: string, compoundLabel: string) => void;
   onDomainDrop?: (frameId: string, domainLabel: string) => void;
+  /** A vocabulary pill dropped on a SPARQL frame, on the node of its drawing it landed on, if any. */
+  onSparqlDrop?: (frameId: string, drop: SparqlDrop, on: DropNode | null) => void;
+  /** A node dragged onto another of a Cypher drawing: the paths between the two. */
+  onNodePath?: (from: GNode, to: GNode) => void;
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
@@ -125,6 +139,10 @@ interface GraphFrameProps {
   onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
   /** Ask the model, once, for the properties of a SPARQL node that was selected and holds none. */
   onDescribeResource?: (frameId: string, iri: string) => void;
+  /** Ask the model, once each, for the properties of SPARQL nodes a caption or a size reads. */
+  onDescribeResources?: (frameId: string, iris: string[]) => void;
+  /** What each SPARQL class has, by its nodes' label: offered to group by before they are read. */
+  classProperties?: Record<string, ClassProperties>;
 }
 
 export function GraphFrame({
@@ -134,6 +152,8 @@ export function GraphFrame({
   onRerun,
   onTableDrop,
   onDomainDrop,
+  onSparqlDrop,
+  onNodePath,
   colorOverrides,
   sizeOverrides,
   labelProperty,
@@ -159,6 +179,8 @@ export function GraphFrame({
   sparqlPrefixes,
   onExpandResource,
   onDescribeResource,
+  onDescribeResources,
+  classProperties,
 }: GraphFrameProps) {
   const { t } = useTranslation();
   const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
@@ -216,7 +238,6 @@ export function GraphFrame({
       (window as unknown as Record<string, unknown>).__overlayData = overlayData;
   }, [overlayData]);
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
-  const [dragOver, setDragOver] = useState(false);
   const handleRerun = useCallback(
     (id: string, query: string) => {
       setOverlayData(new Map());
@@ -230,7 +251,10 @@ export function GraphFrame({
     "none",
   );
   const canvasView = useRequestedView(requestedView, setClusterLevel);
-  const [tableWrap, setTableWrap] = useState(false);
+  const [tableWrap, setTableWrap] = useLocalStorage<boolean>(
+    settingKey(language, "tableWrap"),
+    false,
+  );
   const [tableColWidths, setTableColWidths] = useColumnWidths(frame.columns);
   const canvasCyRef = useRef<CyInstance | null>(null);
   const canvasHullSvgRef = useRef<SVGSVGElement | null>(null);
@@ -339,11 +363,25 @@ export function GraphFrame({
     selected,
     onDescribeResource,
   );
+  useSparqlStyledProperties(
+    frame.id,
+    frame.sparqlDescribed,
+    augmentedNodes,
+    labelProperty,
+    sizeByProperty,
+    onDescribeResources,
+    clusterLevel,
+    classProperties,
+  );
   const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
-  const groupableAttrs = useMemo(() => groupableAttributes(augmentedNodes), [augmentedNodes]);
+  const groups = useMemo(
+    () => groupOptions(augmentedNodes, classProperties),
+    [augmentedNodes, classProperties],
+  );
+  const groupableAttrs = useMemo(() => groups.map((g) => g.value), [groups]);
   const activeView: "graph" | "table" | "json" | "graphstats" | "code" = hasGraph
     ? view
     : view === "json"
@@ -353,6 +391,22 @@ export function GraphFrame({
         : view === "code"
           ? "code"
           : "table";
+
+  /** The resource of a drawing's node at a point of the page; null off its graph or off a node. */
+  const droppedOnNode = (x: number, y: number): DropNode | null => {
+    const cy = canvasCyRef.current;
+    const node = activeView === "graph" && cy ? nodeAtPoint(cy, x, y) : null;
+    const iri = node?.properties.iri;
+    return node && typeof iri === "string" ? { iri, label: node.label } : null;
+  };
+
+  const { dragOver, dropTarget } = useFrameDrop({
+    frameId: frame.id,
+    onTableDrop,
+    onDomainDrop,
+    onSparqlDrop,
+    nodeAt: droppedOnNode,
+  });
 
   const renderHeader = (isModal: boolean) => (
     <div className="gf-header">
@@ -568,7 +622,7 @@ export function GraphFrame({
                 placeholder={t("graphFrame.groupPlaceholder")}
                 value={groupableAttrs.includes(clusterLevel) ? clusterLevel : null}
                 onChange={(val) => setClusterLevel((val ?? "none") as ClusterLevel)}
-                data={groupableAttrs.map((a) => ({ value: a, label: a }))}
+                data={groups}
                 clearable
                 comboboxProps={{ withinPortal: true }}
                 data-testid="graph-frame-group-select"
@@ -801,6 +855,7 @@ export function GraphFrame({
               describable={sparql}
               keepPositions={sparql}
               onNodeDragged={sparql ? (nodeKey) => expandNode(nodeKey, false) : undefined}
+              onNodeDroppedOnNode={onNodePath}
               showingChildrenCircular={showingChildrenCircular}
               onToggleChildrenCircular={handleToggleChildrenCircular}
               showingParents={showingParents}
@@ -890,49 +945,7 @@ export function GraphFrame({
         {frame.status !== "error" &&
           activeView === "code" &&
           (() => {
-            type SourceEntry = {
-              field?: string;
-              source?: string;
-              strategy?: string;
-              elapsed_ms?: number;
-              rows?: number;
-              physical_sql?: string;
-              cache_hit?: boolean;
-            };
-            const stats = frame.queryStats as
-              | { total_elapsed_ms?: number; sources?: SourceEntry[]; mermaid?: string }
-              | undefined;
-            const sqlQueries = (stats?.sources ?? [])
-              .filter((s) => s.physical_sql)
-              .map((s) => ({
-                field: s.field,
-                source: s.source,
-                strategy: s.strategy,
-                elapsed_ms: s.elapsed_ms,
-                rows: s.rows,
-                ...(s.cache_hit ? { cache_hit: true } : {}),
-                sql: s.physical_sql,
-              }));
-            const codeData: Record<string, unknown> = {
-              query: frame.query,
-              summary: {
-                nodes: frame.nodes.size,
-                relationships: frame.edges.size,
-                rows: frame.rows.length,
-                columns: frame.columns,
-                ...(frame.elapsed !== undefined ? { elapsed_ms: frame.elapsed } : {}),
-              },
-              ...(sqlQueries.length > 0 ? { sql: sqlQueries } : {}),
-              ...(stats
-                ? {
-                    stats: {
-                      total_elapsed_ms: stats.total_elapsed_ms,
-                      sources: (stats.sources ?? []).map(({ physical_sql: _, ...rest }) => rest),
-                    },
-                  }
-                : {}),
-            };
-            const jsonStr = JSON.stringify(codeData, null, 2);
+            const jsonStr = JSON.stringify(frameCode(frame), null, 2);
             return (
               <div className="gf-json-wrap">
                 <CodeMirror
@@ -964,32 +977,10 @@ export function GraphFrame({
               }
             : undefined
         }
-        onDragOver={(e) => {
-          if (
-            e.dataTransfer.types.includes("text/x-provisa-label") ||
-            e.dataTransfer.types.includes("text/x-provisa-domain")
-          ) {
-            e.preventDefault();
-            setDragOver(true);
-          }
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          setDragOver(false);
-          const label = e.dataTransfer.getData("text/x-provisa-label");
-          if (label && onTableDrop) {
-            e.preventDefault();
-            onTableDrop(frame.id, label);
-            return;
-          }
-          const domain = e.dataTransfer.getData("text/x-provisa-domain");
-          if (domain && onDomainDrop) {
-            e.preventDefault();
-            onDomainDrop(frame.id, domain);
-          }
-        }}
+        {...dropTarget}
       >
         {renderHeader(false)}
+        <FrameDropNotices frame={frame} />
         {!collapsed && frameBody}
         {!collapsed && !expanded && (
           <div className="gf-frame-resize-handle" onMouseDown={handleFrameResizeStart} />

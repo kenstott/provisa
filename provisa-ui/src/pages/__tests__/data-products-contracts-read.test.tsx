@@ -119,13 +119,13 @@ import { DataProductsPage } from "../DataProductsPage";
 
 const member = (contract: unknown) => ({
   id: 7,
-  source_id: "pg",
-  domain_id: "care",
-  schema_name: "public",
-  table_name: "pets",
+  sourceId: "pg",
+  domainId: "care",
+  schemaName: "public",
+  tableName: "pets",
   alias: null,
   description: null,
-  dq_contract: null,
+  dqContract: null,
   contract,
 });
 

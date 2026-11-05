@@ -71,6 +71,8 @@ query RolesQuery {
     description
     capabilities
     effectiveCapabilities
+    effectiveDomains
+    effectiveResidencyValues
     demonstrated
     domainAccess
     parents
@@ -778,6 +780,7 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
       rowsField
     }
     pagingCeilingRows
+    requiredParameters
   }
 }
 
@@ -992,6 +995,7 @@ query SystemHealth {
       name
       status
       port
+      path
     }
     mvRefreshLoopRunning
   }

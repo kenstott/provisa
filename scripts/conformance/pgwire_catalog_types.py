@@ -17,7 +17,8 @@ both servers. Three parts, each written as data -- a difference is a finding, ne
    Provisa serves, the columns Provisa's RowDescription gives for ``SELECT * FROM <rel> LIMIT 0``
    against pg_attribute (name, order, type OID, typmod). For every overload of every pg_catalog
    function, the call PostgreSQL requires (pgwire_function_probe.py) through Provisa: whether it
-   is served, and its result type against what PostgreSQL returns for the same call.
+   is served, and its result type against what PostgreSQL returns for the same call. An overload
+   PostgreSQL itself cannot call, and an index function not served, are skipped by design.
 2. Coverage. The relations and functions real PostgreSQL has that Provisa does not serve, and the
    catalog relations Provisa serves that PostgreSQL does not have.
 3. Type conversions. For each column of the fixture table (one value of each type, read through
@@ -45,8 +46,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -190,7 +193,13 @@ class Server:
             return {"ok": False, "error": f"connection: {exc}".strip()}
         if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
             msg = (res.error_message or b"").decode(errors="replace").strip()
-            return {"ok": False, "error": msg[:400]}
+            state = res.error_field(pq.DiagnosticField.SQLSTATE)
+            return {
+                "ok": False,
+                "error": msg[:400],
+                "sqlstate": state.decode() if state else "",
+                "primary": msg.split("\n", 1)[0],
+            }
         fields = [
             {
                 "name": (res.fname(i) or b"").decode(),
@@ -235,6 +244,11 @@ def seed(pg_dsn: str) -> None:
         conn.execute(f"CREATE TYPE {function_probe.PROBE_ENUM} AS ENUM ('a', 'b')")
         conn.execute(f"DROP SEQUENCE IF EXISTS {function_probe.PROBE_SEQUENCE}")
         conn.execute(f"CREATE SEQUENCE {function_probe.PROBE_SEQUENCE}")
+        conn.execute(f"DROP TABLE IF EXISTS {function_probe.PROBE_IDENTITY}")
+        conn.execute(
+            f"CREATE TABLE {function_probe.PROBE_IDENTITY} "
+            "(id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, note text)"
+        )
     print(f"seeded {FIXTURE_SCHEMA}.{FIXTURE_TABLE}: {len(FIXTURE)} columns, one row")
 
 
@@ -283,29 +297,38 @@ class _SourcePool:
             return SimpleNamespace(rows=conn.execute(sql, params or []).fetchall())
 
 
-def _sized_numeric(pg_dsn: str, column: str) -> dict[str, Any]:
+def _sized_numeric(pg_dsn: str, column: str, table: str = FIXTURE_TABLE) -> dict[str, Any]:
     """An unsized numeric column as registration records it: ``numeric(38, s)``, ``s`` read from
-    the fixture's values by registration's own sampling (REQ-2167)."""
+    the table's values by registration's own sampling (REQ-2167)."""
     import asyncio
 
     from provisa.api.admin.introspect import _sized_numeric as sample
 
     typing = asyncio.run(
-        sample(_SourcePool(pg_dsn), "conformance-pg", FIXTURE_SCHEMA, FIXTURE_TABLE, column)
+        sample(_SourcePool(pg_dsn), "conformance-pg", FIXTURE_SCHEMA, table, column)
     )
     return {"data_type": typing.data_type}
 
 
-def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
-    """The fixture's columns as ``[(column, pg type, registered column fields)]``. Every column
-    registers (REQ-2171: a type that fits no IR type is text)."""
+def registered_columns(
+    columns: Iterable[tuple[str, str]], sized: Callable[[str], dict[str, Any]]
+) -> list[tuple[str, str, dict[str, Any]]]:
+    """``columns``, each (column, pg type), as ``[(column, pg type, registered column fields)]``,
+    ``sized`` giving an unsized numeric column's. Every column registers (REQ-2171: a type that
+    fits no IR type is text)."""
     registered: list[tuple[str, str, dict[str, Any]]] = []
-    for name, typ, _ in FIXTURE:
+    for name, typ in columns:
         typing = registered_typing(typ)
         if typing["data_type"] == "numeric":
-            typing = _sized_numeric(pg_dsn, name)
+            typing = sized(name)
         registered.append((name, typ, typing))
     return registered
+
+
+def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
+    """The fixture's columns as ``registered_columns`` gives them."""
+    columns = [(name, typ) for name, typ, _ in FIXTURE]
+    return registered_columns(columns, lambda column: _sized_numeric(pg_dsn, column))
 
 
 #: The user the Cypher TCK's Bolt sessions sign in as (.github/workflows/conformance-cypher.yml).
@@ -313,7 +336,8 @@ TCK_SESSION_USER = "tck-session"
 
 
 def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
-    """The model the conformance instance boots with.
+    """The model the conformance instance boots with, on the engine the job names in
+    ``$PROVISA_ENGINE`` (the DuckDB engine unless it names one).
 
     The basic provider with SCRAM: pgwire proves the job user's password, and the user acts as
     ``org_admin``. One domain, ``conformance``, which pgwire presents as the schema; one
@@ -325,8 +349,12 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     pgspec needs nothing here: every table it touches it creates itself as a session temporary
     table."""
     registered = registrable_columns(pg_dsn)
+    engine = os.environ.get("PROVISA_ENGINE") or "duckdb"
+    # ClickHouse's PostgreSQL database engine mounts one schema, public unless the source's hint
+    # says otherwise (ClickHousePostgresConnector); no other engine reads it for this source.
+    hints = {"federation_hints": {"schema": FIXTURE_SCHEMA}} if engine == "clickhouse" else {}
     return {
-        "federation_engine": "duckdb",
+        "federation_engine": engine,
         "auth": {
             # Password auth with SCRAM-SHA-256 (REQ-1394), so pgspec's auth tests prove a password
             # rather than meet trust mode. The break-glass account creates the job's one user
@@ -379,6 +407,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 "database": "${env:CONFORMANCE_PG_DATABASE}",
                 "username": "${env:CONFORMANCE_PG_USER}",
                 "password": "${env:CONFORMANCE_PG_PASSWORD}",
+                **hints,
             }
         ],
         "tables": [
@@ -398,7 +427,26 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                     }
                     for name, _typ, typing in registered
                 ],
-            }
+            },
+            {
+                # The table lastval's probe inserts into (function_probe.BEFORE): its id is
+                # generated, its note org_admin writes.
+                "source_id": "conformance-pg",
+                "schema": function_probe.PROBE_IDENTITY_SCHEMA,
+                "table": function_probe.PROBE_IDENTITY_TABLE,
+                "alias": function_probe.PROBE_IDENTITY_TABLE,
+                "domain_id": FIXTURE_SCHEMA,
+                "columns": [
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "is_primary_key": True,
+                        "visible_to": ["org_admin"],
+                    },
+                    {"name": "note", "data_type": "varchar", "visible_to": ["org_admin"]},
+                ],
+                "write_grants": [{"role": "org_admin", "operation": "insert", "columns": ["note"]}],
+            },
         ],
     }
 
@@ -535,13 +583,13 @@ def catalog_relations(pg: Server, provisa: Server, names: dict[int, str]) -> dic
     }
 
 
-def _pg_functions(pg: Server) -> list[function_probe.Function]:
+def pg_functions(pg: Server) -> list[function_probe.Function]:
     """Every overload pg_proc lists in pg_catalog (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS)."""
     rows = pg.rows(
         "SELECT p.proname::text, pg_get_function_identity_arguments(p.oid)::text, "
         "p.prokind::text, p.provariadic NOT IN (0, '\"any\"'::regtype), "
         "COALESCE(a.aggkind::text, 'n'), COALESCE(a.aggnumdirectargs::int, 0), "
-        "format_type(p.prorettype, NULL), "
+        "format_type(p.prorettype, NULL), p.provolatile::text, "
         "ARRAY(SELECT format_type(t, NULL) FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY u(t, i) "
         "      ORDER BY i)::text[] "
         "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
@@ -558,35 +606,89 @@ def _pg_functions(pg: Server) -> list[function_probe.Function]:
             aggkind=aggkind,
             direct=direct,
             rettype=rettype,
+            volatility=volatility,
             argtypes=tuple(argtypes),
         )
-        for name, overload, kind, variadic, aggkind, direct, rettype, argtypes in rows
+        for name, overload, kind, variadic, aggkind, direct, rettype, volatility, argtypes in rows
     ]
 
 
-def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dict[str, Any]:
-    """Each overload is a case, passed or failed (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS): passed
-    when it is served with PostgreSQL's result type; failed when its result type differs, it is
-    not served, or no call PostgreSQL accepts can reach it. None is skipped by design: a failure
-    is classified by family, never by by_design/pgwire.yaml."""
+def same_refusal(want: dict[str, Any], got: dict[str, Any]) -> bool:
+    """Whether Provisa refused a call with the error PostgreSQL refused it with."""
+    return not got["ok"] and all(want.get(k) == got.get(k) for k in ("sqlstate", "primary"))
+
+
+def _engine_counts(
+    failures: list[dict[str, Any]],
+    matching: int,
+    by_design_cases: int,
+    differing: dict[str, str],
+    not_served: dict[str, str],
+) -> dict[str, int]:
+    """One engine's functions, in the keys a floor reads (REQ-2171, RESULTS ARE BY ENGINE). The
+    run compares result types: an overload that matches is ``same_type``, a refusal by name its own
+    count, and ``differs`` the rest: ``differs_type`` a result type, ``differs_engine_error`` an
+    error that names no refusal. ``not_compared`` is a failure PostgreSQL refused itself, here."""
+    scenarios = [f["scenario"] for f in failures]
+    errors = [not_served[s] for s in scenarios if s in not_served]
+    refused = sum(1 for error in errors if function_probe.refused_by_name(error))
+    differs_type = sum(1 for s in scenarios if s in differing)
+    differs_error = len(errors) - refused
+    return {
+        "same_type": matching,
+        "refused_by_name": refused,
+        "differs": differs_type + differs_error,
+        "differs_type": differs_type,
+        "differs_engine_error": differs_error,
+        "by_design": by_design_cases,
+        "not_compared": len(scenarios) - len(errors) - differs_type,
+    }
+
+
+def called(server: Server, fn: function_probe.Function, sql: str) -> dict[str, Any]:
+    """``sql``, the call of ``fn``, run after what it needs its session to have done
+    (function_probe.BEFORE); that statement's error is the call's answer when it fails."""
+    before = function_probe.BEFORE.get(fn.signature)
+    if before is not None:
+        done = server.run(before)
+        if not done["ok"]:
+            return {**done, "error": f"{before}: {done['error']}"}
+    return server.run(sql)
+
+
+def catalog_functions(
+    pg: Server, provisa: Server, names: dict[int, str], engine: str = "duckdb"
+) -> dict[str, Any]:
+    """Each overload is a case: passed when it is served with PostgreSQL's result type; skipped by
+    design in Internal functions when PostgreSQL itself proves it cannot call it (REQ-2167, amended
+    2026-10-29, INTERNAL FUNCTIONS, by_design.FUNCTION_GROUPS); failed otherwise, which is a result
+    type that differs, a function not served, or a refusal of this server's state (``refused_here``,
+    no proof PostgreSQL cannot call it) that Provisa does not answer with the same error. A Provisa
+    server is in that state, so that error is its answer (REQ-2171): it passes on its SQLSTATE and
+    message. What stays failed is taken by family."""
     declared = function_probe.families()
-    fns = _pg_functions(pg)
+    fns = pg_functions(pg)
     matching: list[str] = []
     differing: dict[str, str] = {}
     not_served: dict[str, str] = {}
     not_callable: dict[str, str] = {}
+    refused_here: dict[str, str] = {}
     for fn in fns:
         sql = function_probe.call(fn)
         if sql is None:
             not_callable[fn.signature] = function_probe.NO_CALL
             continue
-        want = pg.run(sql)
+        want = called(pg, fn, sql)
         if not want["ok"] or not want["fields"]:
-            not_callable[fn.signature] = (
-                f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
-            )
+            why = f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
+            if function_probe.proves_internal(why):
+                not_callable[fn.signature] = why
+            elif want["ok"] or not same_refusal(want, called(provisa, fn, sql)):
+                refused_here[fn.signature] = why
+            else:
+                matching.append(fn.signature)
             continue
-        got = provisa.run(sql)
+        got = called(provisa, fn, sql)
         if not got["ok"]:
             not_served[fn.signature] = got["error"]
             continue
@@ -603,8 +705,9 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         **differing,
         **{signature: f"not served: {error}" for signature, error in not_served.items()},
         **{signature: f"no call reaches it: {why}" for signature, why in not_callable.items()},
+        **refused_here,
     }
-    failures = [
+    unmet = [
         {
             "feature": "catalog function",
             "scenario": fn.signature,
@@ -616,17 +719,26 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
         for fn in fns
         if fn.signature in reasons
     ]
+    failures, excluded = by_design.classify(unmet, by_design.function_groups("pgwire"))
     by_family: dict[str, list[str]] = {}
     for failure in failures:
         by_family.setdefault(failure["family"], []).append(failure["scenario"])
+    outcomes = by_design.outcomes(len(matching), excluded, failures)
     return {
-        **by_design.outcomes(len(matching), [], failures),
+        **outcomes,
+        "engine": engine,
+        "by_engine": {
+            engine: _engine_counts(
+                failures, len(matching), outcomes["by_design"], differing, not_served
+            )
+        },
         "postgres_functions": len(fns),
         "served": len(matching) + len(differing),
         "matching": len(matching),
         "differing": dict(sorted(differing.items())),
         "not_served": dict(sorted(not_served.items())),
         "not_callable": dict(sorted(not_callable.items())),
+        "refused_here": dict(sorted(refused_here.items())),
         "failures_by_family": {
             family: {"count": len(functions), "functions": functions}
             for family, functions in sorted(by_family.items())
@@ -755,6 +867,7 @@ def markdown(report: dict[str, Any]) -> str:
     rel = report["catalog_relations"]
     fn = report["catalog_functions"]
     ty = report["type_conversions"]
+    engine, on_engine = next(iter(fn["by_engine"].items()))
     out = [
         f"## pgwire catalog and types (PostgreSQL {report['postgres_version']})",
         "",
@@ -767,13 +880,24 @@ def markdown(report: dict[str, Any]) -> str:
             + " |"
             for label, part in (
                 ("catalog relations", rel),
-                ("catalog functions", fn),
                 ("type conversions", ty),
             )
         ),
         "",
-        "Pass rate: passed over passed and failed. A relation or function failed differs from "
-        "PostgreSQL's or is not served.",
+        "Pass rate: passed over passed and failed. A relation failed differs from PostgreSQL's "
+        "or is not served.",
+        "",
+        f"## Catalog functions on {engine} (PostgreSQL {report['postgres_version']})",
+        "",
+        "| engine | same result type | refused by name | differs: result type "
+        "| differs: engine error | skipped by design | not compared |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+        f"| {engine} | {on_engine['same_type']} | {on_engine['refused_by_name']} "
+        f"| {on_engine['differs_type']} | {on_engine['differs_engine_error']} "
+        f"| {on_engine['by_design']} | {on_engine['not_compared']} |",
+        "",
+        "This run compares result types on one engine, and its counts are that engine's. "
+        "Conformance (functions) gives every overload's result on each engine.",
         "",
         f"## pgwire catalog shape (PostgreSQL {report['postgres_version']})",
         "",
@@ -784,8 +908,8 @@ def markdown(report: dict[str, Any]) -> str:
         f"| functions | {fn['postgres_functions']} | {fn['served']} | {fn['matching']} "
         f"| {len(fn['differing'])} |",
         "",
-        "Functions compared: every pg_catalog overload. One no call can reach is failed by name "
-        f"({len(fn['not_callable'])} of those).",
+        "Functions compared: every pg_catalog overload. One PostgreSQL itself cannot call is "
+        f"skipped by design ({len(fn['not_callable'])} of those).",
         "",
     ]
     out += _details(f"Relations that differ ({len(rel['differing'])})", _md_list(rel["differing"]))
@@ -801,14 +925,23 @@ def markdown(report: dict[str, Any]) -> str:
         f"Functions PostgreSQL has that Provisa does not serve ({len(fn['not_served'])})",
         _md_list(list(fn["not_served"]), limit=3000),
     )
+    if fn["by_design_groups"]:
+        out += _details(
+            f"Functions skipped by design ({fn['by_design']})",
+            by_design.table(fn["by_design_groups"], requirement=True),
+        )
     out += _details(
-        f"Functions no call can reach ({len(fn['not_callable'])})",
+        f"Functions PostgreSQL itself cannot call ({len(fn['not_callable'])})",
         _md_list(list(fn["not_callable"]), limit=3000),
     )
     out += _details(
-        f"Functions failed, by family ({fn['failed']})",
+        f"Functions this PostgreSQL refuses for its own state ({len(fn['refused_here'])})",
+        _md_list(fn["refused_here"]),
+    )
+    out += _details(
+        f"Functions refused or differing on {engine}, by family",
         [
-            "| Family | Failed |",
+            "| Family | Overloads |",
             "| --- | ---: |",
             *(f"| {k} | {v['count']} |" for k, v in fn["failures_by_family"].items()),
         ],
@@ -847,7 +980,9 @@ def markdown(report: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
+def probe(
+    pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path, engine: str = "duckdb"
+) -> None:
     pg = Server(pg_dsn)
     provisa = Server(provisa_dsn)
     names = _type_names(pg)
@@ -855,7 +990,7 @@ def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
     report: dict[str, Any] = {
         "postgres_version": pg.rows("SHOW server_version")[0][0],
         "catalog_relations": catalog_relations(pg, provisa, names),
-        "catalog_functions": catalog_functions(pg, provisa, names),
+        "catalog_functions": catalog_functions(pg, provisa, names, engine),
         "type_conversions": type_conversions(pg, provisa, names),
     }
     report["seconds"] = round(time.monotonic() - started, 1)
@@ -866,6 +1001,15 @@ def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
 
 #: The parts of the pgwire run, each a set of cases with its own three counts.
 PARTS = ("pgspec", "catalog_relations", "catalog_functions", "type_conversions")
+
+
+FUNCTIONS = "catalog_functions"
+
+
+def _totals(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    groups = [g for part in parts for g in part["by_design_groups"]]
+    failures = [f for part in parts for f in part["failures"]]
+    return by_design.outcomes(sum(part["passed"] for part in parts), groups, failures)
 
 
 def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
@@ -880,13 +1024,19 @@ def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
         "postgres_version": (catalog or {}).get("postgres_version"),
     }
     parts = [doc[part] for part in PARTS if doc[part] is not None]
-    groups = [g for part in parts for g in part["by_design_groups"]]
-    failures = [f for part in parts for f in part["failures"]]
-    totals = by_design.outcomes(sum(part["passed"] for part in parts), groups, failures)
-    # The groups and failures stay in their parts; the top gives the counts.
+    keys = ("total", "passed", "by_design", "failed", "ran", "pass_rate")
+    totals = _totals(parts)
+    others = _totals([doc[part] for part in PARTS if part != FUNCTIONS and doc[part] is not None])
+    functions = doc[FUNCTIONS] or {}
+    # The groups and failures stay in their parts; the top gives the counts. Functions have no
+    # overall count (REQ-2171, RESULTS ARE BY ENGINE): ``outside_functions`` is the run without
+    # them, what the page reports, and ``functions_by_engine`` is theirs. The top's own six keys
+    # still sum every part because the landing floor reads ``failed``: they go when it moves.
     return {
         "surface": "pgwire",
-        **{k: totals[k] for k in ("total", "passed", "by_design", "failed", "ran", "pass_rate")},
+        **{k: totals[k] for k in keys},
+        "outside_functions": {k: others[k] for k in keys},
+        "functions_by_engine": functions.get("by_engine", {}),
         **{k: v for k, v in doc.items() if k != "surface"},
     }
 
@@ -910,6 +1060,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--provisa", required=True)
     p.add_argument("--out-json", required=True, type=Path)
     p.add_argument("--out-md", required=True, type=Path)
+    p.add_argument("--engine", default="duckdb", help="the engine the instance serves")
     m = sub.add_parser("combine")
     m.add_argument("--pgspec", required=True, type=Path)
     m.add_argument("--catalog", type=Path, help="the probe's JSON; absent if it did not complete")
@@ -932,9 +1083,9 @@ def main(argv: list[str]) -> int:
         )
         doc = combined(json.loads(args.pgspec.read_text()), catalog)
         args.out.write_text(json.dumps(doc, indent=2, default=str) + "\n")
-        print(f"pgwire: {by_design.counts_line(doc)}")
+        print(f"pgwire: {by_design.counts_line(doc['outside_functions'])}")
     else:
-        probe(args.pg, args.provisa, args.out_json, args.out_md)
+        probe(args.pg, args.provisa, args.out_json, args.out_md, args.engine)
     return 0
 
 

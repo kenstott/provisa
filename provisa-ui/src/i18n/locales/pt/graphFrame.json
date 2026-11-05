@@ -41,6 +41,22 @@
     "expandedDialogLabel": "Visualização expandida do grafo",
     "firstNodesShown": "Mostrando os primeiros {{count}} nós; há mais. Aumente o limite no menu lateral.",
     "deleteFrame": "Excluir este resultado",
-    "sparqlNothingMore": "Nada mais é dito sobre {{resource}}."
+    "sparqlNothingMore": "Nada mais é dito sobre {{resource}}.",
+    "sparqlDropForm": "Não é possível soltar uma etiqueta num resultado {{form}}: só aceita SELECT ou CONSTRUCT. Nada foi adicionado.",
+    "sparqlDropUnion": "Não é possível soltar uma etiqueta numa consulta UNION: não se sabe que lado unir. Nada foi adicionado.",
+    "sparqlDropGroupBy": "Não é possível soltar uma etiqueta numa consulta GROUP BY: as linhas são grupos, não recursos. Nada foi adicionado.",
+    "sparqlDropAggregate": "Não é possível soltar uma etiqueta numa consulta de agregação: as linhas são totais, não recursos. Nada foi adicionado.",
+    "sparqlDropSubquery": "Não é possível soltar uma etiqueta numa consulta com um sub-SELECT. Nada foi adicionado.",
+    "sparqlDropNoClass": "Este resultado não nomeia nenhuma classe para unir: dê uma classe a uma variável e solte de novo. Nada foi adicionado.",
+    "sparqlDropNode": "Esse nó não é uma variável desta consulta, portanto não há a que o unir. Nada foi adicionado.",
+    "sparqlDropNoPath": "{{name}} não tem nenhuma relação com {{classes}}. Nada foi adicionado.",
+    "sparqlDropTooFar": "{{name}} está a {{hops}} relações de {{classes}}, além das {{most}} que uma largada percorre: sem caminho curto. Nada foi adicionado.",
+    "sparqlDropNoEnd": "Nenhuma extremidade de {{name}} está neste resultado. Nada foi adicionado.",
+    "sparqlDropParameterized": "Um caminho não pode passar por {{name}}: a leitura exige argumentos. Nada foi adicionado.",
+    "sparqlDropEdgeParameterized": "{{name}} leva a uma tabela cuja leitura exige argumentos, e um caminho não pode passar por ela. Nada foi adicionado.",
+    "sparqlDropNoProperty": "Nenhuma classe deste resultado tem {{name}}. Nada foi adicionado.",
+    "sparqlDropLeftOut": "Adicionados {{shown}} de {{total}} caminhos igualmente curtos; os outros foram omitidos.",
+    "sparqlDropCut": "O resultado atingiu o seu LIMIT de {{limit}}: as linhas seguintes são omitidas.",
+    "cypherPathNoKey": "Os caminhos entre {{from}} e {{to}} precisam da chave de cada nó, e um deles não tem."
   }
 }

@@ -264,6 +264,11 @@ ANSWERS: dict[str, tuple[int, list[Any]]] = {
     ),
     "SELECT length('[(0,0),(3,4)]'::lseg) AS v": (FLOAT8, ["5"]),
     "SELECT length('[(0,0),(3,4)]'::path) AS v": (FLOAT8, ["5"]),
+    # A cast alone: the engine holds the value, the statement names the type (REQ-2190).
+    "SELECT '(1,2)'::point AS v": (600, ["(1,2)"]),
+    "SELECT NULL::box AS v": (603, [None]),
+    "SELECT '0/1'::pg_lsn AS v": (PG_LSN, ["0/1"]),
+    "SELECT '08:00:2b:01:02:03'::macaddr AS v": (829, ["08:00:2b:01:02:03"]),
     # Text search values, in text form.
     "SELECT strip('a:1 b:2'::tsvector) AS v": (3614, ["'a' 'b'"]),
     "SELECT length('a:1 b:2'::tsvector) AS v": (INT4, ["2"]),
@@ -443,7 +448,7 @@ def test_an_acl_item_is_written_as_aclitemout_writes_it(conn: Any):
     res = _run(conn, "SELECT makeaclitem(0, 10, 'SELECT, INSERT', false) AS v")
     assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
     assert res.ftype(0) == 1033
-    assert _rows(res)[0].startswith("=ra/")
+    assert _rows(res)[0].startswith("=ar/")
 
 
 def test_a_transaction_id_advances_and_a_snapshot_is_after_it(conn: Any):
@@ -526,7 +531,10 @@ def test_a_cast_alone_stays_the_engines():
 
     assert classify("SELECT '(1,2)'::point AS v") == "PASS_THROUGH"
     assert classify("SELECT '1'::money AS v") == "PASS_THROUGH"
-    assert classify("SELECT center('<(1,2),3>'::circle) AS v") == "INTERCEPT"
+    # REQ-2190: whatever type a statement casts to, it reads no table: the engine's.
+    assert classify("SELECT center('<(1,2),3>'::circle) AS v") == "PASS_THROUGH"
+    assert classify("SELECT inet_server_port(), NULL::box") == "PASS_THROUGH"
+    assert classify("SELECT current_query(), 'x'::name") == "PASS_THROUGH"
 
 
 def test_a_statement_with_no_rewrite_is_returned_as_written():
@@ -547,10 +555,20 @@ def _expected_oid(name: str, args: tuple[str, ...]) -> int | None:
     return next((oid for oid, entry in TYPES.items() if entry[-1] == next(iter(returns))), None)
 
 
+#: The functions a decision refuses by name (REQ-2167, "Sequence functions are not supported":
+#: Provisa does not model a source's sequences), with the refusal each must give.
+_REFUSED_BY_DECISION = {"setval": "setval() has no form"}
+
+
 def _signature_problem(conn: Any, name: str, args: tuple[str, ...], strict: bool) -> str | None:
     # As the conformance probe calls it: every argument a NULL of its type.
     listed = ", ".join(f"NULL::{t}" for t in args)
     res = _run(conn, f'SELECT pg_catalog."{name}"({listed}) AS v')
+    if name in _REFUSED_BY_DECISION:
+        said = (res.error_message or b"").decode()
+        if res.status == pq.ExecStatus.FATAL_ERROR and _REFUSED_BY_DECISION[name] in said:
+            return None
+        return f"not refused by name: {said or _rows(res)}"
     if res.status != pq.ExecStatus.TUPLES_OK:
         return (res.error_message or b"").decode()
     expected = _expected_oid(name, args)

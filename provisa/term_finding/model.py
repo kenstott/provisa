@@ -15,25 +15,49 @@ overrides on the deployment's, provisa.core.org_settings.resolve_org_config), ca
 org's own vendor keys. Every call is held to the LLM budget of the role the steward acts as
 (REQ-1174, provisa.security.llm_budget): admitted before it runs, its output limited to what the
 role has room for, and what it used debited after. A refusal names the window that is full and
-ends the scan.
+ends the scan. A scan that could not run is refused before it starts (:func:`for_role`): no model
+named, or no key for it; a table scan is refused too when the role's budget has no room for
+the rows it would send (:meth:`Held.require_room`, REQ-2202). Every other failure of a call ends
+the scan naming the model. An answer cut off at its output limit is counted like any other and raised as
+:class:`~provisa.term_finding.scan.AnswerCutOff`, for the scan to decide what to do about it.
+
+Each call asks for the one JSON object its step answers with, by its schema
+(:class:`~provisa.term_finding.scan.Answer`), on every wire that can be held to one
+(provisa.llm.client).
 
 What the scan sends is redacted as everything Provisa sends out is (provisa.security.redaction).
 """
 
-# Requirements: REQ-2179, REQ-1174
+# Requirements: REQ-2179, REQ-1174, REQ-2202
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import math
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
-from provisa.term_finding.scan import ScanFailed
+from provisa.llm.client import LLMEmptyResponseError, LLMTimeoutError
+from provisa.term_finding.scan import Answer, AnswerCutOff, ScanFailed
 
 #: The ``ai_models`` entry that names the scan's model.
 OPERATION = "glossary_term_finding"
 SYSTEM = "You are a data catalog assistant helping a data steward build a business glossary."
+#: Where the scan's model and its vendor's key are set, as the admin navigation names it.
+WHERE_TO_SET = "Admin, AI Models"
 
-Call = Callable[[str, int], Awaitable[str]]
+Call = Callable[[str, int, Answer], Awaitable[str]]
+#: About how many characters of text one token holds: what a scan's prompts are reckoned at
+#: before it starts (:meth:`Held.require_room`), no model having counted them yet.
+CHARS_PER_TOKEN = 4
+
+
+class ModelRefused(ScanFailed):
+    """A scan refused before it starts: its model cannot run. The message says where to set it."""
+
+
+class OverBudget(ScanFailed):
+    """A scan refused before it starts: the role's LLM budget has no room for what it would send
+    (REQ-2202). The message names the limit."""
 
 
 def usage_of(vendor: str, reported: Any) -> Any:
@@ -54,13 +78,32 @@ def usage_of(vendor: str, reported: Any) -> Any:
     return polly_usage.from_openai(reported)
 
 
-def held(client: Any, budget: Any, org_id: str | None) -> Call:
-    """A call to ``client`` (provisa.llm.client.ProvisaLLMClient) held to ``budget``
-    (llm_budget.Guard)."""
-    from provisa.security.llm_budget import BudgetRefused
-    from provisa.security.redaction import redact
+def _failure(exc: Exception, name: str) -> str:
+    """What stopped a call to the model ``name``, in plain words."""
+    if isinstance(exc, LLMTimeoutError):
+        return str(exc)
+    if getattr(exc, "status_code", None) in (401, 403):
+        return f"the vendor refused the API key for {name}; set a working one under {WHERE_TO_SET}"
+    return f"the model {name} failed: {exc}"
 
-    async def call(prompt: str, max_tokens: int) -> str:
+
+class Held:
+    """A call to ``client`` (provisa.llm.client.ProvisaLLMClient) held to ``budget``
+    (llm_budget.Guard). ``name`` is the model it asks; ``limited_to`` is what the role's budget
+    last held a call's output to, in tokens, when it held one to less than the scan asked for."""
+
+    def __init__(self, client: Any, budget: Any, org_id: str | None):
+        self._client = client
+        self._budget = budget
+        self._org_id = org_id
+        self.name = f"{client.vendor}:{client.model}"
+        self.limited_to: int | None = None
+
+    async def __call__(self, prompt: str, max_tokens: int, answer: Answer) -> str:
+        from provisa.security.llm_budget import BudgetRefused
+        from provisa.security.redaction import redact
+
+        client, budget = self._client, self._budget
         try:
             await budget.admit(client.model)
             allowed = budget.allowance(client.model)
@@ -69,10 +112,31 @@ def held(client: Any, budget: Any, org_id: str | None) -> Call:
         if allowed is not None:
             if allowed <= 0:
                 raise ScanFailed("the role's LLM budget has no room left for another call")
-            max_tokens = min(max_tokens, allowed)
-        answered = await client.complete_detailed(
-            redact(prompt, org_id), system=SYSTEM, max_tokens=max_tokens
-        )
+            if allowed < max_tokens:
+                self.limited_to = max_tokens = allowed
+        try:
+            answered = await client.complete_detailed(
+                redact(prompt, self._org_id),
+                system=SYSTEM,
+                max_tokens=max_tokens,
+                # Reasoning off: finding and resolving terms is reading, and a model that reasons
+                # by default spends the output limit before any answer. Demo bundles 41930549595:
+                # anthropic/claude-haiku-5.5 on OpenRouter (default_effort medium) used all of
+                # 4096, then 8192, tokens and returned no text. A wire with no documented
+                # switch is sent none and keeps its vendor's default (provisa.llm.client).
+                reasoning_off=True,
+                # One JSON value, the answer's object: asked of the vendor in its own words where
+                # its wire has them (provisa.llm.client). A model asked in prose alone answered a
+                # joining with a list and then more (Extra data: line 3 column 1), twice.
+                json_schema=answer.schema,
+                json_name=answer.name,
+            )
+        except LLMEmptyResponseError as exc:
+            if not exc.answer.cut_off:
+                raise ScanFailed(redact(_failure(exc, self.name), self._org_id)) from exc
+            answered = exc.answer
+        except Exception as exc:
+            raise ScanFailed(redact(_failure(exc, self.name), self._org_id)) from exc
         if answered.usage is None:
             if budget.admitted is not None and budget.admitted.budget is not None:
                 raise ScanFailed(
@@ -81,13 +145,68 @@ def held(client: Any, budget: Any, org_id: str | None) -> Call:
                 )
         else:
             await budget.debit(usage_of(answered.vendor, answered.usage), answered.model)
+        if answered.cut_off:
+            raise AnswerCutOff(
+                f"{answered.vendor}:{answered.model} stopped at its limit of {max_tokens} output "
+                "tokens"
+            )
         return answered.text
 
-    return call
+    async def require_room(self, prompts: Sequence[str], what: str) -> None:
+        """Refuse (:class:`OverBudget`) a scan of ``what`` whose ``prompts`` -- what it sends at
+        the least -- the role's LLM budget has no room for: the largest of them over its per-call
+        cap, or all of them over what is left of a window. Reckoned in tokens at
+        :data:`CHARS_PER_TOKEN`, and a USD limit at the model's input price. A role that sets no
+        budget is not held to one."""
+        from provisa.api.mcp import polly_usage
+        from provisa.security.llm_budget import BudgetRefused
+
+        budget, model = self._budget, self._client.model
+        try:
+            await budget.admit(model)
+        except BudgetRefused as exc:
+            raise OverBudget(str(exc)) from None
+        admitted = budget.admitted
+        if admitted is None or admitted.budget is None or not prompts:
+            return
+        sizes = [math.ceil(len(p) / CHARS_PER_TOKEN) for p in prompts]
+        price = polly_usage.prices().get(model)
+
+        def spend(limit: Any, tokens: int) -> float:
+            if limit.unit == "tokens":
+                return tokens
+            return 0.0 if price is None else tokens * price.input / 1_000_000
+
+        role, held = admitted.role_id, admitted.budget
+        cap = held.call_cap
+        if cap is not None and spend(cap, max(sizes)) > cap.amount:
+            raise OverBudget(
+                f"scanning {what} sends about {cap.said(spend(cap, max(sizes)))} in one call, and "
+                f"role {role!r} caps one LLM call at {cap.said(cap.amount)}"
+            )
+        for use in admitted.uses:
+            needed, left = spend(use.limit, sum(sizes)), use.limit.amount - use.used
+            if needed > left:
+                said = f"the {use.window}" if use.window != "month" else "the month (30 days)"
+                raise OverBudget(
+                    f"scanning {what} sends at least about {use.limit.said(needed)} to the model, "
+                    f"and role {role!r} has {use.limit.said(max(left, 0.0))} left of its LLM "
+                    f"budget for {said}"
+                )
 
 
-async def for_role(state: Any, role: str) -> Call:
-    """The scan's model call for ``role`` in the bound org."""
+def require_named(config: dict[str, Any]) -> None:
+    """Refuse unless the resolved ``config`` names the scan's model."""
+    named = (config.get("ai_models") or {}).get(OPERATION)
+    if not (named.get("model") if isinstance(named, dict) else named):
+        raise ModelRefused(
+            f"no AI model is set for finding terms: choose one under {WHERE_TO_SET}, Find terms"
+        )
+
+
+async def for_role(state: Any, role: str) -> Held:
+    """The scan's model call for ``role`` in the bound org, refused (:class:`ModelRefused`) when
+    no model is named for it or its vendor has no key."""
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
     from provisa.core.request_context import current_org
@@ -95,9 +214,12 @@ async def for_role(state: Any, role: str) -> Call:
     from provisa.security import llm_budget
 
     model_db = state.model_db
-    client = ProvisaLLMClient(
-        OPERATION,
-        config=await resolve_org_config(model_db),
-        api_keys=await read_org_api_keys(model_db),
-    )
-    return held(client, llm_budget.guard(state, role, model_db), current_org.get())
+    config = await resolve_org_config(model_db)
+    require_named(config)
+    client = ProvisaLLMClient(OPERATION, config=config, api_keys=await read_org_api_keys(model_db))
+    problem = client.key_problem()
+    if problem is not None:
+        raise ModelRefused(
+            f"{client.vendor}:{client.model} cannot run: {problem}. Set one under {WHERE_TO_SET}"
+        )
+    return Held(client, llm_budget.guard(state, role, model_db), current_org.get())

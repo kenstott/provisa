@@ -161,7 +161,7 @@ def _register_the_joined_tables(monkeypatch, *, customers: list[str] | None) -> 
         raising=False,
     )
 
-    async def _tables(_state):
+    async def _tables(_state, *, catalog=False):
         if customers is None:
             return []
         return [
@@ -205,8 +205,8 @@ class TestBuildRefreshSQL:
 
         platform = {
             "regions": [
-                {"id": "eu", "address": "https://eu.example.com"},
-                {"id": "us", "address": "https://us.example.com"},
+                {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+                {"id": "us", "description": "The us region", "purposes": ["residency"]},
             ]
         }
         mv = _sql_mv()

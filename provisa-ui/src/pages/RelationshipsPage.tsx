@@ -21,6 +21,7 @@ import { tagLossTitle } from "../components/admin/tagLoss";
 import { ErdToggle } from "../components/erd/ErdToggle";
 import { ErdView } from "../components/erd/ErdView";
 import { useErdView } from "../components/erd/useErdView";
+import { useScreenInputs } from "../mcp/screenState";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -124,6 +125,15 @@ export function RelationshipsPage() {
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
+  // The link names the filter, also on a page already open: a tour step moving on within the page
+  // searches for its own relationship's alias.
+  const linkedSearch = searchParams.get("search") ?? "";
+  const [seededSearch, setSeededSearch] = useState(linkedSearch);
+  if (linkedSearch !== seededSearch) {
+    setSeededSearch(linkedSearch);
+    setRelSearch(linkedSearch);
+    setRelPage(0);
+  }
   const PAGE_SIZE = 50;
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
@@ -195,13 +205,17 @@ export function RelationshipsPage() {
       const lost = tagLossOf(result);
       if (lost) {
         setTagLoss({ columns: lost, retry: { kind: "delete", id } });
-        return;
+        return false;
       }
-      if (refusal.refused(result, id)) return;
+      if (refusal.refused(result, id)) return false;
+      // REQ-2198: a failed delete is said by the panel's Delete (PanelDelete), which it unlocks.
+      if (!result.success) throw new Error(serverMessage(result, result.message));
+      // The list read again without it before the panel closes.
+      await refetchRels();
       setExpanded((prev) => (prev === id ? null : prev));
       setEditingRel(null);
     },
-    [deleteRelationship, refusal],
+    [deleteRelationship, refusal, refetchRels],
   );
 
   const handleAdd = useCallback(
@@ -332,7 +346,7 @@ export function RelationshipsPage() {
   const retryTagLoss = (resolve: TagLossResolution) => {
     const retry = (tagLoss as NonNullable<typeof tagLoss>).retry;
     setTagLoss(null);
-    if (retry.kind === "delete") void handleDelete(retry.id, resolve);
+    if (retry.kind === "delete") void handleDelete(retry.id, resolve).catch(() => {});
     else if (retry.kind === "save") void handleEditSave(resolve);
     else void handleAdd(resolve);
   };
@@ -558,6 +572,15 @@ export function RelationshipsPage() {
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
   const groupBy = sortGroup.groupBy;
 
+  // REQ-2115: Polly's read_screen reads the page's view from here. A relationship is named only
+  // once the list holds it, so a link to one that does not exist reads as none.
+  useScreenInputs("/relationships", {
+    view: erd.on ? "erd" : "list",
+    relationship: allRels.some((r) => String(r.id) === expanded) ? expanded : null,
+    domains: erd.focus.domains,
+    objects: erd.focus.objects,
+  });
+
   if (loading) return <PageLoading message={t("relationshipsPage.loading")} />;
 
   // The right-hand panel: the form that adds a relationship while it is open, otherwise the
@@ -770,7 +793,12 @@ export function RelationshipsPage() {
         }}
         list={
           erd.on ? (
-            <ErdView page="relationships" search={relSearch} onOpen={openFromErd} />
+            <ErdView
+              page="relationships"
+              search={relSearch}
+              selected={expanded}
+              onOpen={openFromErd}
+            />
           ) : (
             <>
               {/* As on Tables: every column keeps its width and a name stays on one line; what the

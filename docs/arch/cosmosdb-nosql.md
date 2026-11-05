@@ -76,7 +76,7 @@ Cosmos adds system fields to every document (`_rid`, `_self`, `_etag`, `_attachm
 
 - **`ttl`:** a poll, as for every source.
 - **`native`:** the Cosmos change feed (pull model). It lists the documents changed since a continuation token, in each partition. As for MongoDB change streams (REQ-1861), a table on the native signal gets a listener that invalidates or refreshes what is held of it. Deletes appear only in the "all versions and deletes" mode, which needs continuous backup on the account. With the default "latest version" mode a delete is not seen, so the replica keeps a deleted document until its next full refresh. See section 10, decision 3.
-- **Watermark:** `_ts` is a watermark the account maintains, so a container table can declare it and take an append-shaped refresh.
+- **Watermark.** `_ts` is a watermark the account maintains, so a container table can declare it and take an append-shaped refresh.
 
 ## 7. Authentication
 
@@ -122,7 +122,7 @@ Here `query_vector` is an `array(double)` parameter, which a steward makes requi
 
 ## 10. Decisions (maintainer, 2026-10-12)
 
-1. **How a query parameter reaches the source:** `query_arg`, MongoDB's `pipeline_arg` renamed, shared by MongoDB pipelines, Cosmos queries and Node functions later.
+1. **How a query parameter reaches the source.** `query_arg`, MongoDB's `pipeline_arg` renamed, shared by MongoDB pipelines, Cosmos queries and Node functions later.
 2. **The partition key of a container table:** an optional parameter, which a steward can make required.
 3. **Deletes on the native change signal:** the change feed's latest-version mode first; a deleted document is seen at the next full refresh, and the Sources form says so.
 4. **Entra ID authentication:** a service principal, in the first build.

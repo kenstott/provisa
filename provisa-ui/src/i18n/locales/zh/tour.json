@@ -79,16 +79,16 @@
       },
       "step2": {
         "title": "注册一个数据源",
-        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 73 个连接器。"
+        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 77 个连接器。"
       },
       "step3": {
-        "title": "73 种数据源类型，14 个类别",
+        "title": "77 种数据源类型，14 个类别",
         "description": "一个选择器按类别列出所有类型：<strong>订阅、RDBMS、云数据仓库、分析、数据湖、NoSQL、代码解析器、图、文件、API、流式、企业、数据质量、其他</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "stepBuildSource": {
-        "title": "现场添加一个数据源",
-        "description": "数据源就是这样添加的：选择器打开并显示完整列表，选中 <strong>Parquet File</strong>，填入文件地址（<code>supplies.parquet</code>），然后点击保存创建。新的 <strong>supplies</strong> 数据源直接在原处读取该文件。",
-        "acting": "正在添加数据源"
+        "title": "填好一个数据源的表单",
+        "description": "选择器打开并显示完整列表，选择了 <strong>Parquet File</strong>，表单中填入了文件地址（<code>supplies.parquet</code>）。文件数据源只需要这些。这里只是看一看表单：下一步会按下<strong>取消</strong>，不保存任何内容。",
+        "acting": "正在填写数据源"
       },
       "step4": {
         "title": "一切都会变成表",
@@ -872,13 +872,9 @@
         "title": "数据集市的列来自哪里",
         "description": "数据集市各列的血缘：每一列都经由时点视图和卫星表追溯到其来源字段。"
       },
-      "datavaultAnalyst": {
-        "title": "分析师的视角",
-        "description": "接下来，SQL 浏览器以欧洲分析师的身份运行。个人数据存放在卫星中，所以治理也在那里进行。"
-      },
       "datavaultMasked": {
         "title": "在个人数据所在处脱敏",
-        "description": "以分析师身份查看时，CRM 卫星只显示欧洲客户。他们的联系人被隐去，电子邮件中的姓名和电话号码中的数字也被隐藏。中心表和链接仍然可读，因此分析师仍能在它们上面做连接。"
+        "description": "SQL 浏览器现在以欧洲分析师的身份运行。个人数据存放在卫星中，所以治理也在那里进行。以分析师身份查看时，CRM 卫星只显示欧洲客户。他们的联系人被隐去，电子邮件中的姓名和电话号码中的数字也被隐藏。中心表和链接仍然可读，因此分析师仍能在它们上面做连接。"
       },
       "datavaultRecap": {
         "title": "你看到了什么",
@@ -937,16 +933,32 @@
         "description": "您看到了保险公司自己的数据，按县和作物年份与公共损失、天气和产量数据匹配，全部位于同一个受治理的模型中。一个视图用 SQL、GraphQL 和 REST 回答天气是否能解释这些损失。 笔记本对此做了度量：天气解释了赔付率变动的 54%，而在当前业务上，类似 2012 年的一季预期赔付率为 1.75。"
       },
       "retailScenario": {
-        "title": "一个集团，两个区域",
+        "title": "两个区域的故事",
         "description": "一家零售集团把 EU 和 US 两家子公司作为一个业务来经营。它能做到这一点而不违反 GDPR 吗？每家子公司都有自己的数据库：这是 EU 的数据库，包含其会员客户、他们的营销同意、订单、员工，以及员工发往集团外部的邮件。"
       },
+      "retailPlatformRegions": {
+        "title": "区域始于一份配置",
+        "description": "平台的配置声明区域（这里是 EU 和 US），并把它们授予组织。每个区域都有自己的数据处理：自己的引擎和自己的存储。EU 的用途是数据驻留，用于必须留在欧盟境内的客户数据。在这个沙箱中，你可以阅读此页面，但不能修改。"
+      },
+      "retailPurposes": {
+        "title": "用途说明什么",
+        "description": "图例解释每种用途。用途说明一个区域为什么存在。它不移动数据，也不决定谁读取数据。这由两层来做，导览会逐一展示：归属，即引擎关于数据存放位置的规则；以及安全，即数据管家关于谁读取什么的规则。"
+      },
+      "retailOrgRegions": {
+        "title": "组织的区域和存储",
+        "description": "组织拥有这两个区域。每一行列出在那里使用的存储：区域的引擎，以及它的副本、视图、缓存、构建状态和记录存放的位置。EU 的数据用 EU 自己的存储处理。"
+      },
+      "retailEngines": {
+        "title": "每个区域一个引擎",
+        "description": "联邦页为每个区域提供一个标签页，每个区域运行自己的引擎。因此一份配置带来两个数据处理环境。你在 US 节点上。它只通过 EU 的存储读取 EU 数据，从不从自己的副本读取。"
+      },
       "retailRegions": {
-        "title": "每个区域只定义一次",
-        "description": "US 子公司的数据库，位于 US。模型声明了两个区域，并且只说一次：每张表位于哪里，哪些视图在哪里构建。第二个 Provisa 节点运行在 EU：它把 EU 的表复制到 EU 自己的存储中，并在那里构建 EU 的视图。你在 US 节点上，它只从那个 EU 存储读取 EU 数据，所以每条跨境规则都在同一个地方执行。"
+        "title": "归属：每个数据源指明其归属区域",
+        "description": "US 子公司的数据库位于 US，EU 子公司的数据库位于 EU。归属是引擎关于数据存放位置的规则。有归属的表，其副本和缓存留在其归属区域，其他区域只能通过该区域访问它。"
       },
       "retailEuCustomers": {
         "title": "一张位于 EU 的 EU 表",
-        "description": "EU 的客户。这张表把 EU 指定为它的区域：它的行只会复制到 EU 的存储中，也只在那里计算。其他地方的读者只能通过 EU 的视图获取它们，否则完全无法获取。"
+        "description": "EU 的客户。这张表的区域是 EU，所以它的副本和缓存只存放在 EU 的存储中。归属决定行存放在哪里。它不决定谁可以读取。那是下一层。"
       },
       "retailRequests": {
         "title": "数据主体请求",
@@ -957,12 +969,12 @@
         "description": "请求通过电子邮件地址与每家子公司的客户关联。一个请求就是这样在两家子公司中找到同一个人的。"
       },
       "retailAsAnalyst": {
-        "title": "以集团分析师身份",
-        "description": "接下来，角色选择器会切换到 <strong>group_analyst</strong>，他在 US 负责集团报表，让之后的 SQL 和 GraphQL 都以 group_analyst 身份运行。"
+        "title": "数据管家的规则，以集团分析师身份",
+        "description": "第二层是安全：数据管家的规则按角色和读者所在区域，决定每位读者得到什么。这些规则在归属区域中执行，在任何数据离开之前。接下来，角色选择器切换到 <strong>group_analyst</strong>，他在 US 负责集团报表，因此之后的 SQL 和 GraphQL 都以 group_analyst 身份运行。"
       },
       "retailGroupView": {
         "title": "集团报表，EU 客户已假名化",
-        "description": "集团的每一位会员客户。US 客户按原样显示；EU 客户以 EU 计算出的假名显示，没有姓名或地址。EU 部分是从 EU 的存储中读取的，这次查询的记录写明作答的区域是 EU。"
+        "description": "集团的每一位会员客户。US 客户按原样显示。EU 客户以假名显示，因为管家的规则规定 EU 以外的读者得不到姓名或地址。EU 在其行离开之前执行了这条规则，这次查询的记录将 EU 标为作答的区域。"
       },
       "retailGroupGraphql": {
         "title": "同样的内容，用 GraphQL",
@@ -972,13 +984,9 @@
         "title": "回到所有角色",
         "description": "接下来，角色选择器切回 <strong>All</strong>。"
       },
-      "retailAsMarketing": {
-        "title": "以 EU 营销身份",
-        "description": "接下来，SQL 浏览器以 marketing_eu 的身份运行。"
-      },
       "retailAudience": {
         "title": "只有同意的客户",
-        "description": "EU 营销读取同意接收营销的 EU 客户，且仅限这些客户。该视图在 EU 中由 EU 的行构建。"
+        "description": "SQL 浏览器现在以 <strong>marketing_eu</strong> 身份运行。管家的规则让 EU 市场部只读取同意接收营销的 EU 客户。该视图在 EU 中由 EU 的行构建。"
       },
       "retailAsDpo": {
         "title": "以数据保护官身份",
@@ -1006,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "发件人，在 EU 中显示",
-        "description": "同一个队列。发件人列的脱敏列表只向同时持有 region__eu 的审查员显示发件人；其他所有人读到的都是隐去的值。这只是一项授权，reviewer 加 region__eu，无需为这一组合创建角色。"
+        "description": "同一个队列。管家对发件人列设置的掩码，只向分配区域为 EU（region__eu）的审核员显示发件人。其他人读到的是隐藏的值。读者得到什么，既取决于角色，也取决于其区域，而且没有为这种组合创建任何角色。"
       },
       "retailAsAdmin": {
         "title": "回到所有角色",
@@ -1022,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "你看到了什么",
-        "description": "一个模型定义了两个区域：每张表位于哪里，哪些视图在哪里构建，以及谁读取什么。集团报表读取的是假名化的 EU 客户，EU 营销只读取同意的客户，访问请求和删除各自只是一次查询。内幕信息审查只在 EU 中显示发件人，每一次读取都在同一份记录中。"
+        "description": "一份配置授予了两个区域，每个都有自己的引擎和存储：两个数据处理环境。归属把 EU 的表、其副本和缓存留在 EU。数据管家的规则按角色和读者所在区域决定每位读者得到什么，EU 在任何数据离开之前执行了它们。集团报表以假名读取 EU 客户，EU 市场部只读取同意的客户，访问和删除各只需一次查询，发件人只向 EU 的审核员显示，每一次读取都在同一份记录中。"
       },
       "provisioningScenario": {
         "title": "这个演示是什么",
@@ -1140,13 +1148,9 @@
         "title": "关系，只声明一次",
         "description": "<strong>OF_PRODUCT</strong> 将 PostgreSQL 中的订单明细与 MongoDB 中的商品连接起来。连同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，这四个关系只声明一次，应用和 BI 工具都通过它们读取。"
       },
-      "storefrontAsCustomer": {
-        "title": "以顾客身份登录",
-        "description": "应用以 <strong>customer</strong> 角色发送查询，该角色的行过滤会把每个答案限制在已登录客户自己的订单内。接下来，角色选择器会切换到 <strong>customer</strong>，让下面的查询完全按应用的方式运行。"
-      },
       "storefrontScreen": {
         "title": "应用的唯一一个查询",
-        "description": "订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。以 <strong>customer</strong> 身份运行时，它返回七个订单，全部属于已登录的顾客。"
+        "description": "应用以 <strong>customer</strong> 角色发送查询，该角色的行过滤会把每个答案限制在已登录客户自己的订单内。角色选择器现在是 <strong>customer</strong>。订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。以 <strong>customer</strong> 身份运行时，它返回七个订单，全部属于已登录的顾客。"
       },
       "storefrontApp": {
         "title": "它所支撑的页面",
@@ -1156,13 +1160,9 @@
         "title": "通过 JSON:API 读取同样的订单",
         "description": "偏好 JSON:API 的客户端仍以顾客身份请求同样的订单，并包含其明细和配送。每个订单都链接到它所包含的明细和配送，而明细的 id 是它的复合键。"
       },
-      "storefrontAnalyst": {
-        "title": "现在以分析师身份",
-        "description": "BI 端以 <strong>analyst</strong> 身份读取：能看到所有订单，但看不到任何客户的电子邮件。接下来，运行身份选择器会切换到 <strong>analyst</strong>。"
-      },
       "storefrontAnalystSql": {
         "title": "分析师的 SQL",
-        "description": "按地区和承运商统计的延迟配送，基于同样的表和关系。<strong>a_customer</strong> 显示分析师读取到的邮箱：已脱敏。"
+        "description": "BI 端以 <strong>analyst</strong> 身份读取：能看到所有订单，但看不到任何客户的电子邮件。SQL 浏览器现在以 <strong>analyst</strong> 的身份运行。按地区和承运商统计的延迟配送，基于同样的表和关系。<strong>a_customer</strong> 显示分析师读取到的邮箱：已脱敏。"
       },
       "storefrontBi": {
         "title": "BI 仪表板",
@@ -1188,13 +1188,9 @@
         "title": "应用所认识的表",
         "description": "四张表带着应用使用的名称过来了。<strong>customers</strong> 保留了 Hasura 的自定义名称 <strong>givenName</strong> 和 <strong>familyName</strong>，商品表保留其根名称 <strong>catalog</strong>，每一列都带有可读取它的角色，来自 select 权限。"
       },
-      "hasuramigrationAsAna": {
-        "title": "以 Ana 身份登录",
-        "description": "Ana 是一位客户。她的令牌带有 <strong>x-hasura-user-id: 1</strong>，Provisa 把这个声明读作会话值 <strong>hasura_user_id</strong>，导入的行规则就拿它来比较。接下来，角色选择器会切换到 <strong>ana</strong>，让下面的查询完全按店面为她运行的方式运行。"
-      },
       "hasuramigrationMyOrders": {
         "title": "重塑后的订单历史",
-        "description": "商店的订单历史查询为 Provisa 重塑了一次：根字段带有其域，列名遵循 Provisa 的约定，order_by 是一个列表。关系 <strong>items</strong> 和 <strong>product</strong> 保留了它们的 Hasura 名称。以 Ana 身份运行，它返回她的四张订单，不包含任何其他人的订单。"
+        "description": "Ana 是一位客户。她的令牌带有 <strong>x-hasura-user-id: 1</strong>，Provisa 把这个声明读作会话值 <strong>hasura_user_id</strong>，导入的行规则就拿它来比较。角色选择器现在是 <strong>ana</strong>。商店的订单历史查询为 Provisa 重塑了一次：根字段带有其域，列名遵循 Provisa 的约定，order_by 是一个列表。关系 <strong>items</strong> 和 <strong>product</strong> 保留了它们的 Hasura 名称。以 Ana 身份运行，它返回她的四张订单，不包含任何其他人的订单。"
       },
       "hasuramigrationProfile": {
         "title": "按键读取",
@@ -1208,21 +1204,13 @@
         "title": "再加一个关系",
         "description": "<strong>BUYS_FOR</strong> 将客户连接到其 Salesforce 账户，与导入带来的关系一样获得批准。从这里起，在每个界面、每个角色的规则之下，账户与每个客户都只隔一个字段。"
       },
-      "hasuramigrationAsSupport": {
-        "title": "客服台",
-        "description": "支持人员可以读取所有订单和所有客户，与他们原来的 Hasura 权限一致。接下来，角色选择器会切换到 <strong>support</strong>，支持台的订单页面会按他们的方式运行。"
-      },
       "hasuramigrationSupportScreen": {
         "title": "订单及其账户",
-        "description": "客服台的订单界面经过重塑，并加入了新内容：在每个订单的客户旁边，在同一个请求中显示来自 Salesforce 的账户及其行业和城市。没有账户的客户则不显示。"
-      },
-      "hasuramigrationAnalyst": {
-        "title": "分析师",
-        "description": "分析师可以读取订单总额和账户链接，但看不到姓名或电子邮件，也永远看不到已取消的订单。这就是导入带过来的行规则和列列表。接下来，角色选择器会切换到 <strong>analyst</strong>。"
+        "description": "支持人员可以读取所有订单和所有客户，与他们原来的 Hasura 权限一致。角色选择器现在是 <strong>support</strong>。客服台的订单界面经过重塑，并加入了新内容：在每个订单的客户旁边，在同一个请求中显示来自 Salesforce 的账户及其行业和城市。没有账户的客户则不显示。"
       },
       "hasuramigrationByIndustry": {
         "title": "按行业统计的收入",
-        "description": "一条横跨商店和 Salesforce 的 SQL 语句：按每个订单背后账户的行业统计收入。分析师的规则与在 GraphQL 中一样适用：已取消的订单被排除，也不会读取姓名或电子邮件。"
+        "description": "分析师可以读取订单总额和账户链接，但看不到姓名或电子邮件，也永远看不到已取消的订单。这就是导入带过来的行规则和列列表。SQL 浏览器现在以 <strong>analyst</strong> 的身份运行。一条横跨商店和 Salesforce 的 SQL 语句：按每个订单背后账户的行业统计收入。分析师的规则与在 GraphQL 中一样适用：已取消的订单被排除，也不会读取姓名或电子邮件。"
       },
       "hasuramigrationRecap": {
         "title": "你所看到的",
@@ -1332,13 +1320,9 @@
         "title": "分析师看到什么",
         "description": "登录后，竞买方 A 的分析师能看到授予 bidder_a 的内容：聚合视图、概要、脱敏样本，以及不含任何客户身份的卖方记录。这里读不到任何客户姓名，也读不到 CRM 中的企业名称或交易名称。"
       },
-      "dataroomBidder": {
-        "title": "现在以竞买方 A 的身份",
-        "description": "接下来的语句以 <strong>bidder_a</strong> 的身份运行，与分析师完全一致。"
-      },
       "dataroomProfile": {
         "title": "发票概要",
-        "description": "发票表的每一列，按分析器发现的样子呈现：行数、空值、不同值和取值范围。竞买方无需读取任何一条记录，就能了解记录的完整程度。这里有些发票从未被支付。"
+        "description": "这些语句以 <strong>bidder_a</strong> 的身份运行，与分析师完全一致。发票表的每一列，按分析器发现的样子呈现：行数、空值、不同值和取值范围。竞买方无需读取任何一条记录，就能了解记录的完整程度。这里有些发票从未被支付。"
       },
       "dataroomCounts": {
         "title": "客户数量",
@@ -1406,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "每个敏感列都已覆盖",
-        "description": "同样的检查，现在从模型读取：每个敏感列、它的标签，以及是否有虚构值覆盖它。全部已覆盖，因此预发布可以打开并作答。"
+        "description": "敏感覆盖是报表页面上的一份标准报表：每个敏感列、它的标签，以及是否有虚构值覆盖它，均从当前模型读取。全部已覆盖，因此预发布可以打开并作答。"
+      },
+      "testdataPollyProposes": {
+        "title": "从画像提出的虚构值",
+        "description": "有人问 Polly 会为 customers.email 提出哪种虚构值。它读取该列最新一次画像运行，看到这些值是电子邮件地址，于是提出电子邮件虚构值。模型已经声明了一个，所以这个提议是用数据来核对那个选择。在有人选择之前，什么都不会保存。"
       },
       "testdataProd": {
         "title": "生产：真实的行",
@@ -1676,21 +1664,13 @@
         "title": "每次日终时构建",
         "description": "日终汇总是按银行日历在仓库中物化的视图，日历在伦敦时间 18:00 日终。视图是对总账唯一一张表的一个 GROUP BY，因此构建整体在总账中运行，只有分组后的行返回。它继承总账的版本，不需要自己的历史设置。每一天都在自己的日终时记录。10 月 1 日和 2 日在更正到达时又被记录了一次。"
       },
-      "bankingAsOps": {
-        "title": "以运营身份",
-        "description": "下一个查询以运营身份运行，运营按总账自己的规则下钻到记账。他们看不到员工账户的记账，所有交易对手都被隐藏。"
-      },
       "bankingDashboard": {
         "title": "仪表板，通过 GraphQL",
-        "description": "伦敦 10 月 1 日的汇总，每个汇总里嵌套着背后的记账。一个请求从仓库读取汇总、从总账读取记账，并沿着刚才看到的关系连接起来。"
-      },
-      "bankingAsAnalyst": {
-        "title": "以报表分析师身份",
-        "description": "下面的 SQL 以银行报表分析师的身份运行。他们读取日终合计，以及构成这些合计的五个分类账列：业务日期、分行、产品、币种和金额。他们从不会看到账户、交易对手或持有人。"
+        "description": "这个查询以运营身份运行，运营按总账自己的规则下钻到记账。他们看不到员工账户的记账，所有交易对手都被隐藏。伦敦 10 月 1 日的汇总，每个汇总里嵌套着背后的记账。一个请求从仓库读取汇总、从总账读取记账，并沿着刚才看到的关系连接起来。"
       },
       "bankingDay": {
         "title": "一天的汇总",
-        "description": "10 月 1 日现在的样子。按分行、产品和币种，可以看到流入、流出和净额。通过 pgwire 连接的 BI 工具运行的正是这条 SQL。"
+        "description": "这段 SQL 以银行报表分析师的身份运行。他们读取日终合计，以及构成这些合计的五个分类账列：业务日期、分行、产品、币种和金额。他们从不会看到账户、交易对手或持有人。10 月 1 日现在的样子。按分行、产品和币种，可以看到流入、流出和净额。通过 pgwire 连接的 BI 工具运行的正是这条 SQL。"
       },
       "bankingReported": {
         "title": "当时报送了什么",
@@ -1772,13 +1752,9 @@
         "title": "谁能看到哪些客户",
         "description": "规则在客户表上:West 区的客服只能读取 West 的客户及其订单,电子邮件地址被脱敏,看不到价格。BI 分析师可读取所有区域和订单金额,但看不到任何电子邮件地址。"
       },
-      "agentdataSupportRole": {
-        "title": "以 West 区客服身份操作",
-        "description": "智能体以页眉中的角色身份操作。下一步会选择 West 区客服,因此智能体的每次工具调用都以该角色运行。"
-      },
       "agentdataSupportAsks": {
         "title": "客服的问题",
-        "description": "智能体查找表、编写 SQL 并通过 MCP 工具运行,工具在运行时显示。只返回 West 的客户,其电子邮件地址以脱敏形式到达:该角色只能得到这些。"
+        "description": "智能体以页眉中的角色身份操作，现在是 West 区客服，因此它的每次工具调用都以该角色运行。智能体查找表、编写 SQL 并通过 MCP 工具运行,工具在运行时显示。只返回 West 的客户,其电子邮件地址以脱敏形式到达:该角色只能得到这些。"
       },
       "agentdataExplain": {
         "title": "实际运行了什么",
@@ -1799,6 +1775,163 @@
       "agentdataConnect": {
         "title": "你自己的智能体,同一台服务器",
         "description": "这就是浏览器中的智能体使用的服务器。把这段配置粘贴到 Claude Desktop,或将任意 MCP 客户端指向该 URL,你自己的智能体就能获得同样受治理的工具,遵守同样的规则。"
+      },
+      "auditScenario": {
+        "title": "本演示讲什么",
+        "description": "一家审计事务所审计九家使用联邦资助的非营利组织。在现场工作之前，合伙人想知道每个客户记录的联邦资助，是否与政府记录显示向其支付的金额一致。客户的明细表和资助记录存放在事务所自己的数据库中；Single Audit 申报和联邦承付款是公开的。客户及其数字是虚构的；项目、县和公开数据是真实的。"
+      },
+      "auditAnswer": {
+        "title": "每个客户的未结事项",
+        "description": "视图 readiness 一次为所有客户回答同一个问题，并以存储方式保留。它把明细表的每一行与其资助记录和该项目的公开数据并列，并列出每份准备情况备忘录所需的事项。"
+      },
+      "auditExample": {
+        "title": "用 GraphQL 查看未结事项",
+        "description": "准备情况备忘录中的事项，以 GraphQL 查询的形式提供给事务所自己的项目工具。"
+      },
+      "auditRecap": {
+        "title": "您看到了什么",
+        "description": "事务所自己的客户记录与政府的公开申报和承付款，在一个受治理的模型中相连接。一个存储的视图为每个客户回答合伙人的问题。每个团队只读取自己的客户，每次查询都有记录。"
+      },
+      "auditGovdata": {
+        "title": "公开数据",
+        "description": "政府数据来自 AskAmerica：佛蒙特州、新罕布什尔州和缅因州向 Federal Audit Clearinghouse 提交的 2023 年 Single Audit 中的每一行资助，每行旁边是 USAspending 在同一项目下向同一接受方承付的金额，以及 USAspending 按县和项目统计的承付款。"
+      },
+      "auditSchedule": {
+        "title": "客户的明细表",
+        "description": "每个客户 2023 年联邦资助支出明细表 (Schedule of Expenditures of Federal Awards) 的草稿：每项资助一行，包括其 Assistance Listing、是直接来自联邦机构还是经州机构转拨，以及客户自述的支出金额。"
+      },
+      "auditNotices": {
+        "title": "资助记录",
+        "description": "每个客户为其直接资助持有的联邦资助记录：每笔承付一行，包括承付所在的联邦财年和金额。多年期资助可能在支出年份之前就已承付。"
+      },
+      "auditFiled": {
+        "title": "在公开申报上做同样的核对",
+        "description": "三个州的被审计单位为 2023 年申报的每一行资助，旁边是 USAspending 当年在同一项目下记录的对其承付金额。未对上的行本身并不代表缺漏。经转拨取得的资助行是经州机构转来的，联邦资助上不会写明被审计单位，所以本就不应对上；而在以前年度承付的资助在审计年度不会显示承付。未对上的行照常显示，不予隐藏。"
+      },
+      "auditCounty": {
+        "title": "按县统计的联邦资金",
+        "description": "USAspending 记录的 2023 联邦财年在每个客户所在县按项目承付的金额，按工作实施地统计。它显示客户明细表中的某个项目是否真的在其所在县有支付。"
+      },
+      "auditRecordedAs": {
+        "title": "从明细表到资助记录",
+        "description": "这个关系通过事务所的资助编号，把明细表的每一行连接到其资助记录。没有记录支撑的行，以及没有对应行的记录，正是审计师要找的。"
+      },
+      "auditCountyJoin": {
+        "title": "客户与所在县",
+        "description": "每个客户的县代码把它连接到 USAspending 的县级承付款，其 Assistance Listing 则把明细表连接到本州同一项目的公开申报。"
+      },
+      "auditTerms": {
+        "title": "用审计师的话说",
+        "description": "本体解释 Single Audit 的术语：明细表、Assistance Listing、转拨单位、承付、时间性差异、缺失资助和准备情况备忘录。"
+      },
+      "auditRequest": {
+        "title": "合伙人的要求",
+        "description": "合伙人请分析师为 Brindlewood Community Health 做好现场工作的准备。这是它的明细表草稿：五个联邦项目，其中三个是直接资助。接下来，分析师与 Polly 一起处理这项要求。"
+      },
+      "auditPollySchedule": {
+        "title": "它记录了哪些资助",
+        "description": "分析师从客户的记录入手。Polly 列出其 2023 年明细表中的资助，并展示她运行的 SQL。她的回答在构建演示时生成，并随演示一起保存。"
+      },
+      "auditPollyRecords": {
+        "title": "记录显示支付了什么",
+        "description": "接着是政府一方：客户的联邦资助记录显示 2023 联邦财年向其承付了什么。其中一笔承付属于明细表未列出的项目。"
+      },
+      "auditPollyDiffer": {
+        "title": "哪里不一致",
+        "description": "Polly 把明细表与资助记录并排对照，列出两者不一致的每一项资助，并附上回答背后的查询。"
+      },
+      "auditPollyKinds": {
+        "title": "时间性差异还是缺失",
+        "description": "时间性差异是在以前年度承付、本年度支出的资助，只需说明。缺失资助是没有联邦记录支撑的直接资助行，需要更正。Polly 将差异分为这两类。"
+      },
+      "auditPollyMemo": {
+        "title": "准备情况备忘录",
+        "description": "最后是备忘录：客户在现场工作开始前必须说明或更正的每一项，从时间性差异到明细表遗漏的资助。"
+      },
+      "auditPublic": {
+        "title": "公开申报中的规律",
+        "description": "在三个州的公开申报上运行同样的核对。这些项目的直接资助行在审计年度最常没有 USAspending 承付。它们按原样显示，说明了为什么未对上的行是审计师要追问的问题，而不是错误。"
+      },
+      "auditAsTeam": {
+        "title": "以缅因州团队身份",
+        "description": "以缅因州审计项目团队的身份运行时，同一个视图只返回该团队的三个客户。每张表和视图上的行规则把每个团队限制在自己的项目内。合伙人可以看到全部。"
+      },
+      "auditLineage": {
+        "title": "每个数字的来源",
+        "description": "血缘把回答的每一列经由视图追溯到事务所的表和公开数据，让复核人看到备忘录中每个数字的来源。"
+      },
+      "auditRest": {
+        "title": "通过 REST 得到同样的回答",
+        "description": "该视图也是一个 REST 端点，按发现分组并在服务器上汇总，工作底稿电子表格可以通过 HTTP 读取它。"
+      },
+      "banksecrecyScenario": {
+        "title": "一家银行阅读美国法律",
+        "description": "一家社区银行必须依据 Bank Secrecy Act 报告超过 10,000 美元的现金。本演示从公开地址读取规则本身，找出其中使用的术语，把它们落实到银行的数据上，然后按概念查询：哪些现金需要 Currency Transaction Report，谁在拆分交易？它从银行的核心系统开始，在原处实时读取。"
+      },
+      "banksecrecyCash": {
+        "title": "柜台上的现金",
+        "description": "柜台上的每一笔现金存入和取出：账户、网点、柜员、时间以及记账的营业日。17:00 之后收取的现金记入下一个营业日。"
+      },
+      "banksecrecyOnBehalf": {
+        "title": "代表谁",
+        "description": "每笔交易都记录了谁站在柜台前，以及现金属于谁。员工或亲属代为存入的现金，按法律的计算方式计入账户持有人的合计。"
+      },
+      "banksecrecyFindTerms": {
+        "title": "从公开地址读取法律",
+        "description": "查找术语从地址读取文档，这里是 eCFR 官方 API 上的 31 CFR 1010.311。一次扫描会就每个段落询问 AI 模型，需要几分钟，因此导览停止了这次扫描。同样的扫描在构建演示时已经运行过。",
+        "acting": "正在输入法规地址并开始扫描"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "规则中的术语",
+        "description": "预先完成的扫描：每个候选术语及其出处段落。金融机构须报告每笔超过 10,000 美元的现金交易。术语表中已有的术语会作为合并提出。"
+      },
+      "banksecrecyAggregation": {
+        "title": "汇总规则",
+        "description": "多笔交易和“代表”出自 31 CFR 1010.313：一个人或代表一个人在一个营业日内超过 10,000 美元的现金视为一笔交易，所有网点同属一家机构。夜间存款计入下一个营业日。"
+      },
+      "banksecrecyDefinitions": {
+        "title": "规则使用的定义",
+        "description": "规则中的词语在 31 CFR 1010.100 中定义：人、营业日、金融机构、拆分交易。每条定义都是独立的段落，因此每个术语都附有定义它的那一段。"
+      },
+      "banksecrecyLibrary": {
+        "title": "保存在参考库中",
+        "description": "演示的构建已将每份扫描过的文档保留在参考库中，因此法规作为受治理的参考文档留在模型身边：Polly 和组织的代理在回答时会引用其中的段落。"
+      },
+      "banksecrecyGrounded": {
+        "title": "法律的词语，落实到数据",
+        "description": "Transaction in currency 是法规的术语。银行的现金交易是它的一种，因此该术语可以到达 cash_transactions 表。同样，“人”到达客户，“金融机构”到达银行的网点。"
+      },
+      "banksecrecyBusinessDay": {
+        "title": "营业日，落在它的列上",
+        "description": "法规中的营业日是银行将交易记入客户账户的那一天。银行的 business_day 列正好保存这一点，因此该术语直接持有这一列。"
+      },
+      "banksecrecyTellerAsks": {
+        "title": "哪些现金需要报告？以柜员身份",
+        "description": "按概念查询：一个人或代表一个人在一个营业日内存入或取出超过 10,000 美元的现金，多笔交易跨账户和网点合计为一笔。柜员看到需要提交的报告，账号和纳税人识别号已被遮蔽。"
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "同样的问题，以合规身份",
+        "description": "合规专员提出同样的问题，按报告的需要看到完整的账号和纳税人识别号。Dana Whitmore 的合计包括他人代她存入的现金。"
+      },
+      "banksecrecyStructuring": {
+        "title": "谁在拆分交易？",
+        "description": "在不同网点和日期，三次或更多次略低于 10,000 美元的存款。其中任何一笔单独都无需报告。Victor Hale 一周内去了三个网点，而 Marcus Reed 同一天的两笔存款合起来需要报告。只有合规人员能看到这个视图。"
+      },
+      "banksecrecyPollyWalk": {
+        "title": "银行必须怎么做？",
+        "description": "一位客户不断存入略低于 10,000 美元的现金。银行必须怎么做？在法律条文中搜索这些词找不到答案。Polly 改为沿术语表走：低于门槛的存款，到拆分交易 (structuring)，再到可疑活动报告，最终找到 31 CFR 1010.314 和 31 CFR 1020.320，也就是写明答案的条文。"
+      },
+      "banksecrecyExample": {
+        "title": "同样的答案，用 GraphQL",
+        "description": "需要提交的报告，以 API 调用的形式。每个接口读取同一个受治理的视图，同一角色使用相同的遮蔽。"
+      },
+      "banksecrecyPollyAsks": {
+        "title": "用平实的话提问",
+        "description": "合规用平实的话问 Polly：哪些现金需要 Currency Transaction Report？Polly 找到概念所达的受治理视图并从中作答，所以它列出的人与 SQL 和 GraphQL 返回的相同。没有人需要知道视图的名称。"
+      },
+      "banksecrecyRecap": {
+        "title": "您看到了什么",
+        "description": "法律从公开地址读取，其术语被找出并落实到银行的表上，银行按概念进行了查询。Currency Transaction Report 通过其多笔交易到达数据，每个角色都看到了它可以看到的内容。"
       }
     },
     "status": {
@@ -1869,7 +2002,7 @@
         "summary": "天气能否解释一家农作物保险公司投资组合中的损失？它自己的农场、保单和理赔，按县和作物年份与 USDA 的按原因损失、NOAA 的天气和 NASS 的产量连接，用 SQL、GraphQL 和 REST 给出答案。"
       },
       "retail": {
-        "title": "一个集团，两个区域",
+        "title": "两个区域的故事",
         "summary": "一家拥有 EU 和 US 子公司的零售集团，在 GDPR 下作为一个业务经营：EU 数据留在 EU，集团报表以假名化方式读取，访问、删除、内幕信息审查和审计各自只是一次查询。"
       },
       "provisioning": {
@@ -1923,6 +2056,14 @@
       "agentdata": {
         "title": "把数据交给智能体",
         "summary": "能否把零售商的订单数据交给 AI 智能体,并将其限制在用户有权查看的范围内?MCP 浏览器分别以客服和分析师身份展示智能体:不同的行和列、脱敏的电子邮件,以及每个答案背后受治理的 SQL。"
+      },
+      "audit": {
+        "title": "Single Audit 准备情况",
+        "summary": "非营利客户记录的联邦资助，是否与政府记录显示向其支付的金额一致？一家审计事务所的客户明细表，与 Single Audit 申报和 USAspending 的承付款相连接，给出答案。"
+      },
+      "banksecrecy": {
+        "title": "从 Bank Secrecy Act 读出的现金报告",
+        "summary": "一家银行从官方公开地址读取 Bank Secrecy Act 的现金报告规则，找出其中的术语并将其落实到自己的表上。然后按概念查询：哪些现金需要 Currency Transaction Report，谁在 10,000 美元以下拆分交易。银行和客户是虚构的，法规是真实的。"
       }
     }
   }

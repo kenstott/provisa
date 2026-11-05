@@ -36,12 +36,6 @@
     microseconds times 1000."
   reason: "^expects digits below the microsecond"
 
-- group: Unbounded variable-length patterns
-  requirement: REQ-348
-  decision: >-
-    "Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected."
-  reason: "Unbounded variable-length pattern"
-
 - group: Dates beyond the years Provisa holds
   requirement: REQ-2173
   decision: >-

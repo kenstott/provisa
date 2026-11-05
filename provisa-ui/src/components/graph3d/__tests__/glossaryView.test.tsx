@@ -70,22 +70,22 @@ const term = (id: number, name: string, over: object = {}) => ({
   id,
   name,
   definition: `${name}.`,
-  is_abstract: false,
+  isAbstract: false,
   deprecated: false,
   retired: false,
   status: "approved",
   grounding: "grounded",
-  domains: [{ domain_id: "sales" }],
-  refs: [] as { domain_id: string }[],
+  domains: [{ domainId: "sales" }],
+  refs: [] as { domainId: string }[],
   ...over,
 });
 const TERMS = [
   term(1, "Customer"),
-  term(2, "Party", { is_abstract: true }),
+  term(2, "Party", { isAbstract: true }),
   term(3, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded" }),
   term(4, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
   // No edge of any type: an orphan.
-  term(5, "Lonely", { domains: [{ domain_id: "finance" }] }),
+  term(5, "Lonely", { domains: [{ domainId: "finance" }] }),
   term(7, "shift coverage"),
   term(8, "shift start"),
   term(9, "clinic"),
@@ -94,20 +94,20 @@ const TERMS = [
   term(6, "Email address", {
     refs: [
       {
-        column_key: "10:email",
-        column_name: "email",
-        table_id: 10,
-        table_name: "customers",
-        domain_id: "sales",
-        table: { id: 10, product: null },
+        columnKey: "10:email",
+        columnName: "email",
+        tableId: 10,
+        tableName: "customers",
+        domainId: "sales",
+        registeredTable: { id: 10, product: null },
       },
     ],
   }),
 ];
 const EDGES = [
-  { id: 1, from_term_id: 1, to_term_id: 2, rel_type: "KIND_OF" },
-  { id: 2, from_term_id: 3, to_term_id: 1, rel_type: "REPLACES" },
-  { id: 3, from_term_id: 10, to_term_id: 9, rel_type: "RELATED_TO" },
+  { id: 1, fromTermId: 1, toTermId: 2, relType: "KIND_OF" },
+  { id: 2, fromTermId: 3, toTermId: 1, relType: "REPLACES" },
+  { id: 3, fromTermId: 10, toTermId: 9, relType: "RELATED_TO" },
 ];
 type Term = ReturnType<typeof term>;
 const standing = (t: Term) => t.status;
@@ -127,18 +127,18 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
       s.domains.length === 0 || ds.some((d) => d === "*" || s.domains.includes(d));
     const kept = TERMS.filter(
       (t) =>
-        !s.hiddenStatuses.includes(standing(t)) && inDomains(t.domains.map((d) => d.domain_id)),
+        !s.hiddenStatuses.includes(standing(t)) && inDomains(t.domains.map((d) => d.domainId)),
     );
     const keptIds = new Set(kept.map((t) => t.id));
-    const edges = EDGES.filter((e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.rel_type));
-    const refsOf = (t: Term) => t.refs.filter((r) => inDomains([r.domain_id]));
+    const edges = EDGES.filter((e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.relType));
+    const refsOf = (t: Term) => t.refs.filter((r) => inDomains([r.domainId]));
     // Orphans off: a term with an edge kept to a term kept, or a column it IS under Columns.
     const related = (t: Term) =>
       (s.layers.includes("ontology") &&
         edges.some(
           (e) =>
-            (e.from_term_id === t.id && keptIds.has(e.to_term_id)) ||
-            (e.to_term_id === t.id && keptIds.has(e.from_term_id)),
+            (e.fromTermId === t.id && keptIds.has(e.toTermId)) ||
+            (e.toTermId === t.id && keptIds.has(e.fromTermId)),
         )) ||
       (s.layers.includes("columns") && refsOf(t).length > 0);
     const terms = kept
@@ -146,12 +146,12 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
       .map((t) => ({
         ...t,
         domains: s.layers.includes("domains")
-          ? t.domains.filter((d) => inDomains([d.domain_id]))
+          ? t.domains.filter((d) => inDomains([d.domainId]))
           : undefined,
         refs: s.layers.includes("columns") ? refsOf(t) : undefined,
         // Under Ontology, each term is read with the edges leaving it.
-        edges_out: s.layers.includes("ontology")
-          ? edges.filter((e) => e.from_term_id === t.id)
+        edgesOut: s.layers.includes("ontology")
+          ? edges.filter((e) => e.fromTermId === t.id)
           : undefined,
       }));
     if (s.count) return { _terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };

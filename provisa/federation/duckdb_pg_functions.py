@@ -9,26 +9,29 @@
 # permission from the copyright holder.
 
 """PostgreSQL's functions DuckDB has no equivalent of, on the embedded DuckDB engine and the pgwire
-catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_sha224``, ``provisa_sha384`` and
-``provisa_sha512``, each a bytea's digest as a bytea (sha256 is DuckDB's own,
-provisa.transpiler.pg_functions), ``provisa_size_pretty``, pg_size_pretty's text (DuckDB's of that
-name writes KiB), and the UDFs of provisa.federation.duckdb_pg_scalars, where a value needs
-PostgreSQL's own algorithm. A function a DuckDB expression carries is no function here: it is a
-rewrite in provisa.transpiler.function_macros, as money's, the shapes', tsvector's and abbrev are."""
+catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_size_pretty``, pg_size_pretty's text
+(DuckDB's of that name writes KiB), and the UDFs of provisa.federation.duckdb_pg_scalars, where a
+value needs PostgreSQL's own algorithm, and provisa.federation.duckdb_pg_json. A function a DuckDB expression carries is no function here:
+it is a rewrite in provisa.transpiler.function_macros, as money's, the shapes', tsvector's and
+abbrev are.
 
-# Requirements: REQ-2167
+sha224, sha384 and sha512 are the crypto extension's ``crypto_hash`` (REQ-2171, EXTENSIONS AND TOTAL
+LANDING). :func:`register` only loads it, from the extension directory: staging it is an install's
+step (provisa-duckdb-ext, or ``INSTALL crypto FROM community``), so a connection never reaches the
+network. Where it is not staged the call is refused by name."""
+
+# Requirements: REQ-2167, REQ-2171
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
 
+from provisa.transpiler.function_macros import FunctionRefused
 
-def _digest(algorithm: str):
-    def digest(value: bytes) -> bytes:
-        return hashlib.new(algorithm, value).digest()
 
-    return digest
+def _refuse_digest(algorithm: str, value: bytes) -> bytes:
+    """crypto_hash where the extension is not staged: the function the statement called, refused."""
+    raise FunctionRefused(algorithm.replace("sha2-", "sha"), "duckdb (no crypto extension)")
 
 
 #: pg_size_pretty's units, as src/backend/utils/adt/dbsize.c lists them: (name, the size below
@@ -63,15 +66,18 @@ def size_pretty(size: int) -> str:
 
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
+    from provisa.federation.duckdb_extensions import load_staged
+    from provisa.federation.duckdb_pg_json import register as register_json
     from provisa.federation.duckdb_pg_scalars import register as register_scalars
     from provisa.federation.duckdb_pg_xml import register as register_xml
 
     register_scalars(con)
     register_xml(con)
+    register_json(con)
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )
-    for algorithm in ("sha224", "sha384", "sha512"):
+    if not load_staged(con, "crypto"):  # refused by name at the call (REQ-2171)
         con.create_function(
-            f"provisa_{algorithm}", _digest(algorithm), ["BLOB"], "BLOB", side_effects=False
+            "crypto_hash", _refuse_digest, ["VARCHAR", "BLOB"], "BLOB", side_effects=False
         )

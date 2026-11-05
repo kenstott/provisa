@@ -57,7 +57,7 @@ from provisa.compiler.naming import (
     unprefixed_field_name,
 )
 from provisa.compiler.metric_expand import metric_reference_tables
-from provisa.compiler.ontology_classes import is_class_table_id, served_class_columns
+from provisa.compiler.ontology_classes import served_class_columns
 from provisa.core.modeling_tags import append_modeling_tag
 from provisa.compiler.type_map import JSONScalar, registered_graphql_type, array_graphql_type
 from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain
@@ -68,9 +68,9 @@ from provisa.security.rights import (
     Capability,
     column_served,
     has_capability,
-    IMPLICIT_DOMAINS,
-    reaches_all_domains,
-    reaches_implicitly,
+    SYSTEM_DOMAINS,
+    acts_in_domain,
+    reaches_domain,
     served_across_domains,
 )
 from provisa.compiler.actions_schema import (
@@ -97,20 +97,16 @@ from provisa.compiler.schema_inputs import (
 )
 
 
-# Domains implicitly reachable via JOIN from any data domain (traversal only).
-# Tables in these domains are included in all role contexts so SQL JOINs
-# can reference them, but V001 still blocks direct FROM-clause access.
-# The meta (catalog) domain is implicitly discoverable by every role (REQ-1132), and so is the
-# ontology schema, the glossary's definitions moved from meta (REQ-2163), whose rows the glossary's
-# own rule scopes. Ops is a normal domain a role must reach, like any other.
-_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = IMPLICIT_DOMAINS | {"ontology"}
-
-
-def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
-    """Filter tables by role's domain access. Build per-table metadata."""
+def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
+    si: SchemaInput, *, for_sql: bool = False
+) -> list[_TableInfo]:
+    """Filter tables by role's domain access. Build per-table metadata. ``for_sql`` keeps meta's
+    default tier, which a role with no meta grant reads on SQL alone (REQ-1132): the other surfaces
+    describe what it reads of its data, and to it meta is no domain."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
-    # empty list is no domains, and every role reaches the catalog (rights.reaches_implicitly).
+    # empty list is no domains, and a system domain is reached by its capability
+    # (rights.reaches_domain).
     # A COLUMN's visible_to below reads the same way: an empty list is no role (REQ-2154).
 
     # REQ-1319: role-visible metrics keyed by the single semantic table their expression
@@ -127,9 +123,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             metrics_by_table.setdefault(refs[0], []).append(m)
 
     def _reaches(table: dict) -> bool:
-        # The role reaches the table's domain: one it lists, "*", or the catalog every role may
-        # traverse.
-        return reaches_implicitly(role["domain_access"], table["domain_id"])
+        # The role reaches the table's domain: one it lists, "*", or a system domain it holds.
+        return reaches_domain(role["domain_access"], table["domain_id"])
 
     tables_by_id = {t["id"]: t for t in si.tables}
 
@@ -151,6 +146,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
         reaches = _reaches(table) if class_served is None else bool(class_served)
+        if table["domain_id"] == META_DOMAIN_ID and not reaches and not for_sql:
+            continue
         if not reaches and not served_across_domains(role, table):
             continue
 
@@ -261,10 +258,15 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 write_returns_rows=table["write_returns_rows"],
                 write_refused_forms=frozenset(table["write_refused_forms"]),
                 # REQ-2074: the role's write grants on the table, by operation.
+                # A capability opening a system domain brings no write (rights.acts_in_domain).
                 write_grants={
                     g["operation"]: g
                     for g in table.get("write_grants") or []
                     if g["role"] == role["id"]
+                    and (
+                        table["domain_id"] not in SYSTEM_DOMAINS
+                        or acts_in_domain(role["domain_access"], table["domain_id"])
+                    )
                 },
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
@@ -475,6 +477,9 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     for t in tables:
         # Only a root table subscribes, as only a root table is queried (root_table_ids).
         if si.root_table_ids is not None and t.table_id not in si.root_table_ids:
+            continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
             continue
         raw = raw_by_id.get(t.table_id, {})
         source_type = (si.source_types or {}).get(t.source_id, "")
@@ -1171,20 +1176,8 @@ def generate_schema(
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
     _root_ids = si.root_table_ids
-    _accessible_domains = set(si.role["domain_access"])
-    _all_access = reaches_all_domains(si.role["domain_access"])
-
     for t in tables:
         if _root_ids is not None and t.table_id not in _root_ids:
-            continue
-        if (
-            not _all_access
-            and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
-            and t.domain_id not in _accessible_domains
-            # REQ-2163: a Class table, which no relationship reaches, is a root of its readers,
-            # as SQL and Cypher read it, under the read rights of the tables it is the union of.
-            and not is_class_table_id(t.table_id)
-        ):
             continue
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
@@ -1249,17 +1242,8 @@ def generate_schema(
     mutation_fields: dict[str, GraphQLField] = {}
 
     for t in tables:
-        # Mirror the query-root visibility gate: only seed/root tables get mutation fields, and
-        # implicit-traversal domains (meta/ops) reachable via JOIN are query/traverse-only unless
-        # the role explicitly has access. Without this, a domain-filtered schema exposed mutations
-        # for reachable tables in other domains and for always-visible meta/ops tables.
+        # Mirror the query-root visibility gate: only seed/root tables get mutation fields.
         if _root_ids is not None and t.table_id not in _root_ids:
-            continue
-        if (
-            not _all_access
-            and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
-            and t.domain_id not in _accessible_domains
-        ):
             continue
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:

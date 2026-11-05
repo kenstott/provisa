@@ -24,6 +24,7 @@
           "graphql": "GraphQL",
           "rest": "REST",
           "jsonapi": "JSON:API",
+          "odata": "OData",
           "sql_http": "SQL sobre HTTP",
           "cypher_http": "Cypher sobre HTTP",
           "pgwire": "PostgreSQL wire",
@@ -281,6 +282,10 @@
       "public_url": {
         "label": "Dirección pública",
         "help": "La dirección por la que se conoce este despliegue, como https://data.example.com. La IRI de cada sujeto en SPARQL y en las exportaciones RDF empieza por ella, así que debe mantenerse igual mientras se usen esas IRI. Si no se define, se rechaza una consulta que devuelve la IRI de un sujeto."
+      },
+      "node_url": {
+        "label": "Dirección de este nodo",
+        "help": "La dirección en la que los clientes llegan a este nodo. La interfaz de un coordinador lo lista como nodo de datos cuando la región no lista ninguno. El lanzador la establece para cada nodo; sin ella, el nodo no se lista."
       }
     },
     "tls": {

@@ -14,6 +14,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { executeClientTool, type ClientToolContext } from "../mcp/clientTools";
+import {
+  chooseDataAddress,
+  DATA_ADDRESS_KEY,
+  requestDataAddresses,
+  resetDataAddresses,
+} from "../lib/dataAddress";
+import { removeStored } from "../lib/browserStorage";
 import { readScreen, useScreenEditor, useScreenGrid, type ScreenEditor } from "../mcp/screenState";
 
 const ctx: ClientToolContext = {
@@ -41,7 +48,19 @@ async function screen() {
   return JSON.parse(result.message);
 }
 
+const originalFetch = window.fetch;
+
+/** The coordinator's answer to GET /admin/data-addresses, once the session has asked for it. */
+function offerFromCoordinator(offer: unknown, status = 200) {
+  window.fetch = vi.fn(
+    async () => new Response(JSON.stringify(offer), { status }),
+  ) as typeof window.fetch;
+  requestDataAddresses();
+}
+
 beforeEach(() => {
+  resetDataAddresses();
+  removeStored(DATA_ADDRESS_KEY);
   // jsdom lays nothing out; every element counts as drawn unless a test says otherwise.
   HTMLElement.prototype.checkVisibility = function () {
     return this.dataset.offscreen !== "true";
@@ -50,7 +69,10 @@ beforeEach(() => {
   window.history.pushState({}, "", "/sources");
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.fetch = originalFetch;
+});
 
 describe("read_screen", () => {
   it("reports the route and the editor of the route on screen, with its tab", async () => {
@@ -124,6 +146,37 @@ describe("read_screen", () => {
       { label: "Password", value: "•••••••" },
       { label: "Read only", value: true },
     ]);
+  });
+
+  it("reports no data node when the UI is not coordinator-served", async () => {
+    expect((await screen()).dataNode).toBeNull();
+    offerFromCoordinator({ choose: false, addresses: [] });
+    expect((await screen()).dataNode).toBeNull();
+  });
+
+  it("reports the data node a coordinator-served UI uses: the first offered until one is chosen", async () => {
+    offerFromCoordinator({
+      choose: true,
+      addresses: ["https://q1.example.com", "https://q2.example.com"],
+    });
+    expect((await screen()).dataNode).toBe("https://q1.example.com");
+  });
+
+  it("reports the chosen data node, on any route", async () => {
+    offerFromCoordinator({
+      choose: true,
+      addresses: ["https://q1.example.com", "https://q2.example.com"],
+    });
+    chooseDataAddress("https://typed.example.com:8443");
+    window.history.pushState({}, "", "/admin/billing");
+    expect((await screen()).dataNode).toBe("https://typed.example.com:8443");
+  });
+
+  it("says so when the data node cannot be read, rather than reporting none", async () => {
+    offerFromCoordinator({}, 503);
+    const result = await executeClientTool("read_screen", {}, ctx);
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("GET /admin/data-addresses 503");
   });
 
   it("reports a result grid's columns and row count, not its rows", async () => {

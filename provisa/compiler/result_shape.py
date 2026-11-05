@@ -176,23 +176,56 @@ def _lookup(columns: dict[str, str], name: str) -> str | None:
 
 def _pg_column_name(node: exp.Expr) -> str:
     """The name Postgres gives an unaliased result column (its FigureColname rule)."""
+    return _figured(node)[0]
+
+
+def _cast_type_name(target: exp.DataType) -> str:
+    """The last part of a cast's type name, as FigureColname names a cast: pg_catalog.regclass is
+    regclass."""
+    kind = target.args.get("kind")
+    if isinstance(kind, exp.Dot):
+        return kind.expression.name.lower()
+    return _PG_TYPNAME.get(target.this, target.sql(dialect="postgres").lower())
+
+
+def _figured(node: exp.Expr) -> tuple[str, int]:
+    """FigureColnameInternal: a name and its strength. A cast names a column by its type only over
+    a name of strength 1 or less (a constant's, a CASE's); a column or a call names it through
+    every cast around it."""
     if isinstance(node, exp.Column):
-        return node.name
+        return node.name, 2
     if isinstance(node, exp.Cast):
-        inner = _pg_column_name(node.this)
-        if inner != "?column?":
-            return inner
-        target = node.to
-        return _PG_TYPNAME.get(target.this, target.sql(dialect="postgres").lower())
+        inner, strength = _figured(node.this)
+        if strength > 1:
+            return inner, strength
+        return _cast_type_name(node.to), 1
     if isinstance(node, exp.Paren):
-        return _pg_column_name(node.this)
+        return _figured(node.this)
+    if isinstance(node, exp.Dot) and isinstance(node.expression, exp.Func):
+        return _figured(node.expression)  # pg_catalog.f(): the function's own name
     if isinstance(node, exp.Anonymous):
-        return node.name.lower()
+        return node.name.lower(), 2
     if isinstance(node, exp.Case):
-        return "case"
+        default = node.args.get("default")
+        name, strength = _figured(default) if default is not None else ("?column?", 0)
+        return (name, strength) if strength > 1 else ("case", 1)
     if isinstance(node, exp.Func):
-        return node.sql_name().lower()
-    return "?column?"
+        return node.sql_name().lower(), 2
+    return "?column?", 0
+
+
+def pg_named(sql: str) -> str:
+    """``sql`` with each unaliased result column of a computed value aliased by the name PostgreSQL
+    gives it: an engine names ``SELECT 1`` 1, where PostgreSQL names it ?column?. A column keeps the
+    name it has on every engine."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    if not isinstance(tree, exp.Query):
+        return sql
+    for select in list(tree.selects):
+        if isinstance(select, (exp.Alias, exp.Column, exp.Star)):
+            continue
+        select.replace(exp.alias_(select.copy(), _pg_column_name(select), quoted=True))
+    return tree.sql(dialect="postgres")
 
 
 def _untyped_is_text(node: exp.Expr) -> bool:

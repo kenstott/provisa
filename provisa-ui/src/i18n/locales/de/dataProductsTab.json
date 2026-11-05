@@ -187,6 +187,10 @@
       "slaRemove": "Service-Level entfernen",
       "slaAdd": "Service-Level hinzufügen",
       "notDeclared": "Nicht deklariert",
+      "notDeclaredList": "Nicht deklariert: {{names}}",
+      "versionSaved": "Gespeichert",
+      "versionChanges": "Änderungen",
+      "constraints": "Einschränkungen",
       "breakingWarning": "Inkompatible Änderung in v{{version}}, noch nicht in Kraft",
       "breaking": "Inkompatibel",
       "savedBy": "Gespeichert {{when}} von {{who}}",
@@ -217,7 +221,7 @@
         "quality": "Qualität",
         "sla": "SLA",
         "support": "Support und Team",
-        "servers": "Server",
+        "howToUse": "Verwendung",
         "pricing": "Preise",
         "custom": "Benutzerdefinierte Eigenschaften und Tags"
       },
@@ -252,7 +256,49 @@
         "sla": "SLAs & Aktualität",
         "quality": "Zusagen",
         "consumers": "Verbraucher",
-        "versions": "Versionen & Änderungen"
+        "versions": "Versionen & Änderungen",
+        "roles": "Rollen",
+        "history": "Versionsverlauf"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Oberfläche",
+          "address": "Adresse",
+          "how": "Verwendung",
+          "link": "Beispiel"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Jeder PostgreSQL-Client, etwa psql oder DBeaver. Datenbank {{database}}, Schema {{schema}}.",
+          "flight-sql": "Jeder Arrow-Flight-SQL-Client, etwa der ADBC-Treiber. Datenbank {{database}}, Schema {{schema}}.",
+          "grpc": "Jeder gRPC-Client, auf dem Dienst {{service}}, mit den Metadaten authorization: Bearer <token>.",
+          "graphql": "Jeder GraphQL-Client: eine Abfrage zu dieser Tabelle per POST senden, mit dem Header Authorization: Bearer <token>.",
+          "rest": "Jeder HTTP-Client: GET auf diese Adresse, mit dem Header Authorization: Bearer <token>.",
+          "openapi": "Nur die Beschreibung dieser Tabelle: in Swagger UI, Postman oder einen Client-Generator laden.",
+          "jsonapi": "Jeder JSON:API-Client: GET auf diese Adresse, mit dem Header Authorization: Bearer <token>.",
+          "sparql": "Jeder SPARQL-1.1-Client: eine Abfrage zur Klasse dieser Tabelle per POST senden, mit dem Header Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Funktioniert erst nach Gewährung des Zugriffs durch {{approvers}}.",
+          "noApprover": "Funktioniert erst nach Gewährung des Zugriffs durch einen Inhaber von {{roles}}. Dieser Vertrag nennt keinen Genehmiger.",
+          "undeclared": "Funktioniert erst nach Gewährung des Zugriffs. Dieser Vertrag nennt weder Rolle noch Genehmiger."
+        },
+        "ask": {
+          "approvers": "{{approvers}} um Zugriff bitten",
+          "roles": "Einen Inhaber von {{roles}} um Zugriff bitten",
+          "nobody": "Dieser Vertrag nennt niemanden, den man fragen könnte"
+        },
+        "open": "Beispiel öffnen",
+        "openAria": "Das Beispiel {{surface}} für {{table}} öffnen"
       }
     }
   }

@@ -16,12 +16,15 @@ what a catalog importing the standard reads is what the standard defines.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from jsonschema import Draft201909Validator
 
+from provisa.api.admin.system_health import HTTP_SURFACES
 from provisa.api.metadata_export import build_snapshot
 from provisa.api.metadata_export.odps import (
     UNVERSIONED,
@@ -31,6 +34,7 @@ from provisa.api.metadata_export.odps import (
     odps_document,
     product_documents,
 )
+from provisa.api.metadata_export.publishing import serving_endpoints
 from provisa.core import data_contracts
 from provisa.core.models import (
     Column,
@@ -42,6 +46,8 @@ from provisa.core.models import (
     UniqueConstraint,
     WriteGrant,
 )
+from provisa.grpc.descriptor import SERVICE_NAME
+from provisa.security.rights import SQL_ONLY_TABLES
 from tests.integration.metadata_export_fixture import MASK_PATTERN, ORG_ID, governed_config
 
 _SCHEMAS = Path(__file__).resolve().parents[1] / "fixtures" / "standards"
@@ -519,6 +525,8 @@ def test_servers_are_the_endpoints_a_consumer_reads_it_through():
             http_origin="https://data.example.com",
             pgwire_port=5439,
             flight_port=8815,
+            grpc_port=50051,
+            http_paths=HTTP_SURFACES,
         ),
     )
     (product,) = snapshot.data_products
@@ -537,6 +545,32 @@ def test_servers_are_the_endpoints_a_consumer_reads_it_through():
     assert (servers["flight-sql"]["type"], servers["flight-sql"]["port"]) == ("custom", 8815)
     assert servers["graphql"]["location"] == "https://data.example.com/data/graphql"
     assert servers["rest"]["location"] == "https://data.example.com/data/rest/sales/orders"
+    assert servers["grpc"] == {
+        "server": "grpc",
+        "type": "custom",
+        "description": "gRPC",
+        "host": "data.example.com",
+        "port": 50051,
+        "serviceName": SERVICE_NAME,
+    }
+    assert servers["jsonapi"] == {
+        "server": "jsonapi",
+        "type": "api",
+        "description": "JSON:API",
+        "location": "https://data.example.com/data/jsonapi/sales/orders",
+    }
+    assert servers["openapi"] == {
+        "server": "openapi",
+        "type": "api",
+        "description": "OpenAPI description of the REST endpoints",
+        "location": "https://data.example.com/data/rest/openapi.json?domains=sales&tables=orders",
+    }
+    assert servers["sparql"] == {
+        "server": "sparql",
+        "type": "api",
+        "description": "SPARQL 1.1 Protocol",
+        "location": "https://data.example.com/data/sparql",
+    }
 
 
 def test_a_pgwire_listener_not_started_is_no_server():
@@ -544,10 +578,112 @@ def test_a_pgwire_listener_not_started_is_no_server():
 
     snapshot, product = _snapshot()
     snapshot.endpoints = ServingEndpoints(
-        hostname="h", database="provisa", http_origin="https://h", flight_port=8815
+        hostname="h",
+        database="provisa",
+        http_origin="https://h",
+        flight_port=8815,
+        http_paths={"GraphQL": "/data/graphql", "REST": "/data/rest"},
     )
     contract = odcs_contract(snapshot, product, _orders(snapshot))
-    assert {s["server"] for s in contract["servers"]} == {"flight-sql", "graphql", "rest"}
+    assert {s["server"] for s in contract["servers"]} == {
+        "flight-sql",
+        "graphql",
+        "rest",
+        "openapi",
+    }
+
+
+def test_a_surface_not_mounted_is_no_server():
+    from provisa.api.metadata_export.model import ServingEndpoints
+
+    snapshot, product = _snapshot()
+    snapshot.endpoints = ServingEndpoints(hostname="h", database="provisa", http_origin="https://h")
+    assert "servers" not in odcs_contract(snapshot, product, _orders(snapshot))
+
+
+def test_a_declared_junction_is_no_sparql_server():
+    """A junction is an edge of the graph, no class of its vocabulary (REQ-1586); it is read
+    everywhere else."""
+    from provisa.api.metadata_export.model import JunctionRef, ServingEndpoints
+
+    snapshot, product = _snapshot()
+    snapshot.endpoints = ServingEndpoints(
+        hostname="h",
+        database="provisa",
+        http_origin="https://h",
+        grpc_port=50051,
+        http_paths=HTTP_SURFACES,
+    )
+    orders = _orders(snapshot)
+    edge = snapshot.relationships[0]
+    snapshot.relationships[0] = dataclasses.replace(
+        edge,
+        kind="junction",
+        via=JunctionRef(table=orders.ref, source_column="a", target_column="b"),
+    )
+    assert {s["server"] for s in odcs_contract(snapshot, product, orders)["servers"]} == {
+        "grpc",
+        "graphql",
+        "rest",
+        "openapi",
+        "jsonapi",
+    }
+
+
+def test_a_table_sql_alone_serves_has_only_its_sql_servers():
+    from provisa.api.metadata_export.model import ServingEndpoints
+
+    snapshot, product = _snapshot()
+    snapshot.endpoints = ServingEndpoints(
+        hostname="h",
+        database="provisa",
+        http_origin="https://h",
+        pgwire_port=5439,
+        flight_port=8815,
+        grpc_port=50051,
+        http_paths=HTTP_SURFACES,
+    )
+    (domain_id, table_name) = sorted(SQL_ONLY_TABLES)[0]
+    served = dataclasses.replace(_orders(snapshot), name=table_name)
+    product = dataclasses.replace(product, domain_id=domain_id)
+    assert {s["server"] for s in odcs_contract(snapshot, product, served)["servers"]} == {
+        "pgwire",
+        "flight-sql",
+    }
+
+
+def _deployment(monkeypatch, *, grpc_port=50051, flight_port=8815, **state):
+    from provisa.core import settings_registry
+
+    settings = {
+        "server.hostname": "h",
+        "server.pgwire_port": 5439,
+        "server.flight_port": flight_port,
+        "server.grpc_port": grpc_port,
+    }
+    monkeypatch.setattr(settings_registry, "value", settings.__getitem__)
+    return SimpleNamespace(multitenancy=False, **state)
+
+
+def test_a_deployment_serves_what_it_started_and_mounted(monkeypatch):
+    state = _deployment(monkeypatch, _grpc_server=object(), http_surfaces={"SPARQL", "REST"})
+    endpoints = serving_endpoints(state, ORG_ID, "https://h/")
+    assert endpoints.grpc_port == 50051
+    assert endpoints.http_paths == {"SPARQL": "/data/sparql", "REST": "/data/rest"}
+    assert endpoints.http_origin == "https://h"
+
+
+def test_a_grpc_server_not_started_is_no_port(monkeypatch):
+    state = _deployment(monkeypatch, _grpc_server=None, http_surfaces=set())
+    endpoints = serving_endpoints(state, ORG_ID, "https://h")
+    assert endpoints.grpc_port is None
+    assert endpoints.http_paths == {}
+
+
+@pytest.mark.parametrize("listener", ["grpc_port", "flight_port"])
+def test_a_listener_port_of_zero_is_no_port(monkeypatch, listener):
+    state = _deployment(monkeypatch, _grpc_server=object(), http_surfaces=set(), **{listener: 0})
+    assert getattr(serving_endpoints(state, ORG_ID, "https://h"), listener) is None
 
 
 def test_the_contract_carries_the_products_tags():

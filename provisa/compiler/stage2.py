@@ -40,6 +40,9 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     masking_rules: dict[tuple[int, str], tuple] = field(default_factory=dict)
     # table_id → visible column names (None = all visible)
     visible_columns: dict[int, frozenset[str] | None] = field(default_factory=dict)
+    # REQ-2190: the table ids the role's meta rows are scoped to, as an array literal, which a
+    # statement's settings tell its catalog views. None where no row filter applies.
+    meta_scope: str | None = None
     # REQ-1959: tables outside the role's domains that it is served anyway, because they publish
     # a column to it. A direct read of one is not a domain violation (V001); the columns it may
     # read there are the published ones (visible_columns).
@@ -148,6 +151,41 @@ def _readable_term_predicate(column: str, domains: frozenset[str]) -> str:
     return "(" + " OR ".join(tests) + ")"
 
 
+def context_table_map(ctx: Any) -> dict[str, int]:
+    """Every name a statement gives a table of ``ctx``, to its id: what governance reads a
+    statement's references by, and so what anything else reading one must read it by."""
+    from provisa.compiler.naming import physical_relation_name, semantic_relation_names
+    from provisa.compiler.ontology_classes import is_class_table_id
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    table_map: dict[str, int] = {}
+    for meta in ctx.tables.values():
+        for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
+            # REQ-2163: a Class is named only under the ontology schema. A table is grounded in
+            # a Class named for it (REQ-2141), so the bare name stays the table's.
+            if is_class_table_id(meta.table_id) and "." not in said:
+                continue
+            table_map[said] = meta.table_id
+        # And its catalog-physical name: a view's body is read into a statement lowered to it,
+        # and two sources may hold tables of one schema.table (naming.table_id_of).
+        table_map[physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)] = (
+            meta.table_id
+        )
+        # And its physical schema.table, which a statement lowered without a catalog names it by.
+        # For most tables that is also the stored name below; for one read through a physical
+        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
+        # such a read is refused as unregistered.
+        table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
+    # And, unqualified, its field name: the domain-prefixed ``sa__orders`` a domain_prefix schema
+    # exposes, which the validator admits as naming the table (sql_validator). Unresolved, it was
+    # read ungoverned under that name wherever the route happened to find one. A semantic name
+    # another table holds stays that table's; a Class is named only under the ontology schema.
+    for meta in ctx.tables.values():
+        if not is_class_table_id(meta.table_id):
+            table_map.setdefault(meta.field_name, meta.table_id)
+    return table_map
+
+
 def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, REQ-971
     role_id: str,
     rls_context,
@@ -158,6 +196,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     relationships: list[dict] | None = None,
     source_types: dict[str, str] | None = None,
     engine=None,
+    source_hints: dict[str, dict[str, str]] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
@@ -181,6 +220,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
               (matches every connector registered today, all of which declare predicate_pushdown).
         engine: The bound FederationEngine, used to read each masked table's connector
               ``Capability`` (REQ-897) via ``connector_pushdown``.
+        source_hints: {source_id: federation_hints}: each source's settings, which
+              ``connector_pushdown`` reads with its type (REQ-2191).
     """
     if role is None:
         raise ValueError(
@@ -224,17 +265,24 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     from provisa.security.rights import (
         GLOSSARY_SCOPED_VIEWS,
         GOVERNANCE_META_COLUMNS,
+        META_CATALOG_ROW_SCOPES,
         META_DOMAIN_ID,
         LISTED_NAMES_VIEW,
         META_ROW_SCOPED_VIEWS,
         ONTOLOGY_DOMAIN_ID,
+        SYSTEM_DOMAINS,
         Capability,
+        acts_in_domain,
         column_served,
         compute_meta_row_scope,
         has_capability,
         reaches_domain,
         served_across_domains,
+        unlisted_columns,
     )
+
+    from provisa.transpiler.metadata_settings import scope_ids_sql
+    from provisa.transpiler.metadata_views import NEUTRAL_VIEW_NAMES, SCOPE_COLUMN
 
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
     gov.can_write = has_capability(role, Capability.WRITE)
@@ -260,6 +308,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # input the payload never carries -- REQ-301).
             if (table_id, c["column_name"]) not in ctx.columns_outside_relation
             and not c.get("native_filter_type")
+            # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
+            and c["column_name"] != SCOPE_COLUMN
         ]
         embeddings = {
             c["column_name"]: c["embedding_model"]
@@ -268,8 +318,14 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         }
         if embeddings:
             gov.embedding_columns[table_id] = embeddings
+        # A capability opening a system domain brings no write: its write grants, if any are
+        # stored, are not the role's here (admit_write reads this and no domain).
+        _home = tbl.get("domain_id") or ""
+        _writes = _home not in SYSTEM_DOMAINS or acts_in_domain(role["domain_access"], _home)
         gov.write_grants[table_id] = {
-            g["operation"]: g for g in tbl.get("write_grants") or [] if g["role"] == role_id
+            g["operation"]: g
+            for g in (tbl.get("write_grants") or [] if _writes else [])
+            if g["role"] == role_id
         }
         if "write_ops" in tbl:
             gov.write_ops[table_id] = frozenset(tbl["write_ops"])
@@ -287,6 +343,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 for c in cols
                 if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
             )
+            # REQ-1132: read with no meta grant, as a column published across domains is.
+            if not reaches_domain(role["domain_access"], META_DOMAIN_ID) and served_across_domains(
+                {"id": role_id}, tbl
+            ):
+                _public.add(table_id)
         else:
             # ONE rule with the schema build (security.rights.column_served): the column's grant
             # — empty is everyone, "*", or the role; an explicit grant only in a lockdown domain
@@ -294,13 +355,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # published column (REQ-1959).
             _tbl_domain = tbl.get("domain_id")
             # A table registered with no domain is gated by none, as the direct-read check
-            # (V001) treats it. Every role reaches the ontology schema, as it does meta (REQ-2163):
-            # its rows are scoped by the glossary's own rule below.
-            _reaches = (
-                not _tbl_domain
-                or _tbl_domain == ONTOLOGY_DOMAIN_ID
-                or reaches_domain(role["domain_access"], _tbl_domain)
-            )
+            # (V001) treats it. The ontology schema's rows are scoped by the glossary's own rule
+            # below (REQ-2163).
+            _reaches = not _tbl_domain or reaches_domain(role["domain_access"], _tbl_domain)
             _subject = {"id": role_id}
             visible = {
                 c["column_name"]
@@ -343,39 +400,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only
-    from provisa.compiler.naming import (
-        physical_relation_name,
-        semantic_relation_names,
-        stored_relation_names,
-    )
-    from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.compiler.naming import stored_relation_names
 
-    from provisa.compiler.ontology_classes import is_class_table_id
-
-    for meta in ctx.tables.values():
-        for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
-            # REQ-2163: a Class is named only under the ontology schema. A table is grounded in
-            # a Class named for it (REQ-2141), so the bare name stays the table's.
-            if is_class_table_id(meta.table_id) and "." not in said:
-                continue
-            gov.table_map[said] = meta.table_id
-        # And its catalog-physical name: a view's body is read into a statement lowered to it,
-        # and two sources may hold tables of one schema.table (naming.table_id_of).
-        gov.table_map[
-            physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
-        ] = meta.table_id
-        # And its physical schema.table, which a statement lowered without a catalog names it by.
-        # For most tables that is also the stored name below; for one read through a physical
-        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
-        # such a read is refused as unregistered.
-        gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
-    # And, unqualified, its field name: the domain-prefixed ``sa__orders`` a domain_prefix schema
-    # exposes, which the validator admits as naming the table (sql_validator). Unresolved, it was
-    # read ungoverned under that name wherever the route happened to find one. A semantic name
-    # another table holds stays that table's; a Class is named only under the ontology schema.
-    for meta in ctx.tables.values():
-        if not is_class_table_id(meta.table_id):
-            gov.table_map.setdefault(meta.field_name, meta.table_id)
+    gov.table_map.update(context_table_map(ctx))
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
@@ -394,18 +421,71 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     meta_scope = compute_meta_row_scope(role, tables, relationships)
     if meta_scope is not None:
         id_list = ",".join(str(i) for i in sorted(meta_scope)) or "-1"  # empty → matches no row
-        for tm in ctx.tables.values():
+        gov.meta_scope = "{" + id_list + "}"
+        scoped_ids = scope_ids_sql()
+        # A table is in ctx.tables under each name it has; its scope is one predicate.
+        by_id = {tm.table_id: tm for tm in ctx.tables.values()}
+        for tm in by_id.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
                 continue
             scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
-            if scope_cols is None:
+            catalog_scope = META_CATALOG_ROW_SCOPES.get(getattr(tm, "table_name", ""))
+            if scope_cols is not None:
+                ids = scoped_ids if tm.table_name in NEUTRAL_VIEW_NAMES else id_list
+                predicate = " AND ".join(f"{col} IN ({ids})" for col in scope_cols)
+            elif catalog_scope is not None:
+                # REQ-2190: a row about no registered table is every role's: its NULL stays
+                # true, and the scope is never an empty list (-1 above).
+                predicate = " AND ".join(
+                    f"COALESCE(({expr}) IN ({scoped_ids}), TRUE)" for expr in catalog_scope
+                )
+            else:
                 continue
-            predicate = " AND ".join(f"{col} IN ({id_list})" for col in scope_cols)
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )
+
+    # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
+    # either; which those are is decided in code, so no view can say.
+    from provisa.compiler.naming import apply_sql_name as _sql_name
+    from provisa.compiler.sql_literals import sql_literal
+
+    outside = set(ctx.columns_outside_relation) | unlisted_columns(role, tables)
+    for view, columns in (
+        ("catalog_pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
+        ("is_columns", "CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)"),
+    ):
+        if not outside:
+            break
+        pairs = ", ".join(
+            f"({16384 + table_id}, "
+            + sql_literal(ctx.physical_to_sql.get((table_id, name)) or _sql_name(name), "postgres")
+            + ")"
+            for table_id, name in sorted(outside)
+        )
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name != view:
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            out = f"({columns}) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
+    # REQ-2153: and a listed table's other columns are named to no role that only lists it.
+    unlisted = unlisted_columns(role, tables)
+    if unlisted:
+        pairs = ", ".join(
+            f"({table_id}, {sql_literal(name, 'postgres')})" for table_id, name in sorted(unlisted)
+        )
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name not in (
+                "table_columns_meta",
+                "column_details",
+            ):
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            out = f"(table_id, column_name) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
 
     # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
     # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.
@@ -430,8 +510,6 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
     # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
     # is in registered_tables_meta / table_columns_meta -- by the same WHERE-injection.
-    from provisa.compiler.sql_literals import sql_literal
-
     for tm in ctx.tables.values():
         if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
             continue
@@ -462,7 +540,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             source_type = source_types.get(source_id)
             if not source_type:
                 continue
-            cap = engine.connector_pushdown(source_type)
+            from provisa.core.models import Source
+
+            hints = (source_hints or {}).get(source_id, {})
+            cap = engine.connector_pushdown(Source.settings_view(source_id, source_type, hints))
             plan_mask_evaluation(cap, can_stream=False)
 
     return gov
@@ -545,6 +626,80 @@ def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int
     from provisa.compiler.naming import table_id_of
 
     return table_id_of(table_node, gov_ctx.table_map)
+
+
+def flatten_leftmost_join_groups(tree: exp.Expr) -> None:  # REQ-039
+    """Unwrap, in place, an unaliased parenthesised join group that is a SELECT's first FROM item
+    -- recursively, the group's own leftmost item -- into that SELECT's FROM and joins, in order.
+    Joins associate left to right, so ``((a JOIN b ON ..) LEFT JOIN c ON ..)`` (the form BI tools
+    write) is ``a JOIN b ON .. LEFT JOIN c ON ..``, and its relations are governed as any other.
+    A group elsewhere -- the right side of a join, or under an alias -- is left as it is
+    (:func:`parenthesised_join_tables` refuses it)."""
+    for frm in list(tree.find_all(exp.From)):
+        select = frm.parent
+        if not isinstance(select, exp.Select):
+            continue
+        while True:
+            group = frm.this
+            if (
+                not isinstance(group, exp.Subquery)
+                # a derived table's query; a nested group's parentheses are a Subquery (a Query)
+                or (isinstance(group.this, exp.Query) and not isinstance(group.this, exp.Subquery))
+                or {k for k, v in group.args.items() if v} - {"this", "joins"}
+            ):
+                break
+            inner = group.this
+            joins = [
+                *(inner.args.get("joins") or []),
+                *(group.args.get("joins") or []),
+                *(select.args.get("joins") or []),
+            ]
+            inner.set("joins", None)
+            frm.set("this", inner)
+            select.set("joins", joins)
+
+
+def parenthesised_join_tables(  # REQ-039
+    tree: exp.Expr, gov_ctx: GovernanceContext
+) -> list[exp.Table]:
+    """The first registered relation of each parenthesised FROM item that is no query and that
+    :func:`flatten_leftmost_join_groups` leaves -- a group on the right side of a join, ``a JOIN
+    (bank.customer CROSS JOIN v) ON ..``, or one under an alias, ``(bank.customer) x``. Neither the
+    column checks nor this stage see a relation inside one, so its hidden columns, masks and row
+    rules would go unapplied: it is refused until every registered-relation reference is governed
+    by construction. A table of a query nested in the group, or a CTE, is not the group's own."""
+    from provisa.compiler.cte_utils import names_a_cte_in_scope
+
+    found: list[exp.Table] = []
+    for group in tree.find_all(exp.Subquery):
+        if isinstance(group.this, exp.Query):
+            continue
+        for tbl in group.find_all(exp.Table):
+            if _within_query(tbl, group) or _table_id_for_node(tbl, gov_ctx) is None:
+                continue
+            if not tbl.db and names_a_cte_in_scope(tbl):
+                continue
+            found.append(tbl)
+            break
+    return found
+
+
+def parenthesised_join_message(tbl: exp.Table) -> str:
+    return (
+        f"Relation {tbl.sql(dialect='postgres')!r} is in a parenthesised join group, which is "
+        "not supported: write the join without the parentheses"
+    )
+
+
+def _within_query(node: exp.Expr, stop: exp.Expr) -> bool:
+    """Whether a query lies between ``node`` and its ancestor ``stop``: ``node`` is that query's
+    own, not ``stop``'s."""
+    cur = node.parent
+    while cur is not None and cur is not stop:
+        if isinstance(cur, exp.Query):
+            return True
+        cur = cur.parent
+    return False
 
 
 def _get_tables_from_select(
@@ -813,11 +968,6 @@ def _project_faked(
     projection = sqlglot.parse_one(f"SELECT * FROM {sql} AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are the projection's, already governed
-    # A reference qualified by the table's schema now names the projection by its alias alone.
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     tbl.replace(subquery)
     return subquery
 
@@ -875,10 +1025,6 @@ def _project_kept(
     projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are already governed
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     (faked if faked is not None else tbl).replace(subquery)
     return subquery
 
@@ -1016,10 +1162,6 @@ def _project_members(
     projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are already governed
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     (current if current is not None else tbl).replace(subquery)
     return real_keys
 
@@ -1048,7 +1190,7 @@ def _govern_references(
     which the projection rewrite names and drops. A column of this SELECT's tables referenced
     from a nested SELECT by its alias (a correlated subquery) is replaced too."""
     top_level = {id(e) for e in node.expressions}
-    outputs = {e.alias_or_name.lower() for e in node.expressions if e.alias_or_name}
+    outputs = output_names(node)
     for col in list(node.find_all(exp.Column)):
         parent = col.parent
         if id(col) in top_level or (
@@ -1080,6 +1222,19 @@ def _govern_references(
             continue
         replacement.meta[_GOVERNED] = True
         _replace_reference(col, replacement)
+
+
+def output_names(node: exp.Select) -> set[str]:  # REQ-039
+    """The output names of ``node`` an ORDER BY key may name, in lower case: a real alias's, and
+    a bare column's own. A string literal names no output -- PostgreSQL calls ``'ssn'`` ?column?,
+    so ``ORDER BY ssn`` beside it is the input column ``ssn``."""
+    names: set[str] = set()
+    for e in node.expressions:
+        if isinstance(e, exp.Alias) and e.alias:
+            names.add(e.alias.lower())
+        elif isinstance(e, exp.Column) and not isinstance(e.this, exp.Star):
+            names.add(e.name.lower())
+    return names
 
 
 def _names_an_output(col: exp.Column, node: exp.Select, outputs: set[str]) -> bool:
@@ -1380,6 +1535,11 @@ def _govern_selects(
 
     ``answers``: ``tree`` is a read whose rows are the answer (not a fragment of a larger
     statement, and not a write), so its own projection is read as REQ-1961 says."""
+    from provisa.compiler.sql_rewrite import bind_schema_qualified_columns
+
+    # REQ-2204: a column the statement qualifies by its table's schema is read by the table's
+    # name before any table is put behind a projection under that name.
+    bind_schema_qualified_columns(tree)
     for select in reversed(list(tree.find_all(exp.Select))):
         final = answers and isinstance(tree, exp.Query) and _is_the_answer(select, tree)
         governed_select = _govern_select(select, gov_ctx, final=final)
@@ -1456,12 +1616,17 @@ def apply_governance(
 
     Returns governed SQL string.
     """
-    from provisa.compiler.write_admission import admit_write, is_write
+    from provisa.compiler.write_admission import admit_write, is_write, refuse_nested_writes
     from provisa.core.session_terms import expand_list_settings
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
+    refuse_nested_writes(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    flatten_leftmost_join_groups(tree)
+    hidden = parenthesised_join_tables(tree, gov_ctx)
+    if hidden:
+        raise PermissionError(f"[V006] {parenthesised_join_message(hidden[0])}")
     writes = is_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
     if writes:
         tree = admit_write(tree, gov_ctx, session_vars, params)  # pyright: ignore[reportArgumentType]

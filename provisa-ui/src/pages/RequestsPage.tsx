@@ -11,6 +11,7 @@
 import { ListOrdered } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { useEffect, useState } from "react";
+import { useRememberedChoice } from "../hooks/useRememberedChoice";
 import { useTranslation } from "react-i18next";
 import { FormField, FormFooter, FormLayout } from "../components/form/FormLayout";
 import {
@@ -100,9 +101,11 @@ async function apiReject(id: number, reason: string): Promise<{ status: string }
   });
 }
 
+const REQUEST_TABS = ["pending", "resolved"] as const;
+
 export function RequestsPage() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"pending" | "resolved">("pending");
+  const [tab, setTab] = useRememberedChoice("filter.requests.tab", REQUEST_TABS, "pending");
   const [rows, setRows] = useState<CreationRequest[]>([]);
   const [reasons, setReasons] = useState<Record<string, string[]>>({});
   const [error, setError] = useState<string | null>(null);

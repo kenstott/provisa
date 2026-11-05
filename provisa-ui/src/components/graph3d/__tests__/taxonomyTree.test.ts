@@ -17,24 +17,24 @@ import { GLOSSARY_SCOPE, NO_FILTERS, layoutGraph, visibleGraph, type LayerId } f
 import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
 
 const ref = (table: number, column: string) => ({
-  column_key: `${table}:${column}`,
-  column_name: column,
-  table_id: table,
-  table_name: `t${table}`,
-  domain_id: "pets",
-  table: { id: table, product: null },
+  columnKey: `${table}:${column}`,
+  columnName: column,
+  tableId: table,
+  tableName: `t${table}`,
+  domainId: "pets",
+  registeredTable: { id: table, product: null },
 });
 
 const term = (id: number, name: string, refs: ReturnType<typeof ref>[] = []): TermRow => ({
   id,
   name,
   definition: `${name}.`,
-  ref_count: 0,
+  refCount: 0,
   deprecated: false,
   retired: false,
   status: "approved",
   grounding: "grounded",
-  domains: [{ domain_id: "pets" }],
+  domains: [{ domainId: "pets" }],
   refs,
 });
 
@@ -48,10 +48,10 @@ const TERMS = [
   term(5, "referral", [ref(20, "id")]),
 ];
 const EDGES: TermEdgeRow[] = [
-  { id: 1, from_term_id: 2, to_term_id: 1, rel_type: "KIND_OF" },
-  { id: 2, from_term_id: 3, to_term_id: 2, rel_type: "KIND_OF" },
-  { id: 3, from_term_id: 4, to_term_id: 3, rel_type: "PART_OF" },
-  { id: 4, from_term_id: 5, to_term_id: 3, rel_type: "RELATED_TO" },
+  { id: 1, fromTermId: 2, toTermId: 1, relType: "KIND_OF" },
+  { id: 2, fromTermId: 3, toTermId: 2, relType: "KIND_OF" },
+  { id: 3, fromTermId: 4, toTermId: 3, relType: "PART_OF" },
+  { id: 4, fromTermId: 5, toTermId: 3, relType: "RELATED_TO" },
 ];
 const G = glossaryGraph(TERMS, EDGES);
 const tax = GLOSSARY_SCOPE.presets.taxonomy as NonNullable<typeof GLOSSARY_SCOPE.presets.taxonomy>;

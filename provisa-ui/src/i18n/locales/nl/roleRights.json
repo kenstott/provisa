@@ -31,7 +31,8 @@
     "reach_public": "openbaar",
     "scope_domain": "domein",
     "scope_public": "openbaar",
-    "scope_restricted": "beperkt",
+    "scope_listed": "vermeld",
+    "scope_own-domain": "eigen domein",
     "write_insert": "invoegen",
     "write_update": "bijwerken",
     "write_delete": "verwijderen"

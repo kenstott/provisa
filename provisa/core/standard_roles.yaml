@@ -8,13 +8,14 @@
 # permission from the copyright holder.
 #
 # REQ-2155: Provisa's standard roles -- named collections of capabilities that organisations extend
-# with roles of their own. A role inherits from its parents, and what it holds is the deduplicated
-# union of its own capabilities and every ancestor's (provisa/security/inheritance.py), so each right
-# is listed once, on the role it first enters through. Standard roles are LOCKED: Provisa maintains
-# them, init_schema writes every one as this file defines it on each run
-# (provisa.core.db.assert_standard_roles), and the admin surfaces refuse to edit or delete one; an
-# organisation extends a standard role only with a child role, so a right Provisa adds here reaches
-# every role built on it. Each states its own reach (domain_access, never inherited): every domain,
+# with roles of their own. A standard role is the palette: what it holds is the deduplicated union
+# of its own capabilities and every ancestor's (provisa/security/inheritance.py), so each right is
+# listed once, on the role it first enters through. A role of an organisation's narrows its parents:
+# it holds what it is given of what they hold, so a right Provisa adds here reaches a child only when
+# it is given. Standard roles are LOCKED: Provisa maintains them, init_schema writes every one as this
+# file defines it on each run (provisa.core.db.assert_standard_roles), and the admin surfaces refuse
+# to edit or delete one; an organisation extends a standard role only with a child role. Each states
+# its own reach (domain_access, data domains only: a system domain is held as a capability, REQ-1132): every domain,
 # but platform_admin, which belongs to the control plane alone (REQ-1327/REQ-1337), reaches none
 # and holds its two platform rights and nothing else.
 # platform_settings is not org_admin's here: tenancy decides it (db.apply_tenancy_role_grants).
@@ -22,9 +23,11 @@
 # Read by provisa/core/db.py and by the UI's DEFAULT_ADMIN_ROLE test; this file is the one source.
 
 viewer:
-  description: "The base every role builds on: reads the catalog it is granted, the glossary and the data products."
+  description: "The base every role builds on: reads the glossary and the data products."
   parents: []
   domain_access: ["*"]
+  # REQ-1132: no catalog_read: every role has the default tier, core metadata for the tables it can
+  # read, write or list. The meta grant is held by a role that names it.
   capabilities: [glossary_read, data_product_read]  # REQ-1590, REQ-1634
 
 analyst:
@@ -39,7 +42,8 @@ developer:
   domain_access: ["*"]
   # REQ-1573 (amended by REQ-2155): a developer works in the org's environments and manages the
   # ones it owns; managing any environment is org_admin's.
-  capabilities: [create_view, create_relationship, full_results, write, environment_switch, environment_owned_management]
+  # catalog_read: views and relationships are built across the model, not only what it reads.
+  capabilities: [catalog_read, create_view, create_relationship, full_results, write, environment_switch, environment_owned_management]
 
 modeler:
   description: "Works out the model: a developer that may join across relations no approved relationship covers yet. Every other rule still applies to it."
@@ -61,7 +65,8 @@ security_admin:
   description: "Configures access: row rules, column grants, masks and sensitive columns."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [access_config, column_grant, masking_config, sensitive_data, view_governance]
+  # catalog_read: grants and masks are configured on tables the role does not read.
+  capabilities: [catalog_read, access_config, column_grant, masking_config, sensitive_data, view_governance]
 
 data_steward:
   description: "Governs a domain's meaning and access: the glossary, relationships, row rules, grants, masks and sensitive columns. Nothing operational."
@@ -89,7 +94,8 @@ source_admin:
   description: "Registers sources and tables."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [source_registration, table_registration]
+  # catalog_read: it registers into the whole catalog, and must see what is already there.
+  capabilities: [catalog_read, source_registration, table_registration]
 
 org_operator:
   description: "Operates the organization: its settings, observability, and approving views and relationships."
@@ -97,7 +103,8 @@ org_operator:
   domain_access: ["*"]
   # REQ-1349: org_settings gates nearly every org-scoped admin page; observability its read-only
   # performance views.
-  capabilities: [org_settings, observability, approve_view, approve_relationship]
+  # catalog_read: approving a view or a relationship reads the tables it joins, whoever reads them.
+  capabilities: [catalog_read, org_settings, observability, approve_view, approve_relationship]
 
 org_admin:
   description: "Administers the organization: its sources, model, governance, members and settings."

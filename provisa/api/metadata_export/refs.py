@@ -56,6 +56,7 @@ RESERVED_KIND_KEYWORDS = (
     "data-products",
     "stores",  # REQ-1922: an org's stores
     "regions",  # REQ-1921: the platform regions an org selects
+    "erd-layouts",  # REQ-2189: the saved ERD layouts
 )
 
 _URI_SCHEME = "provisa"

@@ -100,8 +100,8 @@ const PRODUCT_ROW = {
   custom_properties: '{"tier":"gold"}',
 };
 
-const CUSTOMER = { id: 7, name: "Customer", definition: "A buyer", is_abstract: false, live: true };
-const PARTY = { id: 8, name: "Party", definition: "Anyone", is_abstract: true, live: true };
+const CUSTOMER = { id: 7, name: "Customer", definition: "A buyer", isAbstract: false, live: true };
+const PARTY = { id: 8, name: "Party", definition: "Anyone", isAbstract: true, live: true };
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -111,13 +111,13 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql.replace(/\s+/g, " ")).toContain(
       'data_products: m__dataProducts(where: { id: { eq: "c360" } })',
     );
-    expect(q?.graphql).toContain("member_tables: memberTables");
+    expect(q?.graphql).toContain("memberTables");
     // Built a selection a line, as the panel shows it.
     expect(q?.graphql.split("\n").slice(0, 4)).toEqual([
       "query DataProductPanel {",
       '  data_products: m__dataProducts(where: { id: { eq: "c360" } }) {',
-      "    id: id",
-      "    member_tables: memberTables {",
+      "    id",
+      "    memberTables {",
     ]);
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
@@ -150,21 +150,21 @@ describe("the panel's meta reads", () => {
               data_products: [
                 {
                   id: "c360",
-                  member_tables: [
+                  memberTables: [
                     {
                       id: 1,
-                      source_id: "pg",
-                      domain_id: "sales",
-                      schema_name: "public",
-                      table_name: "customers",
+                      sourceId: "pg",
+                      domainId: "sales",
+                      schemaName: "public",
+                      tableName: "customers",
                       description: null,
-                      dq_contract: null,
-                      table_columns: [
-                        { column_name: "email", glossary_ref: [{ term_id: 7, term: CUSTOMER }] },
+                      dqContract: null,
+                      tableColumns: [
+                        { columnName: "email", glossaryRef: [{ termId: 7, term: CUSTOMER }] },
                       ],
                     },
                   ],
-                  commands: [{ name: "refresh", description: null, domain_id: "sales" }],
+                  commands: [{ name: "refresh", description: null, domainId: "sales" }],
                 },
               ],
             },
@@ -172,7 +172,7 @@ describe("the panel's meta reads", () => {
         }
         if (body.includes("TermEdges")) {
           const from7 = body.includes("[7]");
-          return json({ data: { _term_edges: from7 ? [{ to_term_id: 8 }] : [] } });
+          return json({ data: { _term_edges: from7 ? [{ toTermId: 8 }] : [] } });
         }
         if (body.includes("query Terms")) return json({ data: { _terms: [PARTY] } });
         throw new Error(`unexpected request ${url} ${body}`);
@@ -185,7 +185,7 @@ describe("the panel's meta reads", () => {
       ownerRole: "steward",
       customProperties: { tier: "gold" },
     });
-    expect(core?.tables?.map((t) => t.table_name)).toEqual(["customers"]);
+    expect(core?.tables?.map((t) => t.tableName)).toEqual(["customers"]);
     // REQ-2157: the product's checks are its lineage's (the product lineage endpoint), not the panel's
     // meta read.
     expect(core).not.toHaveProperty("checks");

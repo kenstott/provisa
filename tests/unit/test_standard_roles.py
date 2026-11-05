@@ -69,7 +69,7 @@ class TestTheSet:
 
 
 class TestWhatEachHolds:
-    def test_viewer_reads_the_glossary_and_data_products(self):
+    def test_viewer_reads_the_catalog_the_glossary_and_data_products(self):
         assert _rights("viewer") == {"glossary_read", "data_product_read"}
 
     def test_analyst_queries(self):

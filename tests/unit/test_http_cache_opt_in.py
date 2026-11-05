@@ -275,7 +275,7 @@ def _cypher(monkeypatch):
     from tests.unit.test_cypher_kept_plan import _Pipeline, _state
 
     pipe = _Pipeline(monkeypatch, _state())
-    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", MagicMock())
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
     return pipe
 

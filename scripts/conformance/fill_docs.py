@@ -14,16 +14,21 @@ The page's **Suite:** and **Pass rate:** lines and its failing cases come from t
 conformance-<surface> workflow uploads, never typed: download the artifact of a run and point this
 at its JSON. Every case is passed, skipped by design or failed (REQ-2167, amended 2026-10-28), and
 the page gives the three counts and the pass rate, passed over passed plus failed. On pgwire they
-are the whole run's: a pg_catalog function not served is failed, grouped by family.
+are the whole run's: a pg_catalog function PostgreSQL cannot call, or an index function not served,
+is skipped by design. Catalog functions have no such count (REQ-2171, RESULTS ARE BY ENGINE): the
+pgwire page's counts leave them out, and function_support.json, the merge of Conformance
+(functions), fills their per-engine section on the pgwire page and its table on the overview page.
 
     .venv/bin/python3 scripts/conformance/fill_docs.py conformance-cypher.json [more.json ...]
 
 Each artifact names its surface: ``surface`` (the TCK-style runners), or the shape the pgwire job
-writes (``pgspec`` beside the catalog comparison). The failing cases are written between the
-page's ``conformance-results`` markers, added under the pass rate the first time.
+writes (``pgspec`` beside the catalog comparison), or the functions run's (``by_engine``). The
+failing cases are written between the page's ``conformance-results`` markers, added under the pass
+rate the first time; the function results between its ``function-results`` markers, which a page
+must have.
 """
 
-# Requirements: REQ-2167
+# Requirements: REQ-2167, REQ-2171
 
 from __future__ import annotations
 
@@ -33,13 +38,18 @@ import sys
 from pathlib import Path
 
 import by_design
+import function_report
 
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "conformance"
 BEGIN = "<!-- conformance-results:begin -->"
 END = "<!-- conformance-results:end -->"
 
-#: The parts of a pgwire run beside pgspec, each with its own three counts.
-COMPARED = ("catalog_relations", "catalog_functions", "type_conversions")
+FUNCTIONS_BEGIN = "<!-- function-results:begin -->"
+FUNCTIONS_END = "<!-- function-results:end -->"
+
+#: The parts of a pgwire run beside pgspec that have the three counts. Catalog functions do not:
+#: their results are by engine.
+COMPARED = ("catalog_relations", "type_conversions")
 
 
 def _rate(doc: dict) -> str:
@@ -83,12 +93,13 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
         parts = [spec, *(artifact[p] for p in COMPARED if artifact.get(p) is not None)]
         for part in parts[1:]:
             for f in part["failures"]:
-                # REQ-2167 (PG_CATALOG FUNCTIONS ARE GAPS): functions fail by family.
-                group = f"Catalog function: {f['family']}" if "family" in f else f["feature"]
-                groups.setdefault(group, []).append((f["scenario"], f["reason"]))
+                groups.setdefault(f["feature"], []).append((f["scenario"], f["reason"]))
         suite = f"pgspec {spec['version']}, against PostgreSQL {artifact.get('postgres_version')}"
-        sections = [_designed([g for p in parts for g in p["by_design_groups"]]), _cases(groups)]
-        return "pgwire", suite, _rate(artifact), "\n\n".join(sections)
+        functions = artifact.get("catalog_functions") or {"by_design_groups": []}
+        designed = [g for p in [*parts, functions] for g in p["by_design_groups"]]
+        sections = [_designed(designed), _cases(groups)]
+        rate = _rate(artifact["outside_functions"]) + ". Catalog functions are reported by engine"
+        return "pgwire", suite, rate, "\n\n".join(sections)
     groups: dict[str, list[tuple[str, str]]] = {}
     for f in artifact["failures"]:
         groups.setdefault(f["feature"], []).append((f["scenario"], f["reason"]))
@@ -120,9 +131,34 @@ def fill(page: str, suite: str, rate: str, cases: str) -> str:
     return page[: at.end()] + "\n\n" + block + page[at.end() :]
 
 
+def fill_functions(page: str, block: str) -> str:
+    """``page`` with ``block`` between its function-results markers."""
+    if FUNCTIONS_BEGIN not in page or FUNCTIONS_END not in page:
+        raise ValueError("the page has no function-results markers to put the results between")
+    start = page.index(FUNCTIONS_BEGIN)
+    end = page.index(FUNCTIONS_END) + len(FUNCTIONS_END)
+    return page[:start] + f"{FUNCTIONS_BEGIN}\n{block}\n{FUNCTIONS_END}" + page[end:]
+
+
+def fill_function_pages(doc: dict, docs: Path = DOCS) -> list[Path]:
+    """The per-engine sections of a functions run, written to the pages that show them."""
+    pages = {
+        docs / "pgwire.md": function_report.pgwire_block(doc),
+        docs / "overview.md": function_report.overview_block(doc),
+    }
+    for page, block in pages.items():
+        page.write_text(fill_functions(page.read_text(), block))
+    return list(pages)
+
+
 def main(argv: list[str]) -> int:
     for path in argv:
-        surface, suite, rate, cases = read(json.loads(Path(path).read_text()))
+        artifact = json.loads(Path(path).read_text())
+        if "by_engine" in artifact:
+            for page in fill_function_pages(artifact):
+                print(f"{page}: function results by engine")
+            continue
+        surface, suite, rate, cases = read(artifact)
         doc = DOCS / f"{surface}.md"
         doc.write_text(fill(doc.read_text(), suite, rate, cases))
         print(f"{doc}: {suite}, {rate}")

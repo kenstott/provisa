@@ -30,7 +30,8 @@ vi.mock("../GraphCanvas", () => ({
 }));
 import type { FrameData, GNode } from "../graph-model";
 import { parseNTriples, selectPairing, triplesGraph } from "../sparql";
-import type { GraphLanguage } from "../graph-persistence";
+import { settingKey, type GraphLanguage } from "../graph-persistence";
+import { getStored } from "../../../lib/browserStorage";
 
 const ORDER: GNode = { id: 1, label: "sales:orders", tableLabel: "orders", properties: {} };
 
@@ -231,6 +232,71 @@ describe("a SPARQL answer drawn", () => {
     expect(screen.getByTestId("graph-frame-draw-as-graph")).toBeInTheDocument();
   });
 
+  const common = {
+    onClose: () => {},
+    onRerun: () => {},
+    schemaRels: [],
+    colorOverrides: {},
+    sizeOverrides: {},
+    labelProperty: {},
+    sizeByProperty: {},
+    sizeMultiplier: {},
+    relLineOverrides: {},
+    onColorChange: () => {},
+    pkMap: {},
+    labelToTableLabel: {},
+    labelToTableId: {},
+  };
+
+  it("keeps drawing a frame whose query a drop edited", () => {
+    const { rerender } = show(select().query, "sparql", select());
+    fireEvent.click(screen.getByTestId("graph-frame-draw-as-graph"));
+    const next = select({ query: "SELECT ?s ?o WHERE { ?s <http://x/knows> ?o } # x", dropped: true });
+    rerender(<GraphFrame frame={next} language="sparql" {...common} />);
+    expect(screen.queryByTestId("graph-frame-draw-as-graph")).toBeNull();
+  });
+
+  it("hands a dropped pill to the page as what it asks", () => {
+    const onSparqlDrop = vi.fn();
+    render(
+      <GraphFrame frame={select()} language="sparql" {...common} onSparqlDrop={onSparqlDrop} />,
+    );
+    const on = (type: string) => ({
+      dataTransfer: { types: [type], getData: (t: string) => (t === type ? "http://x/it" : "") },
+    });
+    const frameEl = document.querySelector(".gf-frame") as HTMLElement;
+    fireEvent.drop(frameEl, on("text/x-provisa-label"));
+    fireEvent.drop(frameEl, on("text/x-provisa-edge"));
+    fireEvent.drop(frameEl, on("text/x-provisa-property"));
+    fireEvent.drop(frameEl, on("text/x-provisa-domain"));
+    expect(onSparqlDrop.mock.calls.map((c) => c[1])).toEqual([
+      { kind: "class", iri: "http://x/it" },
+      { kind: "edge", iri: "http://x/it" },
+      { kind: "predicate", iri: "http://x/it" },
+      { kind: "domain", prefix: "http://x/it" },
+    ]);
+    expect(onSparqlDrop.mock.calls[0][2]).toBeNull();
+  });
+
+  it("says what a drop said, and that a result reached the LIMIT a drop gave it", () => {
+    render(
+      <GraphFrame
+        frame={select({
+          rows: [{ s: cell("a"), o: cell("b") }],
+          dropLimit: 1,
+          dropNotices: [
+            { key: "graphFrame.sparqlDropNoPath", values: { name: "ps:users", classes: "ps:pets" } },
+          ],
+        })}
+        language="sparql"
+        {...common}
+      />,
+    );
+    const said = screen.getByTestId("graph-frame-drop-notice");
+    expect(said).toHaveTextContent("ps:users has no relationship to ps:pets");
+    expect(said).toHaveTextContent("LIMIT of 1");
+  });
+
   const described = (): FrameData => {
     const triples = parseNTriples(
       ["<http://x/a> <http://x/knows> <http://x/b> .", '<http://x/a> <http://x/name> "Ann" .'].join(
@@ -335,10 +401,8 @@ describe("a SPARQL answer drawn", () => {
       const drawn = canvas.nodes.at(-1);
       pick(BARE);
       expect(describe_).not.toHaveBeenCalled();
-      expect(screen.getByText("ex:species")).toBeInTheDocument();
-      expect(screen.getByText("cat")).toBeInTheDocument();
-      expect(screen.getByText("iri")).toBeInTheDocument();
-      expect(screen.getByText("name")).toBeInTheDocument();
+      const panel = document.querySelector(".gf-inspector")?.textContent;
+      for (const shown of ["ex:species", "cat", "iri", "name"]) expect(panel).toContain(shown);
       // A neighbour is expansion's, not selection's.
       expect(screen.queryByText("owner")).toBeNull();
       expect(canvas.nodes.at(-1)).toBe(drawn);
@@ -404,5 +468,30 @@ describe("a SPARQL answer drawn", () => {
     });
     expect(screen.queryByTestId("graph-frame-draw-as-graph")).toBeNull();
     expect(screen.queryByTestId("graph-frame-literals-as-nodes")).toBeNull();
+  });
+});
+
+describe("wrapping a table's cells", () => {
+  const rows = (): FrameData => ({
+    ...frame("q"),
+    nodes: new Map(),
+    rows: [{ a: 1 }],
+    columns: ["a"],
+  });
+  const button = () => screen.getByTestId("graph-frame-table-wrap-btn");
+
+  it("is remembered per language", () => {
+    const first = show("q", "sparql", rows());
+    expect(button()).not.toHaveAttribute("aria-current");
+    fireEvent.click(button());
+    expect(button()).toHaveAttribute("aria-current", "true");
+    expect(getStored(settingKey("sparql", "tableWrap"))).toBe("true");
+    expect(getStored(settingKey("cypher", "tableWrap"))).toBeNull();
+    first.unmount();
+    const again = show("q", "sparql", rows());
+    expect(button()).toHaveAttribute("aria-current", "true");
+    again.unmount();
+    show("q", "cypher", rows());
+    expect(button()).not.toHaveAttribute("aria-current");
   });
 });

@@ -158,8 +158,16 @@ export async function fetchRelatedGlossaryTerms(
   return res.json();
 }
 
+/** The term asked for does not exist (or not for this viewer): a remembered one is dropped. */
+export class GlossaryTermGone extends Error {
+  constructor(termId: number) {
+    super(`Glossary term ${termId} not found`);
+  }
+}
+
 export async function fetchGlossaryTerm(termId: number): Promise<GlossaryTermDetail> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}`);
+  if (res.status === 404) throw new GlossaryTermGone(termId);
   if (!res.ok) throw new Error(requestFailed("fetchGlossaryTerm", res.status));
   return res.json();
 }
@@ -412,6 +420,21 @@ export async function removeGlossaryEdge(
     method: "DELETE",
   });
   if (!res.ok) throw await mutationError(res, "removeGlossaryEdge");
+}
+
+// REQ-1592: the people a term can be attributed to, the author/expert picker's roster. The
+// glossary's own, under glossary_rw: the team page's /admin/orgs/{id}/members is user management,
+// which a curator need not hold.
+export interface AttributablePerson {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+}
+
+export async function listAttributablePeople(): Promise<AttributablePerson[]> {
+  const res = await fetch(`${API_BASE}/admin/glossary/people`);
+  if (!res.ok) throw new Error(requestFailed("listAttributablePeople", res.status));
+  return res.json();
 }
 
 export async function addGlossaryExpert(

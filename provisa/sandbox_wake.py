@@ -13,7 +13,9 @@
 Where the sandbox tier runs on a VM of its own, that VM powers itself off when no demo sandbox
 has been used for a while, and the UI server starts it again when a request for the tier finds
 it down: the VM's Compute Engine instance is started through the API with this node's own
-service account (the metadata server's token). The visitor is answered "starting" meanwhile."""
+service account (the metadata server's token). The visitor is answered "starting" meanwhile. A tier
+still refusing connections past what a cold start takes is not starting, and is said to have failed
+(:func:`refused`)."""
 
 from __future__ import annotations
 
@@ -43,11 +45,21 @@ _DEBOUNCE_S = 30.0
 _STOPPING_POLL_S = 5.0
 _STOPPING_LIMIT_S = 300.0
 
+#: How long a tier may refuse connections, from when its VM was last found down, before it is said
+#: to have failed: over the cold start the front door states (front-door/proxy.py: about five
+#: minutes; measured 2026-10-31, the VM about two of them), so a slow start is not called a failure.
+FAILED_AFTER_S = 600.0
+#: A refusal this long after the tier's last one is a new outage: no request reached it meanwhile
+#: to say it had come back.
+REFUSAL_GAP_S = 900.0
+
 _log = logging.getLogger(__name__)
 _claim = threading.Lock()
 _last_call = float("-inf")
 #: The one task following a stopping VM to its start; held so the loop does not drop it.
 _followers: set[asyncio.Task] = set()
+#: Each tier refusing connections: when that was first counted from, and when it last did.
+_refused: dict[str, tuple[float, float]] = {}
 
 
 async def wake(instance: str) -> str:
@@ -87,6 +99,24 @@ async def stop(instance: str) -> None:
             client.post(f"{_COMPUTE}{instance}/stop", headers={"Authorization": f"Bearer {token}"}),
             f"stop {instance}",
         )
+
+
+def refused(base: str, found: str) -> float:
+    """The tier at ``base`` refused a connection, its VM found ``found``: how many seconds it has
+    been refusing since the VM was last found down, or since it last answered."""
+    now = time.monotonic()
+    with _claim:
+        first, last = _refused.get(base, (now, now))
+        if found != "RUNNING" or now - last > REFUSAL_GAP_S:
+            first = now
+        _refused[base] = (first, now)
+    return now - first
+
+
+def answered(base: str) -> None:
+    """The tier at ``base`` answered: it is up, whatever it refused before."""
+    with _claim:
+        _refused.pop(base, None)
 
 
 def _follow_stop(instance: str) -> None:

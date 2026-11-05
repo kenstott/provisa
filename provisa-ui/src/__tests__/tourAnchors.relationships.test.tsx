@@ -13,6 +13,8 @@
 // (tourPrerequisites.json), so both are offered.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
+import { useNavigate } from "react-router-dom";
 import { render } from "../test-utils/render";
 import { walkTourStep } from "../test-utils/tourAnchor";
 import { RelationshipsPage } from "../pages/RelationshipsPage";
@@ -126,5 +128,36 @@ describe("a demo tour's relationship step", () => {
     await vi.waitFor(() =>
       expect(document.querySelector('[data-tour-relationship="SCORED_AS"]')).not.toBeNull(),
     );
+  });
+
+  it("finds the next step's row when the link on the open page names another alias", async () => {
+    const one = { ...rel("a", "storage", "x_id", "compute"), alias: "ATTACHED_TO" };
+    const other = { ...rel("b", "incident", "x_id", "policy"), alias: "CITES" };
+    RELS = { relationships: [one, other], loading: false, refetch: vi.fn() };
+    function MoveOn() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate("/relationships?search=CITES")}>
+          move on
+        </button>
+      );
+    }
+    render(
+      <>
+        <MoveOn />
+        <RelationshipsPage />
+      </>,
+      { initialEntries: ["/relationships?search=ATTACHED_TO"] },
+    );
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-tour-relationship="ATTACHED_TO"]')).not.toBeNull(),
+    );
+    expect(document.querySelector('[data-tour-relationship="CITES"]')).toBeNull();
+
+    fireEvent.click(screen.getByText("move on"));
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-tour-relationship="CITES"]')).not.toBeNull(),
+    );
+    expect(document.querySelector('[data-tour-relationship="ATTACHED_TO"]')).toBeNull();
   });
 });

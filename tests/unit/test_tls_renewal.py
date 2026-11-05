@@ -20,6 +20,7 @@ gcloud and lego stood in for and openssl real."""
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -240,3 +241,41 @@ def test_each_vms_install_steps_are_a_valid_script(tmp_path):
         script.write_text(filled)
         checked = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
         assert checked.returncode == 0, (name, checked.stderr)
+
+
+def _hcl_string(block: str, key: str) -> str:
+    found = re.search(rf'^\s*{key}\s*=\s*"(.*)"$', block, re.M)
+    assert found is not None, key
+    return found.group(1).replace('\\"', '"')
+
+
+@pytest.mark.parametrize("local", ["node_tls_sync", "front_door_tls_sync"])
+def test_the_settings_each_vm_is_given_can_be_read_back_by_the_sync(tmp_path, local):
+    """REQ-2006: the node's restart command held single quotes inside the single quotes the
+    settings file wrote it in, so reading it was a syntax error. The startup script stops there
+    (set -e), before its last line records it ran to its end, so both VMs repeated the whole of it
+    -- the package installs, three downloads, minutes -- at every wake, and the hourly sync never
+    installed a renewed certificate."""
+    source = (_TF / "main.tf").read_text()
+    block = source[source.index(f"{local} = templatefile(") :]
+    block = block[: block.index("\n  })")]
+    template = (_TF / "tls" / "install-sync.sh.tftpl").read_text()
+    written = template.split("<<'TLSENV'\n", 1)[1].split("TLSENV\n", 1)[0]
+    for key, value in {
+        "project": "p",
+        "cert_secret": "c",
+        "key_secret": "k",
+        "targets": _hcl_string(block, "targets"),
+        "restart": _hcl_string(block, "restart"),
+    }.items():
+        written = written.replace("${" + key + "}", value)
+    env = tmp_path / "sync.env"
+    env.write_text(written)
+    read = subprocess.run(
+        ["bash", "-c", f'set -e; . {env}; printf %s "$RESTART"'],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert read.returncode == 0, read.stderr
+    assert read.stdout == _hcl_string(block, "restart")

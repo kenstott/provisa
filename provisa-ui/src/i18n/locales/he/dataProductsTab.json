@@ -187,6 +187,10 @@
       "slaRemove": "הסרת רמת שירות",
       "slaAdd": "הוספת רמת שירות",
       "notDeclared": "לא הוצהר",
+      "notDeclaredList": "לא הוצהר: {{names}}",
+      "versionSaved": "נשמר",
+      "versionChanges": "שינויים",
+      "constraints": "אילוצים",
       "breakingWarning": "שינוי שובר תאימות ב-v{{version}}, עדיין לא בתוקף",
       "breaking": "שובר תאימות",
       "savedBy": "נשמר {{when}} על ידי {{who}}",
@@ -217,7 +221,7 @@
         "quality": "איכות",
         "sla": "SLA",
         "support": "תמיכה וצוות",
-        "servers": "שרתים",
+        "howToUse": "אופן השימוש",
         "pricing": "תמחור",
         "custom": "מאפיינים מותאמים ותגיות"
       },
@@ -252,7 +256,49 @@
         "sla": "SLA ועדכניות",
         "quality": "הבטחות",
         "consumers": "צרכנים",
-        "versions": "גרסאות ושינויים"
+        "versions": "גרסאות ושינויים",
+        "roles": "תפקידים",
+        "history": "היסטוריית גרסאות"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "ממשק",
+          "address": "כתובת",
+          "how": "אופן השימוש",
+          "link": "דוגמה"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "כל לקוח PostgreSQL, כגון psql או DBeaver. מסד נתונים {{database}}, סכמה {{schema}}.",
+          "flight-sql": "כל לקוח Arrow Flight SQL, כגון מנהל ההתקן ADBC. מסד נתונים {{database}}, סכמה {{schema}}.",
+          "grpc": "כל לקוח gRPC, בשירות {{service}}, עם המטא-נתונים authorization: Bearer <token>.",
+          "graphql": "כל לקוח GraphQL: שליחת שאילתה על טבלה זו ב-POST, עם הכותרת Authorization: Bearer <token>.",
+          "rest": "כל לקוח HTTP: GET לכתובת זו, עם הכותרת Authorization: Bearer <token>.",
+          "openapi": "התיאור של טבלה זו בלבד: אפשר לטעון אותו ב-Swagger UI, ב-Postman או במחולל לקוחות.",
+          "jsonapi": "כל לקוח JSON:API: GET לכתובת זו, עם הכותרת Authorization: Bearer <token>.",
+          "sparql": "כל לקוח SPARQL 1.1: שליחת שאילתה על המחלקה של טבלה זו ב-POST, עם הכותרת Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "פועל רק לאחר מתן הגישה, על ידי {{approvers}}.",
+          "noApprover": "פועל רק לאחר מתן הגישה, על ידי בעל {{roles}}. החוזה הזה אינו מציין מאשר.",
+          "undeclared": "פועל רק לאחר מתן הגישה. החוזה הזה אינו מציין תפקיד או מאשר."
+        },
+        "ask": {
+          "approvers": "בקשו גישה מ-{{approvers}}",
+          "roles": "בקשו גישה מבעל {{roles}}",
+          "nobody": "החוזה הזה אינו מציין למי לפנות"
+        },
+        "open": "פתיחת הדוגמה",
+        "openAria": "פתיחת הדוגמה של {{surface}} עבור {{table}}"
       }
     }
   }

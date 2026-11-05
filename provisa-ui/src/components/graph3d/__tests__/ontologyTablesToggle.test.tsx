@@ -48,28 +48,28 @@ import { glossaryGraph, type TermRow } from "../glossaryGraphData";
 import { setStored } from "../../../lib/browserStorage";
 
 const ref = (table: number, column: string) => ({
-  column_key: `${table}:${column}`,
-  column_name: column,
-  table_id: table,
-  table_name: `t${table}`,
-  domain_id: "sales",
-  table: { id: table, product: null },
+  columnKey: `${table}:${column}`,
+  columnName: column,
+  tableId: table,
+  tableName: `t${table}`,
+  domainId: "sales",
+  registeredTable: { id: table, product: null },
 });
 const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow => ({
   id,
   name,
   definition: null,
-  ref_count: 0,
+  refCount: 0,
   deprecated: false,
   retired: false,
   status: "approved",
   grounding: "grounded",
-  domains: [{ domain_id: "sales" }],
+  domains: [{ domainId: "sales" }],
   refs,
 });
 const data: GraphData = glossaryGraph(
   [term(1, "Customer", [ref(10, "email")]), term(2, "Order", [ref(11, "id")])],
-  [{ id: 1, from_term_id: 2, to_term_id: 1, rel_type: "PART_OF" }],
+  [{ id: 1, fromTermId: 2, toTermId: 1, relType: "PART_OF" }],
 );
 
 const tablesDrawn = () =>

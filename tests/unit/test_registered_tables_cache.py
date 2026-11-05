@@ -78,7 +78,7 @@ async def test_second_call_same_generation_is_a_cache_hit_and_skips_fetch(monkey
     state = _state()
     calls = {"n": 0}
 
-    async def _fetch_tables(conn):
+    async def _fetch_tables(conn, **_kw):
         calls["n"] += 1
         return [_ROW]
 
@@ -96,7 +96,7 @@ async def test_schema_version_bump_invalidates(monkeypatch):
     state = _state(schema_version=1)
     calls = {"n": 0}
 
-    async def _fetch_tables(conn):
+    async def _fetch_tables(conn, **_kw):
         calls["n"] += 1
         return [_ROW]
 
@@ -114,7 +114,7 @@ async def test_explicit_conn_bypasses_cache(monkeypatch):
     state = _state()
     calls = {"n": 0}
 
-    async def _fetch_tables(conn):
+    async def _fetch_tables(conn, **_kw):
         calls["n"] += 1
         return [_ROW]
 
@@ -135,7 +135,7 @@ async def test_two_state_instances_never_share_a_cache(monkeypatch):
     state_a = _state()
     state_b = _state()
 
-    async def _fetch_tables(conn):
+    async def _fetch_tables(conn, **_kw):
         return [_ROW]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)

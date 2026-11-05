@@ -43,8 +43,8 @@ def _role(rid, parent=None, caps=(), domains=(), rate_limit=None, parents=None):
 
 ROLES = [
     _role("reader", caps=["query_development"], domains=["sales"], rate_limit={"rps": 5}),
-    _role("analyst", parent="reader", caps=["full_results"], domains=["ops"]),
-    _role("junior", parent="analyst"),
+    _role("analyst", parent="reader", caps=["full_results"], domains=["support"]),
+    _role("junior", parent="analyst", caps=["query_development"]),
     _role("auditor"),
 ]
 CHAINS = role_chains(ROLES)
@@ -89,19 +89,19 @@ class TestChain:
 
 
 class TestFlattenDicts:
-    def test_capabilities_union_up_the_chain(self):
+    def test_a_role_holds_what_it_is_given_of_what_its_parents_hold(self):  # REQ-2155
         by_id = {r["id"]: r for r in flatten_role_dicts(ROLES)}
-        assert by_id["junior"]["capabilities"] == ["full_results", "query_development"]
+        assert by_id["junior"]["capabilities"] == ["query_development"]
 
-    def test_reach_is_the_roles_own_and_never_inherited(self):  # REQ-2155
+    def test_a_standard_role_states_its_own_reach(self):  # REQ-2155
         by_id = {r["id"]: r for r in flatten_role_dicts(ROLES)}
-        assert by_id["analyst"]["domain_access"] == ["ops"]
+        assert by_id["analyst"]["domain_access"] == ["support"]
         assert by_id["junior"]["domain_access"] == []
 
     def test_a_domain_child_of_an_every_domain_parent_reaches_its_domain_only(self):  # REQ-2155
         roles = [
             _role("steward", caps=["glossary_rw"], domains=["*"]),
-            _role("finance_steward", parent="steward", domains=["finance"]),
+            _role("finance_steward", parent="steward", caps=["glossary_rw"], domains=["finance"]),
         ]
         child = flatten_role_dicts(roles)[1]
         assert child["domain_access"] == ["finance"]
@@ -126,7 +126,7 @@ class TestFlattenDicts:
 
     def test_input_unmodified(self):
         flatten_role_dicts(ROLES)
-        assert ROLES[2]["capabilities"] == []
+        assert ROLES[2]["capabilities"] == ["query_development"]
 
     def test_model_flatten_refuses_cycle(self):
         with pytest.raises(ValueError, match="cycle"):
@@ -207,7 +207,7 @@ class TestGrants:
 
 ORDERS = {"id": 10, "domain_id": "sales"}
 CUSTOMERS = {"id": 11, "domain_id": "sales"}
-TICKETS = {"id": 12, "domain_id": "ops"}
+TICKETS = {"id": 12, "domain_id": "support"}
 TABLES = [ORDERS, CUSTOMERS, TICKETS]
 
 
@@ -230,27 +230,27 @@ class TestMaterializeRls:
         assert junior.rules == {10: "region = 'east'"}
         assert junior.domain_rules == {}
 
-    def test_child_table_rule_replaces_parent(self):
+    def test_child_table_rule_narrows_parent(self):
         rules = [
             _rule("reader", "region = 'east'", table_id=10),
             _rule("junior", "region = 'west'", table_id=10),
         ]
         junior = build_rls_context(materialize_rls(rules, TABLES, PARENTS), "junior")
-        assert junior.rules == {10: "region = 'west'"}
+        assert junior.rules == {10: "(region = 'west') AND (region = 'east')"}
 
-    def test_nearer_domain_rule_beats_farther_table_rule(self):
+    def test_a_nearer_domain_rule_and_a_farther_table_rule_are_both_applied(self):
         rules = [
             _rule("reader", "region = 'east'", table_id=10),
             _rule("analyst", "tenant = 't1'", domain_id="sales"),
         ]
         junior = build_rls_context(materialize_rls(rules, TABLES, PARENTS), "junior")
-        assert junior.rules == {10: "tenant = 't1'", 11: "tenant = 't1'"}
+        assert junior.rules == {
+            10: "(tenant = 't1') AND (region = 'east')",
+            11: "tenant = 't1'",
+        }
 
-    def test_own_domain_rule_stands_and_is_not_duplicated(self):
-        rules = [
-            _rule("reader", "region = 'east'", table_id=10),
-            _rule("junior", "tenant = 't1'", domain_id="sales"),
-        ]
+    def test_own_domain_rule_stands_where_no_parent_narrows_it(self):
+        rules = [_rule("junior", "tenant = 't1'", domain_id="sales")]
         out = materialize_rls(rules, TABLES, PARENTS)
         junior = build_rls_context(out, "junior")
         assert junior.rules == {}
@@ -276,11 +276,11 @@ class TestMaterializeRls:
 
 
 # REQ-2155: several parents. The ancestors are walked depth-first in declared parent order, a role
-# met twice kept at its first place; rights are unions over them.
-VIEWER = _role("viewer", caps=["glossary_read"])
+# met twice kept at its first place; rights narrow to the union of what they hold.
+VIEWER = _role("viewer", caps=["glossary_read", "glossary_rw", "data_product_rw"])
 STEWARD = _role("steward", parents=["viewer"], caps=["glossary_rw"], domains=["sales"])
 OWNER = _role("owner", parents=["viewer"], caps=["data_product_rw"], rate_limit={"rps": 9})
-LEAD = _role("lead", parents=["steward", "owner"])
+LEAD = _role("lead", parents=["steward", "owner"], caps=["glossary_rw", "data_product_rw"])
 MULTI = [VIEWER, STEWARD, OWNER, LEAD]
 MULTI_CHAINS = role_chains(MULTI)
 MULTI_PARENTS = parent_map(MULTI)
@@ -290,10 +290,10 @@ class TestSeveralParents:
     def test_depth_first_in_declared_order_each_ancestor_once(self):
         assert MULTI_CHAINS["lead"] == ["lead", "steward", "viewer", "owner"]
 
-    def test_capabilities_are_the_union_of_every_ancestor(self):
+    def test_what_it_is_given_comes_from_the_union_of_its_parents(self):
         lead = {r["id"]: r for r in flatten_role_dicts(MULTI)}["lead"]
-        assert lead["capabilities"] == ["data_product_rw", "glossary_read", "glossary_rw"]
-        assert lead["domain_access"] == []  # reach is its own (REQ-2155)
+        assert lead["capabilities"] == ["data_product_rw", "glossary_rw"]
+        assert lead["domain_access"] == []
 
     def test_a_property_comes_from_the_first_ancestor_that_sets_one(self):
         lead = {r["id"]: r for r in flatten_role_dicts(MULTI)}["lead"]
@@ -309,13 +309,13 @@ class TestSeveralParents:
 
 
 class TestSeveralParentsRowRules:
-    """A role's own rule for a table stands; otherwise the rules its parents resolve are ORed, and a
-    parent that resolves none contributes nothing: adding a parent never lifts a row rule."""
+    """A role's rows are its own rule AND the rules its parents resolve ORed; a parent with no rule
+    stands for every row (REQ-1677)."""
 
-    def test_a_child_of_viewer_and_a_restricted_parent_stays_restricted(self):
+    def test_a_parent_with_no_rule_stands_for_every_row(self):
         rules = [_rule("steward", "region = 'east'", table_id=10)]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
-        assert lead.rules == {10: "region = 'east'"}
+        assert lead.rules == {}
 
     def test_two_parents_rules_are_ored(self):
         rules = [
@@ -323,20 +323,21 @@ class TestSeveralParentsRowRules:
             _rule("owner", "owner_id = 7", domain_id="sales"),
         ]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
-        assert lead.rules == {10: "(region = 'east') OR (owner_id = 7)", 11: "owner_id = 7"}
+        assert lead.rules == {10: "(region = 'east') OR (owner_id = 7)"}
 
     def test_one_rule_reached_through_both_parents_is_not_repeated(self):
         rules = [_rule("viewer", "region = 'east'", table_id=10)]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
         assert lead.rules == {10: "region = 'east'"}
 
-    def test_the_childs_own_rule_stands(self):
+    def test_the_childs_own_rule_narrows_its_parents(self):
         rules = [
             _rule("steward", "region = 'east'", table_id=10),
-            _rule("lead", "region = 'west'", table_id=10),
+            _rule("owner", "region = 'north'", table_id=10),
+            _rule("lead", "tier = 1", table_id=10),
         ]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
-        assert lead.rules == {10: "region = 'west'"}
+        assert lead.rules == {10: "(tier = 1) AND ((region = 'east') OR (region = 'north'))"}
 
     def test_no_rule_anywhere_leaves_the_role_unrestricted(self):
         lead = build_rls_context(materialize_rls([], TABLES, MULTI_PARENTS), "lead")

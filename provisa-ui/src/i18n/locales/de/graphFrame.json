@@ -41,6 +41,22 @@
     "expandedDialogLabel": "Erweiterte Graphansicht",
     "firstNodesShown": "Die ersten {{count}} Knoten werden angezeigt; es gibt weitere. Erhöhen Sie das Limit im Seitenmenü.",
     "deleteFrame": "Dieses Ergebnis löschen",
-    "sparqlNothingMore": "Über {{resource}} ist nichts weiter bekannt."
+    "sparqlNothingMore": "Über {{resource}} ist nichts weiter bekannt.",
+    "sparqlDropForm": "Eine Pill lässt sich nicht auf ein {{form}}-Ergebnis ziehen: nur SELECT und CONSTRUCT sind möglich. Nichts wurde hinzugefügt.",
+    "sparqlDropUnion": "Eine Pill lässt sich nicht auf eine UNION-Abfrage ziehen: Es ist nicht klar, welche Seite verbunden werden soll. Nichts wurde hinzugefügt.",
+    "sparqlDropGroupBy": "Eine Pill lässt sich nicht auf eine GROUP-BY-Abfrage ziehen: Ihre Zeilen sind Gruppen, keine Ressourcen. Nichts wurde hinzugefügt.",
+    "sparqlDropAggregate": "Eine Pill lässt sich nicht auf eine Aggregatabfrage ziehen: Ihre Zeilen sind Summen, keine Ressourcen. Nichts wurde hinzugefügt.",
+    "sparqlDropSubquery": "Eine Pill lässt sich nicht auf eine Abfrage mit Sub-SELECT ziehen. Nichts wurde hinzugefügt.",
+    "sparqlDropNoClass": "Dieses Ergebnis nennt keine Klasse zum Verbinden: Geben Sie einer Variablen eine Klasse und ziehen Sie erneut. Nichts wurde hinzugefügt.",
+    "sparqlDropNode": "Dieser Knoten ist keine Variable dieser Abfrage, es gibt also nichts zum Verbinden. Nichts wurde hinzugefügt.",
+    "sparqlDropNoPath": "{{name}} hat keine Beziehung zu {{classes}}. Nichts wurde hinzugefügt.",
+    "sparqlDropTooFar": "{{name}} ist {{hops}} Beziehungen von {{classes}} entfernt, mehr als die {{most}}, die ein Ablegen durchläuft: kein kurzer Pfad. Nichts wurde hinzugefügt.",
+    "sparqlDropNoEnd": "Keines der Enden von {{name}} ist in diesem Ergebnis. Nichts wurde hinzugefügt.",
+    "sparqlDropParameterized": "Ein Pfad kann nicht über {{name}} führen: Zum Lesen braucht es Argumente. Nichts wurde hinzugefügt.",
+    "sparqlDropEdgeParameterized": "{{name}} führt zu einer Tabelle, die zum Lesen Argumente braucht, und über eine solche kann kein Pfad führen. Nichts wurde hinzugefügt.",
+    "sparqlDropNoProperty": "Keine Klasse in diesem Ergebnis hat {{name}}. Nichts wurde hinzugefügt.",
+    "sparqlDropLeftOut": "{{shown}} von {{total}} gleich kurzen Pfaden hinzugefügt; die übrigen wurden ausgelassen.",
+    "sparqlDropCut": "Das Ergebnis hat sein LIMIT von {{limit}} erreicht: Weitere Zeilen werden ausgelassen.",
+    "cypherPathNoKey": "Die Pfade zwischen {{from}} und {{to}} brauchen den Schlüssel jedes Knotens, und einer von ihnen hat keinen."
   }
 }

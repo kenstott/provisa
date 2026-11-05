@@ -819,11 +819,9 @@ class _Writer:
         )
 
     def union(self, a: _R, b: _R) -> _R:
-        apart = _and(
-            _not(_or(a.null, b.null)),
-            _both(a, b),
-            _not(_or(_overlaps(a, b), _adjacent(a, b))),
-        )
+        if _is_true(a.null) or _is_true(b.null):
+            return self.null_range(a.rtype)  # DuckDB would raise the constant refusal as it plans
+        apart = _and(_both(a, b), _not(_or(_overlaps(a, b), _adjacent(a, b))))
         merged = self.merge(a, b)
         merged.null = self.refusal(
             apart, "22000", "result of range union would not be contiguous", merged.null
@@ -1451,10 +1449,6 @@ class _Rewrite:
 
     def _beside(self, node: exp.Expr, partner: _Value | None) -> _Value | None:
         assert partner is not None
-        if _null_value(node):  # an untyped NULL is of its partner's type
-            if isinstance(partner, _M):
-                return _M(partner.rtype, exp.true(), _null())
-            return self.writer.null_range(partner.rtype)
         written = _string_literal(node)
         if written is None:
             return None
@@ -1508,14 +1502,10 @@ class _Rewrite:
             raise PostgresError(
                 "42883", f"function {rtype.multirange}({rtype.name}[]) does not exist"
             )
-        given = _variadic_array(args[0]) if len(args) == 1 else None
-        if given is not None:
-            if _null_value(given):
-                return _M(rtype, exp.true(), _null())
-            inner = _unwrapped(given.this) if isinstance(given, exp.Cast) else given
-            if not isinstance(inner, exp.Array):
-                return self._of_array(rtype, self.rewritten(given))
-            args = list(inner.expressions)
+        if len(args) == 1 and _variadic_null(args[0]):
+            return _M(rtype, exp.true(), _null())  # VARIADIC NULL: strict, of no array at all
+        if len(args) == 1 and isinstance(_variadic_array(args[0]), exp.Array):
+            args = _variadic_items(args[0])
         parts = [self._as(a, rtype) for a in args]
         if not parts:
             return self.writer.literal_multirange(Multirange(rtype))
@@ -1534,19 +1524,6 @@ class _Rewrite:
             exp.false(),
         )
         return _M(rtype, null, self.writer.canonical(_concat(*pieces), rtype, rtype.multirange))
-
-    def _of_array(self, rtype: RangeType, array: exp.Expr) -> _M:
-        """A multirange of an array of ranges only the row knows: strict, and a NULL member is
-        refused."""
-        member_null = exp.NEQ(this=_call("len", array), expression=_call("list_count", array))
-        null = self.writer.refusal(
-            _and(_not(_is_null(array)), member_null),
-            "22004",
-            "multirange values cannot contain null members",
-            _is_null(array),
-        )
-        text = exp.ArrayToString(this=array.copy(), expression=_string(","))
-        return _M(rtype, null, self.writer.canonical(text, rtype, rtype.multirange))
 
     # -- predicates ---------------------------------------------------------------------------
 
@@ -1868,7 +1845,9 @@ class _Rewrite:
             a, b = self._pair(args[0], args[1])
             if isinstance(a, _R) and isinstance(b, _R):
                 return _case([(_or(a.null, b.null), _null())], _sign(a, b))
-            return None if a is None or b is None else self._multirange_cmp(a, b)
+            if isinstance(a, _M) and isinstance(b, _M):
+                return self._multirange_cmp(a, b)
+            return None
         if operator in _BOOLEAN_FUNCTIONS and len(args) == 2:  # noqa: PLR2004
             verb = _BOOLEAN_FUNCTIONS[operator]
             a = self.value(args[0])
@@ -1886,23 +1865,14 @@ class _Rewrite:
             return self._boolean_value(self._boolean(verb, name, a, b), node)
         return None
 
-    def _multirange_cmp(self, a: _Value, b: _Value) -> exp.Expr:
-        left, right = self._both_multirange(a), self._both_multirange(b)
-        null = _or(left.null, right.null)
-        if left.literal is not None and right.literal is not None:
-            return _int(pg_range.mr_cmp(left.literal, right.literal))
-        if _is_true(null):
-            return exp.Cast(this=_null(), to=exp.DataType.build("INT"))
-        first = self.writer.multirange_sort_key(left, "multirange_cmp")
-        second = self.writer.multirange_sort_key(right, "multirange_cmp")
-        return _case(
-            [
-                (null, _null()),
-                (exp.LT(this=first, expression=second), _int(-1)),
-                (exp.GT(this=first.copy(), expression=second.copy()), _int(1)),
-            ],
-            _int(0),
-        )
+    def _multirange_cmp(self, a: _M, b: _M) -> exp.Expr:
+        """multirange_cmp where the statement holds both values or a NULL: SQL here compares a
+        multirange's ranges in turn nowhere, so any other is refused by name."""
+        if _is_true(a.null) or _is_true(b.null):
+            return exp.cast(_null(), "INT")
+        if a.literal is None or b.literal is None:
+            raise SubtypeOperationRefused(a.rtype.multirange, "multirange_cmp", self.dialect)
+        return _int(pg_range.mr_cmp(a.literal, b.literal))
 
     def _aggregate(self, name: str, argument: exp.Expr) -> exp.Expr:
         value = self.value(argument)
@@ -1931,6 +1901,8 @@ class _Rewrite:
             items = exp.Array(
                 expressions=[_string(pg_range.range_text(r)) for r in value.literal.ranges]
             )
+            if not value.literal.ranges:  # an empty list says no type of its own
+                items = exp.cast(items, exp.DataType.build("TEXT[]", dialect="postgres"))
         elif self.dialect in _REGEX_LIST:
             items = self.writer._ranges_list(value.text)
         else:
@@ -1996,9 +1968,21 @@ def _is_array(node: exp.Expr) -> bool:
 
 
 def _variadic_array(node: exp.Expr) -> exp.Expr | None:
-    """The array a VARIADIC argument passes; None for any other argument."""
     inner = _unwrapped(node)
-    return _unwrapped(inner.this) if isinstance(inner, exp.Variadic) else None
+    if not isinstance(inner, exp.Variadic):
+        return None
+    array = _unwrapped(inner.this)
+    return array.this if isinstance(array, exp.Cast) and _is_array(array.this) else array
+
+
+def _variadic_items(node: exp.Expr) -> list[exp.Expr]:
+    array = _variadic_array(node)
+    return list(array.expressions) if isinstance(array, exp.Array) else []
+
+
+def _variadic_null(node: exp.Expr) -> bool:
+    array = _variadic_array(node)
+    return array is not None and _null_value(array)
 
 
 def _is_boolean(node: exp.Expr) -> bool:

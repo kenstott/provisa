@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "テストエンドポイントは無効です（非本番環境で有効にするには PROVISA_ENABLE_TEST_ENDPOINTS を設定してください）。",
       "unknown_action_type": "不明な actionType「{{action_type}}」です",
       "unknown_role": "不明なロール「{{role}}」です",
+      "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
       "webhook_not_found": "Webhook「{{name}}」が見つかりません",
       "written_table_not_registered": "'{{table}}' はソース '{{source_id}}' の登録済みテーブルではありません",
       "function_exists": "関数「{{name}}」はすでに存在します",
@@ -129,12 +130,14 @@
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
+      "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_parameter_type": "GraphQL リクエストの {{parameter}} は {{expected}} でなければなりません。",
-      "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。"
+      "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。",
+      "listed_only": "ロール {{role}} は {{table}} を一覧表示することしかできません: メタデータは読み取れますが、データは読み取れません"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -155,7 +158,7 @@
       "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
     },
     "front_door": {
-      "coordinator_waking": "環境を起動しています。約 2 分で準備が整います。",
+      "coordinator_waking": "環境を起動しています。約 5 分で準備が整います。",
       "coordinator_updating": "環境を更新しています。まもなく利用できるようになります。"
     },
     "functions": {
@@ -268,6 +271,10 @@
       "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
       "classification_pii_refused": "列を PII としてマークできませんでした"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
+      "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
+    },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
@@ -287,7 +294,8 @@
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
-      "description_missing": "ロール '{{role}}' には目的の説明が必要です"
+      "description_missing": "ロール '{{role}}' には目的の説明が必要です",
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",
@@ -397,6 +405,7 @@
       "source_region_set": "ソース {{source}} のリージョンを {{region}} に設定しました",
       "region_refused": "リージョンは設定されませんでした: {{reason}}",
       "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。",
+      "remote_throttled": "テーブル「{{table}}」は登録されませんでした: ソースのレート制限により確認できませんでした ({{reason}})。後でもう一度お試しください。",
       "table_updated": "テーブル「{{table}}」を更新しました（id={{id}}）",
       "task_deleted": "タスク「{{task}}」を削除しました",
       "task_disabled": "タスク「{{task}}」を無効にしました",
@@ -414,6 +423,7 @@
       "view_spans_sources": "ビューが複数のソースにまたがっています：{{sources}}",
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
+      "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
       "table_draft_set": "テーブル {{table}} を下書きにしました",
@@ -468,7 +478,11 @@
       "relationship_same_entity_cardinality": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{cardinality}} であり、同一エンティティは 1 行対 1 行です",
       "relationship_same_entity_not_grounded": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{source}} と {{target}} は同じ用語に紐づいていません",
       "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません",
-      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。"
+      "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。",
+      "jdbc_invalid": "ソース {{source}}: {{error}}",
+      "jdbc_file_refused": "ソース {{source}}: URL が {{path}} を指定していますが、このサーバーは組織のためにこれを開けません。",
+      "jdbc_options_refused": "ソース {{source}}: この組織の URL ではドライバーオプション {{options}} を指定できません。",
+      "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
@@ -616,7 +630,10 @@
       "popup_blocked": "ブラウザがログイン ウィンドウをブロックしました。このサイトのポップアップを許可して、もう一度お試しください。",
       "window_closed": "ログイン ウィンドウが完了前に閉じられました。",
       "tenant_invalid": "組織の Microsoft 365 設定にディレクトリ (テナント) が指定されていません。管理者がディレクトリの ID またはドメインを入力します。",
-      "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。"
+      "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。",
+      "client_missing": "アプリのクライアント ID とクライアントシークレットを入力してから、サインインしてください。",
+      "client_not_taken": "この種類のソースは、フォームで入力したクライアントではなく、組織のクライアントでサインインします。",
+      "no_account_returned": "サインインは承認されましたが、応答にどのアカウントか ({{parameter}}) が示されていませんでした。もう一度サインインしてください。"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "組織のメールボックスを読み取るソースは、組織で許可されていません。管理者が「管理 › メール」で許可します。",
@@ -662,6 +679,8 @@
       "unknown_demo": "{{demo}} という名前の公開デモはありません。",
       "demo_not_ready": "このデモはまだ準備中です。少し後でもう一度お試しください。",
       "demo_stores_failed": "このデモを開始できませんでした。数分後にもう一度お試しください。",
+      "demo_failed": "このデモを準備できませんでした。数分後にもう一度お試しください。",
+      "failed_to_start": "デモサーバーを起動できませんでした。しばらくしてからもう一度お試しください。",
       "at_capacity": "デモサンドボックスはすべて使用中です。少し後でもう一度お試しください。",
       "starting": "デモサーバーを起動しています。1〜2分後にもう一度お試しください。",
       "disk_full": "このサンドボックスはディスク上限の {{limit}} バイトを使い切りました。これ以上書き込めません。",
@@ -749,6 +768,12 @@
         "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
       }
+    },
+    "erd": {
+      "database_unavailable": "ERD レイアウトを読み取れません: データベースが利用できません",
+      "layout_not_found": "{{name}} という名前のレイアウトはありません",
+      "layout_name_required": "レイアウトには名前が必要です",
+      "layout_place_unreadable": "レイアウトが、読み取り権限のない {{kind}} を配置しています"
     }
   }
 }

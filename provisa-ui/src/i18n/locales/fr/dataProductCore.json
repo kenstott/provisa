@@ -56,6 +56,7 @@
     "consumers": "Consommateurs",
     "consumersHint": "Qui lit ce produit un saut en aval : les tables, vues et vues matérialisées construites directement sur ses membres.",
     "consumersEmpty": "Aucun",
+    "consumerReads": "lit {{ports}}",
     "ownerOnlyList": "Cette liste est visible par le propriétaire du produit de données.",
     "consumerKind_table": "table",
     "consumerKind_view": "vue",

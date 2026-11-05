@@ -30,11 +30,12 @@ export function useSparqlDraw(
 ): SparqlDraw {
   const [literalNodes, setLiteralNodes] = useState(false);
   const [drawSelect, setDrawSelect] = useState(false);
-  // A SELECT shows its table first: a new query's rows are not drawn until asked for.
+  // A SELECT shows its table first: a new query's rows are not drawn until asked for. A drop's query
+  // is the one on screen grown, so a drawing stays one.
   const [drawnQuery, setDrawnQuery] = useState(answered.query);
   if (answered.query !== drawnQuery) {
     setDrawnQuery(answered.query);
-    setDrawSelect(false);
+    if (!answered.dropped) setDrawSelect(false);
   }
   const frame = useMemo(
     () => sparqlDrawn(answered, literalNodes, drawSelect, prefixes),

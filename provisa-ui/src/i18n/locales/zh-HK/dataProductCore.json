@@ -56,6 +56,7 @@
     "consumers": "消費方",
     "consumersHint": "在下游一跳讀取此產品的對象：直接建構在其成員之上的表、檢視和實體化檢視。",
     "consumersEmpty": "無",
+    "consumerReads": "讀取 {{ports}}",
     "ownerOnlyList": "此清單對數據產品的擁有者可見。",
     "consumerKind_table": "表",
     "consumerKind_view": "檢視",

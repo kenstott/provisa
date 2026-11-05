@@ -271,7 +271,12 @@ def test_psqls_role_membership_query_runs():
         "m.inherit_option, m.set_option, pg_catalog.pg_get_userbyid(m.grantor) "
         "FROM pg_catalog.pg_auth_members m ORDER BY 1"
     )
-    assert _rows(sql) == []
+    # PostgreSQL 17's own memberships, granted by the bootstrap role (provisa, by design).
+    assert _rows(sql) == [
+        (3374, "pg_monitor", False, True, True, "provisa"),
+        (3375, "pg_monitor", False, True, True, "provisa"),
+        (3377, "pg_monitor", False, True, True, "provisa"),
+    ]
 
 
 def test_psqls_collation_list_runs():
@@ -280,7 +285,7 @@ def test_psqls_collation_list_runs():
         "SELECT c.collname, c.collcollate, c.collctype, c.colllocale, c.collicurules, "
         "c.collprovider FROM pg_catalog.pg_collation c ORDER BY 1"
     )
-    assert _rows(sql) == []
+    assert ("C", "C", "C", None, None, "c") in _rows(sql)
 
 
 def test_psqls_subscription_list_runs():

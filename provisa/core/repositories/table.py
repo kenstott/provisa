@@ -40,6 +40,7 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.core.repositories.mask_lists import refuse_unreachable_masks
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -86,6 +87,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.native_filter_required,
     table_columns.c.required_by_steward,
     table_columns.c.is_primary_key,
+    table_columns.c.not_null,
     table_columns.c.is_foreign_key,
     table_columns.c.is_alternate_key,
     table_columns.c.object_fields,
@@ -659,6 +661,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 table_columns.c.data_type,
                 table_columns.c.is_foreign_key,
                 table_columns.c.is_alternate_key,
+                table_columns.c.not_null,
                 table_columns.c.array_depth,
                 table_columns.c.element_type,
                 table_columns.c.native_type,
@@ -694,6 +697,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
     _derived_keys = {
         r.column_name: (bool(r.is_foreign_key), bool(r.is_alternate_key)) for r in _existing_rows
     }
+    # REQ-2190: NOT NULL is recorded from the source at registration and persists with the column:
+    # a re-registration that does not read the source keeps it.
+    _not_null = {r.column_name for r in _existing_rows if r.not_null}
     # REQ-1918: a column this registration no longer lists is dropped. While a relationship is
     # keyed on it, or a view, materialized view or metric names it, the registration is refused
     # naming them; the transaction around this call undoes the table row's update. A dropped
@@ -780,8 +786,19 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             )
             _entries.append({**_bare, "why": _entry_why})
         _whys[col.name] = (_fake_why, _entries)
-    # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
+    # What each column's list is stored as: a control-plane role is no reader of it.
+    _stored_masks = {
+        name: [
+            e
+            if e.get("to") is None  # every other reader: names no role (REQ-2153)
+            else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
+            for e in entries
+        ]
+        for name, (_, entries) in _whys.items()
+    }
+    await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
         object_fields_raw = getattr(col, "object_fields", [])
@@ -817,12 +834,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 domain_id=domain_id,
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
-                masks=[
-                    e
-                    if e.get("to") is None  # every other reader: names no role (REQ-2153)
-                    else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
-                    for e in _whys[col.name][1]
-                ],
+                masks=_stored_masks[col.name],
                 alias=getattr(col, "alias", None),
                 description=getattr(col, "description", None),
                 data_type=_data_type,
@@ -833,6 +845,13 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 is_primary_key=getattr(col, "is_primary_key", False)
                 # REQ-2170: the key its source declares
                 or (declared is not None and col.name in declared.primary_key),
+                not_null=getattr(col, "not_null", False)
+                or getattr(col, "is_primary_key", False)
+                or col.name in _not_null
+                or (
+                    declared is not None
+                    and (col.name in declared.primary_key or col.name in declared.not_null)
+                ),
                 is_foreign_key=getattr(col, "is_foreign_key", False)
                 or _derived_keys.get(col.name, (False, False))[0],
                 is_alternate_key=getattr(col, "is_alternate_key", False)

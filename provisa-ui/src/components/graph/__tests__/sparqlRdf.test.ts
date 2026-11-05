@@ -12,9 +12,17 @@
 // them, a data answer and an answer about the ontology drawn as RDF, a SELECT whose rows hold
 // triples, what a merge adds to a frame, and a graph written as Turtle and N-Triples.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FrameData } from "../graph-model";
-import { loadGraphState, saveGraphState } from "../graph-persistence";
+import {
+  graphStateOf,
+  loadGraphState,
+  readGraphState,
+  saveGraphState,
+} from "../graph-persistence";
+import { bindStorageScope } from "../../../lib/browserStorage";
+import { writeBulk } from "../../../lib/bulkStorage";
+import { TEST_STORAGE_SCOPE } from "../../../test-setup";
 import {
   compactIri,
   describeQuery,
@@ -76,7 +84,7 @@ describe("a term shown", () => {
     expect(shownLiteral("Ann", `${XSD}string`, undefined, P)).toBe("Ann");
     expect(shownLiteral("41", `${XSD}integer`, undefined, P)).toBe("41");
     expect(shownLiteral("bonjour", undefined, "fr", P)).toBe('"bonjour"@fr');
-    expect(shownLiteral("12.50", `${XSD}decimal`, undefined, P)).toBe('"12.50"^^xsd:decimal');
+    expect(shownLiteral("12.50", `${XSD}decimal`, undefined, P)).toBe("12.50");
     expect(shownLiteral("x", "http://other/dt", undefined, P)).toBe('"x"^^<http://other/dt>');
   });
 
@@ -132,7 +140,7 @@ describe("a data answer drawn", () => {
   });
 
   it("makes a resource-valued property an edge, named compactly", () => {
-    const edge = [...g.edges.values()].find((e) => e.type === "rel:PLACED_BY")!;
+    const edge = [...g.edges.values()].find((e) => e.type === "PLACED_BY")!;
     expect(edge.startNode.properties.iri).toBe(ORDER);
     expect(edge.endNode.properties.iri).toBe(CUSTOMER);
     expect(edge.properties.iri).toBe(`${P.rel}PLACED_BY`);
@@ -140,7 +148,7 @@ describe("a data answer drawn", () => {
 
   it("makes a literal a property of its node, compacted, never a node", () => {
     expect([...g.nodes.values()].every((n) => n.label !== "Literal")).toBe(true);
-    expect(order.properties["sales:orders#total"]).toBe('"12.50"^^xsd:decimal');
+    expect(order.properties["sales:orders#total"]).toBe("12.50");
     expect(order.properties["sales:orders#note"]).toBe('"rush"@en');
     // The property's full IRI stands behind its compacted name, for the hover.
     expect(order.propertyIris?.["sales:orders#total"]).toBe(`${ORDERS}#total`);
@@ -189,7 +197,7 @@ describe("an answer about the ontology drawn", () => {
   });
 
   it("makes a property with a domain and a range an edge between them", () => {
-    const edge = [...g.edges.values()].find((e) => e.type === "rel:PLACED_BY")!;
+    const edge = [...g.edges.values()].find((e) => e.type === "PLACED_BY")!;
     expect(edge.startNode.properties.iri).toBe(ORDERS);
     expect(edge.endNode.properties.iri).toBe(CUSTOMERS);
   });
@@ -444,7 +452,7 @@ describe("a graph written out", () => {
 });
 
 describe("a SPARQL frame reloaded", () => {
-  it("keeps its form, triples, pairing and expansions", () => {
+  it("keeps its form, triples, pairing and expansions", async () => {
     const triples = parseNTriples(`<${ORDER}> <${ORDERS}#total> "1" .`, P);
     const pairing = { subject: "s", predicate: "p", object: "o" };
     saveGraphState({
@@ -467,10 +475,63 @@ describe("a SPARQL frame reloaded", () => {
         },
       ],
     });
-    const [loaded] = loadGraphState("sparql").frames;
+    const [loaded] = (await loadGraphState("sparql")).frames;
     expect(loaded.sparqlForm).toBe("graph");
     expect(loaded.sparqlTriples).toEqual(triples);
     expect(loaded.sparqlPairing).toEqual(pairing);
     expect(loaded.sparqlExpansions).toEqual({ [ORDER]: triples });
+  });
+});
+
+describe("the page's state, read back from IndexedDB", () => {
+  const frame = (id: string) => ({
+    id,
+    query: id,
+    status: "done" as const,
+    nodes: new Map(),
+    edges: new Map(),
+    rows: [],
+    columns: [],
+  });
+
+  afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
+
+  it("is there at once and empty, then filled, with what was run meanwhile first", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "read-back" });
+    saveGraphState({
+      language: "sparql",
+      history: ["saved"],
+      currentQuery: "saved query",
+      frames: [frame("saved")],
+    });
+    const state = graphStateOf("sparql");
+    expect(state.frames).toEqual([]);
+    state.frames = [frame("meanwhile")];
+    state.history = ["meanwhile"];
+    saveGraphState(state); // not over the saved copy, unread yet
+    await readGraphState(state);
+    expect(state.frames.map((f) => f.id)).toEqual(["meanwhile", "saved"]);
+    expect(state.history).toEqual(["meanwhile", "saved"]);
+    expect(state.currentQuery).toBe("saved query");
+    const held = await loadGraphState("sparql");
+    expect(held.frames.map((f) => f.id)).toEqual(["meanwhile", "saved"]);
+  });
+
+  it("starts empty, logged, from a saved copy that cannot be read", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "malformed" });
+    await writeBulk("provisa.graph.state", { frames: [{ nodes: 5 }] });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const state = graphStateOf("cypher");
+    await readGraphState(state);
+    expect(state.frames).toEqual([]);
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("keeps each scope's frames its own", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "one" });
+    const one = graphStateOf("cypher");
+    bindStorageScope({ controlPlaneId: "cp", orgId: "two" });
+    expect(graphStateOf("cypher")).not.toBe(one);
   });
 });

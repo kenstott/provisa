@@ -131,9 +131,11 @@ describe("deleting a role on the Security page", () => {
     await openRole();
     await confirmDelete();
 
-    expect(await screen.findByTestId("security-roles-error")).toHaveTextContent(
-      "Role 'seller' is a system role and cannot be deleted",
-    );
+    // REQ-2198: said in the role's panel, which the failed delete unlocks.
+    const problem = await screen.findByTestId("delete-role-seller-problem");
+    expect(problem).toHaveTextContent("Not deleted:");
+    expect(problem).toHaveTextContent("Role 'seller' is a system role and cannot be deleted");
+    expect(screen.getByTestId("delete-role-seller")).not.toBeDisabled();
     expect(screen.queryByText("Cannot delete seller yet")).toBeNull();
   });
 });

@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "Jede Region führt ihre Abfragen auf ihrer eigenen Engine aus: dem Speicher, den die Plattform dieser Organisation als Engine der Region zugewiesen hat, mit seiner Engine-Art und Verbindungs-URL.",
+    "readOnlyNote": "Der Plattformadministrator weist die Engine jeder Region zu. Sie wird hier schreibgeschützt angezeigt.",
+    "sandboxNote": "Dies wird gezeigt, um Regionen zu erklären. Es kann in einer Demo nicht geändert werden.",
+    "restartNote": "Eine Änderung wird wirksam, wenn die Knoten der Region neu starten.",
+    "restartPending": "Gespeichert. Die Änderung wird wirksam, wenn die Knoten der Region neu starten.",
+    "edit": "Bearbeiten",
+    "store": "Engine-Speicher",
+    "kind": "Engine-Art",
+    "url": "URL",
+    "sharedWith": "Auch die Engine von",
+    "storeHelp": "Der Speicher, den diese Region als ihre Engine nennt. Welcher Speicher es ist, wird auf der Seite Plattform festgelegt.",
+    "sharedHint": "Auch die Engine von {{regions}}. Eine Änderung hier gilt auch dort.",
+    "kindHelp": "Die Engine, die dieser Speicher ausführt.",
+    "urlHelp": "Die Verbindungs-URL der Engine oder eine Referenz wie ${env:NAME}. Sie wird genau so gespeichert, wie sie eingegeben wurde. Ein Passwort darin wird nie wieder angezeigt; lassen Sie die URL unverändert, um es zu behalten.",
+    "storeMissing": "Region {{region}} nennt {{store}} als ihre Engine, und die Organisation hat keinen Speicher {{store}}."
+  }
+}

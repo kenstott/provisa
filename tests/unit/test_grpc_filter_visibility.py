@@ -142,6 +142,7 @@ class TestServicerRejectsBeforeAnyStatement:
         context = _context()
         request = SimpleNamespace(
             limit=10,
+            offset=0,
             filter=_filter(amount=10.5),
             read_mask=SimpleNamespace(paths=[]),
             HasField=lambda name: name == "filter",

@@ -56,6 +56,7 @@
     "consumers": "उपभोक्ता",
     "consumersHint": "इस प्रोडक्ट को एक कदम डाउनस्ट्रीम कौन पढ़ता है: इसके सदस्यों पर सीधे बनी टेबल, व्यू और मटीरियलाइज़्ड व्यू।",
     "consumersEmpty": "कोई नहीं",
+    "consumerReads": "{{ports}} पढ़ता है",
     "ownerOnlyList": "यह सूची डेटा उत्पाद के स्वामी को दिखाई देती है।",
     "consumerKind_table": "टेबल",
     "consumerKind_view": "व्यू",

@@ -139,7 +139,27 @@ export interface GNode {
   properties: Record<string, unknown>;
   /** A SPARQL node's property names (compacted predicates) with the full IRI each stands for. */
   propertyIris?: Record<string, string>;
+  /** A SPARQL node's literals under the same names, as their values: ``properties`` holds each as
+   * a result cell shows it, and a caption or a size reads the value. */
+  propertyValues?: Record<string, unknown>;
+  /** A SPARQL node's literals' datatypes under the same names, which a value's hover says. */
+  propertyDatatypes?: Record<string, string>;
 }
+
+/** What a caption or a size reads of a node's property. */
+export const propertyValue = (n: GNode, prop: string): unknown =>
+  n.propertyValues && prop in n.propertyValues ? n.propertyValues[prop] : n.properties[prop];
+
+/** A property's name where it is a column of the node's own class (``pets:breedName`` of a
+ * ``sales:pets`` node is ``breedName``, from the full predicate); null for any other property. */
+export function ownColumnName(n: GNode, key: string): string | null {
+  const iri = n.propertyIris?.[key];
+  const hash = iri?.lastIndexOf("#") ?? -1;
+  if (iri === undefined || hash < 0) return null;
+  const owner = n.label.slice(n.label.indexOf(":") + 1);
+  return iri.slice(0, hash).endsWith(`/${owner}`) ? iri.slice(hash + 1) : null;
+}
+
 export interface GEdge {
   identity: string;
   start: number;
@@ -400,14 +420,27 @@ export interface FrameData {
   sparqlTriples?: Triple[];
   /** A SELECT whose rows hold triples, and can be drawn as a graph. */
   sparqlPairing?: SelectPairing;
-  /** What expanding, dragging or dropping onto the frame merged into it, by the resource or class
-   *  each was asked of. Kept apart from the answer, so an expansion can be taken back. */
+  /** What expanding or dragging a node merged into the frame, by the resource each was asked of.
+   *  Kept apart from the answer, so an expansion can be taken back. */
   sparqlExpansions?: Record<string, Triple[]>;
-  /** What selecting a node asked of its resource (a DESCRIBE), by the resource: its literal triples
-   *  for the Properties panel, or the error the request was refused with. Never drawn. */
+  /** What was asked of a resource by selecting its node, or by captioning or sizing its class by a
+   *  property (a DESCRIBE), by the resource: its literal triples, which the drawn node holds as
+   *  properties, or the error the request was refused with. Never a node or an edge of its own. */
   sparqlDescribed?: Record<string, SparqlDescribed>;
   /** What the last merge said: why it was refused, or the resource it found nothing more of. */
   sparqlMerge?: { error?: string; nothingMore?: string };
+  /** The query on screen is a drop's edit of the one before (REQ-2135): a drawing stays a drawing. */
+  dropped?: boolean;
+  /** What the last drop said: why it changed nothing, or what it left out. */
+  dropNotices?: DropNotice[];
+  /** The LIMIT the last drop gave a SPARQL query, which a result that reaches it was cut at. */
+  dropLimit?: number;
+}
+
+/** What a drop says on its frame: a message of the catalog and its values. */
+export interface DropNotice {
+  key: string;
+  values?: Record<string, string | number>;
 }
 
 /** What a DESCRIBE of a selected node answered: the triples whose object is a literal, or why not. */

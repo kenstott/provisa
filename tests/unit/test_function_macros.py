@@ -22,7 +22,14 @@ import sqlglot
 
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler import function_macros
-from provisa.transpiler.function_macros import MACROS, FunctionRefused, inline, outcome
+from provisa.transpiler.pg_forms_system import OF_A_STORED_VALUE
+from provisa.transpiler.function_macros import (
+    MACROS,
+    REFUSED_ROWS,
+    FunctionRefused,
+    inline,
+    outcome,
+)
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 
 _DIALECTS = (
@@ -61,19 +68,30 @@ def _one(con, sql: str):
 
 def test_no_function_is_left_a_macro_on_the_engine(con):
     macros = {
-        row[0]
+        (row[0], len(row[1]))
         for row in con.execute(
-            "SELECT DISTINCT function_name FROM duckdb_functions() "
+            "SELECT DISTINCT function_name, parameters FROM duckdb_functions() "
             "WHERE function_type = 'macro' AND schema_name = 'main'"
         ).fetchall()
     }
-    assert not macros & {name for name, _ in MACROS}
+    assert not macros & set(MACROS)
 
 
 @pytest.mark.parametrize(("name", "arity"), sorted(MACROS))
 def test_every_overload_is_native_on_postgresql_and_has_a_form_on_duckdb(name, arity):
     assert outcome(name, arity, "postgres") == "native"
-    assert outcome(name, arity, "duckdb") == "emulated"
+    # REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED: replay found no form answering as PostgreSQL does.
+    assert outcome(name, arity, "duckdb") == (
+        "refused" if (name, arity) in REFUSED_ROWS else "emulated"
+    )
+
+
+def _routine_bound(column: sqlglot.exp.Column) -> bool:
+    """A Trino routine's parameter read in its own body: the statement defines it (WITH FUNCTION)."""
+    routine = column.find_ancestor(sqlglot.exp.FunctionSpecification)
+    return routine is not None and column.name in {
+        p.name for p in routine.this.expressions if isinstance(p, sqlglot.exp.ColumnDef)
+    }
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -82,10 +100,19 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         if outcome(name, arity, dialect) != "emulated":
             continue
         args = [f"p{i}" for i in range(arity)]
-        out = transpile(f"SELECT {name}({', '.join(args)}) AS v", dialect)
-        columns = {
-            c.name for c in sqlglot.parse_one(out, read=dialect).find_all(sqlglot.exp.Column)
-        }
+        # A column of no said type is refused by name: only the statement tells inet from cidr.
+        said = ["p0::inet", *args[1:]] if name == "set_masklen" else args
+        said = [args[0], "2"] if name in ("round_numeric", "trunc_numeric") else said
+        # A column's storage and collation are its source's: only a value is told.
+        said = ["'x'"] if name in OF_A_STORED_VALUE else said
+        # ClickHouse reads the Nth match's pattern as a constant, and refuses a column's by name.
+        constant = dialect == "clickhouse" and name == "regexp_replace"
+        said = [args[0], "'x'", *args[2:]] if constant else said
+        out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        tree = sqlglot.parse_one(out, read=dialect)
+        # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).
+        tree.set("settings", None)
+        columns = {c.name for c in tree.find_all(sqlglot.exp.Column) if not _routine_bound(c)}
         # Every parameter is bound; a lambda's own variable (_x) is the form's.
         assert {c for c in columns if not c.startswith("_")} <= set(args), out
 
@@ -93,6 +120,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
 @pytest.mark.parametrize(
     ("sql", "dialect", "expected"),
     [
+        ("SELECT time(a) AS v FROM t", "duckdb", "SELECT CAST(a AS TIME) AS v FROM t"),
         (
             "SELECT textcat(a, b) AS v FROM t",
             "mysql",
@@ -135,12 +163,13 @@ def test_a_form_survives_the_engines_own_rewrites():
     ("sql", "dialect", "function"),
     [
         ("SELECT bytealike(a, b) FROM t", "mysql", "bytealike"),
-        ("SELECT sind(x) FROM t", "trino", "sind"),
+        ("SELECT bytealike(a, b) FROM t", "trino", "bytealike"),
         ("SELECT regexp_match(a, b) FROM t", "snowflake", "regexp_match"),
         ("SELECT center(a) FROM t", "bigquery", "center"),
-        ("SELECT a FROM t WHERE jsonb_typeof(a) = 'object'", "clickhouse", "jsonb_typeof"),
+        ("SELECT a FROM t WHERE jsonb_pretty(a) = 'object'", "clickhouse", "jsonb_pretty"),
         ("SELECT textlike(a, b) FROM t", "mysql", "textlike"),
         ("SELECT regexp_substr(a, b) FROM t", "clickhouse", "regexp_substr"),
+        ("SELECT time(a) FROM t", "trino", "time"),
     ],
 )
 def test_a_function_with_no_form_is_refused_by_name(sql, dialect, function):
@@ -268,5 +297,150 @@ def test_a_byte_out_of_range_is_postgresqls_error(con):
 
 
 def test_a_bit_string_of_an_integer_is_its_low_bits(con):
-    assert _one(con, "SELECT bit(5, 8)::text") == [("101",)]
-    assert _one(con, "SELECT bit(-1, 4)::text") == [("1111",)]
+    assert _one(con, 'SELECT "bit"(5, 8)::text') == [("00000101",)]
+    assert _one(con, 'SELECT "bit"(-1, 4)::text') == [("1111",)]
+
+
+@pytest.mark.parametrize(
+    ("dialect", "want"),
+    [
+        ("trino", "SELECT ABS(CAST(NULL AS DOUBLE)) AS v"),
+        ("clickhouse", "SELECT ABS(CAST(NULL AS Nullable(Float64))) AS v"),
+    ],
+)
+def test_a_call_by_pg_catalog_is_the_call_of_the_function(dialect: str, want: str):
+    assert transpile('SELECT pg_catalog."abs"(NULL::double precision) AS v', dialect) == want
+
+
+def test_a_qualified_call_inside_a_qualified_call_is_read_too():
+    written = transpile('SELECT pg_catalog."abs"(pg_catalog."sign"(x)) FROM t', "trino")
+    assert "pg_catalog" not in written.lower()
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_a_numeric_literal_keeps_its_digits(dialect: str):
+    assert "DECIMAL(21, 2)" in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
+
+
+def test_a_numeric_of_a_column_stays_as_said():
+    assert transpile("SELECT x::numeric AS v FROM t", "trino") == (
+        "SELECT CAST(x AS DECIMAL) AS v FROM t"
+    )
+
+
+@pytest.mark.parametrize(
+    ("dialect", "want"),
+    [
+        ("trino", "REGEXP_LIKE(a, '(?i)' || b)"),
+        ("clickhouse", "match(a, CONCAT('(?i)', b))"),
+        ("duckdb", "REGEXP_MATCHES(a, b, 'i')"),
+    ],
+)
+def test_the_case_insensitive_match_is_one_form_on_any_engine(dialect: str, want: str):
+    assert want in transpile("SELECT texticregexne(a, b) AS v FROM t", dialect)
+
+
+def test_clickhouses_like_has_no_escape_clause():
+    assert "ESCAPE" not in transpile("SELECT textlike(a, b) AS v FROM t", "clickhouse")
+
+
+@pytest.mark.parametrize(
+    ("sql", "dialect", "function"),
+    [
+        ("SELECT exp(2.5::numeric) AS v", "trino", "exp"),
+        ("SELECT avg(c) AS v FROM (VALUES (1.5::numeric)) AS t(c)", "clickhouse", "avg"),
+        ("SELECT overlay(a PLACING b FROM 1) AS v FROM t", "trino", "overlay"),
+        ("SELECT regexp_count(a, b, 2) AS v FROM t", "trino", "regexp_count"),
+        ("SELECT substr(c, 1) AS v FROM (VALUES ('\\xbeef'::bytea)) AS t(c)", "trino", "substring"),
+        ("SELECT date_add('2000-01-01'::date, '1 day'::interval) AS v", "clickhouse", "date_add"),
+        ('SELECT pg_catalog."gcd"(1, 2) AS v', "trino", "gcd"),
+        ("SELECT timestamp('2024-06-15'::date, '12:30:45'::time) AS v", "clickhouse", "timestamp"),
+        (
+            "SELECT pg_catalog.\"datetime_pl\"('2024-06-15'::date, '12:30:45'::time) AS v",
+            "clickhouse",
+            "datetime_pl",
+        ),
+        (
+            'SELECT pg_catalog."overlaps"(NULL::time, NULL::time, NULL::time, NULL::time) AS v',
+            "clickhouse",
+            "overlaps",
+        ),
+    ],
+)
+def test_what_a_replay_refused_is_refused_by_name(sql: str, dialect: str, function: str):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, dialect)
+    assert refused.value.params == {"function": function, "dialect": dialect}
+
+
+def test_a_column_of_no_said_type_is_the_engines_to_read():
+    assert transpile("SELECT avg(x) AS v FROM t", "trino") == "SELECT AVG(x) AS v FROM t"
+
+
+@pytest.mark.parametrize(
+    ("dialect", "want"),
+    [
+        ("trino", "(?s)^(?<before>.*?)(?:o)(?<after>.*)$"),
+        ("clickhouse", "replaceRegexpOne("),
+    ],
+)
+def test_regexp_replace_with_no_flag_is_the_first_match(dialect: str, want: str):
+    assert want in transpile("SELECT regexp_replace(a, 'o', 'X') AS v FROM t", dialect)
+
+
+def test_regexp_replace_with_the_g_flag_is_every_match():
+    written = transpile("SELECT regexp_replace(a, 'o', 'X', 'g') AS v FROM t", "trino")
+    assert written == "SELECT REGEXP_REPLACE(a, 'o', 'X') AS v FROM t"
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        ("SELECT '\\xdead'::bytea AS v", "FROM_HEX('dead')"),
+        ("SELECT 'abc'::character AS v", "CAST('a' AS CHAR)"),
+        ("SELECT (-2.25)::numeric AS v", "DECIMAL(21, 2)"),
+    ],
+)
+def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
+    assert want in transpile(sql, "trino")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT date_part('century'::text, x::timestamp) AS v FROM t",
+        "SELECT ln(x) AS v FROM t",
+        'SELECT pg_catalog."in_range"(a::time, b::time, c::interval, true, false) AS v FROM t',
+    ],
+)
+def test_clickhouse_refuses_what_it_cannot_evaluate_or_answers_differently(sql: str):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")
+
+
+def test_a_call_named_for_the_engines_own_spelling_is_written_so():
+    assert transpile("SELECT cbrt(x) AS v FROM t", "clickhouse") == "SELECT cbrt(x) AS v FROM t"
+
+
+@pytest.mark.parametrize("call", ["substr(a, 1 + 1, 3)", "substr(a, 2)", "left(a, 2)"])
+def test_a_safe_position_stays_the_engines_own(call: str):
+    assert "GREATEST" not in transpile(f"SELECT {call} AS v FROM t", "trino")
+    assert "CASE" not in transpile(f"SELECT {call} AS v FROM t", "trino")
+
+
+@pytest.mark.parametrize(
+    ("call", "want"),
+    [
+        ("substr('Hello World', -7)", "Hello World"),
+        ("substr('Hello', -1, 3)", "H"),
+        ("substr('Hello', 2, 2)", "el"),
+        ("left('Hello', -1)", "Hell"),
+        ("right('Hello', -1)", "ello"),
+        ("right('Hello', 42)", "Hello"),
+    ],
+)
+def test_a_position_before_the_value_reads_as_postgresql_reads_it(call: str, want: str):
+    written = sqlglot.transpile(
+        transpile(f"SELECT {call} AS v", "trino"), read="trino", write="duckdb"
+    )[0]
+    assert duckdb.connect().execute(written).fetchone()[0] == want

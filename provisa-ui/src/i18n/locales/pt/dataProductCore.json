@@ -56,6 +56,7 @@
     "consumers": "Consumidores",
     "consumersHint": "Quem lê este produto um salto a jusante: as tabelas, visões e visões materializadas construídas diretamente sobre seus membros.",
     "consumersEmpty": "Nenhum",
+    "consumerReads": "lê {{ports}}",
     "ownerOnlyList": "Esta lista é visível para o proprietário do produto de dados.",
     "consumerKind_table": "tabela",
     "consumerKind_view": "visão",

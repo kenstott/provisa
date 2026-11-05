@@ -127,7 +127,11 @@ def _regions_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Pa
 
 
 @contextlib.contextmanager
-def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path]]:
+def _plain_tier(
+    demo: str, bundle: Path, work: Path, *, control_plane: str = "postgres"
+) -> Iterator[tuple[Any, Path]]:
+    """``control_plane``: IsolatedServer's; "own" for a tier restarted on its own record of what
+    it built (a template another test recorded in the shared one has no folder here)."""
     from tests.integration.demo_registry import DemoRegistry
     from tests.integration.isolated_server import IsolatedServer
 
@@ -152,6 +156,7 @@ def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path
             f"visitor{demo}",
             engine="duckdb",
             config=str(config),
+            control_plane=control_plane,
             auth=_AUTH,
             env={
                 "PROVISA_SANDBOX_TIER": "true",
@@ -338,6 +343,16 @@ class Walk:
                 # The explorer's Connect panel reads the MCP server's status; the agent's own
                 # questions (mcp) are answered live by a model, so the walk sends none.
                 self.send(f"{key} (mcp-connect)", "GET", "/admin/mcp-server", None)
+            if "region" in step or step.get("purposes"):
+                # The regions the page lists, as the visitor reads them: the Platform page's, read-only
+                # in a sandbox (REQ-1922), or the org's, which Admin > Regions and Federation's tab
+                # per region both read.
+                path = (
+                    "/admin/platform/regions"
+                    if self.page == "/admin/platform"
+                    else "/admin/regions"
+                )
+                self.send(f"{key} (regions)", "GET", path, None)
             if "cypher" in step:
                 self.send(f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]})
             if "example" in step and not _is_subscription(examples[step["example"]]):
@@ -358,7 +373,8 @@ _CREATE_SOURCE = "mutation CreateSource($input: SourceInput!) { createSource(inp
 
 
 def _build_live_source(tier, token: dict[str, str]) -> list[str]:
-    """The core tour's live-built source (REQ-2115), as its Save sends it from the visitor's
+    """The source the core tour's form is filled in with (REQ-2115), which the tour cancels: saved
+    here as the visitor's own Save would send it from the visitor's
     sandbox: supplies.parquet from the org's own copy its demo ships ({files}/supplies.parquet,
     REQ-2101 amended), its table set up as a draft. The copy Provisa publishes is refused here --
     a sandbox may reach no address its demo does not declare -- which is why the demo ships one.
@@ -403,7 +419,7 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
     assert not remote["success"] and "provisa.dev" in remote["message"], remote
     made = create("supplies", "{files}/supplies.parquet")
     if not made["success"]:
-        raise _failed(tier, f"the tour's live source was refused: {made}")
+        raise _failed(tier, f"the tour's source form's values were refused: {made}")
     return ["stepBuildSource {files}/supplies.parquet saved; the published address refused"]
 
 
@@ -423,7 +439,7 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     spec = yaml.safe_load((tier.directory / "demo.yaml").read_text())
     if spec.get("tour") == "core":
         # Toured by the product's core tour (no tour.yaml of its own): the explorers are walked,
-        # and the tour's live-built source saved from the org's own copy where the demo ships it.
+        # and the tour's source form's values saved from the org's own copy where the demo ships it.
         assert not steps, f"{tier.demo} is toured by the core tour and has a tour of its own"
         built = _build_live_source(tier, token)
         print("\n".join(built))

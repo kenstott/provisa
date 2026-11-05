@@ -23,6 +23,8 @@ const CARD_IN_COLUMN: React.CSSProperties = {
   minWidth: 0,
   marginBottom: "var(--mantine-spacing-sm)",
 };
+// A card across the panel: as far from what is above it as the masonry's cards are from each other.
+const CARD_WIDE: React.CSSProperties = { marginTop: "var(--mantine-spacing-sm)" };
 // A card's content stays inside the card: long words wrap, and what cannot wrap (a table's
 // columns) scrolls within it.
 const CARD_BODY: React.CSSProperties = {
@@ -77,7 +79,7 @@ export function DetailCard({
   );
   return (
     <div
-      style={wide ? undefined : CARD_IN_COLUMN}
+      style={wide ? CARD_WIDE : CARD_IN_COLUMN}
       data-tour={tourId}
       data-testid={testId}
     >

@@ -56,6 +56,7 @@
     "consumers": "Afnemers",
     "consumersHint": "Wie dit product één stap stroomafwaarts leest: de tabellen, views en gematerialiseerde views die direct op zijn leden zijn gebouwd.",
     "consumersEmpty": "Geen",
+    "consumerReads": "leest {{ports}}",
     "ownerOnlyList": "Deze lijst is zichtbaar voor de eigenaar van het dataproduct.",
     "consumerKind_table": "tabel",
     "consumerKind_view": "view",

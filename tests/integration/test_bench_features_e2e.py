@@ -50,6 +50,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 import yaml
 
 pytestmark = [
@@ -813,7 +815,7 @@ def reader(stack) -> str:
                 "input": {
                     "id": READER,
                     "description": "The features test's second reader.",
-                    "capabilities": list(top["capabilities"]),
+                    "capabilities": sorted(STANDARD_ROLE_RIGHTS["org_admin"]),
                     "domainAccess": list(top["domainAccess"]),
                     "parents": ["org_admin"],
                 }

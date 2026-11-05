@@ -66,6 +66,16 @@ describe("the navbar's domain selector", () => {
     expect(screen.getByTestId("navbar-domain-trigger")).toBeInTheDocument();
   });
 
+  // Every Explore tab whose listing, schema or spec the selection narrows offers it: the OData
+  // explorer's entity sets among them, which it once narrowed with no selector to undo it.
+  it.each(["/schema", "/query", "/sql", "/grpc", "/jsonapi", "/odata", "/openapi"])(
+    "is offered on the Explore tab %s",
+    (path) => {
+      renderWithProviders(<NavBar />, { initialEntries: [path] });
+      expect(screen.getByTestId("navbar-domain-trigger")).toBeInTheDocument();
+    },
+  );
+
   it("is not offered where the selection narrows nothing", () => {
     renderWithProviders(<NavBar />, { initialEntries: ["/docs"] });
     expect(screen.queryByTestId("navbar-domain-trigger")).toBeNull();

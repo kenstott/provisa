@@ -1,0 +1,12 @@
+{
+  "sensitiveScan": {
+    "scan": "Cerca valori sensibili",
+    "help": "Legge in background un campione delle colonne di testo della tabella e cerca valori sensibili all'interno del testo, come un numero di previdenza sociale in una nota. Viene conservata solo la quota di valori, mai i valori. Un suggerimento da solo non cambia nulla: scegli per la colonna un'autorizzazione, un mascheramento o un valore fittizio.",
+    "saveFirst": "Salva la tabella per cercare nei suoi valori.",
+    "running": "Ricerca in un campione delle colonne di testo…",
+    "succeeded": "Ultima ricerca: {{rows}} righe campionate, {{columns}} colonne di testo.",
+    "failed": "La ricerca non è riuscita: {{error}}",
+    "header": "Trovato nei valori",
+    "hint": "Contiene {{kind}} nel {{percent}}% dei valori campionati"
+  }
+}

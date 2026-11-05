@@ -25,6 +25,7 @@ from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 from provisa.core.host_code import refuse_host_code
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories.mask_lists import refuse_unreachable_masks
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -38,6 +39,9 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
 ) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
     refuse_host_code(func.name, func.impl_kind)  # REQ-2134: config load and the admin API alike
+    await refuse_unreachable_masks(  # REQ-2059
+        conn, {c.name: c.model_dump()["masks"] for c in func.output_columns or []}
+    )
     model_change.name("upsert", "command", func.name)  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
@@ -177,6 +181,9 @@ async def upsert_webhook(
     conn: "Connection", wh: Webhook
 ) -> int | None:  # REQ-209, REQ-210, REQ-211, REQ-1919
     """Upsert a tracked webhook. Returns the row id."""
+    await refuse_unreachable_masks(  # REQ-2059
+        conn, {c.name: c.model_dump()["masks"] for c in wh.inline_return_type}
+    )
     model_change.name("upsert", "webhook", wh.name)  # REQ-1524
     vals = {
         "name": wh.name,

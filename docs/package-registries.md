@@ -1,8 +1,8 @@
 # Package Registries
 
-Node and Python sources install their own code and their dependencies. **Admin → Package registries** says where they install from: the organization's npm registries, PyPI indexes and Git hosts. An organization administrator enters them once, and every Node and Python install of the organization uses them. The public npm registry and the public PyPI need no entry.
+Code sources install their own code and their dependencies. **Admin → Package registries** says where they install from: the organization's npm registries, PyPI indexes, Go module proxies and Git hosts. An organization administrator enters them once, and every Node, Python and Go install of the organization uses them. The public npm registry, the public PyPI and the public Go module proxy need no entry.
 
-Every field holds what was typed: a value, or a reference such as `${secret:npm_token}` or `${env:NPM_TOKEN}`, resolved in the organization's own vault each time an install runs. A reference that resolves to nothing stops the install and names the registry and the field. Provisa never writes to the vault or makes up a secret's name. See [Secrets](secrets.md).
+Every field holds what was typed, either a value or a reference such as `${secret:npm_token}` or `${env:NPM_TOKEN}`, resolved in the organization's own vault each time an install runs. A reference that resolves to nothing stops the install and names the registry and the field. Provisa never writes to the vault or makes up a secret's name. See [Secrets](secrets.md).
 
 ---
 
@@ -29,6 +29,17 @@ A token is written to the install's `.npmrc` as `_authToken` and sent as a beare
 
 The indexes and their credentials reach uv in the install's own environment, never in a file.
 
+## Go module proxies
+
+| Field | Holds |
+|---|---|
+| Proxy URL | The proxy's GOPROXY address, such as `https://artifactory.example.com/artifactory/api/go/go` |
+| user:password | The user and password the go command logs in with. A value without a user is refused |
+| Default proxy for every install | Every Go module is fetched through this proxy instead of the public one, `proxy.golang.org`. One per organization |
+| Certificate authority (PEM) | See [A private certificate authority](#a-private-certificate-authority) |
+
+Every module is checked against the code's `go.sum`, and one it does not cover is refused; no checksum database is asked. The login reaches the go command in a `.netrc` in the install's own temporary directory, never in the install.
+
 ## Git hosts
 
 A Git host entry covers the repositories a source's code or its Git dependencies are fetched from.
@@ -45,7 +56,7 @@ A token alone is sent with the user `x-access-token`. Other providers expect a u
 
 | Provider | User |
 |---|---|
-| GitHub | `x-access-token`, the default: enter the token alone |
+| GitHub | `x-access-token`, the default; enter the token alone |
 | GitLab | Any non-blank user name |
 | Bitbucket Cloud | `x-token-auth` for a repository or workspace access token; your user name or email for an API token |
 | Bitbucket Data Center | Your user name; `x-token-auth` for a project or repository token |

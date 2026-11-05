@@ -45,7 +45,7 @@ class TestNDJSON:
         assert len(lines) == 3
         first = json.loads(lines[0])
         assert first["id"] == 1
-        assert first["amount"] == 19.99
+        assert first["amount"] == "19.99"  # a DECIMAL's exact digits (REQ-1867); was a float
         assert first["name"] == "Alice"
 
     def test_empty(self):

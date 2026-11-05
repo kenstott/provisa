@@ -362,6 +362,9 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             except asyncio.CancelledError:
                 pass
 
+    from provisa.api.request_timeout import outlive_deadline
+
+    outlive_deadline()
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",

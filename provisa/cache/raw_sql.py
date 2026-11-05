@@ -47,7 +47,15 @@ from collections.abc import Callable, Coroutine, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
+from provisa.executor.result import (
+    ArrowResult,
+    ArrowStreamResult,
+    DataRowResult,
+    QueryResult,
+    ResultStream,
+    StreamingQueryResult,
+    rewrapped,
+)
 
 KIND_ROWS = "rows"
 KIND_ARROW_IPC = "arrow_ipc"
@@ -99,7 +107,7 @@ def entry_as_datarows(entry: dict, wire_formats: list[int]) -> QueryResult:
     # A RawDataRowBytes stands in the row slot, as it does on the live passthrough stream
     # (FederationEngine._pg_passthrough_stream): buenavista's send_data_rows forwards it verbatim.
     datarows: list[Any] = [RawDataRowBytes(m) for m in entry["datarows"]]
-    return QueryResult(
+    return DataRowResult(
         rows=datarows,
         column_names=entry["column_names"],
         column_types=entry["column_types"],
@@ -131,12 +139,14 @@ def entry_as_result(entry: dict, column_types: list[str] | None) -> QueryResult:
     if kind == KIND_ARROW_IPC:
         from provisa.federation.runtime_support import arrow_type_name
 
+        # REQ-2194: an Arrow entry replays as Arrow; rows are built only for a consumer of rows.
         table = _arrow_table(entry)
-        cols = [col.to_pylist() for col in table.columns]
-        return QueryResult(
-            rows=list(zip(*cols, strict=True)) if cols else [],
-            column_names=list(table.schema.names),
-            column_types=[arrow_type_name(f.type) for f in table.schema],
+        return ArrowResult(
+            table,
+            column_types
+            if column_types is not None
+            else [arrow_type_name(f.type) for f in table.schema],
+            to_rows=_table_rows,
         )
     raise _decoded_only(kind)
 
@@ -172,6 +182,21 @@ def entry_as_arrow(
         ]
         return pa.table(arrays, names=names)
     raise _decoded_only(kind)
+
+
+def _table_rows(table: Any) -> list[tuple]:
+    """An Arrow entry's rows, each column's values as a live Arrow read gives them
+    (ir_arrow.column_values, as stream_rows_from_arrow reads them): an interval as the IR
+    interval, an infinite date or timestamp as the IR infinity -- so a hit answers as the miss
+    did."""
+    from provisa.core.ir_arrow import column_values
+
+    cols = [column_values(col) for col in table.columns]
+    return list(zip(*cols, strict=True)) if cols else []
+
+
+def _holds_arrow(stream: Any) -> bool:
+    return isinstance(stream, ArrowStreamResult) or stream.table is not None
 
 
 def _releaser(stream: ResultStream) -> Callable[[], None] | None:
@@ -239,24 +264,26 @@ class ResponseCacheTee:
             self._run(self.commit())
 
     def rows(self, stream: ResultStream) -> ResultStream:
-        """``stream`` with every row batch forwarded as it arrives and captured within the bound."""
+        """``stream`` with every batch forwarded as it arrives and captured within the bound: an
+        Arrow stream's record batches as an Arrow entry (REQ-2194: never turned into rows to be
+        kept), a row stream's rows as a rows entry."""
         column_names = list(stream.column_names)
         self._column_types = stream.column_types
+        if isinstance(stream, (ArrowStreamResult, ArrowResult)) and _holds_arrow(stream):
+            schema = stream.schema if isinstance(stream, ArrowStreamResult) else stream.table.schema
+            return rewrapped(
+                stream, lambda batches: self.arrow(schema, batches), on_release=_releaser(stream)
+            )
 
-        def _batches() -> Iterator[list[tuple]]:
-            for batch in stream.batches():
+        def _batches(batches: Iterator[list[tuple]]) -> Iterator[list[tuple]]:
+            for batch in batches:
                 self._keep(batch, len(batch))
                 yield batch
             if self._buffer is not None:
                 self._entry = rows_entry([r for b in self._buffer for r in b], column_names)
             self._finished()
 
-        return StreamingQueryResult(
-            _batches(),
-            column_names=column_names,
-            column_types=stream.column_types,
-            on_release=_releaser(stream),
-        )
+        return rewrapped(stream, _batches, on_release=_releaser(stream))
 
     def datarows(self, stream: ResultStream, wire_formats: list[int]) -> ResultStream:
         """A passthrough ``stream`` of raw DataRow messages forwarded as each batch arrives and
@@ -265,8 +292,8 @@ class ResponseCacheTee:
         column_types = stream.column_types
         self._column_types = column_types
 
-        def _batches() -> Iterator[list[tuple]]:
-            for batch in stream.batches():
+        def _batches(batches: Iterator[list[tuple]]) -> Iterator[list[tuple]]:
+            for batch in batches:
                 self._keep(batch, len(batch))
                 yield batch
             if self._buffer is not None:
@@ -278,12 +305,7 @@ class ResponseCacheTee:
                 )
             self._finished()
 
-        return StreamingQueryResult(
-            _batches(),
-            column_names=column_names,
-            column_types=column_types,
-            on_release=_releaser(stream),
-        )
+        return rewrapped(stream, _batches, on_release=_releaser(stream))
 
     def arrow(self, schema: Any, batches: Iterable[Any]) -> Iterator[Any]:
         """``batches`` (Arrow record batches) forwarded as they arrive and captured within the

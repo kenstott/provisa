@@ -18,6 +18,7 @@ file or changes anything: Provisa has no server files, sequences or WAL a client
 
 from __future__ import annotations
 
+import calendar
 import re
 
 import sqlglot
@@ -25,6 +26,8 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError, raising
+from provisa.transpiler import pg_zones
+from provisa.transpiler.pg_held_types import HELD_AS
 from provisa.transpiler.function_macros import (
     SERVER_VALUE_NAMES,
     WAL_SEGMENT,
@@ -33,25 +36,12 @@ from provisa.transpiler.function_macros import (
     wal_file,
 )
 
-#: PostgreSQL's types the catalog DB has no type for, each what its values are held as there.
-_HELD_AS = {
-    "VARCHAR": (
-        "pg_lsn", "pg_snapshot", "txid_snapshot", "aclitem", "macaddr", "macaddr8", "cidr",
-        "tsvector", "pg_mcv_list", "pg_ndistinct", "pg_dependencies", "pg_node_tree",
-        "box", "circle", "line", "lseg", "path", "polygon", "point", "xml", "varbit",
-    ),
-    "UBIGINT": ("xid8",),
-    "BIGINT": (
-        "regcollation", "regconfig", "regdictionary", "regoper", "regoperator", "regprocedure",
-        "regrole",
-    ),
-}  # fmt: skip
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(
-    f"CREATE TYPE {name} AS {held}" for held, names in _HELD_AS.items() for name in names
+    f"CREATE TYPE {name} AS {held}" for held, names in HELD_AS.items() for name in names
 )
 #: Their names, as a cast to one is written.
-PG_ONLY_TYPE_NAMES = frozenset(name for names in _HELD_AS.values() for name in names)
+PG_ONLY_TYPE_NAMES = frozenset(name for names in HELD_AS.values() for name in names)
 
 _NO_FILE = "No such file or directory"
 _FILE_REFUSALS = (
@@ -121,29 +111,6 @@ def _stat_table(path: str, missing_ok: str) -> str:
     """pg_stat_file in FROM: its one row, of NULLs where it has no file."""
     columns = ", ".join(f"_s.{c} AS {c}" for c, _ in _STAT_COLUMNS)
     return f"SELECT {columns} FROM (SELECT {_stat(path, missing_ok)} AS _s)"
-
-
-def _setval(*args: str) -> str:
-    """setval(sequence, value [, is_called]): no relation is a sequence."""
-    nulls = " OR ".join(f"{a} IS NULL" for a in args)
-    relation = "(SELECT _sc.relname FROM _pg_class _sc WHERE _sc.oid = seq)"
-    named = "CAST(seq AS BIGINT)"
-    catalog = _catalog_relation_names()
-    return (
-        f"CASE WHEN {nulls} THEN CAST(NULL AS BIGINT) "
-        f"WHEN coalesce({catalog}, {relation}) IS NOT NULL THEN "
-        + raising("42809", f"'cannot open relation \"' || coalesce({catalog}, {relation}) || '\"'")
-        + " ELSE "
-        + raising("XX000", f"'could not open relation with OID ' || {named}")
-        + " END"
-    )
-
-
-def _catalog_relation_names() -> str:
-    from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
-
-    known = " ".join(f"WHEN {oid} THEN '{name}'" for name, oid in _CATALOG_CLASS_OIDS.items())
-    return f"CASE seq {known} END"
 
 
 #: What a void function answers: PostgreSQL's void value, its empty text.
@@ -246,6 +213,8 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         "set_next_array_pg_type_oid",
         "set_next_heap_pg_class_oid",
         "set_next_heap_relfilenode",
+        "set_next_multirange_array_pg_type_oid",
+        "set_next_multirange_pg_type_oid",
         "set_next_index_pg_class_oid",
         "set_next_index_relfilenode",
         "set_next_pg_authid_oid",
@@ -922,22 +891,22 @@ def _catalog_objects(a: _Answers) -> None:
         "unnest(CAST([] AS STRUCT(name VARCHAR, statement VARCHAR, is_holdable BOOLEAN, "
         "is_binary BOOLEAN, is_scrollable BOOLEAN, creation_time TIMESTAMPTZ)[]))",
     )
+    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
     a.body(
         "pg_timezone_names",
         "",
         "unnest((SELECT list(struct_pack(name := _z.name, abbrev := _z.abbrev, "
-        "utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM pg_timezone_names() _z))",
+        f"utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM ({pg_zones.NAMES}) _z))",
     )
     a.body(
         "pg_timezone_abbrevs",
         "",
         "unnest((SELECT list(struct_pack(abbrev := _z.abbrev, utc_offset := _z.utc_offset, "
-        "is_dst := _z.is_dst)) FROM (SELECT DISTINCT abbrev, utc_offset, is_dst "
-        "FROM pg_timezone_names()) _z))",
+        f"is_dst := _z.is_dst)) FROM ({pg_zones.ABBREVS}) _z))",
     )
-    a.table.setdefault("pg_timezone_abbrevs", []).append(
-        "() AS TABLE (SELECT DISTINCT abbrev, utc_offset, is_dst FROM pg_timezone_names())"
-    )
+    # In FROM, each is its rows.
+    a.table.setdefault("pg_timezone_names", []).append(f"() AS TABLE ({pg_zones.NAMES})")
+    a.table.setdefault("pg_timezone_abbrevs", []).append(f"() AS TABLE ({pg_zones.ABBREVS})")
     a.rows(
         "pg_wal_summary_contents",
         "tli, start_lsn, end_lsn",
@@ -1141,10 +1110,6 @@ def macros() -> tuple[str, ...]:
         _read_file("pg_read_binary_file", "BLOB"),
         f"CREATE MACRO pg_stat_file{stat}",
         f"CREATE MACRO pg_stat_file{stat_table}",
-        "CREATE MACRO setval(seq, value) AS "
-        + _setval("seq", "value")
-        + ", (seq, value, called) AS "
-        + _setval("seq", "value", "called"),
         *_answers().statements(),
     )
 
@@ -1157,7 +1122,6 @@ ANSWERED = frozenset(
         "pg_read_file",
         "pg_reload_conf",
         "pg_stat_file",
-        "setval",
         "regclass",
         *SERVER_VALUE_NAMES,
         *_answers().scalar,
@@ -1170,12 +1134,12 @@ REWRITTEN = frozenset(
         "convert",
         "getpgusername",
         "json_each",
-        "json_object",
         "normalize",
         "pg_indexam_has_property",
         "pg_input_error_info",
         "pg_input_is_valid",
         "system_user",
+        "timeofday",
     }
 )
 
@@ -1211,19 +1175,47 @@ def _type_display(name: str) -> str:
 _INTEGER_RANGES = {"smallint": 15, "integer": 31, "bigint": 63}
 
 
+def as_written(value: exp.Expr) -> exp.Expr:
+    """A string literal cast to text ('integer'::text) is that literal, as the argument reads it."""
+    while (
+        isinstance(value, exp.Cast)
+        and value.to.sql(dialect="postgres").lower() in ("text", "varchar", "name", "cstring")
+        and isinstance(value.this, (exp.Literal, exp.Cast))
+    ):
+        value = value.this
+    return value
+
+
 def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
     """What the type's input function says of a literal it refuses, and its SQLSTATE."""
+    value, type_name = as_written(value), as_written(type_name)
     display = _type_display(type_name.this)
     text = value.name
     bits = _INTEGER_RANGES.get(display)
     if bits is not None and re.fullmatch(r"\s*[-+]?\d+\s*", text):
         return f'value "{text}" is out of range for type {display}', "22003"
+    if display == "date" and _day_past_its_month(text):
+        return f'date/time field value out of range: "{text}"', "22008"
     return f'invalid input syntax for type {display}: "{text}"', "22P02"
+
+
+_ISO_DATE = re.compile(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*")
+
+
+def _day_past_its_month(text: str) -> bool:
+    """An ISO date whose month is one and whose day that month does not have: ValidateDate
+    refuses the day as out of range (DTERR_FIELD_OVERFLOW), not as syntax."""
+    found = _ISO_DATE.fullmatch(text)
+    if found is None:
+        return False
+    year, month, day = (int(g) for g in found.groups())
+    return 1 <= month <= 12 and not 1 <= day <= calendar.monthrange(year, month)[1]
 
 
 def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:
     """For pg_input_is_valid and pg_input_error_info: whether the value reads as the type. The
     type is named in the statement: the check is a cast to it."""
+    value, type_name = as_written(value), as_written(type_name)
     if not (isinstance(type_name, exp.Literal) and type_name.is_string):
         raise NotImplementedError(
             "pg_input_is_valid: a type that is not a literal is not supported; the cast is "

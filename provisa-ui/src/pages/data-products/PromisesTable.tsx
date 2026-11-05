@@ -10,12 +10,13 @@
 
 // REQ-2158: a contract's promises as a table in the shared list style -- one row per check: what it
 // applies to (the table, its rows or a column), the check in plain words, its thresholds in plain
-// words and its latest outcome. A row opens its promise's results in the SQL page.
+// words and its latest outcome. The heading counts those rows. A row opens its promise's results in
+// the SQL page.
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Table, UnstyledButton } from "@mantine/core";
+import { Table, Text, UnstyledButton } from "@mantine/core";
 import type { ProductDqEntry, ProductDqRule } from "../../api/lineage";
 import { ListRow } from "../../components/list/ListTable";
 import { SortGroupTable } from "../../components/list/SortGroupTable";
@@ -67,45 +68,50 @@ export function PromisesTable({
     navigate("/sql", { state: { sql: `select * from ${results}`, autoRun: true } });
   };
   return (
-    <SortGroupTable
-      testPrefix={testId}
-      testId={testId}
-      minWidth={480}
-      rows={rows}
-      columns={[
-        { key: "applies", label: t("contractPromises.col.appliesTo"), sortValue: applies },
-        {
-          key: "check",
-          label: t("contractPromises.col.check"),
-          sortValue: (r) => checkName(r.rule, t),
-        },
-      ]}
-      headers={[
-        { col: "applies" },
-        { col: "check" },
-        t("contractPromises.col.details"),
-        t("contractPromises.col.result"),
-      ]}
-      colSpan={4}
-      rowKey={(r) => r.key}
-      render={(r) => (
-        <ListRow key={r.key} testId={`${testId}-item-${r.key}`} onClick={() => open(r.promise)}>
-          <Table.Td>{applies(r)}</Table.Td>
-          <Table.Td>{checkName(r.rule, t)}</Table.Td>
-          <Table.Td>{checkDetails(r.rule, t)}</Table.Td>
-          <Table.Td>
-            <UnstyledButton
-              onClick={(e) => {
-                e.stopPropagation();
-                open(r.promise);
-              }}
-              aria-label={r.promise.description || r.promise.table_name}
-            >
-              <OutcomeBadge outcome={r.promise.latest_outcome} />
-            </UnstyledButton>
-          </Table.Td>
-        </ListRow>
-      )}
-    />
+    <>
+      <Text size="sm" fw={500} mb="xs" data-testid={`${testId}-count`}>
+        {t("dataProductCore.promises", { count: rows.length })}
+      </Text>
+      <SortGroupTable
+        testPrefix={testId}
+        testId={testId}
+        minWidth={480}
+        rows={rows}
+        columns={[
+          { key: "applies", label: t("contractPromises.col.appliesTo"), sortValue: applies },
+          {
+            key: "check",
+            label: t("contractPromises.col.check"),
+            sortValue: (r) => checkName(r.rule, t),
+          },
+        ]}
+        headers={[
+          { col: "applies" },
+          { col: "check" },
+          t("contractPromises.col.details"),
+          t("contractPromises.col.result"),
+        ]}
+        colSpan={4}
+        rowKey={(r) => r.key}
+        render={(r) => (
+          <ListRow key={r.key} testId={`${testId}-item-${r.key}`} onClick={() => open(r.promise)}>
+            <Table.Td>{applies(r)}</Table.Td>
+            <Table.Td>{checkName(r.rule, t)}</Table.Td>
+            <Table.Td>{checkDetails(r.rule, t)}</Table.Td>
+            <Table.Td>
+              <UnstyledButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  open(r.promise);
+                }}
+                aria-label={r.promise.description || r.promise.table_name}
+              >
+                <OutcomeBadge outcome={r.promise.latest_outcome} />
+              </UnstyledButton>
+            </Table.Td>
+          </ListRow>
+        )}
+      />
+    </>
   );
 }

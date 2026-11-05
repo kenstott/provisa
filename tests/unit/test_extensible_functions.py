@@ -23,6 +23,7 @@ from fastapi import HTTPException
 import provisa.executor.function_dispatch as fd
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.otel_compat import MemoryUdfTraceSink
+from provisa.executor.result import QueryResult
 
 
 @pytest.fixture
@@ -31,16 +32,12 @@ def host_code_allowed(monkeypatch):
     monkeypatch.setenv("PROVISA_COMMANDS_ALLOW_HOST_CODE", "true")
 
 
-class _FakeResult:
-    def __init__(self, cols, rows):
-        self.column_names = cols
-        self.rows = rows
-
-
 class _FakePools:
     def __init__(self, connected=True, result=None):
         self._connected = connected
-        self._result = result or _FakeResult(["id", "name"], [(1, "ada")])
+        self._result = result or QueryResult(
+            rows=[(1, "ada")], column_names=["id", "name"], column_types=["integer", "text"]
+        )
         self.calls: list = []
 
     def has(self, _src_id):

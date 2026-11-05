@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Узел данных",
+    "heading": "Отправлять запросы данных на",
+    "none": "Нет узла данных",
+    "noneOffered": "Для этого региона не указан ни один узел данных. Введите адрес ниже.",
+    "typedLabel": "Адрес узла данных",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Введите адрес http или https",
+    "use": "Использовать",
+    "loadError": "Не удалось загрузить узлы данных"
+  }
+}

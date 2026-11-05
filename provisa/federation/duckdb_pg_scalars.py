@@ -27,6 +27,15 @@ from decimal import Decimal
 from typing import Any
 
 from provisa.core.pg_error import END, MARK
+from provisa.federation.duckdb_pg_numeric import (
+    en_us_key,
+    numeric_binary,
+    numeric_of_float,
+    numeric_quotient,
+    numeric_spread,
+    numeric_unary,
+    to_number,
+)
 
 _BACKSLASH = "\\"
 
@@ -279,6 +288,33 @@ def regexp_substr(  # noqa: PLR0913 -- PostgreSQL's six arguments
             return None
     assert found is not None
     return found.group(subexpr) if subexpr <= regex.groups else None
+
+
+def regexp_instr(  # noqa: PLR0913 -- PostgreSQL's seven arguments
+    value: str, pattern: str, start: int, n: int, endoption: int, flags: str, subexpr: int
+) -> int:
+    """The position of the nth match from ``start`` (of its ``subexpr``th group), or of the
+    character after it where ``endoption`` is 1; 0 where there is none."""
+    bounds = (
+        ("start", start, 1),
+        ("n", n, 1),
+        ("endoption", endoption, 0),
+        ("subexpr", subexpr, 0),
+    )
+    for name, bound, least in bounds:
+        if bound < least or (name == "endoption" and bound > 1):
+            raise _error("22023", f'invalid value for parameter "{name}": {bound}')
+    regex = _compiled(pattern, _flags(flags, "regexp_instr"))
+    found = None
+    matches = regex.finditer(value, start - 1)
+    for _ in range(n):
+        found = next(matches, None)
+        if found is None:
+            return 0
+    assert found is not None
+    if subexpr > regex.groups or found.start(subexpr) < 0:
+        return 0
+    return (found.end(subexpr) if endoption else found.start(subexpr)) + 1
 
 
 def json_object(keys: list[str | None], values: list[str | None] | None) -> str:
@@ -662,6 +698,12 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_to_ascii", to_ascii, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_parse_ident", parse_ident, ["VARCHAR", "BOOLEAN"], "VARCHAR[]"),
     ("provisa_size_bytes", size_bytes, ["VARCHAR"], "BIGINT"),
+    ("provisa_numeric_unary", numeric_unary, ["VARCHAR"] * 2, "VARCHAR"),
+    ("provisa_numeric_binary", numeric_binary, ["VARCHAR"] * 3, "VARCHAR"),
+    ("provisa_numeric_quotient", numeric_quotient, ["VARCHAR"] * 2, "VARCHAR"),
+    ("provisa_numeric_of_float", numeric_of_float, ["DOUBLE", "INTEGER"], "VARCHAR"),
+    ("provisa_to_number", to_number, ["VARCHAR"] * 2, "VARCHAR"),
+    ("provisa_en_us_key", en_us_key, ["VARCHAR"], "VARCHAR"),
     ("provisa_numeric_gcd", numeric_gcd, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_numeric_lcm", numeric_lcm, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
@@ -673,10 +715,22 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
 _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_regexp_match", regexp_match, ["VARCHAR"] * 3, "VARCHAR[]"),
     (
+        "provisa_numeric_spread",
+        numeric_spread,
+        ["VARCHAR", "BIGINT", "VARCHAR", "VARCHAR"],
+        "VARCHAR",
+    ),
+    (
         "provisa_regexp_substr",
         regexp_substr,
         ["VARCHAR", "VARCHAR", "BIGINT", "BIGINT", "VARCHAR", "BIGINT"],
         "VARCHAR",
+    ),
+    (
+        "provisa_regexp_instr",
+        regexp_instr,
+        ["VARCHAR", "VARCHAR", "BIGINT", "BIGINT", "BIGINT", "VARCHAR", "BIGINT"],
+        "INTEGER",
     ),
 )
 

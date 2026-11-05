@@ -13,6 +13,7 @@
 import pytest
 from sqlglot.errors import ParseError
 
+from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
@@ -61,14 +62,24 @@ class TestTranspileToTrino:
         assert "jsonb_build_object" not in out
         assert "json_object(" in out
 
-    def test_jsonb_agg_is_rewritten(self):
+    def test_jsonb_agg_is_refused_by_name(self):
+        # REQ-2171: Trino's aggregate writes json's text, not the spacing of PostgreSQL's jsonb.
         pg = (
             "SELECT (SELECT JSONB_AGG(JSONB_BUILD_OBJECT('a', pets.id)) FROM "
             '"pet_store"."pets" AS pets WHERE pets.user_id = users.id) AS d '
             'FROM "pet_store"."users" AS users'
         )
+        with pytest.raises(FunctionRefused, match=r"jsonb_agg\(\) has no form on trino"):
+            transpile_to_trino(pg)
+
+    def test_json_agg_is_rewritten(self):
+        pg = (
+            "SELECT (SELECT JSON_AGG(JSONB_BUILD_OBJECT('a', pets.id)) FROM "
+            '"pet_store"."pets" AS pets WHERE pets.user_id = users.id) AS d '
+            'FROM "pet_store"."users" AS users'
+        )
         out = transpile_to_trino(pg).lower()
-        assert "jsonb_agg" not in out
+        assert "json_agg" not in out
         assert "jsonb_build_object" not in out
         assert "array_agg(json_parse(" in out
 
@@ -195,6 +206,24 @@ class TestPgDuckdbJsonEmission:
     def test_no_json_object_unchanged(self):
         pg = transpile('SELECT "id", "name" FROM "public"."orders"', "postgres")
         assert rewrite_json_object_to_build_object(pg) == pg
+
+    def test_overlaps_reaches_postgresql_as_its_own_call(self):
+        """REQ-2167: the pg engine sends pg_catalog."overlaps", never the routine's name, which
+        PostgreSQL has no function of."""
+        pg = (
+            'SELECT pg_catalog."overlaps"(NULL::time, NULL::interval, NULL::time, NULL::interval)'
+            " AS v"
+        )
+        for wrapped in (pg, f"SELECT json_object(KEY 'v' VALUE ({pg}))"):
+            out = rewrite_json_object_to_build_object(transpile(wrapped, "postgres"))
+            assert 'pg_catalog."overlaps"(' in out
+            assert "overlaps_timestamp" not in out.lower()
+
+    def test_a_quoted_table_function_keeps_its_name(self):
+        """REQ-2167: PostgreSQL resolves a quoted name as written; "JSON_TO_RECORD" is no
+        function there."""
+        pg = 'SELECT t.a FROM pg_catalog."json_to_record"(\'{"a": 1}\'::json) AS t(a integer)'
+        assert 'pg_catalog."json_to_record"(' in transpile(pg, "postgres")
 
     def test_pg_backend_transpile_physical_emits_build_object(self):
         from provisa.federation.engine import build_pg_engine
@@ -488,10 +517,55 @@ def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
 
 
 def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
-    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1 (a duration's ISO text read
-    # by its groups, temporal.duration_of_computed_text).
-    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
+    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1. The 'g' flag is every match,
+    # which is what Trino's own replaces.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1', 'g') FROM t"
     assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+
+
+def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
+    # With no flag the first match only (function_macros._first_match): the text before the match
+    # is group 1 of the form written, so PostgreSQL's \1 is Trino's $2.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
+    assert transpile_to_trino(pg) == (
+        "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)(c))(?<after>.*)$', "
+        "'${before}$3-$2${after}') FROM t"
+    )
+
+
+def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
+    # PostgreSQL's \2 of a pattern of one group is nothing, not the text after the match.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)[(]\(', '[\2]') FROM t"
+    assert transpile_to_trino(pg) == (
+        r"SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)[(]\()(?<after>.*)$', "
+        "'${before}[]${after}') FROM t"
+    )
+
+
+def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
+    # \\ is a backslash and the 1 after it a digit; a $ is a dollar sign.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\1$\\1') FROM t"
+    assert transpile_to_trino(pg) == (
+        "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b))(?<after>.*)$', "
+        r"'${before}$2\$\\1${after}') FROM t"
+    )
+
+
+def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1\1', 'g') FROM t"
+    assert transpile_to_trino(pg) == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') FROM t"
+
+
+@pytest.mark.parametrize(
+    "pg",
+    [
+        r"SELECT REGEXP_REPLACE(x, '(a)\1', '\1') FROM t",  # the pattern's \1 would be the text before
+        r"SELECT REGEXP_REPLACE(x, 'a', '\0') FROM t",  # PostgreSQL's \0 names no group
+    ],
+)
+def test_a_first_match_with_no_group_form_is_refused(pg: str):
+    with pytest.raises(FunctionRefused, match="regexp_replace"):
+        transpile_to_trino(pg)
 
 
 def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():

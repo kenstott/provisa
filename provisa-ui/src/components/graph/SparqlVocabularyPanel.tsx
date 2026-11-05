@@ -14,8 +14,9 @@
 // Relationships (the edge types between the tables' labels),
 // Concepts (the SKOS vocabulary) and Prefixes. A class, property, relationship or concept pill
 // starts a new frame, as a Cypher label pill does; a prefix or a domain adds its PREFIX line to the
-// query in the bar, and a domain picked narrows the lists to its vocabulary. A class pill dropped on
-// a frame merges the class's instances into it. Properties are named by their local names: a
+// query in the bar, and a domain picked narrows the lists to its vocabulary. A class, domain,
+// relationship or property pill dropped on a frame adds to its query (sparqlDrop.ts), and a class's,
+// domain's or relationship's right click opens the menu a Cypher pill's does. Every section starts closed, the panel holding far more than Cypher's. Properties are named by their local names: a
 // Property term once, with the classes that have it, and each column's own under its class; the
 // search reads those names across every class.
 
@@ -25,7 +26,18 @@ import { TextInput } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { Tip } from "../Tip";
 import { labelColor } from "./graph-model";
-import { compactIri, domainPrefixes, termName, type SparqlVocabulary } from "./sparql";
+import type { OpenClassMenu, OpenRelMenu } from "./GraphSidebar";
+import { EDGE_DRAG, PROPERTY_DRAG } from "./sparqlDrop";
+import {
+  classLabel,
+  classMenuProperties,
+  compactIri,
+  domainMenuProperties,
+  domainPrefixes,
+  edgeName,
+  termName,
+  type SparqlVocabulary,
+} from "./sparql";
 
 import type { VocabularyPick } from "./sparql";
 
@@ -55,6 +67,8 @@ function Pill({
   color,
   badge,
   dragged,
+  dragType = "text/x-provisa-label",
+  onContextMenu,
 }: {
   text: string;
   tip: string;
@@ -67,6 +81,9 @@ function Pill({
   badge?: boolean;
   /** What a drop on a frame reads, as a Cypher label pill carries its label. */
   dragged?: string;
+  /** The type ``dragged`` is carried under. */
+  dragType?: string;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   return (
     <div className="graph-label-item">
@@ -76,11 +93,12 @@ function Pill({
           className={badge ? "graph-rel-badge" : "graph-label-pill"}
           style={color ? { background: color } : undefined}
           onClick={onClick}
+          onContextMenu={onContextMenu}
           draggable={dragged !== undefined}
           onDragStart={
             dragged === undefined
               ? undefined
-              : (e) => e.dataTransfer.setData("text/x-provisa-label", dragged)
+              : (e) => e.dataTransfer.setData(dragType, dragged)
           }
           data-testid={testId}
         >
@@ -103,6 +121,8 @@ export function SparqlVocabularyPanel({
   onPick,
   colorOverrides,
   checkedDomains,
+  onClassMenu,
+  onRelMenu,
 }: {
   /** null while it is read. */
   vocabulary: SparqlVocabulary | null;
@@ -114,6 +134,10 @@ export function SparqlVocabularyPanel({
   colorOverrides: Record<string, string>;
   /** The navbar's domain selection; none checked is every domain, as the Cypher sidebar reads it. */
   checkedDomains: ReadonlySet<string>;
+  /** Opens a class's menu, on a right click of its pill. */
+  onClassMenu?: OpenClassMenu;
+  /** Opens a relationship's menu, on a right click of its pill. */
+  onRelMenu?: OpenRelMenu;
 }) {
   const { t } = useTranslation();
   const [domain, setDomain] = useState<string | null>(null);
@@ -158,6 +182,7 @@ export function SparqlVocabularyPanel({
       ).map((x) => ({
         ...x,
         shown: c(x.iri),
+        drawn: classLabel(x.iri, named),
         term: termName(x.iri, p),
         parents: x.superclasses.map(c),
       })),
@@ -231,7 +256,12 @@ export function SparqlVocabularyPanel({
 
   const empty = <div className="graph-schema-empty">{t("sparqlVocabulary.none")}</div>;
   const section = (value: string, title: string, children: React.ReactNode) => (
-    <CollapsibleItem value={value} title={title} controlTestId={`sparql-vocab-${value}-toggle`}>
+    <CollapsibleItem
+      value={value}
+      title={title}
+      defaultOpen={false}
+      controlTestId={`sparql-vocab-${value}-toggle`}
+    >
       <div className="graph-label-list">{children}</div>
     </CollapsibleItem>
   );
@@ -259,6 +289,16 @@ export function SparqlVocabularyPanel({
                   setDomain(domain === prefix ? null : prefix);
                   onPick({ kind: "prefix", prefix });
                 }}
+                onContextMenu={(e) =>
+                  onClassMenu?.(e, {
+                    compoundLabel: prefix,
+                    tableLabel: prefix,
+                    properties: [],
+                    ...domainMenuProperties(ns, vocabulary, named),
+                  })
+                }
+                dragged={prefix}
+                dragType="text/x-provisa-domain"
                 testId={`sparql-domain-${prefix}`}
               />
             )),
@@ -273,7 +313,7 @@ export function SparqlVocabularyPanel({
                   <Pill
                     key={x.iri}
                     text={text}
-                    color={colorOverrides[x.shown] ?? labelColor(x.shown)}
+                    color={colorOverrides[x.drawn] ?? labelColor(x.drawn)}
                     muted={x.parents.length > 0 ? `⊂ ${x.parents.join(", ")}` : undefined}
                     tip={[
                       x.shown,
@@ -283,6 +323,13 @@ export function SparqlVocabularyPanel({
                         : t("sparqlVocabulary.tableClass"),
                     ].join(" · ")}
                     onClick={() => onPick({ kind: "class", iri: x.iri })}
+                    onContextMenu={(e) =>
+                      onClassMenu?.(e, {
+                        compoundLabel: x.drawn,
+                        tableLabel: x.shown,
+                        ...classMenuProperties(x, vocabulary, named),
+                      })
+                    }
                     dragged={x.iri}
                     testId={`sparql-class-${x.shown}`}
                   />
@@ -309,6 +356,7 @@ export function SparqlVocabularyPanel({
                           key={prefix}
                           value={prefix}
                           title={`${prefix} (${list.length})`}
+                          defaultOpen={false}
                           controlTestId={`sparql-class-prefix-${prefix}`}
                         >
                           <div className="graph-label-list">
@@ -334,6 +382,8 @@ export function SparqlVocabularyPanel({
                   text={p.name}
                   tip={p.tip}
                   onClick={() => onPick({ kind: "predicate", iri: p.iri })}
+                  dragged={p.iri}
+                  dragType={PROPERTY_DRAG}
                   testId={`sparql-predicate-${p.testId}`}
                 />
               ));
@@ -363,6 +413,7 @@ export function SparqlVocabularyPanel({
                       <CollapsibleItem
                         value="terms"
                         title={t("sparqlVocabulary.propertyTerms")}
+                        defaultOpen={false}
                         forceOpen={asked !== ""}
                         controlTestId="sparql-property-terms-toggle"
                       >
@@ -395,10 +446,13 @@ export function SparqlVocabularyPanel({
             : shown.edges.map((e) => (
                 <Pill
                   key={e.iri}
-                  text={e.shown}
+                  text={edgeName(e.shown)}
                   badge
                   tip={`${e.iri} · ${e.source} → ${e.target}`}
                   onClick={() => onPick({ kind: "edge", iri: e.iri })}
+                  onContextMenu={(ev) => onRelMenu?.(ev, edgeName(e.shown))}
+                  dragged={e.iri}
+                  dragType={EDGE_DRAG}
                   testId={`sparql-edge-${e.shown}`}
                 />
               )),

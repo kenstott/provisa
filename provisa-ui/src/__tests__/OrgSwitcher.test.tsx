@@ -10,7 +10,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "../test-utils/render";
+import { fireEvent, render, screen } from "../test-utils/render";
 import { OrgSwitcher } from "../components/OrgSwitcher";
 
 vi.mock("../context/AuthContext", () => ({ useAuth: vi.fn() }));
@@ -39,6 +39,36 @@ describe("OrgSwitcher", () => {
     mockUseAuth.mockReturnValue(auth());
     render(<OrgSwitcher />);
     expect(screen.getByTestId("org-switcher-static")).toHaveTextContent("Enterprise");
+  });
+
+  // The nav holds one line: a long name is cut at the bar's width for it, and said whole on hover.
+  const LONG = "What is actually in this data? (a sandbox of the profiling demo)";
+
+  it("cuts a long org name to the nav's width, whole on hover", async () => {
+    mockUseAuth.mockReturnValue(
+      auth({ orgMemberships: [{ org_id: "acme", org_name: LONG, roles: [] }] }),
+    );
+    render(<OrgSwitcher />);
+    const name = screen.getByTestId("org-switcher-static");
+    expect(name).toHaveClass("navbar-org-name");
+    fireEvent.mouseEnter(name);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(LONG);
+  });
+
+  it("cuts a long org name on the switcher too, whole on hover", async () => {
+    mockUseAuth.mockReturnValue(
+      auth({
+        orgMemberships: [
+          { org_id: "acme", org_name: LONG, roles: [] },
+          { org_id: "sandbox", org_name: "Sandbox", roles: [] },
+        ],
+      }),
+    );
+    render(<OrgSwitcher />);
+    const name = screen.getByTestId("org-switcher-trigger").querySelector(".navbar-org-name")!;
+    expect(name).toHaveTextContent(LONG);
+    fireEvent.mouseEnter(name);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(LONG);
   });
 
   it("renders nothing in a single-tenant deployment", () => {

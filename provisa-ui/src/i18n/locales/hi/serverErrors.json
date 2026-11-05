@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "टेस्ट एंडपॉइंट अक्षम है (गैर-प्रोडक्शन में सक्षम करने के लिए PROVISA_ENABLE_TEST_ENDPOINTS सेट करें)।",
       "unknown_action_type": "अज्ञात actionType '{{action_type}}'",
       "unknown_role": "अज्ञात भूमिका '{{role}}'",
+      "mask_unreachable": "आपने ऐसा मास्क परिभाषित किया है जिस तक पहुँचा नहीं जा सकता: {{entries}}",
       "webhook_not_found": "वेबहुक '{{name}}' नहीं मिला",
       "written_table_not_registered": "'{{table}}' स्रोत '{{source_id}}' की पंजीकृत तालिका नहीं है",
       "function_exists": "फ़ंक्शन '{{name}}' पहले से मौजूद है",
@@ -129,12 +130,14 @@
       "address_not_found": "हल करने के लिए कुछ नहीं: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve को एक ऑपरेशन में अन्य रूट फ़ील्ड के साथ नहीं जोड़ा जा सकता",
       "source_starting": "स्रोत {{source}} अभी शुरू हो रहा है। थोड़ी देर में फिर से प्रयास करें।",
+      "source_unavailable": "स्रोत {{source}} उत्तर नहीं दे सका। थोड़ी देर बाद फिर से प्रयास करें।",
       "view_outside_load_window": "view {{view}} केवल उसकी पढ़ने की अवधि में पढ़ा जा सकता है। यह अगली बार {{opens_at}} पर खुलेगी।",
       "graphql_body_missing": "अनुरोध में कोई बॉडी नहीं है: GraphQL अनुरोध एक क्वेरी वाला JSON ऑब्जेक्ट होता है।",
       "graphql_body_not_json": "अनुरोध की बॉडी JSON नहीं है: {{error}}",
       "graphql_request_not_object": "GraphQL अनुरोध एक क्वेरी वाला JSON ऑब्जेक्ट होता है।",
       "graphql_parameter_type": "GraphQL अनुरोध का {{parameter}} {{expected}} होना चाहिए।",
-      "graphql_mutation_over_get": "म्यूटेशन POST से भेजा जाता है, कभी GET से नहीं।"
+      "graphql_mutation_over_get": "म्यूटेशन POST से भेजा जाता है, कभी GET से नहीं।",
+      "listed_only": "भूमिका {{role}} केवल {{table}} को सूचीबद्ध कर सकती है: उसका मेटाडेटा पढ़ा जा सकता है, डेटा नहीं"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",
@@ -155,7 +158,7 @@
       "in_use": "{{env}} को अब भी {{count}} आइटम संदर्भित करते हैं। हर एक को हटाएँ या बदलें, फिर दोबारा हटाएँ।"
     },
     "front_door": {
-      "coordinator_waking": "वातावरण शुरू हो रहा है। यह लगभग दो मिनट में तैयार हो जाएगा।",
+      "coordinator_waking": "वातावरण शुरू हो रहा है। यह लगभग पाँच मिनट में तैयार हो जाएगा।",
       "coordinator_updating": "वातावरण अपडेट हो रहा है। यह जल्द ही वापस उपलब्ध होगा।"
     },
     "functions": {
@@ -268,6 +271,10 @@
       "classification_decision_not_found": "{{column}} पर {{kind}} के रूप में कोई निर्णय नहीं",
       "classification_pii_refused": "कॉलम को PII के रूप में चिह्नित नहीं किया जा सका"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} meta डोमेन का कैटलॉग व्यू है और इसे डेटा स्रोत की तालिका के साथ एक ही स्टेटमेंट में नहीं पढ़ा जा सकता: इन्हें दो स्टेटमेंट में पढ़ें।",
+      "function_unsupported": "{{dialect}} पर {{function}}() का कोई समकक्ष नहीं है।"
+    },
     "replication": {
       "answer_not_json": "{{table}} की रेप्लिका के लिए पढ़ा गया उत्तर मान्य JSON नहीं है: [{{content_type}}] {{cause}} (उत्तर के बाइट {{before_byte}} से पहले के {{kib}} KiB में)।",
       "no_whole_copy": "स्रोत {{source}} की तालिका {{schema}}.{{table}} की कोई पूरी प्रति बनाने के लिए नहीं है: यह पंक्ति-दर-पंक्ति रेप्लिकेट होती है, या इसमें एक पैरामीटर कॉलम है।",
@@ -287,7 +294,8 @@
       "not_found": "भूमिका नहीं मिली",
       "org_selection_required": "संगठन चयन आवश्यक है",
       "already_exists": "भूमिका '{{role}}' पहले से मौजूद है",
-      "description_missing": "भूमिका '{{role}}' को इसके उद्देश्य का विवरण चाहिए"
+      "description_missing": "भूमिका '{{role}}' को इसके उद्देश्य का विवरण चाहिए",
+      "right_not_in_parents": "भूमिका {{role}} के पास {{right}} नहीं हो सकता: किसी पैरेंट के पास यह नहीं है"
     },
     "schema": {
       "allowed_domains_updated": "स्रोत '{{source}}' के लिए अनुमत डोमेन अपडेट किए गए",
@@ -397,6 +405,7 @@
       "source_region_set": "स्रोत {{source}} का क्षेत्र {{region}} पर सेट किया गया",
       "region_refused": "क्षेत्र सेट नहीं हुआ: {{reason}}",
       "table_too_complex": "टेबल '{{table}}' चुने गए कॉलम के साथ पंजीकृत नहीं हुई: {{reason}}। कम कॉलम चुनें।",
+      "remote_throttled": "टेबल '{{table}}' पंजीकृत नहीं हुई: स्रोत की दर सीमा ने इसकी जाँच नहीं होने दी ({{reason}})। बाद में फिर से प्रयास करें।",
       "table_updated": "टेबल '{{table}}' अपडेट हुई (id={{id}})",
       "task_deleted": "टास्क '{{task}}' हटाया गया",
       "task_disabled": "टास्क '{{task}}' अक्षम किया गया",
@@ -414,6 +423,7 @@
       "view_spans_sources": "व्यू कई स्रोतों में फैला है: {{sources}}",
       "webhook_approved": "वेबहुक '{{webhook}}' अनुमोदित किया गया",
       "webhook_name_required": "वेबहुक ट्रिगर के लिए webhook_name आवश्यक है",
+      "mask_unreachable": "आपने ऐसा मास्क परिभाषित किया है जिस तक पहुँचा नहीं जा सकता: {{entries}}",
       "webhook_not_found": "वेबहुक '{{webhook}}' नहीं मिला",
       "change_streams_unavailable": "स्रोत '{{source}}' एक स्टैंडअलोन MongoDB सर्वर है, जो change streams नहीं देता: native परिवर्तन संकेत के लिए replica set या sharded cluster चाहिए। इसे replica set के रूप में चलाएँ, या poll परिवर्तन संकेत का उपयोग करें।",
       "table_draft_set": "टेबल {{table}} ड्राफ़्ट के रूप में सेट",
@@ -468,7 +478,11 @@
       "relationship_same_entity_cardinality": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: यह {{cardinality}} है, और एक ही इकाई एक पंक्ति से एक पंक्ति है",
       "relationship_same_entity_not_grounded": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: {{source}} और {{target}} एक ही शब्द में आधारित नहीं हैं",
       "relationship_same_entity_not_keys": "संबंध '{{relationship}}' को एक ही इकाई के रूप में चिह्नित नहीं किया जा सकता: {{columns}} {{table}} की प्राथमिक कुंजी या अद्वितीय कुंजी नहीं है",
-      "kaggle_token_missing": "Kaggle डेटासेट {{owner}}/{{ref}}: डेटा स्रोत में कोई Kaggle API टोकन नहीं है। इसे डेटा स्रोत फ़ॉर्म पर जोड़ें, जहाँ इसका टोकन दर्ज किया जाता है।"
+      "kaggle_token_missing": "Kaggle डेटासेट {{owner}}/{{ref}}: डेटा स्रोत में कोई Kaggle API टोकन नहीं है। इसे डेटा स्रोत फ़ॉर्म पर जोड़ें, जहाँ इसका टोकन दर्ज किया जाता है।",
+      "jdbc_invalid": "स्रोत {{source}}: {{error}}",
+      "jdbc_file_refused": "स्रोत {{source}}: URL {{path}} बताता है, जिसे यह सर्वर संगठन के लिए नहीं खोल सकता।",
+      "jdbc_options_refused": "स्रोत {{source}}: इस संगठन का URL ड्राइवर विकल्प {{options}} नहीं दे सकता।",
+      "jdbc_driver_refused": "स्रोत {{source}}: ग्राहक का JDBC ड्राइवर Provisa के अपने JVM में कोड के रूप में चलता है, जिसकी अनुमति केवल स्व-होस्टेड इंस्टॉल देता है।"
     },
     "secrets": {
       "name_refused": "{{name}} {{service}} में इस संगठन के सीक्रेट्स के भीतर का नाम नहीं है: नाम संगठन के सापेक्ष होता है और उससे बाहर नहीं जा सकता",
@@ -616,7 +630,10 @@
       "popup_blocked": "आपके ब्राउज़र ने साइन इन विंडो को ब्लॉक कर दिया। इस साइट के लिए पॉप-अप की अनुमति दें और फिर कोशिश करें।",
       "window_closed": "साइन इन विंडो पूरा होने से पहले बंद कर दी गई।",
       "tenant_invalid": "संगठन की Microsoft 365 सेटिंग में कोई निर्देशिका (टेनेंट) नहीं दी गई है। व्यवस्थापक निर्देशिका की ID या डोमेन दर्ज करता है।",
-      "microsoft_account_unread": "साइन-इन स्वीकृत हुआ, लेकिन Microsoft ने नहीं बताया कि मेलबॉक्स किसका है।"
+      "microsoft_account_unread": "साइन-इन स्वीकृत हुआ, लेकिन Microsoft ने नहीं बताया कि मेलबॉक्स किसका है।",
+      "client_missing": "ऐप की क्लाइंट ID और क्लाइंट सीक्रेट दर्ज करें, फिर साइन इन करें।",
+      "client_not_taken": "इस प्रकार का स्रोत आपके संगठन के क्लाइंट से साइन इन करता है, फ़ॉर्म में दर्ज किए गए क्लाइंट से नहीं।",
+      "no_account_returned": "साइन इन स्वीकृत हुआ, लेकिन उत्तर में यह नहीं बताया गया कि कौन-सा खाता ({{parameter}})। फिर से साइन इन करें।"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "आपके संगठन ने ऐसे स्रोतों की अनुमति नहीं दी है जो उसके मेलबॉक्स पढ़ते हैं। व्यवस्थापक इसे व्यवस्थापन › ईमेल में अनुमति देता है।",
@@ -662,6 +679,8 @@
       "unknown_demo": "{{demo}} नाम का कोई प्रकाशित डेमो नहीं है।",
       "demo_not_ready": "यह डेमो अभी तैयार किया जा रहा है। थोड़ी देर में फिर से प्रयास करें।",
       "demo_stores_failed": "यह डेमो शुरू नहीं हो सका। कुछ मिनट बाद फिर से कोशिश करें।",
+      "demo_failed": "यह डेमो तैयार नहीं हो सका। कुछ मिनट बाद फिर से कोशिश करें।",
+      "failed_to_start": "डेमो सर्वर शुरू नहीं हो सका। बाद में फिर से कोशिश करें।",
       "at_capacity": "सभी डेमो सैंडबॉक्स उपयोग में हैं। थोड़ी देर में फिर से प्रयास करें।",
       "starting": "डेमो सर्वर शुरू हो रहा है। एक-दो मिनट में फिर से कोशिश करें।",
       "disk_full": "इस सैंडबॉक्स ने अपनी {{limit}} बाइट की डिस्क सीमा का उपयोग कर लिया है; इसमें और कुछ नहीं लिखा जा सकता।",
@@ -749,6 +768,12 @@
         "no_description": "यह डेटा उत्पाद न अपना उद्देश्य बताता है, न अपना उपयोग।",
         "successor_retired": "जिस डेटा उत्पाद ने इसके सदस्य लिए, '{{successor}}', वह भी सेवानिवृत्त हो चुका है।"
       }
+    },
+    "erd": {
+      "database_unavailable": "ERD लेआउट पढ़े नहीं जा सकते: डेटाबेस उपलब्ध नहीं है",
+      "layout_not_found": "{{name}} नाम का कोई लेआउट नहीं है",
+      "layout_name_required": "लेआउट को एक नाम चाहिए",
+      "layout_place_unreadable": "लेआउट एक {{kind}} रखता है जिसे आप पढ़ नहीं सकते"
     }
   }
 }

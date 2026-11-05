@@ -314,9 +314,7 @@ def test_a_repeated_refusal_is_said_once_and_its_detail_kept(monkeypatch):
     monkeypatch.setattr(
         "provisa.compiler.sql_validator.validate_sql", lambda *a, **k: [*repeated, other]
     )
-    monkeypatch.setattr(
-        "provisa.compiler.stage2.build_governance_context", lambda *a, **k: object()
-    )
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", lambda *a, **k: object())
     monkeypatch.setattr(
         "provisa.pgwire._pipeline.relationship_guard_bypassed", lambda *a, **k: False
     )

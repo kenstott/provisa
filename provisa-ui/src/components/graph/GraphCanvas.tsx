@@ -18,6 +18,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react
 import { useTranslation } from "react-i18next";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
+import { LITERAL_LABEL } from "./sparql";
 import {
   buildClusterElements,
   buildClusterMetaEdges,
@@ -42,6 +43,7 @@ import {
   computeLabelSizeRanges,
   applyNodeSize,
   holdDrawing,
+  nodeUnder,
   restoreDrawing,
   type HeldDrawing,
 } from "./canvas/canvas-helpers";
@@ -75,6 +77,7 @@ export function GraphCanvas({
   showingParentsCircular,
   describable = false,
   onNodeDragged,
+  onNodeDroppedOnNode,
   keepPositions = false,
   onCyReady,
   clusterLevel,
@@ -105,10 +108,14 @@ export function GraphCanvas({
   relLineOverridesRef.current = relLineOverrides;
   const nodeDraggedRef = useRef(onNodeDragged);
   nodeDraggedRef.current = onNodeDragged;
+  const nodeDroppedRef = useRef(onNodeDroppedOnNode);
+  nodeDroppedRef.current = onNodeDroppedOnNode;
   const keepPositionsRef = useRef(keepPositions);
   keepPositionsRef.current = keepPositions;
   // Where the last drawing's nodes stood, for a drawing that keeps them (keepPositions).
   const heldDrawingRef = useRef<HeldDrawing | null>(null);
+  // Whether this drawing's nodes stand where a layout (or a held drawing) put them.
+  const laidOutRef = useRef(false);
   // Track nodes that the user has manually dragged; these stay anchored during re-layout
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
@@ -534,14 +541,18 @@ export function GraphCanvas({
     });
     cy.on("mouseover", "node", (evt) => {
       evt.target.addClass("hovered");
-      // The full caption, where the circle's own was scaled down or cut short; a resource's IRI.
+      // The full caption, where the circle's own was scaled down or cut short; a resource's IRI;
+      // a literal's datatype beside its value.
       const el = cy.container();
       const gn = evt.target.data("_node") as GNode | undefined;
+      const caption = nodeCaption(gn, evt.target.data("label"), labelPropertyRef.current);
       if (el)
         el.title =
           typeof gn?.properties.iri === "string"
             ? gn.properties.iri
-            : nodeCaption(gn, evt.target.data("label"), labelPropertyRef.current);
+            : gn?.label === LITERAL_LABEL && typeof gn.properties.datatype === "string"
+              ? `${caption} · ${gn.properties.datatype}`
+              : caption;
     });
     cy.on("mouseout", "node", (evt) => {
       evt.target.removeClass("hovered");
@@ -561,6 +572,7 @@ export function GraphCanvas({
       if (el) el.title = "";
     });
     cy.on("layoutstop", () => {
+      laidOutRef.current = true;
       if (pendingNudgesRef.current === 0) computeHulls();
     });
     cy.on("viewport", computeHulls);
@@ -577,12 +589,19 @@ export function GraphCanvas({
       const after = evt.target.position();
       grabPositions.delete(id);
       if (!before || (Math.abs(after.x - before.x) < 1 && Math.abs(after.y - before.y) < 1)) return;
+      // Before the nudge moves either of them.
+      const dragged = evt.target.data("_node") as GNode | undefined;
+      const under = nodeUnder(cy, evt.target);
       anchoredRef.current.add(id);
       evt.target.addClass("pinned");
-      pendingNudgesRef.current = 2;
-      pendingNudgeFreeNodesRef.current = undefined;
-      nudgeLayoutRef.current();
+      // A drawing that keeps its nodes leaves the rest where they stand.
+      if (!keepPositionsRef.current) {
+        pendingNudgesRef.current = 2;
+        pendingNudgeFreeNodesRef.current = undefined;
+        nudgeLayoutRef.current();
+      }
       nodeDraggedRef.current?.(id);
+      if (dragged && under) nodeDroppedRef.current?.(dragged, under);
     });
 
     portEdgesAddedRef.current = false;
@@ -595,15 +614,17 @@ export function GraphCanvas({
     );
     activeLayoutRef.current = null;
     layoutRunningRef.current = false;
+    laidOutRef.current = false;
     if (held && clusterLevel === "none") {
       // The nudge places what is new, and styles the rest as a layout does.
       const fresh = restoreDrawing(cy, held, edgeDistanceRef.current);
+      laidOutRef.current = true;
       nudgeLayout(fresh, fresh.size > 0);
     } else if (els.length > 0) runLayout();
     return () => {
-      // A drawing whose layout never finished has nowhere to keep.
+      // A drawing whose first layout never finished has nowhere to keep; one nudged since has.
       heldDrawingRef.current =
-        keepPositionsRef.current && !layoutRunningRef.current ? holdDrawing(cy) : null;
+        keepPositionsRef.current && laidOutRef.current ? holdDrawing(cy) : null;
       cyRef.current = null;
       activeLayoutRef.current = null;
       onCyReady?.(null);

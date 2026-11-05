@@ -36,6 +36,9 @@ if TYPE_CHECKING:
     from provisa.pgwire._pipeline import StatementOutcome
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+from provisa.transpiler.metadata_settings import CatalogViewRefused
 from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.federation.pgwire_replica import SourceStillStartingError
@@ -262,6 +265,9 @@ def _sql_error(exc: Exception) -> Exception:
         | ReadRefused
         | SourceStillStartingError
         | NotAvailableHere
+        | CatalogViewRefused  # REQ-2190
+        | MetadataFunctionRefused  # REQ-2190
+        | FunctionRefused  # REQ-2167
         | HTTPException,
     ):
         return exc
@@ -406,26 +412,29 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 cache_headers,
             )
         from provisa.compiler.sql_gen import ColumnRef
+        from provisa.compiler.sql_types import is_json_type
 
+        # A column the engine types json or jsonb is written as its JSON (REQ-1867).
+        types = result.column_types or [None] * len(result.column_names)
         columns = [
-            ColumnRef(alias=None, column=c, field_name=c, nested_in=None)
-            for c in result.column_names
+            ColumnRef(alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t))
+            for c, t in zip(result.column_names, types, strict=True)
         ]
         return _with_cache_headers(
-            _format_response(result.rows, columns, "sql", output_format), cache_headers
+            _format_response(result, columns, "sql", output_format), cache_headers
         )
 
     # ONE pipeline: /data/sql runs through the single governed chokepoint. execute_sql_batch splits a
     # multi-statement batch statement-aware and governs+executes EACH (last result returned) — so the
     # tail is never silently dropped, and a per-statement registered command still routes through the
-    # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
-    # (REQ-1163) is a query-shaping param threaded in.
+    # shared function hook. As_of (REQ-1163) is a query-shaping param threaded in.
     if role_id not in state.schemas:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
-    role = state.roles.get(role_id)
-    _check_sql_capabilities(role)
+    if stats_enabled:
+        # REQ-2155: reading needs no query_development; the physical SQL the stats show does.
+        _check_sql_capabilities(state.roles.get(role_id))
     from provisa.api.redirect_headers import delivery_from_headers
     from provisa.pgwire._pipeline import execute_sql_batch, execute_sql_batch_each
 
@@ -1003,8 +1012,8 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     """
     from provisa.api.app import state
     from provisa.compiler.naming import domain_to_sql_name
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.core.org_secrets import read_org_api_keys
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.core.org_settings import resolve_org_config
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request)
@@ -1030,19 +1039,10 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
         return {"sql": sql, "cypher": cypher, "attempts": 1}
 
     ctx = surface.context
-    rls = surface.rls
     from provisa.security.rights import require_role
 
     role_obj = require_role(state.roles, role_id)
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role_obj,
-        relationships=getattr(state, "relationships", None),
-    )
+    gov_ctx = role_governance(state, surface, role_id)
     raw_tables = getattr(state, "tables", [])
 
     all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(

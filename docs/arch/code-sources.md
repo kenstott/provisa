@@ -1,4 +1,4 @@
-# Code sources: one worker protocol, Node and Python (REQ-1984, REQ-1993)
+# Code sources: one worker protocol, Node, Python and Go (REQ-1984, REQ-1993, REQ-2200)
 
 Status: design approved by the lead on 2026-10-12, decisions in section 9. Node parts 1 to 3 are built; the rest follows section 7.
 
@@ -20,9 +20,9 @@ Every statement below that goes beyond REQ-1984 or REQ-1993 is marked *(proposed
 | The worker: process, socket, frames, messages, cancel, crash, pool | `provisa/codesource/worker.py` (section 3) | the host program: `host.mjs` / `host.py` |
 | The sandbox | its rules and the OS mechanism (section 4) | Deno's own flags; everything else uses the OS sandbox |
 | Tables, commands, live tables, parameters, landing, governance | parts 5 to 7 (REQ-1986, REQ-1980), unchanged | — |
-| Source type | — | `SourceType.node`, `SourceType.python` |
+| Source type | — | `SourceType.node`, `SourceType.python`, `SourceType.go` |
 
-Nothing in the shared layer names a language. A language is a `CodeLanguage` *(proposed)*: its source type, its runtimes, its reader command, its host command, its package fetch and install, and its lockfiles.
+Nothing in the shared layer names a language. A language is a `CodeLanguage` (`provisa/codesource/languages.py`, built with REQ-2200): its source type, its runtimes, its package kind, whether a source names its entry, its `prepare` module (package reference, install, reader, host command) and its `image` module (fetch, lockfiles, image layers). Every site that asks whether a source type is code asks `CODE_SOURCE_TYPES`.
 
 ## 2. The reader's output (the manifest's input)
 
@@ -44,7 +44,7 @@ One long-running process per code source per Provisa process, in its runtime, st
 
 - **Transport:** a Unix domain socket in a private directory (mode 0700). Provisa listens; the host connects. A socket, not the process's stdout, so anything the code prints never reaches the protocol.
 - **Frames:** a 4-byte big-endian length, then UTF-8 JSON.
-- **Values:** JSON, with a timestamp as `{"$date": iso}`, a big integer as `{"$bigint": digits}`, a decimal as `{"$decimal": digits}`, a calendar date as `{"$day": iso}`, a missing value as null.
+- **Values.** JSON, with a timestamp as `{"$date": iso}`, a big integer as `{"$bigint": digits}`, a decimal as `{"$decimal": digits}`, a calendar date as `{"$day": iso}`, a missing value as null.
 - **Messages:**
 
   | From | Message | Meaning |
@@ -80,7 +80,7 @@ The maintainer's ruling for Node applies to Python (REQ-1993): no file access be
       - seccomp: `socket()` only for TCP over IPv4 or IPv6; `socketpair()` allowed (an unnamed connected pair reaches nothing; asyncio's event loop wakes itself through one, so a Python host cannot start without it); no io_uring (it opens sockets without `socket()`), no x32 calls on x86_64. So there is no UDP (no DNS around the proxy) and no Unix socket: Landlock does not mediate a Unix socket's connect, and a host's Docker or Postgres socket would otherwise be a path away.
       - The worker's socket is therefore handed to the host already connected, as an inherited descriptor (`fd:N`); the host reads and writes it with `node:fs`, because Bun's `net.Socket` does not take a descriptor.
     - Windows: no sandbox; a code source is refused there by name (S2).
-  - **Proven by:** `.github/workflows/sandbox-probe.yml` runs the launcher's `--probe` on the runner, under Docker's default seccomp and under containerd's default profile (what `RuntimeDefault` applies); `tests/integration/test_node_worker.py` runs Node, Bun and Deno sandboxed (reads outside the code refused, the allow-list reached through the proxy and nothing else).
+  - **Proven by.** `.github/workflows/sandbox-probe.yml` runs the launcher's `--probe` on the runner, under Docker's default seccomp and under containerd's default profile (what `RuntimeDefault` applies); `tests/integration/test_node_worker.py` runs Node, Bun and Deno sandboxed (reads outside the code refused, the allow-list reached through the proxy and nothing else).
     - Run 38307119574 on main (2026-10-12): kernel 6.17.0-1022-azure, Landlock ABI 7. On the runner, under `docker run` (Docker's default seccomp) and under `ctr run --seccomp` (containerd's default, what Kubernetes' `RuntimeDefault` applies), every check held: reading `/etc/passwd` refused and the sandbox's own code read; writing `/tmp` refused; a TCP bind refused; TCP to another port refused and to the proxy's port allowed; UDP and Unix sockets refused (that run also refused `socketpair`; it is allowed since alpha.481's suite showed the Python host's event loop needs it).
     - The cloud's nodes boot `ubuntu-2204-lts`, whose GCP kernel is 6.8 (Landlock ABI 4 or later); a node's running kernel is the one its own upgrades installed.
   - **Missing sandbox:** a host where the mechanism is not available (no `sandbox-exec`; a kernel without Landlock ABI 4; a container profile that refuses `landlock_*` or `seccomp`) refuses to start a code source's worker, naming what is missing. It never starts one unsandboxed.
@@ -129,7 +129,7 @@ def churn_risk(account_id: str, as_of: datetime | None = None) -> list[RiskRow]:
 - **Parameters:** a parameter without a default is required by the source; one with a default is not. `*args` and `**kwargs` are refused by name.
 - **Rows:** a `@table` returns a collection: `list[T]`, `Iterable[T]`, `Iterator[T]`, `Generator[T, ...]`, `AsyncIterable[T]`, `AsyncIterator[T]`, `AsyncGenerator[T, ...]`, or an `async def` returning one of those. A `@stream` is a generator or an async generator (REQ-1993).
 - **Named types:** a `dataclass`, `TypedDict`, `NamedTuple` or annotated class *(REQ-1993 names dataclass, TypedDict and annotated class; NamedTuple is proposed)*. Fields come from the annotations; `X | None` and `Optional[X]` are nullable; a TypedDict field that is `NotRequired` is optional.
-- **Scalars:** `str` → text; `int` → bigint; `float` → double; `bool` → boolean; `Decimal` → numeric; `datetime` → timestamp; `date` → date *(proposed: the IR has date)*; `Literal["a", "b"]` → enum; `enum.Enum` with string values → enum; `dict[str, X]` → json; `Any` → json; `list[X]` → a list.
+- **Scalars.** `str` → text; `int` → bigint; `float` → double; `bool` → boolean; `Decimal` → numeric; `datetime` → timestamp; `date` → date *(proposed: the IR has date)*; `Literal["a", "b"]` → enum; `enum.Enum` with string values → enum; `dict[str, X]` → json; `Any` → json; `list[X]` → a list.
 
 ### 6.2 The reader
 
@@ -174,7 +174,7 @@ A package is fetched as its **wheel** for the pinned Python (`py3`/`cp312` tags,
 
 REQ-1993 asks for the organisation's package indexes, "like REQ-1984's registries". Built as a third kind, `pypi`, of the same table and admin page:
 - **PyPI index:** a simple-index URL and a credential; one may be the default index every Python install goes through in place of the public PyPI. The mirror is per kind: one npm mirror and one default index per organisation.
-- **No scope:** Python packages have none; a scope on a PyPI index is refused.
+- **No scope.** Python packages have none; a scope on a PyPI index is refused.
 - **Same rules:** every field is kept as entered and resolved at use.
 - **The page** "Package registries" has three lists: npm registries, PyPI indexes, Git hosts (13 locales; rendered at 1280 and 1900).
 
@@ -185,6 +185,16 @@ Identical to Node's parts 5 to 7:
 - landing per argument set through REQ-1980's branch and converter;
 - commands use a new `impl_kind`, `code` *(proposed: one kind for every language, the binding naming the source and the export)*;
 - each live-table subscription starts its own generator.
+
+## 6b. Go (REQ-2200)
+
+The lead's decisions (2026-11-03, J568): D1 a `@stream` returns `iter.Seq2[T, error]`, and a `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`; D2 one pinned toolchain (go 1.27.3 from go.dev/dl, its published sums), run with `GOTOOLCHAIN=local`, a `go` line newer than it refused by name; D3 columns and inputs are named as `encoding/json` names fields; D4 a pointer field is optional and nullable, any other required; D5 a function takes an optional leading `context.Context` (cancelled with the call) and one inputs struct, `ReadContext` and `@loader` being a later job; the macOS host verifies TLS with the system bundle; modules come through a `goproxy` package registry.
+
+- **Tags:** a doc-comment line that is exactly `@table`, `@command`, `@stream`, `@columns` (or `@loader N`); Go has no standard `@` tag, so any other is unknown (`GO_RULES`).
+- **Reader** (`provisa/golang/reader/`): a Go program on go/packages and go/types, compiled once per toolchain, run unsandboxed as Node's declaration reader is (reading types runs no code) with `GOPROXY=off`, `-mod=readonly`, no cgo. A trailing `error` result is how a function fails; a string type with constants of its own is an enum; `time.Time` is a timestamp.
+- **Host** (`provisa/golang/host/`): the worker protocol in Go, rows as Arrow through Apache Arrow Go, functions called by reflection. A Go program cannot import code at run time, so `provisa/golang/build.py` compiles it once per code hash with the code's package linked in: a generated `exports.go`, a build module whose go.mod requires every module the host's and the code's require (the higher version of two) with the code's module replaced by its directory, and both go.sums. One static binary (`CGO_ENABLED=0`); the sandbox gives it nothing to read but itself.
+- **Install** (`provisa/golang/install.py`): the code is a Go module at an exact version from the organisation's default Go module proxy (else proxy.golang.org), Git, an upload or a directory; code that requires modules carries its `go.sum` (or one is given beside it). `go list -deps` fetches what the package needs through the proxy into the install's own module cache, each module checked against go.sum, no checksum database, no `tidy`; the proxy's login reaches the go command in a `.netrc` in the install's temporary directory. Code, modules and host are cached by content hash.
+- **Image** (`provisa/golang/image.py`): the host compiled for `linux` and the image's architecture, on the shared distroless base, with the front end on its own Python.
 
 ## 7. Sequence
 

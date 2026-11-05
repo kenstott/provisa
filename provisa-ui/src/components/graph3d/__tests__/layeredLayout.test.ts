@@ -133,14 +133,14 @@ describe("layered placement", () => {
 });
 
 describe("the layout a view opens in", () => {
-  it("is layered when every drawn rank edge is one class and acyclic", () => {
+  it("is force, Layered possible, when every drawn rank edge is one class and acyclic", () => {
     const g = graph(["a", "b"], [edge("b", "a", "term_edge", "KIND_OF")]);
-    expect(openingLayout(g)).toEqual({ layout: "layered", layeredPossible: true });
+    expect(openingLayout(g)).toEqual({ layout: "force", layeredPossible: true });
   });
 
-  it("is layered for flows alone", () => {
+  it("is force for flows alone, Layered possible", () => {
     const g = graph(["a", "b"], [edge("a", "b", "lineage")]);
-    expect(openingLayout(g).layout).toBe("layered");
+    expect(openingLayout(g)).toEqual({ layout: "force", layeredPossible: true });
   });
 
   it("is force where ranks and flows are mixed", () => {

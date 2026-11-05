@@ -23,6 +23,7 @@ from typing import Any, cast
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler import walk_checks
 from provisa.core import settings_registry
 from provisa.gql.label_map import (
     CypherLabelMap,
@@ -111,13 +112,36 @@ def _filter_allowed_rels(
     intermediate hops in a variable-length path without producing impossible
     contradictory join conditions.  Exclude them unless the caller explicitly
     names them.
+
+    A parameterized table has no rows to walk, named or not (REQ-2135): no relationship touching
+    one is taken.
     """
     return [
         r
         for r in lm.relationships.values()
         if (rel_types is None or r.rel_type in rel_types)
         and (rel_types is not None or not r.constant_source)
+        and not lm.touches_parameterized(r)
     ]
+
+
+def _one_per_join(rels: list[RelationshipMapping]) -> list[RelationshipMapping]:
+    """``rels`` with each join once (REQ-2135): an undirected walk takes a relationship either way,
+    so a join declared from both ends (SUBMITTED and SUBMITTED_BY) is one edge, not a tie."""
+    first: dict[str, RelationshipMapping] = {}
+    for r in rels:
+        first.setdefault(r.join, r)
+    return list(first.values())
+
+
+def _refuse_parameterized_end(nm: NodeMapping, error: type[Exception]) -> None:
+    """A path named to start or end on a parameterized table (REQ-2135): said by name, since a
+    search has no way to give it arguments."""
+    if nm.parameterized:
+        raise error(
+            f"a path cannot include {nm.label}: its table is read by arguments, which a path "
+            "search has no way to give"
+        )
 
 
 def _rels_between(
@@ -283,6 +307,16 @@ def _bar(expr: Any) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib 
     )
 
 
+def _untaken(trail: Any, edge: Any) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """True when ``edge`` is not on ``trail`` (``|edge|edge|``): the visited-relationship check a
+    recursive walk's step carries, so no path takes a relationship twice (REQ-348)."""
+    return walk_checks.record(
+        exp.EQ(
+            this=exp.StrPosition(this=trail, substr=_bar(edge)), expression=exp.Literal.number(0)
+        )
+    )
+
+
 def _apply_hop(
     select: Any,
     rel: RelationshipMapping,
@@ -359,6 +393,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         src_type, tgt_type, src_nm, tgt_nm = self._resolve_path_node_types(
             src_node, tgt_node, CypherTranslateError
         )
+        _refuse_parameterized_end(src_nm, CypherTranslateError)
+        _refuse_parameterized_end(tgt_nm, CypherTranslateError)
         src_var = src_node.variable
         tgt_var = tgt_node.variable
         _register_path_vars(self._var_table, src_var, tgt_var, src_nm, tgt_nm)
@@ -367,8 +403,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             _extract_rel_attrs(rel)
         )
         allowed_rels = _filter_allowed_rels(self._lm, rel_types)
-        if not is_undirected:
-            allowed_rels = _rels_between(allowed_rels, src_type, tgt_type)
+        allowed_rels = (
+            _one_per_join(allowed_rels)
+            if is_undirected
+            else _rels_between(allowed_rels, src_type, tgt_type)
+        )
         needs_recursive = _needs_recursive_cte(
             variable_length, is_undirected, src_type, tgt_type, allowed_rels
         )
@@ -467,11 +506,13 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 "shortestPath/allShortestPaths require type-labeled (not domain-only) nodes"
             )
         anchor_nm = self._lm.nodes[anchor_type]
+        _refuse_parameterized_end(anchor_nm, CypherTranslateError)
         _register_path_vars(self._var_table, anchor.variable, None, anchor_nm, anchor_nm)
 
         rels = _filter_allowed_rels(self._lm, rel_types)
         backward: list[RelationshipMapping] = []
         if is_undirected:
+            rels = _one_per_join(rels)
             backward = [_reversed(r) for r in rels if not r.constant_source]
             rels = [*rels, *backward]
         elif reverse:
@@ -482,6 +523,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         labels = [k for k in dict.fromkeys(reached) if k in self._lm.nodes]
         if far.labels:
             far_type, far_domain = self._resolve_node_type(far.labels)  # type: ignore[attr-defined]
+            if far_type:
+                _refuse_parameterized_end(self._lm.nodes[far_type], CypherTranslateError)
             admitted = {far_type} if far_type else set(union_labels(self._lm, far_domain or ""))
             labels = [k for k in labels if k in admitted]
         # An anonymous end its labels place is read all the same, to keep only those nodes.
@@ -626,6 +669,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             )
             if len(p) >= min_hops
         ]
+        if is_undirected:
+            one_each: dict[tuple[str, ...], list[RelationshipMapping]] = {}
+            for p in all_paths:
+                one_each.setdefault(tuple(r.join for r in p), p)
+            all_paths = list(one_each.values())
         if by_limit and any(
             len(p) > max_hops
             for p in self._lm.find_paths(
@@ -1068,33 +1116,26 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
                 exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
             ).from_(_tbl(src_node_m, "_cur"))
-            if backward:
-                hop = hop.select(
-                    exp.alias_(
-                        _edge_key(
-                            rel,
-                            self._path_key(src_node_m, "_cur", textual),
-                            self._path_key(tgt_node_m, "_nxt", textual),
-                            id(rel) in backward,
-                        ),
-                        alias="edge",
-                    )
+            hop = hop.select(
+                exp.alias_(
+                    _edge_key(
+                        rel,
+                        self._path_key(src_node_m, "_cur", textual),
+                        self._path_key(tgt_node_m, "_nxt", textual),
+                        id(rel) in backward,
+                    ),
+                    alias="edge",
                 )
+            )
             hop = _apply_hop(hop, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             hops = hop if hops is None else exp.Union(this=hops, expression=hop, distinct=False)
         assert hops is not None  # called with more than one branch built from these rels
-        trail = (
-            [
-                exp.alias_(
-                    exp.DPipe(
-                        this=exp.DPipe(this=col("trail", "t"), expression=col("edge", "_hop")),
-                        expression=exp.Literal.string("|"),
-                    ),
-                    alias="trail",
-                )
-            ]
-            if backward
-            else []
+        trail = exp.alias_(
+            exp.DPipe(
+                this=exp.DPipe(this=col("trail", "t"), expression=col("edge", "_hop")),
+                expression=exp.Literal.string("|"),
+            ),
+            alias="trail",
         )
         step = (
             exp.select(
@@ -1104,7 +1145,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 exp.alias_(
                     exp.Add(this=col("hops", "t"), expression=exp.Literal.number(1)), alias="hops"
                 ),
-                *trail,
+                trail,
             )
             .from_(exp.alias_(exp.Table(this=exp.Identifier(this=cte_name)), alias="t"))
             .join(
@@ -1116,16 +1157,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 join_type="INNER",
             )
             .where(exp.LT(this=col("hops", "t"), expression=exp.Literal.number(max_hops)))
-        )
-        if backward:
             # A walk never takes an edge it has already taken (openCypher: a path repeats no
-            # relationship), so an undirected walk does not go back over the edge it came by.
-            step = step.where(
-                exp.EQ(
-                    this=exp.StrPosition(this=col("trail", "t"), substr=_bar(col("edge", "_hop"))),
-                    expression=exp.Literal.number(0),
-                )
-            )
+            # relationship): an undirected walk does not go back over the edge it came by, and a
+            # walk round a cycle stops where it would take its first edge again (REQ-348).
+            .where(_untaken(col("trail", "t"), col("edge", "_hop")))
+        )
         return step
 
     def _build_recursive_cte(
@@ -1150,9 +1186,9 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
           cur_type — label of the current frontier node
           cur_id   — id of the current frontier node
           hops     — number of edges traversed so far (>= 1)
-          trail    — an undirected walk only (``backward`` names the relationships it takes
-                     from target to source, #310): the edges it has taken, ``|edge|edge|``, so it
-                     takes none twice
+          trail    — the edges it has taken, ``|edge|edge|``, so it takes none twice (REQ-348);
+                     ``backward`` names the relationships an undirected walk takes from target to
+                     source (#310), each named as its forward edge
         """
 
         def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -1180,7 +1216,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     exp.alias_(exp.Literal.string(src_nm.type_name), alias="cur_type"),
                     exp.alias_(seed_id.copy(), alias="cur_id"),
                     exp.alias_(exp.Literal.number(0), alias="hops"),
-                    *([exp.alias_(exp.Literal.string("|"), alias="trail")] if backward else []),
+                    exp.alias_(exp.Literal.string("|"), alias="trail"),
                 ).from_(_tbl(src_nm, "_seed"))
             )
         for rel in allowed_rels:
@@ -1199,14 +1235,13 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 exp.alias_(self._path_key(tgt_node_m, "_nxt", textual), alias="cur_id"),
                 exp.alias_(exp.Literal.number(1), alias="hops"),
             ).from_(_tbl(src_node_m, "_seed"))
-            if backward:
-                edge = _edge_key(
-                    rel,
-                    self._path_key(src_node_m, "_seed", textual),
-                    self._path_key(tgt_node_m, "_nxt", textual),
-                    id(rel) in backward,
-                )
-                branch = branch.select(exp.alias_(_bar(edge), alias="trail"))
+            edge = _edge_key(
+                rel,
+                self._path_key(src_node_m, "_seed", textual),
+                self._path_key(tgt_node_m, "_nxt", textual),
+                id(rel) in backward,
+            )
+            branch = branch.select(exp.alias_(_bar(edge), alias="trail"))
             branch = _apply_hop(branch, rel, "_seed", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
             base_branches.append(branch)
 
@@ -1220,7 +1255,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                     exp.alias_(exp.Literal.string(src_nm.type_name), alias="cur_type"),
                     exp.alias_(seed_id.copy(), alias="cur_id"),
                     exp.alias_(exp.Literal.number(0), alias="hops"),
-                    *([exp.alias_(exp.Literal.string("|"), alias="trail")] if backward else []),
+                    exp.alias_(exp.Literal.string("|"), alias="trail"),
                 )
                 .from_(_tbl(src_nm, "_seed"))
                 .where(exp.false())
@@ -1235,6 +1270,12 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             tgt_node_m = self._lm.nodes.get(rel.target_label)
             if src_node_m is None or tgt_node_m is None:
                 continue
+            edge = _edge_key(
+                rel,
+                self._path_key(src_node_m, "_cur", textual),
+                self._path_key(tgt_node_m, "_nxt", textual),
+                id(rel) in backward,
+            )
 
             branch = (
                 exp.select(
@@ -1253,6 +1294,19 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                             expression=exp.Literal.number(1),
                         ),
                         alias="hops",
+                    ),
+                    exp.alias_(
+                        exp.DPipe(
+                            this=exp.DPipe(
+                                this=exp.Column(
+                                    this=exp.Identifier(this="trail"),
+                                    table=exp.Identifier(this="t"),
+                                ),
+                                expression=edge,
+                            ),
+                            expression=exp.Literal.string("|"),
+                        ),
+                        alias="trail",
                     ),
                 )
                 .from_(
@@ -1284,15 +1338,24 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 )
             )
             # JOIN next-node table
-            branch = _apply_hop(
-                branch, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt")
-            ).where(
-                exp.LT(
-                    this=exp.Column(
-                        this=exp.Identifier(this="hops"),
-                        table=exp.Identifier(this="t"),
-                    ),
-                    expression=exp.Literal.number(max_hops),
+            branch = (
+                _apply_hop(branch, rel, "_cur", tgt_node_m, "_nxt", _tbl(tgt_node_m, "_nxt"))
+                .where(
+                    exp.LT(
+                        this=exp.Column(
+                            this=exp.Identifier(this="hops"),
+                            table=exp.Identifier(this="t"),
+                        ),
+                        expression=exp.Literal.number(max_hops),
+                    )
+                )
+                .where(
+                    _untaken(
+                        exp.Column(
+                            this=exp.Identifier(this="trail"), table=exp.Identifier(this="t")
+                        ),
+                        edge.copy(),
+                    )
                 )
             )
             rec_branches.append(branch)
@@ -1300,7 +1363,7 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         if len(rec_branches) > 1 or backward:
             # One recursive term, reading the traversal once (#158): engines admit a single
             # recursive term, and one that names the traversal a single time. An undirected walk
-            # always has two (each relationship either way), and keeps its trail there.
+            # always has two (each relationship either way).
             rec_branches = [
                 self._one_recursive_term(
                     cte_name, allowed_rels, max_hops, _tbl, textual, backward=backward

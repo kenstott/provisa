@@ -2,9 +2,9 @@
 
 ## Overview
 
-Provisa is a config-driven data virtualization platform: federation, metrics, ontology and governance from a single model, for small teams and large enterprises alike. It provides a unified API over heterogeneous data sources with governance, security, and performance optimization. Clients query via SQL, GraphQL, or Cypher; all three get identical governance.
+Provisa is a config-driven data virtualization platform that gives small teams and large enterprises alike federation, metrics, ontology and governance from a single model. It puts one API over heterogeneous data sources, with governance, security and performance optimization. Clients query via SQL, GraphQL or Cypher, and all three get identical governance.
 
-The model is the only place meaning is added. To add to it, you register new data sources or aggregates in the data virtualization layer. That keeps a clean separation, since nothing can add semantics outside the platform, and it's what makes real data governance possible. The compiler enforces it: the approved relationship catalog is the source of truth, whichever query language is used.
+The model is the only place meaning is added. To add to it, you register new data sources or aggregates in the data virtualization layer. Nothing can add semantics outside the platform, and that separation is what makes data governance possible. The compiler enforces it, with the approved relationship catalog as the source of truth whichever query language is used.
 
 One platform serves operational and analytical reads. A query that touches one source goes straight to that source over its native driver, typically back in under 100 ms, and a query that joins sources runs in the federation engine you chose for analytical scale.
 
@@ -49,7 +49,7 @@ Multiple endpoints under the same port, distinguished by path:
 | Path | Language | Notes |
 | ------ | ---------- | ------- |
 | `POST /data/graphql` | GraphQL | Reads and mutations; APQ hash accepted via `extensions.persistedQuery` |
-| `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking |
+| `POST /data/sql` | SQL | Read-only; no capability gate, governed by object visibility + RLS + masking |
 | `POST /data/query` | Cypher | Read-only; standard role |
 | `GET /data/nl` | Natural language | Translates to SQL/GraphQL/Cypher based on source type |
 | `GET /data/subscribe/{table}` | GraphQL | SSE subscription stream |
@@ -72,15 +72,15 @@ and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL pro
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-The full result is never held in Provisa's memory: batches are passed on as they arrive. That makes Arrow Flight an unbounded path, fit for results of any size.
+The full result is never held in Provisa's memory, because batches are passed on as they arrive. That makes Arrow Flight an unbounded path, fit for results of any size.
 
 ### Protobuf gRPC (port 50051)
 
-Auto-generated `.proto` from the data schema, generated per role. Streaming queries (one message per row), unary mutations. Server reflection enabled; it describes each caller the service of its own role. Role via `x-provisa-role` metadata key.
+Provisa generates a `.proto` from the data schema for each role. Queries stream one message per row, and mutations are unary. Server reflection is enabled and describes each caller the service of its own role. The role comes from the `x-provisa-role` metadata key.
 
 ### PostgreSQL wire protocol / pgwire (configurable port)
 
-Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client (`psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC) can connect without modification. Accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
+Provisa implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client (`psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC) can connect without modification. It accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
 
 ## Request Pipeline
 
@@ -88,9 +88,9 @@ Three query languages are accepted, and all three meet at governance after their
 
 | Interface | Reads | Writes | Query gate |
 | --- | --- | --- | --- |
-| GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None — data-layer governance only |
-| SQL (`/data/sql`) | Yes | No | None — data-layer governance only |
-| Cypher (`/data/query`) | Yes | No | None — data-layer governance only |
+| GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None; data-layer governance only |
+| SQL (`/data/sql`) | Yes | No | None; data-layer governance only |
+| Cypher (`/data/query`) | Yes | No | None; data-layer governance only |
 
 ```mermaid
 flowchart TD
@@ -129,11 +129,11 @@ flowchart TD
 
 | Route | When |
 | --- | --- |
-| **Cache** | Result cache hit — evaluated first, serves the stored result with no execution |
-| **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count |
+| **Cache** | Result cache hit; evaluated first, serves the stored result with no execution |
+| **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count; routed to the native count call instead of materializing to count |
 | **Direct** | Single source + has native driver + has federation connector |
 | **Federation** | Multi-source federation, or source has connector but no driver |
-| **Materialize** | Source has no federation connector — fetch and cache to S3/PG first |
+| **Materialize** | Source has no federation connector; fetch and cache to S3/PG first |
 | **Mutation** | A write: the source's own driver when it has one; otherwise the engine, through a connector that writes the source |
 
 Routing consumes the output of the post-governance optimization stage, never the pre-optimization governed SQL. Governance may ADD sources (RLS subquery predicates); the optimization stage may REMOVE them (hot-table VALUES-CTE inlining, API-cache rewrites, union-branch pruning). A federated query that collapses to a single live source after inlining is therefore re-routed as direct.
@@ -148,7 +148,7 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 
 ## Query Pipeline
 
-Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points, not stages — each compiles or lowers to semantic SQL before the pipeline begins.
+Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points outside those stages, and each compiles or lowers to semantic SQL before the pipeline begins.
 
 ```mermaid
 flowchart TD
@@ -349,11 +349,11 @@ Attach auto-provisions all prerequisites at attach time:
 
 | Engine | Object/lake formats | Mechanism | Auto-provisioning |
 | -------- | ------------------- | ---------- | ---------------------------------- |
-| Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …` — live-verified over Cloudflare R2 |
-| BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])` — live-verified |
-| ClickHouse | csv, parquet, iceberg, delta_lake | S3 / IcebergS3 / DeltaLake table engine (`ATTACH_R`) | Validation probe executed at attach time — live-verified over Cloudflare R2 |
-| Fabric | parquet, csv, iceberg, delta_lake | OneLake shortcut → OPENROWSET (`ATTACH_R`) | REST creates an `AmazonS3Compatible` connection + lakehouse + shortcut; returns the OneLake `BULK` path — live-verified reading R2 through Fabric |
-| Snowflake | parquet, csv, json, iceberg, delta_lake | External stage + external table (`ATTACH_R`) | `CREATE STAGE … URL=… CREDENTIALS=…`, then `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)` — implemented; not live-tested (no account available) |
+| Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …`. Live-verified over Cloudflare R2 |
+| BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])`. Live-verified |
+| ClickHouse | csv, parquet, iceberg, delta_lake | S3 / IcebergS3 / DeltaLake table engine (`ATTACH_R`) | Validation probe executed at attach time. Live-verified over Cloudflare R2 |
+| Fabric | parquet, csv, iceberg, delta_lake | OneLake shortcut → OPENROWSET (`ATTACH_R`) | REST creates an `AmazonS3Compatible` connection + lakehouse + shortcut; returns the OneLake `BULK` path. Live-verified reading R2 through Fabric |
+| Snowflake | parquet, csv, json, iceberg, delta_lake | External stage + external table (`ATTACH_R`) | `CREATE STAGE … URL=… CREDENTIALS=…`, then `CREATE OR REPLACE EXTERNAL TABLE … LOCATION=@stage FILE_FORMAT=(TYPE=…)`. Implemented; not live-tested (no account available) |
 
 Credentials for cloud storage travel in the source's `federation_hints` (see [Sources](sources.md#warehouses-as-named-sources)). Any source type that cannot ATTACH lands into the engine's materialization store first.
 
@@ -372,7 +372,7 @@ Results exceeding a row threshold are redirected to S3-compatible storage (MinIO
 | **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
-For CTAS-native formats, Provisa never touches the data: the federation engine writes files straight to MinIO/S3. This is the path to prefer for large analytical exports.
+For CTAS-native formats, Provisa never touches the data, because the federation engine writes files straight to MinIO/S3. This is the path to prefer for large analytical exports.
 
 ### With no object store
 
@@ -449,9 +449,9 @@ On source registration, Provisa runs `ANALYZE catalog.schema.table` for every pu
 
 The optimizer uses these to estimate selectivity for filtered queries. Without statistics, it falls back to fixed defaults (e.g., 10% selectivity for equality predicates) which produce poor join plans on skewed or high-cardinality data. With statistics, estimates are accurate enough to make correct broadcast vs. partitioned join decisions for most workloads.
 
-**Coverage**: statistics support depends on the connector. PostgreSQL, MySQL, Hive, Iceberg and Delta Lake fully support `ANALYZE`; MongoDB and Cassandra have partial support or none. A catalog whose connector collects no statistics is skipped, and an `ANALYZE` that fails is logged and passed over, so registration is never blocked.
+**Coverage.** Statistics support depends on the connector. PostgreSQL, MySQL, Hive, Iceberg and Delta Lake fully support `ANALYZE`; MongoDB and Cassandra have partial support or none. A catalog whose connector collects no statistics is skipped, and an `ANALYZE` that fails is logged and passed over, so registration is never blocked.
 
-**Selectivity limits**: statistics provide per-column estimates. For correlated predicates (`WHERE region = 'US' AND city = 'Seattle'`), the optimizer assumes column independence, which may underestimate row counts. This is a known limitation of column-level statistics in all cost-based optimizers.
+**Selectivity limits.** Statistics provide per-column estimates. For correlated predicates (`WHERE region = 'US' AND city = 'Seattle'`), the optimizer assumes column independence, which may underestimate row counts. This is a known limitation of column-level statistics in all cost-based optimizers.
 
 **API sources**: `api_cache_{table_name}` tables in PostgreSQL are analyzed automatically after each cache refresh cycle, so the optimizer has current row estimates when joining API-backed sources with relational sources.
 
@@ -468,7 +468,7 @@ mutation {
 }
 ```
 
-Useful when a source has received significant new data since registration.
+Use it when a source has received significant new data since registration.
 
 ## Materialized Views
 
@@ -482,7 +482,7 @@ For **cross-source relationships** this happens automatically at startup: every 
 
 A **junction-backed relationship** materializes its whole traversal. The associative table is a third leg, so the pattern carries the source hop, the junction hop and the discriminator that pins the rows to one edge type, with the junction's own columns landing in the view next to the target's. Because the junction counts as a leg, an edge whose junction sits in a different source from the two tables it links is cross-source even when those two share a source. The rewriter matches the two hops as a chain, where the second must start from the alias the first introduced. So a query that reaches the same two tables without going through the junction reads the base tables, and a view built for one discriminator value never answers a traversal filtered to another.
 
-The practical consequence: stewards who approve a relationship are implicitly deciding whether the join is a good candidate for materialization. The governance act and the optimization hint are the same declaration.
+In practice, stewards who approve a relationship are also deciding whether the join is a good candidate for materialization.
 
 ### Modes
 
@@ -527,14 +527,14 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | -------- | --------- |
 | `api/` | FastAPI app, routers, middleware, lifespan management |
 | `api/flight/` | Arrow Flight server (gRPC, port 8815) |
-| `api/admin/` | Strawberry GraphQL admin API — config, discovery, views |
+| `api/admin/` | Strawberry GraphQL admin API: config, discovery, views |
 | `api/rest/` | Auto-generated REST endpoints from registered tables |
 | `api/jsonapi/` | Auto-generated JSON:API endpoints with pagination and error handling |
-| `api/data/subscribe.py` | SSE subscriptions — LISTEN/NOTIFY, polling, Debezium CDC |
+| `api/data/subscribe.py` | SSE subscriptions: LISTEN/NOTIFY, polling, Debezium CDC |
 | `compiler/` | GraphQL/SQL parsers, semantic SQL generator, RLS, masking, sampling, two-stage governance (`stage2.py`) |
 | `cypher/` | Cypher → SQL translator, parser, label map, write translator for Cypher mutations |
 | `pgwire/` | PostgreSQL wire-protocol server; `catalog.py` intercepts pg_catalog/information_schema for per-role object visibility |
-| `vector/` | Vector search — model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, HNSW index on a replica's embedding column, declarative embedding generation |
+| `vector/` | Vector search: model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, HNSW index on a replica's embedding column, declarative embedding generation |
 | `compiler/federation.py` | Apollo Federation v2 subgraph support |
 | `transpiler/` | Dialect transpilation, routing logic |
 | `executor/` | Federated/direct execution, serialization, output formats |
@@ -543,7 +543,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `executor/ctas_write.py` | CTAS-based redirect (federation engine writes to S3) |
 | `executor/redirect.py` | S3 redirect logic, Provisa-side upload |
 | `federation/engine.py` | `FederationEngine`, `DriverClass`, `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`, `build_engine` |
-| `federation/connector.py` | Connector abstractions — Trino, ClickHouse; `Mechanism`, `WarehouseNativeConnector` |
+| `federation/connector.py` | Connector abstractions: Trino, ClickHouse; `Mechanism`, `WarehouseNativeConnector` |
 | `federation/connector_duckdb.py` | DuckDB and PostgreSQL FDW connector definitions |
 | `federation/snowflake_connectors.py` | Snowflake external stage + external table ATTACH connectors |
 | `federation/databricks_connectors.py` | Databricks UC external table ATTACH connectors |
@@ -565,14 +565,14 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
 | `events/` | Dataset change events and trigger dispatch |
 | `webhooks/` | Outbound webhook execution for mutations and events |
-| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks and mutations, and the polls of live Kafka outputs |
-| `apq/` | Apollo APQ wire protocol — Redis-backed query hash cache; separate from result caching |
-| `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
+| `scheduler/` | APScheduler-based background job management: cron and interval triggers that fire webhooks and mutations, and the polls of live Kafka outputs |
+| `apq/` | Apollo APQ wire protocol: Redis-backed query hash cache; separate from result caching |
+| `compiler/cursor.py` | Relay-style cursor pagination: `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
-| `compiler/enum_detect.py` | Enum type auto-detection — PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`-- @provisa route=federated`) that override automatic routing |
-| `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
-| `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
+| `compiler/enum_detect.py` | Enum type auto-detection: PostgreSQL native enum types (`pg_enum`) exposed as GraphQL enum types rather than string scalars |
+| `compiler/hints.py` | Federation performance hints: query-level routing directives embedded as SQL comments (`-- @provisa route=federated`) that override automatic routing |
+| `compiler/mutation_gen.py` | Mutation compiler; column presets: server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
+| `auth/approval_hook.py` | ABAC approval hook: pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
 | `discovery/` | LLM relationship discovery (Claude API) |
 | `grpc/` | Proto generation, gRPC server, reflection |
@@ -606,7 +606,7 @@ The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001)
 
 Settings are **org-scoped**: each org's choices sit on top of the deployment config and apply from the next request, with no restart.
 
-**Per-operation model assignments.** Six operations each have a configurable vendor and model string:
+**Per-operation model assignments.** Seven operations each have a configurable vendor and model string:
 
 | Operation | What it drives |
 | --------- | -------------- |
@@ -616,6 +616,7 @@ Settings are **org-scoped**: each org's choices sit on top of the deployment con
 | `sql_generation` | NL → SQL generation |
 | `table_selection` | Choosing which tables to include in the NL prompt |
 | `mcp_chat` | The chat assistant panel's tool-use loop |
+| `glossary_term_finding` | Find terms. It has no default: a scan is refused until one is chosen |
 
 The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default.
 
@@ -642,7 +643,7 @@ Registered tables are exposed as REST and JSON:API endpoints alongside the Graph
 | Interface | Mount path | Spec |
 | ----------- | ----------- | ------ |
 | REST | `/rest/<table-id>` | Simple GET/POST with query parameters |
-| JSON:API | `/jsonapi/<table-id>` | [jsonapi.org](https://jsonapi.org) compliant — pagination, relationships, error objects |
+| JSON:API | `/jsonapi/<table-id>` | [jsonapi.org](https://jsonapi.org) compliant: pagination, relationships, error objects |
 
 These endpoints apply the same security pipeline (RLS, masking, role checks) as the GraphQL endpoint.
 
@@ -719,7 +720,7 @@ All list queries support Relay-style cursor pagination via `compiler/cursor.py`.
 
 ## Aggregate Queries
 
-Every registered table gets an auto-generated `{table}_aggregate` root field (`compiler/aggregate_gen.py`). The aggregate type exposes `count`, `sum`, `avg`, `min`, `max` per numeric column, and `nodes` for filtered row access with full field selection (same RLS/masking as the base query). An aggregate over one table, from any surface (SQL or compiled), is answered from a fresh materialized view that pre-aggregates it, with nothing declared: a view whose SQL is a single-table `GROUP BY` of named `SUM`, `COUNT`, `MIN` and `MAX` serves the aggregates that group by a subset of its grouping columns and filter only on them. Each aggregate is re-aggregated over the stored ones (`COUNT` as the sum of the stored counts, `AVG` from a stored sum and count of the same column); anything the view cannot answer exactly is left to the table. The rewrite runs after governance, so a row filter on one of the view's grouping columns is carried onto the view, and a row filter on any other column, or a mask over a summed column, leaves the read to the table.
+Every registered table gets an auto-generated `{table}_aggregate` root field (`compiler/aggregate_gen.py`). The aggregate type exposes `count`, `sum`, `avg`, `min`, `max` per numeric column, and `nodes` for filtered row access with full field selection (same RLS/masking as the base query). An aggregate over one table, from any surface (SQL or compiled), is answered from a fresh materialized view that pre-aggregates it, with nothing declared. A view whose SQL is a single-table `GROUP BY` of named `SUM`, `COUNT`, `MIN` and `MAX` serves the aggregates that group by a subset of its grouping columns and filter only on them. Each aggregate is re-aggregated over the stored ones (`COUNT` as the sum of the stored counts, `AVG` from a stored sum and count of the same column); anything the view cannot answer exactly is left to the table. The rewrite runs after governance, so a row filter on one of the view's grouping columns is carried onto the view, and a row filter on any other column, or a mask over a summed column, leaves the read to the table.
 
 ## Automatic Persisted Queries (APQ)
 
@@ -727,7 +728,7 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 ## Inherited Roles
 
-A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities are the union over the ancestors; `domain_access` is the role's own and is not inherited. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) stands; otherwise the rules its parents resolve are combined with OR into one predicate, and a parent that resolves none adds nothing. With one parent this is the nearest rule in the chain. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
+A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. A role holds what it is given intersected with the union of what its parents hold, for capabilities, domains and regions, by one function (`effective_rights`); a standard role's capabilities add to its ancestors'. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) AND the rules its parents resolve combined with OR, a parent with no rule standing for every row, in one predicate. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
 
 The standard roles are defined in `core/standard_roles.yaml`, written into every model schema on each `init_schema` (`db.assert_standard_roles`) and refused by the admin surfaces and the config loader. The sandbox role a "Try it Out" visitor holds is a union of standard roles; the visitor reads a copied demo's columns through the grants that name `viewer` or `data_steward`, which the sandbox inherits.
 
@@ -804,10 +805,10 @@ Provisa is a thin layer for compiling and routing, and it adds single-digit mill
 | Path | Memory bound? | Suitable for |
 | ------ | -------------- | ------------- |
 | JSON inline (HTTP) | Yes | Small-medium results |
-| **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik or warehouse Arrow API** |
+| **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded; streaming via Zaychik or warehouse Arrow API** |
 | Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
 | Redirect: Provisa upload (JSON, CSV, NDJSON, Arrow IPC) | Yes | Medium results, file download |
-| **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — federation engine writes to S3** |
+| **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded; federation engine writes to S3** |
 
 ### Threshold Probing
 
@@ -825,9 +826,9 @@ For large analytical workloads, use either:
 | Provisa API | (host process) | 8001 | HTTP/REST endpoint |
 | Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
-| Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine — Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
+| Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine: Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
 | Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino; not required for warehouse engines |
-| PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Config metadata + Iceberg catalog |
 | MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
 | MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |
 | Redis | `redis:7-alpine` | 6379 | Query result cache |

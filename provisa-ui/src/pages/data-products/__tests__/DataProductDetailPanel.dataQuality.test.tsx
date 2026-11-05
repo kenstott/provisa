@@ -20,7 +20,7 @@ import type { ProductDq, ProductDqEntry } from "../../../api/lineage";
 import i18n from "../../../i18n";
 import { lifecycleProps } from "./lifecycleProps";
 
-// The panel parses nothing: a checker table's rules come with it, as meta's dq_rules rows.
+// The panel parses nothing: a checker table's rules come with it, as meta's dqRules rows.
 const parseContract = vi.fn();
 
 vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
@@ -45,13 +45,13 @@ const PRODUCT = {
 function makeTable(overrides: Partial<CoreTable>): CoreTable {
   return {
     id: 1,
-    source_id: "wh",
-    domain_id: "pet-store",
-    schema_name: "pet_store",
-    table_name: "vets",
+    sourceId: "wh",
+    domainId: "pet-store",
+    schemaName: "pet_store",
+    tableName: "vets",
     alias: null,
     description: null,
-    dq_contract: null,
+    dqContract: null,
     ...overrides,
   };
 }
@@ -59,18 +59,18 @@ function makeTable(overrides: Partial<CoreTable>): CoreTable {
 const VETS = makeTable({});
 const VETS_SCAN = makeTable({
   id: 2,
-  source_id: "dq-soda",
-  schema_name: "quality",
-  table_name: "vets_scan",
-  dq_contract: "dataset: provisa/pet_store/vets\nchecks: []\n",
+  sourceId: "dq-soda",
+  schemaName: "quality",
+  tableName: "vets_scan",
+  dqContract: "dataset: provisa/pet_store/vets\nchecks: []\n",
   description: "Soda contract over vets",
-  checks: { id: 1, domain_id: "pet-store", table_name: "vets", alias: null },
-  dq_rules: [
-    { position: 1, column_name: "", check_type: "row_count", definition: "row_count > 0" },
+  checks: { id: 1, domainId: "pet-store", tableName: "vets", alias: null },
+  dqRules: [
+    { position: 1, columnName: "", checkType: "row_count", definition: "row_count > 0" },
     {
       position: 2,
-      column_name: "email",
-      check_type: "missing_count",
+      columnName: "email",
+      checkType: "missing_count",
       definition: "missing_count(email) = 0",
     },
   ],
@@ -189,7 +189,7 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
 
   it("names a checker by its alias, as the model does", () => {
     renderPanel(
-      [VETS, { ...VETS_SCAN, table_name: "vets_quality_dq_soda_dq", alias: "vets_quality" }],
+      [VETS, { ...VETS_SCAN, tableName: "vets_quality_dq_soda_dq", alias: "vets_quality" }],
       {
         ...NO_DQ,
         promises: [

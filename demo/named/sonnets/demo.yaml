@@ -11,8 +11,7 @@
 # (REQ-2016): its embedding model is a local sentence-transformers model, the vector extra.
 title: Shakespeare's sonnets
 description: >-
-  Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning and grown into
-  a graph: the themes that run through them, and the lines where Shakespeare echoes himself.
+  Shakespeare's 154 sonnets in Postgres, embedded into Qdrant, searched by meaning and grown into a graph that shows the themes running through them and the lines where Shakespeare echoes himself.
 screenshot: card.png
 published: true
 group: data-science

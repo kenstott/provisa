@@ -29,6 +29,7 @@ from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
+from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID, PUBLIC_OID
 from provisa.pgwire.catalog_pg17_tables import (
     create_relation,
     populate_client_relations,
@@ -37,9 +38,10 @@ from provisa.pgwire.catalog_pg17_tables import (
 from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
 from provisa.pgwire.function_catalog import populate_functions
 from provisa.pgwire.catalog_macros import populate_catalog_macros
-from provisa.security.rights import Capability, has_capability
+from provisa.security.rights import SQL_CATALOG_TABLES, Capability, has_capability
 from provisa.pgwire.catalog_privileges import populate_privilege_macros, populate_table_privileges
 from provisa.pgwire.catalog_data import (
+    served_database_name,
     UNQUERIED_RELATIONS,
     _TABLE_MAP,
     _PG_OID_ATTR_META,
@@ -175,7 +177,11 @@ class CatalogIndex:  # REQ-532
         self.toid_to_table: dict[int, tuple] = {}
         self.col_attnum: dict[tuple[int, str], int] = {}
         self.attnum_to_col: dict[tuple[int, int], str] = {}
-        self.ns_map: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
+        self.ns_map: dict[str, int] = {
+            "pg_catalog": PG_CATALOG_OID,
+            "information_schema": INFORMATION_SCHEMA_OID,
+            "public": PUBLIC_OID,
+        }
         # REQ-1319: metric name -> relation OID for the reserved `metrics` namespace.
         self.metric_oids: dict[str, int] = {}
 
@@ -209,6 +215,8 @@ def _build_catalog_index(
         if tm.table_id in seen_table_ids:
             continue
         seen_table_ids.add(tm.table_id)
+        if (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES:
+            continue  # REQ-2190: the catalog's own views are no table of it
         cat = idx.database
         raw_schema = tm.domain_id or tm.schema_name or "public"
         sch = domain_to_sql_name(raw_schema)
@@ -442,7 +450,7 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
             (
                 oid,
                 vname,
-                12,
+                INFORMATION_SCHEMA_OID,
                 oid + 100000,
                 0,
                 10,
@@ -781,18 +789,6 @@ def _populate_pg_extension(db) -> None:
     rows = extension_rows()
     if rows:
         db.executemany("INSERT INTO _pg_extension VALUES (?,?,?,?,?,?,?,?)", rows)
-
-
-def served_database_name(state) -> str:  # REQ-1235
-    """The database a pgwire client is connected to. Under multi-tenancy that is the bound org,
-    which the client named (database name or TLS hostname); a single-tenant deployment has one
-    database, ``provisa``."""
-    from provisa.api.org_resolve import DEFAULT_DATABASE
-    from provisa.core.request_context import require_current_org
-
-    if getattr(state, "multitenancy", False):
-        return require_current_org()
-    return DEFAULT_DATABASE
 
 
 #: What pg_roles shows of every role's password, whatever it is.

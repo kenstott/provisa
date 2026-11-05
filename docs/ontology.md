@@ -2,7 +2,7 @@
 
 The ontology is a living vocabulary over your data model. Every physical column resolves to a term, and columns that carry the same meaning share one term, however differently they spell it. Each term can hold a definition, typed relationships to other terms, a list of subject-matter experts, and tags such as `pii` that every column with that meaning carries.
 
-It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
+It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics. A term says what a concept is, and a metric says how a number is computed.
 
 That shared vocabulary connects business language to physical data. An AI agent that knows "customer" names every column carrying a customer identifier doesn't have to guess which of `cust_id`, `customerId` and `CUSTOMER_KEY` is the right one. They all resolve to the same term, and the term carries the definition.
 
@@ -95,9 +95,9 @@ A definition alone approves nothing. Approve a term once its definition says wha
 
 ## Grounding
 
-Grounding says whether a term reaches data. Nobody sets it: Provisa works it out from the term's relationships each time the graph changes.
+Grounding says whether a term reaches data. Nobody sets it. Provisa works it out from the term's relationships each time the graph changes.
 
-A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table: the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
+A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table, the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
 
 | Grounding | Mark | Meaning |
 | --- | --- | --- |
@@ -238,7 +238,7 @@ Most Related to pairs lack a term in between. One new term turns the placeholder
 
 Follow the grounding down each row. In the first two shapes, cake reaches the data of candles through the new term. In the last three, the new term is the broader end of both edges, so it reaches the data of both. Neither cake nor candles reaches the other's.
 
-Sometimes the term in between already exists, and you only need to retype the links. The shipped shelter demo has a Concept, `shift coverage`, defined as the window and place a staff member is scheduled to work. Its parts `shift start`, `shift end` and `schedule location` each hold a column. Linked to them by Related to, shift coverage reached no data. With each of the three linked as Part of shift coverage, it is grounded through all three columns. That is a common whole, and the whole was there all along.
+Sometimes the term in between already exists, and you only need to retype the links. The shipped shelter demo has a Concept, `shift coverage`, defined as the window and place a staff member is scheduled to work. Its parts `shift start`, `shift end` and `schedule location` each hold a column. Linked to them by Related to, shift coverage reached no data. With each of the three linked as Part of shift coverage, it is grounded through all three columns. That is a common whole, which was there all along.
 
 ### Prefer the tightest shape
 
@@ -303,7 +303,7 @@ A column that is PII through its term can't be unmarked on its own. Unmark the t
 
 ### Moves that lose tags
 
-Moving a column to another term can take a tag off it: moving `customers.email` from `customer email` (tagged `pii`) to an untagged term would leave the email column unprotected. Every move a person makes is checked first. That covers claiming or moving a column, retiring a term, and saving or deleting a relationship that re-homes key columns.
+Moving a column to another term can take a tag off it. Moving `customers.email` from `customer email` (tagged `pii`) to an untagged term would leave the email column unprotected. Every move a person makes is checked first. That covers claiming or moving a column, retiring a term, and saving or deleting a relationship that re-homes key columns.
 
 When a column would stop carrying `pii` altogether, the move is refused until you decide. The UI shows one summary of what each moved column loses and gains, losses first.
 
@@ -371,7 +371,37 @@ Beside Edit, the panel offers the status actions the term allows: **Approve** a 
 
 From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes.
 
-The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data: relate it to a term that has data.
+The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data. Relate it to a term that has data.
+
+### Finding terms in documents and tables
+
+**Find terms**, on the ✨ menu, proposes new terms from a source your organization already writes its definitions in. Every proposal lands in a review queue as a draft, with the passages it came from. Nothing joins the ontology until you accept it. You need the right to curate the glossary.
+
+Pick where the terms come from, then the domains you are working in. The new terms are placed in those domains.
+
+| Source | What is read | AI model |
+| --- | --- | --- |
+| **A document**, from the reference library | A document already in the library | Yes |
+| **A document**, as a new file | PDF, Word (`.docx`), Markdown, HTML, plain text or eCFR XML. It joins the reference library as proposed | Yes |
+| **A document**, as a URL | A page or file served over `http` or `https`, fetched once. It joins the reference library as proposed | Yes |
+| **A table**, Terms and definitions | One row per term: a term column and a definition column | No |
+| **A table**, Text to read | One passage per row: an ID column and a text column | Yes |
+
+**Documents.** The AI model reads the document's passages for the concepts it defines and uses, such as business concepts, roles, policies and regulations. It never proposes a named person or company. Variants of one concept become synonyms of one candidate. A candidate's definition is badged **Defined in the document** when a passage defines it outright, or **Synthesized** when it is drawn from several passages. A regulation published on eCFR can be read straight from its XML API, cited by section and by each defined term:
+
+```text
+https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+```
+
+**A table of terms and definitions.** Use this for a data dictionary, a business glossary kept as rows, or any registered table that already pairs a term with its definition. Pick its domain, the table, the term column and the definition column. No model is asked, so none needs to be set and nothing counts against your role's AI budget. Each row is offered as a term whose definition is badged **Defined in the table**. Rows naming the same term become one candidate: the first row's definition is its definition, and the others are kept as supporting passages. The scan finishes as soon as you start it.
+
+**A table of text.** Use this for documentation kept as rows, such as policy text or knowledge-base articles. Pick the domain, the table, an ID column and a text column. The model reads each row as one passage, and every proposal cites the rows it came from by their ID. Leave transactional text such as support tickets out. It rarely defines a term.
+
+Either way a table is read as your acting role reads it, so its row rules and masks apply, and no text you can't read reaches the model. A table scan adds nothing to the reference library. If a row limit cuts the read short, the scan is refused and names the limit, because a scan of part of a table would leave rows out without saying so.
+
+**The model and its budget.** A scan that reads text uses the AI model your organization chose for **Find terms** under **Admin → AI Models**. Until one is chosen, the scan is refused and the message says where to set it. A scan of text counts against your role's AI budget, and a table whose rows would not fit in the budget is refused before the scan starts. A running scan shows its model and its progress, and **Cancel scan** stops it.
+
+**Reviewing.** Each scan's review queue lists every candidate as a new term, a duplicate of an existing term, or another name for one. **Accept** adds a new term, **Merge** folds a candidate into the term it matches, and **Reject** drops it. **Accept selected** decides many at once, as each proposes. **Propose relationships** then runs the relationship assistant over the ontology, including the terms you just accepted. **Scan again** rereads the document or the table. Earlier decisions stand, and the new scan shows only what the ontology doesn't hold yet and what matches its terms.
 
 ## Querying the ontology
 
@@ -437,7 +467,7 @@ The same statements are rows of `ontology._axioms` in SQL, and the kind-of pairs
 
 ## The ontology schema
 
-The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST, and MCP — the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
+The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST and MCP, the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
 
 Two parts make up the schema: definition views and class tables.
 
@@ -453,15 +483,15 @@ Five views expose the glossary's contents:
 | `_domains` | Domain membership: the term name and each domain it belongs to. |
 | `_experts` | Expert assignments: the term name, user ID, and role (`expert` or `author`). |
 
-A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
+A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express, one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
 
-A **term binding** — a term bound to a column, recorded in `_term_refs` — is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
+A **term binding**, a term bound to a column and recorded in `_term_refs`, is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
 
 ### Class tables
 
 Each Class term that is not retired becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
 
-In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from: it holds the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
+In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from by holding the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
 
 Every column in a Class view corresponds to a bound Property. The view is governed through the same pipeline as any other read.
 

@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "conformance"))  # the scripts' sibling imports
 
 
 def _load(name: str):
@@ -369,6 +370,28 @@ def test_a_setup_that_builds_its_graph_runs_with_its_query_in_one_session(scenar
     assert (outcome.status, outcome.reason) == ("passed", tck.IN_A_SESSION)
     doc = tck.report([outcome], "2024.3")
     assert doc["adapted"][0]["group"] == "Setups that build their graph"
+
+
+def test_an_adapted_scenario_s_outcome_is_the_one_it_counts_as():
+    # REQ-2167 (amended 2026-10-28): a scenario run in a session counts once, passed, skipped by
+    # design or failed; its adapted group marks it with that same outcome, never "failed" for a
+    # case the counts skip by design.
+    outcomes = [
+        tck.Outcome("F", "[1] passes", "passed", tck.IN_A_SESSION),
+        tck.Outcome("F", "[2] by design", "failed", f"There is no label :Q {tck.IN_A_SESSION}"),
+        tck.Outcome("F", "[3] fails", "failed", f"rows differ: got [] {tck.IN_A_SESSION}"),
+    ]
+    doc = tck.report(outcomes, "2024.3")
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (3, 1, 1, 1)
+    (group,) = doc["adapted"]
+    assert [c["outcome"] for c in group["cases"]] == ["passed", "by_design", "failed"]
+    md = tck.markdown(doc)
+    assert "3 scenarios: 1 passed, 1 skipped by design, 1 failed." in md
+    assert (
+        "<summary>Setups that build their graph (3: 1 passed, 1 skipped by design, 1 failed)"
+        "</summary>"
+    ) in md
+    assert "| F::[2] by design | skipped by design |" in md
 
 
 def test_each_scenario_starts_from_an_empty_graph_session(scenarios, monkeypatch, cleared):

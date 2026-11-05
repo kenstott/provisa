@@ -138,3 +138,83 @@ def test_executing_an_unknown_portal_answers_34000():
     blob = b"".join(written)
     assert blob[:1] == b"E" and b"34000" in blob and b'portal "never_bound" does not exist' in blob
     assert ctx.has_error
+
+
+def test_a_simple_query_error_ends_at_its_ready_for_query():
+    """A Query message's error ends with its ReadyForQuery: it has no Sync. An extended cycle
+    after it is answered, not discarded up to its Sync as if it had failed itself (the client
+    saw no result at all: psycopg's "got no result from the query")."""
+    handler, written = _handler()
+    handler._report_zone = lambda: None
+    handler._shield = SimpleNamespace(lock=MagicMock(), settle=lambda: None)
+    handler._close_request = lambda: None
+    session = MagicMock(org_id=None)
+    session.in_transaction.return_value = False
+    session.execute_sql.side_effect = RuntimeError("lastval is not yet defined in this session")
+    ctx = BVContext(session, None, {})
+    handler._process_query_stmts(ctx, ["SELECT lastval()"])
+    assert _codes(written) == [b"E"]
+    assert written[-1][:1] == b"Z"
+    assert not ctx.has_error
+    written.clear()
+    handler.handle_parse(ctx, _parse_payload("SELECT 1"))
+    assert _codes(written) == [b"1"]
+
+
+class _TxSession(SimpleNamespace):
+    """Opens and closes its transaction as ProvisaSession does; ``SELECT bogus`` fails."""
+
+    def in_transaction(self):
+        return self.transaction_open
+
+    def execute_sql(self, sql, *args, **kwargs):
+        from provisa.pgwire.server import _transaction_open
+
+        if sql == "SELECT bogus":
+            raise RuntimeError('column "bogus" does not exist')
+        self.transaction_open = _transaction_open(sql, self.transaction_open)
+        return SimpleNamespace(has_results=lambda: False, status=lambda: sql.split()[0])
+
+
+def _query_handler():
+    handler, written = _handler()
+    handler._report_zone = lambda: None
+    handler._shield = SimpleNamespace(lock=MagicMock(), settle=lambda: None)
+    handler._close_request = lambda: None
+    return handler, written
+
+
+def _status_after(handler, written, ctx, sql: str) -> bytes:
+    written.clear()
+    handler._process_query_stmts(ctx, [sql])
+    assert written[-1][:1] == b"Z"
+    return written[-1][-1:]
+
+
+def test_a_failed_query_in_a_transaction_reports_it_failed_until_rollback():
+    """pgspec TestSimpleQuery/TransactionStatus, TestSimpleQuery_TransactionStatusByte: after a
+    failed statement in a transaction ReadyForQuery reports 'E', and 'I' once it is rolled back."""
+    handler, written = _query_handler()
+    ctx = BVContext(_TxSession(org_id=None, transaction_open=False), None, {})
+    assert _status_after(handler, written, ctx, "BEGIN") == b"T"
+    assert _status_after(handler, written, ctx, "SELECT bogus") == b"E"
+    assert _status_after(handler, written, ctx, "ROLLBACK") == b"I"
+    assert _status_after(handler, written, ctx, "BEGIN") == b"T"
+
+
+def test_a_failed_transaction_still_answers_the_next_extended_cycle():
+    """The failed transaction is not the cycle's error: the next extended cycle is answered."""
+    handler, written = _query_handler()
+    ctx = BVContext(_TxSession(org_id=None, transaction_open=False), None, {})
+    _status_after(handler, written, ctx, "BEGIN")
+    assert _status_after(handler, written, ctx, "SELECT bogus") == b"E"
+    assert not ctx.has_error
+    written.clear()
+    handler.handle_parse(ctx, _parse_payload("SELECT 1"))
+    assert _codes(written) == [b"1"]
+
+
+def test_an_error_outside_a_transaction_reports_idle():
+    handler, written = _query_handler()
+    ctx = BVContext(_TxSession(org_id=None, transaction_open=False), None, {})
+    assert _status_after(handler, written, ctx, "SELECT bogus") == b"I"

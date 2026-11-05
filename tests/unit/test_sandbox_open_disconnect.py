@@ -20,11 +20,14 @@ marked closing, as a closed tab's is, so the grace passes with no request and th
 
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI, Request
 
 from provisa.api import demo_sandbox, demo_sandbox_router, demo_warmup, sandbox_tier
+from provisa.core.request_thread import RequestThreadMiddleware
 
 
 class _Request:
@@ -32,8 +35,14 @@ class _Request:
         self._gone = gone
         self.app = object()
 
-    async def is_disconnected(self) -> bool:
-        return self._gone
+    async def body(self) -> bytes:
+        return b""
+
+    async def receive(self) -> dict:
+        if self._gone:
+            return {"type": "http.disconnect"}
+        await asyncio.sleep(3600)  # a client still connected says nothing
+        raise AssertionError("the wait for a disconnect is bounded")
 
 
 @pytest.fixture
@@ -70,3 +79,51 @@ async def test_an_open_handed_over_is_warmed_and_left_open(opened):
     assert answer == {"org_id": "sbx0123456789ab", "demo": "worldcup", "token": "tok"}
     assert opened["closing"] == []
     assert len(opened["warmed"]) == 1
+
+
+def _left_through_the_request_thread(disconnected: bool) -> bool:
+    """Whether the router finds the visitor gone, its request on a request thread as the tier serves
+    it: there every receive after the pre-read body is relayed to the accepting loop, so
+    request.is_disconnected(), whose receive is cancelled before it can be answered, never saw a
+    visitor leave (the reviews sandbox of 2026-11-01 held its place an hour)."""
+    answers: list[bool] = []
+    app = FastAPI()
+
+    @app.post("/public/demos/reviews")
+    async def _open(request: Request) -> dict:
+        answers.append(await demo_sandbox_router._visitor_left(request))
+        return {}
+
+    wrapped = RequestThreadMiddleware(app)
+    queue: list[dict] = [{"type": "http.request", "body": b"", "more_body": False}]
+    if disconnected:
+        queue.append({"type": "http.disconnect"})
+
+    async def _receive():
+        if queue:
+            return queue.pop(0)
+        await asyncio.sleep(3600)
+
+    async def _send(message):
+        return None
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "method": "POST",
+        "path": "/public/demos/reviews",
+        "raw_path": b"/public/demos/reviews",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [],
+    }
+    asyncio.run(wrapped(scope, _receive, _send))
+    return answers[0]
+
+
+def test_a_visitor_gone_is_seen_through_the_request_thread():
+    assert _left_through_the_request_thread(disconnected=True)
+
+
+def test_a_visitor_still_connected_is_not_taken_for_gone():
+    assert not _left_through_the_request_thread(disconnected=False)
