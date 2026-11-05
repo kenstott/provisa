@@ -33,6 +33,8 @@ vi.mock("../api/glossary", () => ({ generateGlossaryRelationships: vi.fn() }));
 const library = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
   fetchLibraryDocument: vi.fn(),
+  fetchRetrieval: vi.fn(),
+  saveRetrieval: vi.fn(),
   addLibraryDocument: vi.fn(),
   setLibraryDomains: vi.fn(),
   keepLibraryDocument: vi.fn(),
@@ -256,6 +258,7 @@ describe("a scan step", () => {
 describe("a library step", () => {
   it("points at the document's row on the Reference library page, by its address", async () => {
     const [, , lib] = STEPS;
+    library.fetchRetrieval.mockResolvedValue("passage");
     library.fetchLibrary.mockResolvedValue([
       {
         id: 4,
