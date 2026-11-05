@@ -226,3 +226,122 @@ async def test_the_coverage_report_lists_a_hinted_unrestricted_column_and_not_a_
     )
     assert "memo" not in seen and "summary" not in seen
     assert seen["ssn"][3] == "no_fake"
+
+
+# --- the scan, end to end -------------------------------------------------------------------------
+
+
+async def _registered(conn) -> None:
+    from sqlalchemy import insert
+
+    from provisa.core.schema_org import domains, registered_tables, sources
+
+    await conn.execute_core(insert(domains).values(id="crm", description="crm"))
+    await conn.execute_core(insert(sources).values(id="s1", type="postgres"))
+    await conn.execute_core(
+        insert(registered_tables).values(
+            id=1, source_id="s1", domain_id="crm", schema_name="public", table_name="calls"
+        )
+    )
+
+
+async def test_a_scan_runs_to_its_end_and_stores_only_counts(control_plane, monkeypatch):
+    import types
+
+    from sqlalchemy import select, text
+
+    from provisa.api.admin import table_read
+    from provisa.core.schema_org import profiler_sensitive_hints, profiler_sensitive_scans
+
+    table = {
+        "id": 1,
+        "columns": [
+            {"column_name": "notes", "data_type": "varchar"},
+            {"column_name": "amount", "data_type": "bigint"},
+        ],
+    }
+    read = []
+
+    async def read_as_caller(state, table_id, role_id, *, limit=None, request=None):
+        read.append((table_id, role_id, limit))
+        return types.SimpleNamespace(
+            column_names=["notes", "amount"], rows=[(v, 10) for v in WITH_SSNS]
+        )
+
+    monkeypatch.setattr(table_read, "_in_service", lambda state, tid: table if tid == 1 else None)
+    monkeypatch.setattr(table_read, "read_as_caller", read_as_caller)
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _registered(conn)
+            scan_id = await hints.start(conn, 1, "steward@example.com")
+            assert (await hints.latest_scan(conn, 1))["status"] == "running"
+        await hints.run(types.SimpleNamespace(model_db=db), 1, scan_id)
+        async with db.acquire() as conn:
+            scan = await hints.latest_scan(conn, 1)
+            found = await hints.hints_of(conn, 1)
+            stored = [
+                str(v)
+                for t in (profiler_sensitive_scans, profiler_sensitive_hints)
+                for r in (await conn.execute_core(select(t))).fetchall()
+                for v in r
+            ]
+            scanned = (
+                await conn.execute_core(text("SELECT count(*) FROM profiler_sensitive_hints"))
+            ).scalar()
+    finally:
+        await db.close()
+    assert read == [(1, "org_admin", hints.SCAN_ROWS)]
+    assert scan["status"] == "succeeded" and scan["error"] is None
+    assert (scan["sampled_rows"], scan["scanned_columns"]) == (10, 1)
+    assert [(h["physical_column"], h["kind"], h["values_matched"]) for h in found] == [
+        ("notes", "us_ssn", 3)
+    ]
+    assert scanned == 1
+    for value in [*SSNS, *WITH_SSNS]:
+        assert not any(value in s for s in stored)
+
+
+async def test_a_scan_that_cannot_read_fails_saying_why(control_plane, monkeypatch):
+    import types
+
+    from provisa.api.admin import table_read
+
+    monkeypatch.setattr(table_read, "_in_service", lambda state, tid: None)
+    monkeypatch.setattr(table_read, "_draft", lambda state, tid: None)
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _registered(conn)
+            scan_id = await hints.start(conn, 1, None)
+        await hints.run(types.SimpleNamespace(model_db=db), 1, scan_id)
+        async with db.acquire() as conn:
+            scan = await hints.latest_scan(conn, 1)
+    finally:
+        await db.close()
+    assert scan["status"] == "failed"
+    assert scan["error"] == "table 1 is no longer registered"
+
+
+async def test_a_scan_left_running_past_its_time_reads_as_failed(control_plane):
+    import datetime as dt
+
+    from sqlalchemy import update
+
+    from provisa.core.schema_org import profiler_sensitive_scans as ss
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _registered(conn)
+            scan_id = await hints.start(conn, 1, None)
+            long_ago = dt.datetime.now(dt.UTC) - hints.SCAN_TIMEOUT - dt.timedelta(minutes=1)
+            await conn.execute_core(
+                update(ss).where(ss.c.scan_id == scan_id).values(started_at=long_ago)
+            )
+            scan = await hints.latest_scan(conn, 1)
+            again = await hints.latest_scan(conn, 1)
+    finally:
+        await db.close()
+    assert (scan["status"], scan["error"]) == ("failed", hints.TIMED_OUT)
+    assert again["status"] == "failed" and again["finished_at"] is not None
