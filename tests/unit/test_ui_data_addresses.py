@@ -39,8 +39,8 @@ def _platform(**eu) -> PlatformConfig:
     return PlatformConfig.model_validate(
         {
             "regions": [
-                {"id": "eu", "address": "https://eu.example.com", **eu},
-                {"id": "us", "address": "https://us.example.com"},
+                {"id": "eu", "description": "The eu region", "purposes": ["residency"], **eu},
+                {"id": "us", "description": "The us region", "purposes": ["residency"]},
             ]
         }
     )

@@ -27,6 +27,7 @@ import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
 import { NAV_GROUPS, entryItem } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
+import { SandboxReadableGate } from "./components/admin/SandboxReadableGate";
 import { HIDING_RIGHTS } from "./lib/capabilities";
 import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
@@ -682,6 +683,8 @@ function App() {
                                               ["/admin/security", "platform_settings"],
                                               ["/admin/maintenance", "platform_settings"], // REQ-1466
                                               ["/admin/deployment-settings", "platform_settings"], // REQ-1913
+                                              ["/admin/platform", "platform_settings"], // REQ-1922: regions and grants
+                                              ["/admin/regions", "org_settings"], // REQ-1922: the org's granted regions, read-only
                                               ["/admin/billing", "org_settings"], // REQ-1469
                                             ] as const
                                           ).map(([path, capability]) => (
@@ -689,12 +692,22 @@ function App() {
                                               key={path}
                                               path={path}
                                               element={
-                                                <CapabilityGate
-                                                  capability={capability}
-                                                  fallback={<NotAuthorized />}
-                                                >
-                                                  <AdminPage />
-                                                </CapabilityGate>
+                                                path === "/admin/platform" ? (
+                                                  // REQ-1922: a demo sandbox reads it.
+                                                  <SandboxReadableGate
+                                                    capability={capability}
+                                                    fallback={<NotAuthorized />}
+                                                  >
+                                                    <AdminPage />
+                                                  </SandboxReadableGate>
+                                                ) : (
+                                                  <CapabilityGate
+                                                    capability={capability}
+                                                    fallback={<NotAuthorized />}
+                                                  >
+                                                    <AdminPage />
+                                                  </CapabilityGate>
+                                                )
                                               }
                                             />
                                           ))}

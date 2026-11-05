@@ -1,0 +1,57 @@
+{
+  "orgRegions": {
+    "loading": "Regio's laden...",
+    "noPlatformRegions": "Het platform declareert geen regio's.",
+    "regionsHeading": "Regio's",
+    "storesHeading": "Opslagen",
+    "addRegion": "Regio toevoegen",
+    "addStore": "Opslag toevoegen",
+    "editRegion": "Regio {{id}} bewerken",
+    "editStore": "Opslag {{id}} bewerken",
+    "detailPanel": "Details van regio of opslag",
+    "colRegion": "Regio",
+    "colStore": "Opslag",
+    "colUrl": "URL",
+    "colKind": "Enginetype",
+    "usedBy": "Gebruikt door regio's",
+    "unused": "Geen regio gebruikt deze",
+    "noKind": "Geen",
+    "noRegions": "Er is nog geen regio toegekend.",
+    "noStores": "Nog geen opslagen.",
+    "notSaved": "Niet opgeslagen",
+    "heldStores_one": "{{count}} opslag is nog niet opgeslagen. Die wordt met de eerste regio opgeslagen.",
+    "heldStores_other": "{{count}} opslagen zijn nog niet opgeslagen. Ze worden met de eerste regio opgeslagen.",
+    "edit": "Bewerken",
+    "remove": "Verwijderen",
+    "storeTaken": "Er bestaat al een opslag met de naam {{id}}.",
+    "regionHelp": "Een van de regio's van het platform. De gegevens van de organisatie daarin worden bewaard in de opslagen hieronder.",
+    "storeIdHelp": "De naam waarmee regio's naar deze opslag verwijzen.",
+    "urlHelp": "De verbindings-URL van de opslag, of een verwijzing zoals ${env:NAME}. Wordt precies zo bewaard als ingevoerd. Een wachtwoord erin wordt nooit meer getoond; laat de URL ongewijzigd om het te behouden.",
+    "kindHelp": "De engine die deze opslag draait. Verplicht voor een opslag die een regio als engine gebruikt.",
+    "role": {
+      "engine": "Engine",
+      "replicas": "Replica's",
+      "views": "Gematerialiseerde views",
+      "cache": "Cache",
+      "state": "Status",
+      "record": "Verzoekenlogboek"
+    },
+    "roleHelp": {
+      "engine": "De opslag waarvan de engine de query's van deze regio uitvoert. Deze heeft een enginetype nodig.",
+      "replicas": "Waar kopieën van tabellen in deze regio worden bewaard. Dezelfde opslag als voor gematerialiseerde views.",
+      "views": "Waar gematerialiseerde views in deze regio worden bewaard. Dezelfde opslag als voor replica's.",
+      "cache": "Waar queryresultaten in deze regio in de cache worden bewaard.",
+      "state": "Waar deze regio haar werkstatus bewaart.",
+      "record": "Waar deze regio haar logboek van verzoeken bewaart."
+    },
+    "delete": {
+      "regionTitle": "Regio {{id}} verwijderen?",
+      "regionConsequence": "Regio {{id}} is niet langer aan de organisatie toegekend; haar nodes daar bedienen haar na een herstart niet meer. Haar opslagen blijven behouden. Een bron of tabel die de regio noemt, voorkomt verwijderen.",
+      "storeTitle": "Opslag {{id}} verwijderen?",
+      "storeConsequence": "Opslag {{id}} wordt verwijderd. Een regio die deze gebruikt, voorkomt het verwijderen."
+    },
+    "grantedIntro": "De regio's die het platform aan deze organisatie heeft toegekend, en de opslag waarin ze daar elk soort gegevens bewaart. Ze worden ingesteld op de pagina Platform. Binnen die regio's bepaalt de organisatie waar haar tabellen en bronnen staan en welke regio's haar rollen mogen lezen.",
+    "colPurposes": "Doelen",
+    "description": "Beschrijving"
+  }
+}

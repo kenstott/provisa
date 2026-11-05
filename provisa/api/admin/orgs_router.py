@@ -491,6 +491,13 @@ async def _provision_org_task(
                 provisioned=provisioned,
             ),
         )
+        # REQ-1922: the platform's default grant, so a self-serve org starts with a working
+        # region; then the org is built on the lane it names for this node's region.
+        from provisa.core.repositories.region import apply_default_grant
+
+        assert rt.model_db is not None
+        async with rt.model_db.acquire() as conn:
+            await apply_default_grant(conn, _app_state.config.written.platform.default_grant)
         rt = await on_its_region_lane(org_id, rt)
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.

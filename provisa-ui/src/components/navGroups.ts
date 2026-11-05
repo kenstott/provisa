@@ -40,6 +40,10 @@ export interface DropdownItem {
   // /admin/secrets gets the DEPLOYMENT's secrets service and no org vault at all, so naming it
   // "Org Secrets" to them advertises something the page does not contain.
   orLabelKey?: string;
+  // REQ-1922: the surface exists only where the platform declares regions (useRegionChoices).
+  regionsOnly?: boolean;
+  // REQ-1922: a demo sandbox's visitor may open it to read, though its capability is not theirs.
+  sandboxReadable?: boolean;
 }
 
 /** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
@@ -214,6 +218,23 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/deployment-settings",
         labelKey: "navBar.itemDeploymentSettings",
         capability: "platform_settings",
+      },
+      // REQ-1922: the platform's regions, the default grant and each org's grant. A node reads them
+      // before it opens any store, so they are the platform administrator's, applied on restart. A
+      // demo sandbox shows the regions read-only, to explain them.
+      {
+        to: "/admin/platform",
+        labelKey: "navBar.itemPlatform",
+        capability: "platform_settings",
+        sandboxReadable: true,
+      },
+      // REQ-1922: the regions the platform granted the org and their stores, read-only. Shown only
+      // where the platform declares regions: with none, region is not a concept anywhere a user sees.
+      {
+        to: "/admin/regions",
+        labelKey: "navBar.itemRegions",
+        capability: "org_settings",
+        regionsOnly: true,
       },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1984: the registries every Node install of the organisation goes through.

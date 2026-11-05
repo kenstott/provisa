@@ -2212,9 +2212,6 @@ async def _region_lane_of(org_id: str, env: str):
     read from its model store before its runtime (and so its engine) is built. None with no
     platform regions."""
     from provisa.core import process_region
-    from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import Capabilities, create_engine_from_url
-    from provisa.core.environments import org_schema
     from provisa.core.region_stores import region_lane
     from provisa.core.regions import DEFAULT_REGION
     from provisa.core.repositories.region import list_regions, list_stores
@@ -2222,6 +2219,22 @@ async def _region_lane_of(org_id: str, env: str):
     if process_region.region() == DEFAULT_REGION:
         # REQ-1922 amendment: the one implicit region names no engine; the lane decides as today.
         return None
+    async with org_model_store(org_id, env) as model_db:
+        async with model_db.acquire() as conn:
+            regions, stores = await list_regions(conn), await list_stores(conn)
+    return region_lane(org_id, regions, stores)
+
+
+@asynccontextmanager
+async def org_model_store(org_id: str, env: str):
+    """REQ-1922: the model store of ``org_id``'s environment ``env``, opened without building the
+    org's runtime: what the platform reads and writes of an org that this node may not serve (its
+    regions and stores). Its writes are committed to that environment's model (REQ-1524)."""
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.environments import org_schema
+    from provisa.core.model_change import ModelPlane
+
     shared = state.tenant_engine
     assert shared is not None, "tenant engine not built; _init_control_planes must run first"
     # A not-schema-capable backend keeps each org in its own file (see build_org_runtime).
@@ -2230,15 +2243,16 @@ async def _region_lane_of(org_id: str, env: str):
         cp = load_control_plane(config_path_str())
         owned = create_engine_from_url(cp.resolved_tenant_url(), pool_size=1, max_overflow=0)
     try:
-        model_db = Database(
-            owned or shared, name="org-model", search_path=org_schema(org_id, env), holds="model"
+        yield Database(
+            owned or shared,
+            name="org-model",
+            search_path=org_schema(org_id, env),
+            model=ModelPlane(org_id, env),
+            holds="model",
         )
-        async with model_db.acquire() as conn:
-            regions, stores = await list_regions(conn), await list_stores(conn)
     finally:
         if owned is not None:
             owned.dispose()
-    return region_lane(org_id, regions, stores)
 
 
 async def _sandbox_store(org_id: str, env: str, storage_url: str | None) -> str:
@@ -5120,6 +5134,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.regions_router import router as regions_router
+
+    app.include_router(regions_router)  # REQ-1922
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
