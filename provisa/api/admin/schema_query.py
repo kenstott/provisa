@@ -228,6 +228,22 @@ async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
     return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id, r.domain_id)}
 
 
+async def _with_implied(conn: Any, fetched: Any) -> list[dict]:
+    """The registry's relationship rows and the links their junctions imply (REQ-1586), each marked
+    with the junction relationships it is derived from: the SQL canvas and the ERD read them here
+    rather than deriving their own. Read rights are applied to both alike (_listed_relationships)."""
+    from provisa.compiler.naming import active_gql_convention
+    from provisa.core.junction_links import with_junction_links
+
+    keyed = await conn.execute_core(
+        select(table_columns.c.table_id, table_columns.c.column_name).where(
+            or_(table_columns.c.is_primary_key, table_columns.c.is_alternate_key)
+        )
+    )
+    keys = {(r.table_id, r.column_name) for r in keyed.fetchall()}
+    return with_junction_links([dict(r._mapping) for r in fetched], keys, active_gql_convention())
+
+
 async def _listed_relationships(
     conn: Any, scope: CatalogScope, rows: list[RelationshipType]
 ) -> list[RelationshipType]:
@@ -884,6 +900,7 @@ class Query:  # REQ-021, REQ-042
                     _st.c.domain_id.label("source_domain_id"),
                     _tt.c.table_name.label("target_table_name"),
                     _vt.c.table_name.label("via_table_name"),
+                    _vt.c.domain_id.label("via_domain_id"),
                 )
                 .select_from(
                     relationships.join(_st, relationships.c.source_table_id == _st.c.id)
@@ -896,7 +913,7 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            rows = [_rel_from_row(r) for r in await _with_implied(conn, _res.fetchall())]
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
@@ -917,6 +934,7 @@ class Query:  # REQ-021, REQ-042
                     _st.c.domain_id.label("source_domain_id"),
                     _tt.c.table_name.label("target_table_name"),
                     _vt.c.table_name.label("via_table_name"),
+                    _vt.c.domain_id.label("via_domain_id"),
                 )
                 .select_from(
                     relationships.join(_st, relationships.c.source_table_id == _st.c.id)
@@ -926,7 +944,7 @@ class Query:  # REQ-021, REQ-042
                 .where(relationships.c.id.not_like("gql_auto__%"))
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            rows = [_rel_from_row(r) for r in await _with_implied(conn, _res.fetchall())]
             rows.extend(await _has_table_synthetic_relationships(conn))
             return await _listed_relationships(conn, catalog_scope(info), rows)
 

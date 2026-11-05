@@ -68,7 +68,8 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         table = dict(row)
         col_rows = await conn.fetch(
             "SELECT column_name, data_type, visible_to, masks, "
-            "alias, description, path, is_primary_key, object_fields, native_filter_type, "
+            "alias, description, path, is_primary_key, is_alternate_key, object_fields, "
+            "native_filter_type, "
             "native_filter_required, required_by_steward, "  # REQ-1986
             "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
             "fake_why, "  # REQ-2094
@@ -100,6 +101,8 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "description": r["description"],
                 "path": r["path"],
                 "is_primary_key": bool(r.get("is_primary_key") or False),
+                # REQ-1586: a key a junction's link may reach (core/junction_links.py).
+                "is_alternate_key": bool(r.get("is_alternate_key") or False),
                 "object_fields": _as_list(r.get("object_fields")),
                 "native_filter_type": r.get("native_filter_type"),
                 "native_filter_required": r.get("native_filter_required"),

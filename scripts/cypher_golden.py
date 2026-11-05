@@ -352,6 +352,10 @@ def model_inputs(config_path: Path, *, parameters: bool = False) -> tuple[Any, l
     fold_config_grants(tables, raw.get("roles") or [])
     role = {"id": "org_admin", "domain_access": ["*"], "capabilities": []}
     naming.configure(gql="apollo_graphql")
+    # REQ-1586: and the links each junction implies, as the server's build serves them.
+    from provisa.core.junction_links import table_keys, with_junction_links
+
+    relationships = with_junction_links(relationships, table_keys(tables), "apollo_graphql")
     schema_input = SchemaInput(
         tables=tables,
         relationships=relationships,

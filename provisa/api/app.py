@@ -2894,7 +2894,14 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # REQ-1921: out of service — offered in no schema, refused by name when named.
         draft_tables = await _fetch_tables(_pg, draft=True)
         _assert_domain_table_unique(tables)
-        relationships = await _fetch_relationships(_pg)
+        # REQ-1586: and the links each junction implies from its rows to either end, served as
+        # relationships of their own by everything this build feeds.
+        from provisa.compiler.naming import active_gql_convention
+        from provisa.core.junction_links import table_keys, with_junction_links
+
+        relationships = with_junction_links(
+            await _fetch_relationships(_pg), table_keys(tables), active_gql_convention()
+        )
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
         _schema_cfg = raw_config.get("schema", {}) if raw_config else {}

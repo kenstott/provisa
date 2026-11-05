@@ -245,6 +245,7 @@ def _rel_from_row(row) -> RelationshipType:
             RelationshipParameterType(parameter=k, source_column=v)
             for k, v in row["parameters"].items()
         ],
+        derived_from=row.get("derived_from"),  # REQ-1586
     )
 
 

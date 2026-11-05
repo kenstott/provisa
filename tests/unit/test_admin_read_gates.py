@@ -126,6 +126,11 @@ async def test_a_catalog_read_answers_by_the_callers_scope(monkeypatch, name, kw
         patch("provisa.api.admin.schema_query._get_pool") as pool,
         patch("provisa.api.admin.schema_query._resolve_admin_context"),
         patch("provisa.api.admin.schema_query._rel_from_row"),
+        # REQ-1586: the links junctions imply are listed beside the rows, under the same scope.
+        patch(
+            "provisa.api.admin.schema_query._with_implied",
+            new=AsyncMock(side_effect=lambda _conn, fetched: list(fetched)),
+        ),
         patch(
             "provisa.api.admin.schema_query._has_table_synthetic_relationships",
             new=AsyncMock(return_value=[]),

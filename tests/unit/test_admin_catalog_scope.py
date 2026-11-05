@@ -115,6 +115,9 @@ class _Conn:
         sql = str(stmt)
         if "FROM relationships" in sql:
             return _Rows(_RELATIONSHIPS)
+        if "FROM table_columns" in sql:
+            # The key columns a junction's links may reach (REQ-1586): each table's id.
+            return _Rows([{"table_id": t, "column_name": "id"} for t in (1, 2, 3)])
         if "FROM sources" in sql:
             wanted = [{"id": "pg"}, {"id": "hrdb"}]
             params = stmt.compile().params

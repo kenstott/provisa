@@ -109,6 +109,23 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194,
     return apply_gql_name("_".join(words))
 
 
+_KEY_SUFFIXES = ("_id", "_fk", "_pk")
+
+
+def junction_link_name(junction_columns: tuple[str, ...], end_table_name: str) -> str:  # REQ-1586
+    """The base name of the link a junction row takes to one of its ends
+    (core/junction_links.py): its one junction column less its key suffix, as a foreign key's
+    Cypher type is named from its column, so ``pet_id`` names ``pet`` and ``companion_pet_id``
+    names ``companion_pet``. A link on a composite key is named for the end table it reaches."""
+    if len(junction_columns) == 1:
+        col = junction_columns[0].strip().lower()
+        for suffix in _KEY_SUFFIXES:
+            if col.endswith(suffix) and len(col) > len(suffix):
+                return col[: -len(suffix)]
+        return col
+    return rel_field_name(end_table_name, "many-to-one")
+
+
 def junction_field_name(  # REQ-1586
     label_source: str,
     cardinality: str,

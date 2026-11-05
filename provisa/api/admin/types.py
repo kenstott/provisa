@@ -842,6 +842,10 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     via_label_source: str | None = None
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list["RelationshipParameterType"] = strawberry.field(default_factory=list)
+    # REQ-1586: a link a junction implies (core/junction_links.py) -- from the junction table to
+    # one of its ends -- names the junction relationships it is derived from; it has no row of its
+    # own, so it is never edited or deleted. None for a declared relationship.
+    derived_from: list[str] | None = None
 
     @strawberry.field
     def auto_suggested(self) -> bool:
