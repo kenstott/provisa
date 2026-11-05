@@ -12,6 +12,7 @@ naming:
   rules: []
 cache:
   enabled: false
+roles: []
 domains:
   - id: anchors
     description: Session anchors
