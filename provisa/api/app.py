@@ -2093,7 +2093,7 @@ async def ensure_org_runtime(
 
 
 async def build_on_its_lane(  # REQ-1266, REQ-1922
-    org_id: str, env: str | None, *, model_cloned: bool = False
+    org_id: str, env: str | None, *, model_cloned: bool = False, schema_current: bool = False
 ) -> OrgRuntime:
     """Build the org environment's runtime on the lane its admin-plane row and, in a region
     deployment, its model name: the engine and store it runs on. ``ensure_org_runtime`` builds
@@ -2155,6 +2155,7 @@ async def build_on_its_lane(  # REQ-1266, REQ-1922
         data_mode=_data_mode,
         mutation_handling=_mutation_handling,
         model_cloned=model_cloned,
+        schema_current=schema_current,
     )
 
 
@@ -2411,6 +2412,7 @@ async def build_org_runtime(
     storage_url: str | None = None,
     model_cloned: bool = False,
     provisioned: bool = False,
+    schema_current: bool = False,
 ) -> OrgRuntime:  # REQ-1266, REQ-1524
     """Build the org's runtime (``_build_org_runtime``) as one model change.
 
@@ -2426,7 +2428,12 @@ async def build_org_runtime(
 
     ``provisioned``: the org's schema was created a moment ago, in this process
     (orgs_router._provision_org_task), and holds none of the built-in views, which the seed makes
-    as one script."""
+    as one script.
+
+    ``schema_current`` (REQ-1922): the org's schema was laid out by this release a moment ago, in
+    this process, by its provisioning and the build this one replaces (orgs_router.
+    on_its_region_lane). Its script is not run again: that build's lifecycle wiring, detached from
+    it, still reads the org's model, and the script's ALTER TABLEs deadlock against it."""
     async with model_change.scope(f"build org {org_id}/{env}"):
         return await _build_org_runtime(
             org_id,
@@ -2443,6 +2450,7 @@ async def build_org_runtime(
             storage_url=storage_url,
             model_cloned=model_cloned,
             provisioned=provisioned,
+            schema_current=schema_current,
         )
 
 
@@ -2522,6 +2530,7 @@ async def _build_org_runtime(
     storage_url: str | None = None,
     model_cloned: bool = False,
     provisioned: bool = False,
+    schema_current: bool = False,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -2756,8 +2765,8 @@ async def _build_org_runtime(
             org_schema(org_id, env), ModelPlane(org_id, env), model_engine=tenant_engine
         )
 
-        # provisioned a moment ago (org_provisioning.provision_org)
-        await _set_up_org_schema(org_id, env, run_script=not model_cloned)
+        # Either was laid out a moment ago (org_provisioning.provision_org).
+        await _set_up_org_schema(org_id, env, run_script=not (model_cloned or schema_current))
         clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
@@ -3745,20 +3754,15 @@ async def _rewire_lifecycle() -> None:
 
         _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
         if _rm_cfg is not None:
-            try:
-                await wire_row_materialize_background(
-                    _scheduler,
-                    state=state,
-                    log=logging.getLogger(__name__),
-                    tick_seconds=_rm_cfg.refresh_tick_seconds,
-                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
-                    reap_grace_period=_rm_cfg.reap_grace_period,
-                    reap_batch_size=_rm_cfg.reap_batch_size,
-                )
-            except Exception:
-                logging.getLogger(__name__).exception(
-                    "wire_row_materialize_background failed during schema rebuild"
-                )
+            await wire_row_materialize_background(
+                _scheduler,
+                state=state,
+                log=logging.getLogger(__name__),
+                tick_seconds=_rm_cfg.refresh_tick_seconds,
+                reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                reap_grace_period=_rm_cfg.reap_grace_period,
+                reap_batch_size=_rm_cfg.reap_batch_size,
+            )
 
 
 class _DebugLogBufferHandler(logging.Handler):
