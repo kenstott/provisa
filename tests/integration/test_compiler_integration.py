@@ -39,7 +39,7 @@ from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
 from provisa.transpiler.transpile import transpile, SUPPORTED_DIALECTS
 from tests.helpers import ALL_DATA_CAPABILITIES
-from tests.rules import rule_of
+from tests.rules import holds, mentions, rule_of
 
 pytestmark = [pytest.mark.integration]
 
@@ -1119,6 +1119,25 @@ class TestGraphAnalyticsPipeline:
 # ---------------------------------------------------------------------------
 
 
+def _orders_relation_filter(governed: str):
+    """The row filter of the relation governance reads ``orders`` through (REQ-913): the WHERE
+    of the derived table aliased ``orders`` over ``public.orders``, as an expression."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(governed, read="postgres")
+    relations = [
+        sub
+        for sub in tree.find_all(exp.Subquery)
+        if sub.alias == "orders"
+        and any(t.name == "orders" and t.db == "public" for t in sub.this.find_all(exp.Table))
+    ]
+    assert len(relations) == 1, governed
+    where = relations[0].this.args.get("where")
+    assert where is not None, governed
+    return where.this
+
+
 class TestRLSCompilerFallback:
     """REQ-403: a table's row filter is its table-specific rule, else its domain's rule.
     Table-level rules take precedence; the governed pipeline applies the resolved rule.
@@ -1187,7 +1206,9 @@ class TestRLSCompilerFallback:
         # table_id=1 is the orders table
         rls = RLSContext(rules={1: "region = 'us-east'"}, domain_rules={})
         governed = governed_for_role(compiled.sql, ctx, "admin", rls=rls)
-        assert governed == f'{compiled.sql} WHERE ("orders"."region" = \'us-east\')'
+        where = _orders_relation_filter(governed)
+        assert holds(where, '"orders"."region" = \'us-east\'')
+        assert not mentions(where, "global")
 
     def test_rls_domain_fallback_injected_when_no_table_rule(self):
         # REQ-403: domain-level predicate applied when no table-specific rule matches
@@ -1217,4 +1238,6 @@ class TestRLSCompilerFallback:
             resolve_table_rules(rules, tables, {"admin": ["admin"]}, [], {}), "admin"
         )
         governed = governed_for_role(compiled.sql, ctx, "admin", rls=rls)
-        assert governed == f'{compiled.sql} WHERE ("orders"."region" = \'global\')'
+        where = _orders_relation_filter(governed)
+        assert holds(where, '"orders"."region" = \'global\'')
+        assert not mentions(where, "us-east")
