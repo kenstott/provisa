@@ -234,6 +234,31 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         # This is the documented design, not a fallback.
         return {}
 
+    def _json_answer(self, vendor: str, schema: dict[str, Any], name: str) -> dict[str, Any]:
+        """The request arguments that hold ``vendor``'s answer to one JSON value following
+        ``schema`` (an object schema, every property required and no other allowed), on its wire:
+        Anthropic's structured output (``output_config.format`` of type ``json_schema``, natively
+        or through an Anthropic-style endpoint), or the OpenAI ``response_format`` of type
+        ``json_schema``, strict, for OpenAI itself and OpenRouter. Any other wire gets no setting
+        (``{}``) and is asked in the prompt alone."""
+        endpoint = self._endpoints.get(vendor)
+        wire = endpoint["style"] if endpoint is not None else vendor
+        if wire == "anthropic":
+            return {"output_config": {"format": {"type": "json_schema", "schema": schema}}}
+        if wire == "openai" and (
+            endpoint is None or _OPENROUTER_HOST in str(endpoint.get("base_url") or "")
+        ):
+            return {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": name, "schema": schema, "strict": True},
+                }
+            }
+        # As with reasoning (_reasoning_off): only wires with a documented, known-supported way to
+        # ask get one. Other OpenAI-compatible gateways (ollama, lmstudio, groq and the like)
+        # differ in which response_format they take, so they keep their default.
+        return {}
+
     def _respond(
         self,
         vendor: str,
@@ -242,10 +267,14 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         system: str,
         max_tokens: int,
         reasoning_off: bool = False,
+        json_schema: dict[str, Any] | None = None,
+        json_name: str = "answer",
     ) -> Completion:
         import aisuite as ai
 
-        reasoning = self._reasoning_off(vendor, model) if reasoning_off else {}
+        asked = self._reasoning_off(vendor, model) if reasoning_off else {}
+        if json_schema is not None:
+            asked |= self._json_answer(vendor, json_schema, json_name)
 
         endpoint = self._endpoints.get(vendor)
         if endpoint is not None:
@@ -281,7 +310,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             model=model_id,
             messages=messages,
             max_tokens=max_tokens,
-            **reasoning,
+            **asked,
         )
         choice = response.choices[0]
         content = choice.message.content
@@ -363,10 +392,14 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         max_tokens: int = 1024,
         *,
         reasoning_off: bool = False,
+        json_schema: dict[str, Any] | None = None,
+        json_name: str = "answer",
     ) -> Completion:
         """:meth:`complete` with the vendor, model and usage of the answer (:class:`Completion`).
         ``reasoning_off`` asks each model called, the fallback's too, with its reasoning turned off
-        (:meth:`_reasoning_off`); a wire with no documented switch is sent none and keeps its default."""
+        (:meth:`_reasoning_off`); a wire with no documented switch is sent none and keeps its default.
+        ``json_schema`` (named ``json_name``) asks each model called for one JSON value following
+        it (:meth:`_json_answer`), on the wires that can be held to one."""
         import asyncio
 
         loop = asyncio.get_event_loop()
@@ -374,7 +407,14 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             None,
             lambda: self._with_fallback(
                 lambda vendor, model: self._respond(
-                    vendor, model, prompt, system, max_tokens, reasoning_off
+                    vendor,
+                    model,
+                    prompt,
+                    system,
+                    max_tokens,
+                    reasoning_off,
+                    json_schema,
+                    json_name,
                 )
             ),
         )
