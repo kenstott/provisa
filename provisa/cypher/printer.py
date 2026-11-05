@@ -34,6 +34,7 @@ from provisa.gql.expr_ast import (
     Literal,
     MapLiteral,
     MapProjection,
+    Parameter,
     Property,
     SubqueryExpr,
     Unary,
@@ -97,6 +98,8 @@ def _operand(e: CypherExpr, parent: int, *, strict: bool = False) -> str:
 def expression(e: CypherExpr) -> str:
     if isinstance(e, Variable):
         return _name(e.name)
+    if isinstance(e, Parameter):
+        return f"${e.name}"
     if isinstance(e, Property) and isinstance(e.obj, Variable):
         return f"{_name(e.obj.name)}.{_name(e.name)}"
     if isinstance(e, Literal):
@@ -207,10 +210,10 @@ def statement_lines(ast: CypherAST) -> list[str]:
             "ORDER BY "
             + ", ".join(f"{expression(o.expression)} {o.direction}" for o in ast.order_by)
         )
-    if ast.skip is not None:
-        lines.append(f"SKIP {int(ast.skip)}")
-    if ast.limit is not None:
-        lines.append(f"LIMIT {int(ast.limit)}")
+    for clause, count in (("SKIP", ast.skip), ("LIMIT", ast.limit)):
+        if count is not None:
+            # A count written, or the expression giving it ($n).
+            lines.append(f"{clause} {count if isinstance(count, int) else expression(count)}")
     return lines
 
 

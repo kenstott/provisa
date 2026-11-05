@@ -39,25 +39,22 @@ steps:
   route: /relationships
   capability: create_relationship
   relationship: BUYS_FOR
-- key: hasuramigrationAsAna
+- key: hasuramigrationMyOrders
   route: /query
   capability: query_development
   role: ana
-- key: hasuramigrationMyOrders
   example: 1-my-orders
 - key: hasuramigrationProfile
   example: 2-my-profile
-- key: hasuramigrationAsSupport
+- key: hasuramigrationSupportScreen
   route: /query
   capability: query_development
   role: support
-- key: hasuramigrationSupportScreen
   example: 3-order-with-account
-- key: hasuramigrationAnalyst
+- key: hasuramigrationByIndustry
   route: /sql
   capability: query_development
   role: analyst
-- key: hasuramigrationByIndustry
   sql: >-
     SELECT a."Industry" AS industry, COUNT(*) AS orders, SUM(o.total_cents) / 100.0 AS revenue
     FROM "store"."orders" AS o

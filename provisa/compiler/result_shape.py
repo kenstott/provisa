@@ -28,13 +28,15 @@ it.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, cast
 
 import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.ir_types import base_type
+from provisa.transpiler.pg_money import money_type, statement_columns
 
 # Dialects a registered type string may be spelled in: the registry stores what the bound engine or
 # the source reported, or what the config declared.
@@ -62,9 +64,28 @@ class RegisteredType(str):
     result column too. A type derived for a computed expression is a plain ``str``: an
     annotation of the expression, not a declaration (SQLGlot's decimal arithmetic, for one,
     does not follow any engine's — ``amount * amount`` over a two-digit scale is four digits
-    on the engine and two in the annotation)."""
+    on the engine and two in the annotation).
+
+    ``native`` is the source's own type the column records as a hidden attribute, or None
+    (REQ-1965, REQ-1961): a surface that describes a column by its source's type -- pgwire, a
+    varchar(20) column registered as text -- reads it there."""
 
     __slots__ = ()
+    native: str | None = None
+
+
+class _NativelyRecorded(RegisteredType):
+    """A :class:`RegisteredType` whose column records its native type (``native``)."""
+
+    def __new__(cls, registered: str, native: str | None = None) -> "_NativelyRecorded":
+        made = super().__new__(cls, registered)
+        made.native = native
+        return made
+
+
+def registered_type(registered: str, native: str | None) -> RegisteredType:
+    """A registered column's result type, carrying the native type the column records."""
+    return RegisteredType(registered) if native is None else _NativelyRecorded(registered, native)
 
 
 class StatedType(str):
@@ -118,9 +139,10 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
             continue  # not visible to this role
         if (table_id, physical) in ctx.columns_outside_relation:
             continue  # registered, but the relation a statement reads does not hold it
-        out[exposed_names.get((table_id, physical)) or apply_sql_name(physical)] = RegisteredType(
+        out[exposed_names.get((table_id, physical)) or apply_sql_name(physical)] = registered_type(
             # REQ-2171: a subtyped column is described as its subtype
-            col.subtype or _described_type(col.data_type, nested.get(physical.lower()))
+            col.subtype or _described_type(col.data_type, nested.get(physical.lower())),
+            col.native_type,
         )
     for virtual in ctx.virtual_columns.get(table_id, {}):
         out[virtual] = RegisteredType("varchar")
@@ -154,23 +176,56 @@ def _lookup(columns: dict[str, str], name: str) -> str | None:
 
 def _pg_column_name(node: exp.Expr) -> str:
     """The name Postgres gives an unaliased result column (its FigureColname rule)."""
+    return _figured(node)[0]
+
+
+def _cast_type_name(target: exp.DataType) -> str:
+    """The last part of a cast's type name, as FigureColname names a cast: pg_catalog.regclass is
+    regclass."""
+    kind = target.args.get("kind")
+    if isinstance(kind, exp.Dot):
+        return kind.expression.name.lower()
+    return _PG_TYPNAME.get(target.this, target.sql(dialect="postgres").lower())
+
+
+def _figured(node: exp.Expr) -> tuple[str, int]:
+    """FigureColnameInternal: a name and its strength. A cast names a column by its type only over
+    a name of strength 1 or less (a constant's, a CASE's); a column or a call names it through
+    every cast around it."""
     if isinstance(node, exp.Column):
-        return node.name
+        return node.name, 2
     if isinstance(node, exp.Cast):
-        inner = _pg_column_name(node.this)
-        if inner != "?column?":
-            return inner
-        target = node.to
-        return _PG_TYPNAME.get(target.this, target.sql(dialect="postgres").lower())
+        inner, strength = _figured(node.this)
+        if strength > 1:
+            return inner, strength
+        return _cast_type_name(node.to), 1
     if isinstance(node, exp.Paren):
-        return _pg_column_name(node.this)
+        return _figured(node.this)
+    if isinstance(node, exp.Dot) and isinstance(node.expression, exp.Func):
+        return _figured(node.expression)  # pg_catalog.f(): the function's own name
     if isinstance(node, exp.Anonymous):
-        return node.name.lower()
+        return node.name.lower(), 2
     if isinstance(node, exp.Case):
-        return "case"
+        default = node.args.get("default")
+        name, strength = _figured(default) if default is not None else ("?column?", 0)
+        return (name, strength) if strength > 1 else ("case", 1)
     if isinstance(node, exp.Func):
-        return node.sql_name().lower()
-    return "?column?"
+        return node.sql_name().lower(), 2
+    return "?column?", 0
+
+
+def pg_named(sql: str) -> str:
+    """``sql`` with each unaliased result column of a computed value aliased by the name PostgreSQL
+    gives it: an engine names ``SELECT 1`` 1, where PostgreSQL names it ?column?. A column keeps the
+    name it has on every engine."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    if not isinstance(tree, exp.Query):
+        return sql
+    for select in list(tree.selects):
+        if isinstance(select, (exp.Alias, exp.Column, exp.Star)):
+            continue
+        select.replace(exp.alias_(select.copy(), _pg_column_name(select), quoted=True))
+    return tree.sql(dialect="postgres")
 
 
 def _untyped_is_text(node: exp.Expr) -> bool:
@@ -268,15 +323,27 @@ def _single_table_shape(
     return _plain_projection_shape(tree.expressions, table_columns(table_id, ctx, column_types))
 
 
-def _annotated_shape(
-    tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict, *, each: bool = False
-) -> list[tuple[str, str]]:
+def registered_money(
+    registered: dict[tuple[str, str], dict[str, str]],
+) -> Callable[[exp.Table, str], str | None]:
+    """What a registered table's column is to money's operators (REQ-2171)."""
+
+    def typed(table: exp.Table, name: str) -> str | None:
+        columns = registered.get((table.db, table.name))
+        return "money" if columns is not None and _lookup(columns, name) == "money" else None
+
+    return typed
+
+
+def typed_statement(
+    tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict
+) -> tuple[exp.Query, dict[tuple[str, str], dict[str, str]]]:
+    """``tree`` qualified and its types annotated from the registry, and the registered columns of
+    each table it reads, by the synthetic schema each is given. ``tree`` is changed in place."""
     from sqlglot.optimizer.annotate_types import annotate_types
     from sqlglot.optimizer.qualify import qualify
-    from sqlglot.optimizer.scope import build_scope
     from sqlglot.schema import MappingSchema
 
-    tree = tree.copy()
     cte_names = {cte.alias for cte in tree.find_all(exp.CTE)}
     # Each registered table reference gets a synthetic schema of its own, so the SQLGlot schema has
     # one uniform depth whether the statement qualified the table or not.
@@ -306,7 +373,6 @@ def _annotated_shape(
             for col, raw in columns.items()
         }
     schema = MappingSchema(nested, dialect="postgres")
-    original = list(tree.selects)
     try:
         qualified = qualify(
             tree,
@@ -321,8 +387,19 @@ def _annotated_shape(
         raise UnderivableColumn(
             f"cannot describe the statement's result columns from registered metadata: {exc}"
         ) from exc
+    return cast(exp.Query, annotated), registered
 
+
+def _annotated_shape(
+    tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict, *, each: bool = False
+) -> list[tuple[str, str]]:
+    from sqlglot.optimizer.scope import build_scope
+
+    tree = tree.copy()
+    original = list(tree.selects)
+    annotated, registered = typed_statement(tree, table_map, ctx, column_types)
     root = build_scope(annotated)
+    money_of = statement_columns(annotated, registered_money(registered))
     selects = list(annotated.selects)
     # Positions line up with the statement's own projections unless a star was expanded.
     aligned = original if len(original) == len(selects) else None
@@ -345,6 +422,8 @@ def _annotated_shape(
                 columns = registered.get((source.db, source.name))
                 if columns is not None:
                     col_type = _lookup(columns, inner.name)  # the registry's own spelling
+        if col_type is None:
+            col_type = money_type(inner, money_of)  # REQ-2171: its operators' result, not its base
         if col_type is None:
             derived = sel.type
             if derived is not None and derived.this not in _UNDETERMINED:

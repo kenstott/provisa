@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete as _delete, func, select, update
 
 from provisa.core import model_change
-from provisa.core.models import DataContract, DataProduct
+from provisa.core.models import ContractCheck, DataContract, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
+    checker_targets,
     data_products,
     registered_tables,
+    sources,
     table_columns,
     tracked_functions,
 )
@@ -101,6 +103,14 @@ async def list_by_domain(conn: "Connection", domain_id: str) -> list[dict]:  # R
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def owner_roles(conn: "Connection") -> set[str]:  # REQ-2188
+    """The roles named in an Owner field: what the runtime build gives RW on data products."""
+    result = await conn.execute_core(
+        select(data_products.c.owner_role).where(data_products.c.owner_role.is_not(None)).distinct()
+    )
+    return {r[0] for r in result.fetchall()}
+
+
 class DataProductDeleteRefused(Exception):
     """A data product that may not be deleted because it has members; ``dependents`` lists
     them."""
@@ -153,13 +163,47 @@ async def member_contracts(conn: "Connection", product_id: str | None = None) ->
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def promised_checks(  # REQ-2158
+    conn: "Connection", product_id: str, table_id: int
+) -> list[ContractCheck]:
+    """What the product promises of a member: the checks of the checker tables it owns that scan
+    it (REQ-2157), each as a contract version keeps it. A check another product owns, or none does,
+    is no promise of this one."""
+    from provisa.dq.contract import check_severity
+
+    rows = (
+        await conn.execute_core(
+            select(registered_tables.c.dq_rules, sources.c.type)
+            .join(sources, sources.c.id == registered_tables.c.source_id)
+            .join(checker_targets, checker_targets.c.table_id == registered_tables.c.id)
+            .where(
+                checker_targets.c.checked_table_id == table_id,
+                registered_tables.c.product_id == product_id,
+                registered_tables.c.dq_rules.is_not(None),
+            )
+            .order_by(registered_tables.c.id)
+        )
+    ).fetchall()
+    return [
+        ContractCheck(
+            name=rule["check_type"],
+            column=rule["column_name"] or None,
+            severity=check_severity(rule, row.type),
+            definition=rule["definition"],
+        )
+        for row in rows
+        for rule in row.dq_rules
+    ]
+
+
 async def save_contract(  # REQ-2158
     conn: "Connection", table_id: int, contract: DataContract
 ) -> dict:
-    """A member's contract replaced: refused (data_contracts.ContractRefused) when the table is no
-    product's output port, when it stops promising a column at the same version, or when it
-    promises a column the member does not hold as that type. The member's row, as it is now."""
-    from provisa.core import data_contracts
+    """A member's contract replaced, the version saved recorded on it: refused
+    (data_contracts.ContractRefused) when the table is no product's output port, when it stops
+    promising a column at the same version, or when it promises a column the member does not hold
+    as that type. The member's row, as it is now."""
+    from provisa.core import contract_versions, data_contracts
 
     async with conn.transaction():
         row = (
@@ -171,10 +215,16 @@ async def save_contract(  # REQ-2158
             raise data_contracts.ContractRefused(
                 f"table {table_id} is no data product's output port: it has no contract"
             )
+        # REQ-2188: a contract belongs to its product: the product's U rule holds its save.
+        await conn.require_admitted(
+            update(data_products).where(data_products.c.id == row.product_id)
+        )
         cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
         contract = data_contracts.as_stored(cid, contract)
-        data_contracts.require_new_version(cid, DataContract.model_validate(row.contract), contract)
+        previous = DataContract.model_validate(row.contract)
+        data_contracts.require_new_version(cid, previous, contract)
+        contract = data_contracts.created_as(previous, contract)
         types = {
             r.column_name: r.data_type
             for r in (
@@ -186,12 +236,15 @@ async def save_contract(  # REQ-2158
             ).fetchall()
         }
         data_contracts.require_provided(cid, contract, types)
+        contract = contract_versions.recorded(
+            previous, contract, await promised_checks(conn, row.product_id, table_id)
+        )
         await conn.execute_core(
             update(registered_tables)
             .where(registered_tables.c.id == table_id)
-            .values(contract=contract.model_dump())
+            .values(contract=contract.model_dump(mode="json"))
         )
-    return {**dict(row._mapping), "contract": contract.model_dump()}
+    return {**dict(row._mapping), "contract": contract.model_dump(mode="json")}
 
 
 # REQ-1634 STATUS: a data product's lifecycle. Every state is asserted by an action: publish takes
@@ -309,6 +362,16 @@ async def retire(
         raise StatusRefused(
             "not_found", f"data product {product_id!r} not found", data_product=product_id
         )
+    # REQ-2188: one transaction: a retirement refused by a row rule moves no member.
+    async with conn.transaction():
+        await _retire(conn, product, text, successor, by)
+    model_change.name("retire", "data product", product_id)
+
+
+async def _retire(
+    conn: "Connection", product: dict, text: str, successor: "str | None", by: "str | None"
+) -> None:
+    product_id = product["id"]
     if product["status"] not in ("live", "deprecated"):
         raise StatusRefused(
             "not_live",
@@ -339,7 +402,6 @@ async def retire(
         retire_on=None,
         successor_id=successor,
     )
-    model_change.name("retire", "data product", product_id)
 
 
 async def _check_successor(conn: "Connection", product: dict, successor: str) -> None:

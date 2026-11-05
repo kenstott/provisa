@@ -44,7 +44,12 @@ class _Engine:
     async def execute_engine(self, sql: str, params=None, **_):
         self.sql.append(sql)
         cur = duckdb.connect().execute(sql)
-        return SimpleNamespace(column_names=[d[0] for d in cur.description], rows=cur.fetchall())
+        # A QueryResult's shape: its columns, the engine's type for each, its rows.
+        return SimpleNamespace(
+            column_names=[d[0] for d in cur.description],
+            column_types=[str(d[1]) for d in cur.description],
+            rows=cur.fetchall(),
+        )
 
 
 CONTRACT = [

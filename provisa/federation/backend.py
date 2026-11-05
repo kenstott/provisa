@@ -84,7 +84,7 @@ class EngineBackend:
     # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
     # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
     # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
-    # saphana/sapase/sqlanywhere/monetdb/db2/firebird) are tracked, not guessed at, in a filed
+    # saphana/monetdb/db2/firebird) are tracked, not guessed at, in a filed
     # issue — SQLGlot compatibility per product needs verifying, not assuming.
     _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
 
@@ -222,6 +222,13 @@ class EngineBackend:
         )
 
     # -- replica builds (REQ-1915): this engine and its store as parties to a build ----------
+
+    def require_readable_store(self, store_dsn: str) -> None:
+        """Refuse a materialization store this engine could not read back, by name. Called by
+        ``FederationEngine.materialize_store``, the door every write and read address comes
+        through, which the boot passes. The base engine reads whatever store it is given through
+        its own attach or connector; an engine confined to its own database overrides this."""
+        del store_dsn
 
     def replica_engine(
         self, state: Any, source: Any, table: Any, *, address: ReplicaAddress, args: Any
@@ -1039,16 +1046,19 @@ class TrinoBackend(EngineBackend):
             transpile_to_trino,
         )
 
-        sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+        from provisa.transpiler.pg_forms_geometric import around
 
-        # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
-        sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+        def rewritten(sql: str) -> str:
+            # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+            sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+            label_columns = getattr(state, "prometheus_label_columns", None)
+            if label_columns:
+                sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
+            return sql
 
-        label_columns = getattr(state, "prometheus_label_columns", None)
-        if label_columns:
-            sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
-        return sql
+        # REQ-2171: a geometric form's routines are kept as written, ahead of the statement.
+        return around(transpile_to_trino(pg_sql), rewritten)
 
     def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
         """Register (once per process) and return the catalog Trino reads the store ``dsn`` under
@@ -1439,9 +1449,11 @@ class TrinoBackend(EngineBackend):
         """Register the source's catalog — its live attach. A source the operator floors
         (REQ-030/826/1141) is read only from its replica, so it has no catalog at all (REQ-1912):
         one left from before the setting was turned on is dropped. Nothing can then read the
-        source through the engine, whatever a statement names."""
+        source through the engine, whatever a statement names. A JDBC source attached live here
+        is registered as the built-in type its URL names (REQ-2191)."""
         from provisa.core import catalog
         from provisa.core.operator_floor import floor_setting
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         with self._provisioning_conn(state) as conn:
             if conn is None:
@@ -1449,6 +1461,9 @@ class TrinoBackend(EngineBackend):
             if floor_setting(source) is not None:
                 catalog.drop_catalog(conn, source.id, catalog_name=catalog_name)
                 return
+            named = attach_type(source, self.engine)
+            if named is not None:
+                source = attach_view(source, named)
             catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
 
     def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:

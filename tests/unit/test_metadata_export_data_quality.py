@@ -14,7 +14,7 @@ An assertion publishes on the asset the checker OBSERVES, never on the table the
 in — that table publishes as an ordinary table carrying the derived ``data_quality`` tag.
 """
 
-# Requirements: REQ-1443
+# Requirements: REQ-1443, REQ-2157
 
 from __future__ import annotations
 
@@ -207,6 +207,17 @@ def test_the_results_table_publishes_with_the_product_it_is_assigned_to(snapshot
     assert scans.data_product is True
     product = next(p for p in snapshot.data_products if p.id == "orders-product")
     assert {m.fqn() for m in product.members} == {ORDERS_FQN, SCANS_FQN}
+
+
+def test_each_assertion_names_the_product_that_owns_its_check(snapshot):
+    """REQ-2157: a check is the product's whose checker table names it, whatever product the table
+    it observes belongs to: its promise on a member, its expectation on an input, or another
+    product's check there."""
+    assert {a.owner_product_id for a in snapshot.assertions} == {"orders-product"}
+    config = _config(tables=[_observed(), _results(product_id="fulfilment")])
+    config.data_products.append(DataProduct(id="fulfilment", domain_id="sales", name="Fulfilment"))
+    owned = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
+    assert {a.owner_product_id for a in owned.assertions} == {"fulfilment"}
 
 
 def test_a_results_table_assigned_to_no_product_is_withheld():

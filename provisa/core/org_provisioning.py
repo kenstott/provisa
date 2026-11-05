@@ -26,6 +26,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+async def schema_exists(control_plane: "Database", schema: str) -> bool:
+    from sqlalchemy import text
+
+    async with control_plane.acquire() as conn:
+        found = await conn.execute_core(
+            text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s").bindparams(
+                s=schema
+            )
+        )
+        return found.fetchone() is not None
+
+
 async def provision_redis_acl(redis_url: str, org_id: str, password: str) -> None:  # REQ-700
     """Create or replace a Redis ACL user scoped to this org's key prefixes."""
     import redis.asyncio as aioredis
@@ -191,6 +203,7 @@ async def deprovision_org(  # REQ-701
     """
     from provisa.core.db import _validate_org_id
     from provisa.core.environments import PROD, EnvironmentNameError
+    from provisa.core.org_registry_view import ORG_SCHEMAS_LOCK_KEY
 
     _validate_org_id(org_id)
     if env == PROD:
@@ -208,8 +221,10 @@ async def deprovision_org(  # REQ-701
         ):  # REQ-889: PG-only role hardening
             # Schemas exist only on PostgreSQL. On a portable backend the org's tables are the
             # backend's own namespace, which this call does not own and must not drop.
-            for schema in env_schemas(org_id, env):
-                await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            # Not while the root org's registry view is rebuilt over every org's schema (REQ-1301).
+            async with conn.advisory_lock(ORG_SCHEMAS_LOCK_KEY):
+                for schema in env_schemas(org_id, env):
+                    await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
             # The role last: it holds privileges on those schemas, and PostgreSQL refuses to drop
             # a role that something still depends on.
             if org_itself:

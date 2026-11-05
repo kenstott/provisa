@@ -34,7 +34,9 @@ import pytest
 import pytest_asyncio
 from fastapi import Request
 
+from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import report_router
+from provisa.api.startup_seed import _seed_view
 from provisa.api.metadata_export import workbook as wb
 from provisa.core import domain_policy
 from provisa.core.config_loader import apply_config, parse_config_dict
@@ -217,11 +219,16 @@ async def served(
             DataProduct(id="prod-petstore", domain_id="petstore", name="Petstore Product"),
         )
         await apply_config(parse_config_dict(raw), conn)
-        # A derived term publishes only once a curator has defined it (REQ-1387), so the
-        # curation step is part of the fixture: without it the Glossary sheet is empty for a
-        # reason that has nothing to do with the report.
+        # A derived term publishes only once a steward has defined and approved it (REQ-1387,
+        # REQ-2144), so the curation step is part of the fixture: without it the Ontology sheet
+        # is empty for a reason that has nothing to do with the report.
         for term in await glossary_repo.list_terms(conn):
             await glossary_repo.set_definition(conn, term["id"], f"The {term['name']}.")
+            await glossary_repo.approve_term(conn, term["id"], by=None)
+        # Each term's axioms are read from the ontology schema's _axioms view (REQ-2163), which
+        # startup seeds beside the glossary tables; no startup runs here.
+        for ddl in ONTOLOGY_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
     # The report is acme's request, served by acme's runtime (REQ-1266), built as
     # ensure_org_runtime builds it: the fixture's one plane holds its tenant data and its model
     # (REQ-1922), and its roles are the ones the requests act as.

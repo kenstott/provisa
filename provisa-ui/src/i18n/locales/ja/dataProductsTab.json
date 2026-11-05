@@ -18,6 +18,7 @@
     "limitationsLabel": "制限事項",
     "limitationsPlaceholder": "既知の制約、注意点、または除外事項",
     "usageLabel": "使用方法",
+    "createdAtLabel": "作成日時",
     "usagePlaceholder": "このデータプロダクトの利用方法",
     "versionLabel": "バージョン",
     "versionPlaceholder": "例: 1.2.0",
@@ -157,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} を開く",
     "contract": {
       "label": "データコントラクト",
-      "hint": "各出力ポートのコントラクト：独自のバージョンで約束する内容",
+      "hint": "各出力ポートのコントラクト：独自のバージョンで宣言する内容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "提案中",
@@ -173,19 +174,132 @@
       "column": "列",
       "type": "型",
       "required": "NULL なし",
-      "yes": "はい",
       "versionLabel": "コントラクトのバージョン",
       "statusLabel": "コントラクトのステータス",
       "descriptionLabel": "目的",
-      "columnsLabel": "約束する列",
-      "columnsHelp": "列の約束をやめる、または型を変えるには新しいバージョンが必要です。",
+      "columnsLabel": "列",
+      "columnsHelp": "列を削除する、または型を変えるには新しいバージョンが必要です。",
       "requiredLabel": "NULL なし",
       "slaLabel": "サービスレベル",
       "slaProperty": "プロパティ",
       "slaValue": "値",
       "slaUnit": "単位",
       "slaRemove": "サービスレベルを削除",
-      "slaAdd": "サービスレベルを追加"
+      "slaAdd": "サービスレベルを追加",
+      "notDeclared": "未宣言",
+      "notDeclaredList": "未宣言: {{names}}",
+      "versionSaved": "保存",
+      "versionChanges": "変更",
+      "constraints": "制約",
+      "breakingWarning": "v{{version}} に破壊的変更があります (まだ有効ではありません)",
+      "breaking": "破壊的",
+      "savedBy": "{{when}} に {{who}} が保存",
+      "savedBySystem": "システム",
+      "noChanges": "最初のバージョン: 比較対象はありません",
+      "change": {
+        "field_added": "フィールド {{subject}} を追加 ({{after}})",
+        "field_removed": "フィールド {{subject}} を削除 (以前は {{before}})",
+        "field_renamed": "フィールド {{subject}} の名前を {{after}} に変更",
+        "field_type_changed": "フィールド {{subject}} を {{before}} から {{after}} に変更",
+        "field_required": "フィールド {{subject}} を必須に変更",
+        "field_optional": "フィールド {{subject}} は必須ではなくなりました",
+        "field_described": "フィールド {{subject}} の説明を変更",
+        "sla_added": "サービスレベル {{subject}} を追加 ({{after}})",
+        "sla_removed": "サービスレベル {{subject}} を削除 (以前は {{before}})",
+        "sla_changed": "サービスレベル {{subject}} を {{before}} から {{after}} に変更",
+        "check_added": "品質チェック {{subject}} を追加",
+        "check_removed": "品質チェック {{subject}} を削除",
+        "check_changed": "品質チェック {{subject}} を変更",
+        "description_changed": "説明を変更",
+        "terms_changed": "条件を変更: {{subject}}"
+      },
+      "loadError": "契約を読み込めませんでした: {{error}}",
+      "notExported": "{{member}} にはエクスポートされた契約がありません",
+      "section": {
+        "fundamentals": "基本情報",
+        "schema": "スキーマ",
+        "quality": "品質",
+        "sla": "SLA",
+        "support": "サポートとチーム",
+        "howToUse": "使い方",
+        "pricing": "価格",
+        "custom": "カスタムプロパティとタグ"
+      },
+      "summary": {
+        "properties_one": "{{count}} 個のプロパティ",
+        "properties_other": "{{count}} 個のプロパティ",
+        "rules_one": "{{count}} 件のルール",
+        "rules_other": "{{count}} 件のルール",
+        "serviceLevels_one": "{{count}} 件のサービスレベル",
+        "serviceLevels_other": "{{count}} 件のサービスレベル",
+        "supportChannels_one": "サポートチャネル {{count}} 件",
+        "supportChannels_other": "サポートチャネル {{count}} 件",
+        "roles_one": "ロール {{count}} 件",
+        "roles_other": "ロール {{count}} 件",
+        "customProperties_one": "カスタムプロパティ {{count}} 件",
+        "customProperties_other": "カスタムプロパティ {{count}} 件",
+        "tags_one": "タグ {{count}} 件",
+        "tags_other": "タグ {{count}} 件"
+      },
+      "empty": "このプロダクトにはデータコントラクトを持つ出力ポートがありません。",
+      "consumers_one": "コンシューマー: {{count}}",
+      "consumers_other": "コンシューマー: {{count}}",
+      "freshness": "{{seconds}} 秒以内に最新",
+      "loadedOnce": "一度だけ読み込み、更新しない",
+      "noSla": "サービスレベルの宣言なし",
+      "checkedAt": "確認日時 {{when}}",
+      "neverChecked": "未確認",
+      "draftWarning": "下書き: まだ有効ではありません",
+      "card": {
+        "details": "詳細",
+        "fields": "列",
+        "sla": "SLA と鮮度",
+        "quality": "約束",
+        "consumers": "コンシューマー",
+        "versions": "バージョンと変更",
+        "roles": "ロール",
+        "history": "バージョン履歴"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "インターフェース",
+          "address": "アドレス",
+          "how": "使い方",
+          "link": "例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "psql や DBeaver などの PostgreSQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "flight-sql": "ADBC ドライバーなどの Arrow Flight SQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "grpc": "gRPC クライアントなら何でも使えます。サービス {{service}} に対し、メタデータ authorization: Bearer <token> を付けます。",
+          "graphql": "GraphQL クライアントなら何でも使えます。このテーブルに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "rest": "HTTP クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "openapi": "このテーブルだけの記述です。Swagger UI、Postman、またはクライアントジェネレーターに読み込んでください。",
+          "jsonapi": "JSON:API クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "sparql": "SPARQL 1.1 クライアントなら何でも使えます。このテーブルのクラスに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。"
+        },
+        "access": {
+          "granted": "{{approvers}} がアクセスを許可して初めて使用できます。",
+          "noApprover": "{{roles}} の保持者がアクセスを許可して初めて使用できます。この契約には承認者が指定されていません。",
+          "undeclared": "アクセスが許可されて初めて使用できます。この契約にはロールも承認者も指定されていません。"
+        },
+        "ask": {
+          "approvers": "{{approvers}} にアクセスを依頼",
+          "roles": "{{roles}} の保持者にアクセスを依頼",
+          "nobody": "この契約には依頼先が指定されていません"
+        },
+        "open": "例を開く",
+        "openAria": "{{table}} の {{surface}} の例を開く"
+      }
     }
   }
 }

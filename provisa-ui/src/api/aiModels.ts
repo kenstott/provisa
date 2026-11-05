@@ -24,6 +24,8 @@ export interface AiModelAssignments {
   table_selection: string | Record<string, unknown>;
   // REQ-1794: the model behind the right-hand chat assistant panel (provisa/api/mcp/chat.py).
   mcp_chat: string | Record<string, unknown>;
+  // REQ-2179: the model a document scan asks; it has no default, and a scan is refused until set.
+  glossary_term_finding: string | Record<string, unknown>;
 }
 
 export interface VectorModel {

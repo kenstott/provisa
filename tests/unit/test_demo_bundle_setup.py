@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import importlib.util
 import json
+import re
 import time
 from pathlib import Path
 
@@ -526,6 +527,50 @@ def test_a_tour_asking_polly_needs_the_openrouter_key(tmp_path, monkeypatch):
         builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, 1, None)
 
 
+def test_the_answering_config_finds_terms_through_openrouter_on_the_sandbox_model(tmp_path):
+    """REQ-2201: a setup's scan reads its document with the model a demo sandbox's Polly runs."""
+    from provisa.core.settings_registry import setting
+
+    config = yaml.safe_load(
+        builder.answering_config(tmp_path, _toured(tmp_path, _ASKING)).read_text()
+    )
+    assert config["ai_models"]["glossary_term_finding"] == {
+        "vendor": "openrouter",
+        "model": setting("sandbox.ai_model").default,
+    }
+
+
+def test_a_setup_scanning_a_document_needs_the_openrouter_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    demo = _toured(tmp_path, [{"key": "bsaIntro", "route": "/sources", "source": "bank"}])
+    (demo / "setup.yaml").write_text(
+        yaml.safe_dump({"steps": [{"scan": "https://www.ecfr.gov/api/versioner/v1/x.xml"}]})
+    )
+    with pytest.raises(SystemExit, match="scans 1 document.*OPENROUTER_API_KEY is not set"):
+        builder._set_up(tmp_path, demo, None, 1, None)
+
+
+def test_the_setup_s_scans_are_carried_and_a_scan_missing_fails_the_build(tmp_path, monkeypatch):
+    from provisa.term_finding import carry
+
+    demo = _toured(tmp_path, _ASKING)
+    url = "https://www.ecfr.gov/api/versioner/v1/x.xml"
+    (demo / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"scan": url}, {"scan": url}]}))
+    written: list = []
+
+    def export_scans(cp_url, schema, out):
+        written.append((cp_url, schema, out))
+        return len(written)
+
+    monkeypatch.setattr(carry, "export_scans", export_scans)
+    with pytest.raises(SystemExit, match="scanned 2 document.*holds 1 scan"):
+        builder._export_term_scans("postgresql://cp", demo)
+    builder._export_term_scans("postgresql://cp", demo)
+    assert written[-1][2] == carry.scans_path(demo)
+    builder._export_term_scans("postgresql://cp", tmp_path / "nothing")  # no setup: nothing
+    assert len(written) == 2
+
+
 def _stores_up(tmp_path: Path, services: str) -> list[tuple]:
     """What ``Stores.up`` asks docker compose, for a demo whose services are ``services``."""
     demo = tmp_path / "demo"
@@ -649,6 +694,9 @@ def _sync(
     stores_fail: str | None = None,
     check_fail: str | None = None,
     failed_before: str | None = None,
+    prune_engines: bool = False,
+    up_and_another_waiting: bool = False,
+    asked_while_up: bool = False,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -665,6 +713,25 @@ def _sync(
         (bundles / "weblogs" / "requested").write_text(f"until {lingering_until}\n")
         (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
         (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    if up_and_another_waiting:
+        # weblogs up and in use; a visitor waits on "later", asked for and not up.
+        (bundles / "weblogs" / "requested").write_text("requested\n")
+        (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
+        (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+        (bundles / "later" / _VERSION).mkdir(parents=True)
+        (bundles / "later" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+        (bundles / "later" / "requested").write_text("requested\n")
+    if asked_while_up:
+        # weblogs and later up and in use; "third" not asked for, until a visitor opens it while
+        # the run pulls weblogs.
+        for up in ("weblogs", "later"):
+            (bundles / up / _VERSION).mkdir(parents=True, exist_ok=True)
+            (bundles / up / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+            (bundles / up / "requested").write_text("requested\n")
+            (bundles / up / "ready").write_text(_VERSION + "\n")
+            (bundles / up / _VERSION / "stores.env").write_text("NS=_x\n")
+        (bundles / "third" / _VERSION).mkdir(parents=True)
+        (bundles / "third" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     if wanted is not None:
@@ -678,14 +745,18 @@ def _sync(
     if ask_on_pull:
         (bundles / "later" / _VERSION).mkdir(parents=True)
     ask = (
-        f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f'[ "${{2%%@*}}" = weblogs ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f"echo requested > {bundles}/third/requested; touch {bundles}/.wanted; }}\n"
+        if asked_while_up
+        else f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
         f"echo requested > {bundles}/weblogs/requested; touch {bundles}/.wanted; }}\n"
         if ask_on_pull
         else ""
     )
     # The pull records what it was asked for (tmp_path/pulls), one line per pull.
     (fake / "pull").write_text(
-        f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
+        f'#!/usr/bin/env bash\n[ "$1" = pull ] || {{ echo "$1" >> {tmp_path}/other; exit 0; }}\n'
+        f'echo "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
     )
     (fake / "pull").chmod(0o755)
     # stores_fail: the stores cannot be brought up, and demo_stores.py says why on stderr.
@@ -703,7 +774,11 @@ def _sync(
         (bundles / "weblogs" / "failed").write_text(failed_before + "\n")
     env = {
         **os.environ,
-        "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
+        "PROVISA_DEMO_BUNDLES": "weblogs,later,third"
+        if asked_while_up
+        else "weblogs,later"
+        if ask_on_pull or up_and_another_waiting
+        else "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
         "DEMO_PULL": str(fake / "pull"),
         "DEMO_PULL_INTO": str(bundles),
@@ -711,6 +786,7 @@ def _sync(
         "DEMO_STORES_SHARED": "/shared.yml",
         "DEMO_STORES_PROJECT": "provisa-demo-stores",
         "DEMO_STORES_KAFKA_PORT": "29092",
+        **({"DEMO_PRUNE_ENGINES": "true"} if prune_engines else {}),
     }
     run = subprocess.run(
         ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
@@ -797,6 +873,51 @@ def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp
     assert not (demo.parent / ".wanted").exists()
 
 
+def test_a_demo_a_visitor_waits_on_is_brought_up_before_the_ones_already_up(tmp_path):
+    """A run brings up first each demo asked for and not up -- the one a visitor's open waits on
+    -- and only then goes over the demos already up. On the sandbox tier a run went over every demo
+    in the order the node lists them, each one up brought up again, so an open of a demo late in
+    the list waited behind every demo opened before it."""
+    run, demo, asked = _sync(tmp_path, up_and_another_waiting=True)
+    assert run.returncode == 0, run.stderr
+    later = demo.parent / "later"
+    assert asked[:2] == [
+        f"up later {_VERSION} {later / _VERSION}",
+        f"check later {_VERSION} {later / _VERSION}",
+    ]
+    assert (later / "ready").read_text().strip() == _VERSION
+    assert (tmp_path / "pulls").read_text().split() == ["later", "weblogs"]
+
+
+def test_a_demo_asked_for_while_the_run_goes_over_those_up_is_brought_up_next(tmp_path):
+    """A visitor's open while a run goes over the demos already up breaks that run off: the demo
+    now waited on is brought up next, and the ones up after it. Run to its end first, the open
+    waited behind every demo up, each pulled and brought up again (REQ-2049)."""
+    run, demo, asked = _sync(tmp_path, asked_while_up=True)
+    assert run.returncode == 0, run.stderr
+    third = demo.parent / "third"
+    later = demo.parent / "later"
+    assert asked[:4] == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+        f"up third {_VERSION} {third / _VERSION}",
+        f"check third {_VERSION} {third / _VERSION}",
+    ], asked
+    assert (third / "ready").read_text().strip() == _VERSION
+    # The demos up are still gone over, after it.
+    assert f"up later {_VERSION} {later / _VERSION}" in asked[4:]
+    assert "asked for during the run" in run.stdout
+
+
+def test_each_demo_s_sync_is_timed_in_the_node_s_log(tmp_path):
+    """The node's log says how long each demo's pull and stores took, so a slow open is named by
+    the step it waited on."""
+    run, _demo, _asked = _sync(tmp_path, requested=True)
+    assert run.returncode == 0, run.stderr
+    assert re.search(r"demo weblogs: pulled in \d+s", run.stdout), run.stdout
+    assert re.search(r"demo weblogs: stores up and checked in \d+s", run.stdout), run.stdout
+
+
 def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_path):
     bundles = tmp_path / "bundles" / "weblogs"
     for old in ("202601010000-old0001", "202601020000-old0002"):
@@ -833,9 +954,65 @@ def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served
     assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
 
 
-def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+def test_a_demo_not_asked_for_keeps_only_the_versions_read(tmp_path):
+    """Its older versions went only when it was asked for: on cloud-dev's sandbox VM, 2026-10-31,
+    19 of its 28 demos held versions beside the one offered, one holding 4. Nothing is started for it."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == []
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION).is_dir()
+
+
+def test_a_demo_not_asked_for_keeps_a_version_with_data_in_the_shared_stores(tmp_path):
+    """The shared stores may be down, so its data could not be dropped from them: it is dropped
+    at the next run that has them up, the demo's next open."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    old = "202601010000-wasup01"
+    (bundles / old).mkdir(parents=True)
+    (bundles / old / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    run, demo, asked = _sync(tmp_path)
+    assert run.returncode == 0, run.stderr
+    assert asked == []
+    assert (demo / old / "stores.env").exists()
+
+
+def test_a_lingered_out_demo_keeps_only_the_versions_read(tmp_path):
+    bundles = tmp_path / "bundles" / "weblogs"
+    (bundles / "202601010000-never01").mkdir(parents=True)
+    run, demo, _ = _sync(tmp_path, lingering_until=1)
+    assert run.returncode == 0, run.stderr
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / _VERSION).is_dir()
+
+
+def test_the_run_prunes_the_engine_releases_where_the_node_says_to(tmp_path):
+    run, _, _ = _sync(tmp_path, prune_engines=True)
+    assert run.returncode == 0, run.stderr
+    assert (tmp_path / "other").read_text().split() == ["prune-engines"]
+
+
+def test_a_run_elsewhere_prunes_no_engine_release(tmp_path):
+    """A developer's cache is shared by every worktree, each at a release of its own."""
+    run, _, _ = _sync(tmp_path)
+    assert run.returncode == 0, run.stderr
+    assert not (tmp_path / "other").exists()
+
+
+def test_the_sandbox_vm_prunes_its_engine_releases():
+    settings = (_REPO / "packaging/linux/demo-stores/sandbox-vm.env.tpl").read_text()
+    assert "DEMO_PRUNE_ENGINES=true" in settings.splitlines()
+
+
+def test_a_demo_lingered_out_has_its_own_services_taken_down_and_its_data_kept(tmp_path):
     """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
-    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    demo's own services are taken down; its data stays loaded (REQ-2049, amended 2026-11-02), and
+    its stores.env stays to say so, so a newer version's run drops it once it is superseded. Its
+    next open asks for it again."""
     import time
 
     run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
@@ -843,7 +1020,7 @@ def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_p
     assert asked == [f"stop weblogs {_VERSION}"]
     assert not (demo / "requested").exists()
     assert not (demo / "ready").exists()
-    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "stores.env").is_file()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()
     assert (demo / "pulled").read_text().strip() == _VERSION
 

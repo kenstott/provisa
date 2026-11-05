@@ -274,6 +274,7 @@ async def _graphql_columns_for_input(
     )
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
+    from provisa.graphql_remote.executor import Throttled
     from provisa.graphql_remote.probe import QueryTooComplex
 
     if input.source_id not in getattr(state, "graphql_remote_sources", {}):
@@ -316,6 +317,16 @@ async def _graphql_columns_for_input(
             ),
             code="schema.table_too_complex",
             params={"table": input.table_name, "reason": costly.reason},
+        )
+    except Throttled as throttled:
+        return [], MutationResult(
+            success=False,
+            message=(
+                f"{offer.label}'s rate limit did not let {input.table_name} be checked: "
+                f"{throttled.reason}. Try again later"
+            ),
+            code="schema.remote_throttled",
+            params={"table": input.table_name, "reason": throttled.reason},
         )
     if not any(c.native_filter_type is None for c in columns):
         reasons = sorted({o["reason"] for o in omitted})
@@ -606,7 +617,9 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     A column that is natively an array, a struct or a map is a JSON column: it is recorded with
     the hidden attributes the source states for it (array depth, element type, native type and
     whose spelling that is), never taken from the caller, and registering it as any other type
-    is refused by name -- a text column over a native array is the failure of issue 195.
+    is refused by name -- a text column over a native array is the failure of issue 195. A
+    column whose native type is a character type (REQ-1961) is no nested one: registered as text,
+    the type it registers as, it records that native type; registered as another type, nothing.
 
     The source is asked only about a column this table does not already store with the type now
     given: a column kept as it was registered was settled then, and keeps its attributes (the
@@ -623,6 +636,7 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     from provisa.api.admin.introspect import SourceNotListable
     from provisa.api.admin.types import MutationResult
     from provisa.core.ir_types import base_type
+    from provisa.core.native_types import natively_nested
     from provisa.core.repositories.table import stored_column_types
 
     if input.query_template:
@@ -655,6 +669,13 @@ async def _settle_nested_columns(pool, input, columns) -> "MutationResult | None
     for c in unsettled:
         listed = by_name.get(c.name)
         if listed is None or not listed.native_type:
+            continue
+        if not natively_nested(listed.native_type):
+            # REQ-1961: a character column's native type describes it while it is text, the
+            # type it registers as; given another type, the column is that type alone.
+            if (c.data_type or "").lower() == (listed.data_type or "").lower():
+                c.native_type = listed.native_type
+                c.native_platform = listed.native_platform
             continue
         if (c.data_type or "").lower() != "json":
             return MutationResult(

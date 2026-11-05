@@ -46,7 +46,10 @@ async def test_the_source_is_provisioned_with_its_password_resolved_in_the_org_v
 ):
     from provisa.api.admin.schema_mutation_ops import reprovision_source_after_registration
 
-    source = SimpleNamespace(id="src", password="${secret:source_src_password}")
+    # A registered source always carries its type.
+    source = SimpleNamespace(
+        id="src", type=SimpleNamespace(value="postgresql"), password="${secret:source_src_password}"
+    )
     registered: list[tuple] = []
 
     async def _sources(_state):

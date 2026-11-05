@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register — Provisa</title>
-  <meta name="description" content="Free Provisa license registration. We collect basic usage information only — Provisa collects no telemetry and never phones home." />
+  <meta name="description" content="Free Provisa license registration. We collect basic usage information only. Provisa collects no telemetry and never phones home." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,20 +50,17 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Register</span></p>
         <h1>Register your Provisa install</h1>
         <p class="lead">
-          A license is FREE — it exists only so we can gather basic usage information, because
+          A license is FREE. It exists only so we can gather basic usage information, because
           Provisa collects <strong>no telemetry</strong> and never phones home. Functionality is
           not affected or degraded whether or not you register.
         </p>
         <p class="lead">
           Registering doesn't mean you owe anything: under the
-          <a href="/terms#the-software">Business Source License 1.1</a>, non-production use —
-          including evaluation — is free forever, for any size organization. Production use is
+          <a href="/terms#the-software">Business Source License 1.1</a>, non-production use, including evaluation, is free forever, for any size organization. Production use is
           also free for any organization that, together with its affiliates, has fewer than 100
           employees and contractors and under $1,000,000 in annual revenue, budget, or
-          expenditures — most people registering here qualify. Would rather skip self-hosting
-          entirely? Try
-          <a href="https://cloud.provisa.dev" target="_blank" rel="noopener">cloud.provisa.dev</a>
-          instead. Questions about a commercial license:
+          expenditures, and most people registering here qualify. To skip self-hosting entirely, try
+          <a href="https://cloud.provisa.dev" target="_blank" rel="noopener">cloud.provisa.dev</a>. Questions about a commercial license:
           <a href="mailto:license@provisa.dev">license@provisa.dev</a>.
         </p>
       </div>
@@ -84,7 +81,7 @@
         <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
         <p class="signup-status" role="status" aria-live="polite"></p>
         <p class="signup-fine">
-          We'll email a confirmation link — click it to receive your signed license file. See the
+          We'll email a confirmation link. Click it to receive your signed license file. See the
           <a href="/privacy">privacy policy</a> and <a href="/terms">terms</a>.
         </p>
       </form>
@@ -105,7 +102,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -116,6 +113,8 @@
         <a href="/why/no-lock-in">No lock-in</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
         <a href="/vs/starburst">vs Starburst</a>
         <a href="/vs/denodo">vs Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
@@ -151,7 +150,7 @@
           const j = await r.json().catch(() => ({}));
           if (r.ok && j.ok) {
             form.reset();
-            status.textContent = "Check your email — click the confirmation link to receive your license file.";
+            status.textContent = "Check your email and click the confirmation link to receive your license file.";
             status.classList.add('is-ok');
           } else {
             status.textContent = j.error || 'Something went wrong. Try again.';

@@ -41,6 +41,7 @@ const RULES = [
     actionName: null,
     roleId: "analyst",
     filterExpr: "a",
+    rights: ["R"],
     description: "A",
   },
   {
@@ -50,6 +51,7 @@ const RULES = [
     actionName: null,
     roleId: "steward",
     filterExpr: "b",
+    rights: ["R"],
     description: "B",
   },
 ];

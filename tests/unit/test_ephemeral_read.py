@@ -216,3 +216,48 @@ def test_stored_edges_of_one_type_between_unnamed_ends_each_keep_their_ends(monk
         (1, 1, None),
         (None, 2, 2),
     ]
+
+
+# --- reads the MERGE of a session depends on (REQ-347, REQ-2176) --------------------------------
+
+
+def test_an_optional_match_after_a_with_keeps_every_carried_row(monkeypatch):
+    # REQ-347: a WHERE after an OPTIONAL MATCH conditions it and never removes a row.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:N {x: 1, y: 1})")
+    rows = s.run("UNWIND [1, 2] AS x WITH x AS x OPTIONAL MATCH (m:N) WHERE m.x = x RETURN m.y, x")
+    assert sorted((r["x"], r["m.y"]) for r in rows) == [(1, 1), (2, None)]
+
+
+def test_an_optional_relationship_between_bound_nodes_keeps_the_row(monkeypatch):
+    # REQ-347: its WHERE conditions the relationship's join, never the row.
+    s = Session(monkeypatch, {})
+    s.run("CREATE (a:A), (b:B) CREATE (a)-[:TYPE {name: 'r1'}]->(b)")
+    q = "MATCH (a:A), (b:B) OPTIONAL MATCH (a)-[r:TYPE]->(b) WHERE r.name = $n RETURN r.name AS n"
+    assert s.run(q, n="r2") == [{"n": None}]
+    assert s.run(q, n="r1") == [{"n": "r1"}]
+
+
+def test_an_anonymous_node_matches_every_node(monkeypatch):
+    s = Session(monkeypatch, {})
+    s.run("CREATE (), ()")
+    assert s.run("MATCH () RETURN count(*) AS c") == [{"c": 2}]
+    assert s.run("MATCH (), () RETURN count(*) AS c") == [{"c": 4}]
+
+
+def test_keys_of_a_relationship_read_with_any_ends_are_the_properties_it_holds(monkeypatch):
+    # Merge6 [3]'s control query: keys(r) and r[key] of every relationship of a type.
+    s = Session(monkeypatch, {})
+    s.run("CREATE ()-[:T {name: 'foo', n: 1}]->(), ()-[:T]->()")
+    s.run("MATCH ()-[r:T]->() WHERE r.n = 1 SET r.gone = null")
+    rows = s.run("MATCH ()-[r:T]->() RETURN [key IN keys(r) | key + '->' + r[key]] AS kv")
+    assert sorted(sorted(r["kv"]) for r in rows) == [[], ["n->1", "name->foo"]]
+
+
+def test_a_string_joined_with_a_property_read_by_key_takes_its_text(monkeypatch):
+    # 'k->' + n[k]: the value's own text, never its JSON (a string's quotes).
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:A {name: 'x', on: true})")
+    rows = s.run("MATCH (n:A) RETURN [key IN keys(n) | key + '=' + n[key]] AS kv")
+    assert sorted(rows[0]["kv"]) == ["name=x", "on=true"]
+    assert s.run("MATCH (n:A) RETURN n['name'] AS v") == [{"v": "x"}]

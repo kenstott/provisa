@@ -22,11 +22,13 @@ import functools
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.errors import ParseError
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.schema import MappingSchema
 
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS, TYPES
+from provisa.pgwire.function_types import call_result_type
 
 # The types whose text and binary forms are those of the wire type a catalog column is served
 # with (text, a 4-byte integer, or a timestamp with time zone), named the way the statement's annotation names them; their
@@ -50,6 +52,25 @@ _SAME_WIRE_FORM = frozenset(
         "pg_dependencies",
         "pg_mcv_list",
         "pg_statistic[]",
+        # A record-returning catalog function answers a NULL record, and pg_sleep the void value
+        # (empty text): no composite value is ever sent.
+        "record",
+        "void",
+        # REQ-2167: a server function's value, held as what its wire form is: xid8 a bigint, the
+        # object identifier types an oid, and the rest their text. A binary pg_snapshot or
+        # aclitem is its text.
+        "xid8",
+        "pg_snapshot",
+        "txid_snapshot",
+        "aclitem",
+        "tid",
+        "regcollation",
+        "regconfig",
+        "regdictionary",
+        "regoper",
+        "regoperator",
+        "regprocedure",
+        "regrole",
     }
 )
 
@@ -59,9 +80,12 @@ CATALOG_TYPE_OIDS: dict[str, int] = {
 
 _PSEUDO_TYPES = frozenset(entry[-1] for entry in TYPES.values() if entry[3] == "p")
 
-# A function returning a pseudo-type (record, void, anyelement, ...) is left to its expression.
+# A function returning a polymorphic pseudo-type (anyelement, anyarray, ...) is left to its
+# expression; one returning record or void is that type.
 _FUNCTION_TYPES = {
-    name: returns for name, returns in FUNCTION_RETURNS.items() if returns not in _PSEUDO_TYPES
+    name: returns
+    for name, returns in FUNCTION_RETURNS.items()
+    if returns not in _PSEUDO_TYPES or returns in ("record", "void")
 }
 
 
@@ -94,7 +118,10 @@ def result_types(sql: str) -> tuple[tuple[str, str], ...]:
     """Each result column's name and PostgreSQL type, as PostgreSQL's format_type names it (an
     unknown type is the empty string). An unqualified relation is pg_catalog's, first on PostgreSQL's
     search path."""
-    tree = sqlglot.parse_one(sql, read="postgres")
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except ParseError:
+        return ()  # a call sqlglot reads as syntax (convert): the engine's types describe it
     qualified = qualify(
         tree,
         db="pg_catalog",
@@ -117,6 +144,9 @@ def _function_type(expression: exp.Expr) -> str:
     is not such a call."""
     if isinstance(expression, exp.Dot):
         expression = expression.expression
+    overload = call_result_type(expression)  # REQ-2167: the overload its arguments name
+    if overload is not None and (overload not in _PSEUDO_TYPES or overload in ("record", "void")):
+        return overload
     if isinstance(expression, exp.Anonymous):
         name = expression.name.lower()
     elif isinstance(expression, exp.Func):
@@ -129,4 +159,5 @@ def _function_type(expression: exp.Expr) -> str:
 def _format_type(data_type) -> str:
     if data_type is None or data_type.is_type("unknown"):
         return ""
-    return data_type.sql("postgres").lower()
+    # A type named in pg_catalog is the type of its bare name (pg_catalog.regclass is regclass).
+    return data_type.sql("postgres").lower().removeprefix("pg_catalog.")

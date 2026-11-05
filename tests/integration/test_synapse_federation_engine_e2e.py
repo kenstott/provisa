@@ -35,6 +35,10 @@ pytestmark.append(
 )
 
 from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime  # noqa: E402
+from tests.integration.live_teardown import none_remain, run_every, run_name  # noqa: E402
+
+# The run's own schema (REQ-254): in a pinned standing workspace, teardown drops exactly it.
+_EXT_SCH = run_name("provisa_ext_it")
 
 
 @pytest.fixture(scope="module")
@@ -50,15 +54,22 @@ def runtime(lane):
     try:
         yield rt
     finally:
-        # Dropped explicitly even though teardown deletes the whole resource group: with a pinned
-        # standing workspace (SYNAPSE_SQL_SERVER set) there is no group delete, and a leftover view
-        # would make the next run's CREATE OR ALTER pass over stale state.
-        cur = rt.connection.cursor()
-        try:
-            cur.execute("DROP VIEW IF EXISTS [provisa_ext_it].[ext]")
-        finally:
-            cur.close()
-        rt.close()
+        # Dropped explicitly even though teardown deletes the whole workspace: with a pinned
+        # standing workspace (SYNAPSE_SQL_SERVER set) there is no workspace delete. The view, then
+        # the schema the attach created, read back gone; every step attempted (REQ-254).
+        run_every([(f"drop [{_EXT_SCH}]", lambda: _drop(rt)), ("close the runtime", rt.close)])
+
+
+def _drop(rt) -> None:
+    cur = rt.connection.cursor()
+    try:
+        cur.execute(f"DROP VIEW IF EXISTS [{_EXT_SCH}].[ext]")
+        cur.execute(f"DROP SCHEMA IF EXISTS [{_EXT_SCH}]")
+        rt.connection.commit()
+        cur.execute("SELECT name FROM sys.schemas WHERE name = ?", [_EXT_SCH])
+        none_remain("Synapse schemas", [r[0] for r in cur.fetchall()])
+    finally:
+        cur.close()
 
 
 def test_synapse_external_link_reads_adls_via_openrowset(runtime, lane):
@@ -71,13 +82,13 @@ def test_synapse_external_link_reads_adls_via_openrowset(runtime, lane):
     src = SimpleNamespace(
         id="syn-ext",
         type=SourceType.parquet,
-        schema_name="provisa_ext_it",
+        schema_name=_EXT_SCH,
         table_name="ext",
         path=adls_url,
         federation_hints={},
     )
     runtime.attach_source(src)  # CREATE VIEW over OPENROWSET(BULK '<adls>') + validate
-    table = runtime.run_arrow("SELECT TOP 3 * FROM [provisa_ext_it].[ext]")
+    table = runtime.run_arrow(f"SELECT TOP 3 * FROM [{_EXT_SCH}].[ext]")
     assert table.num_rows == 3  # read the seeded external ADLS data in place, zero-copy
 
 

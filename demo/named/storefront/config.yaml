@@ -40,18 +40,16 @@ roles:
 # The signed-in customer of the order-history screen: their own orders and nothing else (the row
 # filters below name customer 42, the demo's signed-in customer).
 - id: customer
-  parents: [viewer]
+  parents: [analyst]
   description: "The signed-in customer of the order-history screen: their own orders and nothing else."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - shop
 # The BI analyst: every order, and no customer's email.
 - id: shop_analyst
   parents: [analyst]
   description: "The BI analyst: every order, and no customer's email."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:
@@ -92,7 +90,7 @@ tables:
   columns:
   - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, customer, shop_analyst]}
   - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, customer, shop_analyst]}
-  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [data_steward, customer, shop_analyst], masks: [{to: [shop_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}]}
+  - {name: email, data_type: varchar, description: The customer's email address, visible_to: [data_steward, customer, shop_analyst], masks: [{to: [shop_analyst], mask: {type: regex, pattern: '^[^@]+', replace: '***'}}, {mask: null}]}
   - {name: region, data_type: varchar, description: 'The customer''s sales region: North, South, East, West or Central', visible_to: [data_steward, customer, shop_analyst]}
 - source_id: orders-db
   domain_id: shop

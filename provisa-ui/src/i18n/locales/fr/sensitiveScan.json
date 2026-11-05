@@ -1,0 +1,12 @@
+{
+  "sensitiveScan": {
+    "scan": "Rechercher des valeurs sensibles",
+    "help": "Lit en arrière-plan un échantillon des colonnes de texte de la table et recherche des valeurs sensibles dans le texte, comme un numéro de sécurité sociale dans une note. Seule la proportion de valeurs est conservée, jamais les valeurs. Un indice ne modifie rien à lui seul : choisissez une autorisation, un masquage ou une valeur fictive pour la colonne.",
+    "saveFirst": "Enregistrez la table pour rechercher dans ses valeurs.",
+    "running": "Recherche dans un échantillon des colonnes de texte…",
+    "succeeded": "Dernière recherche : {{rows}} lignes échantillonnées, {{columns}} colonnes de texte.",
+    "failed": "La recherche a échoué : {{error}}",
+    "header": "Trouvé dans les valeurs",
+    "hint": "Contient {{kind}} dans {{percent}} % des valeurs échantillonnées"
+  }
+}

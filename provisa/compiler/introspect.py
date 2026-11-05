@@ -54,6 +54,9 @@ class ColumnMetadata:
     is_nullable: bool
     # REQ-2171: the subtype the column was registered as; data_type is its base.
     subtype: str | None = None
+    # REQ-1965, REQ-1961: the source's own type the column records as a hidden attribute (a native
+    # array's, or a character column's: varchar(20) registered as text).
+    native_type: str | None = None
 
 
 def introspect_table_columns(  # REQ-008, REQ-393
@@ -158,6 +161,7 @@ def introspect_tables(  # REQ-008, REQ-393, REQ-421
                 data_type=(c["data_type"] or "varchar").lower(),
                 is_nullable=not c.get("is_primary_key", False),
                 subtype=c.get("subtype"),
+                native_type=c.get("native_type"),
             )
             for c in table["columns"]
         ]

@@ -27,6 +27,8 @@ class NodeSpec:
     variable: str | None
     labels: list[str]
     properties: list[tuple[str, str]]  # (key, the value's expression as written)
+    #: Whether it writes a property map, an empty one (``{}``) included.
+    has_map: bool = False
 
 
 @dataclass
@@ -36,6 +38,9 @@ class RelSpec:
     properties: list[tuple[str, str]]
     source: int  # the index of its source node among the statement's node occurrences
     target: int
+    #: A MERGE's relationship written with no direction: it matches either, and is made from
+    #: its left node to its right (source to target).
+    undirected: bool = False
 
 
 @dataclass
@@ -120,26 +125,45 @@ def _pattern(create: Any) -> CreatePattern:
     return paths_pattern(create.patterns)
 
 
-def paths_pattern(paths: list[Any]) -> CreatePattern:
-    """Write patterns (the IR's PathPattern) as the ephemeral layer reads them."""
+def paths_pattern(paths: list[Any], *, undirected: bool = False) -> CreatePattern:
+    """Write patterns (the IR's PathPattern) as the ephemeral layer reads them. ``undirected``: a
+    relationship may be written with no direction (a MERGE's)."""
     out = CreatePattern()
     for path in paths:
         base = len(out.nodes)
         for node in path.nodes:
             out.nodes.append(
-                NodeSpec(node.variable, list(node.labels), list(node.property_text.items()))
+                NodeSpec(
+                    node.variable,
+                    list(node.labels),
+                    list(node.property_text.items()),
+                    node.has_map,
+                )
             )
         for i, rel in enumerate(path.rels):
             if len(rel.types) != 1:
                 raise CypherParseError(
                     f"A created relationship has exactly one type: {', '.join(rel.types) or 'none'}"
                 )
-            if rel.direction not in ("right", "left"):
+            if rel.variable_length:
+                raise CypherParseError(
+                    "A created or merged relationship is one hop: a variable-length one is no "
+                    "relationship to make"
+                )
+            either = rel.direction not in ("right", "left")
+            if either and not undirected:
                 raise CypherParseError("A created relationship has a direction")
             left, right = base + i, base + i + 1
-            source, target = (left, right) if rel.direction == "right" else (right, left)
+            source, target = (right, left) if rel.direction == "left" else (left, right)
             out.rels.append(
-                RelSpec(rel.variable, rel.types[0], list(rel.property_text.items()), source, target)
+                RelSpec(
+                    rel.variable,
+                    rel.types[0],
+                    list(rel.property_text.items()),
+                    source,
+                    target,
+                    either,
+                )
             )
     return out
 

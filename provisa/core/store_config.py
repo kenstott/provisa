@@ -170,6 +170,12 @@ def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     ]
     table = Table.model_validate(fields)
     written = _written(table)
+    if "contract" in written:
+        # REQ-2118: created_at is the store's record of when the contract was first created, as a
+        # product's created_at is: the config declares the contract, the store stamps its creation.
+        written["contract"].pop("created_at", None)
+        # REQ-2158: so are its saved versions: a save records them, a configuration declares none.
+        written["contract"].pop("versions", None)
     # A table's identity is written out whole, defaults included: readers of a configuration key
     # tables by (source, schema, table).
     written["schema"] = table.schema_name
@@ -214,6 +220,7 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 glossary_terms.c.name,
                 glossary_terms.c.definition,
                 glossary_terms.c.retired,
+                glossary_terms.c.approved,
                 glossary_terms.c.deprecation_asserted,
                 glossary_terms.c.status_reason,
                 glossary_terms.c.retire_on,
@@ -228,13 +235,15 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
         # successor rides its REPLACES edge, on the successor's own entry.
         if r.retired and r.status_reason:
             return {"retire": GlossaryTermRetirement(reason=r.status_reason)}
+        # REQ-1387: an approval is a person's, so a configuration states it.
+        approve = {"approve": True} if r.approved else {}
         if r.deprecation_asserted:
-            return {
+            return approve | {
                 "deprecate": GlossaryTermDeprecation(
                     reason=r.status_reason or "", retire_on=r.retire_on
                 )
             }
-        return {}
+        return approve
 
     return [
         _written(
@@ -328,6 +337,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             "domain_id": row["domain_id"],
             "action_name": row["action_name"],
             "why": row.get("why"),  # REQ-2094
+            "rights": list(row["rights"]),  # REQ-2188
         }
         rls_rules.append(_written(RLSRule.model_validate(rule)))
 

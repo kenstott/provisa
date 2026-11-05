@@ -673,9 +673,12 @@ def _buffered(result: Any) -> Any:
     if not result.returns_rows:
         return result
     rowcount = result.rowcount
+    # The cursor closes with its last row: what it described is kept with the replay.
+    described = result.cursor.description if result.cursor is not None else None
     rows = result.fetchall()
     result._rewind(rows)
     result.__dict__["rowcount"] = rowcount
+    result.__dict__["described"] = described
     return result
 
 
@@ -971,6 +974,28 @@ class Connection:
         self._commit_if_autocommit()
         return columns, rows
 
+    async def fetch_described(
+        self, sql: str, *args: Any, bind_as_given: bool = False
+    ) -> tuple[list[str], list[int], list[Row]]:
+        """:meth:`fetch_with_columns` with each column's type oid, as PostgreSQL described it."""
+        from psycopg.types.json import JsonLoader
+        from psycopg.types.string import TextLoader
+
+        # A client is sent json as PostgreSQL wrote it, which a value parsed here would not be.
+        driver = self._sc.connection.driver_connection
+        assert driver is not None  # a statement of this connection is running on it
+        adapters = driver.adapters
+        adapters.register_loader("json", TextLoader)
+        try:
+            result = self._run(sql, args, bind_as_given=bind_as_given)
+        finally:
+            adapters.register_loader("json", JsonLoader)
+        columns = list(result.keys())
+        oids = [int(d[1]) for d in result.__dict__["described"]]
+        rows = [Row(r) for r in result.fetchall()]
+        self._commit_if_autocommit()
+        return columns, oids, rows
+
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetchrow(self, sql: str, *args: Any) -> Row | None:
         result = self._run(sql, args)
@@ -1000,6 +1025,44 @@ class Connection:
         from sqlalchemy import inspect as _sa_inspect
 
         eff_schema = schema if self.capabilities.schemas else None
+        insp = _sa_inspect(self._sc)
+        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
+        return self._column_records(
+            insp.get_columns(table, schema=eff_schema), pk, table, eff_schema
+        )
+
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def reflect_columns_many(
+        self, tables: list[str], schema: str | None = None
+    ) -> dict[str, list[dict]]:
+        """:meth:`reflect_columns` of several relations of one schema, read in one pass: each
+        relation's columns by name. One Inspector reads them all, so the catalog-wide lookups it
+        makes for every reflection (PostgreSQL's domains and enums, a scan of ``pg_type``) are made
+        once, where a call per relation made them once per relation. A relation that does not
+        exist has no entry: the caller decides whether that is a refusal."""
+        from sqlalchemy import inspect as _sa_inspect
+        from sqlalchemy.engine.reflection import ObjectKind
+
+        eff_schema = schema if self.capabilities.schemas else None
+        names = list(dict.fromkeys(tables))
+        insp = _sa_inspect(self._sc)
+        # ObjectKind.ANY: views (the meta schema's relations are) as well as tables.
+        columns = insp.get_multi_columns(schema=eff_schema, filter_names=names, kind=ObjectKind.ANY)
+        pks = insp.get_multi_pk_constraint(
+            schema=eff_schema, filter_names=names, kind=ObjectKind.ANY
+        )
+        reflected: dict[str, list[dict]] = {}
+        for name in names:
+            key = (eff_schema, name)
+            if key in columns:
+                pk = set((pks.get(key) or {}).get("constrained_columns") or [])
+                reflected[name] = self._column_records(columns[key], pk, name, eff_schema)
+        return reflected
+
+    def _column_records(
+        self, columns: list[Any], pk: set[str], table: str, eff_schema: str | None
+    ) -> list[dict]:
+        """The Inspector's columns of ``table`` as :meth:`reflect_columns` returns them."""
         is_sqlite = self.capabilities.dialect == "sqlite"
 
         # SQLite does not type VIEW columns, so the Inspector reports NullType (→ "null") for the
@@ -1007,8 +1070,6 @@ class Connection:
         # in-line with SQL (``typeof``) and pick the best match; storage classes map cleanly.
         _SQLITE_STORAGE = {"integer": "integer", "real": "double", "text": "text", "blob": "blob"}
         sync_conn = self._sc
-        insp = _sa_inspect(sync_conn)
-        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
         ref = f'"{table}"' if eff_schema is None else f'"{eff_schema}"."{table}"'
 
         def _infer_sqlite(col: str) -> str:
@@ -1021,7 +1082,7 @@ class Connection:
             return _SQLITE_STORAGE.get(row[0], "text") if row else "text"
 
         cols: list[dict] = []
-        for c in insp.get_columns(table, schema=eff_schema):
+        for c in columns:
             type_name = str(c["type"]).split("(")[0].strip().lower()
             if "[]" in type_name or type_name in ("array", "json", "jsonb"):
                 type_name = "text"
@@ -1077,9 +1138,63 @@ class Connection:
     def _execute_core(self, stmt: Any) -> Any:
         from provisa.core.env_secrets import guard_statement
         from provisa.core.meta_rls import apply_meta_tenant_guard
+        from provisa.core.model_row_rules import narrowing_of
 
-        result = self._exec(apply_meta_tenant_guard(guard_statement(stmt)))
+        guarded = apply_meta_tenant_guard(guard_statement(stmt))
+        narrowing = narrowing_of(guarded, self.capabilities.dialect)  # REQ-2188
+        result = (
+            self._exec(guarded) if narrowing is None else self._exec_narrowed(guarded, narrowing)
+        )
         self._commit_if_autocommit()
+        return result
+
+    def _count_rows(self, table: Any, *where: Any) -> int:
+        from sqlalchemy import func, select as _select
+
+        return self._exec(
+            _select(func.count()).select_from(table).where(*[w for w in where if w is not None])
+        ).scalar_one()
+
+    async def require_admitted(self, stmt: Any) -> None:
+        """REQ-2188: hold ``stmt``, an UPDATE or DELETE this write does not itself run, to the acting
+        role's rule: a write stored on another row that belongs to the row ``stmt`` names (a
+        contract, kept on its table, belongs to its product). Refused by name, writing nothing."""
+        from provisa.core.meta_rls import apply_meta_tenant_guard
+        from provisa.core.model_row_rules import narrowing_of
+
+        guarded = apply_meta_tenant_guard(stmt)
+        narrowing = narrowing_of(guarded, self.capabilities.dialect)
+        if narrowing is not None:
+            self._admit(guarded, narrowing)
+
+    def _admit(self, stmt: Any, narrowing: Any) -> int:
+        """Refuse ``stmt`` when a row it matches is outside the rule; how many rows it matches."""
+        from provisa.core.model_row_rules import refused
+
+        where = stmt.whereclause
+        matched = self._count_rows(stmt.table, where)
+        if self._count_rows(stmt.table, where, narrowing.predicate) < matched:
+            raise refused(narrowing)
+        return matched
+
+    def _exec_narrowed(self, stmt: Any, narrowing: Any) -> Any:
+        """REQ-2188: ``stmt`` held to the acting role's rule, in effect UPDATE ... WHERE id = ? AND
+        (rule). All of it or none: every row it matches is admitted, or it is refused by name
+        having written nothing. The count and the write are one transaction: the caller's, or, on
+        an autocommit connection, one that ends with this statement. Zero rows written after the
+        rows were admitted means they moved out of the rule meanwhile, which is the same refusal;
+        a row that matched nothing at all is not one."""
+        from provisa.core.model_row_rules import refused
+
+        try:
+            matched = self._admit(stmt, narrowing)
+            result = self._exec(stmt.where(narrowing.predicate))
+            if matched and result.rowcount == 0:
+                raise refused(narrowing)
+        except BaseException:
+            if self._tx_depth == 0:
+                self._sc.rollback()
+            raise
         return result
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.

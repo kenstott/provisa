@@ -13,6 +13,7 @@
     },
     "download": "Baixar",
     "close": "Fechar",
-    "empty": "Execute uma consulta para exportar o resultado."
+    "empty": "Execute uma consulta para exportar o resultado.",
+    "unnamedEdges": "As arestas deste grafo não nomeiam nenhum predicado, portanto ele não contém triplas para escrever como RDF."
   }
 }

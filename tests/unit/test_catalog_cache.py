@@ -396,6 +396,94 @@ async def test_a_source_that_never_starts_is_reported_once_by_name(stores, monke
     assert await catalog_cache.read_cache(tenant_db, "test", "sec") is None
 
 
+def _driver_listed_source_arranged(monkeypatch, native_tables):
+    """A source whose driver lists its tables (govdata's adapter information_schema) and that
+    the engine holds no live attach of: the driver's list is the only list."""
+    from provisa.api.admin import introspect
+
+    async def _schemas(source_id, source_type, pools, conn):
+        return ["weather"]
+
+    async def _unattached(state, source_id):
+        return "no live attach"
+
+    monkeypatch.setattr(introspect, "native_schemas", _schemas)
+    monkeypatch.setattr(introspect, "native_tables", native_tables)
+    monkeypatch.setattr(introspect, "unattached_source", _unattached)
+
+
+@pytest.mark.asyncio
+async def test_a_driver_list_refused_while_the_source_starts_is_indexed_once_it_has_started(
+    stores, monkeypatch, caplog
+):
+    """The driver's table list of a source whose server is preparing its catalog is answered
+    STARTING (a read the server cancelled while it waited behind that preparation). That is
+    "index later", as on the attach seam: the index asks again, and nothing is warned."""
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.discovery import catalog_cache
+    from provisa.federation.pgwire_replica import SourceStillStartingError
+
+    model_db, tenant_db = stores
+    refusals = [2]
+
+    async def _native_tables(source_id, source_type, schema, pools, conn, state):
+        if refusals[0] > 0:
+            refusals[0] -= 1
+            raise SourceStillStartingError(source_id, preparing_catalog=True)
+        return [AvailableTableType(name="nws_stations", comment=None)]
+
+    _driver_listed_source_arranged(monkeypatch, _native_tables)
+    waits: list[float] = []
+
+    async def _sleep(seconds):
+        waits.append(seconds)
+
+    monkeypatch.setattr(catalog_cache, "_wait", _sleep)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await catalog_cache.index_source(
+            "gd", model_db, MagicMock(), None, {"gd": "govdata"}, state
+        )
+
+    assert waits == [catalog_cache.INDEX_STARTING_POLL_SECONDS] * 2
+    assert caplog.text == ""
+    found = await catalog_cache.read_cache(tenant_db, "gd", "weather")
+    assert found is not None and [t.table_name for t in found] == ["nws_stations"]
+
+
+@pytest.mark.asyncio
+async def test_a_driver_list_whose_server_exited_is_reported_once_by_name(
+    stores, monkeypatch, caplog
+):
+    import logging
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+    from provisa.federation.pgwire_replica import ServerExited
+
+    model_db, tenant_db = stores
+
+    async def _native_tables(source_id, source_type, schema, pools, conn, state):
+        raise ServerExited(source_id, 1, "boom")
+
+    _driver_listed_source_arranged(monkeypatch, _native_tables)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+
+    with caplog.at_level(logging.WARNING):
+        await catalog_cache.index_source(
+            "gd", model_db, MagicMock(), None, {"gd": "govdata"}, state
+        )
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1, warnings
+    assert "'gd' is not indexed" in warnings[0]
+    assert await catalog_cache.read_cache(tenant_db, "gd", "weather") is None
+
+
 @pytest.mark.asyncio
 async def test_an_engine_with_no_attach_seam_is_still_asked_for_its_catalog(stores, monkeypatch):
     """A federator (Trino) lists a source through a catalog of its own, columns included:
@@ -1338,11 +1426,10 @@ async def test_a_graphql_tables_fields_are_read_from_the_schema_held_and_never_f
         return ("the offer", {"namespace": "gh"})
 
     monkeypatch.setattr(reg_mod, "source_offer", _offer)
-    monkeypatch.setattr(reg_mod, "offered_tables", lambda offer, reg: [{"name": "repos"}])
     monkeypatch.setattr(
         reg_mod,
-        "offered_columns",
-        lambda offer, reg, table: [("id", "text", None), ("stars", "integer", None)],
+        "offered_columns_of_every_table",
+        lambda offer, reg: {"repos": [("id", "text", None), ("stars", "integer", None)]},
     )
     held = SimpleNamespace(graphql_remote_sources={"gh": {"schema": {"types": []}, "url": "u"}})
     assert await specification_columns("gh", "graphql_remote", "graphql", held) == {
@@ -1491,3 +1578,96 @@ async def test_a_per_table_catalog_is_searched_by_its_listing_and_its_registered
     ]
     assert [c.name for c in fuzzy_filter("cmdb", candidates)] == ["cmdb_ci"]
     assert [c.name for c in fuzzy_filter("short description", candidates)] == ["incident"]
+
+
+async def test_a_deleted_sources_catalog_walk_is_stopped_in_its_own_org_only():
+    """A source's catalog walk reads its catalog and its engine catalog name; once the source is
+    deleted neither exists, so stop_indexing cancels the walk (index and reindex) of that source in
+    the bound org. The same source id in another org is another source: its walk runs on."""
+    import asyncio
+    import threading
+
+    from provisa.core.connection_loop import shutdown_background, spawn_background
+    from provisa.core.request_context import current_org, set_current_org
+    from provisa.discovery import catalog_cache as cc
+
+    started = threading.Semaphore(0)
+    release = threading.Event()
+    events: list[str] = []
+
+    async def _walk(label: str) -> None:
+        started.release()
+        try:
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+            events.append(f"{label} finished")
+        finally:
+            events.append(f"{label} ended")
+
+    token = set_current_org("org_b")
+    try:
+        other_org = spawn_background(
+            _walk("org_b index"), name=cc.index_task_name("index", "weather")
+        )
+    finally:
+        current_org.reset(token)
+    token = set_current_org("org_a")
+    try:
+        assert cc.index_task_name("index", "weather") == "catalog-index:org_a:weather"
+        mine = [
+            spawn_background(_walk("org_a index"), name=cc.index_task_name("index", "weather")),
+            spawn_background(_walk("org_a reindex"), name=cc.index_task_name("reindex", "weather")),
+        ]
+        for _walk_started in range(3):
+            assert await asyncio.to_thread(started.acquire, True, 5)
+        cc.stop_indexing("weather")
+        await asyncio.wait_for(asyncio.gather(*map(asyncio.wrap_future, mine)), 5)
+        assert sorted(events) == ["org_a index ended", "org_a reindex ended"]
+        release.set()
+        await asyncio.wait_for(asyncio.wrap_future(other_org), 5)
+        assert events[-2:] == ["org_b index finished", "org_b index ended"]
+    finally:
+        current_org.reset(token)
+        release.set()
+        shutdown_background(timeout=5)
+
+
+async def test_stopping_a_walk_inside_an_adapter_read_does_not_wait_for_the_read():
+    """REQ-1824: a walk reads the adapter through ``to_thread``, which a background loop runs
+    inline, so the walk cannot be cancelled until the read answers -- a read queued behind
+    another on a server still starting answered after up to two minutes, and a deletion that
+    waited for it took as long. stop_indexing returns at once; the walk ends at its first await
+    after the read, and goes no further."""
+    import asyncio
+    import threading
+    import time
+
+    from provisa.core.connection_loop import shutdown_background, spawn_background
+    from provisa.core.request_context import current_org, set_current_org
+    from provisa.discovery import catalog_cache as cc
+
+    reading, answer = threading.Event(), threading.Event()
+    events: list[str] = []
+
+    async def _walk() -> None:
+        await asyncio.to_thread(reading.set)
+        await asyncio.to_thread(answer.wait, 10)  # the adapter read, inline on its loop
+        events.append("read answered")
+        await asyncio.sleep(0)
+        events.append("walk went on")
+
+    token = set_current_org("org_a")
+    try:
+        walk = spawn_background(_walk(), name=cc.index_task_name("index", "weather"))
+        assert await asyncio.to_thread(reading.wait, 5)
+        began = time.monotonic()
+        cc.stop_indexing("weather")
+        assert time.monotonic() - began < 1
+        assert not walk.done()  # still inside its read
+        answer.set()
+        await asyncio.wait_for(asyncio.wrap_future(walk), 5)
+        assert "walk went on" not in events
+    finally:
+        current_org.reset(token)
+        answer.set()
+        shutdown_background(timeout=5)

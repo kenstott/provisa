@@ -877,6 +877,34 @@ def _dump_service_diagnostics(services: list[str]) -> None:
         print(f"[conftest] {service} logs:\n{logs.stdout}{logs.stderr}")
 
 
+def _named_volumes(services: list[str]) -> list[str]:
+    """The named volumes ``services`` mount, by their project-qualified names.
+
+    ``rm -v`` drops a container's anonymous volumes only; a named one (mariadb's data directory)
+    outlives it, so a retry that is meant to be a cold boot would start on whatever the failed boot
+    left behind -- a data directory whose initialisation was cut off, which the next boot takes as
+    initialised (observed: mariadb's healthcheck user never created, every retry refused).
+    """
+    config = subprocess.run(
+        ["docker", "compose", *_ITEST_COMPOSE_ARGS, "config", "--format", "json"],
+        cwd=_REPO_ROOT,
+        env=_itest_compose_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    model = json.loads(config.stdout)
+    declared = model.get("volumes") or {}
+    return sorted(
+        {
+            (declared.get(mount["source"]) or {}).get("name", mount["source"])
+            for service in services
+            for mount in (model["services"].get(service) or {}).get("volumes") or []
+            if mount.get("type") == "volume" and mount.get("source")
+        }
+    )
+
+
 @pytest.fixture
 def _heavy_db_service(request):  # pyright: ignore
     """Bring up ONLY this test's heavy engine, then tear it down when the test ends.
@@ -933,13 +961,19 @@ def _heavy_db_service(request):  # pyright: ignore
                 break
             except subprocess.CalledProcessError as exc:
                 last_error = exc
+                # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv`
+                # below then destroys the evidence — on CI that left an exasol boot failure
+                # with no engine log and no healthcheck output at all. Dump both for EVERY failed
+                # attempt before its container goes away: a later attempt's failure can be the
+                # first one's consequence, and only the first one's own log says why it failed.
+                print(f"[conftest] attempt {_attempt + 1} of 3 failed: {exc}")
+                _dump_service_diagnostics(_with_companions(services))
                 # A retry only helps if the next attempt boots a NEW container. `up -d` leaves an
                 # existing-but-unhealthy container in place and re-waits on it, and its healthcheck
                 # retries are already spent — so all three attempts would wait on the same corpse
                 # (observed: atlas unhealthy with FailingStreak 40, embedded ZooKeeper never up).
-                # Destroy the containers and their anonymous volumes so the retry is a cold boot.
-                # Not after the final attempt — _dump_service_diagnostics below needs the failed
-                # container's state and logs still present.
+                # Destroy the containers, their anonymous volumes and the named volumes they mount
+                # so the retry is a cold boot.
                 if _attempt < 2:
                     subprocess.run(
                         [
@@ -954,12 +988,15 @@ def _heavy_db_service(request):  # pyright: ignore
                         env=_itest_compose_env(),
                         check=False,
                     )
+                    volumes = _named_volumes(_with_companions(services))
+                    if volumes:
+                        subprocess.run(
+                            ["docker", "volume", "rm", "-f", *volumes],
+                            cwd=_REPO_ROOT,
+                            env=_itest_compose_env(),
+                            check=True,
+                        )
         if last_error is not None:
-            # `up --wait` reports only "container ... is unhealthy", and the `rm -fsv`
-            # below then destroys the evidence — on CI that left an exasol boot failure
-            # with no engine log and no healthcheck output at all. Dump both before the
-            # container goes away.
-            _dump_service_diagnostics(_with_companions(services))
             raise last_error
         yield
     finally:

@@ -61,7 +61,7 @@ from provisa.events import queue
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from provisa.api.metadata_export.model import TableAsset
+    from provisa.api.metadata_export.model import ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from provisa.api.metadata_export.model import MetadataSnapshot
@@ -238,9 +238,15 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     return uris
 
 
-async def org_snapshot(org_id: str) -> "MetadataSnapshot":
+async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "MetadataSnapshot":
     """The bound org's full metadata snapshot: what every target is published (REQ-1072) and
-    what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org."""
+    what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org.
+
+    ``product_id`` names the one product whose documents the snapshot is built for (REQ-2118,
+    REQ-2158). Its documents carry only the checks that product owns and only its own creation
+    time, so only those are read: the last outcomes of its own checker tables, each a governed
+    query, and its own row. Every other check in that snapshot reads as never run, so it is that
+    product's to describe and never one to publish."""
     from provisa.api.app import state
 
     model = await _model_for_export()
@@ -249,6 +255,7 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
     # REQ-1387: the term graph exports with the model; it lives only in the DB, so it
     # hydrates here the way sources do rather than through the config file vocabulary.
+    from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import glossary as glossary_repo
 
     from provisa.auth.role_grants import holder_emails
@@ -257,9 +264,17 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         glossary = await glossary_repo.export_graph(conn)
         # REQ-2118: a product's owners are its owner role's holders, by their addresses.
         owner_emails = await holder_emails(conn)
+        # REQ-2118: when each product was created, its ODPS productCreatedTs.
+        if product_id is None:
+            created_rows = await data_product_repo.list_all(conn)
+        else:
+            product_row = await data_product_repo.get(conn, product_id)
+            created_rows = [] if product_row is None else [product_row]
+        product_created = {row["id"]: row["created_at"] for row in created_rows}
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
-    dq_outcomes = await read_latest_outcomes(model)
+    dq_outcomes = await read_latest_outcomes(model, product_id=product_id)
+    base_url = state.config.mail.base_url if state.config else None
     return build_snapshot(
         model,
         org_id=org_id,
@@ -271,8 +286,40 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         # REQ-1659: the listing's documentation link points back at the product's page, at
         # the org's public origin -- the one mail.base_url names, for the same reason an
         # invitation cannot derive it from the request that created it.
-        documentation_base_url=state.config.mail.base_url if state.config else None,
+        documentation_base_url=base_url,
         owner_emails=owner_emails,
+        product_created=product_created,
+        endpoints=serving_endpoints(state, org_id, base_url),
+    )
+
+
+def serving_endpoints(
+    state: Any, org_id: str, base_url: str | None
+) -> "ServingEndpoints | None":  # REQ-2118
+    """Where a consumer reads the org's products: its pgwire, Flight SQL and gRPC listeners at
+    the server's hostname (a port of 0 is a listener not started, as is a gRPC server that never
+    started), and the query surfaces mounted on the app under the deployment's base URL. None
+    without a base URL: the deployment names no origin a consumer reaches it at."""
+    from provisa.api.admin.system_health import HTTP_SURFACES
+    from provisa.api.metadata_export.model import ServingEndpoints
+    from provisa.api.org_resolve import DEFAULT_DATABASE
+    from provisa.core import settings_registry
+
+    if not base_url:
+        return None
+    pgwire = settings_registry.value("server.pgwire_port")
+    grpc = settings_registry.value("server.grpc_port") if state._grpc_server is not None else None
+    return ServingEndpoints(
+        hostname=settings_registry.value("server.hostname"),
+        # The database a pgwire client names (catalog_populate.served_database_name).
+        database=org_id if getattr(state, "multitenancy", False) else DEFAULT_DATABASE,
+        http_origin=base_url.rstrip("/"),
+        pgwire_port=pgwire or None,
+        flight_port=settings_registry.value("server.flight_port") or None,
+        grpc_port=grpc or None,
+        http_paths={
+            name: path for name, path in HTTP_SURFACES.items() if name in state.http_surfaces
+        },
     )
 
 

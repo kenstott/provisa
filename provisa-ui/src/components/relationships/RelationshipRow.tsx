@@ -57,8 +57,8 @@ export function RelationshipRow({
         {domainsEnabled && (
           <td style={{ whiteSpace: "nowrap" }}>{r.sourceDomainId || t("relationshipRow.none")}</td>
         )}
-        <td style={{ whiteSpace: "nowrap" }}>
-          <Group gap="0.4rem" wrap="nowrap">
+        <td>
+          <Group gap="0.4rem" wrap="wrap">
             {r.autoSuggested && (
               <Badge
                 title={t("relationshipRow.autoTrackedTitle")}

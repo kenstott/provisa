@@ -29,6 +29,7 @@ from provisa.gql.translator import cypher_to_sql
 from provisa.sparql_query.compiler import SparqlRefused, compile_sparql
 from provisa.transpiler.transpile import transpile_to_duckdb
 from provisa.sparql_query.vocabulary import (
+    RDF,
     XSD,
     Grounding,
     build_vocabulary,
@@ -90,10 +91,14 @@ _TYPES = {
     ("Company", "id"): "INTEGER",
     ("Company", "name"): "VARCHAR",
 }
+#: Person.name and Company.name bound to the Property term "Legal name": published under its IRI,
+#: and no longer under p:name and c:name (REQ-2163).
 _GROUNDING = Grounding(
     class_terms={"Person": "Employee"},
     property_terms={("Person", "name"): ("Legal name",), ("Company", "name"): ("Legal name",)},
 )
+#: The class term alone: every column is published under its own IRI.
+_COLUMNS = Grounding(class_terms={"Person": "Employee"})
 
 
 @pytest.fixture
@@ -131,9 +136,9 @@ def _value(term):
     return term["literal"]
 
 
-def _answer(con, query: str) -> list[dict]:
+def _answer(con, query: str, grounding: Grounding = _COLUMNS) -> list[dict]:
     lm = _model()
-    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
+    vocab = build_vocabulary(lm, BASE, _TYPES, grounding)
     compiled = compile_sparql(PREFIXES + query, vocab, lm)
     if compiled.empty:
         rows = [compiled.empty_row] if compiled.empty_row is not None else []
@@ -168,7 +173,7 @@ def test_a_class_term_types_the_table_it_grounds(con):
 
 
 def test_a_property_term_is_a_predicate_of_every_column_it_grounds(con):
-    rows = _answer(con, "SELECT ?n WHERE { ?s term:Legal%20name ?n }".replace("%20", "%20"))
+    rows = _answer(con, "SELECT ?n WHERE { ?s term:Legal%20name ?n }", _GROUNDING)
     assert sorted(r["n"] for r in rows) == ["Acme", "Ann", "Beta", "Bo", "Corp", "Cy", "Di"]
 
 
@@ -184,6 +189,34 @@ def test_a_required_property_drops_a_row_without_it_and_optional_keeps_it(con):
     assert "Di" not in {r["n"] for r in required}
     optional = _answer(con, "SELECT ?n ?a WHERE { ?s p:name ?n OPTIONAL { ?s p:age ?a } }")
     assert {r["n"]: r["a"] for r in optional} == {"Ann": 41, "Bo": 35, "Cy": 29, "Di": None}
+
+
+def test_a_class_pills_wide_query_is_one_row_per_subject(con):
+    # REQ-2135: the text sparql.ts classQuery writes for a class with two columns (sparqlClassStyle
+    # .test.ts pins it): its predicates by a prefix ending in the class's #, never by a # of their
+    # own, which SPARQL reads as a comment.
+    rows = _answer(
+        con,
+        f"PREFIX hr: <{BASE}/vocab/hr/>\n"
+        f"PREFIX persons: <{PERSON}#>\n"
+        "SELECT ?s ?age ?name WHERE {\n"
+        "  ?s a hr:persons .\n"
+        "  OPTIONAL { ?s persons:age ?age }\n"
+        "  OPTIONAL { ?s persons:name ?name }\n"
+        "}\n"
+        "LIMIT 25",
+    )
+    assert len({r["s"] for r in rows}) == len(rows) == 4
+    assert {r["name"]: r["age"] for r in rows} == {"Ann": 41, "Bo": 35, "Cy": 29, "Di": None}
+
+
+def test_a_property_pills_query_names_its_predicate_by_the_class_prefix(con):
+    # REQ-2135: as sparql.ts pickedQuery writes it, a prefix ending in the class's #.
+    rows = _answer(
+        con,
+        f"PREFIX persons: <{PERSON}#>\nSELECT * WHERE {{\n  ?s persons:age ?o .\n}}\nLIMIT 25",
+    )
+    assert sorted(r["o"] for r in rows) == [29, 35, 41]
 
 
 def test_an_edge_and_the_node_at_its_end(con):
@@ -228,7 +261,6 @@ def test_a_subject_named_by_its_iri_and_a_variable_predicate(con):
         ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", PERSON),
         ("http://www.w3.org/1999/02/22-rdf-syntax-ns#type", EMPLOYEE),
         (NAME, "Ann"),
-        (FULL_NAME, "Ann"),
         (AGE, 41),
         (KNOWS, bo),
         (WORKS_AT, acme),
@@ -256,7 +288,9 @@ def test_order_by_and_limit(con):
 
 
 def test_order_by_across_two_classes(con):
-    rows = _answer(con, "SELECT ?n WHERE { ?s term:Legal%20name ?n } ORDER BY ?n LIMIT 3")
+    rows = _answer(
+        con, "SELECT ?n WHERE { ?s term:Legal%20name ?n } ORDER BY ?n LIMIT 3", _GROUNDING
+    )
     assert [r["n"] for r in rows] == ["Acme", "Ann", "Beta"]
 
 
@@ -278,6 +312,40 @@ def test_construct(con):
     )
     bo = subject_iri(BASE, "hr", "persons", [2])
     assert sorted((r["s"], r["o"]) for r in rows) == [(ann(), bo), (bo, ann())]
+
+
+def test_describe_of_a_resource_is_the_triples_about_it(con):
+    """REQ-2135: DESCRIBE of a resource works, as a CONSTRUCT of what is said of it."""
+    lm = _model()
+    vocab = build_vocabulary(lm, BASE, _TYPES, _COLUMNS)
+    assert compile_sparql(PREFIXES + f"DESCRIBE <{ann()}>", vocab, lm).form == "CONSTRUCT"
+    rows = _answer(con, f"DESCRIBE <{ann()}>")
+    assert {r["s"] for r in rows} == {ann()}
+    said = {(r["p"], r["o"]) for r in rows}
+    assert (NAME, "Ann") in said
+    assert (AGE, 41) in said
+    # An edge's object is the resource it points at, and the type is its class.
+    assert (KNOWS, subject_iri(BASE, "hr", "persons", [2])) in said
+    assert (f"{RDF}type", PERSON) in said
+
+
+def test_a_class_dropped_on_a_frame_constructs_its_instances(con):
+    """REQ-2135: the CONSTRUCT the SPARQL explorer merges for a class pill dropped on a frame."""
+    rows = _answer(con, f"CONSTRUCT {{ ?s ?p ?o }} WHERE {{ ?s a <{COMPANY}> ; ?p ?o }} LIMIT 50")
+    assert {r["s"] for r in rows} == {subject_iri(BASE, "hr", "companies", [i]) for i in (1, 2, 3)}
+    assert (f"{RDF}type", COMPANY) in {(r["p"], r["o"]) for r in rows}
+    assert {r["o"] for r in rows if r["p"] == CNAME} == {"Acme", "Beta", "Corp"}
+
+
+def test_describe_of_several_resources_says_each(con):
+    bo = subject_iri(BASE, "hr", "persons", [2])
+    rows = _answer(con, f"DESCRIBE <{ann()}> <{bo}>")
+    assert {r["s"] for r in rows if r["s"] is not None} == {ann(), bo}
+    assert {r["o"] for r in rows if r["p"] == NAME} == {"Ann", "Bo"}
+
+
+def test_describe_of_a_resource_no_table_holds_is_an_empty_graph(con):
+    assert _answer(con, "DESCRIBE <http://example.org/nowhere>") == []
 
 
 def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
@@ -305,7 +373,8 @@ def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
 )
 def test_what_is_not_lowered_is_refused_by_name(query, refusal):
     lm = _model()
-    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
+    # A Property term's IRI is a predicate only where the term binds a column.
+    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING if "term:" in query else _COLUMNS)
     with pytest.raises(SparqlRefused, match=refusal):
         compile_sparql(PREFIXES + query, vocab, lm)
 
@@ -701,3 +770,68 @@ def test_a_comparison_of_two_kinds_is_a_type_error(con, comparison, value):
     # SPARQL 1.1 17.3: = of an xsd:string and an xsd:boolean is an error; a BIND of it is unbound.
     rows = _answer(con, f"SELECT ?x WHERE {{ ?s p:name 'Ann' BIND({comparison} AS ?x) }}")
     assert [r["x"] for r in rows] == [value]
+
+
+# --- a LIMIT needs no full union (REQ-2135) ------------------------------------------------
+
+
+def _wide_model(n: int = 72) -> tuple[CypherLabelMap, dict]:
+    """``n`` classes, each with a name column: ``?s ?p ?o`` reads n combinations."""
+    nodes = {
+        f"T{i}": dataclasses.replace(
+            _node(f"T{i}", f"t{i}"), domain_id="hr", properties={"id": "id", "name": "name"}
+        )
+        for i in range(n)
+    }
+    types = {(label, col): "VARCHAR" for label in nodes for col in ("id", "name")}
+    return CypherLabelMap(nodes=nodes, relationships={}), types
+
+
+def _wide(query: str):
+    lm, types = _wide_model()
+    return compile_sparql(query, build_vocabulary(lm, BASE, types, Grounding()), lm), lm
+
+
+def test_the_union_limit_defaults_to_256():
+    from provisa.core import settings_registry
+
+    assert settings_registry.value("graph.union_limit") == 256
+
+
+def test_the_explorers_default_query_compiles_on_a_wide_model():
+    compiled, lm = _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
+    # 72 combinations of classes, each a part per predicate (rdf:type, id, name), the head being
+    # one: 216 parts. The union limit counts the combinations, as the tests below hold.
+    assert len(compiled.ast.union_parts) == 215
+    sql, _, _ = cypher_to_sql(compiled.ast, lm, {})
+    text = sql.sql(dialect="postgres")
+    assert text.count("UNION ALL") >= 215
+    # The LIMIT sits outside the union, so the engine stops reading branches once it has 25 rows.
+    assert text.rstrip().endswith("LIMIT 25")
+    assert text.index("LIMIT 25") > text.rindex("UNION ALL")
+
+
+def test_a_limit_is_allowed_ten_times_the_union_limit(monkeypatch):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "8")  # 72 <= 80
+    compiled, _ = _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
+    assert compiled.ast is not None
+
+
+def test_a_limit_past_ten_times_the_union_limit_is_refused_naming_it(monkeypatch):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "7")  # 72 > 70
+    with pytest.raises(SparqlRefused, match=r"10 times the graph union limit of 7 \(70\)"):
+        _wide("SELECT * WHERE { ?s ?p ?o } LIMIT 25")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT * WHERE { ?s ?p ?o } ORDER BY ?o LIMIT 25",
+        "SELECT DISTINCT * WHERE { ?s ?p ?o } LIMIT 25",
+        "SELECT * WHERE { ?s ?p ?o }",
+    ],
+)
+def test_without_a_plain_limit_the_plain_union_limit_applies(monkeypatch, query):
+    monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "8")
+    with pytest.raises(SparqlRefused, match=r"past the graph union limit of 8;"):
+        _wide(query)

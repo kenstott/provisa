@@ -17,9 +17,10 @@ import struct
 
 import pytest
 from buenavista.core import BVType
-from buenavista.postgres import BVTYPE_TO_PGTYPE
+from buenavista.postgres import BVTYPE_TO_OID
 
 from provisa.pgwire.server import _sql_type_to_bvtype
+from tests.unit.pgwire import wire_cells as wire
 
 
 @pytest.mark.parametrize(
@@ -39,25 +40,40 @@ from provisa.pgwire.server import _sql_type_to_bvtype
 )
 def test_array_oid_and_text(declared, oid, values, text):
     bv = _sql_type_to_bvtype(declared)
-    pg_oid, to_text, _ = BVTYPE_TO_PGTYPE[bv]
-    assert pg_oid == oid
-    assert to_text(values) == text
+    assert BVTYPE_TO_OID[bv] == oid
+    assert wire.text(bv, values) == text
 
 
 def test_int4_array_binary_is_array_send():
-    _, _, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype("INT[]")]
     expected = struct.pack("!iiiii", 1, 0, 23, 3, 1) + b"".join(
         struct.pack("!ii", 4, v) for v in (1, 2, 3)
     )
-    assert to_binary([1, 2, 3]) == expected
+    assert wire.binary(_sql_type_to_bvtype("INT[]"), [1, 2, 3]) == expected
 
 
 def test_text_array_binary_marks_nulls():
-    _, _, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype("TEXT[]")]
-    assert to_binary(["a", None]) == (
+    assert wire.binary(_sql_type_to_bvtype("TEXT[]"), ["a", None]) == (
         struct.pack("!iiiii", 1, 1, 25, 2, 1) + struct.pack("!i", 1) + b"a" + struct.pack("!i", -1)
     )
 
 
-def test_a_nested_array_stays_json():
-    assert _sql_type_to_bvtype("INT[][]") is BVType.JSON
+def test_a_nested_array_is_the_array_type_of_its_element():
+    assert _sql_type_to_bvtype("INT[][]") is BVType.INTEGERARRAY
+
+
+def test_an_array_of_an_element_with_no_array_type_stays_json():
+    assert _sql_type_to_bvtype("STRUCT(a INT)[][]") is BVType.JSON
+
+
+def test_a_nested_array_is_written_as_postgresql_writes_it():
+    nested = _sql_type_to_bvtype("INT[][]")
+    assert wire.text(nested, [[1, None], [3, 4]]) == "{{1,NULL},{3,4}}"
+    assert wire.binary(nested, [[1, 2], [3, 4]]) == (
+        struct.pack("!iiiiiii", 2, 0, 23, 2, 1, 2, 1)
+        + b"".join(struct.pack("!ii", 4, v) for v in (1, 2, 3, 4))
+    )
+
+
+def test_a_list_of_unequal_lists_has_no_array_to_send():
+    with pytest.raises(ValueError, match="unequal sublists"):
+        wire.binary(_sql_type_to_bvtype("INT[][]"), [[1], [2, 3]])

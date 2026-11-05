@@ -9,16 +9,20 @@
 // permission from the copyright holder.
 
 // The lifecycle every governed object shares -- a glossary term (REQ-2144), a data product: draft,
-// live, deprecated, retired -- and its one badge. The object's page names each status in its own
+// live (approved, for a term: REQ-1387), deprecated, retired -- and its one badge. The object's page names each status in its own
 // words; the colours are the lifecycle's.
 
 import { Badge } from "@mantine/core";
 import type { LifecycleStatus } from "../../types/lifecycle";
 import { Tip } from "../Tip";
 
-const COLOUR: Record<LifecycleStatus, string> = {
+/** A badge's status: the lifecycle's, or a term's approved (REQ-1387), which takes live's place. */
+type BadgeStatus = LifecycleStatus | "approved";
+
+const COLOUR: Record<BadgeStatus, string> = {
   draft: "yellow",
   live: "green",
+  approved: "green",
   deprecated: "gray",
   retired: "orange",
 };
@@ -30,7 +34,7 @@ export function StatusBadge({
   help,
   testId,
 }: {
-  status: LifecycleStatus;
+  status: BadgeStatus;
   label: string;
   help?: string;
   testId?: string;

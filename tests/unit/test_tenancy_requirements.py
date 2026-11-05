@@ -127,6 +127,9 @@ class TestAuthMiddlewareSkipPaths:
             # asks here for the operator settings it runs on. The answer is its proxy timeout and
             # the source it resolved from — a number, no data and no secret.
             "/internal/ui-server-settings",
+            # REQ-2006: the limits every demo sandbox runs under, the same on every node of the
+            # tier. It reveals only what the hosted-sandbox page states.
+            "/sandboxes/limits",
         }
         assert _SKIP_PATHS == expected
 

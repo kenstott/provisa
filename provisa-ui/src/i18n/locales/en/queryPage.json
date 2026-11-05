@@ -7,7 +7,7 @@
     "redirectHint": "All results redirect to S3",
     "queryStats": "Query Stats",
     "schemaError": "Schema error: {{message}}",
-    "redirectReady": "Redirect ready — {{rowCount}} rows ({{contentType}})",
+    "redirectReady": "Redirect ready: {{rowCount}} rows ({{contentType}})",
     "download": "Download",
     "dismissRedirect": "Dismiss redirect notice",
     "formatNone": "None",

@@ -11,6 +11,7 @@
 // What a term needs a curator to look at (REQ-2146): the server's findings, each of a kind, which
 // names its chip and its fix. A term with any finding is To review; a plain draft is not one.
 
+import type { ComboboxData } from "@mantine/core";
 import type { GlossaryTermSummary } from "../../api/glossary";
 
 export const toReview = (term: Pick<GlossaryTermSummary, "findings">): boolean => term.findings > 0;
@@ -22,3 +23,14 @@ export const tableNames = (tables: string): string =>
     .split(", ")
     .map((t) => t.slice(t.lastIndexOf(".") + 1))
     .join(" ");
+
+/** The domains the steward is working in (the navbar's selection, where one is made) that the options offer. */
+export function defaultFindDomains(
+  viewDomains: ReadonlySet<string> | null,
+  options: ComboboxData,
+): string[] {
+  if (!viewDomains) return [];
+  return [...viewDomains].filter((d) =>
+    options.some((o) => (typeof o === "string" ? o : "value" in o && o.value) === d),
+  );
+}

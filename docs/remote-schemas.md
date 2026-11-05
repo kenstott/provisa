@@ -67,9 +67,9 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 
 When an OBJECT-typed column on a governed table points to another governed type, that column is subject to three rules simultaneously:
 
-1. **Excluded from the GQL fetch** — the field is not requested when fetching the parent table's rows.
-2. **Excluded from the SDL** — the field does not appear on the parent type in the generated schema.
-3. **Accessible only via a declared relationship** — a steward must register a JOIN between the two materialized governed tables. Without one, the field is simply absent; there is no blob fallback.
+1. **Excluded from the GQL fetch.** The field is not requested when fetching the parent table's rows.
+2. **Excluded from the SDL.** The field does not appear on the parent type in the generated schema.
+3. **Accessible only via a declared relationship.** A steward must register a JOIN between the two materialized governed tables. Without one, the field is absent; there is no blob fallback.
 
 OBJECT types that are NOT reachable as root Query fields (inline types such as `ContactInfo` or `Address`) follow different rules: they are fetched as `jsonb` blob columns and appear in the SDL as nested-object fields. Sub-fields are accessible via `->>` extraction in SQL.
 
@@ -81,7 +81,7 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 
 **Mutations.** A mutation field is registered as a command of kind `source_operation`, one at a time. Its arguments are each typed `json` and passed to the remote as typed variables; the answer is the JSON the remote returns, with no `return_schema`. See [A remote source's write operation](commands.md#a-remote-sources-write-operation).
 
-**Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. Re-introspects the remote schema and brings the already-registered tables up to date with it. It adds no table and no column: a table or column the schema has gained stays on offer, and a column the schema has lost is dropped. Existing governance rules (RLS, masking) are preserved.
+**Refresh.** POST to `/admin/sources/graphql-remote/{id}/refresh`. This re-introspects the remote schema and brings the already-registered tables up to date with it. It adds no table and no column. A table or column the schema has gained stays on offer, and a column the schema has lost is dropped. Existing governance rules (RLS, masking) are preserved.
 
 **Limitations.**
 
@@ -108,8 +108,9 @@ Two responses make the executor retry:
 
 - **Page too heavy.** When the remote answers 502 or 504, the same page is asked again at half the size, down to one row.
 - **Rate limit with a wait time.** When the remote answers 403 or 429 with a `Retry-After` of 120 seconds or less, the executor waits that long and sends the request again, up to three attempts. A refusal with no `Retry-After`, or one asking for a longer wait, is raised as an error. This applies to every read, connection or not.
+- **Throttled by query cost.** A source type may declare the error codes its remote returns when its rate limit has too little left for a query (Shopify's `THROTTLED`, see below). The executor then waits until the limit has restored what the query costs, as the answer's `extensions.cost` states it: the requested cost less what is available, over the restore rate. The same 120-second and three-attempt bounds apply; an answer that states no cost, or is still throttled after the last attempt, fails the read by name.
 
-Any other error in the response fails the read, unless the source type declares otherwise (see GitHub below). A connection whose parent came back null has no rows.
+An error's code is read from its `type` (GitHub) or from `extensions.code`, where the GraphQL specification places it (Shopify). Any other error in the response fails the read, unless the source type declares otherwise (see GitHub below). A connection whose parent came back null has no rows.
 
 ---
 
@@ -158,6 +159,30 @@ GitLab is an ordinary source type and is added and registered the same way as Gi
 
 ---
 
+### Shopify
+
+Shopify is an ordinary source type over a store's Admin GraphQL API, added and registered the same way as GitHub: add a source of type **Shopify**, then register the tables you want from schema `graphql`. The default table-name prefix is `shopify`.
+
+**Add the source.**
+
+1. Open Sources and add a source of type **Shopify**.
+2. Enter the store name: the part of the store's admin address before `.myshopify.com`, such as `my-store`. Only lower-case letters, digits and hyphens are taken; anything else is refused before Provisa sends anything.
+3. Keep the API version, or enter another in the form `YYYY-MM`. It starts filled in with `2026-10`, the newest stable version when Provisa's copy of the schema was taken. The tables on offer are those of that copy whatever version you enter.
+4. Enter an Admin API access token for the store (a custom app's token, `shpat_…`). It is sent bare in the `X-Shopify-Access-Token` header, not as a bearer token.
+5. Save. Provisa sends one query for the shop's name to `https://<store>.myshopify.com/admin/api/<version>/graphql.json`. A token the store rejects fails the add with Shopify's message.
+
+Adding the source registers no tables. Its tables are Relay connections such as `shopify__products` and `shopify__orders`, read by cursor a page at a time.
+
+**Query cost.** Shopify prices every query and refuses one priced over 1,000 points. When you register a table, Provisa sends its query with the columns you chose to the store once, at the page size reads use (`graphql_remote.max_list_items`, 100 by default). If Shopify prices it over the limit, the table is not registered and the result carries Shopify's numbers: `Table 'shopify__orders' was not registered with the columns selected: Query cost is 1850, which exceeds the single query max cost limit (1000). Choose fewer columns.` Nested-object columns cost the most. A page Shopify still prices over the limit during a read is asked for again at half the size.
+
+**Access scopes.** A field outside the app's access scopes (`ACCESS_DENIED`, such as an order's customer without `read_customers`) is left out of the table when it is registered, and the result names it.
+
+**Throttling.** Each store has a bucket of query points that refills at a fixed rate. When the bucket has too little left, Shopify answers `THROTTLED` with what the query costs and how fast the bucket refills; Provisa waits that long and asks again, as described under the executor's retries above. A registration the store keeps throttling is refused with `schema.remote_throttled`; try again later.
+
+**How it works (operators).** The schema ships with Provisa. It is taken, without a store or token, from shopify.dev's public copy of the Admin API for the pinned version, by `scripts/bake_graphql_brand_schema.py shopify`; moving to a newer version is a new bake and a change to `SHOPIFY_API_VERSION` in `provisa/graphql_remote/brands.py`.
+
+---
+
 ### gRPC remote schema
 
 **How to add the source.** POST to `/admin/grpc-remote/register` with the server address, a path or URL to a `.proto` file, and optional TLS config. Adding the source registers no table.
@@ -185,9 +210,9 @@ Proto files may also be local paths. Import paths for well-known types (`google/
 
 **What the source offers.** Every `rpc` method in the proto is classified as a query or mutation using three signals in priority order:
 
-1. **`method_overrides`** in the registration payload — `{"MethodName": "query"}` or `{"MethodName": "mutation"}` overrides everything else.
-2. **`server_streaming: true`** — the server sends a stream of messages; always a virtual table (unless the output is a scalar).
-3. **Output message has a repeated message-type field** — e.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this, because they are array properties on a single entity, not row sources.
+1. **`method_overrides`** in the registration payload. `{"MethodName": "query"}` or `{"MethodName": "mutation"}` overrides everything else.
+2. **`server_streaming: true`.** The server sends a stream of messages; always a virtual table (unless the output is a scalar).
+3. **Output message has a repeated message-type field.** E.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this, because they are array properties on a single entity, not row sources.
 
 Methods that match none of these signals (unary RPC returning a single entity message, or any scalar output) become tracked functions.
 
@@ -211,7 +236,7 @@ Mutation methods are commands on offer, counted in `available_mutations`; adding
 | Nested message | `jsonb` |
 | Enum | `text` |
 
-**Relationships at registration time.** `relationships` works just as it does for the GQL adapter: it declares FK/PK join paths, stored as manually declared relationships (with no `remote_managed` flag). A refresh leaves them as they are.
+**Relationships at registration time.** `relationships` works just as it does for the GQL adapter. It declares FK/PK join paths, stored as manually declared relationships (with no `remote_managed` flag). A refresh leaves them as they are.
 
 **Query methods.** Output message fields become table columns. Input message fields both become GraphQL arguments passed to the remote call *and* are registered as `_nf_`-prefixed columns with `native_filter_type: "grpc_input"`, the same mechanism GQL and OpenAPI use for native filter injection.
 
@@ -223,7 +248,7 @@ Server-streaming methods collect all streamed messages into a list before return
 
 **Channel management.** One `grpc.aio.Channel` per registered source is stored in app state and reused across requests. The old channel is closed before a new one opens on refresh.
 
-**Refresh.** POST to `/admin/grpc-remote/refresh/{source_id}`. Re-loads the proto from the stored path, recompiles stubs, and brings the already-registered tables up to date with the proto, with the columns each was registered with. It registers no new table; a query method added to the proto stays on offer. Alternatively, PUT to `/admin/grpc-remote/{source_id}/proto` with new `proto_text` to update the proto inline.
+**Refresh.** POST to `/admin/grpc-remote/refresh/{source_id}`. This reloads the proto from the stored path, recompiles stubs, and brings the already-registered tables up to date with the proto, with the columns each was registered with. It registers no new table; a query method added to the proto stays on offer. Alternatively, PUT to `/admin/grpc-remote/{source_id}/proto` with new `proto_text` to update the proto inline.
 
 **Limitations.**
 
@@ -253,7 +278,7 @@ Server-streaming methods collect all streamed messages into a list before return
 
 Classification priority: `operation_overrides` (payload) overrides `x-provisa-kind` (spec extension) overrides the GET heuristic. `operation_overrides` is the recommended override path; `x-provisa-kind` is for when the spec itself should carry the classification.
 
-**Relationships at registration time.** `relationships` works just as it does for the other adapters: stored as manually declared relationships and kept on refresh.
+**Relationships at registration time.** `relationships` works just as it does for the other adapters, stored as manually declared relationships and kept on refresh.
 
 **Table naming.** Tables use the operation's `operationId`. If no `operationId` is defined, Provisa slugifies `{method}_{path}`. An alias is derived by stripping the leading verb segment and singularizing the noun (`findPetsByStatus` → `pet_by_status`).
 
@@ -276,7 +301,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 
 **Response caching.** GET operation results are cached in PostgreSQL by `pg_cache.py`. Each combination of request parameters gets its own `_params_hash` group. Rows for a given hash are replaced when the TTL expires. Path-param endpoints (`/pets/{id}`) skip the initial bulk fetch. The cache table is created empty for schema introspection, then populated per-PK as requests arrive.
 
-**Refresh.** POST to `/admin/openapi/refresh/{source_id}`. Re-parses the spec through `_load_and_register`, which registers nothing: it adds no table and no column. Existing governance rules are preserved. A registered table keeps its columns; it is read through the refreshed spec's operation.
+**Refresh.** POST to `/admin/openapi/refresh/{source_id}`. This re-parses the spec through `_load_and_register`, which registers nothing and adds no table or column. Existing governance rules are preserved. A registered table keeps its columns; it is read through the refreshed spec's operation.
 
 **Limitations.**
 
@@ -294,11 +319,11 @@ A table registered from any remote schema source is an ordinary Provisa table. N
 
 **Security model.** All five governance layers apply:
 
-1. Domain access control — the table's `domain_id` gates which roles can see it.
-2. Row-level security (RLS) — row filters configured on the table are injected into every query, regardless of interface.
-3. Column visibility — `visible_to` list on each column controls per-role field exposure.
-4. Column masking — masking rules apply in Stage 2 of the governance pipeline.
-5. Predicate guard — masked columns are rejected from WHERE and HAVING clauses.
+1. Domain access control: the table's `domain_id` gates which roles can see it.
+2. Row-level security (RLS): row filters configured on the table are injected into every query, regardless of interface.
+3. Column visibility: `visible_to` list on each column controls per-role field exposure.
+4. Column masking: masking rules apply in Stage 2 of the governance pipeline.
+5. Predicate guard: masked columns are rejected from WHERE and HAVING clauses.
 
 Ad-hoc queries against remote tables are allowed on the user's rights alone. Access is the same rights-based model everywhere (table and column rights plus approved relationships), with no governance mode per table.
 

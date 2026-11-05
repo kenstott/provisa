@@ -21,7 +21,6 @@ import {
   useContext,
   useId,
   useLayoutEffect,
-  useState,
   type CSSProperties,
   type FormEventHandler,
   type HTMLAttributes,
@@ -35,6 +34,7 @@ import { createPortal } from "react-dom";
 import { PanelActionsContext, PanelNoticeContext } from "../list/panelActions";
 import { PanelHeadStyle } from "../list/PanelHeadStyle";
 import { useHelpNaming } from "./useHelpNaming";
+import { usePendingPress } from "./usePendingPress";
 import { Tip } from "../Tip";
 import { readValue } from "./readValue";
 import type { DetailField } from "../detail/DetailFields";
@@ -522,24 +522,13 @@ export function FormFooter({
   form?: string;
 }) {
   const { t } = useTranslation();
-  const [pending, setPending] = useState(false);
+  const { busy: pending, press: save } = usePendingPress(onSave);
   const head = useContext(PanelActionsContext);
   const notice = useContext(PanelNoticeContext);
   // A form read is not saved: it offers no Save or Cancel.
   if (useFormRead()) return null;
   const inHead = panel && head !== undefined;
   const busy = saving || pending;
-  const save = () => {
-    const result = onSave?.();
-    if (result instanceof Promise) {
-      setPending(true);
-      // Settled either way: a refused save returns the button to rest, and the form shows why.
-      void result.then(
-        () => setPending(false),
-        () => setPending(false),
-      );
-    }
-  };
   // In a panel's head the two take the head's one style (PanelHeadStyle): borderless and
   // compact; the words and icons are the same. Cancel leaves its bordered look at the foot.
   const inHeadLook = inHead ? ({ variant: undefined } as const) : {};

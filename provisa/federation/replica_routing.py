@@ -146,9 +146,11 @@ def home_keeps_by_key(source: Any, table: Any, region: Any) -> bool:
     source in place. Such a region holds only the rows its own reads fetched, so no other region
     reads the table from it."""
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
+    engine = _judging_engine(region.engine_kind)
     return bool(getattr(table, "row_materialize", False)) and not engine_attaches(
-        _judging_engine(region.engine_kind), _source_type(source)
+        engine, reach_type(source, engine)
     )
 
 

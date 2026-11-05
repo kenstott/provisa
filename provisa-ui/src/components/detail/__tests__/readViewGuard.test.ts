@@ -41,6 +41,7 @@ const PANELS: Readonly<Record<string, Panel>> = {
     form: ["pages/SecurityPage.tsx", "components/admin/ResidencyGrant.tsx"],
     notAField: {
       "residencyGrant.right": "the data_residency capability's tick: shown in Capabilities",
+      "residencyGrant.values": "data_residency's value: shown with it in Capabilities",
     },
   },
   "Commands (functions and webhooks)": {

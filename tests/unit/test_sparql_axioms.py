@@ -36,9 +36,11 @@ from provisa.sparql_query.vocabulary import (
     XSD,
     Grounding,
     build_vocabulary,
+    table_class_iri,
     term_iri,
 )
 from provisa.transpiler.transpile import transpile_to_duckdb
+from tests.unit.table_ids import table_id
 from tests.unit.test_cypher_min_hops import _node
 
 BASE = "https://data.example.com"
@@ -50,7 +52,15 @@ PREFIX skos: <{SKOS}>
 PREFIX xsd: <{XSD}>
 PREFIX term: <{BASE}/vocab/term/>
 """
-_COLUMNS = ("id", "subject", "predicate", "object", "object_iri", "object_literal")
+_COLUMNS = (
+    "id",
+    "subject",
+    "predicate",
+    "object",
+    "object_iri",
+    "object_literal",
+    "object_table_id",
+)
 _AXIOMS = [
     ("Customer", f"{RDF}type", None, f"{OWL}Class", None),
     ("Order", f"{RDF}type", None, f"{OWL}Class", None),
@@ -137,10 +147,24 @@ def con() -> duckdb.DuckDBPyConnection:
     c.execute("CREATE SCHEMA pg.public")
     c.execute(
         "CREATE TABLE pg.public._axioms_ontology (id VARCHAR, subject VARCHAR, predicate VARCHAR, "
-        "object VARCHAR, object_iri VARCHAR, object_literal VARCHAR)"
+        "object VARCHAR, object_iri VARCHAR, object_literal VARCHAR, object_table_id INTEGER)"
     )
     for i, row in enumerate(_AXIOMS):
-        c.execute("INSERT INTO pg.public._axioms_ontology VALUES (?, ?, ?, ?, ?, ?)", [i, *row])
+        c.execute(
+            "INSERT INTO pg.public._axioms_ontology VALUES (?, ?, ?, ?, ?, ?, NULL)", [i, *row]
+        )
+    # The Class term of each table a column binds "legal name" of is its domain too, as the view says.
+    for i, term in enumerate(("Customer", "Organisation"), start=len(_AXIOMS) + len(_DATA)):
+        c.execute(
+            "INSERT INTO pg.public._axioms_ontology VALUES (?, 'legal name', ?, ?, NULL, NULL, NULL)",
+            [i, f"{RDFS}domain", term],
+        )
+    # REQ-2163: a Property term is also the rdfs:domain of each table class a column binds it of.
+    for i, label in enumerate(_DATA, start=len(_AXIOMS)):
+        c.execute(
+            "INSERT INTO pg.public._axioms_ontology VALUES (?, 'legal name', ?, NULL, NULL, NULL, ?)",
+            [i, f"{RDFS}domain", table_id(label)],
+        )
     c.execute(
         "CREATE TABLE pg.public._closure_ontology (subject VARCHAR, object VARCHAR, "
         "predicate VARCHAR, hops INTEGER)"
@@ -258,3 +282,47 @@ def test_values_of_a_superproperty_include_its_subproperties_values(con):
 def test_a_one_or_more_path_leaves_the_class_itself_out(con):
     rows = _answer(con, "SELECT ?c WHERE { ?c rdfs:subClassOf+ term:Party }")
     assert rows == [(t("Customer"),), (t("Organisation"),)]
+
+
+def _table_class(domain: str, table: str) -> str:
+    return table_class_iri(BASE, domain, table)
+
+
+def test_a_term_is_the_domain_of_each_table_class_whose_column_binds_it(con):
+    rows = _answer(con, "SELECT ?c WHERE { term:legal%20name rdfs:domain ?c }")
+    assert rows == sorted(
+        [
+            (_table_class("hr", "persons"),),
+            (_table_class("hr", "companies"),),
+            (t("Customer"),),
+            (t("Organisation"),),
+        ]
+    )
+
+
+def test_a_term_bound_class_domain_is_still_answered_with_its_table_classes(con):
+    rows = _answer(con, "SELECT ?p ?c WHERE { ?p rdfs:domain ?c }")
+    assert (t("segment"), t("Customer")) in rows
+    assert (t("legal name"), _table_class("hr", "persons")) in rows
+
+
+def test_a_role_that_cannot_read_a_table_gets_no_domain_triple_for_its_class(con):
+    rows = _answer(
+        con, "SELECT ?c WHERE { term:legal%20name rdfs:domain ?c }", readable=("Person",)
+    )
+    assert rows == sorted(
+        [(_table_class("hr", "persons"),), (t("Customer"),), (t("Organisation"),)]
+    )
+
+
+def test_a_table_class_asked_by_its_iri_finds_the_terms_bound_to_it(con):
+    rows = _answer(con, f"SELECT ?p WHERE {{ ?p rdfs:domain <{_table_class('hr', 'companies')}> }}")
+    assert rows == [(t("legal name"),)]
+    assert (
+        _answer(
+            con,
+            f"SELECT ?p WHERE {{ ?p rdfs:domain <{_table_class('hr', 'companies')}> }}",
+            readable=("Person",),
+        )
+        == []
+    )

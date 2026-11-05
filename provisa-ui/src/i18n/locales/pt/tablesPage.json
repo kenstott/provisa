@@ -11,6 +11,10 @@
     "addViewTitle": "Criar uma nova exibição no SQL Explorer",
     "model": "+ Modelo",
     "modelTitle": "Modelar uma entidade ou fato (esquema estrela / Data Vault)",
+    "modelMenu": "Escolher como modelar",
+    "modelEntityFact": "Entidade/Fato",
+    "modelStarSchema": "Esquema estrela",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Planilha",
     "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas, ontologia, produtos de dados, contratos de dados, qualidade de dados e perfis de dados, uma aba para cada",
     "viewErd": "Ver ERD",
@@ -58,6 +62,7 @@
       "impliedDimensionTitle": "Dimensão implícita — «Habilitar Group By» está ativado para esta tabela"
     },
     "derived": "derivada",
+    "endpointUnread": "Não foi possível ler o documento de API da sua origem",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -83,6 +88,8 @@
     "panelRegisterTable": "Registar tabela",
     "panelNewView": "Nova vista",
     "panelNewModel": "Novo modelo",
+    "panelStarSchema": "Novo esquema estrela",
+    "panelDataVault": "Novo Data Vault",
     "history": {
       "badge": "histórico",
       "title": "Guarda histórico: consulte-o em uma data ou como registrado (Viagem no tempo)"

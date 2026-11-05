@@ -20,20 +20,28 @@ written the first of these ways that applies:
 3. the subtype declares an emulation for the dialect: the native answer, from the base value;
 4. otherwise the operation is refused by name, never answered over the text form.
 
-What a subtype's native form and emulations are is declared once, on ``ir_types.SUBTYPES``.
+What a subtype's native form and emulations are is declared once, on ``ir_types.SUBTYPES``. A
+range's or multirange's emulation is provisa.transpiler.pg_ranges, which writes them before this
+runs on any dialect but PostgreSQL: what it leaves refused it has refused itself, by name.
+
+A subtyped column read as a value is marked too, so that it leaves the source as PostgreSQL's
+canonical text (``ir_types.read_form``), the form it lands in.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import TypeGuard
 
+import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.ir_types import SUBTYPES
+from provisa.core.ir_types import SUBTYPES, read_form
 from provisa.transpiler.semantic_dialect import ContainedByOrEqual, ContainsOrEqual
 
 MARKER = "provisa_subtype"
+READ_MARKER = "provisa_subtype_read"
 
 COMPARISONS = (
     exp.EQ,
@@ -45,8 +53,8 @@ COMPARISONS = (
     exp.NullSafeEQ,
     exp.NullSafeNEQ,
 )
-# The type's own operators: inet's << <<= >> >>= &&, a range's (and a shape's) && @> <@, a
-# tsvector's @@.
+# The type's own operators: inet's << <<= >> >>= &&, a range's (and a shape's) && @> <@ << >> &<
+# &> -|-, a tsvector's @@.
 OPERATORS = (
     exp.BitwiseLeftShift,
     exp.BitwiseRightShift,
@@ -56,6 +64,9 @@ OPERATORS = (
     exp.ArrayContainsAll,
     exp.ArrayContainedBy,
     exp.MatchAgainst,
+    exp.ExtendsLeft,
+    exp.ExtendsRight,
+    exp.Adjacent,
 )
 _OPERATOR_NAMES = {
     exp.BitwiseLeftShift: "<<",
@@ -66,6 +77,9 @@ _OPERATOR_NAMES = {
     exp.ArrayContainsAll: "@>",
     exp.ArrayContainedBy: "<@",
     exp.MatchAgainst: "@@",
+    exp.ExtendsLeft: "&<",
+    exp.ExtendsRight: "&>",
+    exp.Adjacent: "-|-",
 }
 
 
@@ -94,6 +108,50 @@ def marked(node: exp.Expr | None) -> tuple[exp.Expr, str] | None:
         return None
     column, subtype = node.expressions
     return column, subtype.name
+
+
+def read_marker(column: exp.Expr, subtype: str) -> exp.Anonymous:
+    """The marker the compiler emits for a read of a subtyped column as a value."""
+    return exp.Anonymous(this=READ_MARKER, expressions=[column, exp.Literal.string(subtype)])
+
+
+def marked_read(node: exp.Expr | None) -> tuple[exp.Expr, str] | None:
+    """The column and subtype a read marker carries; None when ``node`` is not one."""
+    if not isinstance(node, exp.Anonymous) or str(node.this).lower() != READ_MARKER:
+        return None
+    column, subtype = node.expressions
+    return column, subtype.name
+
+
+def resolve_reads(sql: str, dialect: str) -> str:
+    """``sql`` (already in ``dialect``) with every read marker replaced by the subtype's read form
+    there: the value as PostgreSQL's canonical text (REQ-2171). A statement with no marker is
+    returned as given, unparsed."""
+    if READ_MARKER not in sql.lower():
+        return sql
+    tree = sqlglot.parse_one(sql, read=dialect)
+    for node in list(tree.find_all(exp.Anonymous)):
+        found = marked_read(node)
+        if found is None:
+            continue
+        column, subtype = found
+        form = read_form(subtype, dialect)
+        if form is None:
+            node.replace(column)
+        else:
+            node.replace(
+                sqlglot.parse_one(form.format(col=column.sql(dialect=dialect)), read=dialect)
+            )
+    return tree.sql(dialect=dialect)
+
+
+def strip_reads(tree: exp.Expr, held_as_text: Callable[[exp.Expr], bool]) -> None:
+    """Replace, in place, each read marker whose column ``held_as_text`` accepts with the bare
+    column: the address it is read from already holds the text (a replica)."""
+    for node in list(tree.find_all(exp.Anonymous)):
+        found = marked_read(node)
+        if found is not None and held_as_text(found[0]):
+            node.replace(found[0])
 
 
 def is_spatial_call(node: exp.Expr | None) -> TypeGuard[exp.Func]:
@@ -197,215 +255,12 @@ def _mac_key(value: exp.Expr) -> exp.Expr:
     return exp.Lower(this=stripped)
 
 
-_RANGE_BOUNDS = {
-    "int4range": "INT",
-    "int8range": "BIGINT",
-    "numrange": "DECIMAL(38, 10)",
-    "tsrange": "TIMESTAMP",
-    "tstzrange": "TIMESTAMPTZ",
-    "daterange": "DATE",
-}
-
-
-def _one_day() -> exp.Expr:
-    return exp.Interval(this=exp.Literal.string("1"), unit=exp.Var(this="DAY"))
-
-
-# The discrete ranges, by the step between their values.
-_DISCRETE_STEP = {
-    "int4range": lambda: exp.Literal.number(1),
-    "int8range": lambda: exp.Literal.number(1),
-    "daterange": _one_day,
-}
-
-
-class _Range:
-    """A range's parts, read from its PostgreSQL text form (``[lo,hi)``, ``empty``)."""
-
-    def __init__(self, text: exp.Expr, subtype: str) -> None:
-        bound = exp.DataType.build(_RANGE_BOUNDS[subtype])
-        inner = exp.Substring(
-            this=text.copy(),
-            start=exp.Literal.number(2),
-            length=exp.Sub(this=exp.Length(this=text.copy()), expression=exp.Literal.number(2)),
-        )
-
-        def part(n: int) -> exp.Expr:
-            raw = exp.Anonymous(
-                this="REPLACE",
-                expressions=[
-                    exp.SplitPart(
-                        this=inner.copy(),
-                        delimiter=exp.Literal.string(","),
-                        part_index=exp.Literal.number(n),
-                    ),
-                    exp.Literal.string('"'),
-                    exp.Literal.string(""),
-                ],
-            )
-            # 'empty' has no bounds to read.
-            written = exp.Case(
-                ifs=[
-                    exp.If(
-                        this=exp.EQ(
-                            this=exp.Lower(this=text.copy()),
-                            expression=exp.Literal.string("empty"),
-                        ),
-                        true=exp.Null(),
-                    )
-                ],
-                default=exp.Nullif(this=raw, expression=exp.Literal.string("")),
-            )
-            return exp.Cast(this=written, to=bound)
-
-        def char_at(start: exp.Expr) -> exp.Expr:
-            return exp.Substring(this=text.copy(), start=start, length=exp.Literal.number(1))
-
-        lo, hi = part(1), part(2)
-        lo_inc = exp.EQ(this=char_at(exp.Literal.number(1)), expression=exp.Literal.string("["))
-        hi_inc = exp.EQ(
-            this=char_at(exp.Length(this=text.copy())), expression=exp.Literal.string("]")
-        )
-        written_empty = exp.EQ(
-            this=exp.Lower(this=text.copy()), expression=exp.Literal.string("empty")
-        )
-        step = _DISCRETE_STEP.get(subtype)
-        if step is not None:
-            # A discrete range is canonical as PostgreSQL makes it: [lo, hi), a bound written
-            # the other way moved by one step ('(1,5]' is '[2,6)').
-            lo = exp.Case(
-                ifs=[exp.If(this=lo_inc, true=lo.copy())],
-                default=exp.Add(this=lo, expression=step()),
-            )
-            hi = exp.Case(
-                ifs=[exp.If(this=hi_inc, true=exp.Add(this=hi.copy(), expression=step()))],
-                default=hi,
-            )
-            lo_inc, hi_inc = exp.true(), exp.false()
-            reversed_or_point = exp.GTE(this=lo.copy(), expression=hi.copy())
-        else:
-            reversed_or_point = _or(
-                exp.GT(this=lo.copy(), expression=hi.copy()),
-                _and(
-                    exp.EQ(this=lo.copy(), expression=hi.copy()),
-                    exp.Not(this=_and(lo_inc.copy(), hi_inc.copy())),
-                ),
-            )
-        self.lo, self.hi, self.lo_inc, self.hi_inc = lo, hi, lo_inc, hi_inc
-        # Empty as PostgreSQL makes a range whose bounds hold no value ('[3,3)').
-        self.empty = _or(
-            written_empty,
-            _and(
-                exp.Not(this=exp.Is(this=lo.copy(), expression=exp.Null())),
-                exp.Not(this=exp.Is(this=hi.copy(), expression=exp.Null())),
-                reversed_or_point,
-            ),
-        )
-
-
 def _or(*parts: exp.Expr) -> exp.Expr:
     return exp.Paren(this=exp.or_(*parts))
 
 
 def _and(*parts: exp.Expr) -> exp.Expr:
     return exp.Paren(this=exp.and_(*parts))
-
-
-def _before(lo: exp.Expr, lo_inc: exp.Expr, hi: exp.Expr, hi_inc: exp.Expr) -> exp.Expr:
-    """Whether a lower bound comes before an upper bound (an unbounded side always does)."""
-    return _or(
-        exp.Is(this=lo.copy(), expression=exp.Null()),
-        exp.Is(this=hi.copy(), expression=exp.Null()),
-        exp.LT(this=lo.copy(), expression=hi.copy()),
-        _and(exp.EQ(this=lo.copy(), expression=hi.copy()), lo_inc.copy(), hi_inc.copy()),
-    )
-
-
-def _overlaps(a: _Range, b: _Range) -> exp.Expr:
-    return _and(
-        exp.Not(this=a.empty.copy()),
-        exp.Not(this=b.empty.copy()),
-        _before(a.lo, a.lo_inc, b.hi, b.hi_inc),
-        _before(b.lo, b.lo_inc, a.hi, a.hi_inc),
-    )
-
-
-def _contains_range(a: _Range, b: _Range) -> exp.Expr:
-    lower = _or(
-        exp.Is(this=a.lo.copy(), expression=exp.Null()),
-        _and(
-            exp.Not(this=exp.Is(this=b.lo.copy(), expression=exp.Null())),
-            _or(
-                exp.LT(this=a.lo.copy(), expression=b.lo.copy()),
-                _and(
-                    exp.EQ(this=a.lo.copy(), expression=b.lo.copy()),
-                    _or(a.lo_inc.copy(), exp.Not(this=b.lo_inc.copy())),
-                ),
-            ),
-        ),
-    )
-    upper = _or(
-        exp.Is(this=a.hi.copy(), expression=exp.Null()),
-        _and(
-            exp.Not(this=exp.Is(this=b.hi.copy(), expression=exp.Null())),
-            _or(
-                exp.GT(this=a.hi.copy(), expression=b.hi.copy()),
-                _and(
-                    exp.EQ(this=a.hi.copy(), expression=b.hi.copy()),
-                    _or(a.hi_inc.copy(), exp.Not(this=b.hi_inc.copy())),
-                ),
-            ),
-        ),
-    )
-    return _or(b.empty.copy(), _and(exp.Not(this=a.empty.copy()), lower, upper))
-
-
-def _contains_element(a: _Range, element: exp.Expr, subtype: str) -> exp.Expr:
-    e = exp.Cast(this=element, to=exp.DataType.build(_RANGE_BOUNDS[subtype]))
-    return _and(
-        exp.Not(this=a.empty.copy()),
-        _or(
-            exp.Is(this=a.lo.copy(), expression=exp.Null()),
-            exp.LT(this=a.lo.copy(), expression=e.copy()),
-            _and(exp.EQ(this=a.lo.copy(), expression=e.copy()), a.lo_inc.copy()),
-        ),
-        _or(
-            exp.Is(this=a.hi.copy(), expression=exp.Null()),
-            exp.LT(this=e.copy(), expression=a.hi.copy()),
-            _and(exp.EQ(this=e.copy(), expression=a.hi.copy()), a.hi_inc.copy()),
-        ),
-    )
-
-
-def _is_range_text(node: exp.Expr, marked_side: bool) -> bool:
-    """Whether a range operator's other operand is a range (not an element of one)."""
-    if marked_side:
-        return True
-    node = _unwrapped(node)
-    return (
-        isinstance(node, exp.Literal)
-        and node.is_string
-        and (node.name[:1] in "[(" or node.name.lower() == "empty")
-    )
-
-
-def _emulated_range(node: exp.Expr, subtype: str) -> exp.Expr | None:
-    """A range operator from the bounds and their inclusivity; None for anything else."""
-    if not isinstance(node, (exp.ArrayOverlaps, exp.ArrayContainsAll, exp.ArrayContainedBy)):
-        return None
-    left, right = node.this, node.expression
-    if isinstance(node, exp.ArrayContainedBy):  # a <@ b is b @> a
-        left, right = right, left
-    left_marked = marked(_unwrapped(left)) is not None
-    right_marked = marked(_unwrapped(right)) is not None
-    if not _is_range_text(left, left_marked):
-        return None  # an element @> a range: no such operator
-    container = _Range(_value(left), subtype)
-    if isinstance(node, exp.ArrayOverlaps):
-        return _overlaps(container, _Range(_value(right), subtype))
-    if _is_range_text(right, right_marked):
-        return _contains_range(container, _Range(_value(right), subtype))
-    return _contains_element(container, _value(right), subtype)
 
 
 # --- address operators on DuckDB, which has <<= and >>= of its own ------------------------------
@@ -454,6 +309,13 @@ def _native(node: exp.Expr, subtype: str, dialect: str, form: str) -> exp.Expr |
             elif isinstance(inner, exp.Literal) and inner.is_string:
                 arg.replace(native_form(inner.copy(), form))
         return node
+    if dialect == "postgres" and isinstance(node, exp.Func):
+        # A function of the type (lower(range)): the marked argument gets the type.
+        for arg in _call_arguments(node):
+            found = marked(_unwrapped(arg))
+            if found is not None:
+                arg.replace(native_form(found[0].copy(), form))
+        return node
     if dialect == "postgres":
         # Every operator is PostgreSQL's own; the marked side gets the type, the other side's
         # type (a range or an element, a tsquery) PostgreSQL infers.
@@ -474,8 +336,6 @@ def _emulated(node: exp.Expr, subtype: str) -> exp.Expr | None:
     if semantics == "mac" and isinstance(node, (exp.Ordered, exp.Between, exp.In, *COMPARISONS)):
         _each_operand(node, _mac_key)
         return node
-    if semantics == "range":
-        return _emulated_range(node, subtype)
     return None
 
 
@@ -513,10 +373,15 @@ def resolve_subtypes(tree: exp.Expr, dialect: str) -> exp.Expr:
 
 __all__ = [
     "MARKER",
+    "READ_MARKER",
     "SubtypeOperationRefused",
     "is_spatial_call",
     "marked",
+    "marked_read",
     "native_form",
+    "read_marker",
+    "resolve_reads",
     "resolve_subtypes",
+    "strip_reads",
     "subtype_marker",
 ]

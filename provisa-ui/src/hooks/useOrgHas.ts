@@ -10,13 +10,13 @@
 
 import { useCallback, useRef } from "react";
 import { useLazyQuery } from "@apollo/client/react";
-import type { DataProduct, RegisteredTable, Source } from "../types/admin";
+import type { DataProduct, TableRow, Source } from "../types/admin";
 import type { OrgHas } from "../tour/tourPrerequisites";
 import { fetchMcpChatStatus } from "../api/mcpChat";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   SourcesQuery as SOURCES_QUERY,
-  TablesQuery as TABLES_QUERY,
+  TableRowsQuery as TABLE_ROWS_QUERY,
 } from "./admin.graphql";
 
 /**
@@ -35,6 +35,8 @@ import {
  */
 export const READ_ATTEMPTS = 3;
 
+const CACHED_CATALOG = { fetchPolicy: "cache-first" } as const;
+
 /** Apollo's AbortError: a DOMException where there is one, which is not an Error everywhere. */
 function isAbort(e: unknown): boolean {
   return typeof e === "object" && e !== null && "name" in e && e.name === "AbortError";
@@ -51,9 +53,15 @@ async function unlessCutShort<T>(load: () => Promise<T>): Promise<T> {
 }
 
 export function useOrgHas(): () => Promise<OrgHas> {
-  const [loadSources] = useLazyQuery<{ sources: Source[] }>(SOURCES_QUERY);
-  const [loadTables] = useLazyQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY);
-  const [loadProducts] = useLazyQuery<{ dataProducts: DataProduct[] }>(DATA_PRODUCTS_QUERY);
+  // From the cached catalog, else the server: a lazy query is a watch query, whose default
+  // (cache-and-network) answers only from the server -- the tables read alone took 4-5 s on the e2e
+  // lane's org (run 40692080291), every time the Deep Dives menu opened.
+  const [loadSources] = useLazyQuery<{ sources: Source[] }>(SOURCES_QUERY, CACHED_CATALOG);
+  const [loadTables] = useLazyQuery<{ tables: TableRow[] }>(TABLE_ROWS_QUERY, CACHED_CATALOG);
+  const [loadProducts] = useLazyQuery<{ dataProducts: DataProduct[] }>(
+    DATA_PRODUCTS_QUERY,
+    CACHED_CATALOG,
+  );
   const inFlight = useRef<Promise<OrgHas> | null>(null);
   const read = useCallback(async (): Promise<OrgHas> => {
     const [sources, tables, products, polly] = await Promise.all([

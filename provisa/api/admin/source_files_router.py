@@ -5,9 +5,10 @@
 """A file-based source's file, given by upload (REQ-1997): the request's body is the file,
 streamed into the org's folder (``provisa.core.source_uploads``). Only the org's source
 registrars may upload. A source that exists already is provisioned again, so its next read is of
-the new file."""
+the new file. A JDBC source's driver jar is given the same way (REQ-2191), where this server runs
+a customer's driver at all: elsewhere it is refused by name, as a save of it would be."""
 
-# Requirements: REQ-1997
+# Requirements: REQ-1997, REQ-2191
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
@@ -16,6 +17,7 @@ from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.core import source_uploads
 from provisa.core.sandbox_limits import SandboxDiskFull
+from provisa.jdbc_source import SOURCE_TYPE as JDBC_SOURCE
 
 router = APIRouter(prefix="/admin/sources", tags=["admin", "sources"])
 
@@ -31,6 +33,19 @@ async def upload_file(request: Request, source_id: str, name: str, type: str) ->
             None,
             type=type,
         )
+    if type == JDBC_SOURCE:
+        from provisa.jdbc_source.jdbc import JdbcRefused, refuse_where_not_allowed
+
+        try:
+            refuse_where_not_allowed()
+        except JdbcRefused as refused:
+            raise ApiError(
+                403,
+                "schema.jdbc_driver_refused",
+                f"Source {source_id!r}: {refused}",
+                None,
+                source=source_id,
+            ) from None
     length = request.headers.get("content-length")
     try:
         path, size = await source_uploads.receive(

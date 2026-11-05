@@ -25,7 +25,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_rewrite import make_semantic_sql
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from tests.unit.test_nested_field_arguments import _EDGES, _TERMS, _answer, _compiled, meta  # noqa: F401
 
 
@@ -69,13 +69,13 @@ def answer(request, meta):  # noqa: F811
         tree = sqlglot.parse_one(make_semantic_sql(root.sql, ctx), read="postgres")
         sql = tree.transform(lambda n: _bound(n, root.params)).sql(dialect="postgres")
         rows = con.execute(sql).fetchall()
-        return serialize_rows(rows, root.columns, "terms")["data"]["terms"]
+        return serialize_rows(rows, root.columns, "on_terms")["data"]["on_terms"]
 
     return _on_postgres
 
 
 def _ledger(body: str) -> str:
-    return f'{{ terms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
+    return f'{{ on_terms(where: {{ name: {{ eq: "ledger" }} }}) {{ id {body} }} }}'
 
 
 def test_a_to_many_below_a_to_one_keeps_every_row(answer):
@@ -130,23 +130,23 @@ def test_sibling_to_many_fields_are_each_their_own_list(answer):
     "query, path",
     [
         # A JSON value at the root.
-        ('{ terms(where: { name: { eq: "old" } }) { id edgesOut { id } } }', ()),
+        ('{ on_terms(where: { name: { eq: "old" } }) { id edgesOut { id } } }', ()),
         # A lateral join: the field takes a where.
         (
-            '{ terms(where: { name: { eq: "old" } }) { id '
+            '{ on_terms(where: { name: { eq: "old" } }) { id '
             'edgesOut(where: { relType: { eq: "KIND_OF" } }) { id } } }',
             (),
         ),
         # A JSON value under a lateral join: customer -RELATED_TO-> old has no edges.
         (
-            '{ terms(where: { name: { eq: "customer" } }) { id '
+            '{ on_terms(where: { name: { eq: "customer" } }) { id '
             'edgesOut(where: { relType: { eq: "RELATED_TO" } }) { id targetTerm { id '
             "edgesOut { id } } } } }",
             ("edgesOut", 0, "targetTerm"),
         ),
         # A JSON value inside a JSON value: party -KIND_OF-> old has no edges.
         (
-            '{ terms(where: { name: { eq: "party" } }) { id '
+            '{ on_terms(where: { name: { eq: "party" } }) { id '
             "edgesOut { id targetTerm { id edgesOut { id } } } } }",
             ("edgesOut", 0, "targetTerm"),
         ),
@@ -163,10 +163,49 @@ def test_on_trino_the_empty_default_is_an_empty_list_and_the_subquery_is_still_j
     from provisa.transpiler.transpile import transpile_to_trino
 
     _schema, ctx, _con = meta
-    root = _compiled(meta, "{ terms { id edgesOut { id } } }")
+    root = _compiled(meta, "{ on_terms { id edgesOut { id } } }")
     trino = transpile_to_trino(make_semantic_sql(root.sql, ctx))
     # The correlated JSON subquery is still rewritten to a joined aggregate for Trino...
     assert "_grel_" in trino and "LEFT JOIN" in trino
     # ...and its default is the text '[]' its json_format(...) aggregate is compared with.
-    assert "COALESCE(" in trino and "'[]')" in trino
+    assert "COALESCE(_grel_0._val, '[]')" in trino
     assert "CAST('[]' AS JSON)" not in trino
+    assert "JSON_PARSE('[]')" not in trino
+
+
+_TRINO_LIST = (
+    'SELECT "t0"."order_id", COALESCE((SELECT json_agg(json_build_object(\'eventType\', '
+    '"t1"."event_type")) FROM {source}), CAST(\'[]\' AS JSON)) AS "orderEvents" '
+    'FROM "pg"."public"."orders" "t0"'
+)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # a relationship with a row limit: the correlated subquery stays inline
+        '(SELECT * FROM "ch"."default"."order_events" "t1" '
+        'WHERE "t1"."order_id" = "t0"."order_id" LIMIT 100) "t1"',
+        # without one: it becomes a joined aggregate (_grel_0)
+        '"ch"."default"."order_events" "t1" WHERE "t1"."order_id" = "t0"."order_id"',
+    ],
+    ids=["inline", "joined"],
+)
+def test_on_trino_a_list_default_is_text_like_its_json_format_aggregate(source):
+    """Trino refuses COALESCE(varchar, json) (TYPE_MISMATCH): the aggregate is json_format(...)
+    text, so its empty default is the text '[]', whatever form the json cast was written in."""
+    from provisa.transpiler.transpile import transpile_to_trino
+
+    trino = transpile_to_trino(_TRINO_LIST.format(source=source))
+    coalesce = sqlglot.parse_one(trino, read="trino").find(exp.Coalesce)
+    assert coalesce is not None
+    (default,) = coalesce.expressions
+    assert default == exp.Literal.string("[]")
+
+
+def test_on_trino_a_json_cast_of_a_list_literal_not_defaulting_an_aggregate_stays_json():
+    """A statement's own cast of '[]' to json is a json array on Trino (JSON_PARSE), not text."""
+    from provisa.transpiler.transpile import transpile_to_trino
+
+    trino = transpile_to_trino("SELECT CAST('[]' AS JSON) AS j, COALESCE(NULL, CAST('[]' AS JSON))")
+    assert trino.count("JSON_PARSE('[]')") == 2

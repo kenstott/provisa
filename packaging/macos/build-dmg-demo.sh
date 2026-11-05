@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Provisa Demo DMG — loads demo images into Lima VM, writes extension compose file.
+# Build Provisa Demo DMG — loads demo images into the user's Docker, writes extension compose file.
 # Requires: docker (build host), hdiutil, codesign, python3
 # Prerequisite: Observability extension must be installed before Demo.
 set -euo pipefail
@@ -141,18 +141,15 @@ write_installer_script() {
   cat > "${dest}/install-demo.sh" <<'INSTALLER'
 #!/usr/bin/env bash
 # Provisa Demo Extension Installer
-# Loads demo images into the Lima VM and writes the extension compose file.
+# Loads demo images into the user's Docker (docker load) and writes the extension compose file.
 # Requires Observability extension to be installed first.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROVISA_HOME="${PROVISA_INSTALL_DIR:-${HOME}/.provisa}"
-LIMA_VM_NAME="provisa"
 OBS_EXT="${PROVISA_HOME}/extensions/observability/docker-compose.observability.yml"
 EXT_DIR="${PROVISA_HOME}/extensions/demo"
 EXT_COMPOSE="${EXT_DIR}/docker-compose.demo.yml"
-
-LIMACTL="${PROVISA_HOME}/bin/limactl"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa-demo]${NC} %s\n" "$*"; }
@@ -168,40 +165,30 @@ check_deps() {
     err "Provisa Observability is not installed. Install Provisa-Obs.dmg first."
     exit 1
   fi
-  if [ ! -x "$LIMACTL" ] && [ ! -L "$LIMACTL" ]; then
-    err "limactl not found at ${LIMACTL}. Reinstall Provisa Core."
-    exit 1
-  fi
 }
 
-ensure_vm_running() {
-  local state
-  state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM_NAME" 2>/dev/null || echo "missing")"
-  if [ "$state" = "missing" ]; then
-    err "Provisa VM not found. Run Provisa.app first to complete first-launch setup."
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    err "Docker is required for the demo extension."
+    err "Install Docker Desktop or colima, start it, then run this installer again."
     exit 1
   fi
-  if [ "$state" != "Running" ]; then
-    info "Starting Provisa VM..."
-    "$LIMACTL" start --yes "$LIMA_VM_NAME"
-    ok "VM started."
+  if ! docker info >/dev/null 2>&1; then
+    err "Docker is installed but not running. Start Docker Desktop (or colima) and run this installer again."
+    exit 1
   fi
 }
 
 import_images() {
-  info "Importing demo images into Provisa VM (no network required)..."
+  info "Loading demo images into Docker (no network required)..."
   local count=0
   for gz_file in "${SCRIPT_DIR}/images"/*.tar.gz; do
     [ -f "$gz_file" ] || continue
-    local name
-    name="$(basename "$gz_file")"
-    info "  Importing: ${name}"
-    gunzip -c "$gz_file" | \
-      "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-        sudo ctr --namespace=default images import -
+    info "  docker load $(basename "$gz_file")"
+    docker load -i "$gz_file" >/dev/null
     count=$((count + 1))
   done
-  ok "Imported ${count} images."
+  ok "Loaded ${count} images."
 }
 
 write_extension() {
@@ -245,7 +232,7 @@ main() {
   printf "\nProvisa Demo Extension Installer\n"
   printf "═══════════════════════════════════════════\n\n"
   check_deps
-  ensure_vm_running
+  require_docker
   import_images
   write_extension
   ok "Demo installed."

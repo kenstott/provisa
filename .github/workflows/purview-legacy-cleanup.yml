@@ -1,0 +1,56 @@
+# One-off cleanup of the objects earlier Purview e2e runs left under the old fixed names
+# (REQ-254). Manual only: `list` inventories, `delete` removes exactly the ids given.
+name: Purview legacy cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: list (read-only) or delete (exactly the ids given)
+        type: choice
+        options: [list, delete]
+        required: true
+      ids:
+        description: 'JSON of ids from a list run (required for delete)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  purview-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROVISA_E2E_PURVIEW_ENDPOINT: ${{ secrets.PROVISA_E2E_PURVIEW_ENDPOINT }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      MODE: ${{ inputs.mode }}
+      IDS: ${{ inputs.ids }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install provisa
+        run: python -m pip install .
+      - name: Require ids for delete
+        if: env.MODE == 'delete' && env.IDS == ''
+        run: |
+          echo "delete needs the ids input" >&2
+          exit 1
+      - name: List
+        if: env.MODE == 'list'
+        run: python scripts/purview_legacy_cleanup.py list --out purview-legacy-ids.json
+      - name: Upload ids
+        if: env.MODE == 'list'
+        uses: actions/upload-artifact@v4
+        with:
+          name: purview-legacy-ids
+          path: purview-legacy-ids.json
+          if-no-files-found: error
+      - name: Delete
+        if: env.MODE == 'delete'
+        run: python scripts/purview_legacy_cleanup.py delete --ids "$IDS"

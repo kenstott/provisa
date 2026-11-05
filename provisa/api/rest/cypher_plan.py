@@ -149,6 +149,18 @@ class CypherTranslation:
         return [bindable(params.get(name)) for name in self.ordered_params]
 
 
+def parameter_shape(params: dict[str, Any]) -> list[tuple[str, ...]]:
+    """The shape, not the values: which parameters are supplied and as what type -- a temporal
+    value as its kind (a local time or date time, one with an offset) and its zone, which its
+    translation is made for (REQ-2173), so a local value is never answered as a zoned one's."""
+    from provisa.gql.temporal import value_kind, value_zone
+
+    return sorted(
+        (name, type(value).__name__, value_kind(value) or "", value_zone(value) or "")
+        for name, value in params.items()
+    )
+
+
 class TranslationRequest:
     """One request's view of the plan store: look the translation up, or record the one it builds."""
 
@@ -169,8 +181,7 @@ class TranslationRequest:
             surface,
             _access_key(domain_access),
             cypher,
-            # The shape, not the values: which parameters are supplied and as what type.
-            sorted((name, type(value).__name__) for name, value in params.items()),
+            parameter_shape(params),
             extra_anchors=(*_registry_anchors(state), state.relationships),
         )
 

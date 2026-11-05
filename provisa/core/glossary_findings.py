@@ -10,8 +10,9 @@
 
 """What a curator should look at in the ontology (REQ-2146): findings, by term, each
 ``{kind, message, params}``. One function per kind, in :data:`FINDERS`; a kind is added by adding
-one. A plain draft -- a term not yet defined -- is not a finding: drafts are the ontology's
-ordinary state, and the term list already says which they are."""
+one. A plain draft -- a term not yet approved -- is not a finding: drafts are the ontology's
+ordinary state, and the term list already says which they are. A term reaching data only through
+drafts is (path_pending), naming the approval that grounds it."""
 
 # Requirements: REQ-2146
 
@@ -23,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from provisa.core.glossary import GROUNDED_PENDING, NOT_GROUNDED
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import identity
 from provisa.core.schema_org import glossary_terms
@@ -135,18 +137,63 @@ async def retirement_blocked(conn: "Connection") -> dict[int, list[Finding]]:
 
 
 async def no_data(conn: "Connection") -> dict[int, list[Finding]]:
-    """An in-service Concept that reaches no data: no chain of in-service edges leads it to a
-    term holding a column or a table (REQ-1387)."""
+    """A draft Concept that reaches no data: no chain of in-service edges leads it to a term
+    holding a column or a table (REQ-1387). An approved one is approved_not_grounded."""
     grounded = await glossary_repo.grounded_ids(conn)
     statuses = await glossary_repo.term_statuses(conn)
     out: dict[int, list[Finding]] = {}
     for term_id, status in statuses.items():
-        if status in ("deprecated", "retired") or term_id in grounded:
+        if status != "draft" or term_id in grounded:
             continue
         if await glossary_repo.term_role(conn, term_id) == "concept":
             out[term_id] = [
                 _finding("no_data", "the concept is connected to no term that holds data")
             ]
+    return out
+
+
+async def approved_not_grounded(conn: "Connection") -> dict[int, list[Finding]]:
+    """An approved term that reaches no data (REQ-1387): an agent cannot see it."""
+    grounding = await glossary_repo.grounding(conn)
+    statuses = await glossary_repo.term_statuses(conn)
+    return {
+        term_id: [
+            _finding(
+                "approved_not_grounded",
+                "the term is approved but reaches no data, so no agent sees it",
+            )
+        ]
+        for term_id, status in statuses.items()
+        if status == "approved" and grounding[term_id] == NOT_GROUNDED
+    }
+
+
+async def path_pending(conn: "Connection") -> dict[int, list[Finding]]:
+    """A term that reaches data only through terms not yet approved (REQ-1387): Grounded · path
+    pending approval, naming the terms whose approval alone grounds it. A pending term no single
+    approval grounds names none."""
+    grounding = await glossary_repo.grounding(conn)
+    unlocking = await glossary_repo.pending_on(conn)
+    names = {
+        r.id: r.name
+        for r in (
+            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
+        ).fetchall()
+    }
+    out: dict[int, list[Finding]] = {}
+    for term_id, value in grounding.items():
+        if value != GROUNDED_PENDING:
+            continue
+        drafts = sorted(names[d] for d in unlocking.get(term_id, []))
+        out[term_id] = [
+            _finding(
+                "path_pending",
+                "Grounded · path pending approval"
+                + (f": approving {', '.join(drafts)} grounds it" if drafts else ""),
+                case="approve" if drafts else None,
+                approve=", ".join(drafts),
+            )
+        ]
     return out
 
 
@@ -156,6 +203,8 @@ FINDERS: dict[str, Finder] = {
     "tag_wrong_kind": tag_wrong_kind,
     "retirement_blocked": retirement_blocked,
     "no_data": no_data,
+    "approved_not_grounded": approved_not_grounded,
+    "path_pending": path_pending,
 }
 
 

@@ -13,7 +13,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "../../../test-utils/render";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { labelColor } from "../graph-model";
 import { SparqlVocabularyPanel } from "../SparqlVocabularyPanel";
 import type { SparqlVocabulary } from "../sparql";
@@ -24,8 +24,8 @@ const vocabulary: SparqlVocabulary = {
   base: BASE,
   prefixes: { hr: `${BASE}/hr/`, term: `${BASE}/vocab/term/`, rel: `${BASE}/vocab/rel/` },
   classes: [
-    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], superclasses: [] },
-    { iri: `${BASE}/hr/contractors`, kind: "table", labels: ["Contractors"], superclasses: [] },
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/hr/contractors`, kind: "table", labels: ["Contractors"], parameterized: false, parameterized_labels: [], superclasses: [] },
   ],
   predicates: [
     {
@@ -38,8 +38,8 @@ const vocabulary: SparqlVocabulary = {
     { iri: HIRE_DATE, kind: "term", label: "Contractors", property: "start", datatype: "xsd:date" },
   ],
   edges: [
-    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Employees", target: "Sites" },
-    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Contractors", target: "Sites" },
+    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Employees", target: "Sites", join: "WORKS_IN" },
+    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Contractors", target: "Sites", join: "WORKS_IN" },
   ],
   concepts: [],
 };
@@ -69,11 +69,11 @@ const two: SparqlVocabulary = {
   base: BASE,
   prefixes: { hr: `${BASE}/hr/`, ops: `${BASE}/ops/`, rel: `${BASE}/vocab/rel/` },
   classes: [
-    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], superclasses: [] },
-    { iri: `${BASE}/ops/shifts`, kind: "table", labels: ["Shifts"], superclasses: [] },
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/ops/shifts`, kind: "table", labels: ["Shifts"], parameterized: false, parameterized_labels: [], superclasses: [] },
   ],
   predicates: [],
-  edges: [{ iri: `${BASE}/vocab/rel/WORKS`, type: "WORKS", source: "Employees", target: "Shifts" }],
+  edges: [{ iri: `${BASE}/vocab/rel/WORKS`, type: "WORKS", source: "Employees", target: "Shifts", join: "WORKS" }],
   concepts: [],
 };
 const panel = (checked: string[], colors: Record<string, string> = {}) =>
@@ -120,5 +120,326 @@ describe("the SPARQL vocabulary as the Cypher sidebar reads it", () => {
     expect(screen.queryByTestId("sparql-class-ops:shifts")).toBeNull();
     // An edge is in a domain where either of its labels is: hr has Employees.
     expect(screen.getByTestId("sparql-edge-rel:WORKS")).toBeInTheDocument();
+  });
+});
+
+// REQ-2135: a property is named by its local name; a column's own under its class, a Property term
+// once with its classes; the search reads the names across every class.
+const shop: SparqlVocabulary = {
+  base: BASE,
+  prefixes: { hr: `${BASE}/hr/`, term: `${BASE}/vocab/term/` },
+  classes: [
+    { iri: `${BASE}/hr/pets`, kind: "table", labels: ["PS__Pets"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/hr/owners`, kind: "table", labels: ["PS__Owners"], parameterized: false, parameterized_labels: [], superclasses: [] },
+  ],
+  predicates: [
+    {
+      iri: `${BASE}/hr/pets#status`,
+      kind: "column",
+      label: "PS__Pets",
+      property: "status",
+      datatype: "x",
+    },
+    { iri: `${BASE}/hr/pets#name`, kind: "column", label: "PS__Pets", property: "name", datatype: "x" },
+    {
+      iri: `${BASE}/hr/owners#name`,
+      kind: "column",
+      label: "PS__Owners",
+      property: "name",
+      datatype: "x",
+    },
+    {
+      iri: `${BASE}/vocab/term/email`,
+      kind: "term",
+      classes: [
+        { class: `${BASE}/hr/pets`, label: "PS__Pets", property: "contact", datatype: "x" },
+        { class: `${BASE}/hr/owners`, label: "PS__Owners", property: "mail", datatype: "x" },
+      ],
+      domains: [],
+    },
+  ],
+  edges: [],
+  concepts: [],
+};
+
+describe("the Properties list", () => {
+  const onPick = vi.fn();
+  const shopPanel = () =>
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={shop}
+        error={null}
+        onPick={onPick}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+  const search = (text: string) =>
+    fireEvent.change(screen.getByTestId("sparql-property-search"), { target: { value: text } });
+
+  it("names a pill by the property's local name, not its class", () => {
+    shopPanel();
+    expect(screen.getByTestId("sparql-predicate-PS__Pets.status")).toHaveTextContent(/^status$/);
+    expect(screen.getByTestId("sparql-predicate-PS__Owners.name")).toHaveTextContent(/^name$/);
+  });
+
+  it("groups columns under a collapsible header per class", () => {
+    shopPanel();
+    expect(screen.getByTestId("sparql-property-class-hr:pets")).toHaveTextContent("hr:pets (2)");
+    expect(screen.getByTestId("sparql-property-class-hr:owners")).toHaveTextContent(
+      "hr:owners (1)",
+    );
+    expect(screen.getByTestId("sparql-property-class-hr:pets")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    fireEvent.click(screen.getByTestId("sparql-property-class-hr:pets"));
+    expect(screen.getByTestId("sparql-property-class-hr:pets")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("shows a Property term once, by its name", () => {
+    shopPanel();
+    expect(screen.getAllByText("email")).toHaveLength(1);
+    expect(screen.getByTestId("sparql-predicate-term:email")).toHaveTextContent(/^email$/);
+  });
+
+  it("filters by property name across classes, opening what matches", () => {
+    shopPanel();
+    search("NAM");
+    expect(screen.getByTestId("sparql-predicate-PS__Pets.name")).toBeInTheDocument();
+    expect(screen.getByTestId("sparql-predicate-PS__Owners.name")).toBeInTheDocument();
+    expect(screen.queryByTestId("sparql-predicate-PS__Pets.status")).toBeNull();
+    expect(screen.queryByTestId("sparql-predicate-term:email")).toBeNull();
+    expect(screen.getByTestId("sparql-property-class-hr:owners")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("does not match a class's name, and says when nothing matches", () => {
+    shopPanel();
+    search("pets");
+    expect(screen.queryByTestId("sparql-predicate-PS__Pets.name")).toBeNull();
+    // Beside the two empty lists this vocabulary has anyway.
+    expect(screen.getAllByText("Nothing here for your role.")).toHaveLength(3);
+  });
+
+  it("picks the property's IRI", () => {
+    shopPanel();
+    fireEvent.click(screen.getByTestId("sparql-predicate-PS__Pets.status"));
+    expect(onPick).toHaveBeenCalledWith({ kind: "predicate", iri: `${BASE}/hr/pets#status` });
+  });
+
+  it("carries a class pill's IRI to a frame it is dropped on", () => {
+    shopPanel();
+    const pill = screen.getByTestId("sparql-class-hr:pets");
+    expect(pill).toHaveAttribute("draggable", "true");
+    const setData = vi.fn();
+    fireEvent.dragStart(pill, { dataTransfer: { setData } });
+    expect(setData).toHaveBeenCalledWith("text/x-provisa-label", `${BASE}/hr/pets`);
+  });
+});
+
+describe("the classes, by prefix", () => {
+  it("lists each prefix's classes under a header with their count, pills by local name", () => {
+    const onPickClass = vi.fn();
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={two}
+        error={null}
+        onPick={onPickClass}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    expect(screen.getByTestId("sparql-class-prefix-hr")).toHaveTextContent("hr (1)");
+    expect(screen.getByTestId("sparql-class-prefix-ops")).toHaveTextContent("ops (1)");
+    const pill = screen.getByTestId("sparql-class-hr:employees");
+    expect(pill).toHaveTextContent(/^employees$/);
+    // The full name is the tooltip's and the pick's, the colour the full label's.
+    expect(pill).toHaveStyle({ background: labelColor("hr:employees") });
+    fireEvent.click(pill);
+    expect(onPickClass).toHaveBeenCalledWith({ kind: "class", iri: `${BASE}/hr/employees` });
+  });
+});
+
+// REQ-1723 (EVERY EXPLORER FOLLOWS THE CHECKED DOMAINS), REQ-2163's readable-term rule: a term or
+// concept is shown when one of its domains is checked, and one with no domain is always shown.
+const termed: SparqlVocabulary = {
+  base: BASE,
+  prefixes: { hr: `${BASE}/hr/`, ops: `${BASE}/ops/`, term: `${BASE}/vocab/term/` },
+  classes: [
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    {
+      iri: `${BASE}/vocab/term/Staff`,
+      kind: "term",
+      labels: [],
+      parameterized: false,
+      parameterized_labels: [],
+      superclasses: [],
+      domains: ["hr"],
+    },
+    {
+      iri: `${BASE}/vocab/term/Shift`,
+      kind: "term",
+      labels: [],
+      parameterized: false,
+      parameterized_labels: [],
+      superclasses: [],
+      domains: ["ops"],
+    },
+    {
+      iri: `${BASE}/vocab/term/Both`,
+      kind: "term",
+      labels: [],
+      parameterized: false,
+      parameterized_labels: [],
+      superclasses: [],
+      domains: ["hr", "ops"],
+    },
+    { iri: `${BASE}/vocab/term/Loose`, kind: "term", labels: [], parameterized: false, parameterized_labels: [], superclasses: [], domains: [] },
+  ],
+  predicates: [
+    {
+      iri: `${BASE}/vocab/term/pay`,
+      kind: "term",
+      label: "E",
+      property: "p",
+      datatype: "x",
+      domains: ["hr"],
+    },
+    {
+      iri: `${BASE}/vocab/term/roster`,
+      kind: "term",
+      label: "S",
+      property: "r",
+      datatype: "x",
+      domains: ["ops"],
+    },
+    {
+      iri: `${BASE}/vocab/term/note`,
+      kind: "term",
+      label: "S",
+      property: "n",
+      datatype: "x",
+      domains: [],
+    },
+  ],
+  edges: [],
+  concepts: [
+    { iri: `${BASE}/vocab/term/Churn`, name: "Churn", definition: null, domains: ["hr"] },
+    { iri: `${BASE}/vocab/term/Uptime`, name: "Uptime", definition: null, domains: ["ops"] },
+    { iri: `${BASE}/vocab/term/Idea`, name: "Idea", definition: null, domains: [] },
+  ],
+};
+const termPanel = (checked: string[]) =>
+  render(
+    <SparqlVocabularyPanel
+      vocabulary={termed}
+      error={null}
+      onPick={vi.fn()}
+      colorOverrides={{}}
+      checkedDomains={new Set(checked)}
+    />,
+  );
+const ids = (prefix: string) =>
+  screen.queryAllByTestId(new RegExp(`^${prefix}`)).map((e) => e.getAttribute("data-testid"));
+
+describe("the SPARQL vocabulary's terms follow the checked domains", () => {
+  it("shows a term or concept when one of its domains is checked, and one with none always", () => {
+    termPanel(["hr"]);
+    expect(ids("sparql-class-term:")).toEqual([
+      "sparql-class-term:Both",
+      "sparql-class-term:Loose",
+      "sparql-class-term:Staff",
+    ]);
+    expect(ids("sparql-predicate-term:")).toEqual([
+      "sparql-predicate-term:note",
+      "sparql-predicate-term:pay",
+    ]);
+    expect(ids("sparql-concept-")).toEqual(["sparql-concept-Churn", "sparql-concept-Idea"]);
+  });
+
+  it("hides the terms of an unchecked domain, ops here", () => {
+    termPanel(["ops"]);
+    expect(screen.queryByTestId("sparql-class-term:Staff")).toBeNull();
+    expect(screen.getByTestId("sparql-class-term:Shift")).toBeInTheDocument();
+    expect(screen.queryByTestId("sparql-predicate-term:pay")).toBeNull();
+    expect(screen.queryByTestId("sparql-concept-Churn")).toBeNull();
+    expect(screen.getByTestId("sparql-concept-Uptime")).toBeInTheDocument();
+  });
+
+  it("lists every term while no domain is checked", () => {
+    termPanel([]);
+    expect(ids("sparql-class-term:")).toHaveLength(4);
+    expect(ids("sparql-predicate-term:")).toHaveLength(3);
+    expect(ids("sparql-concept-")).toHaveLength(3);
+  });
+
+  it("shows an enterprise-wide term (domain *) under any selection", () => {
+    const v = {
+      ...termed,
+      concepts: [
+        { iri: `${BASE}/vocab/term/Shared`, name: "Shared", definition: null, domains: ["*"] },
+      ],
+    };
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={v}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set(["hr"])}
+      />,
+    );
+    expect(screen.getByTestId("sparql-concept-Shared")).toBeInTheDocument();
+  });
+
+  it("shows a relationship without its rel: prefix", () => {
+    const { container } = render(
+      <SparqlVocabularyPanel
+        vocabulary={vocabulary}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    expect(container.querySelector('[data-testid="sparql-edge-rel:WORKS_IN"]')?.textContent).toBe(
+      "WORKS_IN",
+    );
+  });
+});
+
+describe("a pill dragged to a frame", () => {
+  const dragged = (testId: string) => {
+    const setData = vi.fn();
+    fireEvent.dragStart(screen.getByTestId(testId), { dataTransfer: { setData } });
+    return setData.mock.calls[0];
+  };
+
+  it("carries each kind under its own type", () => {
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={vocabulary}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    for (const section of ["domains", "properties", "relationships"])
+      fireEvent.click(screen.getByTestId(`sparql-vocab-${section}-toggle`));
+    fireEvent.click(screen.getByTestId("sparql-property-terms-toggle"));
+    expect(dragged("sparql-domain-hr")).toEqual(["text/x-provisa-domain", "hr"]);
+    expect(dragged("sparql-edge-rel:WORKS_IN")).toEqual([
+      "text/x-provisa-edge",
+      `${BASE}/vocab/rel/WORKS_IN`,
+    ]);
+    const term = document.querySelector('[data-testid^="sparql-predicate-"]') as HTMLElement;
+    expect(dragged(term.dataset.testid as string)).toEqual(["text/x-provisa-property", HIRE_DATE]);
   });
 });

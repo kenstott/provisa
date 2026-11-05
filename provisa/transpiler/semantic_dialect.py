@@ -31,10 +31,71 @@ writes. A PostgreSQL target writes its own (``transpile.postgres_array_filters``
 from __future__ import annotations
 
 from sqlglot import exp
+from sqlglot.dialects.bigquery import BigQuery
+from sqlglot.dialects.clickhouse import ClickHouse
+from sqlglot.dialects.dialect import rename_func
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.dialects.presto import Presto
+from sqlglot.dialects.spark import Spark
+from sqlglot.dialects.trino import Trino
 from sqlglot.generator import Generator
 
 Postgres.Generator.TRANSFORMS[exp.TryCast] = Generator.trycast_sql
+
+
+def _flagged_regex(self: Generator, expression: exp.RegexpILike) -> str:
+    """~* where the dialect has no case-insensitive match: sqlglot writes a function none has."""
+    flagged = exp.DPipe(this=exp.Literal.string("(?i)"), expression=expression.expression.copy())
+    return self.sql(exp.RegexpLike(this=expression.this.copy(), expression=flagged))
+
+
+for _dialect in (Trino, Presto, Spark, BigQuery):
+    _dialect.Generator.TRANSFORMS[exp.RegexpILike] = _flagged_regex
+Trino.Generator.TRANSFORMS[exp.IsInf] = rename_func("IS_INFINITE")
+Trino.Generator.TRANSFORMS[exp.Log] = lambda self, expression: (
+    self.func("LOG", expression.this, expression.expression)
+    if expression.expression
+    else self.func("LOG", exp.Literal.number(10), expression.this)
+)
+#: The names that have one spelling on ClickHouse: its other functions take any case.
+for _function, _name in (
+    (exp.Cbrt, "cbrt"),
+    (exp.Sinh, "sinh"),
+    (exp.Cosh, "cosh"),
+    (exp.Acosh, "acosh"),
+    (exp.Asinh, "asinh"),
+    (exp.Atanh, "atanh"),
+):
+    ClickHouse.Generator.TRANSFORMS[_function] = rename_func(_name)
+
+
+def _split_part(self: Generator, expression: exp.SplitPart) -> str:
+    """ClickHouse's parts are an array's elements: past the last one an empty value, as here."""
+    value = self.sql(expression.this)
+    delimiter = self.sql(expression.args["delimiter"])
+    part = self.sql(expression.args["part_index"])
+    # An Array cannot be Nullable, so the parts are of the value with its NULL taken out first.
+    return (
+        f"if(isNull({value}), NULL, "
+        f"splitByString(assumeNotNull({delimiter}), assumeNotNull({value}))[{part}])"
+    )
+
+
+ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
+# Its LIKE has no ESCAPE clause: a backslash escapes there already, and it is the only escape the
+# forms write.
+
+
+def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
+    """A truncated timestamp, where ClickHouse's dateTrunc answers a date for a month or a year."""
+    unit = expression.text("unit").lower()
+    if not unit:  # a NULL part, which dateTrunc takes for no part at all
+        return "CAST(NULL AS Nullable(DateTime))"
+    return f"toDateTime({self.func('dateTrunc', exp.Literal.string(unit), expression.this)})"
+
+
+ClickHouse.Generator.TRANSFORMS[exp.TimestampTrunc] = _truncated
+ClickHouse.Generator.TRANSFORMS[exp.Escape] = lambda self, expression: self.sql(expression.this)
 
 
 def _root_read_back(name: str) -> None:
@@ -100,3 +161,6 @@ from sqlglot.dialects.duckdb import DuckDB  # noqa: E402
 _reads_containment(DuckDB.Parser)
 DuckDB.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e, "<<=")
 DuckDB.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")
+
+from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
+from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads

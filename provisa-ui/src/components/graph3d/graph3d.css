@@ -68,6 +68,26 @@
   opacity: 0.45;
   text-decoration: line-through;
 }
+/* REQ-1387: a term that reaches data carries the ground symbol before its name: the same four
+   strokes as GroundIcon (a 24 grid, 2px, round), cut from the text colour so it is green when the
+   path to data is approved and muted while it awaits approval. */
+.g3d-label-grounded::before,
+.g3d-label-grounded-pending::before {
+  content: "";
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  margin-inline-end: 0.25em;
+  vertical-align: -0.2em;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v8'/%3E%3Cpath d='M5 11h14'/%3E%3Cpath d='M8 15h8'/%3E%3Cpath d='M11 19h2'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v8'/%3E%3Cpath d='M5 11h14'/%3E%3Cpath d='M8 15h8'/%3E%3Cpath d='M11 19h2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.g3d-label-grounded::before {
+  background: var(--mantine-color-teal-6);
+}
+.g3d-label-grounded-pending::before {
+  background: var(--mantine-color-dimmed);
+}
 /* REQ-2130: a class grounded in tables not all declared one entity, marked after its name. */
 .g3d-label-unlinked::after {
   content: " \26A0";
@@ -131,4 +151,50 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* REQ-2174: the 2D view's lane diagram, drawn by cytoscape over the whole stage. */
+.g3d-lanes-canvas {
+  position: absolute;
+  inset: 0;
+}
+/* REQ-2174: a lane node's card stays while the pointer is on it, so its links can be followed. */
+.p3d-tip.g3d-tip-live {
+  pointer-events: auto;
+  max-width: 320px;
+}
+/* A node's facts (nodeFacts): label and value per row, in the card and the detail panel. */
+.g3d-facts {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.g3d-fact {
+  display: grid;
+  grid-template-columns: minmax(64px, max-content) 1fr;
+  gap: 8px;
+}
+.g3d-fact dt {
+  color: var(--text-muted);
+}
+.g3d-fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  /* A long description is cut to a few lines; its page holds the rest. */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.g3d-fact-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+/* The detail panel's names (connections, what is shown) take the row's whole width and wrap at
+   their break points (BreakableName), never cut with an ellipsis. */
+.p3d-row-name.is-wrap {
+  white-space: normal;
+  text-overflow: clip;
 }

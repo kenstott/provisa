@@ -15,7 +15,12 @@ services:
   cockroachdb:
     image: cockroachdb/cockroach:v24.1.0
     restart: unless-stopped
-    command: start-single-node --insecure
+    # --cache and --max-sql-memory default to a quarter of the host's memory each (CockroachDB's
+    # own defaults, kept for a demo install); the UI e2e sizes them for its 16 GB runner, where this
+    # runs beside every other demo source (provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts).
+    command: >-
+      start-single-node --insecure --cache=${PROVISA_DEMO_COCKROACHDB_CACHE:-.25}
+      --max-sql-memory=${PROVISA_DEMO_COCKROACHDB_SQL_MEMORY:-.25}
     ports:
       - "${PROVISA_DEMO_COCKROACHDB_PORT:-26258}:26257"
     volumes:

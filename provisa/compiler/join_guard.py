@@ -51,6 +51,8 @@ from typing import Any
 import sqlglot.expressions as exp
 from sqlglot.optimizer.scope import Scope, build_scope
 
+from provisa.compiler import walk_checks
+
 
 @dataclass(frozen=True)
 class _Base:
@@ -239,7 +241,14 @@ class _Resolver:
                 view = marked_view(name)
                 if view is None or not isinstance(source, Scope):
                     continue
-                view_id = self._table_id(exp.Table(this=exp.to_identifier(view)))
+                # A view keyed schema.name (an ontology Class, REQ-2163) is its schema's table.
+                schema, _, name = view.rpartition(".")
+                view_id = self._table_id(
+                    exp.Table(
+                        this=exp.to_identifier(name),
+                        db=exp.to_identifier(schema) if schema else None,
+                    )
+                )
                 if view_id is None:
                     continue
                 instance = id(source.expression)
@@ -303,6 +312,10 @@ class _Resolver:
                         alts = [alt | {instance} for alt in alts]
                     per_source.append(alts)
             found = [frozenset().union(*choice) for choice in product(*per_source)]
+        # Alternatives are a set: two branches reading the same instances (none, for a graph
+        # session's tables, which are no registered table) are one choice. Kept as a list of
+        # each, a pattern of unions multiplies them hop by hop (arms ** hops of the same set).
+        found = list(dict.fromkeys(found))
         self._instances[key] = found
         return found
 
@@ -693,6 +706,9 @@ def _unrelated_in(
                 for c in _conjuncts(having.this if having is not None else None)
                 if c.find(exp.AggFunc) is None
             ]
+        # A walk's own check that it takes no relationship twice, as the graph compiler wrote it
+        # (provisa.compiler.walk_checks): the maintainer's one exemption from this rule.
+        conditions = [c for c in conditions if not walk_checks.compiled(c)]
 
         def one_instance(side: exp.Expr, scope: Scope = scope, mine: set[int] = mine) -> int | None:
             """The one instance every column of ``side`` is a plain column of, else None."""

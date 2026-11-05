@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Eindpunt",
+    "copyEndpoint": "Eindpunt-URL kopiëren",
+    "prefixes_one": "{{count}} prefix",
+    "prefixes_other": "{{count}} prefixen",
+    "prefixName": "Prefix",
+    "namespace": "Naamruimte",
+    "removePrefix": "Prefix verwijderen",
+    "invalidPrefix": "Alleen letters, cijfers, - en _",
+    "addHint": "Vul de laatste rij in om een prefix toe te voegen. Prefixen benoemen termen in resultaten en in pill-query's; een query wordt uitgevoerd zoals hij is geschreven.",
+    "restore": "Prefixen herstellen"
+  }
+}

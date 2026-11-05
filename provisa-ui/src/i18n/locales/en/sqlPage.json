@@ -9,6 +9,6 @@
     "detachToSemantic": "Detach to semantic SQL",
     "expansionTitle": "Metric Expansion",
     "expansionLoading": "Fetching expansion...",
-    "expansionNoMetric": "This statement references no metric — there is nothing to expand."
+    "expansionNoMetric": "This statement references no metric, so there is nothing to expand."
   }
 }

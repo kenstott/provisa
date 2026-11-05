@@ -11,13 +11,12 @@
 title: Instant data lake
 description: >-
   A city's open-data drop (311 complaints in monthly CSV files, building permits in Parquet, the
-  budget in Excel and inspections in JSON) read in place as one governed catalog, with no load
-  step: which neighborhoods have the most complaints near active construction?
+  budget in Excel and inspections in JSON) read in place as one governed catalog, with no load step. Which neighborhoods have the most complaints near active construction?
 screenshot: card.png
 published: true
 group: bi
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release carrying the demo.
-requires_provisa: 0.1.0a485
+requires_provisa: 0.1.0a496
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Chaos. Organized."

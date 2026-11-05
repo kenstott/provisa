@@ -32,8 +32,8 @@ REQ-281: Source-level ``federation_hints`` use the Provisa-branded @provisa
 vocabulary (``join=broadcast|partitioned``, ``reorder=none|auto``,
 ``broadcast_size=<size>``), translated to Trino session props by
 ``provisa/compiler/directives.py:translate_federation_hints`` at query time.
-Raw Trino session-prop keys still pass through (deprecated) for backward
-compatibility.
+Only that vocabulary reaches an engine's session: a raw Trino session-prop key
+is not passed through.
 
 REQ-811: The ``# @provisa key=value`` GraphQL comment hint vocabulary includes
 a ``route=federated|direct`` directive parsed by extract_graphql_hints in
@@ -344,8 +344,12 @@ def when_query_executed_via_federation(shared_data: dict) -> None:
     shared_data["query_result"] = result
 
 
-@then("Provisa injects the corresponding SET SESSION statements before execution")
-def then_set_session_injected_before_execution(shared_data: dict) -> None:
+@then(
+    "Provisa sets the corresponding session properties on the statement's session before execution"
+)
+def then_session_properties_set_before_execution(shared_data: dict) -> None:
+    # execute_trino applies each session property as SET SESSION on the cursor that then runs
+    # the statement, so the properties are in force on the statement's session.
     executed = shared_data["executed_statements"]
     session_hints = shared_data["session_hints"]
     cleaned_sql = shared_data["cleaned_sql"]
@@ -706,12 +710,11 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
             f"translated session property {prop!r} is not a recognised Trino session prop"
         )
 
-    # Verify backward compatibility: raw Trino session-prop keys pass through unchanged.
+    # Only the vocabulary reaches the session: a raw Trino session-prop key does not pass through.
     raw_trino_hints = {"join_distribution_type": "PARTITIONED"}
     raw_result = translate_federation_hints(raw_trino_hints)
-    assert raw_result.get("join_distribution_type") == "PARTITIONED", (
-        "raw Trino session-prop key join_distribution_type did not pass through "
-        f"unchanged (deprecated backward compat); got {raw_result!r}"
+    assert raw_result == {}, (
+        f"raw Trino session-prop key join_distribution_type passed through; got {raw_result!r}"
     )
 
     # Round-trip: inject the translated properties via execute_trino and verify

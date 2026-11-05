@@ -32,7 +32,7 @@ from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semanti
 from provisa.compiler.view_expand import expand_view_refs
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.printer import print_cypher
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.gql.assembler import assemble_rows
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.translator import cypher_to_sql
@@ -96,11 +96,12 @@ def glossary():
         con.execute(f'CREATE TABLE {_T}"{t["table_name"]}" ({cols})')
     con.execute(
         f"INSERT INTO {_T}_terms (id, name, definition, ref_count, deprecated, retired, "
-        "live, identity_gap, term_domains) VALUES "
-        "(1, 'party', 'a party', 2, false, false, true, false, '|sales|'), "
-        "(2, 'customer', 'who buys', 1, false, false, true, false, '|sales|'), "
-        "(3, 'ledger', 'books', 0, false, false, true, false, '|finance|'), "
-        "(4, 'old party', 'was a party', 0, true, true, false, false, '|sales|')"
+        "status, grounding, identity_gap, term_domains) VALUES "
+        "(1, 'party', 'a party', 2, false, false, 'approved', 'grounded', false, '|sales|'), "
+        "(2, 'customer', 'who buys', 1, false, false, 'approved', 'grounded', false, '|sales|'), "
+        "(3, 'ledger', 'books', 0, false, false, 'approved', 'grounded', false, '|finance|'), "
+        "(4, 'old party', 'was a party', 0, true, true, 'retired', 'not_grounded', false, "
+        "'|sales|')"
     )
     con.execute(
         f"INSERT INTO {_T}_term_edges (id, from_term_id, to_term_id, rel_type) VALUES "
@@ -210,7 +211,7 @@ def _graphql_terms_and_edges(rows: list[dict]) -> tuple[set, set]:
 
     def visit(row: dict) -> None:
         terms.add(row["id"])
-        for side, end in (("edges_out", "target_term"), ("edges_in", "source_term")):
+        for side, end in (("edgesOut", "targetTerm"), ("edgesIn", "sourceTerm")):
             for e in row.get(side) or []:
                 edges.add(e["id"])
                 if len(e[end]) > 1:
@@ -252,7 +253,7 @@ def test_as_nodes_it_answers_the_same_terms_and_term_edges(glossary, key):
 def test_an_unfiltered_junction_field_is_an_untyped_relationship_and_a_filtered_one_its_types():
     unfiltered = _cypher(_READS[_ONTOLOGY[0]], GRAPHQL)
     assert "MATCH (n0)-[r0]->(n1:Terms)" in unfiltered
-    assert "rel_type: r0.relType" in unfiltered
+    assert "relType: r0.relType" in unfiltered
     filtered = _cypher(_READS[_ONTOLOGY[2]], GRAPHQL)
     assert "-[r0:KIND_OF|PART_OF]->" in filtered
 
@@ -267,7 +268,7 @@ def test_an_unfiltered_junction_field_is_an_untyped_relationship_and_a_filtered_
     ],
 )
 def test_a_condition_on_a_relationship_is_an_exists_over_its_pattern(glossary, where):
-    text = f"{{ ont__terms(where: {where}) {{ id name }} }}"
+    text = f"{{ on_terms(where: {where}) {{ id name }} }}"
     cypher = _cypher(text, GRAPHQL)
     assert "EXISTS { MATCH (n0)" in cypher
     expected = _graphql_answer(glossary, text)
@@ -281,13 +282,13 @@ def test_a_condition_on_a_relationship_is_an_exists_over_its_pattern(glossary, w
 @pytest.mark.parametrize("op", ["like", "ilike"])
 def test_a_like_pattern_matches_as_sql_s_does(glossary, pattern, op):
     value = pattern.upper() if op == "ilike" else pattern
-    text = f'{{ ont__terms(where: {{ name: {{ {op}: "{value}" }} }}) {{ id }} }}'
+    text = f'{{ on_terms(where: {{ name: {{ {op}: "{value}" }} }}) {{ id }} }}'
     expected = _graphql_answer(glossary, text)
     assert _sorted(_cypher_answer(glossary, _cypher(text, GRAPHQL))) == _sorted(expected)
 
 
 def test_a_like_pattern_prints_as_the_string_predicate_it_is():
-    text = '{{ ont__terms(where: {{ name: {{ {op}: "{p}" }} }}) {{ id }} }}'
+    text = '{{ on_terms(where: {{ name: {{ {op}: "{p}" }} }}) {{ id }} }}'
     printed = {
         (op, p): _cypher(text.format(op=op, p=p), GRAPHQL).splitlines()[1]
         for op, p in [
@@ -318,8 +319,8 @@ def test_an_unfiltered_junction_field_is_refused_where_other_relationships_join_
 
     extra = RelationshipMapping(
         rel_type="MENTORS",
-        source_label="ONT__Terms",
-        target_label="ONT__Terms",
+        source_label="ON_Terms",
+        target_label="ON_Terms",
         join_source_column="id",
         join_target_column="id",
         field_name="mentors",
@@ -335,7 +336,7 @@ def test_an_unfiltered_junction_field_is_refused_where_other_relationships_join_
 
 
 def test_as_nodes_a_level_with_its_own_limit_is_refused_by_name():
-    text = "{ ont__terms { id edgesOut(limit: 1) { id targetTerm { id } } } }"
+    text = "{ on_terms { id edgesOut(limit: 1) { id targetTerm { id } } } }"
     _g, _cg, _schema, ctx, lm = _model()
     with pytest.raises(GraphQLLoweringRefused, match="the limit of the relationship edgesOut"):
         lower_read(parse(text), ctx, lm, None, NODES)

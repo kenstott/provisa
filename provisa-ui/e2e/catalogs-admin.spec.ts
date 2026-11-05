@@ -93,7 +93,7 @@ test("a catalog is connected once, kept with its domains, and its credential nev
     await expect(page.getByTestId(`catalog-api-key-${i}`)).toHaveValue("");
     await expect(page.getByTestId(`catalog-api-key-${i}`)).toHaveAttribute(
       "placeholder",
-      "Set — leave blank to keep",
+      "Set. Leave blank to keep.",
     );
 
     // The connection test is the provider's own health check against the address as kept.

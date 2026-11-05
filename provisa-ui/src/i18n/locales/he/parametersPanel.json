@@ -13,7 +13,8 @@
       "query_param": "פרמטר שאילתה",
       "graphql_arg": "ארגומנט GraphQL",
       "grpc_input": "שדה בבקשת gRPC",
-      "query_arg": "ארגומנט של השאילתה המקורית"
+      "query_arg": "ארגומנט של השאילתה המקורית",
+      "column_value": "ערך עמודה"
     }
   }
 }

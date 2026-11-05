@@ -418,6 +418,30 @@ class _SeamSource:
             return await asyncio.to_thread(seam, self._source, schema)
 
 
+def index_task_name(kind: str, source_id: str) -> str:
+    """The background task name of a source's catalog ``kind`` ("index" or "reindex") walk, in
+    the bound org: a source id names a source within one org only."""
+    from provisa.core.request_context import require_current_org
+
+    return f"catalog-{kind}:{require_current_org()}:{source_id}"
+
+
+def stop_indexing(source_id: str) -> None:
+    """Cancel every catalog walk of ``source_id`` in the bound org; waits for none to end.
+
+    A walk reads the source's catalog and its engine catalog name; once the source is deleted
+    neither exists, so the walk is cancelled before they are removed, never left to fail on them.
+    A queued walk never starts; a running one ends at its next await. That can be minutes away: a
+    background loop runs ``to_thread`` work inline, so a walk inside an adapter read (one that
+    queues behind another read of a server still starting) ends only once the read answers --
+    which a deletion does not wait for (REQ-1824): the walk ends at its first await after the
+    read, and the server it reads is stopped by the deletion."""
+    from provisa.core.connection_loop import cancel_background
+
+    for kind in ("index", "reindex"):
+        cancel_background(index_task_name(kind, source_id))
+
+
 async def index_source(
     source_id: str, pool, engine, source_pools, source_types, state
 ) -> None:  # REQ-464
@@ -466,6 +490,7 @@ async def _index_source_once(
         native_tables,
         unattached_source,
     )
+    from provisa.federation.pgwire_replica import ServerNotServing
 
     source_type = source_types.get(source_id, "")
     _new_index_generation(source_id)  # its schemas' columns are loaded afresh on first search
@@ -477,6 +502,8 @@ async def _index_source_once(
     try:
         async with pool.acquire() as config_conn:
             schemas = await native_schemas(source_id, source_type, source_pools, config_conn)
+    except ServerNotServing:
+        raise  # still starting: index_source asks again; otherwise reported there by name
     except Exception as exc:
         log.warning("catalog_cache: schema list failed for %r: %s", source_id, exc)
         schemas = None
@@ -508,6 +535,8 @@ async def _index_source_once(
                 tables = await native_tables(
                     source_id, source_type, schema, source_pools, config_conn, state
                 )
+        except ServerNotServing:
+            raise  # still starting: index_source asks again; otherwise reported there by name
         except Exception as exc:
             log.warning(
                 "catalog_cache: the driver's table list failed for %r/%r: %s",

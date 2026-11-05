@@ -22,7 +22,7 @@
     "properties": "Proprietà",
     "copyValue": "Copia valore",
     "resizePanel": "Ridimensiona il pannello di ispezione",
-    "junctionTable": "tramite {{table}}",
+    "junctionTable": "proprietà da {{table}}",
     "openTable": "Apri la sua tabella",
     "openRelationship": "Apri la sua relazione"
   }

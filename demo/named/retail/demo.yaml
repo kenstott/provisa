@@ -10,7 +10,7 @@
 # The retail demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
 # by scripts/gen-site-demos.mjs. published: true
 # Provisa, is beside it.
-title: One retail group, two regions
+title: A Tale of Two Regions
 description: >-
   A retail group with an EU and a US subsidiary, run as one business in two regions under one
   model: can it do that without breaking GDPR? EU customer data stays in the EU, group reporting
@@ -31,7 +31,7 @@ visitor:
     region: eu
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
-requires_provisa: 0.1.0a491
+requires_provisa: 0.1.0a497
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Data Residency"

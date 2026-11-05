@@ -28,7 +28,7 @@ import { Braces, Check, ChevronRight, Copy, ExternalLink, X } from "lucide-react
 import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { Relationship } from "../../types/admin";
-import { PALETTE, labelColor } from "./graph-model";
+import { INJECTED_PROPS, PALETTE, labelColor, ownColumnName } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import type { CanvasHighlight } from "./canvas/canvas-types";
 import CodeMirror from "@uiw/react-codemirror";
@@ -44,6 +44,8 @@ interface OverviewData {
 }
 
 interface InspectorProps {
+  /** Why a SPARQL node's properties could not be read, said where they would be listed. */
+  describeError?: string;
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   graphStats?: GraphStats;
   overviewData?: OverviewData;
@@ -62,23 +64,9 @@ interface InspectorProps {
   labelToTableId: Record<string, number>;
 }
 
-// The injected degree metrics are surfaced in the GRAPH STATS section — hide them from PROPERTIES so
-// they don't appear twice (degreeCentrality was the visible duplicate).
-const HIDDEN_PROPS = new Set([
-  "l1Cluster",
-  "l2Cluster",
-  "l3Cluster",
-  "scl1",
-  "scl2",
-  "scl3",
-  "degIn",
-  "degOut",
-  "degTotal",
-  "degreeCentrality",
-]);
-
 export function Inspector({
   selected,
+  describeError,
   graphStats,
   overviewData,
   highlight = null,
@@ -157,10 +145,16 @@ export function Inspector({
       // its columns by name -- never the drawing's internal id, never a value made up for a column
       // the row did not carry.
       const keyRow: [string, unknown][] = "_id" in props ? [["_id", props._id]] : [];
+      // A SPARQL node's own column named as its caption is, saying the same: one row, the column's.
+      const node = selected.data as GNode;
+      const restated = (k: string) =>
+        Object.keys(node.propertyIris ?? {}).some(
+          (column) => ownColumnName(node, column) === k && props[column] === props[k],
+        );
       return [
         ...keyRow,
         ...Object.entries(props)
-          .filter(([k]) => k !== "_id" && !HIDDEN_PROPS.has(k))
+          .filter(([k]) => k !== "_id" && !INJECTED_PROPS.has(k) && !restated(k))
           .sort(([a], [b]) => a.localeCompare(b)),
       ];
     }
@@ -265,6 +259,14 @@ export function Inspector({
       </div>
     );
   }
+
+  // A column of the node's own class reads by its name (pets:breedName is breedName);
+  // a term, a standard predicate or another class's column as written, and one whose name another
+  // row of the panel already goes by.
+  const propName = (k: string): string => {
+    const name = isN ? ownColumnName(selected.data as GNode, k) : null;
+    return name === null || propRows.some(([r]) => r === name) ? k : name;
+  };
 
   const headerLabel = isN
     ? t("graphInspector.nodeProperties")
@@ -528,6 +530,11 @@ export function Inspector({
             </>
           )}
           <div className="gf-insp-section-label">{t("graphInspector.properties")}</div>
+          {describeError && (
+            <Text size="xs" c="red" role="alert" data-testid="inspector-describe-error">
+              {describeError}
+            </Text>
+          )}
           <Table className="gf-inspector-table">
             <Table.Tbody>
               {propRows.map(([k, v]) => {
@@ -539,8 +546,18 @@ export function Inspector({
                       : String(v);
                 return (
                   <Table.Tr key={k} className="gf-prop-row">
-                    <Table.Td className="gf-prop-key">{k}</Table.Td>
-                    <Table.Td className="gf-prop-val">{vs}</Table.Td>
+                    <Table.Td
+                      className="gf-prop-key"
+                      title={isN ? (selected.data as GNode).propertyIris?.[k] : undefined}
+                    >
+                      {propName(k)}
+                    </Table.Td>
+                    <Table.Td
+                      className="gf-prop-val"
+                      title={isN ? (selected.data as GNode).propertyDatatypes?.[k] : undefined}
+                    >
+                      {vs}
+                    </Table.Td>
                     <Table.Td className="gf-prop-copy-cell">
                       <ActionIcon
                         variant="subtle"

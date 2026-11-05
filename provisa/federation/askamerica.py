@@ -90,13 +90,22 @@ class StorageCredentials:
 
 
 def _fetch(api_key: str) -> tuple[int, dict]:
+    """AskAmerica's answer to ``api_key``. One that does not come within ``REQUEST_SECONDS`` is
+    ``AskAmericaUnavailable``, by name (REQ-540): it says nothing about the key, and the steward
+    can retry."""
     import httpx
 
-    response = httpx.get(
-        CREDENTIALS_URL,
-        headers={"X-API-Key": api_key, "User-Agent": USER_AGENT},
-        timeout=REQUEST_SECONDS,
-    )
+    try:
+        response = httpx.get(
+            CREDENTIALS_URL,
+            headers={"X-API-Key": api_key, "User-Agent": USER_AGENT},
+            timeout=REQUEST_SECONDS,
+        )
+    except httpx.TimeoutException as exc:
+        raise AskAmericaUnavailable(
+            f"AskAmerica's credentials API did not answer within {REQUEST_SECONDS:g} seconds; "
+            "try again shortly"
+        ) from exc
     return response.status_code, response.json()
 
 

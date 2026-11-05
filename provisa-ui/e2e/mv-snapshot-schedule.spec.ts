@@ -59,7 +59,18 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
   await page.getByTestId("mv-calendar-new").click();
   await page.getByTestId("calendar-name").fill("e2e-fiscal");
   await expect(page.getByTestId("calendar-version")).toHaveValue("v1");
+  // The modal closes once the save has answered and the calendars are read again: on a busy
+  // runner the save alone took 3.5-4.4 s (run 40177970935), so the 5 s wait for the modal's end
+  // starts at the save's answer, not the click.
+  const saved = page.waitForResponse(
+    (r) =>
+      r.url().includes("/admin/graphql") &&
+      (r.request().postData() ?? "").includes("CreateCalendar"),
+    { timeout: 60000 },
+  );
   await page.getByTestId("calendar-create-submit").click();
+  const savedBody = await (await saved).json();
+  expect(savedBody.data?.createCalendar?.success, JSON.stringify(savedBody)).toBe(true);
 
   // On success the modal closes and the picker auto-selects the new calendar. The create is a server
   // round trip (2-4 s on the CI runner) handled on a main thread still busy with the dev server's

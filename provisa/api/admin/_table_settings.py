@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from provisa.compiler.naming import LabelClash
     from provisa.core.database import Connection
     from provisa.core.models import Table, WriteGrant
+    from provisa.core.repositories.rls import RuleRightTaken
 
 
 class TableSaveRefused(Exception):
@@ -459,10 +460,10 @@ async def save_carried_region(
 
 
 async def row_rule_refusal(
-    conn: "Connection", role_id: str, description: str
-) -> MutationResult | None:  # REQ-041, REQ-2081
-    """Why a row rule cannot bind: it names no role, gives no description, or its role does not
-    exist. None when it can."""
+    conn: "Connection", role_id: str, description: str, rights: list[str] | None = None
+) -> MutationResult | None:  # REQ-041, REQ-2081, REQ-2188
+    """Why a row rule cannot bind: it names no role, gives no description, its rights are not
+    some of R, U and D, or its role does not exist. None when it can."""
     from provisa.core.repositories import role as role_repo
 
     if not role_id:
@@ -475,6 +476,14 @@ async def row_rule_refusal(
             message="A row rule needs a description of what it is for",
             code="schema.rls_rule_description_missing",
         )
+    held = ["R"] if rights is None else rights
+    if not held or any(r not in ("R", "U", "D") for r in held):
+        return MutationResult(
+            success=False,
+            message=f"A row rule's rights are some of R, U and D, not {held!r}",
+            code="schema.rls_rule_invalid",
+            params={"reason": f"rights {held!r}"},
+        )
     if await role_repo.get(conn, role_id) is None:
         return MutationResult(
             success=False,
@@ -483,6 +492,16 @@ async def row_rule_refusal(
             params={"role": role_id},
         )
     return None
+
+
+def right_taken(refused: "RuleRightTaken") -> MutationResult:  # REQ-2188
+    """A save refused for a right already in another of the role's rules on the target."""
+    return MutationResult(
+        success=False,
+        message=str(refused),
+        code="schema.rls_rule_right_taken",
+        params={"role": refused.role_id, "right": refused.right, "rule": refused.rule_id},
+    )
 
 
 async def save_row_rules(info: Any, conn: "Connection", inp: "TableInput", model: "Table") -> None:
@@ -508,7 +527,7 @@ async def save_row_rules(info: Any, conn: "Connection", inp: "TableInput", model
     targets = [t for t in registry if (t.get("alias") or t["table_name"]) == name]
     rule: RLSRuleInput
     for rule in inp.row_rules:
-        refusal = await row_rule_refusal(conn, rule.role_id, rule.description)
+        refusal = await row_rule_refusal(conn, rule.role_id, rule.description, rule.rights)
         if refusal is not None:
             raise TableSaveRefused(refusal)
         problem = validate_rls_predicate(rule.filter_expr, targets, registry)
@@ -530,8 +549,13 @@ async def save_row_rules(info: Any, conn: "Connection", inp: "TableInput", model
                     filter=rule.filter_expr,
                     description=rule.description,
                     why=rule.why,  # REQ-2094
+                    rights=rule.rights,  # REQ-2188
+                    id=rule.id,
                 ),
+                creating=rule.creating,
             )
+        except rls_repo.RuleRightTaken as refused:
+            raise TableSaveRefused(right_taken(refused)) from refused
         except ValueError as refused:
             raise TableSaveRefused(MutationResult(success=False, message=str(refused))) from refused
 

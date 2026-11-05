@@ -45,9 +45,7 @@ def scaffolded(tmp_path):
     for tour_json in _LOCALES.glob("*/tour.json"):
         (locales / tour_json.parent.name).mkdir(parents=True)
         (locales / tour_json.parent.name / "tour.json").write_text(tour_json.read_text())
-    home = new_demo.scaffold(
-        "harbor", title="Harbor", port=28632, requires="0.1.0a486", named=named, locales=locales
-    )
+    home = new_demo.scaffold("harbor", title="Harbor", port=28632, named=named, locales=locales)
     return home, locales
 
 
@@ -73,6 +71,15 @@ def test_a_scaffolded_demo_passes_every_check_but_its_authors(scaffolded):
     untranslated = check_demo.check_locales("harbor", home, locales)
     assert len(untranslated) == len(list(locales.iterdir())) - 1  # every locale but English
     assert all("still the English words" in line for line in untranslated)
+
+
+def test_a_scaffold_with_no_requires_passes_check_demo_and_names_the_first_release_it_needs(
+    scaffolded,
+):
+    home, _ = scaffolded
+    required = yaml.safe_load((home / "demo.yaml").read_text())["requires_provisa"]
+    assert required == check_demo.needed_release(home)
+    assert check_demo.check_bundle(home) == []
 
 
 def test_the_scaffold_writes_no_template_stamp_and_no_token(scaffolded):
@@ -302,3 +309,69 @@ def test_an_unpublished_or_single_region_demo_needs_no_entry(tmp_path):
 
 def test_the_deployed_regions_demos_are_read_from_the_install():
     assert "retail" in check_demo.regions_demos()
+
+
+def _demo_using(tmp_path, requires, config="roles: []\n", code=None):
+    home = tmp_path / "demo"
+    (home / "code").mkdir(parents=True)
+    (home / "demo.yaml").write_text(f"requires_provisa: {requires}\n")
+    (home / "config.yaml").write_text(config)
+    if code is not None:
+        import io
+        import tarfile
+
+        with tarfile.open(home / "code" / "x.tar.gz", "w:gz") as tar:
+            data = code.encode()
+            info = tarfile.TarInfo("x.py")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return home
+
+
+def test_a_demo_using_role_parents_must_require_the_release_carrying_them(tmp_path):
+    config = "roles:\n  - {id: reader, parents: [viewer]}\n"
+    old = _demo_using(tmp_path, "0.1.0a495", config)
+    assert [p for p in check_demo.check_bundle(old) if "REQ-2155" in p]
+    (old / "demo.yaml").write_text("requires_provisa: 0.1.0a497\n")
+    assert check_demo.check_features(old, "0.1.0a497") == []
+
+
+def test_a_demo_with_role_parents_must_require_the_release_that_narrows_them(tmp_path):
+    """REQ-2155: a role holds what it lists of what its parents hold."""
+    config = "roles:\n  - {id: reader, parents: [viewer]}\n"
+    home = _demo_using(tmp_path, "0.1.0a496", config)
+    refused = check_demo.check_features(home, "0.1.0a496")
+    assert [p for p in refused if "what they hold of their parents" in p]
+    assert check_demo.check_features(home, "0.1.0a497") == []
+    assert check_demo.needed_release(home) == "0.1.0a497"
+
+
+def test_a_published_demo_requires_the_release_that_narrows_its_roles():
+    checked = 0
+    for demo in sorted(Path(check_demo.ROOT, "demo", "named").iterdir()):
+        card = demo / "demo.yaml"
+        required = card.is_file() and yaml.safe_load(card.read_text()).get("requires_provisa")
+        if required:  # the perf demo is no bundle: it names no release
+            checked += 1
+            assert check_demo.check_features(demo, required) == [], demo.name
+    assert checked >= 29
+
+
+def test_a_demo_with_a_code_export_taking_inputs_must_require_the_release_carrying_it(tmp_path):
+    home = _demo_using(tmp_path, "0.1.0a495", code="def churn_risk(inputs, context): ...\n")
+    assert [p for p in check_demo.check_features(home, "0.1.0a495") if "REQ-2100" in p]
+    assert check_demo.check_features(home, "0.1.0a496") == []
+
+
+def test_a_demo_scanning_a_document_must_require_the_release_carrying_its_scans(tmp_path):
+    """REQ-2201: a demo whose setup scans a document for terms ships the scans in its bundle."""
+    home = _demo_using(tmp_path, "0.1.0a497")
+    (home / "setup.yaml").write_text("steps:\n- scan: https://www.ecfr.gov/api/x.xml\n")
+    assert [p for p in check_demo.check_features(home, "0.1.0a497") if "REQ-2201" in p]
+    assert check_demo.check_features(home, "0.1.0a499") == []
+    assert check_demo.needed_release(home) == "0.1.0a499"
+
+
+def test_a_demo_using_nothing_newer_is_not_reported(tmp_path):
+    home = _demo_using(tmp_path, "0.1.0a483", code="def f(x): ...\n")
+    assert check_demo.check_features(home, "0.1.0a483") == []

@@ -307,12 +307,14 @@ class TestRoleFiltering:
         assert "amount" not in proto
         assert "secret" not in proto
 
-    def test_no_visible_tables_raises(self):
+    def test_no_visible_tables_generates_a_proto_with_no_table(self):
+        # REQ-2154 (amended): a role served no table is not refused as such.
         si = _make_si(
             role={"id": "nobody", "domain_access": ["other"], "capabilities": []},
         )
-        with pytest.raises(ValueError, match="No tables visible"):
-            generate_proto(si)
+        proto = generate_proto(si)
+        assert "message Orders" not in proto and "QueryOrders" not in proto
+        assert "rpc CallCommand(CommandRequest) returns (CommandResponse);" in proto
 
 
 class TestRelationships:
@@ -440,14 +442,16 @@ def test_a_not_null_column_has_presence_too():
 
 
 def test_a_row_with_a_null_is_encoded_with_that_field_unset():
-    from types import SimpleNamespace
+    import pyarrow as pa
 
-    from provisa.grpc.server import ProvisaServicer
+    from provisa.grpc.server import _row_encoder
 
     orders = _compiled(generate_proto(_make_si())).Orders
-    msg = ProvisaServicer._dict_row_to_message(
-        SimpleNamespace(_pb2=None), orders, {"id": 7, "amount": None}
+    row = pa.record_batch(
+        {"id": pa.array([7], pa.int64()), "amount": pa.array([None], pa.float64())}
     )
+    (sent,) = _row_encoder(orders, ["id", "amount"]).encode(row)
+    msg = orders.FromString(sent)
     assert msg.HasField("id") and msg.id == 7
     assert not msg.HasField("amount")
 

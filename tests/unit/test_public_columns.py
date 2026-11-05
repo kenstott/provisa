@@ -40,6 +40,16 @@ from provisa.security.rights import (
 from provisa.security.visibility import visible_tables
 from tests.role_state import RoleState
 
+
+def _field(t: dict) -> str:
+    """A table's root field name as the schema build names it (REQ-2163: ops's carry op_)."""
+    from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, system_schema_names
+
+    if t["domain_id"] in SYSTEM_SCHEMA_GQL_PREFIX:
+        return system_schema_names(t["domain_id"], t["table_name"])[0]
+    return t["table_name"]
+
+
 HR, SALES, OPS = "hr", "sales", "ops"
 
 
@@ -253,9 +263,10 @@ def test_the_shared_helper_and_the_schema_build_agree():
 
 def test_the_catalog_describes_a_published_table_to_a_role_outside_its_domain():
     """REQ-1132's row scope: a role's own tables, now including those published to it."""
-    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5}
+    # REQ-1132: a role lists what is listed, whatever it reaches.
+    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5, 6}
     assert compute_meta_row_scope(_role("hr_reader", HR), TABLES, []) == {1, 2, 4, 6}
-    assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) is None
+    assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) == {1, 2, 3, 4, 6}
 
 
 # --- scope is one of three values, on every path --------------------------------------------------
@@ -296,8 +307,8 @@ def _sql_context(role: dict, *, row_rule: str | None = None, mask=None):
     ctx.tables = {
         t["table_name"]: TableMeta(
             table_id=t["id"],
-            field_name=t["table_name"],
-            type_name=t["table_name"].capitalize(),
+            field_name=_field(t),
+            type_name=_field(t).capitalize(),
             source_id="pg",
             catalog_name="pg",
             schema_name="public",

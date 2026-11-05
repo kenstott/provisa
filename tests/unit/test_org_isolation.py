@@ -9,19 +9,27 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 
 import pytest
 
 
 def _conn_with_advisory_lock() -> AsyncMock:
     """A mocked Connection whose advisory_lock(key) is an async context manager (matches the
-    migrated ``core.db.init_schema`` PG path)."""
+    migrated ``core.db.init_schema`` PG path), on a database that has pgvector in ``public`` —
+    so ``pgvector.require`` (REQ-2185) finds it the way it does on a real control plane."""
     conn = AsyncMock()
     lock_cm = AsyncMock(
         __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
     )
     conn.advisory_lock = MagicMock(return_value=lock_cm)
+
+    def _answer(statement, *_args, **_kwargs):
+        if "pg_extension" in str(statement):
+            return MagicMock(fetchone=MagicMock(return_value=("public",)))
+        return DEFAULT
+
+    conn.execute_core.side_effect = _answer
     return conn
 
 
@@ -458,7 +466,16 @@ class TestProvisionOrg:
     async def test_deprovision_org_drops_role_and_schema(self):  # REQ-701
         from provisa.core.org_provisioning import deprovision_org
 
+        from provisa.core.org_registry_view import ORG_SCHEMAS_LOCK_KEY
+
         mock_conn = AsyncMock()
+        # The schemas are dropped under the registry view's lock (REQ-1301).
+        mock_conn.advisory_lock = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=mock_conn),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        )
         mock_pool = MagicMock()
         mock_pool.dialect = "postgresql"  # PG control plane → role drop runs (REQ-889)
         mock_pool.acquire = MagicMock(
@@ -473,6 +490,7 @@ class TestProvisionOrg:
         executed = [c.args[0] for c in mock_conn.execute.await_args_list if c.args]
         assert any("DROP ROLE" in s and "role_acme" in s for s in executed)
         assert any("DROP SCHEMA" in s and "org_acme" in s for s in executed)
+        mock_conn.advisory_lock.assert_called_once_with(ORG_SCHEMAS_LOCK_KEY)
 
     @pytest.mark.asyncio
     async def test_deprovision_org_emits_no_schema_ddl_off_postgres(self):  # REQ-1488
@@ -519,11 +537,26 @@ async def _transaction():
     yield
 
 
+@asynccontextmanager
+async def _advisory_lock(key: int):
+    del key
+    yield
+
+
 def _seeding_conn() -> AsyncMock:
-    """A connection double the seed runs against: its transaction() is a context, as a real
-    connection's is (each view is created inside one)."""
+    """A connection double the seed runs against: its transaction() and advisory_lock(key) are
+    contexts, as a real connection's are (each view is created inside the one, and the catalog
+    client role inside the other)."""
     conn = AsyncMock()
     conn.transaction = _transaction
+    conn.advisory_lock = _advisory_lock
+
+    async def _reflect_many(names, schema=None):
+        # Every relation the seed names exists, with no columns (as reflect_columns -> []).
+        del schema
+        return {name: [] for name in names}
+
+    conn.reflect_columns_many = AsyncMock(side_effect=_reflect_many)
     return conn
 
 
@@ -554,6 +587,7 @@ class TestDemoSeedOrgScoping:
         all_calls = [
             str(c)
             for c in mock_conn.reflect_columns.await_args_list
+            + mock_conn.reflect_columns_many.await_args_list
             + mock_conn.upsert_returning.await_args_list
         ]
         assert any("org_demo" in c for c in all_calls)

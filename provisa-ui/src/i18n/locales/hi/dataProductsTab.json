@@ -18,6 +18,7 @@
     "limitationsLabel": "सीमाएँ",
     "limitationsPlaceholder": "ज्ञात प्रतिबंध, चेतावनियाँ या अपवाद",
     "usageLabel": "उपयोग",
+    "createdAtLabel": "बनाया गया",
     "usagePlaceholder": "इस डेटा प्रोडक्ट का उपभोग कैसे करें",
     "versionLabel": "वर्शन",
     "versionPlaceholder": "जैसे 1.2.0",
@@ -157,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} खोलें",
     "contract": {
       "label": "डेटा अनुबंध",
-      "hint": "हर आउटपुट पोर्ट का अनुबंध: वह अपने संस्करण पर क्या वादा करता है",
+      "hint": "हर आउटपुट पोर्ट का अनुबंध: वह अपने संस्करण पर क्या घोषित करता है",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "प्रस्तावित",
@@ -173,19 +174,132 @@
       "column": "कॉलम",
       "type": "प्रकार",
       "required": "कभी null नहीं",
-      "yes": "हाँ",
       "versionLabel": "अनुबंध संस्करण",
       "statusLabel": "अनुबंध स्थिति",
       "descriptionLabel": "यह किसलिए है",
-      "columnsLabel": "वादा किए गए कॉलम",
-      "columnsHelp": "किसी कॉलम का वादा छोड़ने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
+      "columnsLabel": "कॉलम",
+      "columnsHelp": "किसी कॉलम को हटाने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
       "requiredLabel": "कभी null नहीं",
       "slaLabel": "सेवा स्तर",
       "slaProperty": "गुण",
       "slaValue": "मान",
       "slaUnit": "इकाई",
       "slaRemove": "सेवा स्तर हटाएँ",
-      "slaAdd": "सेवा स्तर जोड़ें"
+      "slaAdd": "सेवा स्तर जोड़ें",
+      "notDeclared": "घोषित नहीं",
+      "notDeclaredList": "घोषित नहीं: {{names}}",
+      "versionSaved": "सहेजा गया",
+      "versionChanges": "परिवर्तन",
+      "constraints": "बाधाएँ",
+      "breakingWarning": "v{{version}} में असंगत परिवर्तन, अभी लागू नहीं",
+      "breaking": "असंगत",
+      "savedBy": "{{when}} को {{who}} द्वारा सहेजा गया",
+      "savedBySystem": "सिस्टम",
+      "noChanges": "पहला संस्करण: तुलना के लिए कुछ नहीं",
+      "change": {
+        "field_added": "फ़ील्ड {{subject}} जोड़ा गया, {{after}}",
+        "field_removed": "फ़ील्ड {{subject}} हटाया गया, पहले {{before}}",
+        "field_renamed": "फ़ील्ड {{subject}} का नाम बदलकर {{after}} किया गया",
+        "field_type_changed": "फ़ील्ड {{subject}} {{before}} से {{after}} में बदला गया",
+        "field_required": "फ़ील्ड {{subject}} अनिवार्य किया गया",
+        "field_optional": "फ़ील्ड {{subject}} अब अनिवार्य नहीं",
+        "field_described": "फ़ील्ड {{subject}} का विवरण बदला गया",
+        "sla_added": "सेवा स्तर {{subject}} जोड़ा गया, {{after}}",
+        "sla_removed": "सेवा स्तर {{subject}} हटाया गया, पहले {{before}}",
+        "sla_changed": "सेवा स्तर {{subject}} {{before}} से {{after}} में बदला गया",
+        "check_added": "गुणवत्ता जाँच {{subject}} जोड़ी गई",
+        "check_removed": "गुणवत्ता जाँच {{subject}} हटाई गई",
+        "check_changed": "गुणवत्ता जाँच {{subject}} बदली गई",
+        "description_changed": "विवरण बदला गया",
+        "terms_changed": "शर्तें बदली गईं: {{subject}}"
+      },
+      "loadError": "अनुबंध पढ़े नहीं जा सके: {{error}}",
+      "notExported": "{{member}} का कोई निर्यातित अनुबंध नहीं है",
+      "section": {
+        "fundamentals": "मूल बातें",
+        "schema": "स्कीमा",
+        "quality": "गुणवत्ता",
+        "sla": "SLA",
+        "support": "सहायता और टीम",
+        "howToUse": "उपयोग कैसे करें",
+        "pricing": "मूल्य निर्धारण",
+        "custom": "कस्टम गुण और टैग"
+      },
+      "summary": {
+        "properties_one": "{{count}} गुण",
+        "properties_other": "{{count}} गुण",
+        "rules_one": "{{count}} नियम",
+        "rules_other": "{{count}} नियम",
+        "serviceLevels_one": "{{count}} सेवा स्तर",
+        "serviceLevels_other": "{{count}} सेवा स्तर",
+        "supportChannels_one": "{{count}} सहायता चैनल",
+        "supportChannels_other": "{{count}} सहायता चैनल",
+        "roles_one": "{{count}} भूमिका",
+        "roles_other": "{{count}} भूमिकाएँ",
+        "customProperties_one": "{{count}} कस्टम गुण",
+        "customProperties_other": "{{count}} कस्टम गुण",
+        "tags_one": "{{count}} टैग",
+        "tags_other": "{{count}} टैग"
+      },
+      "empty": "इस उत्पाद में डेटा अनुबंध वाला कोई आउटपुट पोर्ट नहीं है।",
+      "consumers_one": "{{count}} उपभोक्ता",
+      "consumers_other": "{{count}} उपभोक्ता",
+      "freshness": "{{seconds}} सेकंड के भीतर ताज़ा",
+      "loadedOnce": "एक बार लोड किया गया, कभी रीफ़्रेश नहीं",
+      "noSla": "कोई सेवा स्तर घोषित नहीं",
+      "checkedAt": "{{when}} को जाँचा गया",
+      "neverChecked": "कभी नहीं जाँचा गया",
+      "draftWarning": "मसौदा: अभी लागू नहीं",
+      "card": {
+        "details": "विवरण",
+        "fields": "कॉलम",
+        "sla": "SLA और ताज़गी",
+        "quality": "वादे",
+        "consumers": "उपभोक्ता",
+        "versions": "संस्करण और परिवर्तन",
+        "roles": "भूमिकाएँ",
+        "history": "संस्करण इतिहास"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "सतह",
+          "address": "पता",
+          "how": "उपयोग कैसे करें",
+          "link": "उदाहरण"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "कोई भी PostgreSQL क्लाइंट, जैसे psql या DBeaver। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "flight-sql": "कोई भी Arrow Flight SQL क्लाइंट, जैसे ADBC ड्राइवर। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "grpc": "कोई भी gRPC क्लाइंट, सेवा {{service}} पर, मेटाडेटा authorization: Bearer <token> के साथ।",
+          "graphql": "कोई भी GraphQL क्लाइंट: इस तालिका पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।",
+          "rest": "कोई भी HTTP क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "openapi": "केवल इस तालिका का विवरण: इसे Swagger UI, Postman या क्लाइंट जनरेटर में लोड करें।",
+          "jsonapi": "कोई भी JSON:API क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "sparql": "कोई भी SPARQL 1.1 क्लाइंट: इस तालिका की क्लास पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।"
+        },
+        "access": {
+          "granted": "केवल तब काम करता है जब {{approvers}} द्वारा पहुँच प्रदान कर दी जाए।",
+          "noApprover": "केवल तब काम करता है जब {{roles}} के धारक द्वारा पहुँच प्रदान कर दी जाए। यह अनुबंध किसी अनुमोदक का नाम नहीं देता।",
+          "undeclared": "केवल तब काम करता है जब पहुँच प्रदान कर दी जाए। यह अनुबंध किसी भूमिका या अनुमोदक का नाम नहीं देता।"
+        },
+        "ask": {
+          "approvers": "{{approvers}} से पहुँच माँगें",
+          "roles": "{{roles}} के धारक से पहुँच माँगें",
+          "nobody": "यह अनुबंध किसी ऐसे व्यक्ति का नाम नहीं देता जिससे पूछा जाए"
+        },
+        "open": "उदाहरण खोलें",
+        "openAria": "{{table}} के लिए {{surface}} उदाहरण खोलें"
+      }
     }
   }
 }

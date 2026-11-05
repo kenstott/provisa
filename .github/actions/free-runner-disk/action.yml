@@ -1,0 +1,15 @@
+name: Free runner disk
+description: >-
+  Remove toolchains the runner image preinstalls and no Provisa job uses (.NET, the Android SDK,
+  GHC, CodeQL's bundle), then print what / has free. A job whose Docker images or VM disk need
+  more than the hosted runner leaves free calls this first: the free space differs between
+  runner fleets (an AWS-backed ubuntu-latest runner left too little for the arm64 core images,
+  run 41836852453, where Azure-backed ones had passed).
+runs:
+  using: composite
+  steps:
+    - name: Free runner disk
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        df -h /

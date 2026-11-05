@@ -87,14 +87,11 @@ def junction_type_name(
     by its field or by its own name (before a meta view's alias), as the naming convention has it,
     or by the name semantic SQL itself writes (semantic_table_name: an ontology table's leading
     underscore is not in it, REQ-2163)."""
+    from provisa.compiler.naming import bare_field_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     for table_meta in ctx.tables.values():  # type: ignore[attr-defined]
-        field_key = (
-            table_meta.field_name.split("__", 1)[1]
-            if "__" in table_meta.field_name
-            else table_meta.field_name
-        )
+        field_key = bare_field_name(table_meta.field_name, table_meta.domain_id)
         names = {
             field_key,
             table_meta.original_table_name or table_meta.table_name,

@@ -35,6 +35,7 @@ class FakeState:
         self.auth_middleware_active = auth_middleware_active
         self.security_high = security_high
         self.multitenancy = False
+        self.org_id = "root"
         self.admin_db = None
         self.roles = {}
         # The org's member attributes and its claim types: none recorded, none declared (REQ-2057).

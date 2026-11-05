@@ -19,6 +19,7 @@ share one definition of what Provisa knows (REQ-1069).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -86,6 +87,8 @@ class ColumnAsset:  # REQ-1070
     description: str
     aliases: tuple[str, ...] = ()
     semantic_uri: str = ""  # REQ-1385: <table uri>#field:<business name>
+    # REQ-2171, REQ-2118: the subtype data_type registers as (inet, money, ...); None for none.
+    subtype: str | None = None
 
 
 @dataclass
@@ -113,6 +116,12 @@ class TableAsset:  # REQ-1070
     # REQ-2158: the member's declared contract, its output port; None for a table in no product
     # and for a checker table.
     contract: DataContract | None = None
+    # REQ-1093, REQ-2118: the table's declared UNIQUE constraints, each an ordered column set.
+    unique_keys: tuple[tuple[str, ...], ...] = ()
+    # REQ-2118: the data roles served at least one of its columns, and those holding a write
+    # grant on it -- a contract's roles, read and write.
+    readers: tuple[str, ...] = ()
+    writers: tuple[str, ...] = ()
 
 
 def listed(product: "DataProductAsset") -> bool:
@@ -156,6 +165,14 @@ class DataProductAsset:  # REQ-1634
     # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
     # that names owners by address (Dataplex), never a role-to-principal setting.
     owner_emails: tuple[str, ...] = ()
+    # REQ-2118: the team role's holders' email addresses, as owner_emails is the owner role's.
+    team_emails: tuple[str, ...] = ()
+    # REQ-2118: when the product was created (ISO 8601, UTC); None where the caller read none.
+    created_at: str | None = None
+    # REQ-2118: the endpoints that observe and control the product, at the org's listing origin:
+    # its lineage and the admin GraphQL API; None without a documentation base URL.
+    lineage_url: str | None = None
+    admin_api_url: str | None = None
 
     def odps_fields(self) -> dict[str, str]:
         """The product's ODPS fields that are set, by their ODPS names, for a target's own
@@ -399,6 +416,11 @@ class DataQualityAssertion:  # REQ-1443
     outcome: DataQualityOutcome = field(
         default_factory=lambda: DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
     )
+    # REQ-2157: the product owning the check -- the one its checker table names; None for a
+    # checker table naming none. Whose check it is follows from this, never from which product
+    # the observed table belongs to: a product's check on its member is its promise, on its
+    # input its expectation, and another product's check there is neither.
+    owner_product_id: str | None = None
 
 
 @dataclass
@@ -421,10 +443,13 @@ class GlossaryTermAsset:  # REQ-1387
     definition: str | None
     is_abstract: bool
     deprecated: bool
-    # REQ-2144: the term's status -- an exported term is admitted, so live, or deprecated when a
-    # curator deprecated it (in service until retire_on) -- for each catalog to map to its own
-    # (OpenMetadata Approved/Deprecated, Collibra Accepted/Deprecated, DataHub's deprecation).
+    # REQ-1387, REQ-2144: the term's status -- an exported term was approved by a steward, so
+    # approved, or deprecated when a curator deprecated it since -- for each catalog to map to its
+    # own (OpenMetadata Approved/Deprecated, Collibra Accepted/Deprecated, DataHub's deprecation).
     status: str
+    # REQ-1387: its grounding, computed over what this export publishes: grounded,
+    # grounded_pending or not_grounded.
+    grounding: str
     status_reason: str | None = None
     retire_on: str | None = None  # ISO date
     refs: tuple[AssetRef, ...] = ()
@@ -436,9 +461,9 @@ class GlossaryTermAsset:  # REQ-1387
 
     @property
     def in_deprecation(self) -> bool:
-        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (in service until
-        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is out of
-        service and never exported, so the status is what each catalog's deprecation reflects."""
+        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (retired on
+        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is never
+        exported, so the status is what each catalog's deprecation reflects."""
         return self.status == "deprecated"
 
     def assigned_to(self) -> tuple[AssetRef, ...]:
@@ -473,6 +498,22 @@ class GlossaryAxiom:  # REQ-2163
     object_literal: str | None
 
 
+@dataclass(frozen=True)
+class ServingEndpoints:  # REQ-2118
+    """Where a consumer reads the org's data products: the host its pgwire, Flight SQL and gRPC
+    listeners are reached at (each port None when that listener is off), the HTTP origin, and
+    the path of each query surface mounted under it (system_health.HTTP_SURFACES). A contract
+    names them as its servers."""
+
+    hostname: str
+    database: str
+    http_origin: str
+    pgwire_port: int | None = None
+    flight_port: int | None = None
+    grpc_port: int | None = None
+    http_paths: Mapping[str, str] = field(default_factory=dict)
+
+
 @dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
@@ -494,6 +535,11 @@ class MetadataSnapshot:  # REQ-1070
     glossary_edges: list[GlossaryTermEdge] = field(default_factory=list)  # REQ-1387
     glossary_axioms: list[GlossaryAxiom] = field(default_factory=list)  # REQ-2163
     assertions: list[DataQualityAssertion] = field(default_factory=list)  # REQ-1443
+    # REQ-1943, REQ-2118: the ids of the tags whose Sensitive data option is set; a column
+    # carrying one is sensitive, its contract classification confidential.
+    sensitive_tags: frozenset[str] = frozenset()
+    # REQ-2118: where a consumer reads the products; None when the caller names none.
+    endpoints: ServingEndpoints | None = None
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

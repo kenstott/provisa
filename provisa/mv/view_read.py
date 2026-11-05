@@ -112,7 +112,14 @@ def _with_own_rules(view: str, body: str, gov: "GovernanceContext") -> str:
     from provisa.compiler.view_expand import _expand_one  # noqa: PLC0415
 
     table_id = gov.table_map.get(view)
-    if table_id is None or not _narrowed(table_id, gov):
+    if table_id is None:
+        # The bare name is the reader's only for a table of its compilation context. A view
+        # registered under its stored name and not there is served to the reader in nothing:
+        # its body, put in with none of its own rules, would read every column in clear.
+        if any(said.rsplit(".", 1)[-1] == view for said in gov.table_map if "." in said):
+            raise PermissionError(f"[V003] No column of {view!r} is visible to this role")
+        return body
+    if not _narrowed(table_id, gov):
         return body
     own = govern_fragment(f"SELECT * FROM {view}", gov)
     return _expand_one(own, view, body)
@@ -220,6 +227,15 @@ def _answered_after_governance(
     return _stored_rows(view, state) is not None and sees_everything(view, view_sql_map, gov)
 
 
+def _mentions(text: str, view: str) -> bool:
+    """Whether ``text`` may read ``view``: its name appears; for a view keyed ``schema.name`` (an
+    ontology Class, REQ-2163), its name under that schema, quoted or not."""
+    if "." not in view:
+        return view in text
+    schema, name = view.split(".", 1)
+    return view in text or f'"{schema}"."{name}"' in text
+
+
 def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:
     """Every view ``sql`` reads, directly or through another view, with its SQL."""
     read: dict[str, str] = {}
@@ -227,7 +243,7 @@ def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:
     while pending:
         text = pending.pop()
         for view, view_sql in view_sql_map.items():
-            if view not in read and view in text:
+            if view not in read and _mentions(text, view):
                 read[view] = view_sql
                 pending.append(view_sql)
     return read
@@ -242,7 +258,7 @@ def _views_read_here(
     while pending:
         text = pending.pop()
         for view, view_sql in view_sql_map.items():
-            if view in read or view in home_copies or view not in text:
+            if view in read or view in home_copies or not _mentions(text, view):
                 continue
             read[view] = view_sql
             pending.append(view_sql)

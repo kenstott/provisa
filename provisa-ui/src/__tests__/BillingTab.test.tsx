@@ -235,7 +235,7 @@ describe("BillingTab", () => {
     const bounds = screen.getAllByRole("listitem").map((li) => li.textContent);
     expect(bounds).toEqual([
       "14 days",
-      "40 active hours — any hour in which you run at least one query",
+      "40 active hours (any hour in which you run at least one query)",
       "25 GB of egress",
     ]);
   });

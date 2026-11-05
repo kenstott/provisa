@@ -10,11 +10,12 @@
 
 """Regions in the model (REQ-1921, REQ-1922): data residency.
 
-The PLATFORM declares the physical regions its nodes run in (``platform.regions``: an id and the
-address its nodes answer at). An ORG is a collection of regions: its model selects the platform
-regions it uses and declares, for each, the stores it keeps there — the engine, the replica and
-view storage, the cache, the state store and the request record (``regions``, naming entries of
-``stores``). A table may name one of the org's regions: its data is replicated and read only
+The PLATFORM declares the physical regions its nodes run in (``platform.regions``: an id, a
+description, the purposes it serves and the data addresses the UI sends its data calls to). An
+ORG is a collection of regions: the platform grants it regions and assigns, for each, the stores
+it keeps there — the engine, the replica and view storage, the cache, the state store and the
+request record (``regions``, naming entries of ``stores``). The platform also declares the grant
+every new org receives (``platform.default_grant``). A table may name one of the org's regions: its data is replicated and read only
 there, and the org's other regions read it from that region's replica. A table naming none may be
 copied in every region. A source may name one too, but only as the region the admin form starts
 a new table of it in: it decides nothing about where data lives (REQ-1921, "a table carries its
@@ -24,13 +25,15 @@ With no platform regions there is one implicit region (:data:`DEFAULT_REGION`) a
 model may name a region.
 """
 
-# Requirements: REQ-1921, REQ-1922
+# Requirements: REQ-1916, REQ-1921, REQ-1922
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from urllib.parse import urlsplit
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 if TYPE_CHECKING:
     from provisa.core.models import ProvisaConfig
@@ -46,17 +49,52 @@ DEFAULT_REGION = "default"
 STORE_ROLES = ("engine", "replicas", "views", "cache", "state", "record")
 
 
+#: Why a platform region exists (REQ-1922, amended 2026-11-05). Explanatory only: a purpose
+#: changes no routing, policy or validation.
+PURPOSES = ("residency", "workload", "latency", "resilience", "dedicated")
+Purpose = Literal["residency", "workload", "latency", "resilience", "dedicated"]
+
+
 class PlatformRegion(BaseModel):
-    """A physical region the platform runs nodes in."""
+    """A physical region the platform runs nodes in: declared logically by its id, with what it is
+    for (a description and one or more purposes) and where the UI sends its data calls there."""
+
+    model_config = ConfigDict(extra="forbid")
 
     id: str = Field(pattern=REGION_ID_PATTERN)
-    address: str  # where the region's nodes answer (shown to a node started without --region)
+    description: str = Field(min_length=1)
+    purposes: list[Purpose] = Field(min_length=1)
+    # REQ-1916 (amended 2026-11-02, "the data addresses are declared", "declared per region"):
+    # where a coordinator-served UI sends its data calls in this region -- each an http(s) URL of a
+    # load balancer, a pool or a single node, like an OpenAPI document's servers list. Empty, the
+    # UI is offered the region's registered nodes (provisa/core/data_addresses.py).
+    data_addresses: list[str] = Field(default_factory=list)
+
+    @field_validator("purposes")
+    @classmethod
+    def _each_purpose_once(cls, purposes: list[str]) -> list[str]:
+        if len(set(purposes)) != len(purposes):
+            raise ValueError(f"a region lists a purpose twice ({', '.join(purposes)})")
+        return purposes
+
+    @field_validator("data_addresses")
+    @classmethod
+    def _absolute_http_urls(cls, addresses: list[str]) -> list[str]:
+        for address in addresses:
+            require_data_address(address)
+        if len(set(addresses)) != len(addresses):
+            raise ValueError(f"a region lists a data address twice ({', '.join(addresses)})")
+        return addresses
 
 
-class PlatformConfig(BaseModel):
-    """What the platform declares, for every org."""
-
-    regions: list[PlatformRegion] = Field(default_factory=list)
+def require_data_address(address: str) -> None:
+    """Refuse a data address that is not an absolute http(s) URL with a host and no query: the UI
+    puts a data path after it."""
+    parts = urlsplit(address)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
+        raise ValueError(
+            f"data address {address!r} is not an http(s) URL with a host (and no query or fragment)"
+        )
 
 
 class StoreConfig(BaseModel):
@@ -81,6 +119,45 @@ class OrgRegion(BaseModel):
     record: str
 
 
+class RegionGrant(BaseModel):
+    """Regions granted to an org, with the stores it keeps each kind of data in there: what an
+    org's model holds (``stores`` and ``regions``), and the platform's default grant."""
+
+    stores: list[StoreConfig] = Field(default_factory=list)
+    regions: list[OrgRegion] = Field(default_factory=list)
+
+
+class PlatformConfig(BaseModel):
+    """What the platform declares, for every org."""
+
+    regions: list[PlatformRegion] = Field(default_factory=list)
+    # The grant every new organization receives, so a self-serve org starts with a working region.
+    default_grant: RegionGrant = Field(default_factory=RegionGrant)
+
+    @model_validator(mode="after")
+    def _default_grant_holds(self) -> "PlatformConfig":
+        if self.default_grant.regions or self.default_grant.stores:
+            validate_grant(self, self.default_grant)
+        return self
+
+
+def validate_grant(platform: PlatformConfig, grant: RegionGrant) -> None:
+    """Refuse a grant that does not hold together on ``platform``, as ``validate_regions`` refuses
+    an org's model naming nothing else (no source, table or role)."""
+    from types import SimpleNamespace
+
+    validate_regions(
+        SimpleNamespace(  # type: ignore[arg-type]  # the fields validate_regions reads
+            platform=platform,
+            stores=grant.stores,
+            regions=grant.regions,
+            sources=[],
+            tables=[],
+            roles=[],
+        )
+    )
+
+
 def _is_embedded_duckdb(url: str) -> bool:
     return url.split(":", 1)[0].split("+", 1)[0].lower() == "duckdb"
 
@@ -100,7 +177,7 @@ def validate_regions(config: "ProvisaConfig") -> None:
             require_residency_grant(role.id, role.capabilities, role.residency_values, None)
         return
     if not config.regions:
-        listed = ", ".join(f"{r.id} ({r.address})" for r in config.platform.regions)
+        listed = ", ".join(r.id for r in config.platform.regions)
         raise ValueError(f"the org selects none of the platform's regions: {listed}")
     selected = [r.id for r in config.regions]
     if len(set(selected)) != len(selected):

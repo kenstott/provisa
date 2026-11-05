@@ -16,7 +16,8 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render } from "../test-utils/render";
 import { tourStep, walkTourStep } from "../test-utils/tourAnchor";
-import { waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { SUPPLIES_PARQUET_URL } from "../tour/tourSteps";
 import type { Source } from "../types/admin";
 
 vi.mock("../api/admin", async (importOriginal) => ({
@@ -80,18 +81,26 @@ beforeEach(() => {
   );
 });
 
-const SUPPLIES = { ...PET_STORE[0], id: "supplies", type: "parquet" } as unknown as Source;
 const STATES: Record<string, Source[]> = {
   "no source registered": NONE,
   "the pet store registered": PET_STORE,
 };
 
-describe("the core tour's live-built source on the Sources page", () => {
-  // Built live by the step's actions (tourActing.test); here, entered again, it explains the row.
-  it("finds stepBuildSource's anchor once the supplies source is there", async () => {
-    SOURCES = { sources: [...PET_STORE, SUPPLIES], loading: false, refetch: REFETCH };
+describe("the core tour's source form on the Sources page", () => {
+  // REQ-2115 (amended): the step's actions, on the real page: the picker, Parquet File, its form
+  // filled in. The popover explains the form, and Next cancels it, so no source is created.
+  it("fills the Parquet form, anchors on it, and Cancel leaves no source", async () => {
+    SOURCES = { sources: PET_STORE, loading: false, refetch: REFETCH };
     render(<SourcesPage />, { initialEntries: ["/sources"] });
-    expect(await walkTourStep("stepBuildSource")).toBeInTheDocument();
+    const form = await walkTourStep("stepBuildSource");
+    expect(form).toHaveAttribute("id", "sources-new-form");
+    expect((screen.getByTestId("sources-id-input") as HTMLInputElement).value).toBe("supplies");
+    expect((screen.getByTestId("source-file-location") as HTMLInputElement).value).toBe(
+      SUPPLIES_PARQUET_URL,
+    );
+    fireEvent.click(document.querySelector(tourStep("stepBuildSource").clickAfterNext!)!);
+    await waitFor(() => expect(document.querySelector("#sources-new-form")).toBeNull());
+    expect(screen.queryByTestId("sources-row-supplies")).toBeNull();
   });
 });
 

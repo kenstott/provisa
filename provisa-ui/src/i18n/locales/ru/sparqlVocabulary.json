@@ -12,6 +12,9 @@
     "classTerm": "Термин-класс {{term}}",
     "tableClass": "Собственный класс таблицы",
     "propertyTerm": "Термин-свойство {{term}}",
-    "columnPredicate": "Столбец {{column}}"
+    "columnPredicate": "Столбец {{column}}",
+    "propertySearch": "Поиск свойств",
+    "propertyTerms": "Термины свойств",
+    "termClasses": "Классы: {{classes}}"
   }
 }

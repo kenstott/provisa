@@ -473,11 +473,16 @@ class _TaskSlot:
     its pools were, died in native code and took the process with it. Cancellation lands at the
     task's next await -- between batches, after a bounded connect."""
 
-    def __init__(self) -> None:
+    def __init__(self, coro: Coroutine[Any, Any, Any]) -> None:
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task: asyncio.Task[Any] | None = None
         self._cancel_requested = False
+        self._coro = coro
+
+    def close_unstarted(self) -> None:
+        """A submission cancelled before it started: its coroutine is closed, never run."""
+        self._coro.close()
 
     def run(
         self,
@@ -495,7 +500,7 @@ class _TaskSlot:
         try:
             cl.loop.run_until_complete(task)
         except asyncio.CancelledError:
-            log.info("background task %s cancelled at shutdown", name)
+            log.info("background task %s cancelled", name)
         finally:
             with self._lock:
                 self._loop = None
@@ -525,7 +530,7 @@ def _run_detached(
 def _submit(
     coro: Coroutine[Any, Any, Any], name: str, ctx: contextvars.Context
 ) -> concurrent.futures.Future[None]:
-    slot = _TaskSlot()
+    slot = _TaskSlot(coro)
     try:
         fut = _pool().submit(_run_detached, coro, name, ctx, slot)
     except RuntimeError:
@@ -540,6 +545,23 @@ def _submit(
 def _forget_inflight(fut: concurrent.futures.Future[Any]) -> None:
     with _bg_lock:
         _bg_inflight.pop(fut, None)
+
+
+def cancel_background(name: str) -> list[concurrent.futures.Future[None]]:
+    """Cancel every background task submitted as ``name``: a queued one never starts, a running
+    one is cancelled at its next await. Returns the futures of those that were running; each is
+    done once its task has ended. Work keyed to something that is going away (a deleted source's
+    catalog index) is stopped by name before what it reads goes."""
+    with _bg_lock:
+        named = [(fut, slot) for fut, (label, slot) in _bg_inflight.items() if label == name]
+    running: list[concurrent.futures.Future[None]] = []
+    for fut, slot in named:
+        if fut.cancel():
+            slot.close_unstarted()
+            continue
+        slot.cancel()
+        running.append(fut)
+    return running
 
 
 def _caller_context() -> contextvars.Context:
@@ -653,7 +675,7 @@ class LongLived:
         self.name = name
         self._coro: Coroutine[Any, Any, Any] | None = coro
         self._ctx = ctx
-        self._slot = _TaskSlot()
+        self._slot = _TaskSlot(coro)
         self._done = threading.Event()
         self._thread = threading.Thread(target=self._main, name=f"provisa-bg:{name}", daemon=True)
 

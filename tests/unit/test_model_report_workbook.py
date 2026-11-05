@@ -202,7 +202,7 @@ def test_an_empty_sheet_still_carries_its_filterable_header():
     rows[wb.ONTOLOGY] = []
     sheet = _load(_header(), rows)[wb.ONTOLOGY]
     assert tuple(cell.value for cell in sheet[1]) == wb.HEADERS[wb.ONTOLOGY]
-    assert sheet.auto_filter.ref == "A1:L2"
+    assert sheet.auto_filter.ref == "A1:M2"  # REQ-1387: grounding beside status
 
 
 def test_there_is_no_reader_the_workbook_is_never_an_edit_path():
@@ -411,7 +411,8 @@ def _term(term_id: int, name: str, **kwargs):
         definition=kwargs.pop("definition", f"a {name}"),
         is_abstract=kwargs.pop("is_abstract", False),
         deprecated=False,
-        status=kwargs.pop("status", "live"),
+        status=kwargs.pop("status", "approved"),
+        grounding=kwargs.pop("grounding", "grounded"),
         semantic_uri=f"provisa://{ORG}/terms/{name}",
         **kwargs,
     )

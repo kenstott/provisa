@@ -19,9 +19,11 @@ An RDF term of the answer is one JSON value:
 - a glossary term, ``{"term": name}`` -- the writer builds its vocabulary IRI (REQ-2163);
 - a literal, ``{"literal": v}``, with ``"datatype"`` or ``"lang"`` when known.
 
-A variable predicate (``?s ?p ?o``) is a union, made at compile time, of one branch per mapped
-predicate of the subject's label, each a row ``(s_id, p, o)``; more branches than graph.union_limit
-are refused, naming it. A CONSTRUCT is one SELECT of ``(s, p, o)`` per template triple over the
+A variable predicate as a pattern of its own (the SPARQL front end instead reads each as a UNION
+ALL part per predicate, :meth:`provisa.sparql_query.compiler._Lowering.predicate_reads`) is a
+union, made at compile time, of one branch per mapped predicate of the subject's label, each a row
+``(s_id0..., p, o)`` joined on the subject's whole key; more branches than graph.union_limit are
+refused, naming it. A CONSTRUCT is one SELECT of ``(s, p, o)`` per template triple over the
 statement's matches, the selects put together with UNION ALL: an RDF graph is a set, and its writer
 keeps each triple once.
 """
@@ -44,8 +46,9 @@ from provisa.gql.expr_ast import (
     TermIri,
     Variable,
 )
+from provisa.gql.group_by import _has_aggregate
 from provisa.gql.iri import iri_base
-from provisa.gql.ir import MatchClause, Predicate, TriplePattern, TripleTemplate
+from provisa.gql.ir import CypherAST, MatchClause, Predicate, TriplePattern, TripleTemplate
 from provisa.gql.label_map import CypherLabelMap, NodeMapping
 from provisa.gql.path_functions import _apply_hop
 from provisa.gql.translator_types import CypherTranslateError, GraphVarKind
@@ -80,6 +83,25 @@ def _json(**pairs: exp.Expression) -> exp.JSONObject:  # pyright: ignore[reportP
     )
 
 
+def axiom_table_iri(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    table_id: exp.Expression, table_iris: dict[int, str]
+) -> exp.Expression:
+    """The class IRI of the table ``table_id`` names (REQ-2163), NULL for a row of no table or of a
+    table the role does not read."""
+    if not table_iris:
+        return exp.null()
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=table_id.copy(), expression=exp.Literal.number(i)),
+                true=exp.Literal.string(iri),
+            )
+            for i, iri in table_iris.items()
+        ],
+        default=exp.null(),
+    )
+
+
 def _present(value: exp.Expression, term) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """``term(value)``, NULL where ``value`` is (an OPTIONAL that matched nothing)."""
     return exp.Case(
@@ -108,6 +130,15 @@ def literal_term(
     )
 
 
+def subject_key(nm: NodeMapping) -> list[str]:
+    """The columns a subject of ``nm`` is named by, refused, by the table's name and not the
+    column's, where the role is not served the whole of its key: no IRI of it can be built without
+    reading a column hidden from the role, and any other column would name another thing."""
+    if not nm.key_readable:
+        raise CypherTranslateError(f"{nm.table_name}'s key is not readable by this role")
+    return nm.pk_columns or [nm.id_column]
+
+
 def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """A subject as its table's identity and key values; NULL where an OPTIONAL match found none.
     Its IRI needs server.public_url, so a statement that answers with one is refused while that is
@@ -117,7 +148,7 @@ def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
         raise CypherTranslateError(
             f"{nm.table_name} belongs to no domain, and a subject's IRI names its domain"
         )
-    keys = [_col(k, alias, quoted=True) for k in (nm.pk_columns or [nm.id_column])]
+    keys = [_col(k, alias, quoted=True) for k in subject_key(nm)]
     return exp.Case(
         ifs=[exp.If(this=exp.Is(this=keys[0].copy(), expression=exp.null()), true=exp.null())],
         default=_json(
@@ -130,6 +161,28 @@ def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
     )
 
 
+LIMITED_UNION_FACTOR = 10  # REQ-2135: a LIMIT query is allowed this many times graph.union_limit
+
+
+def union_allowance(limited: bool) -> tuple[int, int]:  # REQ-2135
+    """The branches a union may have, as (graph.union_limit, allowed). A query with LIMIT and no
+    ORDER BY, DISTINCT or aggregate (``limited``) is allowed ten times the limit: the engine
+    stops the UNION ALL once it has its rows. Past that every branch is still compiled."""
+    limit = settings_registry.value("graph.union_limit")
+    return limit, limit * LIMITED_UNION_FACTOR if limited else limit
+
+
+def union_refusal(what: str, limit: int, allowed: int) -> str:  # REQ-2135
+    """What a refused union says: what it needs, and the limit it hit -- the plain one or, for a
+    LIMIT query, ten times it."""
+    if allowed > limit:
+        return (
+            f"{what}, past {LIMITED_UNION_FACTOR} times the graph union limit of {limit} "
+            f"({allowed}), which a query with a LIMIT is allowed"
+        )
+    return f"{what}, past the graph union limit of {limit}"
+
+
 class TermsMixin:  # REQ-2135
     """Mixin for _Translator: RDF terms, variable predicates and CONSTRUCT."""
 
@@ -138,6 +191,7 @@ class TermsMixin:  # REQ-2135
     _var_table: dict
     _term_vars: dict  # variable → the column holding its term
     _graph_vars: dict
+    _ast: CypherAST
 
     if TYPE_CHECKING:
 
@@ -156,7 +210,11 @@ class TermsMixin:  # REQ-2135
             def col(name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 return self._lower_expr(Property(Variable(value.node), name))
 
-            term, iri = col("object"), col("object_iri")
+            term = col("object")
+            iri = exp.Coalesce(
+                this=col("object_iri"),
+                expressions=[axiom_table_iri(col("object_table_id"), value.table_iris)],
+            )
             return exp.Case(
                 ifs=[
                     exp.If(
@@ -190,12 +248,26 @@ class TermsMixin:  # REQ-2135
             )
         alias, nm = bound
         branches = [b for p in triple.candidates for b in self._predicate_branches(nm, p)]
-        limit = settings_registry.value("graph.union_limit")
-        if len(branches) > limit:
+        ast = self._ast
+        limit, allowed = union_allowance(
+            ast.limit is not None
+            and not ast.order_by
+            and not (
+                ast.return_clause is not None
+                and (
+                    ast.return_clause.distinct
+                    or any(_has_aggregate(i.expression) for i in ast.return_clause.items)
+                )
+            )
+        )
+        if len(branches) > allowed:
             raise CypherTranslateError(
-                f"A variable predicate on {nm.label} reads {len(branches)} mapped predicates, past "
-                f"the graph union limit of {limit}; name the predicate, or raise the limit "
-                "(graph.union_limit)"
+                union_refusal(
+                    f"A variable predicate on {nm.label} reads {len(branches)} mapped predicates",
+                    limit,
+                    allowed,
+                )
+                + "; name the predicate, or raise the limit (graph.union_limit)"
             )
         if not branches:
             raise CypherTranslateError(f"{nm.label} has no mapped predicate a variable can match")
@@ -203,6 +275,10 @@ class TermsMixin:  # REQ-2135
         for b in branches[1:]:
             union = exp.Union(this=union, expression=b, distinct=False)
         tr = f"_tr{len(self._term_vars) // 2}_{triple.subject}"
+        on: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for i, column in enumerate(subject_key(nm)):
+            eq = exp.EQ(this=_col(f"s_id{i}", tr), expression=_col(column, alias, quoted=True))
+            on = eq if on is None else exp.And(this=on, expression=eq)
         for var in (triple.predicate, triple.object):
             if var in self._term_vars or var in self._var_table:
                 raise CypherTranslateError(f"{var} is bound twice")
@@ -211,9 +287,7 @@ class TermsMixin:  # REQ-2135
         return [
             {
                 "table": exp.alias_(exp.Subquery(this=union), alias=tr),
-                "on": exp.EQ(
-                    this=_col("s_id", tr), expression=_col(nm.id_column, alias, quoted=True)
-                ),
+                "on": on,
                 "join_type": "LEFT" if clause.optional else "INNER",
             }
         ]
@@ -223,11 +297,14 @@ class TermsMixin:  # REQ-2135
             raise CypherTranslateError(
                 f"The predicate <{p.iri}> reads a property, an edge or a constant, and only one"
             )
-        s_id = exp.alias_(_col(nm.id_column, "_s", quoted=True), alias="s_id")
+        s_id = [
+            exp.alias_(_col(column, "_s", quoted=True), alias=f"s_id{i}")
+            for i, column in enumerate(subject_key(nm))
+        ]
         if p.constant is not None:
             return [
                 exp.select(
-                    s_id,
+                    *s_id,
                     exp.alias_(iri_term(p.iri), alias="p"),
                     exp.alias_(iri_term(p.constant), alias="o"),
                 ).from_(_table(nm, "_s"))
@@ -239,7 +316,7 @@ class TermsMixin:  # REQ-2135
             value = _col(column, "_s", quoted=True)
             return [
                 exp.select(
-                    s_id,
+                    *s_id,
                     exp.alias_(iri_term(p.iri), alias="p"),
                     exp.alias_(literal_term(value, p.datatype), alias="o"),
                 )
@@ -256,8 +333,10 @@ class TermsMixin:  # REQ-2135
         out = []
         for rel in rels:
             tgt = self._lm.nodes[rel.target_label]
+            if not tgt.key_readable:
+                continue  # its object can't be named: the edge is left out, as its table is
             hop = exp.select(
-                s_id.copy(),
+                *(c.copy() for c in s_id),
                 exp.alias_(iri_term(p.iri), alias="p"),
                 exp.alias_(node_term("_o", tgt), alias="o"),
             ).from_(_table(nm, "_s"))

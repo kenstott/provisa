@@ -209,24 +209,30 @@ async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
     assert params == {"entityId": "table-uuid-1", "entityType": "table", "mode": "replace"}
     assert body["apiVersion"] == "v3.1.0"
     assert body["schema"][0]["name"] == "orders"
-    # OpenMetadata reads ODCS 3.0's member array, not the 3.1 Team object.
-    assert body["team"] == [{"name": "alice", "role": "ownerRole"}]
+    # The owner role's holders are not read here, so the team has no member to send.
+    assert "team" not in body
     assert result.published["data_contract"] == 1
     assert puts  # the tables went first
 
 
 def test_a_contracts_team_goes_to_openmetadata_as_its_member_list():  # REQ-2118
-    """OpenMetadata reads ODCS's team only as 3.0's list of members, so the 3.1 Team's roles are
-    sent as members, each with its Team property name as its role."""
+    """OpenMetadata reads ODCS's team only as 3.0's list of members, so the 3.1 Team's members
+    are sent as that list: each role's holders by address, with the role they hold."""
     from provisa.api.metadata_export.openmetadata import _data_contract_entities
 
     config = _config()
     config.data_products[0].team_role = "analyst"
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        owner_emails={"alice": ("alice@example.com",), "analyst": ("ana@example.com",)},
+    )
     (contract,) = _data_contract_entities(snapshot)
     assert contract.body["team"] == [
-        {"name": "alice", "role": "ownerRole"},
-        {"name": "analyst", "role": "teamRole"},
+        {"username": "alice@example.com", "role": "owner"},
+        {"username": "ana@example.com", "role": "team"},
     ]
 
 

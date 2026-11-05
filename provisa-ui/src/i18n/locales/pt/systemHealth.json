@@ -26,7 +26,9 @@
     "running": "Em execução",
     "unreachable": "Inacessível",
     "port": "porta {{port}}",
+    "cypherOverHttp": "Cypher sobre HTTP",
     "mvRefreshLoop": "Loop de atualização de MV",
-    "stopped": "Parado"
+    "stopped": "Parado",
+    "copyUrl": "Copiar URL"
   }
 }

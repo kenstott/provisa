@@ -59,6 +59,8 @@ def _expand_one(sql: str, view_table: str, view_sql: str, mark: bool = False) ->
             return f"{kw}({view_sql}){alias}"
         return f"{kw}({view_sql}) {view_table}"
 
+    if "." in view_table:
+        return _expand_in_schema(sql, view_table, view_sql)
     vt = re.escape(view_table)
     # Catalog-qualified: "catalog"."schema"."view_table" [alias]
     sql = re.sub(rf'"[^"]+"\."[^"]+"\."{vt}"{_ALIAS}', repl, sql)
@@ -75,6 +77,23 @@ def _expand_one(sql: str, view_table: str, view_sql: str, mark: bool = False) ->
     # same-named column or alias elsewhere in the query is never mistaken for the table.
     sql = re.sub(rf"\b(?P<kw>FROM\s+|JOIN\s+){vt}\b{_ALIAS}", repl, sql)
     return sql
+
+
+def _expand_in_schema(sql: str, view_table: str, view_sql: str) -> str:
+    """Replace refs to a view keyed ``schema.name`` -- an ontology Class (REQ-2163), whose name a
+    registered table may share -- only where they name its schema: ``"catalog"."schema"."name"``,
+    ``"schema"."name"`` or ``schema.name``. The name alone, or under another schema, is not it."""
+    schema, name = view_table.split(".", 1)
+
+    def repl(m: re.Match) -> str:
+        kw = m.groupdict().get("kw") or ""
+        alias = m.group("alias")
+        return f"{kw}({view_sql}){alias}" if alias else f'{kw}({view_sql}) "{name}"'
+
+    s, n = re.escape(schema), re.escape(name)
+    sql = re.sub(rf'"[^"]+"\."{s}"\."{n}"{_ALIAS}', repl, sql)
+    sql = re.sub(rf'(?<![\w."]\.)"{s}"\."{n}"{_ALIAS}', repl, sql)
+    return re.sub(rf'(?<![\w."\'])(?P<kw>FROM\s+|JOIN\s+)?{s}\.{n}\b{_ALIAS}', repl, sql)
 
 
 def expand_view_refs(  # REQ-135

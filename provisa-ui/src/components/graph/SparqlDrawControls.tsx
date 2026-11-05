@@ -11,7 +11,7 @@
 // REQ-2135: how a SPARQL answer is drawn as asked -- a CONSTRUCT's literals as properties or as
 // nodes, a SELECT whose variables pair into subject and object as a graph.
 
-import { Button, Chip } from "@mantine/core";
+import { Button, Chip, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { SparqlDraw } from "./useSparqlDraw";
 
@@ -21,7 +21,7 @@ export function SparqlDrawControls({ draw, onDrawn }: { draw: SparqlDraw; onDraw
   if (frame.status !== "done") return null;
   return (
     <>
-      {frame.sparqlTriples && (
+      {(frame.sparqlTriples || frame.sparqlExpansions) && (
         <Chip
           size="xs"
           className="gf-sparql-toggle"
@@ -45,6 +45,16 @@ export function SparqlDrawControls({ draw, onDrawn }: { draw: SparqlDraw; onDraw
         >
           {t("graphFrame.sparqlDrawAsGraph")}
         </Button>
+      )}
+      {frame.sparqlMerge?.error && (
+        <Text size="xs" c="red" role="alert" data-testid="graph-frame-merge-error">
+          {frame.sparqlMerge.error}
+        </Text>
+      )}
+      {frame.sparqlMerge?.nothingMore && (
+        <Text size="xs" c="dimmed" role="status" data-testid="graph-frame-merge-empty">
+          {t("graphFrame.sparqlNothingMore", { resource: frame.sparqlMerge.nothingMore })}
+        </Text>
       )}
     </>
   );

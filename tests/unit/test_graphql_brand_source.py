@@ -36,6 +36,16 @@ from provisa.graphql_remote.mapper import map_schema
 from provisa.graphql_remote.probe import QueryTooComplex
 from provisa.graphql_remote.executor import column_selection, execute_remote, table_query
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 GITHUB = BRANDS["github"]
 
 
@@ -240,7 +250,7 @@ async def test_a_field_github_withholds_on_one_row_is_null_in_that_row():
     rows = (await execute_remote(
         GITHUB.url, None, table["field_name"], ["name", "viewerPermission"],
         variables={"owner": "o", "name": "n"}, required_args=table["required_args"],
-        rows_path=table["rows_path"], error_policy=GITHUB.error_policy,
+        rows_path=table["rows_path"], limit=100, error_policy=GITHUB.error_policy,
     )).rows  # fmt: skip
     assert rows == [{"name": "calcite", "viewerPermission": None}]
 
@@ -261,7 +271,7 @@ async def test_github_refusing_the_table_itself_fails_the_read():
     with pytest.raises(ValueError, match="retrieve domains"):
         await execute_remote(
             GITHUB.url, None, table["field_name"], ["domain"], variables={"login": "apache"},
-            required_args=table["required_args"], rows_path=table["rows_path"],
+            required_args=table["required_args"], rows_path=table["rows_path"], limit=100,
             error_policy=GITHUB.error_policy,
         )  # fmt: skip
 
@@ -408,6 +418,13 @@ def test_gitlabs_shipped_schema_offers_its_tables():
     assert spec is not None
     assert spec["rows_path"] == ["issues", "nodes"]
     assert [a["name"] for a in spec["required_args"]] == ["fullPath"]
+
+
+def test_listing_tables_in_schema_order_drops_none_of_githubs_or_gitlabs():
+    # The tables offered from each shipped schema when root connections moved to the schema's
+    # order (Shopify's root connections had been listed after every plain table).
+    assert len(available_tables(GITHUB, "gh")) == 149
+    assert len(available_tables(GITLAB, "gl")) == 563
 
 
 @respx.mock

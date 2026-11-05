@@ -15,11 +15,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { DataProductsQuery, SourcesQuery, TablesQuery } from "../admin.graphql";
+import { DataProductsQuery, SourcesQuery, TableRowsQuery } from "../admin.graphql";
 
 const answers = new Map<unknown, unknown>([
   [SourcesQuery, { sources: [{ id: "shop-db" }] }],
-  [TablesQuery, { tables: [{ sourceId: "shop-db", tableName: "orders" }] }],
+  [TableRowsQuery, { tables: [{ sourceId: "shop-db", tableName: "orders" }] }],
   [DataProductsQuery, { dataProducts: [{ id: "p1" }] }],
 ]);
 const executed: unknown[] = [];
@@ -47,12 +47,16 @@ function lazy(document: unknown) {
   return [execute];
 }
 
+// The fetch policy each lazy query was made with.
+const policies = vi.hoisted(() => new Map<unknown, unknown>());
+
 vi.mock("@apollo/client/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@apollo/client/react")>();
   const made = new Map<unknown, unknown>();
   return {
     ...actual,
-    useLazyQuery: (document: unknown) => {
+    useLazyQuery: (document: unknown, options?: { fetchPolicy?: string }) => {
+      policies.set(document, options?.fetchPolicy);
       if (!made.has(document)) made.set(document, lazy(document));
       return made.get(document);
     },
@@ -101,6 +105,16 @@ describe("what the org has, read for the tour", () => {
     const { result } = renderHook(() => useOrgHas());
     await expect(result.current()).rejects.toThrow("The operation was aborted.");
     reset.pending = 0;
+  });
+
+  // A lazy query is a watch query, whose default here (cache-and-network) answers from the server
+  // alone: the tables read took 4-5 s on the e2e lane's org each time the Deep Dives menu opened,
+  // past the menu's check (run 40692080291).
+  it("reads the cached catalog before the server", () => {
+    renderHook(() => useOrgHas());
+    for (const document of [SourcesQuery, TableRowsQuery, DataProductsQuery]) {
+      expect(policies.get(document)).toBe("cache-first");
+    }
   });
 
   it("says whether Polly has a model to answer with", async () => {

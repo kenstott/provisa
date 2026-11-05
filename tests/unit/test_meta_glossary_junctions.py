@@ -51,9 +51,9 @@ def test_no_glossary_association_is_a_label(label_map, table):
 @pytest.mark.parametrize(
     ("rel_type", "source", "target", "via"),
     [
-        ("REFERENCED_BY", "ONT__Terms", "M__TableColumns", "_term_refs"),
-        ("IN_DOMAIN", "ONT__Terms", "M__Domains", "_domains"),
-        ("CLASS_TERM", "M__RegisteredTables", "ONT__Terms", None),
+        ("REFERENCED_BY", "ON_Terms", "M__TableColumns", "_term_refs"),
+        ("IN_DOMAIN", "ON_Terms", "M__Domains", "_domains"),
+        ("CLASS_TERM", "M__RegisteredTables", "ON_Terms", None),
     ],
 )
 def test_a_glossary_association_is_one_direct_edge(label_map, rel_type, source, target, via):

@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",
       "unknown_action_type": "Unknown actionType '{{action_type}}'",
       "unknown_role": "Unknown role '{{role}}'",
+      "mask_unreachable": "You have defined a mask that is not reachable: {{entries}}",
       "webhook_not_found": "Webhook '{{name}}' not found",
       "written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
       "function_exists": "Function '{{name}}' already exists",
@@ -93,7 +94,6 @@
       "no_grpc_query_for_table": "No gRPC query registered for table '{{table}}'",
       "no_mutation_fields": "No mutation fields found",
       "no_proto_for_role": "Role '{{role_id}}' has no proto: it is given no data surface, because it reaches no domain or holds only control-plane rights",
-      "role_served_nothing": "Role '{{role_id}}' is served no tables: no column of any table is granted to it",
       "no_query_field_for_proto_type": "No query field for proto type '{{type_name}}' under role '{{role_id}}'",
       "no_query_fields": "No query fields found",
       "no_role": "No role '{{role_id}}'",
@@ -125,17 +125,19 @@
       "viewer_column_unknown": "'{{column}}' is not a column of table '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' is not a filter of column '{{column}}'",
       "viewer_value_invalid": "The filter on '{{column}}' cannot use the value '{{value}}'",
-      "replica_building": "The copy of {{replica}} is still being built. The build continues; open the preview again once it has finished.",
+      "replica_building": "The replica of {{replica}} is still being built. The build continues; open the preview again once it has finished.",
       "address_invalid": "The address cannot be resolved: {{reason}}",
       "address_not_found": "Nothing to resolve: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve cannot be combined with other root fields in one operation",
       "source_starting": "The source {{source}} is still starting. Try again in a moment.",
+      "source_unavailable": "The source {{source}} could not answer. Try again shortly.",
       "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
       "graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
       "graphql_body_not_json": "The request body is not JSON: {{error}}",
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
       "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
-      "graphql_mutation_over_get": "A mutation is sent with POST, never GET."
+      "graphql_mutation_over_get": "A mutation is sent with POST, never GET.",
+      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -156,7 +158,7 @@
       "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
     },
     "front_door": {
-      "coordinator_waking": "The environment is starting. It will be ready in about two minutes.",
+      "coordinator_waking": "The environment is starting. It will be ready in about five minutes.",
       "coordinator_updating": "The environment is being updated. It will be back shortly."
     },
     "functions": {
@@ -231,22 +233,22 @@
       "auth_required_create": "Authentication required to create an org",
       "auth_required_leave": "Authentication required to leave an org",
       "auto_join_breadth_unacknowledged": "Review this auto-join rule carefully or you may admit people from outside your organization: besides {{domains}}, it also accepts addresses such as {{admits}}. Anyone at a domain you do not control could then join your org automatically. Confirm you accept that risk to save it.",
-      "auto_join_public_domain": "auto_join needs an email rule limited to a domain you control — this one matches {{domain}}.",
+      "auto_join_public_domain": "auto_join needs an email rule limited to a domain you control. This one matches {{domain}}.",
       "auto_join_requires_role": "auto_join requires auto_join_role",
-      "auto_join_rule_taken": "Another organization already auto-joins everyone matching this rule. Two orgs cannot claim the same addresses — ask them for an invite, or narrow your rule to a domain only your organization uses.",
+      "auto_join_rule_taken": "Another organization already auto-joins everyone matching this rule. Two orgs cannot claim the same addresses. Ask them for an invite, or narrow your rule to a domain only your organization uses.",
       "auto_join_rule_unbounded": "This auto-join rule has no boundary: it would admit addresses at domains you do not control. Anchor it to a domain you own, e.g. \"@acme\\\\.com$\".",
       "cannot_delete_root": "Cannot delete the root org",
-      "delete_confirm_required": "Deleting '{{org}}' destroys all of its data permanently — no one, including a platform administrator, can recover it. Repeat the org id in the 'confirm' parameter to proceed.",
+      "delete_confirm_required": "Deleting '{{org}}' destroys all of its data permanently, and no one, including a platform administrator, can recover it. Repeat the org id in the 'confirm' parameter to proceed.",
       "invalid_email_rule": "Invalid email rule: {{error}}",
       "invalid_org_id": "Invalid org id '{{org}}': 2-40 characters, lowercase letters and digits only, starting with a letter. The id becomes the database schema name and the subdomain, and cannot be changed later.",
       "limit_reached": "Organization limit reached: a single account may create at most {{limit}} organizations. Delete one you no longer need to create another.",
       "membership_not_found": "Membership not found",
-      "no_tenant_runtime": "Org '{{org}}' has no tenant runtime — it may still be provisioning.",
+      "no_tenant_runtime": "Org '{{org}}' has no tenant runtime. It may still be provisioning.",
       "not_found": "Org not found",
       "not_org_admin": "{{user}} does not hold org_admin in {{org}}",
       "org_id_reserved": "Org id '{{org}}' is reserved. Reserved ids: {{reserved}}.",
       "platform_admin_required": "platform_admin required",
-      "retry_not_failed": "Org '{{org}}' is '{{state}}', not 'failed' — nothing to retry.",
+      "retry_not_failed": "Org '{{org}}' is '{{state}}', not 'failed', so there is nothing to retry.",
       "self_role_change": "A user cannot change their own role. Ask another administrator.",
       "view_not_permitted": "Not permitted to view this org",
       "org_id_sandbox_prefix": "Org ids beginning {{prefix}} are reserved for demo sandboxes.",
@@ -269,6 +271,10 @@
       "classification_decision_not_found": "No decision on {{column}} as {{kind}}",
       "classification_pii_refused": "The column could not be marked PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
+      "function_unsupported": "{{function}}() has no form on {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
       "no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
@@ -288,7 +294,8 @@
       "not_found": "Role not found",
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
-      "description_missing": "Role '{{role}}' needs a description of what it is for"
+      "description_missing": "Role '{{role}}' needs a description of what it is for",
+      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it"
     },
     "schema": {
       "allowed_domains_updated": "Allowed domains updated for source '{{source}}'",
@@ -299,13 +306,13 @@
       "cache_purged": "Purged {{count}} cache entries",
       "cache_purged_table": "Purged {{count}} cache entries for table {{table}}",
       "calendar_deleted": "calendar '{{calendar}}' deleted",
-      "calendar_in_use": "calendar '{{calendar}}' is in use by materialized views — clear their snapshot schedule before deleting",
+      "calendar_in_use": "calendar '{{calendar}}' is in use by materialized views. Clear their snapshot schedule before deleting.",
       "calendar_not_found": "calendar '{{calendar}}' not found",
       "calendar_saved": "calendar '{{calendar}}' {{version}} saved",
       "column_natively_nested": "Cannot register: column {{column}} is natively {{native_type}} at its source, so its type is json, not {{type}}.",
       "column_types_unresolved": "Cannot register: no data type could be resolved from the source for column(s): {{columns}}. Introspect the table (Discover schema) or set a Data Type for each before registering.",
       "config_not_found": "Config file not found",
-      "creation_request_queued": "Queued as creation request #{{id}} — awaiting a user holding '{{capability}}' to execute or reject it.",
+      "creation_request_queued": "Queued as creation request #{{id}}, awaiting a user holding '{{capability}}' to execute or reject it.",
       "db_pool_unavailable": "Database pool not available",
       "discovery_failed": "Schema discovery failed: {{error}}",
       "domain_created": "Domain '{{domain}}' created",
@@ -317,7 +324,7 @@
       "invalid_calendar": "invalid calendar: {{error}}",
       "invalid_cardinality": "Invalid cardinality: '{{cardinality}}'",
       "invalid_off_peak_window": "invalid off-peak window: {{error}}",
-      "load_protection_gate_required": "{{who}}: load protection requires at least one refresh gate — set an off-peak window, a cache_ttl cadence, or a probing change_signal (probe/ttl_probe)",
+      "load_protection_gate_required": "{{who}}: load protection requires at least one refresh gate. Set an off-peak window, a cache_ttl cadence, or a probing change_signal (probe/ttl_probe)",
       "metric_deleted": "Metric '{{metric}}' deleted",
       "metric_not_found": "Metric '{{metric}}' not found",
       "metric_saved": "Metric '{{metric}}' saved",
@@ -358,6 +365,7 @@
       "request_rejected": "Rejected creation request #{{id}}",
       "rls_rule_deleted": "RLS rule deleted",
       "rls_rule_not_found": "RLS rule not found",
+      "rls_rule_right_taken": "Right {{right}} of role '{{role}}' is already in rule {{rule}}. A right is in at most one rule: take it out of that rule, or edit that rule.",
       "rls_rule_saved_domain": "RLS rule for domain '{{domain}}' / role '{{role}}' saved",
       "rls_rule_saved_table": "RLS rule for table {{table}} / role '{{role}}' saved",
       "rls_rule_saved_tag": "RLS rule for tag '{{tag}}' / role '{{role}}' saved",
@@ -397,6 +405,7 @@
       "source_region_set": "Region of source {{source}} set to {{region}}",
       "region_refused": "The region was not set: {{reason}}",
       "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+      "remote_throttled": "Table '{{table}}' was not registered: the source's rate limit did not let it be checked ({{reason}}). Try again later.",
       "table_updated": "Table '{{table}}' updated (id={{id}})",
       "task_deleted": "Task '{{task}}' deleted",
       "task_disabled": "Task '{{task}}' disabled",
@@ -409,10 +418,12 @@
       "unknown_request_type": "Unknown request type '{{type}}'",
       "unknown_trigger_kind": "Unknown trigger kind '{{kind}}'",
       "url_sql_exclusive": "url and sql are mutually exclusive",
+      "view_deploy_unsupported_type": "source '{{source}}' is of type '{{type}}', which cannot host a deployed view; supported types: {{supported}}",
       "view_deployed": "View '{{view}}' deployed to '{{source}}' schema '{{schema}}'",
       "view_spans_sources": "view spans multiple sources: {{sources}}",
       "webhook_approved": "Approved webhook '{{webhook}}'",
       "webhook_name_required": "webhook_name is required for a webhook trigger",
+      "mask_unreachable": "You have defined a mask that is not reachable: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' not found",
       "change_streams_unavailable": "Source '{{source}}' is a standalone MongoDB server, which serves no change streams: the native change signal needs a replica set or a sharded cluster. Run it as a replica set, or use the poll change signal.",
       "table_draft_set": "Table {{table}} set as draft",
@@ -463,11 +474,15 @@
       "mv_window_held": "MV '{{mv}}' was not sealed at {{day}}'s close: another build of it holds its claim",
       "mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build",
       "landing_time_pipeline": "Table '{{table}}' keeps its landing time in {{column}}, but its store lands the topic through its own pipeline, where Provisa does not see each message land.",
-      "relationship_same_entity_direct": "Relationship '{{relationship}}' cannot be marked same entity: it joins through a junction or a function, not one row to one row",
+      "relationship_same_entity_direct": "Relationship '{{relationship}}' cannot be marked same entity: it joins through a junction table or a function, not one row to one row",
       "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
       "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
       "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}",
-      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered."
+      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered.",
+      "jdbc_invalid": "Source {{source}}: {{error}}",
+      "jdbc_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
+      "jdbc_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}.",
+      "jdbc_driver_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows."
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -615,7 +630,10 @@
       "popup_blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
       "window_closed": "The sign-in window was closed before it finished.",
       "tenant_invalid": "The organization's Microsoft 365 setting does not name a directory (tenant). An administrator enters the directory's ID or domain.",
-      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
+      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is.",
+      "client_missing": "Enter the app's client ID and client secret, then sign in.",
+      "client_not_taken": "This kind of source signs in with your organization's client, not one entered on the form.",
+      "no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email.",
@@ -661,6 +679,8 @@
       "unknown_demo": "There is no published demo named {{demo}}.",
       "demo_not_ready": "This demo is still being prepared. Try again shortly.",
       "demo_stores_failed": "This demo could not be started. Try again in a few minutes.",
+      "demo_failed": "This demo could not be prepared. Try again in a few minutes.",
+      "failed_to_start": "The demo server could not be started. Try again later.",
       "at_capacity": "Every demo sandbox is in use. Try again shortly.",
       "starting": "The demo server is starting. Try again in a minute or two.",
       "disk_full": "This sandbox has used its disk limit of {{limit}} bytes; nothing more can be written to it.",
@@ -687,8 +707,7 @@
       "retire_on_invalid": "The planned retirement date {{retire_on}} is not a date (use YYYY-MM-DD).",
       "successor_is_self": "A term cannot be its own successor.",
       "successor_retired": "The successor '{{successor}}' is retired. Choose a term that is in service.",
-      "term_not_live": "Only a live term can be deprecated; this one is {{status}}.",
-      "status_by_action": "A term's status changes through Deprecate, Retire or Restore, each with a reason.",
+      "status_by_action": "A term's status changes through Approve, Deprecate, Retire or Restore.",
       "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
       "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
       "no_retirement_history": "The model's history has no retirement of this term.",
@@ -698,8 +717,18 @@
         "class_and_attribute_table": "Table {{table}} has no class: its concept is this term, which holds columns that aren't keys ({{columns}}).",
         "tag_wrong_kind": "This term carries tags ({{tags}}) only a property passes to its columns; it is a {{role}}.",
         "retirement_blocked": "This term was due for retirement on {{retire_on}} but still holds data. Retire it with a successor to take it.",
-        "no_data": "This concept is connected to no term that holds data."
-      }
+        "no_data": "This draft concept is connected to no term that holds data.",
+        "approved_not_grounded": "This term is approved but reaches no data, so no agent sees it.",
+        "path_pending": "Grounded · path pending approval: it reaches data only through terms not yet approved.",
+        "path_pending_approve": "Grounded · path pending approval: approving {{approve}} grounds it."
+      },
+      "term_not_approved": "Only an approved term can be deprecated; this one is {{status}}.",
+      "term_not_draft": "Only a draft term can be approved; this one is {{status}}.",
+      "definition_required": "Give the term a definition before approving it.",
+      "not_bulk_approvable": "Only defined, grounded draft terms are approved together; not: {{terms}}.",
+      "term_ids_required": "Name the terms to approve.",
+      "impact_action": "There is no preview for that action.",
+      "impact_table_required": "Binding names a table, or one of its columns."
     },
     "tag": {
       "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
@@ -739,6 +768,12 @@
         "no_description": "This data product states neither its purpose nor its usage.",
         "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
       }
+    },
+    "erd": {
+      "database_unavailable": "The ERD layouts cannot be read: the database is unavailable",
+      "layout_not_found": "No layout named {{name}}",
+      "layout_name_required": "A layout needs a name",
+      "layout_place_unreadable": "The layout places a {{kind}} you cannot read"
     }
   }
 }

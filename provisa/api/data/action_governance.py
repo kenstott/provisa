@@ -186,10 +186,10 @@ def _governance_context(
     # REQ-2059: each column through the first entry of its mask list the reader's chain holds.
     reader = reader_chain(state, role_id)
     for c in cols:
-        rule = resolve(c["masks"], reader)
+        dtype = c.get("type") or "varchar"
+        rule = resolve(c["masks"], reader, dtype)
         if rule is None:
             continue
-        dtype = c.get("type") or "varchar"
         validate_masking_rule(rule, c["name"], dtype, True)
         gov.masking_rules[(tid, c["name"])] = (rule, dtype)
         enforcement.masking_applied.append(f"{c['name']} -> {rule.mask_type.value}")
@@ -245,11 +245,9 @@ async def govern_action_rows(
     result = await engine.execute_engine(engine.transpile_physical(sql))
     # The engine hands back its own scalar types (Decimal for a numeric literal, date objects);
     # convert them the way every data surface converts a query result.
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    out = [
-        {name: _convert_value(v) for name, v in zip(result.column_names, r)} for r in result.rows
-    ]
+    out = result_records(result)
     from provisa.audit.provenance import enforced_summary
 
     await _audit(sql, role_id, state, started, len(out), enforced_summary(gov, None))

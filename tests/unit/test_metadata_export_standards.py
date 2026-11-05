@@ -137,8 +137,10 @@ def snapshot():
             )
         ],
         roles=[
-            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
-            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(
+                id="analyst", description="Test role.", capabilities=["usage"], domain_access=["*"]
+            ),
+            Role(id="admin", description="Test role.", capabilities=["usage"], domain_access=["*"]),
         ],
         rls_rules=[
             RLSRule(

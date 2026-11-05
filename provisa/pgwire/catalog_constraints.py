@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 
 from provisa.compiler.sql_where import META_QUERY_NAME
+from provisa.pgwire.catalog_pg17_tables import create_relation
 
 from typing import TYPE_CHECKING
 
@@ -64,13 +65,14 @@ def _build_pk_constraint_rows(
                 0,
                 0,
                 0,
-                None,
-                None,
-                None,
+                " ",  # confupdtype: a key has no action, which PostgreSQL writes as a space
+                " ",  # confdeltype
+                " ",  # confmatchtype
                 True,
                 0,
                 True,
                 conkey,
+                None,
                 None,
                 None,
                 None,
@@ -128,13 +130,14 @@ def _build_unique_constraint_rows(  # REQ-1093
                     0,
                     0,
                     0,
-                    None,
-                    None,
-                    None,
+                    " ",  # confupdtype: a key has no action, which PostgreSQL writes as a space
+                    " ",  # confdeltype
+                    " ",  # confmatchtype
                     True,
                     0,
                     True,
                     conkey,
+                    None,
                     None,
                     None,
                     None,
@@ -183,6 +186,7 @@ def _fk_row(
         None,
         None,
         None,
+        None,
     )
 
 
@@ -202,9 +206,9 @@ def _build_fk_constraint_rows(
     separate joins with no shared constraint identifier. Grouping data cannot be
     threaded through without a migration (forbidden in V1), so composite FKs are
     reconstructed here from the FK→PK invariant: joins between the same table pair
-    whose target columns together form the target's composite PK are one FK. Any
+    whose target columns together cover the target's composite PK are one FK. Any
     other joins (single-column FKs, partial coverage, independent multi-FKs to the
-    same table) fall through to one single-column row each — the prior behavior.
+    same table) fall through to one single-column row each.
     """
     from provisa.compiler.sql_rewrite import semantic_table_name
     from provisa.compiler.naming import apply_sql_name
@@ -268,18 +272,19 @@ def _build_fk_constraint_rows(
         ns_oid_fk = idx.ns_map.get(idx.toid_to_table[src_toid][1], 2200)
         tgt_table_id = entries[0]["tgt_table_id"]
         pk_cols = ctx.pk_columns.get(tgt_table_id, [])
-        tgt_cols = [e["tgt_col_sql"] for e in entries]
-        is_composite = (
-            len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS
-            and len(entries) == len(pk_cols)
-            and len(set(tgt_cols)) == len(entries)
-            and set(tgt_cols) == set(pk_cols)
-        )
+        # REQ-2190: the joins covering the target's composite key are one foreign key, as
+        # meta.table_keys has them, whatever else joins the same two tables: the rest fall through
+        # to one row each. The first join on a key column is the key's.
+        by_tgt: dict[str, dict] = {}
+        for e in entries:
+            by_tgt.setdefault(e["tgt_col_sql"], e)
+        is_composite = len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS and set(pk_cols) <= set(by_tgt)
+        remaining = entries
         if is_composite:
             # Order both key arrays by the target PK column order so conkey[i]
             # pairs with confkey[i].
-            by_tgt = {e["tgt_col_sql"]: e for e in entries}
             ordered = [by_tgt[c] for c in pk_cols]
+            remaining = [e for e in entries if not any(e is k for k in ordered)]
             src_sem_name = semantic_table_name(entries[0]["src_tm"])
             tgt_sem_name = semantic_table_name(entries[0]["tgt"])
             base_name = f"fk_{src_sem_name}__{tgt_sem_name}"
@@ -297,8 +302,7 @@ def _build_fk_constraint_rows(
                 )
             )
             con_oid += 1
-            continue
-        for e in entries:
+        for e in remaining:
             src_sem_name = semantic_table_name(e["src_tm"])
             tgt_sem_name = semantic_table_name(e["tgt"])
             base_name = f"fk_{src_sem_name}__{e['col_label']}"
@@ -365,18 +369,11 @@ def catalog_constraint_rows(ctx, idx: CatalogIndex) -> list[tuple]:
 
 
 def _populate_pg_constraint(db, ctx, idx: CatalogIndex) -> list[tuple]:
-    db.execute("""CREATE TABLE _pg_constraint (
-        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
-        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
-        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
-        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
-        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkey SMALLINT[], confkey SMALLINT[], conpfeqop INTEGER[], conppeqop INTEGER[],
-        conffeqop INTEGER[], conexclop INTEGER[], conbin VARCHAR)""")
+    create_relation(db, "pg_catalog", "pg_constraint")
     constraint_rows = catalog_constraint_rows(ctx, idx)
     if constraint_rows:
         db.executemany(
-            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
+            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 26)})",
             constraint_rows,
         )
     # What pg_get_constraintdef(oid) answers (catalog_rewrite): each constraint's definition as
@@ -447,6 +444,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
                 n,  # indnatts
                 n,  # indnkeyatts
                 True,  # indisunique
+                False,  # indnullsnotdistinct
                 contype == "p",  # indisprimary
                 False,  # indisexclusion
                 True,  # indimmediate
@@ -465,7 +463,7 @@ def _populate_pg_index(db, constraint_rows: list[tuple]) -> None:
             )
         )
     if index_rows:
-        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 20)})", index_rows)
+        db.executemany(f"INSERT INTO _pg_index VALUES ({','.join(['?'] * 21)})", index_rows)
 
 
 _BTREE_AM_OID = 403

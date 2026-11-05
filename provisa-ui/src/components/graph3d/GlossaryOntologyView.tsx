@@ -18,16 +18,15 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { useViewDomains } from "../../lib/viewDomains";
 import { dataGraphql } from "../../api/metaGraph";
 import { GraphExplorer } from "./GraphExplorer";
 import { GLOSSARY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
 import {
-  flatTerms,
-  glossaryGraph,
   ontologyCountQuery,
+  ontologyGraph,
   ontologyQuery,
   overviewGraph,
-  termEdges,
   type CountRow,
   type OntologyRows,
 } from "./glossaryGraphData";
@@ -35,7 +34,7 @@ import { NODE_BUDGET } from "./neighbourhood";
 import { GraphModal } from "./GraphPanel";
 import { Tip } from "../Tip";
 import { metaReader } from "./useProductGraph";
-import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import { ONTOLOGY_SETTINGS } from "../../pages/tables/profile3d/graphSettings";
 
 // Before the first scoped read: nothing drawn yet.
 const EMPTY: GraphData = { nodes: [], edges: [] };
@@ -68,15 +67,10 @@ async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | n
   const counted = (await dataGraphql<{ _terms: CountRow[] }>(count, {}, role))._terms;
   if (counted.length > NODE_BUDGET) return { over: counted.length, rows: counted, query };
   const rows = await dataGraphql<OntologyRows>(query, {}, role);
-  // A search's neighbourhood is read nested, a level to each hop: each term once, flat.
-  const terms = flatTerms(rows._terms);
-  return { data: glossaryGraph(terms, termEdges(terms), rows.data_products), query };
+  return { data: ontologyGraph(rows), query };
 }
 
 /** The Glossary page's control opening the Ontology View in place of the term list. */
-/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
-const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
-
 export function OntologyToggle({
   open,
   onChange,
@@ -106,6 +100,8 @@ export function OntologyToggle({
 export function GlossaryOntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
+  // REQ-1723: the navbar's checked domains bound the graph, as they do the term list.
+  const within = useViewDomains();
   const said = useCallback(
     (domain: string, count: number) =>
       t("graph3d.domainCount", {
@@ -223,6 +219,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
         testId="ontology"
       />
       <GraphModal
@@ -237,6 +234,7 @@ export function GlossaryOntologyView({ search }: { search: string }) {
         search={search}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
       />
     </div>
   );

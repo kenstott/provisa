@@ -287,3 +287,38 @@ class TestAMergeRecordsWhatItMerged:
         prod_tip = history(ORG, "prod")[0]["sha"]
 
         assert merge_base(ORG, dev_two, prod_tip) == dev_one != seed
+
+
+def test_two_commits_of_one_repository_do_not_write_its_objects_at_once(monkeypatch):
+    """REQ-2006: a template's build and a change of it committed together, two threads writing one
+    object: FileExistsError on its .lock, and the environment marked drifted. One repository's
+    commits are taken in turn."""
+    import threading
+    import time
+
+    repo = ensure_repo(ORG)
+    inside: dict[str, int] = {}
+    most: dict[str, int] = {}
+    lock = threading.Lock()
+    build = env_repo._build_tree
+
+    def _counted(on, files):
+        key = str(on.path)
+        with lock:
+            inside[key] = inside.get(key, 0) + 1
+            most[key] = max(most.get(key, 0), inside[key])
+        time.sleep(0.05)
+        with lock:
+            inside[key] -= 1
+        return build(on, files)
+
+    monkeypatch.setattr(env_repo, "_build_tree", _counted)
+    threads = [
+        threading.Thread(target=commit_files, args=(on, "prod", {"a.yaml": n}, n, "me"))
+        for on, n in ((repo, "1"), (repo, "2"), (repo, "3"))
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert most[str(repo.path)] == 1

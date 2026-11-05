@@ -138,4 +138,14 @@ describe("MergeRequestsPanel", () => {
     render(<MergeRequestsPanel orgId="acme" canDecide />);
     expect(await screen.findByTestId("merge-requests-empty")).toBeInTheDocument();
   });
+
+  it("keeps Open only as it was left, after a reload", async () => {
+    const first = render(<MergeRequestsPanel orgId="acme" canDecide />);
+    fireEvent.click(await screen.findByTestId("merge-requests-open-only"));
+    first.unmount();
+    mockList.mockClear();
+    render(<MergeRequestsPanel orgId="acme" canDecide />);
+    await waitFor(() => expect(mockList).toHaveBeenCalledWith("acme", false));
+    expect(screen.getByTestId("merge-requests-open-only")).not.toBeChecked();
+  });
 });

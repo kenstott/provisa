@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 
 from provisa.pgwire.catalog import answer
 from provisa.pgwire.server import ProvisaQueryResult
+from tests.unit.pgwire.result_rows import rows_of
 
 SQL_IDENTIFIER, CHARACTER_DATA, YES_OR_NO, CARDINAL_NUMBER = 13302, 13300, 13310, 13297
 OID, NAME, CHAR, TEXT, INT4, INT8, FLOAT8, TIMESTAMPTZ = 26, 19, 18, 25, 23, 20, 701, 1184
@@ -167,15 +168,15 @@ def test_every_served_catalog_column_of_a_stored_type_is_postgresqls():
 
 def _wire(sql: str) -> list[tuple[int, str, bytes]]:
     """Each column of the first row as (type OID, text form, binary form)."""
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
     result = ProvisaQueryResult(answer(sql, "testrole", _state()), sql)
-    row = next(iter(result.rows()))
+    row = rows_of(result)[0]
     out = []
     for i, value in enumerate(row):
         bvtype = result.column(i)[1]
         oid = result.column_type_oid(i)
-        _own_oid, text, binary = BVTYPE_TO_PGTYPE[bvtype]
+        _own_oid, text, binary = wire.entry(bvtype)
         out.append((_own_oid if oid is None else oid, text(value), binary(value)))
     return out
 
@@ -185,49 +186,51 @@ def test_a_regproc_is_its_function_name_as_text_and_its_oid_as_binary():
         (REGPROC, "bthandler", (330).to_bytes(4, "big"))
     ]
     assert _wire("SELECT typinput FROM pg_catalog.pg_type WHERE oid = 23") == [
-        (REGPROC, "-", (0).to_bytes(4, "big"))
+        (REGPROC, "int4in", (42).to_bytes(4, "big"))
     ]
 
 
 def test_an_oid_array_and_the_vectors_are_written_as_postgresql_writes_them():
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
-    def header(element_oid: int, n: int) -> bytes:
-        return struct.pack("!iiiii", 1, 0, element_oid, n, 1)
+    def header(element_oid: int, n: int, lower: int = 1) -> bytes:
+        return struct.pack("!iiiii", 1, 0, element_oid, n, lower)
 
     oid_array, oidvector, int2vector = (
-        BVTYPE_TO_PGTYPE[BVType.OIDARRAY],
-        BVTYPE_TO_PGTYPE[BVType.OIDVECTOR],
-        BVTYPE_TO_PGTYPE[BVType.INT2VECTOR],
+        wire.entry(BVType.OIDARRAY),
+        wire.entry(BVType.OIDVECTOR),
+        wire.entry(BVType.INT2VECTOR),
     )
     assert oid_array[0] == 1028 and oid_array[1]([16, 3000000000]) == "{16,3000000000}"
     assert oid_array[2]([16]) == header(26, 1) + struct.pack("!iI", 4, 16)
     assert oidvector[0] == 30 and oidvector[1]([23, 25]) == "23 25"
-    assert oidvector[2]([23]) == header(26, 1) + struct.pack("!iI", 4, 23)
+    # oidvectorsend and int2vectorsend count from 0 (REQ-2194: the wire answers as PostgreSQL 17;
+    # the former writer sent lower bound 1, a defect)
+    assert oidvector[2]([23]) == header(26, 1, 0) + struct.pack("!iI", 4, 23)
     assert int2vector[0] == 22 and int2vector[1]([1, 3]) == "1 3"
-    assert int2vector[2]([1]) == header(21, 1) + struct.pack("!ih", 2, 1)
+    assert int2vector[2]([1]) == header(21, 1, 0) + struct.pack("!ih", 2, 1)
 
 
 def test_acl_char_array_inet_and_lsn_are_written_and_sent_as_postgresql_does():
     import pytest
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
-    acl = BVTYPE_TO_PGTYPE[BVType.ACLITEMARRAY]
+    acl = wire.entry(BVType.ACLITEMARRAY)
     assert acl[0] == 1034 and acl[1](["=r/postgres", "app=arw/postgres"]) == (
         "{=r/postgres,app=arw/postgres}"
     )
     with pytest.raises(TypeError, match="aclitem"):  # PostgreSQL has no binary aclitem either
         acl[2](["=r/postgres"])
-    chars = BVTYPE_TO_PGTYPE[BVType.CHARARRAY]
+    chars = wire.entry(BVType.CHARARRAY)
     assert chars[0] == 1002 and chars[1](["i", "o"]) == "{i,o}"
     assert chars[2](["i"]) == struct.pack("!iiiii", 1, 0, 18, 1, 1) + struct.pack("!i", 1) + b"i"
-    inet = BVTYPE_TO_PGTYPE[BVType.INET]
+    inet = wire.entry(BVType.INET)
     assert inet[0] == 869 and inet[1]("10.0.0.1") == "10.0.0.1"
     assert inet[2]("10.0.0.1") == bytes([2, 32, 0, 4, 10, 0, 0, 1])
     assert inet[2]("192.168.0.0/16") == bytes([2, 16, 0, 4, 192, 168, 0, 0])
-    lsn = BVTYPE_TO_PGTYPE[BVType.PG_LSN]
+    lsn = wire.entry(BVType.PG_LSN)
     assert lsn[0] == 3220 and lsn[1]("16/B374D848") == "16/B374D848"
     assert lsn[2]("16/B374D848") == ((0x16 << 32) | 0xB374D848).to_bytes(8, "big")
     assert lsn[1]((0x16 << 32) | 0xB374D848) == "16/B374D848"  # asyncpg reads a pg_lsn as int
@@ -334,9 +337,9 @@ def test_every_object_type_relation_has_postgresqls_columns():
         assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
 
 
-def test_psqls_text_search_and_large_object_lists_are_empty():
-    # Provisa runs no text search configuration and holds no large object: psql's \dFp and \dl
-    # (describe.c) list none.
+def test_psqls_text_search_and_large_object_lists_run():
+    # The text search parsers are PostgreSQL's reference data (REQ-2190), and Provisa holds no large
+    # object: psql's \dFp lists the one parser, its \dl (describe.c) none.
     parsers = (
         'SELECT\n  n.nspname as "Schema",\n  p.prsname as "Name",\n'
         "  pg_catalog.obj_description(p.oid, 'pg_ts_parser') as \"Description\"\n"
@@ -349,15 +352,15 @@ def test_psqls_text_search_and_large_object_lists_are_empty():
         "pg_catalog.obj_description(oid, 'pg_largeobject') as \"Description\"\n"
         "FROM pg_catalog.pg_largeobject_metadata\nORDER BY oid"
     )
-    assert answer(parsers, "testrole", _state()).rows == []
+    assert [row[1] for row in answer(parsers, "testrole", _state()).rows] == ["default"]
     assert answer(large_objects, "testrole", _state()).rows == []
 
 
 def test_the_available_extensions_are_the_installed_ones(monkeypatch):
-    from provisa.pgwire import catalog_populate
+    from provisa.pgwire import catalog_route
 
     monkeypatch.setattr(
-        catalog_populate,
+        catalog_route,
         "extension_rows",
         lambda: [(90000, "vector", 10, 11, False, "0.8.0", None, None)],
     )
@@ -411,9 +414,9 @@ def test_the_sql_conformance_tables_hold_postgresqls_rows():
 
 def test_a_regtype_array_is_written_as_type_names():
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
-    oid, text, binary = BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY]
+    oid, text, binary = wire.entry(BVType.REGTYPEARRAY)
     assert oid == 2211 and text([23, 25]) == "{integer,text}"
     assert binary([23]) == struct.pack("!iiiii", 1, 0, 2206, 1, 1) + struct.pack("!iI", 4, 23)
 
@@ -423,11 +426,19 @@ def test_a_regtype_array_is_written_as_type_names():
 _ANSWERED_ALONE = {
     'pg_catalog."pg_get_indexdef"(NULL::oid)': (TEXT, None),
     'pg_catalog."pg_get_functiondef"(NULL::oid)': (TEXT, None),
-    'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, "provisa"),
-    'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, "UTF8"),
-    'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, 0),
-    "pg_total_relation_size(NULL::regclass)": (INT8, 0),
+    'pg_catalog."pg_get_userbyid"(NULL::oid)': (NAME, None),
+    'pg_catalog."pg_encoding_to_char"(NULL::integer)': (NAME, None),
+    'pg_catalog."pg_relation_size"(NULL::regclass)': (INT8, None),
+    "pg_total_relation_size(NULL::regclass)": (INT8, None),
     'pg_catalog."pg_tablespace_location"(NULL::oid)': (TEXT, None),
+    # Part 2b.
+    'pg_catalog."getdatabaseencoding"()': (NAME, "UTF8"),
+    "pg_char_to_encoding('UTF8')": (INT4, 6),
+    'pg_catalog."quote_literal"(NULL::text)': (TEXT, None),
+    "pg_database_size(NULL::name)": (INT8, None),
+    "pg_column_size(NULL::text)": (INT4, None),
+    "pg_sequence_last_value(NULL::regclass)": (INT8, None),
+    'pg_catalog."pg_describe_object"(NULL::oid, NULL::oid, NULL::integer)': (TEXT, None),
 }
 
 
@@ -445,3 +456,50 @@ def test_a_statement_reading_a_model_table_is_not_taken_for_a_catalog_function_c
     from provisa.pgwire.catalog import classify
 
     assert classify("SELECT pg_relation_size('dogs') AS v, name FROM dogs") == "PASS_THROUGH"
+
+
+RECORD, VOID = 2249, 2278
+
+
+def test_a_record_returning_statistics_function_is_a_null_record():
+    # Provisa has no activity, archiver, WAL or replication statistics to report.
+    for call in (
+        "pg_catalog.pg_stat_get_archiver()",
+        "pg_catalog.pg_stat_get_activity(NULL::integer)",
+        "pg_catalog.pg_stat_get_wal()",
+    ):
+        sql = f"SELECT {call} AS v"
+        assert _oids(sql) == {"v": RECORD}, call
+        assert answer(sql, "testrole", _state()).rows == [(None,)], call
+
+
+def test_pg_sleep_sleeps_and_returns_void():
+    import time
+
+    from provisa.pgwire.catalog import classify
+
+    assert _oids('SELECT pg_catalog."pg_sleep"(NULL::double precision) AS v') == {"v": VOID}
+    assert answer("SELECT pg_sleep(NULL)", "testrole", _state()).rows == [(None,)]
+    assert classify("SELECT pg_sleep(0.05)") == "INTERCEPT"
+    start = time.monotonic()
+    assert answer("SELECT pg_sleep(0.05)", "testrole", _state()).rows == [("",)]
+    assert time.monotonic() - start >= 0.05
+
+
+def test_pg_sleep_ends_with_the_requests_timeout():
+    import time
+
+    import pytest
+
+    from provisa.core import request_deadline
+
+    deadline = request_deadline.Deadline(
+        0.05, transport="pgwire", setting="the pgwire request timeout"
+    )
+    start = time.monotonic()
+    try:
+        with request_deadline.bound(deadline), pytest.raises(TimeoutError):
+            answer("SELECT pg_sleep(30)", "testrole", _state())
+    finally:
+        deadline.stop()  # the request is over: a live deadline would leak into later tests
+    assert time.monotonic() - start < 5

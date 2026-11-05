@@ -55,6 +55,8 @@ def test_the_registry_holds_one_finder_per_kind():
         "tag_wrong_kind",
         "retirement_blocked",
         "no_data",
+        "approved_not_grounded",
+        "path_pending",
     ]
 
 
@@ -100,6 +102,7 @@ async def test_retirement_blocked(control_plane, monkeypatch):
         today = datetime.date.today()
         async with db.acquire() as conn:
             await glossary_repo.set_definition(conn, note, "A remark.")
+            await glossary_repo.approve_term(conn, note, by=None)
             await glossary_repo.deprecate_term(
                 conn, note, reason="Old.", retire_on=today, by=None, today=today
             )
@@ -120,7 +123,7 @@ async def test_no_data_and_a_plain_draft_is_no_finding(control_plane, monkeypatc
         assert note not in everything
         await _ground(ids["party"], ids["customers"])
         async with db.acquire() as conn:
-            await glossary_repo.add_edge(conn, ids["ledger"], ids["party"], "RELATED_TO")
+            await glossary_repo.add_edge(conn, ids["party"], ids["ledger"], "KIND_OF")
         assert not {ids["party"], ids["ledger"]} & set(await _found("no_data"))
 
 
@@ -146,3 +149,38 @@ async def test_polly_lists_the_same_findings(control_plane, monkeypatch):
         assert await tools.list_glossary_findings(state, "analyst", _request()) == (
             await glossary_router.list_findings(_request())
         )
+
+
+@pytest.mark.asyncio
+async def test_an_approved_term_reaching_no_data_is_a_finding(control_plane, monkeypatch):
+    """REQ-1387: findings list approved terms that are not grounded; a draft one is no_data."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        async with db.acquire() as conn:
+            await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
+            await glossary_repo.approve_term(conn, ids["ledger"], by=None)
+        [finding] = (await _found("approved_not_grounded"))[ids["ledger"]]
+        assert finding["code"] == "glossary.finding.approved_not_grounded"
+        assert ids["ledger"] not in await _found("no_data")
+
+
+@pytest.mark.asyncio
+async def test_a_pending_term_names_the_approval_that_grounds_it(control_plane, monkeypatch):
+    """REQ-1387: a term reaching data only through drafts is Grounded · path pending approval,
+    naming the term whose approval makes it grounded."""
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        note = await _note(db, ids)
+        async with db.acquire() as conn:
+            middle = await glossary_repo.create_abstract_term(
+                conn, "remark", definition="What someone wrote.", domains={"sales"}
+            )
+            await glossary_repo.set_definition(conn, ids["ledger"], "What the books record.")
+            await glossary_repo.approve_term(conn, ids["ledger"], by=None)
+            await glossary_repo.add_edge(conn, middle, ids["ledger"], "KIND_OF")
+            await glossary_repo.add_edge(conn, note, middle, "KIND_OF")
+        [finding] = (await _found("path_pending"))[ids["ledger"]]
+        assert finding["code"] == "glossary.finding.path_pending_approve"
+        assert finding["params"] == {"approve": "remark"}
+        assert finding["message"].startswith("Grounded · path pending approval")
+        async with db.acquire() as conn:
+            await glossary_repo.approve_term(conn, middle, by=None)
+        assert ids["ledger"] not in await _found("path_pending")

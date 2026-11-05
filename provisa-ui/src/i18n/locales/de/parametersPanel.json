@@ -13,7 +13,8 @@
       "query_param": "Abfrageparameter",
       "graphql_arg": "GraphQL-Argument",
       "grpc_input": "Feld der gRPC-Anfrage",
-      "query_arg": "Argument der nativen Abfrage"
+      "query_arg": "Argument der nativen Abfrage",
+      "column_value": "Spaltenwert"
     }
   }
 }

@@ -18,6 +18,7 @@
     "optionalHint": "वैकल्पिक",
     "fieldPlaceholder": "— फ़ील्ड —",
     "filterValuePlaceholder": "मान",
+    "removeHandedParam": "{{param}} हटाएँ",
     "sortAsc": "आरोही",
     "sortDesc": "अवरोही",
     "paginationSectionTitle": "पेजिनेशन",

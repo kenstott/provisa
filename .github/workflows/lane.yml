@@ -138,8 +138,10 @@ on:
         required: false
       SP_CERT_P12_BASE64:
         required: false
-      # The live sources the core UI lane registers (ui-e2e-core.yml passes them; no other caller
-      # does, and a lane job can read only what its caller passed).
+      # The live sources the UI lanes register: the cloud warehouses below only the nightly
+      # warehouse UI job passes (integration-suite-lanes.yml warehouse-ui; maintainer 2026-10-29:
+      # the core UI lane never touches a live warehouse), the live APIs and SharePoint the core UI
+      # lane passes (ui-e2e-core.yml). A lane job can read only what its caller passed.
       # Snowflake
       SNOWFLAKE_ACCOUNT:
         required: false
@@ -450,6 +452,17 @@ jobs:
           path: ${{ inputs.artifact-path }}
           retention-days: ${{ inputs.artifact-retention }}
           if-no-files-found: ${{ inputs.artifact-required }}
+
+      # The adapter and server logs a test's launched servers wrote (PROVISA_TEST_SERVER_LOG_DIR),
+      # kept when a spec fails; the same retention as the report.
+      - name: Upload the server logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-logs-${{ steps.key.outputs.lane }}
+          path: results/${{ steps.key.outputs.lane }}/server-logs/
+          retention-days: ${{ inputs.artifact-retention }}
+          if-no-files-found: ignore
 
       - name: Upload the runner's samples
         if: always() && inputs.sampler

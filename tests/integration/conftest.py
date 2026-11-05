@@ -58,7 +58,7 @@ _INTEGRATION_GROUP_PATTERNS: list[tuple[str, re.Pattern]] = [
             r"|trino_flight_engine_e2e|trino_fte_exchange|trino_tls_flight_e2e|trino_worker_fanout"
             r"|two_org_trino_isolation"
             r"|embedded_pg_duckdb_engine_e2e|embedded_pg_duckdb_iceberg_e2e|embedded_pg_duckdb_motherduck_e2e"
-            r"|embedded_pg_fdw_engine_e2e|embedded_pg_sqlite_fdw_e2e"
+            r"|embedded_pg_fdw_engine_e2e|embedded_pg_sqlite_fdw_e2e|embedded_pg_clickhouse_fdw_e2e"
             r"|duckdb_sqlite_control_plane_e2e|adbc|cross_vendor_parity_e2e|live_concurrency_cap_e2e"
             r"|engine_runtime_binding|execution_routing|direct_exec|operator_floor_e2e"
             r"|federation_integration|databricks_external_link_e2e"
@@ -127,14 +127,14 @@ def pytest_collection_modifyitems(config, items):
         item.add_marker(getattr(pytest.mark, group))
 
 
-_PG_SERVER_MAJOR = "16"  # matches the postgres:16 image pinned across docker-compose*.yml
+_PG_SERVER_MAJOR = "16"  # matches the PostgreSQL 16 control-plane image (pgvector/pgvector:pg16-trixie) of docker-compose*.yml
 
 
 def _pg_tool(name: str) -> str:
     """Resolve a PG client binary (pg_dump/pg_restore).
 
     PATH first — Linux CI and the linux-mem Docker lane ship a pg_* on PATH that matches
-    the postgres:16 server image. On local macOS dev, Homebrew's default pg_dump/pg_restore
+    the PostgreSQL 16 server image. On local macOS dev, Homebrew's default pg_dump/pg_restore
     tracks Homebrew's latest major version, which drifts ahead of the pinned server image;
     a client built against a newer major emits syntax (e.g. `SET transaction_timeout = 0`)
     the 16 server rejects on restore. When PATH resolves to a mismatched major and the macOS

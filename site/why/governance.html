@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Governance, in its complete sense — Provisa</title>
+  <title>Governance — Provisa</title>
   <meta name="description" content="Governance answers five questions about every query: where it runs, when, how, for whom, and what the data means. Access control is one of them: six layers compiled into every query plan, plus governed relationships." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -48,7 +48,7 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Governance</span></p>
-        <h1>Governance, in its complete sense.</h1>
+        <h1>Governance covers more than access control.</h1>
         <p class="lead">
           When access control is configured per API, each new interface is another
           integration to get right and another thing for an auditor to check. Adding a
@@ -78,40 +78,37 @@
 
         <h2>Access control: six layers, compiled into the plan</h2>
         <p>
-          The usual failure mode: access control configured separately per API, so adding
-          a new protocol leaves a gap until someone finds it. Every layer here is applied
+          Access control is usually configured separately per API, so adding a new protocol leaves a gap until someone finds it. Every layer here is applied
           at query compile time, uniformly, on every language and every transport. Add a
           source, a column or a relationship and every layer applies to it; there is nothing
           to re-apply per interface.
         </p>
 
-        <h3>0 — Introspection filtering</h3>
+        <h3>0. Introspection filtering</h3>
         <p>
-          Schema browsers only ever see what the role is allowed to see. A hidden table is
-          not a table the user can discover and then be denied; it is absent from the
-          catalog they are handed.
+          Schema browsers only ever see what the role is allowed to see. A hidden table is absent from the catalog they are handed, so they can't discover it and then be denied.
         </p>
 
-        <h3>1 — Public access</h3>
+        <h3>1. Public access</h3>
         <p>
           The anonymous surface is declared explicitly. Nothing becomes publicly readable
           as a side effect of registering it.
         </p>
 
-        <h3>2 — Domain access</h3>
+        <h3>2. Domain access</h3>
         <p>
           Roles reach only the domains registered to them. Domains are the coarse boundary
           the finer layers operate inside.
         </p>
 
-        <h3>3 — Row-level security</h3>
+        <h3>3. Row-level security</h3>
         <p>
           Per-table, per-role <code>WHERE</code> injection, inherited recursively: a
           view over a governed table carries the predicate of everything beneath it, and so does
           a materialized view built on that view.
         </p>
 
-        <h3>4 — Column visibility and masking</h3>
+        <h3>4. Column visibility and masking</h3>
         <p>
           Columns are visible, hidden, or masked per role. Masking is regex, constant, or
           truncation, with an explicit role-based bypass where a privileged role needs the raw
@@ -120,7 +117,7 @@
           writes are checked the same way.
         </p>
 
-        <h3>5 — Predicate guard and approval</h3>
+        <h3>5. Predicate guard and approval</h3>
         <p>
           A pre-execution ABAC hook over webhook, gRPC, or unix socket. The plan is offered to your own decision service before it runs, which is
           where request-time context, such as a ticket number, a break-glass approval or
@@ -149,8 +146,7 @@
           one, with its own description.
         </p>
         <p>
-          An AI agent asks which role it acts as and is told that role, what it is for and the
-          roles it may switch to; never a rule, a mask or a grant. It is not told why a result
+          An AI agent asks which role it acts as and is told that role, what it is for and the roles it may switch to. It is never told a rule, a mask or a grant. It is not told why a result
           was narrowed, and nothing marks a result as filtered: a role's data is its whole view,
           so there is nothing to probe.
         </p>
@@ -167,7 +163,7 @@
           reason for why the traversal exists, written for people and agents alike.
         </p>
 
-        <h2>It's a per-role capability</h2>
+        <h2>The relationship guard is a per-role right</h2>
         <p>
           The guard is a single right on the role. Leave it off for analysts and agents;
           grant it to a trusted role and that role can write any JOIN across the whole
@@ -295,7 +291,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -306,6 +302,8 @@
         <a href="/why/no-lock-in">No lock-in</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
         <a href="/vs/starburst">vs Starburst</a>
         <a href="/vs/denodo">vs Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>

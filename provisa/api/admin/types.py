@@ -234,6 +234,8 @@ class DataProductType:  # REQ-1634, REQ-1660
     # REQ-1635: the support contact (email or URL) a catalog listing requires.
     support_contact: str | None = None
     custom_properties: JsonScalar
+    # REQ-2118: when the product was created (ISO 8601), its ODPS productCreatedTs; read-only.
+    created_at: str
     contracts: list[DataContractType] = strawberry.field(default_factory=list)  # REQ-2158
     # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
     status: str = "draft"
@@ -799,6 +801,9 @@ class AvailableTableType:  # REQ-533
     paging_kind: str | None = None
     pagination: PagingType | None = None
     paging_ceiling_rows: int | None = None  # graphql_remote.max_rows, for a connection table
+    # REQ-1986: the parameters a read of it must give (path parameters, required arguments), by
+    # the name a caller gives each; the picker lists a table with any apart, as a lookup.
+    required_parameters: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -981,6 +986,9 @@ class RoleType:  # REQ-042
     # REQ-2155: what the role holds -- its own capabilities and every ancestor's; null as
     # capabilities is. The client builds the caller's rights from it.
     effective_capabilities: list[str] | None = None
+    # REQ-2155: the data domains and regions it holds, what its children may be given.
+    effective_domains: list[str] | None = None
+    effective_residency_values: list[str] | None = None
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155
     # REQ-2155: a standard role is Provisa's and locked: extended with child roles, never edited.
@@ -1011,6 +1019,8 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     action_name: str | None = None  # REQ-1679
     tag_id: str | None = None  # REQ-1384: the rule applies to every table carrying this tag
     why: JsonScalar | None = None  # REQ-2094: reason, bases, review_on; who decided it and when
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
 
 
 # --- Input types for mutations ---
@@ -1458,6 +1468,8 @@ class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a 
     valid_time: str | None = None
     recorded_time: str | None = None
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.input
@@ -1481,6 +1493,8 @@ class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggrega
     measures: list[MeasureInput] = strawberry.field(default_factory=list)
     dimensions: list[DimRefInput] = strawberry.field(default_factory=list)
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.type
@@ -1766,6 +1780,11 @@ class RLSRuleInput:  # REQ-041, REQ-402
     description: str = ""  # REQ-2081: required; an empty one is refused
     # REQ-2094: reason, bases and review_on given; left out, the stored ones stand.
     why: JsonScalar | None = None
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
+    id: int | None = None  # the rule this save edits; None: a new rule, or its rights' own
+    # REQ-2188: a person adding a rule: it replaces no rule of the same rights, it is refused.
+    creating: bool = False
 
 
 @strawberry.type
@@ -1939,15 +1958,19 @@ class MaterializeStoreInfoType:
 
 @strawberry.type
 class ProtocolHealthType:
-    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt).
+    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt), or of a query
+    surface on the HTTP listener (SPARQL, GraphQL, Cypher, REST, JSON:API).
 
     ``status`` is one of "running" | "down" | "disabled". "disabled" means the protocol was
-    never started (no bound port); "down"/"running" come from a TCP-connect liveness probe.
+    never started (no bound port) or its routes are not mounted; "down"/"running" come from a
+    TCP-connect liveness probe, or for an HTTP surface from its routes being mounted. A listener
+    has a ``port``, an HTTP surface a ``path``.
     """
 
     name: str
     status: str
     port: int | None
+    path: str | None = None
 
 
 @strawberry.type

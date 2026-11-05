@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from provisa.core.models import Source
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector_base import Capability, Connector, Mechanism
 from provisa.federation.codehost_connectors import CodeHost, trino_details
 
@@ -103,6 +104,9 @@ class _TrinoJdbcConnector(_TrinoConnector):
     """Any JDBC-reachable relational/warehouse/lake source: a connection-url + credentials, built from
     the source's ``jdbc_url``. One class parametrized by ``source_type`` + ``trino_connector``."""
 
+    # Catalog properties a source type needs beyond the connection (see ``_TRINO_JDBC_EXTRA``).
+    extra_properties: dict[str, str] = {}
+
     def details(self, source: Source) -> dict:
         from provisa.core.secrets import resolve_secrets
 
@@ -117,6 +121,7 @@ class _TrinoJdbcConnector(_TrinoConnector):
         }
         if self.trino_connector in _STATISTICS_CONNECTORS:
             props["statistics.enabled"] = "false"
+        props.update(self.extra_properties)
         return props
 
 
@@ -257,6 +262,8 @@ def _jdbc_trino(source_type: str, trino_connector: str) -> type[_TrinoJdbcConnec
     attrs: dict = {"source_type": source_type, "trino_connector": trino_connector}
     if source_type in _TRINO_SCAN_TYPES:
         attrs["mechanism"] = Mechanism.SCAN
+    if source_type in _TRINO_JDBC_EXTRA:
+        attrs["extra_properties"] = _TRINO_JDBC_EXTRA[source_type]
     return type(f"Trino_{source_type}_Connector", (_TrinoJdbcConnector,), attrs)
 
 
@@ -275,6 +282,14 @@ _TRINO_JDBC_TYPES: dict[str, str] = {
     "redshift": "redshift",
     "databricks": "delta_lake",
     "exasol": "exasol",
+}
+
+
+# Per-type catalog properties. A type the engine lacks is held as varchar: ClickHouse's String is
+# read as varbinary unless the connector is told otherwise, and varbinary cannot be carried into a
+# JSON object (the GraphQL nesting) or compared with text.
+_TRINO_JDBC_EXTRA: dict[str, dict[str, str]] = {
+    "clickhouse": {"clickhouse.map-string-as-varchar": "true"},
 }
 
 
@@ -344,7 +359,11 @@ class TrinoMongoConnector(_TrinoConnector):
         from provisa.mongodb.fetch import MongoConnection
 
         # REQ-1985: a host and port, or the source's connection string, credentials encoded.
-        url = MongoConnection.from_source(source).url()
+        connection = MongoConnection.from_source(source)
+        url = connection.url()
+        # A connection string carries its own topology options (an SRV string forbids this one).
+        if connection.uri is None and source.federation_hints.get("direct_connection") == "true":
+            url += "?directConnection=true"
         return {"mongodb.connection-url": url, "mongodb.schema-collection": "_schema"}
 
 
@@ -587,6 +606,12 @@ class TrinoFilesConnector(_TrinoConnector):
         crawl = crawl_operand(source.id, source.mapping)
         if crawl is not None:
             details["crawl"] = json.dumps(crawl, sort_keys=True)
+        # The same Excel hints the pgwire bundle is given, as the ``excel-hints`` property.
+        from provisa.file_source.excel_hints import excel_hints_operand
+
+        excel_hints = excel_hints_operand(source.id, source.mapping)
+        if excel_hints is not None:
+            details["excel-hints"] = json.dumps(excel_hints, sort_keys=True)
         return details
 
 
@@ -1223,7 +1248,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
     if TRINO_READS_PGWIRE_ADAPTER_LIVE:
         connectors.append(TrinoGovdataConnector())
     # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-    connectors.extend(TrinoCodeHostConnector(t) for t in ("node", "python"))
+    connectors.extend(TrinoCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES))
     connectors.extend(
         cls() for cls in (_jdbc_trino(st, tc) for st, tc in _TRINO_JDBC_TYPES.items())
     )

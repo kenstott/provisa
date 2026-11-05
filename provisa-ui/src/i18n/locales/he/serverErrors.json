@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "נקודת הקצה לבדיקות מושבתת (הגדירו את PROVISA_ENABLE_TEST_ENDPOINTS כדי להפעיל בסביבה שאינה ייצור).",
       "unknown_action_type": "actionType לא מוכר '{{action_type}}'",
       "unknown_role": "תפקיד לא מוכר '{{role}}'",
+      "mask_unreachable": "הגדרת מסכה שלא ניתן להגיע אליה: {{entries}}",
       "webhook_not_found": "Webhook '{{name}}' לא נמצא",
       "written_table_not_registered": "'{{table}}' אינה טבלה רשומה של המקור '{{source_id}}'",
       "function_exists": "הפונקציה '{{name}}' כבר קיימת",
@@ -93,7 +94,6 @@
       "no_grpc_query_for_table": "לא רשומה שאילתת gRPC עבור הטבלה '{{table}}'",
       "no_mutation_fields": "לא נמצאו שדות מוטציה",
       "no_proto_for_role": "לתפקיד '{{role_id}}' אין proto: לא ניתן לו משטח נתונים, מפני שאינו מגיע לאף תחום או שיש לו רק הרשאות של מישור הבקרה",
-      "role_served_nothing": "לתפקיד '{{role_id}}' לא מוגשת אף טבלה: לא הוענקה לו אף עמודה של אף טבלה",
       "no_query_field_for_proto_type": "אין שדה שאילתה עבור סוג ה-proto '{{type_name}}' תחת התפקיד '{{role_id}}'",
       "no_query_fields": "לא נמצאו שדות שאילתה",
       "no_role": "אין תפקיד '{{role_id}}'",
@@ -130,12 +130,14 @@
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
       "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
+      "source_unavailable": "המקור {{source}} לא הצליח להשיב. נסה שוב בקרוב.",
       "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}.",
       "graphql_body_missing": "לבקשה אין גוף: בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
       "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_parameter_type": "הפרמטר {{parameter}} של בקשת ה-GraphQL חייב להיות {{expected}}.",
-      "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET."
+      "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET.",
+      "listed_only": "התפקיד {{role}} יכול רק לרשום את {{table}}: ניתן לקרוא את המטא-נתונים שלה, לא את הנתונים"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -156,7 +158,7 @@
       "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
     },
     "front_door": {
-      "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כשתי דקות.",
+      "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כחמש דקות.",
       "coordinator_updating": "הסביבה מתעדכנת. היא תחזור בקרוב."
     },
     "functions": {
@@ -269,6 +271,10 @@
       "classification_decision_not_found": "אין החלטה לגבי {{column}} כ-{{kind}}",
       "classification_pii_refused": "לא ניתן היה לסמן את העמודה כ-PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} היא תצוגת קטלוג של תחום meta ולא ניתן לקרוא אותה בהוראה אחת יחד עם טבלה של מקור נתונים: קראו אותן בשתי הוראות.",
+      "function_unsupported": "ל-{{function}}() אין מקבילה ב-{{dialect}}."
+    },
     "replication": {
       "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
       "no_whole_copy": "לטבלה {{schema}}.{{table}} של המקור {{source}} אין עותק שלם לבנות: היא משוכפלת שורה אחר שורה, או שיש לה עמודת פרמטר.",
@@ -288,7 +294,8 @@
       "not_found": "התפקיד לא נמצא",
       "org_selection_required": "נדרשת בחירת ארגון",
       "already_exists": "התפקיד '{{role}}' כבר קיים",
-      "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו"
+      "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו",
+      "right_not_in_parents": "התפקיד {{role}} לא יכול להחזיק ב-{{right}}: אף הורה אינו מחזיק בו"
     },
     "schema": {
       "allowed_domains_updated": "הדומיינים המותרים עודכנו עבור המקור '{{source}}'",
@@ -358,6 +365,7 @@
       "request_rejected": "בקשת היצירה מס' {{id}} נדחתה",
       "rls_rule_deleted": "כלל RLS נמחק",
       "rls_rule_not_found": "כלל RLS לא נמצא",
+      "rls_rule_right_taken": "ההרשאה {{right}} של התפקיד '{{role}}' כבר נמצאת בכלל {{rule}}. הרשאה יכולה להופיע בכלל אחד לכל היותר: הסירו אותה מהכלל הזה או ערכו אותו.",
       "rls_rule_saved_domain": "כלל RLS עבור הדומיין '{{domain}}' / התפקיד '{{role}}' נשמר",
       "rls_rule_saved_table": "כלל RLS עבור הטבלה {{table}} / התפקיד '{{role}}' נשמר",
       "rls_rule_saved_tag": "כלל RLS עבור התגית '{{tag}}' / התפקיד '{{role}}' נשמר",
@@ -397,6 +405,7 @@
       "source_region_set": "האזור של המקור {{source}} הוגדר ל-{{region}}",
       "region_refused": "האזור לא הוגדר: {{reason}}",
       "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות.",
+      "remote_throttled": "הטבלה '{{table}}' לא נרשמה: מגבלת הקצב של המקור לא אפשרה לבדוק אותה ({{reason}}). נסו שוב מאוחר יותר.",
       "table_updated": "הטבלה '{{table}}' עודכנה (id={{id}})",
       "task_deleted": "המשימה '{{task}}' נמחקה",
       "task_disabled": "המשימה '{{task}}' הושבתה",
@@ -409,10 +418,12 @@
       "unknown_request_type": "סוג בקשה לא מוכר '{{type}}'",
       "unknown_trigger_kind": "סוג טריגר לא מוכר '{{kind}}'",
       "url_sql_exclusive": "url ו-sql מוציאים זה את זה",
+      "view_deploy_unsupported_type": "המקור '{{source}}' הוא מסוג '{{type}}', שאינו יכול לארח תצוגה שנפרסה; סוגים נתמכים: {{supported}}",
       "view_deployed": "התצוגה (View) '{{view}}' נפרסה אל '{{source}}' בסכמה '{{schema}}'",
       "view_spans_sources": "התצוגה (View) משתרעת על פני מספר מקורות: {{sources}}",
       "webhook_approved": "ה-Webhook '{{webhook}}' אושר",
       "webhook_name_required": "webhook_name נדרש עבור טריגר webhook",
+      "mask_unreachable": "הגדרת מסכה שלא ניתן להגיע אליה: {{entries}}",
       "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
       "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll.",
       "table_draft_set": "הטבלה {{table}} הוגדרה כטיוטה",
@@ -467,7 +478,11 @@
       "relationship_same_entity_cardinality": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: הוא {{cardinality}}, ואותה ישות היא שורה לשורה",
       "relationship_same_entity_not_grounded": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{source}} ו-{{target}} אינן מעוגנות באותו מונח",
       "relationship_same_entity_not_keys": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{columns}} אינו המפתח הראשי או מפתח ייחודי של {{table}}",
-      "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו."
+      "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו.",
+      "jdbc_invalid": "מקור {{source}}: {{error}}",
+      "jdbc_file_refused": "מקור {{source}}: כתובת ה-URL מציינת את {{path}}, ששרת זה אינו רשאי לפתוח עבור הארגון.",
+      "jdbc_options_refused": "מקור {{source}}: כתובת ה-URL של ארגון זה אינה רשאית לציין את אפשרות מנהל ההתקן {{options}}.",
+      "jdbc_driver_refused": "מקור {{source}}: מנהל התקן JDBC של לקוח רץ כקוד בתוך ה-JVM של Provisa, ורק התקנה באירוח עצמי מתירה זאת."
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
@@ -615,7 +630,10 @@
       "popup_blocked": "הדפדפן חסם את חלון הכניסה. יש לאפשר חלונות קופצים לאתר הזה ולנסות שוב.",
       "window_closed": "חלון הכניסה נסגר לפני שהסתיים.",
       "tenant_invalid": "הגדרת Microsoft 365 של הארגון אינה מציינת ספרייה (דייר). מנהל מזין את מזהה הספרייה או את הדומיין שלה.",
-      "microsoft_account_unread": "הכניסה אושרה, אך Microsoft לא ציינה של מי תיבת הדואר."
+      "microsoft_account_unread": "הכניסה אושרה, אך Microsoft לא ציינה של מי תיבת הדואר.",
+      "client_missing": "הזינו את מזהה הלקוח ואת סוד הלקוח של האפליקציה, ואז היכנסו.",
+      "client_not_taken": "סוג מקור זה נכנס עם הלקוח של הארגון שלכם, לא עם לקוח שהוזן בטופס.",
+      "no_account_returned": "הכניסה אושרה, אך התשובה לא ציינה איזה חשבון ({{parameter}}). היכנסו שוב."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "הארגון שלך לא התיר מקורות שקוראים את תיבות הדואר שלו. מנהל מתיר זאת תחת ניהול › דוא\"ל.",
@@ -661,6 +679,8 @@
       "unknown_demo": "אין הדגמה שפורסמה בשם {{demo}}.",
       "demo_not_ready": "ההדגמה הזו עדיין בהכנה. נסו שוב בעוד רגע.",
       "demo_stores_failed": "לא ניתן היה להפעיל את ההדגמה הזו. נסו שוב בעוד כמה דקות.",
+      "demo_failed": "לא ניתן היה להכין את ההדגמה הזו. נסו שוב בעוד כמה דקות.",
+      "failed_to_start": "לא ניתן היה להפעיל את שרת ההדגמה. נסו שוב מאוחר יותר.",
       "at_capacity": "כל ארגזי החול של ההדגמה בשימוש. נסו שוב בעוד רגע.",
       "starting": "שרת ההדגמה מופעל. נסו שוב בעוד דקה או שתיים.",
       "disk_full": "ארגז החול הזה ניצל את מגבלת הדיסק שלו, {{limit}} בתים; אי אפשר לכתוב אליו עוד.",
@@ -687,8 +707,7 @@
       "retire_on_invalid": "תאריך הגריעה המתוכנן {{retire_on}} אינו תאריך (השתמשו ב-YYYY-MM-DD).",
       "successor_is_self": "מונח אינו יכול להיות היורש של עצמו.",
       "successor_retired": "היורש '{{successor}}' נגרע. בחרו מונח שנמצא בשימוש.",
-      "term_not_live": "רק מונח פעיל ניתן לסמן כמיושן; מונח זה במצב {{status}}.",
-      "status_by_action": "מצב של מונח משתנה דרך סימון כמיושן, גריעה או שחזור, כל אחד עם סיבה.",
+      "status_by_action": "הסטטוס של מונח משתנה דרך אישור, סימון כמיושן, הוצאה משימוש או שחזור.",
       "successor_required": "למונח זה עדיין יש עמודות או טבלאות; גריעתו מעבירה אותן ליורש. בחרו יורש.",
       "successor_role": "היורש של {{role}} חייב להיות {{role}} או מושג; '{{successor}}' הוא {{successor_role}}.",
       "no_retirement_history": "בהיסטוריה של המודל אין גריעה של מונח זה.",
@@ -698,8 +717,18 @@
         "class_and_attribute_table": "לטבלה {{table}} אין מחלקה: המושג שלה הוא מונח זה, שיש לו עמודות שאינן מפתחות ({{columns}}).",
         "tag_wrong_kind": "מונח זה נושא תגיות ({{tags}}) שרק תכונה מעבירה לעמודות שלה; הוא {{role}}.",
         "retirement_blocked": "מונח זה היה אמור להיגרע ב-{{retire_on}} אך עדיין מחזיק נתונים. גרעו אותו עם יורש שיקבל אותם.",
-        "no_data": "מושג זה אינו מחובר לאף מונח שמחזיק נתונים."
-      }
+        "no_data": "מושג טיוטה זה אינו מחובר לאף מונח שמחזיק נתונים.",
+        "approved_not_grounded": "מונח זה מאושר אבל אינו מגיע לנתונים, ולכן אף סוכן אינו רואה אותו.",
+        "path_pending": "מעוגן · נתיב ממתין לאישור: הוא מגיע לנתונים רק דרך מונחים שעדיין לא אושרו.",
+        "path_pending_approve": "מעוגן · נתיב ממתין לאישור: אישור {{approve}} מעגן אותו."
+      },
+      "term_not_approved": "רק מונח מאושר ניתן לסמן כמיושן; מונח זה {{status}}.",
+      "term_not_draft": "רק מונח טיוטה ניתן לאשר; מונח זה {{status}}.",
+      "definition_required": "תנו למונח הגדרה לפני שתאשרו אותו.",
+      "not_bulk_approvable": "רק טיוטות מוגדרות ומעוגנות מאושרות יחד; לא: {{terms}}.",
+      "term_ids_required": "ציינו את המונחים לאישור.",
+      "impact_action": "אין תצוגה מקדימה לפעולה זו.",
+      "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה."
     },
     "tag": {
       "not_on_terms": "התג '{{tag}}' אינו מוצמד למונח; רק pii.",
@@ -739,6 +768,12 @@
         "no_description": "מוצר נתונים זה אינו מציין את מטרתו או את אופן השימוש בו.",
         "successor_retired": "מוצר הנתונים שקיבל את החברים של מוצר זה, '{{successor}}', הוצא גם הוא משימוש."
       }
+    },
+    "erd": {
+      "database_unavailable": "לא ניתן לקרוא את פריסות ה-ERD: מסד הנתונים אינו זמין",
+      "layout_not_found": "אין פריסה בשם {{name}}",
+      "layout_name_required": "לפריסה נדרש שם",
+      "layout_place_unreadable": "הפריסה ממקמת {{kind}} שאין לך הרשאה לקרוא"
     }
   }
 }

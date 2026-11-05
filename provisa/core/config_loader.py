@@ -22,6 +22,7 @@ from pydantic import AliasChoices, BaseModel
 import yaml
 from sqlalchemy import insert, select, update
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.repositories.identity import TableInIdentity
 from provisa.core.models import (
     ControlPlaneConfig,
@@ -468,10 +469,17 @@ def register_sources(  # REQ-012, REQ-1266, REQ-1730, REQ-1919
     return failed
 
 
+from provisa.core.naming_rule_check import refuse_divergent_rule  # noqa: E402
+
+
 async def _upsert_naming_rules(conn: "Connection", config: ProvisaConfig) -> None:
     """Add each naming rule the config declares, or replace the replacement of the rule with
     its pattern (REQ-1919: an apply removes nothing)."""
     for rule in config.naming.rules:
+        # REQ-2190: the catalog's views apply the rule too, in PostgreSQL's regex engine.
+        await refuse_divergent_rule(
+            conn, rule.pattern, rule.replace, (t.table_name for t in config.tables)
+        )
         held = (
             await conn.execute_core(
                 select(naming_rules.c.id).where(naming_rules.c.pattern == rule.pattern)
@@ -609,8 +617,8 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
 
             check_qdrant_table(tbl)
             continue
-        if stype in ("node", "python"):
-            # REQ-1984, REQ-1993: a code table names its function; checked against the code when
+        if stype in CODE_SOURCE_TYPES:
+            # REQ-1984, REQ-1993, REQ-2200: a code table names its function; checked against the code when
             # the table is registered (its manifest is the code's, read in the worker's sandbox).
             from provisa.codesource.table import check_table as check_code_table
 
@@ -799,13 +807,14 @@ def _settle_table_names(engine: Any, config: ProvisaConfig) -> None:  # REQ-471
     """
     from provisa.compiler.naming import apply_sql_name
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     if engine is None:
         return
     sources_by_id = {src.id: src for src in config.sources}
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
-        if src is not None and not engine_attaches(engine, src.type.value):
+        if src is not None and not engine_attaches(engine, reach_type(src, engine)):
             tbl.table_name = apply_sql_name(tbl.table_name)
 
 
@@ -1204,7 +1213,7 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
     stated = [
         t
         for t in config.glossary_terms
-        if t.deprecate is not None or t.retire is not None or t.restore
+        if t.approve or t.deprecate is not None or t.retire is not None or t.restore
     ]
     if not stated:
         return
@@ -1219,6 +1228,11 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
     for gt in stated:
         term_id = term_ids[gt.name.strip().lower()]
         try:
+            # Loading the same configuration again changes nothing: an approval already made
+            # stands.
+            if gt.approve and statuses[term_id] == "draft":
+                await glossary_repo.approve_term(conn, term_id, by=None)
+                statuses[term_id] = "approved"
             if gt.restore:
                 if statuses[term_id] in ("deprecated", "retired"):
                     await glossary_repo.restore_term(conn, term_id, by=None)
@@ -1239,7 +1253,7 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
             elif gt.deprecate is not None:
                 # Loading the same configuration again changes nothing: a deprecation already
                 # stated stands, and one its planned date has retired stays retired.
-                if statuses[term_id] == "live":
+                if statuses[term_id] == "approved":
                     await glossary_repo.deprecate_term(
                         conn,
                         term_id,
@@ -1250,7 +1264,8 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
                     )
                 elif statuses[term_id] == "draft":
                     raise glossary_repo.StatusRefused(
-                        "term_not_live", "only a live term is deprecated; this one is draft"
+                        "term_not_approved",
+                        "only an approved term is deprecated; this one is draft (state approve)",
                     )
         except glossary_repo.StatusRefused as exc:
             raise ValueError(f"glossary term {gt.name!r}: {exc}") from exc
@@ -1981,7 +1996,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     made — leaving what the deployment seeds into every store (the built-in sources and their
     tables, the system domains, the seeded roles and the people holding them). Within the
     caller's transaction. A demo organisation is rebuilt from its configuration by this followed
-    by an apply (:func:`rebuild_from_config`)."""
+    by an apply (:func:`rebuild_from_config`), which drops the profile result relations of the
+    tables it removes once it has committed (profiler.schema.drop_superseded_results): each is
+    named by its table's id, and the apply registers the table again under another."""
     from sqlalchemy import delete
 
     from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
@@ -2138,12 +2155,26 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
 
 
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
-    config: ProvisaConfig, conn: "Connection", engine: Any = None
+    config: ProvisaConfig,
+    conn: "Connection",
+    engine: Any = None,
+    *,
+    carried_runs: Path | None = None,
+    carried_scans: Path | None = None,
 ) -> list[str]:
     """Rebuild a demo organisation's model from its configuration: remove its model
     (:func:`reset_model`) and apply the configuration, in one transaction, so the organisation
     starts exactly as its configuration says. Returns the source ids whose change feed could not
-    be reached."""
+    be reached.
+
+    ``carried_runs``: the profile runs its bundle carries (REQ-2052, provisa.profiler.carry),
+    loaded in the same transaction. The apply registers every table afresh, under a new id, and a
+    profile result relation is named by its table's id: the runs loaded before were left under
+    the old ids, and the result tables named relations that held none.
+
+    ``carried_scans``: the scans for terms its bundle carries (REQ-2201,
+    provisa.term_finding.carry), loaded in the same transaction, after the apply: a draft names
+    the glossary term it matched by its id, and the apply makes every term afresh."""
     # Its remote sources' tables are registered after the apply, which retries their
     # relationships (graphql_remote_router._upsert_relationships_to_semantic_layer).
     return await _apply(
@@ -2153,6 +2184,8 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
         label="demo rebuilt from its configuration",
         defer_unregistered=True,
         reset=True,
+        carried_runs=carried_runs,
+        carried_scans=carried_scans,
     )
 
 
@@ -2164,24 +2197,45 @@ async def _apply(
     label: str,
     defer_unregistered: bool,
     reset: bool = False,
+    carried_runs: Path | None = None,
+    carried_scans: Path | None = None,
 ) -> list[str]:
     from provisa.core import model_change
 
     # Resolve domain policy before any registration so repos/compilers read one source of truth.
     domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
+    from provisa.core.model_row_rules import unnarrowed
+
     # REQ-1524: an apply is one model change, committed once its transaction has committed.
+    # REQ-2188: a config load has no acting person, even when an admin's request starts it: what
+    # it writes is the configuration's, and no role's U or D row rule holds it.
     async with model_change.scope(label):
         model_change.label(label)
-        async with conn.transaction():
-            # Serialize concurrent applies (parallel workers, test app lifespans) so they do not
-            # deadlock on the same rows. A no-op on single-writer backends (SQLite).
-            await conn.advisory_xact_lock(7261748190)
-            if reset:
-                await reset_model(conn)
-            failed = await _apply_in_txn(
-                config, conn, engine, defer_unregistered=defer_unregistered
-            )
-            await _mark_seeded(conn)
+        with unnarrowed():
+            async with conn.transaction():
+                # Serialize concurrent applies (parallel workers, test app lifespans) so they do
+                # not deadlock on the same rows. A no-op on single-writer backends (SQLite).
+                await conn.advisory_xact_lock(7261748190)
+                if reset:
+                    await reset_model(conn)
+                failed = await _apply_in_txn(
+                    config, conn, engine, defer_unregistered=defer_unregistered
+                )
+                if carried_runs is not None:
+                    from provisa.profiler.carry import load_runs  # noqa: PLC0415
+
+                    await load_runs(conn, carried_runs)
+                if carried_scans is not None:
+                    from provisa.term_finding.carry import load_scans  # noqa: PLC0415
+
+                    await load_scans(conn, carried_scans)
+                await _mark_seeded(conn)
+    if reset:
+        # After the commit, in transactions of their own: the backlog of a template's rebuilds,
+        # held in the rebuild's one transaction, ran out the lock table.
+        from provisa.profiler.schema import drop_superseded_results
+
+        await drop_superseded_results(conn)
     return failed
 
 

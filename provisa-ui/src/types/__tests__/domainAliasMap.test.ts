@@ -27,12 +27,23 @@ describe("domainAliasMap", () => {
     ).toEqual({ ontology: "ontology", ops: "ops", sales_analytics: "sa", hr: "hr" });
   });
 
-  it("keeps a stored alias and the computed one it does not meet", () => {
+  it("keeps a stored alias; a system schema's computed alias is its own name", () => {
     expect(
       domainAliasMap([
         { id: "ontology", graphqlAlias: "ont" },
         { id: "ops", graphqlAlias: null },
       ]),
-    ).toEqual({ ontology: "ont", ops: "o" });
+    ).toEqual({ ontology: "ont", ops: "ops" });
+  });
+
+  it("gives a model domain the initials a system schema would compute", () => {
+    // ontology and ops are named by their SDL prefixes (on_, op_; REQ-2163), never by an alias.
+    expect(
+      domainAliasMap([
+        { id: "ontology", graphqlAlias: null },
+        { id: "ops", graphqlAlias: null },
+        { id: "opioids", graphqlAlias: null },
+      ]),
+    ).toEqual({ ontology: "ontology", ops: "ops", opioids: "o" });
   });
 });

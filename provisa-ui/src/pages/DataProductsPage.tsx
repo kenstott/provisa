@@ -8,13 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useScreenInputs } from "../mcp/screenState";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Paper, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { Plus } from "lucide-react";
-import { useDomains, useTables, useUpdateTable, useRoles } from "../hooks/useAdminQueries";
+import { Plus, Package } from "lucide-react";
+import {
+  useDomains,
+  useReadTableDetails,
+  useTables,
+  useUpdateTable,
+  useRoles,
+} from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
@@ -26,7 +34,7 @@ import {
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
 import { buildTableUpdateInput } from "./tables/helpers";
-import type { DataProduct } from "../types/admin";
+import type { DataProduct, RegisteredTable } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -54,7 +62,8 @@ import {
 } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PageLoading } from "../components/PageLoading";
-import { FormFooter } from "../components/form/FormLayout";
+import { DeletingRows, PanelDeleteLock } from "../components/list/PanelDelete";
+import { usePanelDeleting } from "../components/list/panelActions";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
@@ -99,24 +108,32 @@ export function DataProductsPage() {
   const { createDataProduct, loading: creatingProduct } = useCreateDataProduct();
   const { updateDataProduct, loading: updatingProduct } = useUpdateDataProduct();
   const saving = creatingProduct || updatingProduct;
-  const { deleteDataProduct, loading: deleting } = useDeleteDataProduct();
+  const { deleteDataProduct } = useDeleteDataProduct();
   const { updateTable } = useUpdateTable();
+  const readTableDetails = useReadTableDetails();
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
-  // REQ-2155: data_product_owned_rw edits the products whose owner role the caller holds, itself
-  // or through an ancestor; creating and deleting stay data_product_rw's.
-  const canEditOwned = useCapability("data_product_owned_rw");
-  // REQ-2160: a product's owner is a reader holding its owner or team role.
-  const { selectedRoles, availableRoles } = useAuth();
+  const { selectedRoles, availableRoles, actingRoles } = useAuth();
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
   );
+  const viewer = useMemo(() => ({ held, acting: actingRoles }), [held, actingRoles]);
+  // REQ-2188: a holder of data_product_rw sees the owner's view of every product, its read rights
+  // capping what is in it (REQ-2152). REQ-2160: and so does a reader holding the owner or team role.
   const ownsProduct = (p: DataProduct) =>
-    (p.ownerRole != null && held.has(p.ownerRole)) || (p.teamRole != null && held.has(p.teamRole));
+    canEdit ||
+    (p.ownerRole != null && held.has(p.ownerRole)) ||
+    (p.teamRole != null && held.has(p.teamRole));
+  // REQ-2188: RW that comes only from an Owner field reaches the products naming a role the caller
+  // holds; the store's row rule is what enforces it, and this only keeps Edit off the others. RW
+  // of a role's own (or an ancestor's) is offered every product.
+  const rwOfItsOwn = availableRoles.some(
+    (r) => held.has(r.id) && r.capabilities?.includes("data_product_rw"),
+  );
   const mayEdit = (p: DataProduct) =>
-    canEdit || (canEditOwned && p.ownerRole != null && held.has(p.ownerRole));
+    canEdit && (rwOfItsOwn || (p.ownerRole != null && held.has(p.ownerRole)));
   // REQ-2146: each product's findings, and the list narrowed to the products that have any.
   const productFindings = useDataProductFindings();
   const statusActions = useDataProductStatus();
@@ -156,6 +173,23 @@ export function DataProductsPage() {
       return null;
     }
   });
+  // A link decides the page again whenever it changes while the page stays open.
+  const productParam = searchParams.get("product");
+  const [seededProduct, setSeededProduct] = useState(productParam);
+  if (productParam !== seededProduct) {
+    setSeededProduct(productParam);
+    if (productParam !== null) setExpandedState(productParam);
+  }
+  // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
+  // once the list holds it, so a link to one that does not exist reads as no product.
+  useScreenInputs("/data-products", {
+    product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
+    contract: searchParams.get("contract"),
+    search,
+    toReviewOnly,
+    creating,
+    editing: editingId,
+  });
   const setExpanded = (id: string | null) => {
     setExpandedState(id);
     setSearchParams(
@@ -163,6 +197,8 @@ export function DataProductsPage() {
         const n = new URLSearchParams(p);
         if (id) n.set("product", id);
         else n.delete("product");
+        // REQ-2158: a linked contract is the linked product's; another product leaves it behind.
+        if (id !== p.get("product")) n.delete("contract");
         return n;
       },
       { replace: true },
@@ -177,10 +213,13 @@ export function DataProductsPage() {
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
   const core = useProductCore(expanded, coreVersion);
+  // The expanded product's lineage and contracts are read again only when its members can have
+  // changed -- a save, or a retirement that moves them to the successor. Every other status change
+  // leaves both as they were, so it does not read them again.
+  const [membersVersion, setMembersVersion] = useState(0);
   // REQ-2158: the open product's contracts, read with its panel core.
   const contracts = core.data ? coreContracts(core.data) : [];
   const reader = useMetaReader();
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   // REQ-2156: the expanded product's lineage, cut to what the reader may read; read again after
   // the product is saved.
@@ -216,7 +255,7 @@ export function DataProductsPage() {
     return () => {
       cancelled = true;
     };
-  }, [expanded, coreVersion]);
+  }, [expanded, membersVersion]);
 
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
@@ -313,9 +352,28 @@ export function DataProductsPage() {
       // REQ-1443 clause 10: a checker table's membership is derived; it is never written.
       (tb) => tb.dqContract == null && selected.has(String(tb.id)) !== (tb.productId === productId),
     );
+    // The update takes the whole row; the list holds only what this page shows.
+    let rows = new Map<number, RegisteredTable>();
+    if (changed.length > 0) {
+      try {
+        rows = new Map((await readTableDetails()).map((tb) => [tb.id, tb]));
+      } catch (e) {
+        setMsg(e instanceof Error ? e.message : String(e));
+        return;
+      }
+    }
     for (const tb of changed) {
+      const row = rows.get(tb.id);
+      if (row === undefined) {
+        // Unregistered since the list was read.
+        setMsg(`${t("dataProductsTab.saveFailed")}: ${tb.tableName}`);
+        return;
+      }
       await updateTable(
-        buildTableUpdateInput({ ...tb, productId: selected.has(String(tb.id)) ? productId : null }),
+        buildTableUpdateInput({
+          ...row,
+          productId: selected.has(String(tb.id)) ? productId : null,
+        }),
       );
     }
     // REQ-1634: command -> product membership is owned by the function row; reconcile the
@@ -370,31 +428,37 @@ export function DataProductsPage() {
     }
     products.reload();
     setCoreVersion((v) => v + 1);
+    setMembersVersion((v) => v + 1);
     closeForm();
   };
 
-  // REQ-1634 STATUS: a status change. The products and their findings are read again, and the
-  // panel's core and the tables and commands with it: a retirement moves the members.
-  const statusChanged = (message: string) => {
+  // REQ-1634 STATUS: a status change. The products, their findings and the panel's core are read
+  // again. Only a retirement moves members (to the successor), so only it reads the tables, the
+  // commands, the lineage and the contracts again: the tables are every registered table, the
+  // page's heaviest read, and reading them after each change held the badge back.
+  const statusChanged = (message: string, membersMoved: boolean) => {
     notifications.show({ color: "green", message });
     products.reload();
     void productFindings.refetch();
+    setCoreVersion((v) => v + 1);
+    if (!membersMoved) return;
     void refetchTables();
     fetchActions()
       .then((actions) => setFunctions(actions.functions))
       .catch(() => setFunctions([]));
-    setCoreVersion((v) => v + 1);
+    setMembersVersion((v) => v + 1);
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const result = await deleteDataProduct(deleteTarget);
-    setDeleteTarget(null);
-    if (refusal.refused(result, deleteTarget)) return;
-    if (expanded === deleteTarget) setExpanded(null);
-    if (!result.success) setMsg(result.message || t("dataProductsTab.deleteFailed"));
-    else products.reload();
+  // REQ-2198: the detail's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the product.
+  const handleDelete = async (id: string) => {
+    const result = await deleteDataProduct(id);
+    if (refusal.refused(result, id)) return false;
+    if (!result.success) throw new Error(result.message || t("dataProductsTab.deleteFailed"));
+    await products.reload();
   };
+  // REQ-2198: the open product's detail is locked while it is being deleted, its row marked.
+  const productDeleting = usePanelDeleting(expanded !== null, () => setExpanded(null));
 
   const formCard = (
     <DataProductFormCard
@@ -464,7 +528,9 @@ export function DataProductsPage() {
       data-tour="data-products-content"
     >
       <Group justify="space-between" mb="md">
-        <Title order={3}>{t("dataProductsTab.title")}</Title>
+        <PageTitle icon={Package} order={3}>
+          {t("dataProductsTab.title")}
+        </PageTitle>
         <FilterInput
           value={search}
           onChange={updateSearch}
@@ -530,150 +596,130 @@ export function DataProductsPage() {
           return <PageLoading message={t("dataProductsTab.loading")} />;
         }
         return (
-          <ListTable testId="data-products-table">
-            <ListHead
-              sortGroup={sortGroup}
-              columns={[
-                { col: "id" },
-                { col: "domain" },
-                { col: "name" },
-                { col: "owner" },
-                { col: "status" },
-                { col: "purpose" },
-              ]}
-            />
-            <Table.Tbody>
-              {filteredProducts.length === 0 && (
-                <ListEmpty colSpan={6} testId="data-products-empty">
-                  {t("dataProductsTab.empty")}
-                </ListEmpty>
-              )}
-              <ListItems
-                state={sortGroup}
-                colSpan={6}
-                rowKey={(p) => p.id}
-                render={(p) => {
-                  const isExpanded = expanded === p.id;
-                  const isEditing = editingId === p.id;
-                  return (
-                    <React.Fragment key={p.id}>
-                      <ListRow
-                        testId={`data-products-row-${p.id}`}
-                        aria-expanded={isExpanded}
-                        onClick={() => {
-                          setExpanded(isExpanded ? null : p.id);
-                          if (isEditing && isExpanded) closeForm();
-                        }}
-                      >
-                        <Table.Td>
-                          <Text size="sm" fw={600} ff="monospace">
-                            {p.id}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs">{p.domainId}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs">{p.name}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap={4} wrap="nowrap">
-                            <Text size="xs">{p.ownerRole ?? ""}</Text>
-                            {p.ownerRole && (
-                              <OwnerResolutionIcon
-                                refs={[p.ownerRole]}
-                                ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
-                              />
-                            )}
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <ProductStatusBadge
-                            status={p.status}
-                            testId={`data-products-status-${p.id}`}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs" c="var(--text-muted)">
-                            {p.purpose}
-                          </Text>
-                        </Table.Td>
-                      </ListRow>
-                      {isExpanded && (
-                        <ListExpandRow colSpan={6} testId="data-product-detail" contained>
-                          <ListDetail>
-                            {isEditing ? (
-                              formCard
-                            ) : (
-                              <DataProductDetailPanel
-                                p={p}
-                                core={core.data}
-                                coreError={core.error}
-                                reader={reader}
-                                canEdit={mayEdit(p)}
-                                canDelete={canEdit}
-                                owner={ownsProduct(p)}
-                                lineageLoading={lineageLoading}
-                                lineageError={lineageError}
-                                lineageGraph={lineageGraph}
-                                lineageMembers={lineageMembers}
-                                describeColumn={describeColumn}
-                                relationLabel={relationLabel}
-                                onEdit={(focus) => openEdit(p, focus)}
-                                onDelete={() => setDeleteTarget(p.id)}
-                                products={dataProducts}
-                                members={[
-                                  ...memberTables(p.id).map((tb) => tb.tableName),
-                                  ...memberFunctions(p.id).map((fn) => fn.name),
-                                ]}
-                                findings={productFindings.findings.get(p.id) ?? []}
-                                onStatusChanged={statusChanged}
-                                onStatusFailed={setMsg}
-                                statusActions={statusActions}
-                                openProduct={(id) => {
-                                  closeForm();
-                                  setExpanded(id);
-                                }}
-                              />
-                            )}
-                          </ListDetail>
-                        </ListExpandRow>
-                      )}
-                    </React.Fragment>
-                  );
-                }}
+          <DeletingRows host={productDeleting}>
+            <ListTable testId="data-products-table">
+              <ListHead
+                sortGroup={sortGroup}
+                columns={[
+                  { col: "id" },
+                  { col: "domain" },
+                  { col: "name" },
+                  { col: "owner" },
+                  { col: "status" },
+                  { col: "purpose" },
+                ]}
               />
-            </Table.Tbody>
-          </ListTable>
+              <Table.Tbody>
+                {filteredProducts.length === 0 && (
+                  <ListEmpty colSpan={6} testId="data-products-empty">
+                    {t("dataProductsTab.empty")}
+                  </ListEmpty>
+                )}
+                <ListItems
+                  state={sortGroup}
+                  colSpan={6}
+                  rowKey={(p) => p.id}
+                  render={(p) => {
+                    const isExpanded = expanded === p.id;
+                    const isEditing = editingId === p.id;
+                    return (
+                      <React.Fragment key={p.id}>
+                        <ListRow
+                          testId={`data-products-row-${p.id}`}
+                          aria-expanded={isExpanded}
+                          onClick={() => {
+                            setExpanded(isExpanded ? null : p.id);
+                            if (isEditing && isExpanded) closeForm();
+                          }}
+                        >
+                          <Table.Td>
+                            <Text size="sm" fw={600} ff="monospace">
+                              {p.id}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="xs">{p.domainId}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="xs">{p.name}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Group gap={4} wrap="nowrap">
+                              <Text size="xs">{p.ownerRole ?? ""}</Text>
+                              {p.ownerRole && (
+                                <OwnerResolutionIcon
+                                  refs={[p.ownerRole]}
+                                  ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
+                                />
+                              )}
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <ProductStatusBadge
+                              status={p.status}
+                              testId={`data-products-status-${p.id}`}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="xs" c="var(--text-muted)">
+                              {p.purpose}
+                            </Text>
+                          </Table.Td>
+                        </ListRow>
+                        {isExpanded && (
+                          <ListExpandRow colSpan={6} testId="data-product-detail" contained>
+                            <ListDetail>
+                              <PanelDeleteLock host={productDeleting}>
+                                {isEditing ? (
+                                  formCard
+                                ) : (
+                                  <DataProductDetailPanel
+                                    p={p}
+                                    core={core.data}
+                                    coreError={core.error}
+                                    reader={reader}
+                                    viewer={viewer}
+                                    canEdit={mayEdit(p)}
+                                    canDelete={mayEdit(p)}
+                                    owner={ownsProduct(p)}
+                                    lineageLoading={lineageLoading}
+                                    lineageError={lineageError}
+                                    lineageGraph={lineageGraph}
+                                    contractsVersion={membersVersion}
+                                    lineageMembers={lineageMembers}
+                                    describeColumn={describeColumn}
+                                    relationLabel={relationLabel}
+                                    onEdit={(focus) => openEdit(p, focus)}
+                                    onDelete={() => handleDelete(p.id)}
+                                    products={dataProducts}
+                                    members={[
+                                      ...memberTables(p.id).map((tb) => tb.tableName),
+                                      ...memberFunctions(p.id).map((fn) => fn.name),
+                                    ]}
+                                    findings={productFindings.findings.get(p.id) ?? []}
+                                    onStatusChanged={statusChanged}
+                                    onStatusFailed={setMsg}
+                                    statusActions={statusActions}
+                                    openProduct={(id) => {
+                                      closeForm();
+                                      setExpanded(id);
+                                    }}
+                                  />
+                                )}
+                              </PanelDeleteLock>
+                            </ListDetail>
+                          </ListExpandRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  }}
+                />
+              </Table.Tbody>
+            </ListTable>
+          </DeletingRows>
         );
       })()}
 
-      {/* Delete confirm */}
-      <Modal
-        opened={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        title={t("dataProductsTab.deleteTitle")}
-        centered
-        data-testid="data-product-delete-modal"
-      >
-        <Text mb="lg" size="sm">
-          {t("dataProductsTab.deleteConfirm", { id: deleteTarget ?? "" })}
-        </Text>
-        <FormFooter
-          onCancel={() => setDeleteTarget(null)}
-          cancelProps={{ disabled: deleting }}
-          action={
-            <Button
-              color="red"
-              onClick={handleDelete}
-              loading={deleting}
-              data-testid="data-product-delete-confirm"
-            >
-              {t("dataProductsTab.delete")}
-            </Button>
-          }
-        />
-      </Modal>
       {refusal.dialog}
     </div>
   );

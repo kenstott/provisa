@@ -44,6 +44,12 @@ dependencies = [
     "grpcio-reflection",
     "grpcio-health-checking",  # REQ-1904: grpc.health.v1 HealthServicer for orchestrator probes
     "pyarrow",
+    # One IANA release on every surface: zoneinfo reads the tzdata package (provisa/__init__.py
+    # empties its search path), pyarrow reads a zoned timestamp through pytz, and the Rust encoders'
+    # tables are built from rust/pgwire/third_party/chrono-tz/tz. All three are 2026f; bump together
+    # (rust/pgwire/RESULTS.md, tests/unit/test_tz_agreement.py).
+    "tzdata==2026.6",
+    "pytz==2026.6",
     "adbc-driver-flightsql",
     "adbc-driver-manager",
     "adbc-driver-postgresql",  # REQ-1220: Arrow-native zero-copy ADBC transport for the pg engine
@@ -78,6 +84,10 @@ dependencies = [
     # cryptography. Apache-2.0.
     "signxml>=4,<5",
     "lxml",
+    # REQ-2185, REQ-2179: the reference library reads a PDF document by its pages and a Word
+    # document by its headings. pypdf: BSD-3-Clause, pure Python. python-docx: MIT, over lxml.
+    "pypdf>=6,<7",
+    "python-docx>=1.2,<2",
     "motor",
     "elasticsearch>=8,<9",
     # REQ-1982: Azure Cosmos DB for NoSQL, read by its own SDK (no engine has a connector). MIT.
@@ -217,9 +227,23 @@ oracle = ["oracledb"]
 # _RDB_KINDS) reached via the hana+hdbcli SQLAlchemy dialect. hdbcli is SAP's own DBAPI driver;
 # sqlalchemy-hana registers the dialect SQLAlchemy needs to speak it.
 saphana = ["hdbcli", "sqlalchemy-hana"]
+# The other generic self-only landing engines in _RDB_KINDS whose dialect is not a base dep, one extra
+# per engine kind (federation/engine.py RDB_EXTRAS names each; selecting a kind without its extra is
+# refused naming it). Each pairs the SQLAlchemy dialect with the DBAPI driver it loads.
+cockroachdb = ["sqlalchemy-cockroachdb>=2,<3"]                        # Apache-2.0; psycopg2 is a base dep
+db2 = ["ibm-db-sa>=0.4,<1", "ibm-db>=3,<4"]                            # Apache-2.0 (ibm-db bundles IBM's CLI driver)
+exasol = ["sqlalchemy-exasol>=7,<8", "pyexasol>=0.26,<4"]              # BSD-2-Clause / MIT
+# firebird-driver 2.x pins protobuf~=5.29 (via firebird-base 2), below the base protobuf>=6 pin; 1.10 does not.
+firebird = ["sqlalchemy-firebird>=2.2,<3", "firebird-driver>=1.10,<2"]  # MIT / MIT (needs the Firebird client library)
+monetdb = ["sqlalchemy-monetdb>=2,<3", "pymonetdb>=1.8,<2"]           # MIT / MPL-2.0
+opengauss = ["opengauss-sqlalchemy>=2.4,<3"]                          # MIT; psycopg2 is a base dep
+vertica = ["sqlalchemy-vertica-python>=0.6,<1", "vertica-python>=1.4,<2"]  # MIT / Apache-2.0
 # REQ-1676: Cassandra read natively over CQL (Apache-2.0). The Trino connector needs nothing here.
 cassandra = ["cassandra-driver>=3.29"]
-all-drivers = ["aiomysql", "aioodbc", "oracledb", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29"]
+all-drivers = [
+    "aiomysql", "aioodbc", "oracledb", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29",
+    "provisa[cockroachdb,db2,exasol,firebird,monetdb,opengauss,vertica]",
+]
 # REQ-1443: external data-quality checker, invoked out-of-process (never linked). Only the
 # postgres package is needed — the checker aims at Provisa's own pgwire endpoint so it scans the
 # FEDERATED view, which is why a Snowflake- or Iceberg-backed table needs no per-warehouse package.
@@ -309,13 +333,41 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68"]
+# REQ-2194: setuptools-rust compiles provisa._encoders, so provisa's wheel is a platform wheel.
+requires = ["setuptools>=68", "setuptools-rust==1.13.0"]
 build-backend = "setuptools.build_meta"
+
+# REQ-2194: Provisa's Rust encoders, compiled into provisa itself as one extension module whose
+# submodules are the encoders (provisa._encoders.pgwire, .grpc and .json). Every build
+# compiles it, an editable one included (cargo on PATH), in release mode with the committed lock;
+# a build without cargo fails, and there is no Python stand-in.
+[[tool.setuptools-rust.ext-modules]]
+target = "provisa._encoders"
+path = "rust/encoders/Cargo.toml"
+binding = "PyO3"
+debug = false
+args = ["--locked"]
 
 # REQ-2071: in this repository provisa-notebook is the sibling directory, built in place
 # (`python -m provisa_notebook.build`); a release publishes it to PyPI with provisa.
 [tool.uv.sources]
 provisa-notebook = { path = "provisa-notebook", editable = true }
+
+[tool.uv]
+# REQ-2194: `uv sync` rebuilds provisa (and so provisa._encoders) when the Rust source changes.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "rust/encoders/Cargo.toml" },
+    { file = "rust/encoders/Cargo.lock" },
+    { file = "rust/encoders/src/**/*.rs" },
+    { file = "rust/encoders/json/Cargo.toml" },
+    { file = "rust/encoders/json/src/**/*.rs" },
+    { file = "rust/encoders/grpc/Cargo.toml" },
+    { file = "rust/encoders/grpc/src/**/*.rs" },
+    { file = "rust/pgwire/Cargo.toml" },
+    { file = "rust/pgwire/src/**/*.rs" },
+    { file = "rust/pgwire/third_party/**/*" },
+]
 
 [tool.setuptools.packages.find]
 # The provisa tree plus the vendored buenavista fork, discovered from two roots so both
@@ -333,10 +385,12 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # gRPC approval.proto.
 [tool.setuptools.package-data]
 "*" = ["*.sql", "*.proto"]
+# REQ-2194: _encoders.THIRD_PARTY_NOTICES is the licence notice of every Rust crate linked into
+# provisa._encoders (scripts/rust-third-party-notices.sh).
 # REQ-1127: the precompiled React UI (vite build output, staged into provisa/_ui/ by
 # scripts/build-wheel.sh) and the runtime config/ files (staged into provisa/_config/) ship in
 # the wheel so the delivery is self-contained on a Python-only, npm/Node-free host.
-"provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*"]
+"provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*", "_encoders.THIRD_PARTY_NOTICES"]
 # REQ-1923: the shipped schema of each branded GraphQL source (scripts/bake_graphql_brand_schema.py).
 "provisa.graphql_remote" = ["_known_schemas/*.json.gz"]
 # REQ-1923: the pinned spec of each branded OpenAPI source (scripts/bake_openapi_brand_spec.py).
@@ -349,6 +403,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
+# REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.
+"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
 "provisa.sparql" = ["reasoner/Reasoner.java"]
 
@@ -377,6 +433,7 @@ markers = [
     "requires_trino: reaches a Trino coordinator — the CI side of the test platform (tests/local_platform.py)",
     "e2e: full HTTP pipeline tests against running app",
     "slow: long-running tests",
+    "postgres_engine: a catalog test (tests/unit/pgwire) whose statements reading no table run on a PostgreSQL engine, the plane's server standing in for it, rather than DuckDB",
     "requires_neo4j: requires Neo4j service (docker compose up neo4j)",
     "requires_sparql: requires SPARQL endpoint service (docker compose up fuseki)",
     "requires_elasticsearch: requires Elasticsearch service (docker compose up elasticsearch)",
@@ -409,6 +466,8 @@ markers = [
     "requires_microsoft_365: requires a live Microsoft 365 tenant (M365_* env); no self-provision",
     "requires_google_workspace: requires a live Google Workspace domain (GWS_* env); no self-provision",
     "requires_cloudops: requires live Azure, AWS or GCP credentials (CLOUDOPS_* env); no self-provision",
+    "requires_quickbooks: requires a live QuickBooks Online sandbox company (QUICKBOOKS_* env); no self-provision",
+    "requires_shopify: requires a live Shopify store (SHOPIFY_* env); no self-provision",
     "requires_splunk: requires Splunk service (docker compose up splunk)",
     "requires_airport: requires the airport-go Flight shim (docker compose up airport-shim)",
     "requires_pinot: requires Pinot service (docker compose up pinot)",

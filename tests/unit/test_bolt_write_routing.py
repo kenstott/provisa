@@ -25,17 +25,36 @@ import pytest
 
 from provisa.compiler import temp_tables
 from provisa.cypher.write_translator import CypherWriteParseError
-from provisa.gql.label_map import CypherLabelMap
+from provisa.gql.label_map import CypherLabelMap, JunctionMapping, RelationshipMapping
 from tests.unit.ephemeral_harness import model_node
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
+
+_KNOWS = RelationshipMapping(
+    rel_type="KNOWS",
+    source_label="Person",
+    target_label="Person",
+    join_source_column="id",
+    join_target_column="id",
+    field_name="knows",
+    via=JunctionMapping(
+        catalog_name="",
+        schema_name="conformance",
+        table_name="knows",
+        type_name="knows",
+        source_columns=("from_id",),
+        target_columns=("to_id",),
+        attributes={"from": "from"},
+    ),
+)
 
 _MODEL = CypherLabelMap(
     nodes={
         "Person": model_node("Person", {"id": "integer", "name": "text"}),
         "Greeting": model_node("Greeting", {"id": "integer", "message": "text"}),
     },
-    relationships={},
+    relationships={"KNOWS": _KNOWS},
+    aliases={"KNOWS": [_KNOWS]},
     nodes_by_table={"Person": ["Person"], "Greeting": ["Greeting"]},
 )
 
@@ -79,6 +98,10 @@ async def _run(cypher: str, governed_write) -> object:
     [
         "MATCH (_:Person) WHERE _.id IS NOT NULL DELETE _",
         "CREATE (a:Greeting) SET a.message = $message RETURN a.message + ', from node ' + id(a)",
+        # REQ-665 (amended 2026-10-28): the driver's introduction example, its relationship
+        # ending on the rows the statement creates.
+        "CREATE (p1:Person {name: $message}) CREATE (p2:Person {name: $message}) "
+        "CREATE (p1)-[k:KNOWS {from: $message}]->(p2) RETURN p1, p2, k",
     ],
 )
 async def test_a_model_write_with_an_empty_session_reaches_the_governed_write_path(cypher):

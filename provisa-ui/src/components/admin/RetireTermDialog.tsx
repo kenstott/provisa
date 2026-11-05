@@ -27,6 +27,7 @@ import {
 import { RetireDialog } from "../lifecycle/RetireDialog";
 import { successorOptions } from "./retireSuccessors";
 import { TagLossSummary } from "./TagLossSummary";
+import { TermImpactPreview } from "./TermImpactPreview";
 import { tagLossTitle } from "./tagLoss";
 
 type Resolve = { confirm_tag_loss?: string[]; carry_tags?: boolean };
@@ -91,6 +92,13 @@ export function RetireTermDialog({
           </Stack>
         )
       }
+      impact={(successor) => (
+        <TermImpactPreview
+          termId={term.id}
+          action="retire"
+          extra={{ successor: successor === null ? null : Number(successor) }}
+        />
+      )}
       retire={(reason, successor, resolve) =>
         retireGlossaryTerm(term.id, {
           reason,

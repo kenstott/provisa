@@ -149,7 +149,7 @@ async def _axioms(control_plane) -> set[tuple]:
                 await conn.execute_core(
                     text(
                         "SELECT subject, predicate, object, object_iri, object_literal "
-                        "FROM _axioms_ontology"
+                        "FROM _axioms_ontology WHERE object_table_id IS NULL"
                     )
                 )
             ).fetchall()
@@ -229,7 +229,11 @@ def _schema_input():
             for i, (_name, cs) in enumerate(cols.items(), 1)
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": ONTOLOGY_DOMAIN_ID, "description": "Ontology", "graphql_alias": "ont"}],
         domain_prefix=True,
     )
@@ -242,11 +246,11 @@ def test_sql_reaches_axioms_and_graphql_and_cypher_do_not():
 
     si = _schema_input()
     fields = set(generate_schema(si).query_type.fields)
-    assert "ont__terms" in fields and not any("axioms" in f.lower() for f in fields)
+    assert "on_terms" in fields and not any("axioms" in f.lower() for f in fields)
     ctx = build_context(si)
     # SQL reads it: the compilation context has it.
     assert any(m.table_name == "_axioms" for m in ctx.tables.values())
-    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     assert all(nm.table_name != "_axioms" for nm in lm.nodes.values())
     # SPARQL lowers to it through the map that holds the SQL-only tables too.
     assert any(nm.table_name == "_axioms" for nm in lm.with_sql_only().nodes.values())
@@ -288,7 +292,7 @@ async def test_the_repository_reads_the_axioms_the_view_states(control_plane):
                 await conn.execute_core(
                     text(
                         "SELECT subject_term_id, predicate, object_term_id, object_iri, "
-                        "object_literal FROM _axioms_ontology"
+                        "object_literal FROM _axioms_ontology WHERE object_table_id IS NULL"
                     )
                 )
             ).fetchall()
@@ -337,10 +341,30 @@ def test_an_edge_into_a_table_sql_alone_serves_is_no_relationship_of_the_graph()
             "via_table_name": None,
         }
     ]
-    lm = CypherLabelMap.from_schema(build_context(si), domain_access=["*"])
+    lm = CypherLabelMap.from_schema(
+        build_context(si), domain_access=["*", "meta", "ontology", "ops"]
+    )
     for r in [*lm.relationships.values(), *(a for rs in lm.aliases.values() for a in rs)]:
         assert r.source_label in lm.nodes and r.target_label in lm.nodes, r
     sparql = lm.with_sql_only()
     assert any(
         sparql.nodes[r.source_label].table_name == "_axioms" for r in sparql.relationships.values()
     )
+
+
+@pytest.mark.asyncio
+async def test_a_property_is_also_the_domain_of_each_table_class_whose_column_binds_it(
+    control_plane,
+):
+    """REQ-2163: one rdfs:domain row per (Property term, table a column of binds it), naming the
+    table; SPARQL answers it as the table's class IRI."""
+    rows = await _rows(
+        control_plane,
+        "SELECT subject, predicate, object_table_id FROM _axioms_ontology "
+        "WHERE object_table_id IS NOT NULL",
+    )
+    assert rows == {
+        ("segment", f"{RDFS}domain", 21),
+        ("customer", f"{RDFS}domain", 22),
+        ("order total", f"{RDFS}domain", 22),
+    }

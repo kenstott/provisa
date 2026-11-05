@@ -24,7 +24,7 @@
     "paramPolicy_required": "Required",
     "editValues": "Edit the values {{id}} accepts",
     "deleteValue": "Remove {{value}}",
-    "noValues": "No values yet — an assignment cannot be made until one is added",
+    "noValues": "No values yet. Add one before making an assignment.",
     "newValueLabel": "Value",
     "newValueDescriptionLabel": "Description",
     "addValue": "Add",
@@ -41,7 +41,7 @@
     "colAssignments": "Assignments",
     "colActions": "Actions",
     "empty": "No tags for this scope",
-    "systemTag": "System tag — read only",
+    "systemTag": "System tag (read only)",
     "editTag": "Edit tag {{id}}",
     "deleteTag": "Delete tag {{id}}",
     "deleteConfirm": "Delete tag \"{{id}}\"? Its assignments are removed as well.",
@@ -49,10 +49,10 @@
     "deleted": "Tag {{id}} deleted",
     "pagination": "Tags pagination",
     "derivedTag": "derived",
-    "derivedTagHelp": "Derived from each object's own registration — never assigned",
+    "derivedTagHelp": "Derived from each object's own registration and never assigned",
     "purposeTitle": "What tags are for",
-    "purposeBody": "A tag is one org-wide label with fixed meaning, applied to sources, tables, columns, relationships, or commands. Tags carry behavior, not just documentation: technical keeps a column out of the Data Product export, entity turns a column's values into retrieval vocabulary, deprecated tells consumers to migrate off.",
-    "purposeAdd": "The registry is single. A tag that applies to several object types is one identity everywhere, so editing it in any of the scoped lists edits it in all of them.",
+    "purposeBody": "A tag is one org-wide label with fixed meaning, applied to sources, tables, columns, relationships, or commands. Tags change behavior: technical keeps a column out of the Data Product export, entity turns a column's values into retrieval vocabulary, deprecated tells consumers to migrate off.",
+    "purposeAdd": "A tag that applies to several object types is one tag, so editing it in any of the scoped lists edits it in all of them.",
     "purposeAria": "About tags"
   }
 }

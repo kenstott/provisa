@@ -40,6 +40,23 @@
     "copyErrorTitle": "Erreur de copie",
     "expandedDialogLabel": "Vue agrandie du graphe",
     "firstNodesShown": "Affichage des {{count}} premiers nœuds ; il y en a d'autres. Augmentez la limite dans le menu latéral.",
-    "deleteFrame": "Supprimer ce résultat"
+    "deleteFrame": "Supprimer ce résultat",
+    "sparqlNothingMore": "Rien de plus n’est dit de {{resource}}.",
+    "sparqlDropForm": "Impossible de déposer une pastille sur un résultat {{form}} : seuls SELECT et CONSTRUCT l’acceptent. Rien n’a été ajouté.",
+    "sparqlDropUnion": "Impossible de déposer une pastille sur une requête UNION : le côté à joindre n’est pas défini. Rien n’a été ajouté.",
+    "sparqlDropGroupBy": "Impossible de déposer une pastille sur une requête GROUP BY : ses lignes sont des groupes, pas des ressources. Rien n’a été ajouté.",
+    "sparqlDropAggregate": "Impossible de déposer une pastille sur une requête d’agrégation : ses lignes sont des totaux, pas des ressources. Rien n’a été ajouté.",
+    "sparqlDropSubquery": "Impossible de déposer une pastille sur une requête contenant un sous-SELECT. Rien n’a été ajouté.",
+    "sparqlDropNoClass": "Ce résultat ne nomme aucune classe à joindre : donnez une classe à une variable, puis déposez à nouveau. Rien n’a été ajouté.",
+    "sparqlDropNode": "Ce nœud n’est pas une variable de cette requête, il n’y a donc rien à quoi le joindre. Rien n’a été ajouté.",
+    "sparqlDropNoPath": "{{name}} n’a aucune relation avec {{classes}}. Rien n’a été ajouté.",
+    "sparqlDropTooFar": "{{name}} est à {{hops}} relations de {{classes}}, au-delà des {{most}} parcourues par un dépôt : pas de chemin court. Rien n’a été ajouté.",
+    "sparqlDropNoEnd": "Aucune extrémité de {{name}} ne figure dans ce résultat. Rien n’a été ajouté.",
+    "sparqlDropParameterized": "Un chemin ne peut pas passer par {{name}} : sa lecture demande des arguments. Rien n'a été ajouté.",
+    "sparqlDropEdgeParameterized": "{{name}} mène à une table dont la lecture demande des arguments, et un chemin ne peut pas y passer. Rien n'a été ajouté.",
+    "sparqlDropNoProperty": "Aucune classe de ce résultat n’a {{name}}. Rien n’a été ajouté.",
+    "sparqlDropLeftOut": "{{shown}} chemins sur {{total}} de même longueur ajoutés ; les autres ont été omis.",
+    "sparqlDropCut": "Le résultat a atteint son LIMIT de {{limit}} : les lignes au-delà sont omises.",
+    "cypherPathNoKey": "Les chemins entre {{from}} et {{to}} nécessitent la clé de chaque nœud, et l’un d’eux n’en a pas."
   }
 }

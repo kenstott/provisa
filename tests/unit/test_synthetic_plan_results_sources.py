@@ -57,7 +57,7 @@ def test_the_plan_leaves_out_a_profiler_s_and_a_checker_s_tables(monkeypatch):
     measured = {"runId": "r1", "runTime": datetime(2026, 10, 21, tzinfo=UTC)}
     planned_for: list = []
 
-    async def fetch_tables(_conn):
+    async def fetch_tables(_conn, **_kw):
         return tables
 
     async def source_types(_conn):

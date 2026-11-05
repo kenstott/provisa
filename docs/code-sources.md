@@ -1,8 +1,8 @@
 # Code Resolvers
 
-Business logic in Python or Node.
+Business logic in Python, Node or Go.
 
-If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type: over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
+If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type. Over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
 
 What differs from a resolver you write by hand:
 
@@ -62,7 +62,7 @@ SELECT code, name
 FROM sales.regions
 ```
 
-Node works the same way, with JSDoc tags and TypeScript types: see [Node](#node).
+Node works the same way, with JSDoc tags and TypeScript types; see [Node](#node).
 
 ## Build {: #build }
 
@@ -151,7 +151,7 @@ Commands and `@columns` functions keep their own parameters, each its own argume
 
 ### What reaches your function {: #what-reaches-your-function }
 
-A call gets the read's inputs and its read context, and nothing else of the request. Your function never sees who is asking: the caller's identity and roles stay with Provisa, which governs the rows your function returns.
+A call gets the read's inputs and its read context, and nothing else of the request. Your function never sees who is asking. The caller's identity and roles stay with Provisa, which governs the rows your function returns.
 
 ### The read context {: #read-context }
 
@@ -257,7 +257,7 @@ Joined to a table of customers, its context holds keys such as `{"9f2c...": {"cu
 
 ### Column transforms: `@columns` {: #column-transforms }
 
-A function tagged `@columns` computes new columns from the columns of rows you already have: it splits an address into its parts, classifies a description, or enriches a name. It takes a batch of rows and returns one result per row, in the same order.
+A function tagged `@columns` computes new columns from the columns of rows you already have, such as splitting an address into its parts, classifying a description or enriching a name. It takes a batch of rows and returns one result per row, in the same order.
 
 Each parameter is one input column, given as a list of that batch's values in row order. The function returns a list with one object per input row, and the object's fields are the output columns. In Python:
 
@@ -279,7 +279,7 @@ def clean_address(raw_address: list[str]) -> list[Address]:
 
 In TypeScript, declare it as `clean_address(raw_address: string[]): Promise<Address[]>` with `@columns` in its JSDoc.
 
-You register it as a command, one at a time like any other: on the **Commands** page, pick the source, and its `@columns` functions are offered to pick from. The function's declaration supplies the input and output columns. Register it into a domain with the roles that may use it.
+You register it as a command, one at a time like any other. On the **Commands** page, pick the source, and its `@columns` functions are offered to pick from. The function's declaration supplies the input and output columns. Register it into a domain with the roles that may use it.
 
 Apply it in a select list, and its output columns take the place of the call:
 
@@ -287,13 +287,40 @@ Apply it in a select list, and its output columns take the place of the call:
 SELECT id, clean_address(raw_address) FROM suppliers
 ```
 
-This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list: Provisa runs the function on the rows once they are read, so a call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused, and so is an alias on the call. Each output column is a named step of the projection's lineage.
+This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list or of a CTE's select list (see [Column transforms in CTEs](#column-transforms-in-ctes) below). A call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused, and so is an alias on the call. Each output column is a named step of the projection's lineage.
 
-The rows go to the function in batches of 1,000. A function that keeps no state between calls lets the batches run side by side, across the source's workers: set **Workers** on the source's form (`workers` in its mapping, see [Dev mode and workers](#workers)) to run more than one, and each added worker adds throughput. A batch answered with a different number of results than rows it was given is refused, naming the function.
+**Streaming.** Column transforms stream. The statement reads its input as Arrow record batches; each batch is cut to 1,000 rows before being sent to a worker, and the worker's output columns are passed on as soon as that batch is answered. The result is never materialized whole, so memory stays flat whatever the row count, and the first rows reach the caller before the last rows are read. Order is kept.
+
+The workers run batches in parallel when you set more than one on the source's form (`workers` in its mapping, see [Dev mode and workers](#workers)); each added worker adds throughput. A function that keeps no state between calls benefits most. A batch answered with a different number of results than rows it was given is refused, naming the function.
 
 The function can call Provisa's services, the LLM service among them, so one model call can clean, classify or enrich a whole batch. Each call is metered and capped against the source like any of its other calls ([Calling a model](#calling-a-model)).
 
-A view that applies a column transform is landed, whether or not you declare it a materialized view: Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
+A view that applies a column transform is landed, whether or not you declare it a materialized view. Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
+
+#### Column transforms in CTEs {: #column-transforms-in-ctes }
+
+A column transform can also appear in a common table expression (CTE). The CTE becomes a staged step. Provisa runs it on its own first, reading its input, sending the rows to the function in 1,000-row batches and landing the enriched rows in a session temporary table. The rest of the statement then runs against that table.
+
+```sql
+WITH enriched AS (
+    SELECT id, region, clean_address(raw_address) FROM suppliers
+)
+SELECT region, COUNT(*) AS n
+FROM enriched
+WHERE country = 'DE'
+GROUP BY region
+```
+
+The `WHERE country = 'DE'` filter cannot push past the transform (the column is computed), so it runs after the CTE is staged. But conditions on input columns can push down into the CTE's read, and a join key from another part of the statement can restrict the CTE's rows before the function is called, so only the rows the statement actually uses are enriched.
+
+Two pushdown rules apply:
+
+- A condition on an input column whose value is known before the statement runs (a literal, a bound parameter, a session variable) is pushed into the CTE's read at once.
+- When the CTE is inner-joined to another relation on its input columns, that side runs first and its keys restrict the CTE's read.
+
+Each rule is applied only where it leaves the answer unchanged. A condition on a computed output column, a condition under `OR`, and an outer join do not trigger a pushdown.
+
+Statements with no column transform are compiled and run exactly as they always were; the staging logic is entered only when a transform is called.
 
 ### Writing to a table: commands {: #writes }
 
@@ -339,13 +366,13 @@ Writing works the way it does for any table:
 - An `UPDATE` or a `DELETE` first reads the rows it touches: an ordinary read of the table's key columns over the statement's own `FROM` and `WHERE`, joins included, routed as any read is. The command is then called with those keys. An update whose `SET` is computed per row (`SET total = total * 2`) is called once for each distinct set of changes.
 - The affected count is the number of rows written or keys given.
 - A GraphQL mutation on the table goes the same way.
-- The read and the call are not one transaction: a row can change between the two.
+- The read and the call are not one transaction, so a row can change between the two.
 
 When two commands fit one operation, tag the one it is with `@insert <table>`, `@update <table>` or `@delete <table>`, where `<table>` is the table's `@table` function. Two that fit with no tag are refused when you register the table, and so is a tag on a command that doesn't fit. A write to a table with no command bound for it is refused, naming the operation.
 
 ### Where the code comes from {: #where-the-code-comes-from }
 
-- **A package.** An npm package for Node or a PyPI package for Python, at an exact version.
+- **A package.** An npm package for Node, a PyPI package for Python, or a Go module for Go, at an exact version (a Go module's is `v1.2.0`).
 - **A Git repository.** A full 40-character commit, with a subdirectory if the code isn't at the top.
 - **An upload.** A `.zip`, `.tgz` or `.tar.gz` of the code.
 - **A folder on your machine.** **Choose folder** zips the folder in your browser, leaving out `node_modules`, `.venv`, `__pycache__` and `.git`, and uploads it as the source's archive. In a browser that can keep the folder (Chrome, Edge), **Save** zips and sends it again; another browser asks you for the folder again.
@@ -354,6 +381,7 @@ When two commands fit one operation, tag the one it is with `@insert <table>`, `
 Every origin but the server directory is pinned, so the source runs exactly what was saved.
 
 - **Entry module.** When Python code has more than one top-level module, name the one to enter by.
+- **Package.** Go code is a module; its functions are those of one package, the module's root package unless you name another by its directory (`feeds`).
 - **Open in VS Code.** A server directory opens in your installed VS Code; a Git origin opens at its commit on vscode.dev. A package or an upload has no such link.
 
 ### Installing dependencies {: #installing-dependencies }
@@ -366,12 +394,13 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 | Bun | `bun.lock` or `bun.lockb` |
 | Deno | `deno.lock` |
 | Python | `uv.lock` (with its `pyproject.toml`), `pylock.toml`, or a `requirements.txt` with `--hash` on every line |
+| Go | `go.sum` |
 
 - **Carried or given.** Code that carries its own lockfile installs from it: a Git repository, upload or folder with one, or an npm package whose author published `npm-shrinkwrap.json` (npm never publishes `package-lock.json`). Most npm packages, and Python packages from PyPI, carry none, so give a lockfile beside them.
 - **Why it matters.** Without one, two installs of the same code can differ, and a test that passes today can fail tomorrow on a new dependency version.
 - **A built image is fixed already.** Once you [build the source's image](#running-on-a-remote-host), its dependencies are inside it. A lockfile matters for dev mode and for each new build.
-- **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution.
-- **Your registries.** Packages come from your organization's own npm registries, PyPI indexes and Git hosts, entered once under **Admin → Package registries**. The public npm registry and PyPI need no entry. See [Package Registries](package-registries.md).
+- **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution. Go runs no code while it fetches modules, and every module is checked against the code's `go.sum`; one it does not cover is refused by name.
+- **Your registries.** Packages come from your organization's own npm registries, PyPI indexes, Go module proxies and Git hosts, entered once under **Admin → Package registries**. The public npm registry, PyPI and Go module proxy need no entry. See [Package Registries](package-registries.md).
 - **Cached.** An install is cached by the code's content hash, so the same code installs once.
 
 ### Node {: #node }
@@ -433,6 +462,40 @@ export async function churnScore(
 }
 ```
 
+### Go {: #go }
+
+- Go code runs as one program: Provisa compiles your package into its host once per version of the code, with the pinned Go toolchain (1.27.3). A `go.mod` that asks for a newer Go is refused.
+- Tags go in the doc comment, each on a line of its own, and types come from the function's signature. An exported function is offered; a method or an unexported function is not.
+- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs. A pointer field is an optional input; any other field is required.
+- A field is named as `encoding/json` names it: its `json` tag, else its Go name.
+- A `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`. A `@stream` returns `iter.Seq2[T, error]`; a row it yields with an error ends the stream with that error.
+- A `string` type with constants of its own is an enum of them; `time.Time` is a timestamp.
+- `@loader` and the read context are not yet offered for Go.
+
+The scored account in Go:
+
+```go
+package scoring
+
+import "context"
+
+type Risk struct {
+	Score   float64  `json:"score"`
+	Reasons []string `json:"reasons"`
+}
+
+type RiskInputs struct {
+	AccountID string `json:"account_id"`
+}
+
+// ChurnRisk is the churn risk of one account.
+//
+// @table
+func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
+}
+```
+
 ## Deployment {: #deployment }
 
 ### Dev mode and workers {: #workers }
@@ -441,14 +504,14 @@ A source runs on the Provisa server by default; this is dev mode.
 
 - Your code runs in a worker process of its own, one per source and version of its code in each Provisa process, started on its first call.
 - A worker that crashes fails the calls in flight, naming the source and the function. The next call starts a new one.
-- A call is cancelled when its request's deadline passes: the worker is told to stop it, and the waiting request is released at once.
+- A call is cancelled when its request's deadline passes. The worker is told to stop it, and the waiting request is released at once.
 
 ### Reading a table {: #reading-a-table }
 
 How a read reaches your function depends on what else it reads:
 
 - **A read of one code source's tables alone** goes straight to your function. Nothing is landed. Provisa calls it with the read's inputs and its read context, and applies the whole statement to the rows it returns.
-- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it: your function gets the read's inputs and an empty context, and returns the whole table for them, which is kept under those inputs for the table's cache TTL.
+- **A read that joins other tables** is the federation engine's. A dev-mode source's table is landed for it. Your function gets the read's inputs and an empty context, and returns the whole table for them, which is kept under those inputs for the table's cache TTL.
 - **A built source's table** in such a join is read live from its remote host, which the engine attaches as a Postgres catalog. The host gives your function the read context of the part of the statement the engine sends it. It is landed instead when its source is replicated or floored, when the table is kept for good, when it declares a landing TTL above 0, or on an engine that can't attach a host.
 
 Either way, visibility, masks and row rules apply to the rows, as they do for any table. You pass arguments the way you pass any table parameter: `_nf_` conditions in SQL, field arguments in GraphQL.

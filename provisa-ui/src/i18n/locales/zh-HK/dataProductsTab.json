@@ -18,6 +18,7 @@
     "limitationsLabel": "限制",
     "limitationsPlaceholder": "已知的約束、注意事項或排除項目",
     "usageLabel": "使用方式",
+    "createdAtLabel": "建立時間",
     "usagePlaceholder": "如何使用此數據產品",
     "versionLabel": "版本",
     "versionPlaceholder": "例如 1.2.0",
@@ -157,7 +158,7 @@
     "findingFix_successor_retired": "開啟 {{successor}}",
     "contract": {
       "label": "數據契約",
-      "hint": "每個輸出端口的契約：以其自身版本承諾的內容",
+      "hint": "每個輸出端口的契約：以其自身版本聲明的內容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "已提議",
@@ -173,19 +174,132 @@
       "column": "欄",
       "type": "類型",
       "required": "從不為空",
-      "yes": "是",
       "versionLabel": "契約版本",
       "statusLabel": "契約狀態",
       "descriptionLabel": "用途說明",
-      "columnsLabel": "承諾的欄",
-      "columnsHelp": "不再承諾某欄或更改其類型，需要新版本。",
+      "columnsLabel": "欄",
+      "columnsHelp": "移除某欄或更改其類型，需要新版本。",
       "requiredLabel": "從不為空",
       "slaLabel": "服務級別",
       "slaProperty": "屬性",
       "slaValue": "值",
       "slaUnit": "單位",
       "slaRemove": "移除服務級別",
-      "slaAdd": "新增服務級別"
+      "slaAdd": "新增服務級別",
+      "notDeclared": "未聲明",
+      "notDeclaredList": "未聲明：{{names}}",
+      "versionSaved": "儲存",
+      "versionChanges": "變更",
+      "constraints": "約束",
+      "breakingWarning": "v{{version}} 中有破壞性變更，尚未生效",
+      "breaking": "破壞性",
+      "savedBy": "由 {{who}} 於 {{when}} 儲存",
+      "savedBySystem": "系統",
+      "noChanges": "第一個版本：沒有可比較的內容",
+      "change": {
+        "field_added": "已新增欄位 {{subject}}，{{after}}",
+        "field_removed": "已移除欄位 {{subject}}，原為 {{before}}",
+        "field_renamed": "欄位 {{subject}} 已重新命名為 {{after}}",
+        "field_type_changed": "欄位 {{subject}} 已由 {{before}} 改為 {{after}}",
+        "field_required": "欄位 {{subject}} 已設為必填",
+        "field_optional": "欄位 {{subject}} 不再必填",
+        "field_described": "欄位 {{subject}} 的描述已更改",
+        "sla_added": "已新增服務級別 {{subject}}，{{after}}",
+        "sla_removed": "已移除服務級別 {{subject}}，原為 {{before}}",
+        "sla_changed": "服務級別 {{subject}} 已由 {{before}} 改為 {{after}}",
+        "check_added": "已新增質素檢查 {{subject}}",
+        "check_removed": "已移除質素檢查 {{subject}}",
+        "check_changed": "質素檢查 {{subject}} 已更改",
+        "description_changed": "描述已更改",
+        "terms_changed": "條款已更改：{{subject}}"
+      },
+      "loadError": "無法讀取契約：{{error}}",
+      "notExported": "{{member}} 沒有已匯出的契約",
+      "section": {
+        "fundamentals": "基本資料",
+        "schema": "架構",
+        "quality": "質素",
+        "sla": "SLA",
+        "support": "支援與團隊",
+        "howToUse": "使用方式",
+        "pricing": "定價",
+        "custom": "自訂屬性和標籤"
+      },
+      "summary": {
+        "properties_one": "{{count}} 個屬性",
+        "properties_other": "{{count}} 個屬性",
+        "rules_one": "{{count}} 條規則",
+        "rules_other": "{{count}} 條規則",
+        "serviceLevels_one": "{{count}} 個服務水平",
+        "serviceLevels_other": "{{count}} 個服務水平",
+        "supportChannels_one": "{{count}} 個支援渠道",
+        "supportChannels_other": "{{count}} 個支援渠道",
+        "roles_one": "{{count}} 個角色",
+        "roles_other": "{{count}} 個角色",
+        "customProperties_one": "{{count}} 個自訂屬性",
+        "customProperties_other": "{{count}} 個自訂屬性",
+        "tags_one": "{{count}} 個標籤",
+        "tags_other": "{{count}} 個標籤"
+      },
+      "empty": "此產品沒有附數據契約的輸出埠。",
+      "consumers_one": "{{count}} 個消費方",
+      "consumers_other": "{{count}} 個消費方",
+      "freshness": "{{seconds}} 秒內保持新鮮",
+      "loadedOnce": "只載入一次，從不刷新",
+      "noSla": "未聲明服務水平",
+      "checkedAt": "檢查於 {{when}}",
+      "neverChecked": "從未檢查",
+      "draftWarning": "草稿：尚未生效",
+      "card": {
+        "details": "詳情",
+        "fields": "欄",
+        "sla": "SLA 與新鮮度",
+        "quality": "承諾",
+        "consumers": "消費方",
+        "versions": "版本與變更",
+        "roles": "角色",
+        "history": "版本歷史"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "介面",
+          "address": "位址",
+          "how": "使用方式",
+          "link": "範例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任何 PostgreSQL 用戶端，例如 psql 或 DBeaver。資料庫 {{database}}，結構描述 {{schema}}。",
+          "flight-sql": "任何 Arrow Flight SQL 用戶端，例如 ADBC 驅動程式。資料庫 {{database}}，結構描述 {{schema}}。",
+          "grpc": "任何 gRPC 用戶端，呼叫服務 {{service}}，並附上中繼資料 authorization: Bearer <token>。",
+          "graphql": "任何 GraphQL 用戶端：對此資料表 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。",
+          "rest": "任何 HTTP 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "openapi": "僅包含此資料表的描述：可載入 Swagger UI、Postman 或用戶端產生器。",
+          "jsonapi": "任何 JSON:API 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "sparql": "任何 SPARQL 1.1 用戶端：對此資料表的類別 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "須由 {{approvers}} 授予存取權後才能使用。",
+          "noApprover": "須由 {{roles}} 的持有人授予存取權後才能使用。此合約沒有指定審批人。",
+          "undeclared": "須授予存取權後才能使用。此合約沒有指定角色或審批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申請存取權",
+          "roles": "向 {{roles}} 的持有人申請存取權",
+          "nobody": "此合約沒有指定可聯絡的人"
+        },
+        "open": "開啟範例",
+        "openAria": "開啟 {{table}} 的 {{surface}} 範例"
+      }
     }
   }
 }

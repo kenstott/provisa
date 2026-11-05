@@ -206,3 +206,33 @@ def test_store_copies_racing_shared_connection_work_never_deadlock(runtime):
         t.join(timeout=10)
     assert not any(t.is_alive() for t in workers + peers), "deadlocked"
     assert errors == []
+
+
+def test_a_time_with_its_offset_keeps_the_offset_through_the_copy(runtime):
+    # The copy passes through Arrow, which has no time with a zone: a TIMETZ column (a session's
+    # zoned_time, REQ-2176) kept its wall clock and lost its offset, read back at +00:00
+    # (Temporal5 [4], REQ-2173).
+    def land(con):
+        con.execute(
+            'CREATE TABLE mat_store."org_x"."zoned" AS SELECT'
+            " CAST('12:31:14.645876+01:00' AS TIMETZ) AS t,"
+            " [CAST('10:00:00+02:00' AS TIMETZ), NULL] AS ts, 7 AS n"
+        )
+
+    runtime._store_broker._run(land)
+    res = asyncio.run(
+        runtime.run(
+            "SELECT EXTRACT(HOUR FROM t), EXTRACT(TIMEZONE FROM t),"
+            ' EXTRACT(TIMEZONE FROM ts[1]), ts[2], n FROM mat_store."org_x"."zoned"'
+        )
+    )
+    assert res.rows == [(12, 3600, 7200, None, 7)]
+    typed = runtime.connection.execute(
+        "SELECT column_name, data_type FROM information_schema.columns"
+        " WHERE table_schema = '_mat_store_local' AND table_name = 'org_x__zoned'"
+    ).fetchall()
+    assert dict(typed) == {
+        "t": "TIME WITH TIME ZONE",
+        "ts": "TIME WITH TIME ZONE[]",
+        "n": "INTEGER",
+    }

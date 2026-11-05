@@ -1,7 +1,7 @@
 # Metadata Export
 
-Provisa publishes the metadata it governs — tables, columns, domains, stewards, approved
-relationships and column-level lineage — to an external data catalog.
+Provisa publishes the metadata it governs (tables, columns, domains, stewards, approved
+relationships and column-level lineage) to an external data catalog.
 
 Export writes to a catalog. A catalog's descriptions, owners, tags and glossary links can also
 be read back into Provisa, table by table, when a steward asks for it (see the Catalogs panel).
@@ -21,7 +21,7 @@ matches each one's ingestion API.
 | `atlan` | Atlan (beta) | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
-| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
+| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native, with no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
 | `purview` | Microsoft Purview: the Data Map, then Unified Catalog data products | The Atlas API at `{endpoint}`, then `https://{entra_tenant_id}-api.purview-service.microsoft.com/datagovernance/catalog` |
 | `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
 | `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
@@ -36,11 +36,11 @@ read fails is not written. Unit tests cover all of this; no end-to-end run again
 Until one does, the Admin tab and every page that names Atlan as a target show it as
 **Atlan (beta)**.
 
-Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
+Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** (see [Data Products](data-products.md#metadata-export)), not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
 publishes nothing to either.
 
-`snowflake_horizon` is engine-native, unlike every other adapter: Horizon Catalog is not a remote
+`snowflake_horizon` is engine-native, unlike every other adapter. Horizon Catalog is not a remote
 catalog reached over `endpoint`/`api_key`; it lives inside the same Snowflake account the engine
 already runs governed SQL against, so the adapter opens its own connection off the engine's
 configured DSN instead. `endpoint` and `api_key` are not settings this provider has, and the config
@@ -74,8 +74,8 @@ as keys and join paths. The same reconcile writes each landed table's descriptio
 the stewards' tag assignments as `PROVISA_GOVERNANCE` tags onto the replica, its backing view and
 an MV's store table when it is converged. Databricks and BigQuery hold the
 same facts on the landed table itself, which is the compiler's physical name there (no view layer):
-Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks
-; `NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
+Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks;
+`NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
 BigQuery, where a column tag has no counterpart and is reported withheld. `snowflake_horizon` therefore
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
@@ -134,8 +134,8 @@ dropped. With `delta_share` set, the product's views are also published as the D
 sharing needs the member in Delta, so a member stored in another format is reported and left out.
 Publishing as a listing in a Databricks private exchange is a later phase.
 
-Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
-same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
+Purview needs no adapter of its own: its ingestion API *is* the Atlas API, with the same routes, the
+same entity envelope and the same RDBMS type model, so it is the `atlas` provider pointed at a
 Purview endpoint with `auth_mode: entra`.
 
 Atlas publishes a source as an `rdbms_instance` with one `rdbms_db` beneath it, tables and columns
@@ -146,7 +146,7 @@ rather than refusing it. Governance signals become Atlas classifications, whose 
 overwrite what a catalog admin has since added to it.
 
 DataHub is aspect-oriented rather than entity-oriented: each asset is a URN, and Provisa proposes
-only the aspects it owns — `tagProperties` for each governance tag, then `datasetProperties`,
+only the aspects it owns: `tagProperties` for each governance tag, then `datasetProperties`,
 `schemaMetadata`, `globalTags`, `ownership` and `upstreamLineage`, the last carrying the
 column-level `fineGrainedLineages`. Aspects Provisa does
 not own are never touched.
@@ -220,7 +220,7 @@ Catalog settings:
 | `id` | The catalog's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two catalogs of one provider never share it. |
 | `provider` | Which adapter backs the catalog. An unrecognized name is refused when the adapter is constructed. |
 | `endpoint` | Base URL of the catalog. A catalog with no endpoint is refused when it is saved. Not required for `snowflake_horizon` or `unity_catalog`, which work through the engine's own connection, or for `datazone`, which signs requests to its region's own address. |
-| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
+| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field. `bearer` sends the `token` field. `basic` pairs `username` with the `token` field as HTTP basic, which is stock Apache Atlas's own authentication; Atlas answers a bearer token with 401. `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`. `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
 | `gcp_project`, `gcp_location` | Where a `dataplex` catalog keeps the org's data products. A `dataplex` catalog without both is refused when it is saved. |
 | `aws_region`, `datazone_domain_id` | The DataZone domain a `datazone` catalog is. A `datazone` catalog without both is refused when it is saved. |
@@ -238,7 +238,7 @@ Export settings:
 | `role` | The role a target publishes as. The catalog is sent exactly what that role reads: the columns it is served, the tables holding one, the data products with such a table, and the relationships, lineage, tags and glossary links among them. A target naming no role is sent nothing, and its publish reports the missing role. |
 | `datazone_project_id` | The project that owns the data products published to a `datazone` catalog. The export to a `datazone` catalog without it is refused when it is saved. |
 | `delta_share` | Whether a `unity_catalog` catalog also gets each product as a Delta Share. |
-| `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
+| `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart. See [How the target stays current](#how-the-target-stays-current). |
 
 Credentials are **write-only through the UI**. The Catalogs panel reports each catalog's
 credentials as set or not set and never returns a stored value, so leaving a credential field blank
@@ -273,7 +273,7 @@ provisa metadata export \
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--api` | `$PROVISA_API_URL`, then `http://127.0.0.1:8000` | Under multitenancy, the host names the org (`acme.provisa.org`). |
-| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. |
+| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments; no `Authorization` header is sent when the token is empty. |
 | `--timeout` | `300` | Seconds before the HTTP call is abandoned. |
 
 Exit code 0 means every asset published to every target. Exit code 1 means a partial publish to any
@@ -289,21 +289,21 @@ A daily export at 06:00:
 
 ## What is published
 
-- **Sources, tables and columns** — names, data types, descriptions and aliases. Only tables
+- **Sources, tables and columns.** Names, data types, descriptions and aliases. Only tables
   marked **Data Product** in their registration are published; a relationship, lineage edge or
   governance tag that touches an unmarked table is withheld with it, so the catalog never
   receives a reference to a table that was not sent.
 
-- **Domains** — each domain's description and its steward. A domain with no steward publishes
+- **Domains.** Each domain's description and its steward. A domain with no steward publishes
   without one rather than with an invented owner.
-- **Approved relationships** — the modeled joins, with cardinality, alias, owner and version. Each
+- **Approved relationships.** The modeled joins, with cardinality, alias, owner and version. Each
   edge also carries its `kind`. A `junction` edge reaches its target through an associative table
   rather than a column pair, so its `sourceColumn`/`targetColumn` are the two endpoint keys and a
   catalog that read them as a join condition would invent a foreign key that does not exist; the
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Ontology** — live terms with their definitions and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be in service, defined, and grounded to export; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for the admission rule and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
+- **Ontology.** Approved terms with their definitions and grounding and typed relationships, each term's role (class, property or concept), and Provisa's assignment of each term to the data it means: a class term to the tables it grounds, a property term to its columns. A term must be approved to export, and a draft never does; a relationship publishes only when both its terms do. See [Ontology](ontology.md) for status, grounding and the exclude-from-export control. Each target publishes the terms into one glossary Provisa owns, as the table below shows. Provisa writes and removes only its own assignments, recognized by the catalog's own record of who made them, so a steward's assignment is never removed or duplicated. `openlineage`, `snowflake_horizon` and `unity_catalog` publish no terms.
 
 | Target | Terms | Relationships | Role | Assignment to data |
 | --- | --- | --- | --- | --- |
@@ -316,7 +316,7 @@ A daily export at 06:00:
 | `dataplex` | The `provisa-<org>` glossary, in a Classes, Properties or Concepts category | Synonym and related entry links | The `provisa-role` label | Definition entry links from BigQuery tables and columns, whose ids Provisa gives the `provisa-` prefix; a table whose entry Dataplex has not catalogued within a minute is reported by name |
 | `datazone` | The `Provisa glossary (<org>)` glossary | `KIND_OF` as `isA`; DataZone has no synonym or related relation | Not exported: the glossary term has no free property | None: DataZone records no author for an assignment, so Provisa's could not be told from a steward's |
 
-- **Lineage** — column-level edges with the transforms applied along each one.
+- **Lineage.** Column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
 not inferred by scanning a warehouse. A column that a view computes from two upstream columns
@@ -398,5 +398,5 @@ Premium tier has both jobs removed rather than left firing.
 
 ## Related
 
-- [Security Model](security.md) — the masking, RLS and column-visibility rules these signals report on.
-- [Column-Level Lineage](lineage.md) — the lineage graph the published edges come from.
+- [Security Model](security.md): the masking, RLS and column-visibility rules these signals report on.
+- [Column-Level Lineage](lineage.md): the lineage graph the published edges come from.

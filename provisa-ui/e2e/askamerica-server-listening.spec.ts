@@ -14,21 +14,39 @@
 // business and is the full case's to judge (source-to-query-special-cases.spec.ts).
 
 import { test, expect } from "./coverage";
+import { deleteSourceAndItsTables } from "./delete-source";
 import {
   ASKAMERICA_SERVING_BUDGET_MS,
   openSourcesForm,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
 
-const LISTENING = "is listening and answering its first catalog query";
+// What the listing says while the server listens and its catalog is still being prepared
+// (SourceStillStartingError, preparing_catalog): "... is listening, and its tables can be registered now ...".
+const LISTENING = "is listening";
 
 test.describe("govdata: a saved source's server listens", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
+
+  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
+  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
+  // outcome.
+  let created: string | undefined;
+  test.afterEach(async ({ page }) => {
+    if (created === undefined) return;
+    const id = created;
+    created = undefined;
+    await deleteSourceAndItsTables(async (query, variables) => {
+      const res = await page.request.post("/admin/graphql", { data: { query, variables } });
+      return res.json();
+    }, id);
+  });
 
   test("add the source; its server is listening within a minute", async ({ page }) => {
     test.skip(!apiKey, "FREE_ASKAMERICA_KEY not set: AskAmerica is a live API with no mock.");
     test.setTimeout(ASKAMERICA_SERVING_BUDGET_MS + 180000);
     const sourceId = `e2e_govdata_${Date.now()}`;
+    created = sourceId;
 
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);

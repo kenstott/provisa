@@ -31,6 +31,25 @@ A rule names a tag by its base id and covers every parameter value the tag is as
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
+
+
+#: REQ-2188: a rule's rights, and the capability RW on a model table is held by, by the table the
+#: store writes. A rule on a role without it does nothing; a member of a set of roles that holds it
+#: with no rule lifts the set's rule.
+RIGHTS = ("R", "U", "D")
+MODEL_RW_RIGHTS: dict[str, str] = {
+    "data_products": "data_product_rw",
+    "glossary_terms": "glossary_rw",
+}
+
+#: A semantic object registered outside the meta domain: its ontology definition table's name ->
+#: the table the store writes (provisa.api._ontology_views restates it).
+_ONTOLOGY_MODEL_TABLES: dict[str, str] = {"_terms": "glossary_terms"}
+
+#: REQ-2188: what a role named in a product's Owner field is held to. Generated at every build from
+#: the Owner fields and stored nowhere, so it is not a rule Security can edit.
+OWNER_RULE = "owner_role IN (current_setting('provisa.acting_roles'))"
 
 
 def tagged_table_ids(tag_assignments: Iterable[dict]) -> dict[str, set[int]]:
@@ -115,3 +134,142 @@ def resolve_table_rules(
                     }
                 )
     return out
+
+
+def resolve_rules_by_right(
+    rls_rules: list[dict],
+    tables: list[dict],
+    parents: dict[str, list[str]],
+    actions: Iterable[dict],
+    chains: dict[str, list[str]],
+    tag_assignments: list[dict],
+    domain_parents: dict[str, str | None],
+) -> list[dict]:  # REQ-2188
+    """Each right's rules resolved on their own, as a read's are: child precedence
+    (``materialize_rls``), then one predicate per (role, table) over the table, its domain and its
+    tags (:func:`resolve_table_rules`). A U rule never stands in for an R rule, or the reverse:
+    a role with no rule for a right is not narrowed by a rule for another. One rule carrying
+    several rights is read once for each, so every right is one plain predicate: a read stays a
+    pushed-down filter, never a CASE. Every row comes back naming the one right it stands for,
+    and a stored rule with none is an R rule."""
+    from provisa.security.inheritance import materialize_rls
+
+    out: list[dict] = []
+    for right in RIGHTS:
+        own = [r for r in rls_rules if right in r.get("rights", "R")]
+        if right != "R" and not own:
+            continue
+        materialized = materialize_rls(own, tables, parents, actions)
+        resolved = resolve_table_rules(
+            materialized, tables, chains, tag_assignments, domain_parents
+        )
+        out.extend({**rule, "right": right} for rule in resolved)
+    return out
+
+
+def owner_held_roles(roles: list[dict], owners: Iterable[str]) -> frozenset[str]:  # REQ-2188
+    """The roles the Owner field holds to :data:`OWNER_RULE`: each role named in one, and each
+    child of it, unless it holds RW on data products by its own grant, or an ancestor's. That grant
+    is an org admin's decision (org_admin's own, or a role of its own with its own rules) and
+    naming the role changes nothing about it. ``roles`` are stored rows, ancestors not folded in."""
+    from provisa.security.inheritance import role_chains
+
+    named = set(owners)
+    by_id = {r["id"]: r for r in roles}
+    rw = MODEL_RW_RIGHTS["data_products"]
+    return frozenset(
+        rid
+        for rid, chain in role_chains(roles).items()
+        if not named.isdisjoint(chain)
+        and not any(rw in (by_id[anc].get("capabilities") or []) for anc in chain)
+    )
+
+
+def with_owner_grant(roles: list[dict], owners: Iterable[str]) -> list[dict]:  # REQ-2188
+    """``roles``, stored rows, with RW on data products on each role the Owner field holds. A build
+    of them holds the same roles to :data:`OWNER_RULE` (the row's ``owner_held``). Worked out from
+    the Owner fields each time, so a role that owns no product any more holds no grant. Input dicts
+    are not modified."""
+    held = owner_held_roles(roles, owners)
+    rw = MODEL_RW_RIGHTS["data_products"]
+    return [
+        {**r, "capabilities": [*(r.get("capabilities") or []), rw], "owner_held": True}
+        if r["id"] in held
+        else r
+        for r in roles
+    ]
+
+
+def _store_table(table: dict) -> str | None:
+    """The table the model store writes for a registered table, None for one that holds data."""
+    from provisa.security.rights import META_DOMAIN_ID, ONTOLOGY_DOMAIN_ID
+
+    domain = table.get("domain_id")
+    if domain == META_DOMAIN_ID:
+        return table["table_name"]
+    return _ONTOLOGY_MODEL_TABLES.get(table["table_name"]) if domain == ONTOLOGY_DOMAIN_ID else None
+
+
+def model_write_rules(
+    resolved: Iterable[dict], tables: Iterable[dict], owner_held: Iterable[str] = ()
+) -> dict[tuple[str, str, str], str]:  # REQ-2188
+    """(role, table, right) -> predicate: the U and D rules that hold the model store. A semantic
+    object's table is registered in the meta domain, by its own name, or (a glossary term) in the
+    ontology domain as its definition table; a rule on any other table holds data, through write
+    admission. The roles in ``owner_held`` are held to :data:`OWNER_RULE`, the Owner field being how
+    their rule on data products changes: the build gives it to each role directly, so it is never
+    inherited by a child holding RW of its own."""
+    model = {t["id"]: store for t in tables if (store := _store_table(t)) is not None}
+    rules = {
+        (r["role_id"], model[r["table_id"]], r["right"]): r["filter_expr"]
+        for r in resolved
+        if r.get("right", "R") != "R" and r.get("table_id") in model
+    }
+    for role in owner_held:
+        rules[(role, "data_products", "U")] = OWNER_RULE
+        rules[(role, "data_products", "D")] = OWNER_RULE
+    return rules
+
+
+def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any:  # REQ-2188
+    """The rule the store holds ``role_id``'s ``right`` on ``table`` to, or None when it is not
+    narrowed (``core.model_row_rules``). R on the model is no ceiling a rule can stand on: a role
+    with only R is held by no rule. A meta-role takes the OR of its members' rules, each with its
+    own constants inlined: a member with no rule lifts it only if it holds RW on the model, so a
+    member with only R neither widens the set nor narrows it."""
+    from provisa.core.model_row_rules import ModelRule
+    from provisa.core.request_context import session_vars_for
+    from provisa.security.meta_role import _inlined, _or
+
+    inputs = state.role_build_inputs
+    if not inputs:  # a first start: nothing is built, so no rule is in force
+        return None
+    rules = inputs["model_write_rules"]
+    registered = {v: k for k, v in _ONTOLOGY_MODEL_TABLES.items()}.get(table, table)
+    view = inputs["physical_table_map"].get(registered)
+    rw = MODEL_RW_RIGHTS.get(table)
+
+    def only_read(role: dict) -> bool:
+        return rw is not None and rw not in (role.get("capabilities") or [])
+
+    members = state.meta_roles.get(role_id)
+    if members is None:
+        held = only_read(state.roles.get(role_id) or {})
+        predicate = None if held else rules.get((role_id, table, right))
+    else:
+        terms: list[str] = []
+        for member in members:
+            role = state.roles[member]
+            if only_read(role):
+                continue
+            own = rules.get((member, table, right))
+            if own is not None:
+                terms.append(_inlined(own, role.get("session_vars") or {}))
+            elif rw is not None:
+                return None
+        predicate = _or(terms) if terms else None
+    if predicate is None:
+        return None
+    return ModelRule(
+        predicate=predicate, session_vars=session_vars_for(state.roles.get(role_id)), view=view
+    )

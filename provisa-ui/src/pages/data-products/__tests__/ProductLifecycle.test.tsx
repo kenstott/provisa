@@ -30,6 +30,7 @@ const product = (id: string, over: Partial<DataProduct> = {}): DataProduct => ({
   usage: "",
   status: "live",
   customProperties: {},
+  createdAt: "2026-10-01T09:00:00+00:00",
   ...over,
 });
 
@@ -59,7 +60,7 @@ function Lifecycle(props: {
   findings?: ProductFinding[];
   canEdit?: boolean;
   status: DataProductStatus;
-  onChanged?: (m: string) => void;
+  onChanged?: (m: string, membersMoved: boolean) => void;
   onFailed?: (m: string) => void;
   onEdit?: () => void;
   openProduct?: (id: string) => void;
@@ -115,7 +116,7 @@ describe("a data product's status actions", () => {
       <Lifecycle product={product("c360", { status: "draft" })} status={status} onChanged={onChanged} />,
     );
     fireEvent.click(screen.getByTestId("data-product-publish-c360"));
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 published."));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 published.", false));
     expect(status.publish).toHaveBeenCalledWith("c360");
   });
 
@@ -154,7 +155,7 @@ describe("a data product's status actions", () => {
       target: { value: "Replaced by c360 v2" },
     });
     fireEvent.click(submit);
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 deprecated."));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 deprecated.", false));
     expect(status.deprecate).toHaveBeenCalledWith("c360", "Replaced by c360 v2", null);
   });
 });
@@ -195,7 +196,7 @@ describe("a data product's retirement", () => {
     fireEvent.click(options[0]);
     expect(submit).toBeEnabled();
     fireEvent.click(submit);
-    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 retired."));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith("Data product c360 retired.", true));
     expect(status.retire).toHaveBeenCalledWith("c360", "Merged", "c360_v2");
   });
 
@@ -211,7 +212,7 @@ describe("a data product's retirement", () => {
     render(<Lifecycle product={products[0]} products={products} status={status} />);
     fireEvent.click(screen.getByTestId("data-product-retire-c360"));
     expect(await screen.findByTestId("data-product-retire-moves")).toHaveTextContent(
-      "It has no members: a successor is optional.",
+      "It has no members, so a successor is optional.",
     );
     fireEvent.change(screen.getByTestId("data-product-retire-reason"), {
       target: { value: "Gone" },

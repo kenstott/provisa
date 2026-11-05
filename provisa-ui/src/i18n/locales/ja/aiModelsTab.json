@@ -16,6 +16,7 @@
     "role_sql_generation": "SQL生成",
     "role_table_selection": "テーブル選択",
     "role_mcp_chat": "チャットアシスタント",
+    "role_glossary_term_finding": "用語を検索",
     "vendorLabel": "ベンダー",
     "modelLabel": "モデル",
     "nlHeading": "自然言語クエリ",

@@ -59,7 +59,7 @@ from sqlalchemy import and_, case, delete, func, insert, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from provisa.core import config_stamp
-from provisa.core.schema_org import replica_build_log, replica_state
+from provisa.core.schema_org import mv_build_state, replica_build_log, replica_state
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1055,7 +1055,26 @@ async def forget(conn: "Connection", key: ReplicaKey) -> bool:
     return forgotten
 
 
-# -- REQ-2015: the indexes of the standing replica -----------------------------------------
+# -- REQ-2015: the indexes of the standing replica or materialized view ---------------------
+
+#: The first part of a materialized view's key among the objects that carry indexes: no source's
+#: id, so a view's lock and record are never a replica's.
+VIEW_INDEXES = "__view_indexes__"
+
+
+def view_index_key(mv_id: str) -> ReplicaKey:
+    """The key a materialized view's indexes go by: on its build row, under its index lock."""
+    return (VIEW_INDEXES, "", mv_id)
+
+
+def _index_row(key: ReplicaKey) -> tuple[Any, Any]:
+    """The table that holds ``key``'s index state and the row of it: a view's on its build row
+    (``mv_build_state``), a replica's on its own."""
+    if key[0] == VIEW_INDEXES:
+        return mv_build_state, mv_build_state.c.mv_id == key[2]
+    return replica_state, and_(
+        _t.source_id == key[0], _t.schema_name == key[1], _t.table_name == key[2]
+    )
 
 
 def _spec(rec: dict[str, Any]) -> Any:
@@ -1095,15 +1114,50 @@ async def record_index_plan(
     )
 
 
+async def record_view_index_plan(
+    conn: "Connection",
+    mv_id: str,
+    landed_at: datetime,
+    specs: list[Any],
+    table: tuple[str, str],
+) -> None:
+    """REQ-2015: the landing of the view ``mv_id`` at ``landed_at`` asks for ``specs`` on its
+    stored ``table`` (schema, table). A landing replaces what the one before it asked for, as a
+    replica's does: the build row holds the view's standing landing alone. A view is refreshed in
+    place, so a build row has no landing of its own for a plan to name."""
+    state = (
+        {
+            "for": _landing(landed_at),
+            "table": list(table),
+            "wanted": [s.as_record() for s in specs],
+            "built": [],
+            "failed": {},
+        }
+        if specs
+        else None
+    )
+    await conn.execute_core(
+        update(mv_build_state).where(mv_build_state.c.mv_id == mv_id).values(index_state=state)
+    )
+
+
 @dataclass(frozen=True)
 class DueIndexes:
     key: ReplicaKey
     landed_at: str
     specs: tuple[Any, ...]
+    #: A view's stored (schema, table); None for a replica, whose address its model row gives.
+    address: tuple[str, str] | None = None
+
+
+def _left(state: dict[str, Any]) -> tuple[Any, ...]:
+    settled = set(state["built"]) | set(state["failed"])
+    return tuple(_spec(s) for s in state["wanted"] if s["name"] not in settled)
 
 
 async def due_indexes(conn: "Connection") -> list[DueIndexes]:
-    """Each replica whose standing landing asked for an index that is neither built nor failed."""
+    """Each replica and view whose standing landing asked for an index that is neither built nor
+    failed."""
     rows = (
         await conn.execute_core(
             select(_t.source_id, _t.schema_name, _t.table_name, _t.index_state).where(
@@ -1113,12 +1167,23 @@ async def due_indexes(conn: "Connection") -> list[DueIndexes]:
     ).fetchall()
     out: list[DueIndexes] = []
     for row in rows:
-        state = row.index_state
-        settled = set(state["built"]) | set(state["failed"])
-        left = tuple(_spec(s) for s in state["wanted"] if s["name"] not in settled)
+        left = _left(row.index_state)
         if left:
+            key = (row.source_id, row.schema_name, row.table_name)
+            out.append(DueIndexes(key, row.index_state["for"], left))
+    views = (
+        await conn.execute_core(
+            select(mv_build_state.c.mv_id, mv_build_state.c.index_state).where(
+                mv_build_state.c.index_state.is_not(None)
+            )
+        )
+    ).fetchall()
+    for row in views:
+        left = _left(row.index_state)
+        if left:
+            schema, table = row.index_state["table"]
             out.append(
-                DueIndexes((row.source_id, row.schema_name, row.table_name), state["for"], left)
+                DueIndexes(view_index_key(row.mv_id), row.index_state["for"], left, (schema, table))
             )
     return out
 
@@ -1129,34 +1194,22 @@ async def settle_index_state(
     """Apply ``change`` to ``key``'s index state if it still belongs to the landing
     ``landed_at``. False: a later landing replaced the table, and this index belonged to the
     one before it."""
+    table, row = _index_row(key)
     async with conn.transaction():
         state = (
-            await conn.execute_core(
-                select(_t.index_state)
-                .where(_t.source_id == key[0], _t.schema_name == key[1], _t.table_name == key[2])
-                .with_for_update()
-            )
+            await conn.execute_core(select(table.c.index_state).where(row).with_for_update())
         ).scalar_one_or_none()
         if state is None or state["for"] != landed_at:
             return False
         change(state)
-        await conn.execute_core(
-            update(replica_state)
-            .where(_t.source_id == key[0], _t.schema_name == key[1], _t.table_name == key[2])
-            .values(index_state=state)
-        )
+        await conn.execute_core(update(table).where(row).values(index_state=state))
     return True
 
 
 async def index_state_current(conn: "Connection", key: ReplicaKey, landed_at: str) -> bool:
     """Whether ``key``'s index state still belongs to the landing ``landed_at``."""
-    state = (
-        await conn.execute_core(
-            select(_t.index_state).where(
-                _t.source_id == key[0], _t.schema_name == key[1], _t.table_name == key[2]
-            )
-        )
-    ).scalar_one_or_none()
+    table, row = _index_row(key)
+    state = (await conn.execute_core(select(table.c.index_state).where(row))).scalar_one_or_none()
     return state is not None and state["for"] == landed_at
 
 

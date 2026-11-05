@@ -1,0 +1,20 @@
+{
+  "regionPurposes": {
+    "legendTitle": "区域为何存在",
+    "explainOnly": "用途用于说明区域。它们不会改变查询的运行位置、规则允许的内容或被接受的内容。",
+    "name": {
+      "residency": "数据驻留",
+      "workload": "工作负载",
+      "latency": "延迟",
+      "resilience": "韧性",
+      "dedicated": "专用"
+    },
+    "explain": {
+      "residency": "数据必须留在某个司法管辖区内。",
+      "workload": "将一个工作负载与其他工作负载分开。",
+      "latency": "部署在其用户或数据源附近。",
+      "resilience": "用于故障转移或恢复的位置。",
+      "dedicated": "为一个组织保留的基础设施,由该组织对其拥有主权。"
+    }
+  }
+}

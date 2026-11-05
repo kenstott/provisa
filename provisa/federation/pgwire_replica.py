@@ -28,6 +28,7 @@ Every failure is LOUD: an unknown/creds-missing source, a port collision, or a m
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -38,7 +39,8 @@ import subprocess  # noqa: S404 - launches the pinned first-party pgwire bundle 
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePath
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterator
+from contextlib import contextmanager
 from typing import Any, Callable
 
 from provisa.core.held_sizes import held
@@ -197,19 +199,44 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
     fixed ``STARTING:`` prefix) so the frontend can recognize it and poll again shortly instead of
     surfacing it as a hard error."""
 
-    def __init__(self, source_id: str, *, preparing_catalog: bool = False) -> None:
-        # Two waits, told apart for whoever is waiting: the server has not opened its port
-        # yet, or it is listening and preparing its catalog (``ConnectorReplica.await_catalog``).
-        doing = (
-            "is listening, and its tables can be registered now; a query on them waits until "
-            "the engine can attach it, while the connector answers the engine's first catalog "
-            "query by reading the columns of every table it serves"
-            if preparing_catalog
-            else "is still starting up"
-        )
+    def __init__(
+        self, source_id: str, *, preparing_catalog: bool = False, answering_read: bool = False
+    ) -> None:
+        # Three waits, told apart for whoever is waiting: the server has not opened its port
+        # yet, it is listening and preparing its catalog (``ConnectorReplica.await_catalog``), or
+        # it is listening and answering another discovery read (``ConnectorReplica.discovery_read``).
+        if preparing_catalog:
+            doing = (
+                "is listening, and its tables can be registered now; a query on them waits until "
+                "the engine can attach it, while the connector answers the engine's first catalog "
+                "query by reading the columns of every table it serves"
+            )
+        elif answering_read:
+            doing = "is listening, and is answering another read of the tables it serves"
+        else:
+            doing = "is still starting up"
         super().__init__(f"STARTING: {source_id!r}'s connector {doing} — try again shortly.")
         self.source_id = source_id
         self.preparing_catalog = preparing_catalog
+        self.answering_read = answering_read
+
+
+class ServerRetired(ServerNotServing):  # REQ-1824
+    """A replica taken out of the registry (its source deleted or edited, its org's servers or
+    every server stopped) is asked for a server: none is started, and one whose start was in
+    flight when it was retired is stopped as it comes up rather than left running unowned."""
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(f"{source_id!r}'s connector server was stopped; it is not started again")
+        self.source_id = source_id
+
+
+class SourceBeingDeleted(ServerNotServing):  # REQ-1824
+    """A server is asked for a source whose deletion is under way: none is started for it."""
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(f"{source_id!r} is being deleted; its connector server is not started")
+        self.source_id = source_id
 
 
 def _source_type(source: Any) -> str:
@@ -284,6 +311,13 @@ def _files_operand(source: Any) -> dict:
     crawl = crawl_operand(source.id, mapping)
     if crawl is not None:
         operand["crawl"] = crawl
+    # How the adapter's Excel reader finds the tables of the source's workbooks, where its
+    # mapping says (mapping.excel_hints).
+    from provisa.file_source.excel_hints import excel_hints_operand
+
+    excel_hints = excel_hints_operand(source.id, mapping)
+    if excel_hints is not None:
+        operand["excelHints"] = excel_hints
     storage_type = mapping.get("storage_type")
     if storage_type:
         operand["storageType"] = storage_type
@@ -1023,12 +1057,33 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
 
     if "pg_catalog" in statement.lower():
         raise ValueError("discovery reads the server's information_schema, never pg_catalog")
+    import asyncpg
+
     ports = await asyncio.to_thread(listening_endpoint, source)
-    conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
-    try:
-        return list(await conn.fetch(statement, timeout=_fetch_timeout()))
-    finally:
-        await conn.close()
+    replica = _endpoint_replica(source)
+    if replica.catalog_preparing():
+        # The server holds every statement behind its first catalog query while that runs, so
+        # a read sent now would wait out the preparation: answered "still starting" at once
+        # (REQ-1824), and asked again by its caller.
+        raise SourceStillStartingError(source.id, preparing_catalog=True)
+    # Nor is a read sent behind another of ours: the server would hold it until that one is
+    # answered, and nothing the server does ends the wait sooner (it keeps a signed-in client's
+    # statement queued for as long as the client is connected).
+    with replica.discovery_read():
+        conn = await _pg_connect(ports.pgwire_host, ports.pgwire_port, sign_in_password(source))
+        try:
+            return list(await conn.fetch(statement, timeout=_fetch_timeout()))
+        except asyncpg.QueryCanceledError as exc:
+            # The server cancels a statement it held queued past its queue bound, behind the
+            # preparation of its catalog (the engine's first catalog query): while that runs
+            # the source is still starting (``ConnectorReplica.await_catalog``), and the read
+            # is asked again once it has started. A cancel after the catalog is prepared, or
+            # after it failed, is the server's answer.
+            if replica.catalog_pending():
+                raise SourceStillStartingError(source.id, preparing_catalog=True) from exc
+            raise
+        finally:
+            await conn.close()
 
 
 async def adapter_tables(source: Any, schema: str) -> list[str]:
@@ -1259,11 +1314,23 @@ class ConnectorReplica:  # REQ-954/955/956
         self._catalog_ready = False
         self._catalog_error: BaseException | None = None
         self._catalog_thread: threading.Thread | None = None
+        # REQ-540: a server whose source is started when saved (``STARTED_WHEN_SAVED``) holds
+        # every statement while its catalog is prepared, which takes minutes, so the preparation
+        # waits for the source's first use by the engine (:meth:`use_catalog`). Any other type's
+        # catalog is prepared on the first request that needs it.
+        self._catalog_wanted = _source_type(source) not in STARTED_WHEN_SAVED
         # Which server the preparation in flight belongs to: one outlived by its server (the
         # server was stopped under it) reports to no one.
         self._catalog_server = 0
         # A start and the first endpoint request can come from different threads; one server.
         self._start_lock = threading.Lock()
+        # ``_server`` and ``_retired``, read and set together. Not ``_start_lock``: that is held
+        # for a whole start (a bundle download included), and a retire never waits on one.
+        self._server_lock = threading.Lock()
+        # Taken out of the registry (:meth:`retire`): it never serves again.
+        self._retired = False
+        # Discovery reads this process has in flight on the server (:meth:`discovery_read`).
+        self._discovery_reads = 0
 
     @property
     def spec(self) -> BundleSpec:
@@ -1280,6 +1347,8 @@ class ConnectorReplica:  # REQ-954/955/956
     def _ensure_server_locked(self) -> PgwireServer:
         if self._server is not None:
             return self._server
+        if self._retired:
+            raise ServerRetired(self._source.id)
         bundle_dir = self._resolver.resolve(self._spec)  # REQ-956 (resolve + cache)
         ports = self._allocator.allocate(self._key)  # REQ-955 (unique ports), REQ-1992
         model: dict | None
@@ -1314,7 +1383,15 @@ class ConnectorReplica:  # REQ-954/955/956
             environment={**(environment or {}), **org_jvm_environment(self._key[0])},
         )
         server.start()  # REQ-955 (lifecycle)
-        self._server = server
+        with self._server_lock:
+            retired = self._retired
+            if not retired:
+                self._server = server
+        if retired:
+            # Retired while this start was in flight (its source deleted mid-download): no one
+            # holds this replica any more, so a server left running here would never be stopped.
+            server.stop()
+            raise ServerRetired(self._source.id)
         return server
 
     def start(self) -> None:
@@ -1336,10 +1413,14 @@ class ConnectorReplica:  # REQ-954/955/956
         wait = SERVER_READY_SECONDS if timeout is None else timeout
         deadline = time.monotonic() + wait
         while not server.health():
+            if self._retired:  # stopped under this wait (REQ-1824): its exit is no failure
+                raise ServerRetired(self._source.id)
             code = server.exit_code()
             if code is not None:
                 # A start that failed: forgotten, so a later call starts the server afresh.
-                self._server = None
+                with self._server_lock:
+                    if self._server is server:
+                        self._server = None
                 raise ServerExited(self._source.id, code, server.log_tail())
             if time.monotonic() >= deadline:
                 raise ServerLifecycleError(
@@ -1398,6 +1479,8 @@ class ConnectorReplica:  # REQ-954/955/956
         server = self._server
         if server is None:
             return
+        # A statement reads the source: its first use by the engine (REQ-540).
+        self.use_catalog()
         if server.health():
             self.await_catalog(server.ports, 0)
             return
@@ -1406,9 +1489,37 @@ class ConnectorReplica:  # REQ-954/955/956
             raise ServerExited(self._source.id, code, server.log_tail())
         raise SourceStillStartingError(self._source.id)
 
+    def use_catalog(self) -> None:
+        """The source is in use by the engine: its first registered table, or a statement on it
+        (REQ-540). From now on its catalog is prepared, and the preparation is sent at once if the
+        server listens. Waits for nothing."""
+        with self._start_lock:
+            self._catalog_wanted = True
+            server = self._server
+        if server is not None and server.health():
+            with self._start_lock:
+                self._start_catalog_locked(server.ports)
+
+    def _start_catalog_locked(self, ports: PortPair) -> None:
+        """Send the catalog query from a thread of its own, unless it is prepared, failed, in
+        flight, or not yet wanted (:meth:`use_catalog`). Caller holds ``_start_lock``."""
+        if self._catalog_ready or not self._catalog_wanted:
+            return
+        if self._catalog_error is None and self._catalog_thread is None:
+            thread = threading.Thread(
+                target=self._prepare_catalog_once,
+                args=(ports, self._catalog_server),
+                daemon=True,
+                name=f"pgwire-catalog:{self._source.id}",
+            )
+            self._catalog_thread = thread
+            thread.start()
+
     def await_catalog(self, ports: PortPair, timeout: float) -> None:
         """Return once the listening server's catalog is prepared; until then raise
-        ``SourceStillStartingError``, having waited at most ``timeout`` seconds.
+        ``SourceStillStartingError``, having waited at most ``timeout`` seconds. A source not yet
+        in use by the engine (:meth:`use_catalog`) has no preparation sent: it is answered still
+        starting at once.
 
         A server's FIRST catalog query can take far longer than any later one (a server whose
         catalog was not prebuilt for its model builds it then). An engine's attach issues that
@@ -1426,15 +1537,9 @@ class ConnectorReplica:  # REQ-954/955/956
             with self._start_lock:
                 if self._catalog_ready:
                     return
-                if self._catalog_error is None and self._catalog_thread is None:
-                    thread = threading.Thread(
-                        target=self._prepare_catalog_once,
-                        args=(ports, self._catalog_server),
-                        daemon=True,
-                        name=f"pgwire-catalog:{self._source.id}",
-                    )
-                    self._catalog_thread = thread
-                    thread.start()
+                if not self._catalog_wanted:
+                    raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+                self._start_catalog_locked(ports)
                 thread = self._catalog_thread
             left = deadline - time.monotonic()
             if thread is not None and left > 0:
@@ -1466,17 +1571,67 @@ class ConnectorReplica:  # REQ-954/955/956
             self._catalog_error = error
             self._catalog_ready = error is None
 
+    def catalog_pending(self) -> bool:
+        """Whether the server's catalog is still being prepared: neither prepared nor failed.
+        Starts nothing and waits for nothing."""
+        with self._start_lock:
+            return not self._catalog_ready and self._catalog_error is None
+
+    @contextlib.contextmanager
+    def discovery_read(self) -> Iterator[None]:
+        """Hold the server for one discovery read, or raise ``SourceStillStartingError`` at once
+        if another read of this process holds it.
+
+        The server runs every statement on its one engine connection, one at a time: a read sent
+        while another is in flight waits behind it, and a fresh server's first reads of a schema
+        take a minute and more (its catalog is fetched). So a second read is not sent: it is
+        answered still starting, and asked again by its caller (REQ-1824). A retired replica
+        refuses (``ServerRetired``). Waits for nothing."""
+        with self._server_lock:
+            if self._retired:
+                raise ServerRetired(self._source.id)
+        with self._start_lock:
+            if self._discovery_reads:
+                raise SourceStillStartingError(self._source.id, answering_read=True)
+            self._discovery_reads += 1
+        try:
+            yield
+        finally:
+            with self._start_lock:
+                self._discovery_reads -= 1
+
+    def catalog_preparing(self) -> bool:
+        """Whether the server's first catalog query has been sent and is not yet answered.
+        Starts nothing and waits for nothing."""
+        with self._start_lock:
+            return (
+                self._catalog_thread is not None
+                and not self._catalog_ready
+                and self._catalog_error is None
+            )
+
     def close(self) -> None:
         """Stop the server (idempotent). The next server's catalog is prepared afresh."""
-        if self._server is not None:
-            self._server.stop()
-            self._server = None
+        with self._server_lock:
+            server, self._server = self._server, None
+        if server is not None:
+            server.stop()
         with self._start_lock:
             # A preparation in flight loses its connection with the server and reports to no one.
             self._catalog_server += 1
             self._catalog_ready = False
             self._catalog_error = None
             self._catalog_thread = None
+
+    def retire(self) -> None:
+        """Stop the server and never start another (REQ-1824): this replica is out of the
+        registry, so a start still in flight -- or asked for later by a caller holding it --
+        stops what it started and raises ``ServerRetired``. Waits for no start in flight."""
+        with self._server_lock:
+            self._retired = True
+            server, self._server = self._server, None
+        if server is not None:
+            server.stop()
 
 
 # -- live endpoint for an engine that ATTACHes the pgwire server (REQ-1690) --------------------
@@ -1491,6 +1646,9 @@ _ENDPOINTS: dict[tuple[str, str], ConnectorReplica] = {}
 _ENDPOINT_USERS: dict[tuple[str, str], set[str]] = {}
 held(__name__, "_ENDPOINTS", _ENDPOINTS)
 held(__name__, "_ENDPOINT_USERS", _ENDPOINT_USERS)
+#: The sources (by org and id) being deleted: no server is started for one (REQ-1824).
+_DELETING: set[tuple[str, str]] = set()
+held(__name__, "_DELETING", _DELETING)
 # One server per source id: an engine attach, a discovery call and a write can each be the first
 # to ask for a source's endpoint, from different threads.
 _ENDPOINTS_LOCK = threading.Lock()
@@ -1541,7 +1699,9 @@ def _endpoint_replica(source: Any) -> ConnectorReplica:
     key = server_key(source)
     org_id = source_key(source.id)[0]
     with _ENDPOINTS_LOCK:
-        if key[0] != org_id:
+        if source_key(source.id) in _DELETING:
+            raise SourceBeingDeleted(source.id)
+        if key != source_key(source.id):  # a server shared: its template is a user as a sandbox is
             _ENDPOINT_USERS.setdefault(key, set()).add(org_id)
         replica = _ENDPOINTS.get(key)
         if replica is None:
@@ -1595,7 +1755,18 @@ def serve_for_build(source: Any) -> None:
     started and waited for by the attach itself."""
     if _source_type(source) not in STARTED_WHEN_SAVED:
         return
+    _endpoint_replica(source).use_catalog()  # a build of a registered table uses the source
     ensure_endpoint(source, timeout=LAND_FETCH_SECONDS)
+
+
+def use_catalog_of(source: Any) -> None:
+    """A table of ``source`` was registered: its first use by the engine, so a server started
+    when saved (``STARTED_WHEN_SAVED``) has its catalog prepared from now on (REQ-540). Until
+    then the server serves its information_schema with no statement held behind that
+    preparation. Waits for nothing; any other type is left to its first attach."""
+    if _source_type(source) not in STARTED_WHEN_SAVED:
+        return
+    _endpoint_replica(source).use_catalog()
 
 
 #: How long a statement waits for a source's server that is still starting, in all: below the
@@ -1696,7 +1867,9 @@ def ensure_endpoint(source: Any, *, timeout: float | None = None) -> PortPair:
     minutes to start (``STARTED_WHEN_SAVED``) is not waited for by an attach: it was started
     when its source was saved, and until it listens AND its catalog is prepared
     (``ConnectorReplica.await_catalog``) the attach is answered ``SourceStillStartingError`` at
-    once rather than holding its caller — and the engine's attach pass — for the wait."""
+    once rather than holding its caller — and the engine's attach pass — for the wait. Its
+    catalog is not prepared for an attach until the source is in use (``use_catalog_of``,
+    ``ConnectorReplica.require_serving``, :func:`serve_for_build`)."""
     replica = _endpoint_replica(source)
     if _source_type(source) not in STARTED_WHEN_SAVED:
         # A server that starts in seconds is waited for -- and its catalog within the same bound.
@@ -1746,7 +1919,7 @@ def ensure_endpoint_for_discovery(source: Any) -> PortPair:
 def stop_all_servers() -> None:
     """Stop every pgwire server started for a live attach (app shutdown)."""
     for replica in _ENDPOINTS.values():
-        replica.close()
+        replica.retire()
     _ENDPOINTS.clear()
     _ENDPOINT_USERS.clear()
 
@@ -1755,17 +1928,17 @@ def stop_org_servers(org_id: str) -> None:
     """Stop and forget every server this process started for ``org_id``'s sources (REQ-1992:
     before the org's folder's files are encrypted or decrypted)."""
     with _ENDPOINTS_LOCK:
-        mine = [key for key in _ENDPOINTS if key[0] == org_id]
+        mine = [key for key in _ENDPOINTS if key[0] == org_id and key not in _ENDPOINT_USERS]
         # A server several orgs share goes when the last of them stops reading it.
         for key, users in list(_ENDPOINT_USERS.items()):
             users.discard(org_id)
-            if not users and key not in mine and key in _ENDPOINTS:
-                mine.append(key)
             if not users:
                 del _ENDPOINT_USERS[key]
+                if key in _ENDPOINTS:
+                    mine.append(key)
         replicas = [_ENDPOINTS.pop(key) for key in mine]
     for replica in replicas:
-        replica.close()
+        replica.retire()
 
 
 def stop_endpoint(source_id: str) -> None:
@@ -1783,7 +1956,26 @@ def stop_endpoint(source_id: str) -> None:
     with _ENDPOINTS_LOCK:
         replica = _ENDPOINTS.pop(source_key(source_id), None)
     if replica is not None:
-        replica.close()
+        # Retired, not closed: a caller still holding it (a start in flight, an index read)
+        # starts no server on it that nothing would ever stop (REQ-1824).
+        replica.retire()
+
+
+@contextmanager
+def deleting(source_id: str) -> Iterator[None]:
+    """While ``source_id`` (in the bound org) is being deleted, no server is started for it
+    (``SourceBeingDeleted``): an index walk, an attach pass or a discovery call that asks for it
+    mid-delete would otherwise start one after its server was stopped (REQ-1824)."""
+    from provisa.core.org_scope import source_key
+
+    key = source_key(source_id)
+    with _ENDPOINTS_LOCK:
+        _DELETING.add(key)
+    try:
+        yield
+    finally:
+        with _ENDPOINTS_LOCK:
+            _DELETING.discard(key)
 
 
 async def load_through_server(source: Any, table: Any) -> list[dict]:

@@ -8,7 +8,7 @@
     {
      "fields": [
       {
-       "name": "ont__domains",
+       "name": "on_domains",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -17,13 +17,13 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__Domains"
+          "name": "ON_Domains"
          }
         }
        }
       },
       {
-       "name": "ont__experts",
+       "name": "on_experts",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -32,13 +32,13 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__Experts"
+          "name": "ON_Experts"
          }
         }
        }
       },
       {
-       "name": "ont__termEdges",
+       "name": "on_termEdges",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -47,13 +47,13 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermEdges"
+          "name": "ON_TermEdges"
          }
         }
        }
       },
       {
-       "name": "ont__termRefs",
+       "name": "on_termRefs",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -62,13 +62,13 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermRefs"
+          "name": "ON_TermRefs"
          }
         }
        }
       },
       {
-       "name": "ont__terms",
+       "name": "on_terms",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -77,7 +77,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__Terms"
+          "name": "ON_Terms"
          }
         }
        }
@@ -183,6 +183,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__ListedNames"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__metricDefinitions",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__MetricDefinitions"
          }
         }
        }
@@ -492,11 +507,11 @@
        "name": "term",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "ON_Terms"
        }
       }
      ],
-     "name": "ONT__Domains"
+     "name": "ON_Domains"
     },
     {
      "fields": [
@@ -707,7 +722,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermRefs"
+          "name": "ON_TermRefs"
          }
         }
        }
@@ -738,7 +753,7 @@
        "name": "classTerm",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "ON_Terms"
        }
       },
       {
@@ -1018,11 +1033,11 @@
        "name": "term",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "ON_Terms"
        }
       }
      ],
-     "name": "ONT__TermRefs"
+     "name": "ON_TermRefs"
     },
     {
      "fields": [
@@ -1156,7 +1171,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermRefs"
+          "name": "ON_TermRefs"
          }
         }
        }
@@ -1594,6 +1609,13 @@
     },
     {
      "fields": [
+      {
+       "name": "createdAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
       {
        "name": "customProperties",
        "type": {
@@ -2109,6 +2131,13 @@
        "type": {
         "kind": "SCALAR",
         "name": "Int"
+       }
+      },
+      {
+       "name": "rights",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
        }
       },
       {
@@ -2738,10 +2767,10 @@
        }
       },
       {
-       "name": "grounded",
+       "name": "grounding",
        "type": {
         "kind": "SCALAR",
-        "name": "Boolean"
+        "name": "String"
        }
       },
       {
@@ -2781,13 +2810,6 @@
       },
       {
        "name": "isRooted",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
-       "name": "live",
        "type": {
         "kind": "SCALAR",
         "name": "Boolean"
@@ -2888,7 +2910,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__Domains"
+          "name": "ON_Domains"
          }
         }
        }
@@ -2903,7 +2925,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermEdges"
+          "name": "ON_TermEdges"
          }
         }
        }
@@ -2918,7 +2940,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermEdges"
+          "name": "ON_TermEdges"
          }
         }
        }
@@ -2933,7 +2955,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__Experts"
+          "name": "ON_Experts"
          }
         }
        }
@@ -2948,7 +2970,7 @@
          "name": null,
          "ofType": {
           "kind": "OBJECT",
-          "name": "ONT__TermRefs"
+          "name": "ON_TermRefs"
          }
         }
        }
@@ -2984,7 +3006,7 @@
        }
       }
      ],
-     "name": "ONT__Terms"
+     "name": "ON_Terms"
     },
     {
      "fields": [
@@ -3084,18 +3106,18 @@
        "name": "sourceTerm",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "ON_Terms"
        }
       },
       {
        "name": "targetTerm",
        "type": {
         "kind": "OBJECT",
-        "name": "ONT__Terms"
+        "name": "ON_Terms"
        }
       }
      ],
-     "name": "ONT__TermEdges"
+     "name": "ON_TermEdges"
     },
     {
      "fields": [
@@ -3171,7 +3193,7 @@
        }
       }
      ],
-     "name": "ONT__Experts"
+     "name": "ON_Experts"
     },
     {
      "fields": [
@@ -3717,6 +3739,75 @@
     {
      "fields": [
       {
+       "name": "aiContext",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "datatype",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "description",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "expression",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "fromFact",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "name",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__MetricDefinitions"
+    },
+    {
+     "fields": [
+      {
        "name": "accessedDomainId",
        "type": {
         "kind": "SCALAR",
@@ -4066,27 +4157,27 @@
  "root_fields": [
   {
    "domain_id": "ontology",
-   "graphql_field": "ont__domains",
+   "graphql_field": "on_domains",
    "table_name": "_domains"
   },
   {
    "domain_id": "ontology",
-   "graphql_field": "ont__experts",
+   "graphql_field": "on_experts",
    "table_name": "_experts"
   },
   {
    "domain_id": "ontology",
-   "graphql_field": "ont__termEdges",
+   "graphql_field": "on_termEdges",
    "table_name": "_term_edges"
   },
   {
    "domain_id": "ontology",
-   "graphql_field": "ont__termRefs",
+   "graphql_field": "on_termRefs",
    "table_name": "_term_refs"
   },
   {
    "domain_id": "ontology",
-   "graphql_field": "ont__terms",
+   "graphql_field": "on_terms",
    "table_name": "_terms"
   },
   {
@@ -4123,6 +4214,11 @@
    "domain_id": "meta",
    "graphql_field": "m__listedNames",
    "table_name": "listed_names"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__metricDefinitions",
+   "table_name": "metric_definitions"
   },
   {
    "domain_id": "meta",

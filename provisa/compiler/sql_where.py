@@ -479,32 +479,48 @@ _DIRECTION_SQL = {
 }
 
 
+#: Each direction's reverse, NULLS placement included: a backward page reads its rows this way.
+_REVERSED_DIRECTION = {
+    "asc": "desc",
+    "desc": "asc",
+    "asc_nulls_first": "desc_nulls_last",
+    "asc_nulls_last": "desc_nulls_first",
+    "desc_nulls_first": "asc_nulls_last",
+    "desc_nulls_last": "asc_nulls_first",
+}
+
+
 def _compile_order_by(
     order_by_list: list[dict],
     alias: str | None,
     table_id: int | None = None,
     exposed_to_physical: dict | None = None,
+    reverse: bool = False,
 ) -> str:
     """Compile order_by input list to SQL ORDER BY clause.
 
     Hasura v2 format: each item is {column_name: direction} where direction
     is one of: asc, desc, asc_nulls_first, asc_nulls_last, desc_nulls_first,
-    desc_nulls_last.
+    desc_nulls_last. ``reverse`` writes each direction's reverse (REQ-218: a backward page).
     """
     parts: list[str] = []
     _e2p = exposed_to_physical or {}
+
+    def _dir(direction: str) -> str:
+        return _REVERSED_DIRECTION.get(direction, direction) if reverse else direction
+
     for item in order_by_list:
         for col_name, direction in item.items():
             if isinstance(direction, dict):
                 # Nested relationship order-by: { rel_field: { col: dir } }
                 # Flatten one level — qualify with the relationship field name as alias.
                 for nested_col, nested_dir in direction.items():
-                    sql_dir = _DIRECTION_SQL.get(nested_dir)
+                    sql_dir = _DIRECTION_SQL.get(_dir(nested_dir))
                     if sql_dir is None:
                         raise ValueError(f"Unknown order direction: {nested_dir!r}")
                     parts.append(f"{_q(col_name)}.{_q(nested_col)} {sql_dir}")
                 continue
-            sql_dir = _DIRECTION_SQL.get(direction)
+            sql_dir = _DIRECTION_SQL.get(_dir(direction))
             if sql_dir is None:
                 raise ValueError(f"Unknown order direction: {direction!r}")
             phys_col = (
@@ -568,6 +584,29 @@ def _below_takes_lateral_args(
             sel, ctx, join_meta.target.type_name
         ):
             return True
+    return False
+
+
+def _joins_row_level_to_one(
+    field_node: FieldNode, join_meta: JoinMeta, ctx: CompilationContext
+) -> bool:
+    """Whether the to-one field ``field_node`` reads, itself or down a chain of to-one fields, a
+    table replicated row by row. REQ-1915 binds such a table as the target of a JOIN, and key
+    pushdown fetches its rows only there, so the field is joined, not aggregated. A to-many field
+    keeps its list aggregate and the statement is refused: joined rows collapse equal elements of
+    a list (``serialize._serialize_with_one_to_many``)."""
+    if join_meta.cardinality == "one-to-many":
+        return False
+    target = join_meta.target
+    if target.table_id in ctx.row_level_tables:
+        return True
+    if not field_node.selection_set:
+        return False
+    for sel in field_node.selection_set.selections:
+        if isinstance(sel, FieldNode):
+            below = ctx.joins.get((target.type_name, sel.name.value))
+            if below is not None and _joins_row_level_to_one(sel, below, ctx):
+                return True
     return False
 
 

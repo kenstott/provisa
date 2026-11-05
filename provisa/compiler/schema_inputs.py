@@ -33,15 +33,16 @@ from graphql import (
 )
 
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
-from provisa.compiler.naming import apply_gql_name, to_type_name
+from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, apply_gql_name, to_type_name
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
-    column_type_to_graphql,
     array_graphql_type,
     nested_column_graphql_type,
+    registered_graphql_type,
 )
 from provisa.compiler.schema_types import _TableInfo
 from provisa.core.modeling_tags import column_comment
+from provisa.core.native_types import natively_nested
 from provisa.compiler.schema_directives import (
     GraphQLBoolean,
     GraphQLFloat,
@@ -129,7 +130,10 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             gql_type = nested_type
         elif object_fields and meta.data_type in ("json", "jsonb"):
             _type_prefix = ""
-            if "__" in table.type_name:
+            if table.domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
+                # REQ-2163: a system schema's object types carry its prefix as its table types do.
+                _type_prefix = SYSTEM_SCHEMA_GQL_PREFIX[table.domain_id].upper() + "_"
+            elif "__" in table.type_name:
                 _type_prefix = table.type_name.split("__", 1)[0] + "__"
             gql_type: GraphQLOutputType = _build_object_type(
                 col_name, object_fields, override, _obj_registry, _type_prefix
@@ -139,7 +143,7 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
             if enum_gql is not None:
                 gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
             else:
-                scalar_type = column_type_to_graphql(meta.data_type)
+                scalar_type = registered_graphql_type(meta.data_type, meta.subtype)
                 if not meta.is_nullable and not isinstance(scalar_type, GraphQLList):
                     gql_type = GraphQLNonNull(scalar_type)
                 else:
@@ -199,14 +203,14 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
         if "." in pg_name:
             pg_name = pg_name.rsplit(".", 1)[1]
         enum_filter = _enum_filters.get(pg_name)
-        if col.get("native_type"):
+        if natively_nested(col.get("native_type")):
             # REQ-1965: a natively nested column is filtered with the JSON operations, not with
             # a scalar comparison of its element type.
             continue
         if enum_filter:
             input_fields[gql_name] = GraphQLInputField(enum_filter)
         else:
-            gql_type = column_type_to_graphql(meta.data_type)
+            gql_type = registered_graphql_type(meta.data_type, meta.subtype)
             scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
             filter_type = FILTER_TYPE_MAP.get(scalar)
             if filter_type:

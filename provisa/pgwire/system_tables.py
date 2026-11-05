@@ -17,21 +17,29 @@ Split out of catalog.py to keep that module within its size budget.
 
 from __future__ import annotations
 
+from provisa.pgwire.catalog_pg17_tables import create_relation
+
+
+#: The system tables served with PostgreSQL 17's columns as they stand (catalog_pg17.RELATIONS).
+_PG17_SHAPED_TABLES = (
+    "pg_description",
+    "pg_index",
+    "pg_auth_members",
+    "pg_collation",
+    "pg_subscription",
+    "pg_stat_activity",
+    "pg_stat_user_tables",
+    "pg_statio_user_tables",
+    "pg_stat_user_indexes",
+)
+
 
 def _populate_empty_system_tables(db) -> None:
+    for name in _PG17_SHAPED_TABLES:
+        create_relation(db, "pg_catalog", name)
     db.execute(
         "CREATE TABLE _pg_attrdef (oid INTEGER, adrelid INTEGER, adnum SMALLINT, adbin VARCHAR)"
     )
-    db.execute(
-        "CREATE TABLE _pg_description (objoid INTEGER, classoid VARCHAR, objsubid INTEGER, description VARCHAR)"
-    )
-    db.execute("""CREATE TABLE _pg_index (
-        indexrelid INTEGER, indrelid INTEGER, indnatts SMALLINT, indnkeyatts SMALLINT,
-        indisunique BOOLEAN, indisprimary BOOLEAN, indisexclusion BOOLEAN,
-        indimmediate BOOLEAN, indisclustered BOOLEAN, indisvalid BOOLEAN,
-        indcheckxmin BOOLEAN, indisready BOOLEAN, indislive BOOLEAN,
-        indisreplident BOOLEAN, indkey INTEGER[], indcollation INTEGER[],
-        indclass INTEGER[], indoption SMALLINT[], indexprs VARCHAR, indpred VARCHAR)""")
     db.execute("""CREATE TABLE _pg_proc (
         oid INTEGER, proname VARCHAR, pronamespace INTEGER, proowner INTEGER,
         prolang INTEGER, procost REAL, prorows REAL, provariadic INTEGER,
@@ -42,9 +50,6 @@ def _populate_empty_system_tables(db) -> None:
         proargnames VARCHAR[], proargdefaults VARCHAR, protrftypes INTEGER[],
         prosrc VARCHAR, probin VARCHAR, prosqlbody VARCHAR,
         proconfig VARCHAR[], proacl VARCHAR[])""")
-    db.execute(
-        "CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)"
-    )
     db.execute(
         "CREATE TABLE _pg_tablespace (oid INTEGER, spcname VARCHAR, spcowner INTEGER, spcacl VARCHAR[], spcoptions VARCHAR[])"
     )
@@ -61,22 +66,6 @@ def _populate_empty_system_tables(db) -> None:
         extrelocatable BOOLEAN, extversion VARCHAR, extconfig INTEGER[], extcondition VARCHAR[])""")
     db.execute("""CREATE TABLE _pg_enum (
         oid INTEGER, enumtypid INTEGER, enumsortorder REAL, enumlabel VARCHAR)""")
-    db.execute("""CREATE TABLE _pg_stat_activity (
-        datid INTEGER, datname VARCHAR, pid INTEGER, usesysid INTEGER,
-        usename VARCHAR, application_name VARCHAR, client_addr VARCHAR,
-        client_hostname VARCHAR, client_port INTEGER, backend_start TIMESTAMPTZ,
-        xact_start TIMESTAMPTZ, query_start TIMESTAMPTZ, state_change TIMESTAMPTZ,
-        wait_event_type VARCHAR, wait_event VARCHAR, state VARCHAR,
-        backend_xid INTEGER, backend_xmin INTEGER, query VARCHAR,
-        backend_type VARCHAR)""")
-    db.execute("""CREATE TABLE _pg_stat_user_tables (
-        relid INTEGER, schemaname VARCHAR, relname VARCHAR,
-        seq_scan BIGINT, seq_tup_read BIGINT, idx_scan BIGINT, idx_tup_fetch BIGINT,
-        n_tup_ins BIGINT, n_tup_upd BIGINT, n_tup_del BIGINT, n_tup_hot_upd BIGINT,
-        n_live_tup BIGINT, n_dead_tup BIGINT, n_mod_since_analyze BIGINT,
-        n_ins_since_vacuum BIGINT, last_vacuum TIMESTAMPTZ, last_autovacuum TIMESTAMPTZ,
-        last_analyze TIMESTAMPTZ, last_autoanalyze TIMESTAMPTZ, vacuum_count BIGINT,
-        autovacuum_count BIGINT, analyze_count BIGINT, autoanalyze_count BIGINT)""")
     db.execute("""CREATE TABLE _is_views (
         table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
         view_definition VARCHAR, check_option VARCHAR, is_updatable VARCHAR,
@@ -127,9 +116,6 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_amproc (oid INTEGER, amprocfamily INTEGER, amproclefttype INTEGER, amprocrighttype INTEGER, amprocnum SMALLINT, amproc INTEGER)"
     )
     db.execute(
-        "CREATE TABLE _pg_collation (oid INTEGER, collname VARCHAR, collnamespace INTEGER, collowner INTEGER, collprovider VARCHAR, collisdeterministic BOOLEAN, collencoding INTEGER, collcollate VARCHAR, collctype VARCHAR, collversion VARCHAR)"
-    )
-    db.execute(
         "CREATE TABLE _pg_range (rngtypid INTEGER, rngsubtype INTEGER, rngmultitypid INTEGER, rngcollation INTEGER, rngsubopc INTEGER, rngcanonical INTEGER, rngsubdiff INTEGER)"
     )
     db.execute(
@@ -160,13 +146,7 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_publication (oid INTEGER, pubname VARCHAR, pubowner INTEGER, puballtables BOOLEAN, pubinsert BOOLEAN, pubupdate BOOLEAN, pubdelete BOOLEAN, pubtruncate BOOLEAN, pubviaroot BOOLEAN)"
     )
     db.execute(
-        "CREATE TABLE _pg_subscription (oid INTEGER, subdbid INTEGER, subskiplsn VARCHAR, subname VARCHAR, subowner INTEGER, subenabled BOOLEAN, subbinary BOOLEAN, substream VARCHAR, subtwophasestate VARCHAR, subdisableonerr BOOLEAN, subpasswordrequired BOOLEAN, subrunasowner BOOLEAN, subconninfo VARCHAR, subslotname VARCHAR, subsynccommit VARCHAR, subpublications VARCHAR[], suborigin VARCHAR)"
-    )
-    db.execute(
         "CREATE TABLE _pg_event_trigger (oid INTEGER, evtname VARCHAR, evtevent VARCHAR, evtowner INTEGER, evtfoid INTEGER, evtenabled VARCHAR, evttags VARCHAR[])"
-    )
-    db.execute(
-        "CREATE TABLE _pg_stat_user_indexes (relid INTEGER, indexrelid INTEGER, schemaname VARCHAR, relname VARCHAR, indexrelname VARCHAR, idx_scan BIGINT, idx_tup_read BIGINT, idx_tup_fetch BIGINT)"
     )
     db.execute(
         "CREATE TABLE _pg_locks (locktype VARCHAR, database INTEGER, relation INTEGER, page INTEGER, tuple SMALLINT, virtualxid VARCHAR, transactionid INTEGER, classid INTEGER, objid INTEGER, objsubid SMALLINT, virtualtransaction VARCHAR, pid INTEGER, mode VARCHAR, granted BOOLEAN, fastpath BOOLEAN, waitstart TIMESTAMPTZ)"

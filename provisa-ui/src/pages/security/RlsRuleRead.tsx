@@ -11,6 +11,7 @@
 import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type { RLSRule } from "../../types/admin";
+import { RULE_RIGHT_LABEL } from "./ruleRights";
 import { DetailFields } from "../../components/detail/DetailFields";
 
 /**
@@ -62,6 +63,15 @@ export function RlsRuleRead({
               ? [{ label: t("securityPage.table"), value: tableLabel }]
               : []),
         { label: t("securityPage.role"), value: r.roleId },
+        // REQ-2188: what the rule narrows. An action's rows are only read: its form offers none.
+        ...(scope === "action"
+          ? []
+          : [
+              {
+                label: t("securityPage.ruleRight"),
+                value: r.rights.map((right) => t(RULE_RIGHT_LABEL[right])).join(", "),
+              },
+            ]),
         {
           label: t("securityPage.filterExpression"),
           value: (

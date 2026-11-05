@@ -11,6 +11,10 @@
     "addViewTitle": "יצירת view חדש ב-SQL Explorer",
     "model": "+ מודל",
     "modelTitle": "מידול ישות או עובדה (סכמת כוכב / Data Vault)",
+    "modelMenu": "בחירת שיטת מידול",
+    "modelEntityFact": "ישות/עובדה",
+    "modelStarSchema": "סכמת כוכב",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "חוברת עבודה",
     "reportXlsxTitle": "הורדת המודל כגיליון אלקטרוני לסקירה — מקורות, טבלאות, עמודות, קשרים, תצוגות, מדדים, Materialized Views, אונטולוגיה, מוצרי נתונים, חוזי נתונים, איכות נתונים ופרופילי נתונים, כל אחד בגיליון נפרד",
     "viewErd": "הצגת ERD",
@@ -58,6 +62,7 @@
       "impliedDimensionTitle": "ממד משתמע — האפשרות 'הפעלת Group By' מופעלת לטבלה זו"
     },
     "derived": "נגזר",
+    "endpointUnread": "לא ניתן היה לקרוא את מסמך ה-API של המקור שלה",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -83,6 +88,8 @@
     "panelRegisterTable": "רישום טבלה",
     "panelNewView": "תצוגה חדשה",
     "panelNewModel": "מודל חדש",
+    "panelStarSchema": "סכמת כוכב חדשה",
+    "panelDataVault": "Data Vault חדש",
     "history": {
       "badge": "היסטוריה",
       "title": "שומר היסטוריה: שאלו אותו נכון לתאריך או כפי שנרשם (מסע בזמן)"

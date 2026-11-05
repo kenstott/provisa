@@ -11,6 +11,10 @@
     "addViewTitle": "在 SQL 浏览器中创建新视图",
     "model": "+ 建模",
     "modelTitle": "对实体或事实建模（星型架构 / Data Vault）",
+    "modelMenu": "选择建模方式",
+    "modelEntityFact": "实体/事实",
+    "modelStarSchema": "星型模式",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "工作簿",
     "reportXlsxTitle": "将模型下载为电子表格以供审阅——数据源、表、列、关系、视图、指标、物化视图、本体、数据产品、数据契约、数据质量和数据画像，各占一个工作表",
     "viewErd": "查看 ERD",
@@ -58,6 +62,7 @@
       "impliedDimensionTitle": "隐含维度 — 此表已开启“启用分组”"
     },
     "derived": "派生",
+    "endpointUnread": "无法读取其源的 API 文档",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -83,6 +88,8 @@
     "panelRegisterTable": "注册表",
     "panelNewView": "新建视图",
     "panelNewModel": "新建模型",
+    "panelStarSchema": "新建星型模式",
+    "panelDataVault": "新建 Data Vault",
     "history": {
       "badge": "历史",
       "title": "保留历史：可按截至某日或按记录时查询（时间旅行）"

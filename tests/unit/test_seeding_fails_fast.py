@@ -131,3 +131,18 @@ def test_a_view_built_before_its_replicas_landed_is_not_built(monkeypatch):
         False,
         False,
     ]
+
+
+def test_a_seeding_run_is_told_where_each_regions_node_listens(monkeypatch):
+    """A platform region names no address (REQ-1922, amended 2026-11-05): the bundle build says
+    where its seeding node of each region listens, and a run it did not tell is refused naming
+    what is missing."""
+    monkeypatch.setenv("PROVISA_DEMO_LEDGER_ADDRESS", "http://127.0.0.1:41001")
+    monkeypatch.delenv("PROVISA_DEMO_WAREHOUSE_ADDRESS", raising=False)
+    with pytest.raises(RuntimeError, match="PROVISA_DEMO_WAREHOUSE_ADDRESS is not set"):
+        demo_region_seed.seeding_node_addresses(["ledger", "warehouse"])
+    monkeypatch.setenv("PROVISA_DEMO_WAREHOUSE_ADDRESS", "http://127.0.0.1:41002")
+    assert demo_region_seed.seeding_node_addresses(["ledger", "warehouse"]) == {
+        "ledger": "http://127.0.0.1:41001",
+        "warehouse": "http://127.0.0.1:41002",
+    }

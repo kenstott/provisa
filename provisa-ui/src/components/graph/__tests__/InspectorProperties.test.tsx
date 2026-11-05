@@ -64,4 +64,150 @@ describe("a node's properties in its panel", () => {
     const pet: GNode = { id: 9, label: "Pets", tableLabel: "Pets", properties: { name: "Rex" } };
     expect(rows(pet)).toEqual([["name", "Rex"]]);
   });
+
+  it("read a SPARQL column by its name under the node's own class", () => {
+    const pet: GNode = {
+      id: 4,
+      label: "pet-store:pets",
+      tableLabel: "pet-store:pets",
+      properties: { "pet-store:pets#breedName": "Husky" },
+      propertyIris: { "pet-store:pets#breedName": "https://x/pet-store/pets#breedName" },
+    };
+    expect(rows(pet)).toEqual([["breedName", "Husky"]]);
+  });
+
+  it("keep a term, a standard predicate and another class's column as written", () => {
+    const pet: GNode = {
+      id: 4,
+      label: "pet-store:pets",
+      tableLabel: "pet-store:pets",
+      properties: {
+        "term:weight": "4",
+        "rdfs:label": "Rex",
+        "pet-store:owners#email": "a@b",
+      },
+      propertyIris: {
+        "term:weight": "https://x/term/weight",
+        "rdfs:label": "http://www.w3.org/2000/01/rdf-schema#label",
+        "pet-store:owners#email": "https://x/pet-store/owners#email",
+      },
+    };
+    expect(rows(pet).map(([k]) => k)).toEqual([
+      "pet-store:owners#email",
+      "rdfs:label",
+      "term:weight",
+    ]);
+  });
+
+  it("keep the full predicate in the row's title", () => {
+    const iri = "https://x/pet-store/pets#breedName";
+    const { container } = render(
+      <Inspector
+        selected={{
+          kind: "node",
+          data: {
+            id: 4,
+            label: "pet-store:pets",
+            tableLabel: "pet-store:pets",
+            properties: { "pet-store:pets#breedName": "Husky" },
+            propertyIris: { "pet-store:pets#breedName": iri },
+          },
+        }}
+        colorOverrides={{}}
+        onColorChange={() => {}}
+        onClose={() => {}}
+        width={320}
+        onResizeStart={() => {}}
+        relationships={[]}
+        labelToTableId={{}}
+      />,
+    );
+    expect(container.querySelector(".gf-prop-key")).toHaveAttribute("title", iri);
+  });
+
+  it("show a column once where the node is already named by it", () => {
+    const pet: GNode = {
+      id: 4,
+      label: "pet-store:pets",
+      tableLabel: "pet-store:pets",
+      properties: { name: "Rex", iri: "https://x/id/1", "pet-store:pets#name": "Rex" },
+      propertyIris: { "pet-store:pets#name": "https://x/pet-store/pets#name" },
+    };
+    expect(rows(pet)).toEqual([
+      ["iri", "https://x/id/1"],
+      ["name", "Rex"],
+    ]);
+  });
+
+  it("keep a column as written where its short name would read as a different value", () => {
+    const pet: GNode = {
+      id: 4,
+      label: "pet-store:pets",
+      tableLabel: "pet-store:pets",
+      properties: { iri: "https://x/id/1", "pet-store:pets#iri": "other" },
+      propertyIris: { "pet-store:pets#iri": "https://x/pet-store/pets#iri" },
+    };
+    expect(rows(pet)).toEqual([
+      ["iri", "https://x/id/1"],
+      ["pet-store:pets#iri", "other"],
+    ]);
+  });
+
+  it("leave a Cypher node's property alone, even written like a predicate", () => {
+    const n: GNode = {
+      id: 4,
+      label: "Pets",
+      tableLabel: "Pets",
+      properties: { "Pets#breed": "Husky" },
+    };
+    expect(rows(n)).toEqual([["Pets#breed", "Husky"]]);
+  });
+
+  it("say a literal's datatype on hover of its value", () => {
+    const { container } = render(
+      <Inspector
+        selected={{
+          kind: "node",
+          data: {
+            id: 4,
+            label: "pet-store:pets",
+            tableLabel: "pet-store:pets",
+            properties: { "pet-store:pets#price": "3.25" },
+            propertyIris: { "pet-store:pets#price": "https://x/pet-store/pets#price" },
+            propertyDatatypes: {
+              "pet-store:pets#price": "http://www.w3.org/2001/XMLSchema#decimal",
+            },
+          },
+        }}
+        colorOverrides={{}}
+        onColorChange={() => {}}
+        onClose={() => {}}
+        width={320}
+        onResizeStart={() => {}}
+        relationships={[]}
+        labelToTableId={{}}
+      />,
+    );
+    expect(container.querySelector(".gf-prop-val")).toHaveAttribute(
+      "title",
+      "http://www.w3.org/2001/XMLSchema#decimal",
+    );
+  });
+
+  it("read a column by its name under the class's own prefix too", () => {
+    const pet: GNode = {
+      id: 4,
+      label: "pet-store:pets",
+      tableLabel: "pet-store:pets",
+      properties: { "pets:breedName": "Husky", "owners:email": "a@b" },
+      propertyIris: {
+        "pets:breedName": "https://x/pet-store/pets#breedName",
+        "owners:email": "https://x/pet-store/owners#email",
+      },
+    };
+    expect(rows(pet)).toEqual([
+      ["owners:email", "a@b"],
+      ["breedName", "Husky"],
+    ]);
+  });
 });

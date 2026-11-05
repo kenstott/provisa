@@ -37,6 +37,7 @@ from fastapi.responses import Response
 from provisa.api.rest.cypher_exec import _build_label_map, _resolve_role_id
 from provisa.api.rest.cypher_router import cypher_error
 from provisa.compiler.complexity import ComplexityLimitExceeded
+from provisa.core.parameters import ParameterRequired
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +109,8 @@ async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> 
 
 @router.api_route("/data/sparql", methods=["GET", "POST"])
 async def sparql_query(request: Request) -> Response:  # REQ-2135
-    """Answer a SPARQL SELECT, ASK or CONSTRUCT over the semantic model, for the caller's role."""
+    """Answer a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE over the semantic model, for the
+    caller's role."""
     from provisa.api.app import state
     from provisa.api.rest.cypher_router import (
         _dict_rows,
@@ -202,6 +204,12 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
             raise  # REQ-1174: answered as 413 by the app's handler
         except PermissionError as exc:
             return cypher_error(403, "sparql.permission_denied", str(exc), reason=str(exc))
+        except ParameterRequired as exc:
+            # REQ-1986: a class whose table needs a parameter is read without one -- the caller's
+            # to give, as on the Cypher surface, never a server error.
+            return cypher_error(
+                400, "sparql.parameter_required", str(exc), table=exc.table, reason=str(exc)
+            )
         if plan.span_attrs is not None:
             plan.span_attrs["provisa.query_text"] = query
         executed = await _run_plan(plan, state)
@@ -251,6 +259,7 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
     from provisa.sparql_query.vocabulary import (
         concepts_of,
         superclasses_of,
+        term_domains_of,
         vocabulary_document,
     )
 
@@ -279,5 +288,6 @@ async def sparql_vocabulary(request: Request) -> Response:  # REQ-2135
             concepts_of(vocab.base, terms),
             # A Class term's superclasses, among the terms the role reads (REQ-2135).
             superclasses_of(vocab.base, terms, edges),
+            term_domains_of(vocab.base, terms),
         )
     )

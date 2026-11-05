@@ -11,6 +11,10 @@
     "addViewTitle": "在 SQL Explorer 中建立新檢視",
     "model": "+ 模型",
     "modelTitle": "建構實體或事實的模型（星型結構描述 / Data Vault）",
+    "modelMenu": "選擇建模方式",
+    "modelEntityFact": "實體/事實",
+    "modelStarSchema": "星型模式",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "活頁簿",
     "reportXlsxTitle": "將模型下載為試算表以供審閱 — 數據來源、數據表、欄位、關係、檢視、指標、具體化檢視、本體、數據產品、數據契約、數據質素和數據剖析，每項各佔一張工作表",
     "viewErd": "檢視 ERD",
@@ -58,6 +62,7 @@
       "impliedDimensionTitle": "隱含維度 — 此表已開啟「啟用分組」"
     },
     "derived": "衍生",
+    "endpointUnread": "無法讀取其來源的 API 文件",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
@@ -83,6 +88,8 @@
     "panelRegisterTable": "註冊資料表",
     "panelNewView": "新增檢視",
     "panelNewModel": "新增模型",
+    "panelStarSchema": "新增星型模式",
+    "panelDataVault": "新增 Data Vault",
     "history": {
       "badge": "歷史",
       "title": "保留歷史：可按截至某日或按記錄時查詢（時光回溯）"

@@ -29,8 +29,8 @@ def _body(response) -> dict:
 
 def test_an_access_refusal_is_403_naming_each_violation_and_joining_them(monkeypatch):
     import provisa.compiler.sql_validator as validator
-    import provisa.compiler.stage2 as stage2
     import provisa.pgwire._pipeline as pipeline
+    import provisa.pgwire.governed_plan as governed_plan
     import provisa.security.rights as rights
 
     found = [
@@ -40,7 +40,7 @@ def test_an_access_refusal_is_403_naming_each_violation_and_joining_them(monkeyp
         Violation(code="table_not_visible", message="Table owners is not visible to role all"),
     ]
     monkeypatch.setattr(rights, "effective_domain_access_role", lambda role_id, roles: {})
-    monkeypatch.setattr(stage2, "build_governance_context", lambda *a, **k: None)
+    monkeypatch.setattr(governed_plan, "role_governance", lambda *a, **k: None)
     monkeypatch.setattr(pipeline, "relationship_guard_bypassed", lambda *a, **k: False)
     monkeypatch.setattr(validator, "validate_sql", lambda *a, **k: found)
     state = SimpleNamespace(roles={}, masking_rules={}, tables=[], relationships=[])

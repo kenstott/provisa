@@ -16,6 +16,7 @@
     "role_sql_generation": "יצירת SQL",
     "role_table_selection": "בחירת טבלאות",
     "role_mcp_chat": "עוזר צ'אט",
+    "role_glossary_term_finding": "חיפוש מונחים",
     "vendorLabel": "ספק",
     "modelLabel": "מודל",
     "nlHeading": "שאילתה בשפה טבעית",

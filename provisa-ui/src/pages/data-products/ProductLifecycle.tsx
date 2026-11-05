@@ -60,8 +60,9 @@ export function useProductLifecycle({
   members: string[];
   findings: ProductFinding[];
   canEdit: boolean;
-  /** A change was made: the products are read again, and ``message`` told. */
-  onChanged: (message: string) => void;
+  /** A change was made: the products are read again, and ``message`` told. ``membersMoved`` is a
+   * retirement's: its members moved to the successor. */
+  onChanged: (message: string, membersMoved: boolean) => void;
   onFailed: (message: string) => void;
   onEdit: (focus?: "supportContact") => void;
   openProduct: (id: string) => void;
@@ -85,7 +86,7 @@ export function useProductLifecycle({
   };
   const act = async (answer: Promise<MutationResult>) => {
     const r = await answer;
-    if (r.success) onChanged(serverMessage(r, r.message));
+    if (r.success) onChanged(serverMessage(r, r.message), false);
     else onFailed(serverMessage(r, r.message));
   };
 
@@ -264,7 +265,7 @@ export function useProductLifecycle({
           onClose={() => setDeprecateOpen(false)}
           onDeprecated={() => {
             setDeprecateOpen(false);
-            onChanged(done("deprecated"));
+            onChanged(done("deprecated"), false);
           }}
           testId="data-product"
         />
@@ -294,7 +295,7 @@ export function useProductLifecycle({
           onClose={() => setRetireOpen(false)}
           onRetired={() => {
             setRetireOpen(false);
-            onChanged(done("retired"));
+            onChanged(done("retired"), true);
           }}
           testId="data-product"
         />

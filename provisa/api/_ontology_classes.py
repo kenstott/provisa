@@ -31,7 +31,7 @@ async def register_class_tables(conn: "Connection", tables: list[dict]) -> None:
     """Add the model's Class tables to ``tables`` and their reads to the view map. A Class that
     cannot be offered is refused by itself, logged and kept with why; the rest are served."""
     from provisa.api.app import state
-    from provisa.compiler.ontology_classes import class_tables, whole_body
+    from provisa.compiler.ontology_classes import class_tables, class_view_key, whole_body
     from provisa.core.schema_org import glossary_term_refs, glossary_terms, registered_tables
 
     groundings = {
@@ -70,8 +70,10 @@ async def register_class_tables(conn: "Connection", tables: list[dict]) -> None:
     for term_id, reason in refused.items():
         log.error("ontology Class %d is not offered: %s", term_id, reason)
     tables.extend(rows)
-    state.class_tables = {row["table_name"]: row for row in rows}
+    # Keyed by the Class's ontology-schema name: a table is grounded in a Class named for it
+    # (REQ-2141), so the name alone would read the Class in place of that table.
+    state.class_tables = {class_view_key(row): row for row in rows}
     state.refused_classes = refused
     state.class_bodies = {}
     for row in rows:
-        state.view_sql_map[row["table_name"]] = whole_body(row)
+        state.view_sql_map[class_view_key(row)] = whole_body(row)

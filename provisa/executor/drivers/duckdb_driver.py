@@ -21,7 +21,9 @@ import duckdb
 from provisa.core import engine_memory, request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
-from provisa.executor.result import QueryResult
+from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS
+from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batches, arrow_rows
+from provisa.executor.result import ArrowResult, QueryResult
 
 # Requirements: REQ-027, REQ-068, REQ-1882
 
@@ -50,22 +52,52 @@ def _is_file(database: str) -> bool:
     return database not in ("", ":memory:") and not database.startswith(":memory:")
 
 
-#: The column types DuckDB's own Python rows misread, and its Arrow export keeps.
-READ_THROUGH_ARROW = frozenset({"INTERVAL", "DATE", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE"})
+def _arrow_result(cursor: Any) -> QueryResult:  # noqa: ANN401 — a DuckDB connection or cursor
+    """The result of the statement ``cursor`` last ran, read through DuckDB's Arrow export, never
+    its DB-API rows (REQ-2194): the table, with its rows built from it now, on this thread
+    (duckdb_arrow.arrow_rows). The cursor exports losslessly (duckdb_arrow.LOSSLESS_ARROW)."""
+    if not cursor.description:
+        return QueryResult(rows=[], column_names=[])
+    return ArrowResult(cursor.to_arrow_table(), to_rows=arrow_rows).with_rows()
 
 
-def fetch_rows(result: Any) -> list[tuple]:  # noqa: ANN401 — a DuckDB result relation
-    """A DuckDB result's rows, each interval the IR interval it is and each infinite date or
-    timestamp the IR infinity it is. DuckDB's own Python rows fold an interval's months into days,
-    30 to a month (``1 year 2 months`` reads as 420 days), and read ``infinity`` as the last date
-    Python holds, a value a table may hold itself; its Arrow export keeps both, so a result with
-    such a column is read through Arrow (ir_arrow.column_values)."""
-    if not any(str(d[1]) in READ_THROUGH_ARROW for d in result.description):
-        return result.fetchall()
-    from provisa.core.ir_arrow import column_values
+class _ArrowCursor:
+    """A DuckDB cursor read through its Arrow reader for :class:`PooledCursorStream`:
+    ``fetchmany`` builds the next rows from the record batches (duckdb_arrow.arrow_rows), never
+    from DuckDB's DB-API rows (REQ-2194); an engine error met in a later batch is PostgreSQL's own
+    (duckdb_arrow.answered_batches)."""
 
-    columns = [column_values(c) for c in result.to_arrow_table().columns]
-    return list(zip(*columns))
+    def __init__(self, conn: Any) -> None:  # noqa: ANN401 — a DuckDB connection
+        self._cursor = conn.cursor()
+        self._reader: Iterator[Any] | None = None
+        self._pending: list[tuple] = []
+
+    @property
+    def description(self) -> Any:  # noqa: ANN401 — DuckDB's description
+        return self._cursor.description
+
+    def execute(self, sql: str, params: list | None) -> None:
+        self._cursor.execute(LOSSLESS_ARROW)
+        self._cursor.execute(sql, params) if params else self._cursor.execute(sql)
+        if self._cursor.description:
+            self._reader = answered_batches(self._cursor.to_arrow_reader(FETCH_CHUNK_ROWS))
+
+    def fetchmany(self, size: int) -> list[tuple]:
+        while len(self._pending) < size and self._reader is not None:
+            batch = next(self._reader, None)
+            if batch is None:
+                self._reader = None
+                break
+            self._pending.extend(arrow_rows(batch))
+        rows, self._pending = self._pending[:size], self._pending[size:]
+        return rows
+
+    def interrupt(self) -> None:
+        self._cursor.interrupt()
+
+    def close(self) -> None:
+        self._reader = None
+        self._cursor.close()
 
 
 class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
@@ -175,11 +207,10 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
     def _read(self, sql: str, params: list | None) -> QueryResult:
         # DuckDB uses $1, $2 natively (like PG)
         with self._require_pool().connection(is_broken=_is_broken) as conn:
+            conn.execute(LOSSLESS_ARROW)
             with request_deadline.cancel_on_deadline(conn.interrupt):
-                result = conn.execute(sql, params) if params else conn.execute(sql)
-                columns = [desc[0] for desc in result.description] if result.description else []
-                rows = fetch_rows(result) if result.description else []
-        return QueryResult(rows=rows, column_names=columns)
+                conn.execute(sql, params) if params else conn.execute(sql)
+                return _arrow_result(conn)
 
     def _write(self, sql: str, params: list | None) -> QueryResult:
         from provisa.federation import file_locks
@@ -193,13 +224,12 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
                     raise file_locks.FileLocked(self._shown) from None
                 raise
             try:
+                conn.execute(LOSSLESS_ARROW)
                 with request_deadline.cancel_on_deadline(conn.interrupt):
-                    result = conn.execute(sql, params) if params else conn.execute(sql)
-                    columns = [d[0] for d in result.description] if result.description else []
-                    rows = fetch_rows(result) if result.description else []
+                    conn.execute(sql, params) if params else conn.execute(sql)
+                    return _arrow_result(conn)
             finally:
                 conn.close()
-        return QueryResult(rows=rows, column_names=columns)
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     @property
@@ -207,14 +237,15 @@ class DuckDBDriver(DirectDriver):  # REQ-027, REQ-068, REQ-1997
         return True
 
     async def open_stream(self, sql: str, params: list | None = None) -> Any:  # REQ-1190
-        """The result a batch at a time: a cursor of the pooled connection, read by
-        ``fetchmany``; DuckDB's own ``interrupt`` stops a statement still running."""
+        """The result a batch at a time: a cursor of the pooled connection, read through its
+        Arrow reader (:class:`_ArrowCursor`); DuckDB's own ``interrupt`` stops a statement still
+        running."""
         from provisa.executor.drivers.cursor_stream import PooledCursorStream
 
         return PooledCursorStream(
             self._require_pool(),
-            open_cursor=lambda conn: conn.cursor(),
-            execute=lambda cur: cur.execute(sql, params) if params else cur.execute(sql),
+            open_cursor=_ArrowCursor,
+            execute=lambda cur: cur.execute(sql, params),
             columns=lambda cur: [desc[0] for desc in cur.description],
             cancel=lambda _conn, cur: cur.interrupt(),
         )

@@ -10,8 +10,9 @@
 
 """The insurance demo's glossary (REQ-2037, REQ-1641): demo/named/insurance/config.yaml loaded as a
 deployment loads it, into a control plane of the test's own. The insurer's vocabulary -- total
-insured value, exposure, accumulation, probable maximum loss, expected annual loss -- is live: in
-service, defined and grounded, through its edges, in the terms its tables' columns derive."""
+insured value, exposure, accumulation, probable maximum loss, expected annual loss -- is approved
+and, where an edge leads down to the terms its tables' columns derive, grounded and seen by agents
+(REQ-1387)."""
 
 # Requirements: REQ-2037, REQ-1641
 
@@ -33,7 +34,7 @@ from provisa.core.schema_org import glossary_term_edges, sources
 
 CONFIG = Path(__file__).resolve().parents[2] / "demo" / "named" / "insurance" / "config.yaml"
 
-#: The insurer's vocabulary: abstract terms, grounded in derived ones through their edges.
+#: The insurer's vocabulary: abstract terms.
 VOCABULARY = {
     "total insured value",
     "exposure",
@@ -43,6 +44,14 @@ VOCABULARY = {
     "catastrophe peril",
     "line of business",
 }
+#: The vocabulary with a path down to data (REQ-1387, DOWN IS FROM BROADER TO NARROWER): total
+#: insured value is a synonym of the policies' insured value, a policy's TIV is part of the exposure
+#: and the accumulation where it sits, and line of business is a synonym of the policies' line.
+GROUNDED = {"total insured value", "exposure", "accumulation", "line of business"}
+#: No column is one of these, nor a kind, part or value of one: FEMA's ratings rate a county, they
+#: are not its expected loss or its perils. Related to the data, they are not grounded in it, so no
+#: agent sees them.
+UNGROUNDED = VOCABULARY - GROUNDED
 
 
 @pytest.fixture
@@ -76,7 +85,13 @@ async def loaded(monkeypatch, tmp_path, control_plane):
             t["name"]: SimpleNamespace(id=t["id"], name=t["name"], is_abstract=t["is_abstract"])
             for t in await glossary_repo.list_terms(conn)
         }
-        live = await glossary_repo.live_ids(conn)
+        # REQ-1387: approved by the config, and seen by an agent (on a path to data).
+        statuses = await glossary_repo.term_statuses(conn)
+        live = {
+            tid
+            for tid in (await glossary_repo.agent_visible(conn)).named
+            if statuses[tid] == "approved"
+        }
         domains = await glossary_repo.term_domains(conn)
         names = {t.id: n for n, t in terms.items()}
         edges = {
@@ -90,7 +105,8 @@ async def test_the_vocabulary_is_abstract_live_and_in_the_insurance_domain(loade
     terms, live, domains, _edges = loaded
     abstract = {name for name, t in terms.items() if t.is_abstract}
     assert abstract == VOCABULARY
-    assert [name for name in VOCABULARY if terms[name].id not in live] == []
+    assert {name for name in VOCABULARY if terms[name].id in live} == GROUNDED
+    assert UNGROUNDED == {"probable maximum loss", "expected annual loss", "catastrophe peril"}
     assert all(domains[terms[name].id] == {"insurance"} for name in VOCABULARY)
 
 
@@ -99,11 +115,13 @@ async def test_the_vocabulary_is_grounded_in_the_terms_the_columns_derive(loaded
     derived = {name for name, t in terms.items() if not t.is_abstract}
     assert {"insured value", "eal rating", "risk rating", "line"} <= derived
     assert {
-        ("total insured value", "RELATED_TO", "insured value"),
-        ("exposure", "RELATED_TO", "total insured value"),
+        ("total insured value", "SYNONYM_OF", "insured value"),
+        ("total insured value", "SYNONYM_OF", "tiv"),
+        ("total insured value", "PART_OF", "exposure"),
+        ("total insured value", "PART_OF", "accumulation"),
         ("accumulation", "KIND_OF", "exposure"),
         ("probable maximum loss", "RELATED_TO", "accumulation"),
         ("expected annual loss", "RELATED_TO", "eal rating"),
         ("catastrophe peril", "RELATED_TO", "risk rating"),
-        ("line of business", "RELATED_TO", "line"),
+        ("line of business", "SYNONYM_OF", "line"),
     } <= edges
