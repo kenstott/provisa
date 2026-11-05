@@ -21,6 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
+from provisa.compiler.governed_relation import keep_read_outputs_all
 from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
@@ -94,6 +95,10 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # model; and the registered models' dimensions, which the pipeline sets for the statement.
     embedding_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     embedding_dims: dict[str, int] = field(default_factory=dict)
+    # Per table, each column read at a path inside a document column (its registered ``path``,
+    # ``source_column.key...`` or, for a single key, the key inside the column itself), by
+    # physical name: the governed relation serves it as that path's value.
+    column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
     # Per table, each published column name (lowercased) that is not its physical name, to that
     # physical name (sql_rewrite.published_columns): a statement is governed before its published
     # names are lowered, and the grants and masks above are by physical name.
@@ -357,6 +362,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
             and c["column_name"] != SCOPE_COLUMN
         ]
+        for c in cols:
+            if c.get("path"):
+                gov.column_paths[(table_id, c["column_name"])] = c["path"]
         embeddings = {
             c["column_name"]: c["embedding_model"]
             for c in cols
@@ -869,6 +877,28 @@ def _served(gov_ctx: GovernanceContext, tid: int, physical: str) -> bool:
     return vis is None or physical in vis
 
 
+def _column_value(alias: str, physical: str, path: str | None) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """The value of ``physical`` read under ``alias``: the column, or, for a column registered at
+    a ``path`` in a document column, that path's text value -- the extraction the compiled
+    GraphQL read of the column makes (``sql_gen``): ``->`` for each key but the last, ``->>``
+    for the last. A one-key path names a key inside the column itself."""
+    from provisa.compiler.naming import apply_sql_name
+
+    if not path:
+        return exp.column(apply_sql_name(physical), table=alias, quoted=True)
+    parts = path.split(".")
+    source, keys = (physical, parts) if len(parts) == 1 else (parts[0], parts[1:])
+    value: exp.Expr = exp.column(source, table=alias, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
+    for i, key in enumerate(keys):
+        step = exp.JSONExtractScalar if i == len(keys) - 1 else exp.JSONExtract
+        value = step(
+            this=value,
+            expression=exp.JSONPath(expressions=[exp.JSONPathRoot(), exp.JSONPathKey(this=key)]),
+            only_json_types=True,
+        )
+    return value
+
+
 def _governed_relation(
     tbl: exp.Table,
     tid: int,
@@ -929,7 +959,7 @@ def _governed_relation(
         as_named = next(names, None)
         if as_named is not None:
             out = as_named.name if as_named.quoted else as_named.name.lower()
-        value: exp.Expr = exp.column(sql_name, table=alias, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
+        value = _column_value(alias, physical, gov_ctx.column_paths.get((tid, physical)))
         entry = gov_ctx.masking_rules.get((tid, physical))
         if entry is not None and not _is_fake(entry[0]):
             rule, mask_type = entry
@@ -2569,6 +2599,11 @@ def govern(
         tree = _limit_ceiling(tree, bound.limit)
     elif gov_ctx.sample_size is not None and not writes:
         tree = _limit_ceiling(tree, gov_ctx.sample_size)
+    if not writes:
+        # Last, once every pass that reads a relation's columns has: a read's governed relations
+        # serve only the outputs it reads, so an engine, and a live source asked through it,
+        # reads no other column (a path column it does not read is not extracted at all).
+        keep_read_outputs_all(tree)
     return tree
 
 

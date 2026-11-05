@@ -219,6 +219,60 @@ def relations(tree: exp.Expr) -> list[ReadThrough]:
     return out
 
 
+# -- the outputs a statement reads ------------------------------------------------------------
+
+
+def read_outputs(tree: exp.Expr, relation: ReadThrough) -> set[str] | None:
+    """The outputs of ``relation`` that ``tree`` reads outside it, by the names it exposes; None
+    when it reads them all -- a ``*``, the alias's ``.*``, a whole-row reference or a NATURAL
+    join. A name the statement may read unqualified is counted as read."""
+    exposed: dict[str, list[str]] = {}
+    for name in relation.columns:
+        exposed.setdefault(name.lower(), []).append(name)
+    if any(j.args.get("method") for j in tree.find_all(exp.Join)):
+        return None
+    holder = relation.relation.parent
+    outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
+    if isinstance(outer, exp.Select) and any(isinstance(p, exp.Star) for p in outer.expressions):
+        return None
+    read: set[str] = set()
+    for column in tree.find_all(exp.Column):
+        if _inside(column, relation.relation):
+            continue
+        qualifier = _folded(column.args.get("table")).lower()
+        if qualifier and qualifier != relation.alias.lower():
+            continue
+        if isinstance(column.this, exp.Star):
+            return None
+        name = column.name.lower()
+        if not qualifier and name == relation.alias.lower() and name not in exposed:
+            return None  # a whole-row reference: SELECT t0 FROM ...
+        read.update(exposed.get(name, ()))
+    for join in tree.find_all(exp.Join):
+        for ident in join.args.get("using") or []:
+            read.update(exposed.get(ident.name.lower(), ()))
+    return read
+
+
+def keep_read_outputs(tree: exp.Expr, relation: ReadThrough) -> None:
+    """Drop, IN PLACE, the outputs of ``relation`` that ``tree`` never reads: an engine reads, and
+    a live source is asked for, only the columns the statement and the relation's own rules use,
+    as for a table read as itself. Its first output stays when none is read (``count(*)``): a
+    SELECT has at least one."""
+    read = read_outputs(tree, relation)
+    if read is None:
+        return
+    body = relation.relation.this
+    kept = [p for p in body.expressions if p.alias_or_name in read] or body.expressions[:1]
+    body.set("expressions", kept)
+
+
+def keep_read_outputs_all(tree: exp.Expr) -> None:
+    """:func:`keep_read_outputs` for every governed relation in ``tree``."""
+    for relation in relations(tree):
+        keep_read_outputs(tree, relation)
+
+
 # -- a lone governed relation, inlined ----------------------------------------------------------
 
 
