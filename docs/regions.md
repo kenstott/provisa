@@ -1,16 +1,14 @@
 # Regions
 
-Provisa gives you two primitives for placing data: a **region**, and **region homing**, which means creating a region and assigning a table to it. Neither one is a policy by itself. What you use them for falls into three groups:
+A region is a logical definition and a cluster bound to it. The cluster has its own engine and its own stores; the definition says what the region is for.
 
-- **Performance.** Latency to the people reading, how recent their copy is, and the fit of the engine: where its data center is, what kind of storage it reads, how much CPU and memory it has.
-- **Cost.** Where work runs and what it runs on: owned hardware or cloud, a large engine or a small one, and what moving data between places costs (egress).
-- **Sovereignty.** Who controls data and where it may go: the law's residency rules (where personal data may be processed and where it may be stored), and an organization's own lines of control, such as a business unit or subsidiary that keeps its data and infrastructure under its own control.
+Sources, tables, relationships, roles, row and column rules, views, and freshness settings are declared once and are the same in every region. Engine and stores are per-region.
 
-The mechanics are the same for all three. Only the rules you write on top differ.
+Region homing assigns a table to a specific cluster. Its replica is built and refreshed there, and reads from other regions go through that replica. The row and column rules you write decide what readers in other regions may see.
 
 ## A region is an engine and its stores in a place
 
-A region is one place where Provisa does work and keeps what the work leaves behind. Each region has its own engine and its own stores.
+Each region keeps its data in six store roles.
 
 | Store | What it holds |
 | --- | --- |
@@ -21,15 +19,39 @@ A region is one place where Provisa does work and keeps what the work leaves beh
 | `state` | Build and refresh state |
 | `record` | The record of each request served here |
 
-One model governs every region. Sources, tables, relationships, roles, row and column rules, views and freshness settings are declared once, in one model store, and every region serves that same model, so definitions cannot drift apart between regions. A change reaches every region by the same stamp, and each region then converges on it.
+A change to the model reaches every region by the same stamp. Each region then converges on it on its own schedule.
 
-The platform declares the physical regions its nodes run in, with the address each region answers at. Each organization's model selects which of those regions it uses and names its own store for each role in each region. A node starts in one region with `provisa run --region <id>` and serves that region for every organization that selects it. With regions declared, a node started without `--region` refuses to start and lists the regions it could serve.
+## Declaring and assigning regions
+
+**Platform regions** are declared on the Platform page by the platform admin. Each region has an `id`, a `description`, one or more `purposes`, and an optional list of `data_addresses` for the UI's data-node picker (covered below). The id is lowercase and up to 40 characters. Description and purposes appear wherever the region is listed, in the UI and in error messages.
+
+Five purposes describe why a region exists:
+
+| Purpose | Meaning |
+| --- | --- |
+| `residency` | Data must stay in a particular jurisdiction |
+| `workload` | Separates a category of workload from others |
+| `latency` | Placed near users or sources for lower response time |
+| `resilience` | A failover or recovery location |
+| `dedicated` | Infrastructure reserved for one organization, for its own sovereignty |
+
+Use these values to describe what each region is for. The row and column rules you write are where the distinction lives; `residency` and `workload` regions route and store identically.
+
+**Org regions** are granted by the platform admin, also on the Platform page. The platform admin grants one or more platform regions to an organization and sets the store for each role in each granted region. Every new organization receives a default grant, so a self-serve organization starts with a working region without any manual setup.
+
+The org admin sees its regions and their stores read-only on **Admin > Regions**. Within those granted regions the org admin can set where tables and sources are homed, and can configure `data_residency` grants on roles and the default region for newly registered objects.
+
+A node starts in one region with `provisa run --region <id>` and serves that region for every organization that uses it. With regions declared, a node started without `--region` refuses to start and prints the available region ids.
 
 ```yaml
 platform:
   regions:
-    - { id: eu, address: "https://eu.provisa.example" }
-    - { id: us, address: "https://us.provisa.example" }
+    - id: eu
+      description: "EU data residency cluster, Frankfurt"
+      purposes: [residency, latency]
+    - id: us
+      description: "US operations cluster, Virginia"
+      purposes: [workload, latency]
 
 stores:
   - { id: eu_engine, url: "${secret:eu-trino-url}", kind: trino }
@@ -44,35 +66,42 @@ regions:
   - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: us_cache, state: us_data, record: us_data }
 ```
 
-When the configuration loads, it is refused, with the reason named, if the regions do not hold together. A region must name a declared store for each role. Its `replicas` and `views` must be the same store, and its engine store must name an engine `kind`. With more than one platform region, an embedded engine file is refused, because the other regions cannot reach it.
+When the configuration loads, it is refused, naming the problem, if the regions do not hold together. A region must name a declared store for each role. Its `replicas` and `views` must be the same store, and its engine store must name an engine `kind`. With more than one platform region, an embedded engine file is refused because the other regions cannot reach it.
 
-Several regions may share one database instance, one Redis or one object-store bucket. Everything a region keeps carries the region in its name, so their stores do not collide.
+Several regions may share the same database or object store. Every schema and key a region keeps carries the region, so stores do not collide.
 
-A deployment that declares no regions has one implicit region and shows region nowhere. There is no region field, no `--region` flag, and a configuration that names a region is refused.
+A deployment that declares no regions has one implicit region and shows regions nowhere. No region field appears in the UI and no `--region` flag is needed. A configuration that names a region is refused.
+
+**In a demo sandbox** the Platform page is visible and read-only, with a note explaining that regions cannot be changed there. Open it to see how regions are defined before the residency queries.
+
+## Admin > Federation
+
+When an organization uses regions, **Admin > Federation** shows one tab per region. Each tab is the engine configuration form for that region's engine store. With no regions the page has no tabs and edits the single engine as before.
 
 ## Where a coordinator's admin UI sends data requests
 
-A node started with `provisa run --mode coordinator` serves the admin UI but no data requests. A UI it serves therefore sends every data request (everything under `/data`) to a data node you choose, with your sign-in carried along. Choose it under **Data node** in the navigation bar. The menu lists the addresses the coordinator offers for its region, and you can type another `http` or `https` address instead. Your choice is kept in this browser for the organization. A UI served by an `every` node, the default mode, sends data requests to its own address and shows no **Data node** menu.
+A node started with `provisa run --mode coordinator` serves the admin UI but no data requests. A UI it serves therefore sends every data request (everything under `/data`) to a data node you choose, with your sign-in carried along. Choose it under **Data node** in the navigation bar. The menu lists the addresses the coordinator offers for the organization's region, and you can type another `http` or `https` address instead. Your choice is kept in this browser for the organization. A UI served by an `every` node, the default mode, sends data requests to its own address and shows no **Data node** menu.
 
-List the addresses to offer on each platform region, as `data_addresses`. Each is an absolute `http` or `https` URL with no query, such as a load balancer, a pool or a single node:
+List the addresses to offer on each platform region as `data_addresses`. Each is an absolute `http` or `https` URL with no query string, such as a load balancer or a single-node address.
 
 ```yaml
 platform:
   regions:
     - id: eu
-      address: "https://eu.provisa.example"
+      description: "EU data residency cluster, Frankfurt"
+      purposes: [residency, latency]
       data_addresses:
         - "https://data.eu.provisa.example"
         - "https://eu-node-2.provisa.example:8001"
 ```
 
-A region that lists none offers its live `query` and `every` nodes instead, oldest first, at the address each registered when it started. The launcher sets that address as `PROVISA_NODE_URL`. A node without one is not offered. In a deployment with no declared regions, the coordinator offers its own nodes the same way.
+A region with no declared addresses offers its registered live `query` and `every` nodes instead. Each node is listed at its `PROVISA_NODE_URL`; nodes without one are not offered. In a deployment with no declared regions, the coordinator offers its own nodes the same way.
 
 Data requests then cross from one address to another. A data node answers the browser's cross-origin preflight before it checks sign-in, and its refusals stay readable across origins.
 
 ## Region homing: a table names its home
 
-A table may name one of its organization's regions as its home. Its home is the only region that builds and refreshes its replica, and the only one that may keep it hot. Every other region reads the table from the home region's replica, in place, at the address the model gives. The reader's row and column rules go into that statement, so the filtering happens in the home region and only what the reader may see crosses.
+A table may name one of its organization's regions as its home. Only the home region builds and refreshes the table's replica, and only it may keep the table hot. From every other region, reads go to the home region's replica at the store address the model names. The reader's row and column rules go into that statement; filtering happens in the home region, and only what the reader may see crosses.
 
 ```yaml
 tables:
@@ -82,59 +111,57 @@ tables:
     region: eu
 ```
 
-Some consequences:
+A few consequences follow:
 
-- No other region reads the table's source; they read only the home's replica. A source you replicate to protect it from load stays protected.
-- If the replica has not been built, or the home region cannot be reached, the request is refused, naming the home region. The source is not read live instead.
-- A homed table that is not replicated, with `replicate` Never or a setting that has not yet called for a copy, is read live from its source by every region, as any unreplicated table is.
+- No other region reads the table's source; they read only the home's replica. Sources replicated to protect them from load stay protected.
+- When the replica has not been built, or the home region cannot be reached, the request is refused, naming the home region. Only the home region's replica can answer the read.
+- A homed table with `replicate` Never is read live from its source by every region, as any unreplicated table is.
 - A table's hot count is its home region's traffic only.
-- A materialized view may name a region too. It is then built only there, and every other region reads that copy, exactly as for a homed table.
+- A materialized view may name a region too. It is then built only there, and every other region reads that copy in the same way.
 
-A region that reads another region's replica needs an engine that can read it: `duckdb`, `motherduck`, `pg`, `trino` or `trino-byo`. The home region's `replicas` store must be a PostgreSQL server. The configuration names both when they do not fit.
+To read another region's replica, the region's engine must be `duckdb`, `motherduck`, `pg`, `trino` or `trino-byo`. The home region's `replicas` store must be a PostgreSQL server. The configuration names both when they do not fit.
 
-A source may name a region as well, but that region only fills in the form when you register a new table of the source. It decides nothing about where data lives, and changing it later moves no table.
+A source may carry a region name. That region pre-fills the form when you register a new table, and that is all it does. Changing it later moves no existing table.
 
 ## Unhomed tables are copied where they are read
 
-A table that names no region may be copied into every region. When its `replicate` setting calls for a copy, the region a reader connected to builds one in its own store. A materialized view that names no region is built in every region, each copy in that region's view storage.
+A table that names no region may be copied into every region. When its `replicate` setting calls for a copy, the region the reader connected to builds one in its own store. For materialized views naming no region, each region builds its own copy in its view storage.
 
-Adding a region therefore means more copies and more refresh work. It never means more governance. One model governs every copy, and the same row and column rules apply in every region. A view's build in a region is governed as the organization's administrator acting in that region, so each region's copy holds what may be kept there.
+Each region builds materialized views as the organization's administrator acting in that region. So each region's copy holds only what an administrator there may see.
 
-## Three reasons to use regions
+## Why use regions
 
 ### Performance
 
-Regions used only for performance declare no cross-region rules. The tables, roles and rules are the ones you would write for a single region, and region homing decides where work happens:
+For performance, declare no cross-region rules. The model is the same as for a single region; region homing decides where work happens.
 
-- **Latency.** Readers connect to the region near them, and its engine, cache and copies are local to them.
+- **Latency.** Readers connect to the region near them; its engine and local copies answer quickly.
 - **Recency.** A table homed where it changes is refreshed there, close to its source.
-- **Engine fit.** Each region runs its own engine, so you can match an engine to a place: the data center it sits in, the storage it reads, and the CPU and memory it has.
+- **Engine fit.** Each region runs its own engine. Match it to its data center and hardware profile.
+- **Scale.** Two identical regions in different data centers, homing no tables, each serve the users nearest them and share the load.
 
-**Example: two identical regions.** Declare `east` and `west` in two data centers, each with the same engine kind and the same kinds of store, and home no tables. Each region serves the readers nearest it. It builds its own copies of what they read and caches their responses. The two can sit behind one load balancer and share the load. There is one refresh schedule, the model's, and both regions start refreshing their copies on it, but their engines may not finish in the same time. So at a given moment the two are not guaranteed to be in the same state, and a reader moved from one region to the other may see data of a different freshness. Provisa does not move a client to the other region when one stops; where a client is sent is the load balancer's decision.
+**Example: two identical regions.** Declare `east` in US-East-1 and `west` in US-West-2, both running Trino over object storage. Each region serves the readers nearest it. It builds its own copies and caches their responses. There is one refresh schedule; both regions start refreshing on it, but their engines may not finish at the same time. At a given moment the two are not guaranteed to be in the same state; a reader moved from one region to the other may see data of a different freshness. Failover between regions is the load balancer's job.
 
 ### Cost
 
-Cost regions declare no cross-region rules either. They put work where it is cheapest to run:
-
-- **Owned hardware and cloud.** Keep a region on premises, on hardware you already own, for the tables and readers that live there, and run another region in the cloud for the rest.
-- **Engine size.** Run a large engine in one region for occasional heavy work, and a small one in another for everyday reads. Readers choose the region by its address.
-- **Egress.** Readers in other regions get only the filtered rows of a homed table's replica, and a large table homed in one region is not copied into every region.
+Cost regions also carry no cross-region rules. Keep a region on premises for the tables and readers that live there and run another in the cloud for the rest. Or run a large engine in one region for occasional heavy work and a small one in another for everyday reads; readers choose by which data address they connect to. Homing a large table to one region avoids copying it everywhere. Readers in other regions get only their filtered rows of the home replica.
 
 ### Sovereignty
 
-Regions used for sovereignty do declare cross-region rules, whether the reason is the law or the organization. A subsidiary that homes its tables in its own region keeps them processed and stored on its own infrastructure, and decides through these rules what the rest of the group reads. They are ordinary row and column rules, written on attributes that say where the reader, or the node doing the work, is:
+Sovereignty regions do carry cross-region rules. A subsidiary homes its tables in its own region, keeping them processed and stored on its own infrastructure. What the rest of the group reads is controlled by ordinary row and column rules written on attributes that say where the reader, or the node doing the work, is.
 
-- `current_setting('provisa.region')` is the region of the node answering the request, when the platform declares regions. A row filter written on it keeps a region's rows in that region.
-- A member's `region` attribute makes them hold the derived roles `region` and `region__<value>`, so a mask or grant entry can name `analyst+region__eu`. A node's own background work carries its region the same way. See [Roles: granted, derived and meta](security.md#roles-granted-derived-and-meta).
+`current_setting('provisa.region')` is the region of the node answering the request, when the platform declares regions. A row filter written on it keeps a region's rows in that region.
 
-Together with homing, these rules decide what crosses a border. A homed table's personal data is stored and processed in its home region, and a reader elsewhere receives only what their rules allow, filtered at home. An unhomed view built in each region holds what an administrator in that region may see, so the copy in one region can include rows that the copy in another region leaves out.
+A member's `region` attribute makes them hold the derived roles `region` and `region__<value>`. A mask or grant entry can require `analyst+region__eu`. A node's own background work carries its region the same way. See [Roles: granted, derived and meta](security.md#roles-granted-derived-and-meta).
+
+For a homed table, personal data is stored and processed in the home region, and a reader elsewhere receives only what their rules allow, filtered at home. For an unhomed view, each region's copy holds what an administrator in that region may see. The copies can differ. Data permitted in one jurisdiction may not be held in another; the EU region's copy of an aggregate view can legitimately return different figures than the US region's.
 
 ## Who may home a table
 
-Setting, changing or removing the region of a table, a source or a materialized view moves data across a border. It needs the right `data_residency` in addition to owning the object through its domain. The grant names the values it covers: the organization's regions, and "no region". Moving an object between two regions needs a grant that covers both. A save outside the grant is refused, naming the value it does not cover.
+Changing any registered object's home region requires the right `data_residency` in addition to owning the object through its domain. The grant lists the org's regions it applies to, and whether it also covers "no region". A move between two specific regions needs a grant that covers both, and a save outside the grant is refused naming the value it does not cover.
 
 The right exists only when the platform declares regions. Domain ownership still decides who may edit everything else about the object. A region confers no right of its own, so an organization that wants a region's tables run by that region's people gives them domains of their own.
 
-You can also set a table or view to **draft**. A draft is out of service, and no reader is offered it. A table registered through the admin starts as a draft. Its steward can preview it only on the nodes of the region it names, or, when it names none, wherever the steward is. The copy that preview lands stays in that region, ready for the table's release. Any copy another region holds from before the table's region was set or changed is retired and dropped, as for a published table. Draft also gives a move between regions a clean gap, with the table served nowhere in between. The first region's side sets it to draft, and the second region's holder claims it by setting their region.
+You can also set a table or view to **draft**. A draft is out of service and no reader is offered it. A table registered through the admin starts as a draft. Preview runs on the table's homed region. Tables with no region are previewed wherever the steward is. The copy that preview lands stays in that region, ready for the table's release. When a table's region changes, every copy another region built before the change is retired and dropped. Draft gives a move between regions a clean gap. The first region's side sets it to draft. The second region's holder claims it by setting their region, and the table is served nowhere in between.
 
 See also the [two-region demo](regions-demo.md).
