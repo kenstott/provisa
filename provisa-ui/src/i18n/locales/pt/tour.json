@@ -1374,7 +1374,7 @@
       },
       "testdataCoverageNow": {
         "title": "Toda coluna sensível está coberta",
-        "description": "A mesma verificação, lida agora do modelo: cada coluna sensível, suas tags e se um valor fictício a cobre. Todas estão cobertas, então a pré-produção abre e responde."
+        "description": "A cobertura sensível é um relatório padrão da página Relatórios: cada coluna sensível, suas tags e se um valor fictício a cobre, lido agora do modelo. Todas estão cobertas, então a pré-produção abre e responde."
       },
       "testdataProd": {
         "title": "Produção: as linhas reais",

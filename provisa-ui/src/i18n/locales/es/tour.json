@@ -1374,7 +1374,7 @@
       },
       "testdataCoverageNow": {
         "title": "Toda columna sensible está cubierta",
-        "description": "La misma comprobación, leída ahora desde el modelo: cada columna sensible, sus etiquetas y si un valor ficticio la cubre. Todas están cubiertas, así que preproducción se abre y responde."
+        "description": "La cobertura sensible es un informe estándar de la página Informes: cada columna sensible, sus etiquetas y si un valor ficticio la cubre, leído ahora desde el modelo. Todas están cubiertas, así que preproducción se abre y responde."
       },
       "testdataProd": {
         "title": "Producción: las filas reales",

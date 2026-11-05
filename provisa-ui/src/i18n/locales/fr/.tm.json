@@ -9212,7 +9212,7 @@
   "fr/tour.json::tour.steps.streamingScenario.title": "Orders, live",
   "fr/tour.json::tour.steps.testdataCoverage.description": "Before pre-prod existed, the coverage check listed every sensitive column and whether a fake covers it. Here <strong>customers.email</strong> has none. A Test (fake) environment refuses to open, and refuses every read, while a sensitive column has no fake. Once the steward declares one, the column is covered.",
   "fr/tour.json::tour.steps.testdataCoverage.title": "The steward checks coverage",
-  "fr/tour.json::tour.steps.testdataCoverageNow.description": "The same check, read now from the model: each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers.",
+  "fr/tour.json::tour.steps.testdataCoverageNow.description": "Sensitive coverage is a standard report on the Reports page: each sensitive column, its tags, and whether a fake covers it, read now from the model. Every one is covered, so pre-prod opens and answers.",
   "fr/tour.json::tour.steps.testdataCoverageNow.title": "Every sensitive column is covered",
   "fr/tour.json::tour.steps.testdataDev.description": "Every row in dev was generated from production's profile: the same columns, value shapes and spread, and none of the real rows. This is also the answer when even pre-prod's real rows can't leave production's boundary: give testers a synthetic copy.",
   "fr/tour.json::tour.steps.testdataDev.title": "Dev: generated, nothing real",

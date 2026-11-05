@@ -1374,7 +1374,7 @@
       },
       "testdataCoverageNow": {
         "title": "Elke gevoelige kolom is gedekt",
-        "description": "Dezelfde controle, nu uit het model gelezen: elke gevoelige kolom, haar tags en of een nepwaarde die dekt. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+        "description": "Gevoelige dekking is een standaardrapport op de pagina Rapporten: elke gevoelige kolom, haar tags en of een nepwaarde die dekt, nu uit het model gelezen. Alle zijn gedekt, dus pre-productie opent en antwoordt."
       },
       "testdataProd": {
         "title": "Productie: de echte rijen",

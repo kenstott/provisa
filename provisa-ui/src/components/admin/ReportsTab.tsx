@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -59,10 +60,16 @@ export function ReportsTab() {
     [tables],
   );
 
-  // First report auto-selects via the derived fallback; the viewer remounts per
-  // report (key) and owns fetching + grid state.
+  // First report auto-selects via the derived fallback, unless the deep link names one
+  // (`?report=<table name>`); the viewer remounts per report (key) and owns fetching + grid state.
+  const [searchParams] = useSearchParams();
+  const linkedReport = searchParams.get("report");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected = reports.find((r) => r.id === selectedId) ?? reports[0] ?? null;
+  const selected =
+    reports.find((r) => r.id === selectedId) ??
+    reports.find((r) => r.tableName === linkedReport) ??
+    reports[0] ??
+    null;
 
   const [listWidth, setListWidth] = useState(240);
   const startDrag = useCallback(
@@ -234,6 +241,7 @@ export function ReportsTab() {
         <div
           style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
           data-testid="report-pane"
+          data-report={selected.tableName}
         >
           <GovernedTableViewer
             key={selected.id}

@@ -36,12 +36,12 @@ steps:
 - key: testdataCoverage
   image: coverage.png
 - key: testdataCoverageNow
+  route: /admin/reports
+  capability: observability
+  report: sensitive_column_coverage
+- key: testdataProd
   route: /sql
   capability: query_development
-  sql: >-
-    SELECT table_name, column_name, tags, status, reason FROM "meta"."sensitive_coverage"
-    ORDER BY table_name, column_name
-- key: testdataProd
   sql: >-
     SELECT id, name, email, city, region, joined_on
     FROM "shop"."customers"

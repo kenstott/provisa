@@ -1374,7 +1374,7 @@
       },
       "testdataCoverageNow": {
         "title": "Jede sensible Spalte ist abgedeckt",
-        "description": "Dieselbe Prüfung, jetzt aus dem Modell gelesen: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
+        "description": "Sensitive Abdeckung ist ein Standardbericht auf der Seite Berichte: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt, jetzt aus dem Modell gelesen. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
       },
       "testdataProd": {
         "title": "Produktion: die echten Zeilen",

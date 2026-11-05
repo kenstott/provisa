@@ -1374,7 +1374,7 @@
       },
       "testdataCoverageNow": {
         "title": "Ogni colonna sensibile è coperta",
-        "description": "Lo stesso controllo, letto ora dal modello: ogni colonna sensibile, i suoi tag e se un valore fittizio la copre. Tutte sono coperte, quindi la pre-produzione si apre e risponde."
+        "description": "La copertura sensibile è un report standard della pagina Report: ogni colonna sensibile, i suoi tag e se un valore fittizio la copre, letto ora dal modello. Tutte sono coperte, quindi la pre-produzione si apre e risponde."
       },
       "testdataProd": {
         "title": "Produzione: le righe reali",
