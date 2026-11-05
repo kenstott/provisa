@@ -151,6 +151,19 @@ Both views are capped by your own read rights. They list only tables and columns
 
 A role can also carry limits. A rate limit caps how many requests per second the role may send. A row limit caps the rows any result returns, applied as a LIMIT on the statement. Session variables are named values that a statement reads with `current_setting('provisa.<name>')` when the request binds none of that name. Each is the role's own value, or else the first ancestor's that sets it, and each applies on every transport.
 
+
+## Three layers of administration
+
+Administration is three layers, each depending only on the one below.
+
+The **platform admin** defines the physical infrastructure. That means regions, the nodes in them, each organization's stores and engines within its granted regions, mail providers, and registries. The platform admin role holds no data capability. It cannot register, query, or govern data in any organization.
+
+The **org admin** defines how the organization's data is processed on that infrastructure. Sources come first; every other placement and processing decision follows from them. A source's or table's region sets where data lives. `replicate` and `cache_ttl` control whether and how often data moves. Residency grants on roles restrict which regions a role may assign. The org admin also assigns which members hold which roles.
+
+**Specialized roles** build on top of what the org admin declares. Views, glossary terms and relationships, triggers, fakes and synthetic data, reports, and quality checks each belong here. Each role carries only the capabilities its work needs.
+
+Every admin page belongs to exactly one layer. A setting on that page is editable only by that layer's role.
+
 ## Comparison with other products
 
 Each entry cites that product's own documentation. An empty cell means the cited documentation does not address that question.

@@ -116,6 +116,7 @@ nav:
   - Home: index.md
   - Getting Started:
       - Quick Start: quickstart.md
+      - Coming from a data warehouse: from-a-warehouse.md
       - Configuration: configuration.md
       - Deployment: deployment.md
       - Architecture Review: architecture-review.md
