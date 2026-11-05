@@ -146,7 +146,6 @@ export const ENGINE_SCOPE: GraphScope = {
   orphans: false,
   foldColumns: true,
   typedKinds: ["term_edge"],
-  betweenDrawn: [],
   implicitLayers: [],
   menus: true,
   neighbourhood: NEIGHBOURHOOD,

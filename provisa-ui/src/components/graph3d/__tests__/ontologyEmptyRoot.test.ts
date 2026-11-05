@@ -48,14 +48,18 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 }));
 
 import { ontologyQuery } from "../ontologyData";
-import { loadOntology, SNIPPET_LAYERS, type Loaded } from "../useOntology";
+import { loadOntology, type Loaded } from "../useOntology";
+import { snippetLayers } from "../ontologyPresets";
 
 // What a read within the budget drew.
 const drawn = (loaded: Loaded | null) =>
   loaded !== null && loaded.over === undefined ? loaded.data : null;
 
-const scope = (focus: string | null, layers: LayerId[] = SNIPPET_LAYERS): QueryScope => ({
-  layers: new Set<LayerId>(layers),
+/** A snippet's scope: a product's reads by the Product map's rules, a term's by the Ontology
+ * preset's (REQ-2174, ONE GRAPH, RULES PER PRESET). */
+const scope = (focus: string | null): QueryScope => ({
+  layers: new Set<LayerId>(snippetLayers({ products: focus?.startsWith("p:") ?? false })),
+  products: focus?.startsWith("p:") ?? false,
   search: [],
   hiddenStatuses: [],
   edgeTypes: [],

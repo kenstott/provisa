@@ -35,7 +35,7 @@ const TABLES = [
     domain_id: "sales",
   },
 ];
-// jsdom draws no canvas: the term page's ontology snippet is tested on its own (snippets.test.tsx).
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
 vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
   OntologySnippet: () => null,

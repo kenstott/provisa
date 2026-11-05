@@ -19,6 +19,7 @@ import { RoleSchema, rootKey, type Introspection, type MetaReader } from "../../
 import type { LineageNode, ProductInput, ProductLineage } from "../../../api/lineage";
 import {
   ONTOLOGY_SCOPE,
+  PRODUCT_MAP_SCOPE,
   NO_FILTERS,
   availableLayers,
   visibleGraph,
@@ -26,13 +27,13 @@ import {
   type QueryScope,
 } from "../graphModel";
 import {
-  ontologyGraph,
   ontologyQuery,
+  productMapGraph,
   readsProducts,
   withProductLineage,
   type ProductRow,
 } from "../ontologyData";
-import { SNIPPET_LAYERS } from "../useOntology";
+import { snippetLayers } from "../ontologyPresets";
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
 
@@ -60,6 +61,8 @@ const scope = (layers: LayerId[], focus: string | null = null): QueryScope => ({
   sensitivities: [],
   focus,
   depth: 2,
+  // The product layers are the Product map's (REQ-2174, ONE GRAPH, RULES PER PRESET).
+  products: true,
 });
 
 const PRODUCT_LAYERS: LayerId[] = ["commands", "quality", "productLinks", "lineage"];
@@ -67,10 +70,11 @@ const PRODUCT_LAYERS: LayerId[] = ["commands", "quality", "productLinks", "linea
 describe("the product layers' reads", () => {
   const m = reader();
 
-  it("are off by default in a snippet, and offered in the full view", () => {
+  it("are off by default in a snippet, and offered in the Product map alone", () => {
     for (const l of PRODUCT_LAYERS) {
-      expect(SNIPPET_LAYERS).not.toContain(l);
-      expect(ONTOLOGY_SCOPE.layerOrder).toContain(l);
+      expect(snippetLayers({ products: true })).not.toContain(l);
+      expect(PRODUCT_MAP_SCOPE.layerOrder).toContain(l);
+      expect(ONTOLOGY_SCOPE.layerOrder).not.toContain(l);
     }
   });
 
@@ -78,24 +82,24 @@ describe("the product layers' reads", () => {
     const off = ontologyQuery(m, scope(["data"])) as string;
     const on = ontologyQuery(m, scope(["data", "commands"])) as string;
     expect(off).not.toContain("commands");
-    expect(on).toMatch(/commands: commands \{[^}]*name[^}]*domain_id: domainId/);
+    expect(on).toMatch(/commands \{[^}]*name[^}]*domainId/);
   });
 
   it("read a checker's checked table and the tables' profiles only under Quality", () => {
     const off = ontologyQuery(m, scope(["data"])) as string;
     const on = ontologyQuery(m, scope(["data", "quality"])) as string;
     // A checker member is told by its contract, whatever the layers.
-    expect(off).toContain("dq_contract: dqContract");
+    expect(off).toContain("dqContract");
     expect(off).not.toContain("profileResults");
-    expect(on).toContain("checks: checks");
-    expect(on).toContain("profile_results: profileResults");
+    expect(on).toMatch(/checks \{/);
+    expect(on).toMatch(/profileResults \{/);
   });
 
   it("read a product's links to other products only under Product links", () => {
     const off = ontologyQuery(m, scope(["data"])) as string;
     const on = ontologyQuery(m, scope(["data", "productLinks"])) as string;
     expect(off).not.toContain("targetProduct");
-    expect(on).toContain("target_product: targetProduct");
+    expect(on).toMatch(/targetProduct \{/);
     expect(on).toMatch(/kind: \{ eq: "relationship" \}/);
   });
 
@@ -107,6 +111,11 @@ describe("the product layers' reads", () => {
     expect(readsProducts(scope(["columns"]))).toBe(false);
     // A term's snippet names its products through its columns' tables.
     expect(readsProducts(scope(["commands"], "term:7"))).toBe(false);
+    // The Ontology preset reads no product apart, whatever is asked of it.
+    for (const l of ["data", ...PRODUCT_LAYERS] as LayerId[]) {
+      expect(readsProducts({ ...scope([l]), products: false })).toBe(false);
+      expect(ontologyQuery(m, { ...scope([l]), products: false })).not.toContain("data_products");
+    }
   });
 });
 
@@ -114,29 +123,29 @@ const PRODUCTS: ProductRow[] = [
   {
     id: "p1",
     name: "P1",
-    domain_id: "sales",
-    commands: [{ name: "refund", domain_id: "sales" }],
+    domainId: "sales",
+    commands: [{ name: "refund", domainId: "sales" }],
     edges: [
       {
         kind: "relationship",
-        path_count: 2,
+        pathCount: 2,
         aliases: "BOUGHT, PAID",
-        target_product: { id: "p2", name: "P2", domain_id: "finance" },
+        targetProduct: { id: "p2", name: "P2", domainId: "finance" },
       },
     ],
-    member_tables: [
+    memberTables: [
       {
         id: 3,
-        domain_id: "sales",
-        table_name: "pets",
-        table_columns: [{ column_name: "name", column_key: "3:name" }],
-        profile_results: [{ id: 40, table_name: "pets" }],
+        domainId: "sales",
+        tableName: "pets",
+        tableColumns: [{ columnName: "name", columnKey: "3:name" }],
+        profileResults: [{ id: 40, tableName: "pets" }],
       },
       {
         id: 4,
-        domain_id: "sales",
-        table_name: "pets_checks",
-        dq_contract: "rules: []",
+        domainId: "sales",
+        tableName: "pets_checks",
+        dqContract: "rules: []",
         checks: { id: 3 },
       },
     ],
@@ -144,9 +153,9 @@ const PRODUCTS: ProductRow[] = [
 ];
 
 describe("the product layers' graph", () => {
-  const g = ontologyGraph([], [], PRODUCTS);
+  const g = productMapGraph([], [], PRODUCTS);
   const drawn = (layers: LayerId[]) =>
-    visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), ONTOLOGY_SCOPE);
+    visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE);
   const ids = (layers: LayerId[]) => drawn(layers).nodes.map((n) => n.id);
 
   it("draws a product's commands under Commands", () => {
@@ -179,9 +188,9 @@ describe("the product layers' graph", () => {
   });
 
   it("offers Lineage wherever a product is drawn, without reading it", () => {
-    expect(availableLayers(g, ONTOLOGY_SCOPE).has("lineage")).toBe(true);
-    expect(availableLayers(ontologyGraph([], []), ONTOLOGY_SCOPE).has("lineage")).toBe(false);
-    expect(ONTOLOGY_SCOPE.readWhenOn).toEqual({ lineage: "product" });
+    expect(availableLayers(g, PRODUCT_MAP_SCOPE).has("lineage")).toBe(true);
+    expect(availableLayers(productMapGraph([], []), PRODUCT_MAP_SCOPE).has("lineage")).toBe(false);
+    expect(PRODUCT_MAP_SCOPE.readWhenOn).toEqual({ lineage: "product" });
   });
 });
 
@@ -212,7 +221,7 @@ const lineageOf = (over: Partial<ProductLineage>): ProductLineage => ({
 });
 
 describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
-  const base = ontologyGraph([], [], PRODUCTS);
+  const base = productMapGraph([], [], PRODUCTS);
 
   it("draws the endpoint's inputs feeding the product, each named as its reader knows it", () => {
     const g = withProductLineage(
@@ -246,7 +255,7 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
       ["p:p2", "p:p1"],
     ]);
     const on = (layers: LayerId[]) =>
-      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), ONTOLOGY_SCOPE)
+      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE)
         .nodes.map((n) => n.id);
     expect(on(["data"])).not.toContain("l:pet_store.pets");
     expect(on(["data", "lineage"])).toContain("l:pet_store.pets");
@@ -280,7 +289,7 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
         ],
         inputs: [input({})],
       }),
-      PRODUCTS[0].member_tables ?? [],
+      PRODUCTS[0].memberTables ?? [],
     );
     expect(g.edges.filter((e) => e.kind === "column_lineage").map((e) => [e.a, e.b])).toEqual([
       ["lc:native:raw.d.Name", "c:9:name"],
@@ -292,7 +301,7 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
     expect(label("lc:native:raw.d.Name")).toBe("crm · public.D.Name");
     // A column lineage alone reaches is Lineage's: Columns does not draw it.
     const on = (layers: LayerId[]) =>
-      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), ONTOLOGY_SCOPE)
+      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE)
         .nodes.map((n) => n.id);
     expect(on(["data", "columns"])).not.toContain("c:9:name");
     // The ontology draws columns as themselves: column lineage needs no table expanded.

@@ -102,7 +102,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 }));
 
 import { OntologySnippet, OntologyView, ProductMapButton } from "../OntologyGraph";
-import { productPreset } from "../ontologyPresets";
+import { productPreset, termPreset, type SnippetPreset } from "../ontologyPresets";
 
 const last = () => made.scenes[made.scenes.length - 1];
 const drawn = () => last().setData.mock.calls.at(-1)?.[0] as GraphData;
@@ -120,7 +120,7 @@ beforeEach(() => {
 });
 
 /** A snippet, scrolled into view. */
-function snippet(preset: { focus: string; depth: number }, name: string) {
+function snippet(preset: SnippetPreset, name: string) {
   render(<OntologySnippet preset={preset} name={name} testId="snip" />);
   act(() => observed.fire.forEach((f) => f()));
 }
@@ -201,7 +201,7 @@ describe("expanding a snippet", () => {
   });
 
   it("from a term's page selects the term", async () => {
-    snippet({ focus: "term:customer", depth: 2 }, "Customer");
+    snippet({ ...termPreset(0), focus: "term:customer" }, "Customer");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,2"]));
     fireEvent.click(screen.getByTestId("snip-expand"));
@@ -248,8 +248,8 @@ describe("the Ontology page", () => {
 
 describe("Open in ERD", () => {
   const open = async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+    snippet(productPreset("c360"), "customer_360");
+    fireEvent.click(await screen.findByTestId("snip-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
   };
 

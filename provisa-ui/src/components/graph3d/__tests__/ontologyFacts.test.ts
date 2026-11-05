@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  ontologyGraph,
+  productMapGraph,
   productNode,
   termNode,
   type ProductRow,
@@ -27,43 +27,44 @@ const TERM: TermRow = {
   id: 7,
   name: "Customer",
   definition: "Someone who buys.",
-  ref_count: 1,
+  refCount: 1,
   deprecated: false,
   retired: false,
-  live: true,
+  status: "approved",
+  grounding: "grounded",
   experts: [
-    { user_id: "ada", kind: "expert" },
-    { user_id: "bob", kind: "author" },
+    { userId: "ada", kind: "expert" },
+    { userId: "bob", kind: "author" },
   ],
   refs: [
     {
-      column_key: "1:email",
-      column_name: "email",
-      table_id: 1,
-      table_name: "customers",
-      domain_id: "sales",
+      columnKey: "1:email",
+      columnName: "email",
+      tableId: 1,
+      tableName: "customers",
+      domainId: "sales",
       column: {
-        data_type: "varchar",
+        dataType: "varchar",
         description: "Where we write.",
         masks: '[{"to": ["analyst"], "mask": {"type": "constant", "value": null}}]',
         sensitivity: [{ tags: "pii" }],
-        tags: [{ tag_id: "contact" }],
+        tags: [{ tagId: "contact" }],
       },
-      table: {
+      registeredTable: {
         id: 1,
-        source_id: "sales_pg",
+        sourceId: "sales_pg",
         description: "Every customer.",
-        checked_by: [
-          { latest_outcome: "pass", latest_run_at: "2026-10-26T10:00:00Z" },
-          { latest_outcome: "fail", latest_run_at: "2026-10-27T10:00:00Z" },
+        checkedBy: [
+          { latestOutcome: "pass", latestRunAt: "2026-10-26T10:00:00Z" },
+          { latestOutcome: "fail", latestRunAt: "2026-10-27T10:00:00Z" },
         ],
-        tags: [{ tag_id: "gold" }],
+        tags: [{ tagId: "gold" }],
         product: {
           id: "c360",
           name: "customer_360",
-          domain_id: "sales",
+          domainId: "sales",
           status: "live",
-          owner_role: "sales_steward",
+          ownerRole: "sales_steward",
         },
       },
     },
@@ -73,30 +74,31 @@ const TERM: TermRow = {
 const PRODUCT: ProductRow = {
   id: "c360",
   name: "customer_360",
-  domain_id: "sales",
+  domainId: "sales",
   status: "live",
-  owner_role: "sales_steward",
-  member_tables: [
+  ownerRole: "sales_steward",
+  memberTables: [
     {
       id: 2,
-      domain_id: "sales",
-      table_name: "orders",
-      checked_by: null,
+      domainId: "sales",
+      tableName: "orders",
+      checkedBy: null,
       tags: null,
-      table_columns: [
+      tableColumns: [
         {
-          column_name: "total",
-          column_key: "2:total",
-          data_type: "numeric",
-          glossary_ref: [{ term_id: 7 }],
-          tags: [{ tag_id: "finance" }],
+          columnName: "total",
+          columnKey: "2:total",
+          dataType: "numeric",
+          glossaryRef: [{ termId: 7 }],
+          tags: [{ tagId: "finance" }],
         },
       ],
     },
   ],
 };
 
-const g = ontologyGraph([TERM], [], [PRODUCT]);
+// A product's snippet reads by the Product map's rules (REQ-2174, ONE GRAPH, RULES PER PRESET).
+const g = productMapGraph([TERM], [], [PRODUCT]);
 const byId = new Map(g.nodes.map((n) => [n.id, n]));
 
 describe("each node's facts", () => {

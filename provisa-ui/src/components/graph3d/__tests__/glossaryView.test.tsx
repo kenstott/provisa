@@ -210,8 +210,8 @@ describe("the Glossary page's Ontology View", () => {
   it("runs its layers, domains, edge types and statuses in its query, not after it", async () => {
     render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    // Every layer and no filter, for the controls' choices -- but Lineage, read only once it is on
-    // (one read per product) -- then the defaults: retired hidden.
+    // Every layer of the Ontology preset's rules and no filter, for the controls' choices; then the
+    // defaults: retired hidden.
     expect(asked.scopes[0]).toEqual({
       layers: ["ontology", "domains", "data", "columns"],
       domains: [],
@@ -224,6 +224,8 @@ describe("the Glossary page's Ontology View", () => {
       // The whole ontology: no focus.
       focus: null,
       depth: 2,
+      // Only what a shown term reaches (REQ-2174, ONE GRAPH, RULES PER PRESET).
+      products: false,
     });
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toEqual({
@@ -239,6 +241,7 @@ describe("the Glossary page's Ontology View", () => {
         lanes: false,
         focus: null,
         depth: 2,
+        products: false,
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.
@@ -429,7 +432,7 @@ describe("the Ontology View under the navbar's domains (REQ-1723)", () => {
 
   it("holds only what is in the domains the navbar checks", async () => {
     navbar(["sales", "finance", "hr"], ["finance"]);
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: ["finance"] }));
     await waitFor(() => expect(ids(drawn())).toContain("term:5"));
@@ -444,7 +447,7 @@ describe("the Ontology View under the navbar's domains (REQ-1723)", () => {
 
   it("narrows further inside the navbar's domains with its own filter, never past them", async () => {
     navbar(["sales", "finance", "hr"], ["sales", "finance"]);
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toMatchObject({ domains: ["finance", "sales"] }),
@@ -458,7 +461,7 @@ describe("the Ontology View under the navbar's domains (REQ-1723)", () => {
   it("is no narrowing with every domain checked, or none", async () => {
     for (const checked of [["sales", "finance"], []]) {
       navbar(["sales", "finance"], checked);
-      const { unmount } = render(<GlossaryOntologyView search="" />);
+      const { unmount } = render(<OntologyView search="" />);
       await waitFor(() => expect(asked.scopes.length).toBeGreaterThanOrEqual(2));
       await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: [] }));
       unmount();

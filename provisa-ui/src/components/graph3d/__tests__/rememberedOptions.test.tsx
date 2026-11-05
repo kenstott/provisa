@@ -45,7 +45,7 @@ vi.mock("../graphScene", () => ({
 vi.mock("../LaneStage", () => ({ LaneStage: () => <div data-testid="x-lanes" /> }));
 
 import { GraphExplorer } from "../GraphExplorer";
-import { GLOSSARY_SCOPE, type GraphData } from "../graphModel";
+import { ONTOLOGY_SCOPE, type GraphData } from "../graphModel";
 
 // One rank class, no cycle: the shape the opening layout used to open Layered.
 const DATA: GraphData = {
@@ -67,8 +67,9 @@ const DATA: GraphData = {
 const explorer = () => (
   <GraphExplorer
     data={DATA}
-    scope={GLOSSARY_SCOPE}
+    scope={ONTOLOGY_SCOPE}
     preset="ontology"
+    depth={2}
     settingsKey={{ kind: "ontology", subject: null }}
     exportName="ontology"
     testId="x"

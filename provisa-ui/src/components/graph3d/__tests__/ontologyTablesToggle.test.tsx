@@ -44,7 +44,7 @@ vi.mock("../graphScene", () => ({
 
 import { GraphExplorer } from "../GraphExplorer";
 import { ONTOLOGY_SCOPE } from "../graphModel";
-import { ontologyGraph, type TermRow } from "../ontologyData";
+import { glossaryGraph, type TermRow } from "../ontologyData";
 import { setStored } from "../../../lib/browserStorage";
 
 const ref = (table: number, column: string) => ({
@@ -67,7 +67,7 @@ const term = (id: number, name: string, refs: ReturnType<typeof ref>[]): TermRow
   domains: [{ domainId: "sales" }],
   refs,
 });
-const data: GraphData = ontologyGraph(
+const data: GraphData = glossaryGraph(
   [term(1, "Customer", [ref(10, "email")]), term(2, "Order", [ref(11, "id")])],
   [{ id: 1, fromTermId: 2, toTermId: 1, relType: "PART_OF" }],
 );

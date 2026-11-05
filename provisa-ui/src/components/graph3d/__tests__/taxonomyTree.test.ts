@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from "vitest";
 import { ONTOLOGY_SCOPE, NO_FILTERS, layoutGraph, visibleGraph, type LayerId } from "../graphModel";
-import { ontologyGraph, type TermEdgeRow, type TermRow } from "../ontologyData";
+import { glossaryGraph, type TermEdgeRow, type TermRow } from "../ontologyData";
 
 const ref = (table: number, column: string) => ({
   columnKey: `${table}:${column}`,
@@ -53,7 +53,7 @@ const EDGES: TermEdgeRow[] = [
   { id: 3, fromTermId: 4, toTermId: 3, relType: "PART_OF" },
   { id: 4, fromTermId: 5, toTermId: 3, relType: "RELATED_TO" },
 ];
-const G = ontologyGraph(TERMS, EDGES);
+const G = glossaryGraph(TERMS, EDGES);
 const tax = ONTOLOGY_SCOPE.presets.taxonomy as NonNullable<typeof ONTOLOGY_SCOPE.presets.taxonomy>;
 
 function tree(layers: LayerId[], edgeTypes: string[] = tax.edgeTypes ?? [], from = G) {
@@ -99,7 +99,7 @@ describe("the Taxonomy tree", () => {
 
   it("draws terms with no hierarchy among them as roots in a row, their columns below", () => {
     // As a search for "pet" found them: terms no KIND_OF or PART_OF joins, with their columns.
-    const { g, y } = tree(["ontology", "columns"], tax.edgeTypes ?? [], ontologyGraph(TERMS, []));
+    const { g, y } = tree(["ontology", "columns"], tax.edgeTypes ?? [], glossaryGraph(TERMS, []));
     const terms = g.nodes.filter((n) => n.type === "term").map((n) => n.id);
     const columns = g.nodes.filter((n) => n.type === "column").map((n) => n.id);
     expect(columns.length).toBeGreaterThan(0);

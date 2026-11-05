@@ -45,7 +45,7 @@ const filter = {
 vi.mock("../context/DomainFilterContext", () => ({ useDomainFilter: () => filter }));
 
 // The graph itself is not under test: the Ontology View stands in with the search it is handed,
-// and jsdom draws no canvas for the term page's snippet (snippets.test.tsx).
+// and jsdom draws no canvas for the term page's snippet (TermDag.test.tsx).
 vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
   OntologyView: ({ search }: { search: string }) => (
