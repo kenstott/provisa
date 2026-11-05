@@ -228,6 +228,9 @@ REFERENCES: tuple[Reference, ...] = (
     _part("erd_layout_tables", "layout_name", "erd_layout"),
     # REQ-2091: an adequacy check's result on a table's column is part of the table.
     _part("fake_adequacy_checks", "table_id", "table"),
+    # REQ-2147: a scan of a table for sensitive values in its text, and its hints, are the table's.
+    _part("profiler_sensitive_scans", "table_id", "table"),
+    _part("profiler_sensitive_hints", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
     _part("table_meta_links", "source_table_id", "table"),
