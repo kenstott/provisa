@@ -19,7 +19,7 @@ import pytest
 import sqlglot.expressions as exp
 
 from provisa.api.admin.introspect import _PG_COLUMN_TYPES_SQL, _pg_column_typing
-from provisa.core.ir_types import to_physical
+from provisa.core.ir_types import base_type, to_physical
 from provisa.transpiler.native_json import (
     NON_FINITE,
     NestedColumn,
@@ -139,8 +139,10 @@ def test_the_catalog_types_every_array_and_composite_column(pg):
     assert (typings["stops"].data_type, typings["stops"].array_depth) == ("json", 0)
     assert typings["stops"].native_type in ("address[]", f"{schema}.address[]")
     assert typings["status"].data_type == "text"  # an enum
-    # JSON at its source: none of the three.
-    assert (typings["doc"].data_type, typings["doc"].native_type) == ("json", None)
+    # JSON at its source: none of the three. jsonb is not json: registration records the subtype
+    # (REQ-2171, THE TYPES ARE A SUPERSET OF POSTGRESQL'S), whose base is json.
+    assert (typings["doc"].data_type, typings["doc"].native_type) == ("jsonb", None)
+    assert base_type(typings["doc"].data_type) == "json"
 
 
 def _read(pg, column: str, where: str = "id = 1"):

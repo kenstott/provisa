@@ -10832,7 +10832,7 @@ First-customer deployment target is a single GCP Compute Engine VM (e2-standard-
 
 ### REQ-1027 · First-Customer Deployment {#REQ-1027}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** infrastructure
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** infrastructure
 
 Object storage externalized to Cloudflare R2 (Trino exchange/spill and any object storage), replacing bundled MinIO for first-customer profile. R2 chosen for zero egress fees at low volume.
 
@@ -11010,7 +11010,7 @@ Horizontal Trino worker scale-out path: staged from single-node (coordinator exe
 
 ### REQ-1042 · Trino Resource Management {#REQ-1042}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** structural
 
 Workload separation: interactive user queries and MV/batch-refresh workloads run under distinct Trino resource groups (and eventually distinct worker pools), preventing heavy MV rebuilds from inflating interactive query latency SLO.
 
@@ -13378,9 +13378,9 @@ Org membership is pull-based via org_join_requests, the inverse of org_invites. 
 
 ### REQ-1251 · Org Membership {#REQ-1251}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-Admin approval/denial of org_join_requests. When an admin approves a request, the approval path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check, granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied'). Both actions record decided_by (admin user_id) and decided_at.
+Admin approval/denial of org_join_requests. When an admin approves a request, the approval path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check, granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied'). Both actions record decided_by (admin user_id) and decided_at. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-1252](#REQ-1252): their text stands as part of this one, and each is marked superseded by it.
 
 **Use case:** Enables org admins to gate membership while supporting the pull-based admission model.
 
@@ -13392,7 +13392,7 @@ Admin approval/denial of org_join_requests. When an admin approves a request, th
 
 ### REQ-1252 · Org Administration {#REQ-1252}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ↪ superseded by [REQ-1251](#REQ-1251) · **Priority:** SHOULD · **Type:** ui
 
 Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pending org_join_requests for the org, approve requests, and deny requests. Display requester email, request date, and admin action buttons.
 
@@ -14870,7 +14870,7 @@ Governed dereference API for semantic data-location URIs: REST and MCP tool `res
 
 ### REQ-1366 · Federation Engine Abstraction {#REQ-1366}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** structural
 
 Spike: generalize time-travel (as_of) from a hardcoded Iceberg/Delta source-type special case to a general connector capability, so time-travel can be synthesized over non-versioned sources (REST APIs, MongoDB, etc.) from materialization snapshots.
 
@@ -15440,7 +15440,7 @@ Two semantic-content tags join the code-defined system tag set ([REQ-1375](#REQ-
 
 ### REQ-1414 · Tag Registry {#REQ-1414}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Tag assignments are readable as a queryable relation, not only through the admin API: a `column_tags` view yields one row per (object_type, source, schema, table, column, relationship, tag_id), NULL at the levels coarser than the assignment's own grain, so table-level and source-level tags are not lost to a column-only projection. The view UNIONs the code-defined system tags in front of the tag_assignments table exactly as repository reads do ([REQ-1375](#REQ-1375) intrinsics are never stored, so a naive view over the table silently omits pii, technical, deprecated, entity and natural_language). The view carries the same visibility filter as registered_tables: a principal who cannot see a table cannot enumerate its tags, since column names and pii markings are themselves disclosure. Because it is an ordinary relation it reaches every protocol — pgwire, Flight, GraphQL — with no per-surface work.
 
@@ -15936,7 +15936,7 @@ HIGH AVAILABILITY on this platform means a PUBLISHED RECOVERY TIME MEASURED IN M
 
 ### REQ-1460 · Deployment Topology {#REQ-1460}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** infrastructure
+**Status:** ✗ rejected · **Priority:** SHOULD · **Type:** infrastructure
 
 A regional standby of the SHARED LANE is ASYMMETRIC: the control plane and its database are warm in a second region, and the engine is not. The split is forced by the cost, which is lopsided. Warming the plane and its database costs about $230/mo: a standby VM at its full $98/mo plus $4 of disk -- net new spend, since [REQ-1459](#REQ-1459) defers the standby and the floor therefore carries none to relocate -- a cross-region Cloud SQL replica (about $51/mo plus storage and replication egress) and a second GKE cluster management fee ($73/mo, since the free zonal tier is already spent on the primary). Warming the SHARED SHARD costs about $383/mo on its own, 1.7x more, because a node pool at min=0 is not a standby and pinning one in region B is precisely the fixed cost [REQ-1450](#REQ-1450) was amended to refuse in region A. Full warm standby of the lane is therefore about $613/mo, taking the live floor from $211 to $824/mo (3.9x); the asymmetric form takes it to $442/mo (2.1x). What each buys is stated as the recovery target it changes. Today a regional outage is a restore from cross-region backups measured in HOURS. With a warm plane and a cold engine it is about 10 minutes: the plane reschedules and rebuilds, the shard scales 0 to 1. With the full warm lane it is about 5 minutes, the plane alone. The asymmetric form buys most of the benefit for 38% of the cost, and the roughly 5 minutes it concedes are a cold shard start, which is exactly what Starter already accepts every day under [REQ-1450](#REQ-1450)'s scale-to-zero. Regional standby is NOT folded into the shared floor and is sold as a NEGOTIATED Enterprise item under a private commercial requirement. Recovered at the 4x markup, the asymmetric form needs 37 Starter minimums to pay for itself and the full warm lane needs 98; the shared lane cannot absorb the engine half, and the customers who require regional continuity are not the ones on the $25 minimum. A customer who needs better than the asymmetric target runs BYO ([REQ-1412](#REQ-1412)), with their engine, their regions and their redundancy.
 
@@ -16244,7 +16244,7 @@ Where an environment points is a per-environment fact that no copy ever supplies
 
 ### REQ-1492 · Environments {#REQ-1492}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1539](#REQ-1539) · **Priority:** MUST · **Type:** behavioral
 
 Write authority is granted into an environment and never carried between environments. Provisa executes mutations against sources -- compiled INSERT, UPDATE and DELETE, OpenAPI POST/PUT/PATCH/DELETE, gRPC methods that declare side effects, Hasura mutations, ingest DDL -- so a copied environment is a writer, not a reader, and inheriting where it points together with permission to write there is the compound failure. [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- [REQ-1539](#REQ-1539) makes roles and user_role_assignments CARRIED (seeded at creation), and [REQ-1529](#REQ-1529)'s 2026-08-21 amendment makes column grants a carried class; the code carries both and resets nothing. Kept here for history; do not implement against it.] An environment copy therefore resets table_columns.writable_by to empty and carries no user_role_assignments, which restores the default-deny of [REQ-867](#REQ-867) and [REQ-868](#REQ-868) in the new environment. [END SUPERSEDED BLOCK] Role definitions do travel, because rls_rules and writable_by reference roles by id and an environment whose RLS points at absent roles states a governance model it does not have. Restoring write in an environment is an act recorded in that environment's admin audit log, and [SUPERSEDED by [REQ-1529](#REQ-1529), 2026-10-03 -- Holds for roles and assignments (never merged), but [REQ-1529](#REQ-1529)'s ALL GOVERNANCE STATE IS RETAINED amendment has a merge carry column grants, so table_columns.writable_by travels on a merge. Kept here for history; do not implement against it.] promotion toward prod can never confer it: rights in a target environment come only from grants made in that environment. [END SUPERSEDED BLOCK] (Amended 2026-08-21:) [REQ-1491](#REQ-1491) now takes this compound apart at the binding rather than at the copy: a branch of the org's own environment inherits where its parent points, by reference, and [SUPERSEDED by [REQ-1539](#REQ-1539), 2026-10-03 -- [REQ-1539](#REQ-1539) removed branch_writable and the write-time check; the write path now refuses only an unbound or unregistered target. Kept here for history; do not implement against it.] an inherited binding refuses writes [END SUPERSEDED BLOCK]. Inherited reach without inherited write authority is not this failure.
 
@@ -21882,7 +21882,7 @@ Dataset name normalization must be centralized. Dataset names may be normalized 
 
 ### REQ-466 · Naming Convention {#REQ-466}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-467](#REQ-467) · **Priority:** SHOULD · **Type:** behavioral
 
 Dataset identity resolution requires a centralized service. Every registered dataset has two identity forms: physical (native source name, e.g. `findPetsByStatus`) and semantic (domainId + tableName alias). Code comparing two dataset references must resolve both through a centralized identity service. Backend: `provisa.core.dataset_identity` exposes `resolve(ref) -> DatasetIdentity` and `same_dataset(ref_a, ref_b) -> bool`. Frontend: shared utility, no per-component name-matching logic. Cross-form comparison resolves both sides to `(sourceId, normalizedName)` tuple first. Documented in docs/arch/dataset-handling-standards.md under "Dataset Identity".
 
@@ -21892,9 +21892,9 @@ Dataset identity resolution requires a centralized service. Every registered dat
 
 ### REQ-467 · Naming Convention {#REQ-467}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-Query-language dataset name resolution via centralized identity service (extends [REQ-466](#REQ-466)). Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language representations".
+Query-language dataset name resolution via centralized identity service (extends [REQ-466](#REQ-466)). Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language representations". (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-466](#REQ-466): their text stands as part of this one, and each is marked superseded by it.
 
 **Code:** —
 
@@ -23270,9 +23270,9 @@ ServiceNow is a source type. An instance is registered with its address and a cr
 
 ### REQ-1955 · MCP & AI Integration {#REQ-1955}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
-One endpoint, given any two registered tables, returns the valid paths that connect them, and it is the only place paths are computed: the MCP server's tool calls it and the relationship guard's refusal ([REQ-1956](#REQ-1956)) calls it, so the three never disagree. A path is a chain of registered relationships leading from the first table to the second; each step names its relationship, the two tables it joins, the join condition and its cardinality, so an agent can write the join without guessing. Only relationships the caller's role may traverse are walked, and only tables it may read appear on a path, so every returned path is a join the relationship guard ([REQ-603](#REQ-603)) accepts for that caller. Paths are returned shortest first, up to a bound on length and on the number returned; the answer says when the bound cut it short. Two tables with no path return an empty list, not an error. The two tables may be the same table: the paths are then its registered self-relationships.
+One endpoint, given any two registered tables, returns the valid paths that connect them, and it is the only place paths are computed: the MCP server's tool calls it and the relationship guard's refusal ([REQ-1956](#REQ-1956)) calls it, so the three never disagree. A path is a chain of registered relationships leading from the first table to the second; each step names its relationship, the two tables it joins, the join condition and its cardinality, so an agent can write the join without guessing. Only relationships the caller's role may traverse are walked, and only tables it may read appear on a path, so every returned path is a join the relationship guard ([REQ-603](#REQ-603)) accepts for that caller. Paths are returned shortest first, up to a bound on length and on the number returned; the answer says when the bound cut it short. Two tables with no path return an empty list, not an error. The two tables may be the same table: the paths are then its registered self-relationships. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-1956](#REQ-1956): their text stands as part of this one, and each is marked superseded by it.
 
 **Use case:** An agent asked for revenue by region finds how orders reach regions through customers before it writes the query, and does not try a join the guard would refuse.
 
@@ -23284,7 +23284,7 @@ One endpoint, given any two registered tables, returns the valid paths that conn
 
 ### REQ-1956 · Query Governance {#REQ-1956}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-1955](#REQ-1955) · **Priority:** SHOULD · **Type:** behavioral
 
 When the relationship guard refuses a join ([REQ-603](#REQ-603)), the refusal names the valid paths that connect the two tables it refused. The paths are the ones the paths endpoint ([REQ-1955](#REQ-1955)) returns for that caller, obtained from it and not computed a second way -- chains of registered relationships the caller's role may traverse, shortest first, each step with its tables and join condition -- so the message says what to write and never names a table or relationship the caller may not see. The message carries a bounded number of paths and says when there are more; where no valid path exists it says so and says what to do next in Provisa: a caller who may create relationships is told to create one between the two tables, and a caller who may not is told to request one, which goes to the stewards of the domains involved for approval ([REQ-1948](#REQ-1948)). The paths travel in the error's parameters as well as its text, so every surface (SQL, GraphQL, Cypher, pgwire, Bolt, Flight, gRPC, MCP, JSON:API) carries them and a client or agent can read them without parsing the sentence.
 
@@ -23704,7 +23704,7 @@ A table declares its parameters: the values a caller passes to the source to rea
 
 ### REQ-1987 · Compiler & Schema {#REQ-1987}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Every source's structured types are real, shared, named types on every surface: nested objects, lists of objects and enums are named GraphQL types and named gRPC messages and enums, and a type used in several places is one type. This holds for every source kind, not only Node.
 
@@ -23936,7 +23936,7 @@ provisa.dev has a live demos page with one card for each published named demo: i
 
 ### REQ-1998 · Source Connectors {#REQ-1998}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres engine: the DuckDB engine attaches it with DuckDB's MotherDuck extension (md:<database>), signed in with the source's MotherDuck token (its password field) resolved with the standard resolution. The token is given to the connection as a bound value, never in a statement's text, so no log, trace or error carries it; a MotherDuck source with no token is refused by name before anything is attached. One engine connection is signed in to one MotherDuck account: a second MotherDuck source signed in with another token is refused by name. Writes reach the MotherDuck database through the engine, as on the Postgres engine. MotherDuck's hybrid (dual) execution needs no setting of its own: on the DuckDB engine every source is attached on one connection, so a statement that joins a DuckDB file source's table with a MotherDuck source's table runs as one DuckDB statement on it, with MotherDuck deciding where each part executes, instead of being federated across two sources. Under dual execution MotherDuck may move local rows to its side for the parts it runs, so such a statement can send data from the local file into the organization's MotherDuck account. On an engine that reaches neither in place, the tables land as replicas as today.
 
@@ -23944,7 +23944,7 @@ A MotherDuck database is reached in place on the DuckDB engine as well as on the
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_motherduck_duckdb_engine.py`, `tests/integration/test_motherduck_duckdb_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -23994,7 +23994,7 @@ A group-by is ordered by its keys and its aggregates. The <Type>GroupBy field's 
 
 ### REQ-2008 · UI {#REQ-2008}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Everything the UI saves in the browser is saved per control plane and organization, so each demo, instance and org keeps its own state: the domain filter, the explorers' saved queries and tabs, remembered collapsibles, and every other remembered choice. Switching to another demo, instance or org carries none of it across; coming back to one restores what was left there. The control plane has an id, a UUID it creates at its first start and keeps (a pristine demo start is a new control plane, so a new id), and reports it to the UI on /auth/me. The UI saves each value under that id, the acting org and its key; acting in no org (a platform administrator before any org exists), it saves under the control plane alone. The pages mount once both are known and mount again when either changes. Saved for the browser as a whole, by name: the session's identity (the sign-in token, the acting org, role and environment, which ride on the requests that establish the scope, and are reconciled against the server on each load), a pending invitation and a just-claimed administrator slot, the guided tour's offered, seen, progress and declined marks, the colour scheme and the language. The persisted catalog cache is saved with the control plane and org it holds and dropped when another is entered. Signing out removes the session's remembered navigation item and domain filter from every control plane and org.
 
@@ -24002,11 +24002,11 @@ Everything the UI saves in the browser is saved per control plane and organizati
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_control_plane_id.py`, `provisa-ui/src/__tests__/storageScopeIsolation.test.tsx`
 
 ### REQ-2009 · UI {#REQ-2009}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo ships example GraphQL queries, one file a query in its directory (demo/named/<name>/queries/*.graphql), and the GraphQL explorer opens them as its tabs, in file-name order, the first time that demo is opened in a browser. They reach the UI on /setup/status, which the app reads before anything else, as the started demo's example_queries; a deployment started without a named demo has none. They are the explorer's tabs only while it has saved no tabs of its own for that demo's control plane and org ([REQ-2008](#REQ-2008)), so a later visit opens what was left there. The weblogs demo ships one a view, using the GraphQL Aggregate and GroupBy fields its views offer (a view enables them with enable_aggregates and enable_group_by, as a table does): the slowest pages by path with their count, average and maximum time, the ten slowest by average; the slow statements by table; the customers served a server error, by sales region (North, South, East or West); the database errors by page; the products viewed and never bought, by category; and the statement times over every table. Every example the demo ships runs on the demo and answers rows.
 
@@ -24014,7 +24014,7 @@ A named demo ships example GraphQL queries, one file a query in its directory (d
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_named_demo_example_queries.py`
 
 ### REQ-2012 · Chat UI {#REQ-2012}
 
@@ -24030,7 +24030,7 @@ Polly's spend is metered and, in demo sandboxes, capped. Every model call marks 
 
 ### REQ-2010 · UI {#REQ-2010}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo has its own tour, the story of the demo told with its own data, for a demo that runs with no one to present it. Its steps are written with the demo (demo/named/<name>/tour.yaml) and reach the UI on /setup/status with its example queries; the guided tour runs them as the demo's track. Starting the tour in a named demo starts its track, and the tour button offers it first until it has been walked to its end in that demo (each demo, and each fresh start of one, being its own control plane; a fresh demo session forgets it), the mark holding the demo and a hash of its steps' keys and routes so a revised track is offered again; the Deep Dives menu lists it first, marked once done, and the product tour and Deep Dives follow it. Each step names a page and one object of the demo: a source (its row on Sources), a table (its row on Tables), a relationship (its row on Relationships, by alias), an example query (opened in a new GraphQL explorer tab and run), a statement (opened in a new SQL explorer tab and run), a REST call (driven on the OpenAPI page and run), a JSON:API request, a gRPC call or a Cypher query (each run on its own page), every one of them awaited until its answer is in, a glossary term (opened on the Glossary), a role (picked in the SQL explorer's run-as picker when the visitor moves on, all roles again at the end), or a question for Polly, shown in the Polly panel with the answer stored for it when the demo's template was built ([REQ-2012](#REQ-2012)) and nothing sent; a question with no stored answer is left out of the track. A step's words are translated like every other tour step's, in every language the UI speaks. A unit test holds every step's object to the demo's config and example queries (a REST or JSON:API path, a gRPC method and a Cypher label to the names the schema build gives the demo's tables), every page to the right its gate needs, and every step's words to each language. A track is the scenario (the business problem and the features it exercises), then how the demo fits together (sources, tables, commands, materialized views and relationships, those the demo has, each at its real row), then the solution in the form that best answers the question: predesigned queries and views over the fitting transports, one governed answer across protocols, with a Polly question only where a conversational answer fits, then a recap. The weblogs demo's track: which pages are slow and which SQL makes them slow; its three sources; the tables they become; the LOGGED_FOR relationship joining the two logs on the request id; the slowest pages joined to the statements their requests ran, in SQL over the demo's views, and the slowest pages as a REST call; and a recap. A track ends on a choice, never by rolling into another tour: its last card is a one-line recap, then "Where next?" with "Explore the Deep Dives" (the Deep Dives menu) and "Look around on my own" (the tour ends on the page the demo's tour.yaml names as its landing: weblogs the SQL page, sonnets the Graph page), then that the tour can be restarted and the Deep Dives opened any time from the tour button; either way the track is marked walked. A unit test holds every tour's landing to a page the app routes and the right its gate needs. (Amended 2026-10-16, LINEAGE STEP:) a step may name a statement as its lineage: the tour opens the Lineage page on it (/lineage?sql=...), which builds its graph, each column traced back through the views it reads to the source fields; the unit test holds it to /lineage and to the demo's own tables and views. (Amended 2026-10-16, GROUP BY STEP:) A step may group the Graph page's frame on screen by a property (group_by: degTotal): it follows the Cypher step whose frame it groups, runs no query, and the frame keeps its query; the page applies the view to its newest frame.
 
@@ -24038,11 +24038,11 @@ A named demo has its own tour, the story of the demo told with its own data, for
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
 
 ### REQ-2013 · UI {#REQ-2013}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Each tour declares its prerequisites, what its steps show of the org beyond the rights its pages need: the sources, the registered tables and whether a data product exists. The product tour and the Deep Dives built on the standard demo's objects declare them (its pet store, its quality checker's results, the inquiries lineage, its data products); a named demo's own track needs the sources its steps show. When the Deep Dives menu opens and when the tour button picks a tour, the check runs against what the current org has, and a tour whose prerequisites are unmet is left out: it is not in the menu, its start (the menu's "Start at the Beginning" for the product tour) is not offered, and the tour button does not start it. Nothing watches for prerequisites coming back. A step whose target still never appears (anything the check misses) is shown as stuck after the anchor wait, with Retry, Skip and Exit over the step it left, never as the earlier step's card answering nothing. A step that opens its own starting state with a sequence of clicks takes each next click only once the one before it has opened what it opens.
 
@@ -24050,7 +24050,7 @@ Each tour declares its prerequisites, what its steps show of the org beyond the 
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/tourPrerequisites.test.tsx`, `provisa-ui/src/__tests__/tourClickBefore.test.tsx`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -24096,9 +24096,9 @@ A table on an Elasticsearch source can be registered from a native search instea
 
 ### REQ-2018 · Source Connectors {#REQ-2018}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✓ accepted · **Priority:** SHOULD · **Type:** behavioral
 
-A table on a Prometheus source can be registered from a native PromQL query: an instant or range PromQL query (e.g. rate(http_requests_total{job="{{job}}"}[{{window}}])), with range start, end and step as optional parameters; each series sample is a row, one column per label plus timestamp and value. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
+A table on a Prometheus source can be registered from a native PromQL query: an instant or range PromQL query (e.g. rate(http_requests_total{job="{{job}}"}[{{window}}])), with range start, end and step as optional parameters; each series sample is a row, one column per label plus timestamp and value. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-2019](#REQ-2019), [REQ-2020](#REQ-2020), [REQ-2021](#REQ-2021), [REQ-2022](#REQ-2022), [REQ-2023](#REQ-2023), [REQ-2024](#REQ-2024), [REQ-2025](#REQ-2025), [REQ-2026](#REQ-2026), [REQ-2027](#REQ-2027): their text stands as part of this one, and each is marked superseded by it.
 
 **Use case:** An SRE registers request_rate from a PromQL rate() query with a required job argument and joins it to the deploys table to see the request rate around each deploy.
 
@@ -24108,7 +24108,7 @@ A table on a Prometheus source can be registered from a native PromQL query: an 
 
 ### REQ-2019 · Source Connectors {#REQ-2019}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a Splunk source can be registered from a native SPL query: a Splunk search (e.g. search index=web status={{status}} | stats count by host), run as a search job with optional earliest/latest parameters; each result is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24120,7 +24120,7 @@ A table on a Splunk source can be registered from a native SPL query: a Splunk s
 
 ### REQ-2020 · Source Connectors {#REQ-2020}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a GraphQL remote source can be registered from a native GraphQL query: one GraphQL query document whose variables are the parameters, with a declared path to the list that becomes rows (nested objects flattened to columns). The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24132,7 +24132,7 @@ A table on a GraphQL remote source can be registered from a native GraphQL query
 
 ### REQ-2021 · Source Connectors {#REQ-2021}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a Salesforce source can be registered from a native SOQL query: a SOQL query with bind variables (e.g. SELECT Account.Name, COUNT(Id) n FROM Opportunity WHERE StageName = :stage GROUP BY Account.Name), relationship fields flattened to columns. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24144,7 +24144,7 @@ A table on a Salesforce source can be registered from a native SOQL query: a SOQ
 
 ### REQ-2022 · Source Connectors {#REQ-2022}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a Druid source can be registered from a native Druid native JSON queries query: a Druid native query (timeseries, topN or groupBy) as JSON, including approximate aggregators Druid SQL does not expose; each result entry or bucket is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24156,7 +24156,7 @@ A table on a Druid source can be registered from a native Druid native JSON quer
 
 ### REQ-2023 · Source Connectors {#REQ-2023}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a Redis source can be registered from a native RediSearch FT.SEARCH / FT.AGGREGATE query: a RediSearch FT.SEARCH or FT.AGGREGATE command over an index (hashes or JSON), with query and LIMIT values as parameters; each document or group is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24168,7 +24168,7 @@ A table on a Redis source can be registered from a native RediSearch FT.SEARCH /
 
 ### REQ-2024 · Source Connectors {#REQ-2024}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a DynamoDB source can be registered from a native PartiQL query: a PartiQL SELECT with ? parameters bound by DynamoDB, against a table or one of its indexes; each item is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24180,7 +24180,7 @@ A table on a DynamoDB source can be registered from a native PartiQL query: a Pa
 
 ### REQ-2025 · Source Connectors {#REQ-2025}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a ServiceNow source can be registered from a native encoded queries query: a ServiceNow Table API read with an encoded query (e.g. active=true^priority={{p}}) and field list, filtered at the instance; each record is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24192,7 +24192,7 @@ A table on a ServiceNow source can be registered from a native encoded queries q
 
 ### REQ-2026 · Source Connectors {#REQ-2026}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a Cassandra source can be registered from a native CQL query: a CQL SELECT with ? markers bound by the driver, restricted on partition key and clustering columns as Cassandra requires; each row is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24204,7 +24204,7 @@ A table on a Cassandra source can be registered from a native CQL query: a CQL S
 
 ### REQ-2027 · Source Connectors {#REQ-2027}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2018](#REQ-2018) · **Priority:** SHOULD · **Type:** behavioral
 
 A table on a Microsoft 365 and Google Workspace source can be registered from a native Microsoft Graph $filter/$search and Gmail/Drive search syntax query: a saved search: a Graph resource path with $filter/$search, or a Gmail or Drive search string (e.g. from:{{sender}} newer_than:7d), with each value encoded as the API requires; each message, file or item is a row. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, [REQ-1986](#REQ-1986)) with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into the parsed query, or as the source's own bound parameter, never spliced into the query text. Output columns are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned row is checked against them. A query that writes or changes state at the source is refused by name. The table joins with any other table and is governed on every surface like any registered table; with no arguments it behaves as a view.
 
@@ -24282,7 +24282,7 @@ A named demo, files (Instant data lake): a folder of mixed CSV, Parquet, XLSX an
 
 ### REQ-2033 · UI {#REQ-2033}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo, streaming (Live order stream): A live order feed arriving through Kafka or a webhook, joined to a static product catalog, on the demo's own containers. It shows freshness and change signals, live subscriptions, the response cache, and derived views refreshing as events land. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external account at run time: data from real accounts is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)). Its business question: "Which regions placed the most orders in the last five minutes?"
 
@@ -24290,7 +24290,7 @@ A named demo, streaming (Live order stream): A live order feed arriving through 
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_streaming_demo.py`
 
 ### REQ-2034 · UI {#REQ-2034}
 
@@ -24306,7 +24306,7 @@ A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce acc
 
 ### REQ-2035 · UI {#REQ-2035}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo, GDPR at an international retail group (one group, EU and US subsidiaries): two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated and enforced in one place; the visitor stays on one node (the US node) and the EU region's setup is shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region message scoring, are built in the EU region's own store at bundle build, and the US node reads them in place from that store, the per-request record naming eu as the serving region, or refuses naming eu when that store is absent; each subsidiary's own sources with their home region -- loyalty-programme customers with their marketing consent, orders, stores and staff -- plus shared reference data (products, stores), all generated; users with a region attribute and row rules on it. It shows: residency, EU customer rows stored and computed only in the EU region, and group reporting that reads EU data only as aggregates or pseudonymised rows; different rules per region, EU marketing reads only customers who consented and a US analyst reading group data gets EU customers pseudonymised; a data subject request, one query that finds everything held about one EU customer across every subsidiary's sources (right of access), and the view that drives its erasure; an insider review in retail form, staff with access to customer data who then mail customer lists outside the group, their messages scored in their own region so no message body leaves it, one group review queue carrying only the score, the signals and a pseudonymised sender, and the sender revealed only to a reviewer acting with the employee's region derived role (region__eu, [REQ-2057](#REQ-2057)) through the column's ordered mask list ([REQ-2059](#REQ-2059)); and one audit record across both regions of who saw which customer's data, where. The same query returns different rows per reader, the per-request record shows serving region and rules, no copy of EU rows exists outside the EU, and a cross-region read is served from the home region's replica or refused naming it. Its tour states that legal requirements can be met with these features, but meeting them takes active design by people who understand the data protection and cross-border transfer rules that apply. The lawful basis, impact assessment, retention and works-council agreement remain the group's legal process; it never claims the features make an organization compliant. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external account at run time ([REQ-2031](#REQ-2031)). Its business question: "Can we run the group as one business without breaking GDPR?" (Amended 2026-11-05, THE TOUR SHOWS WHERE REGIONS ARE DEFINED:) The tour steps from the platform's regions (the Platform page, read-only in a sandbox), to the organization's regions on Admin > Regions, to a table's region, before the residency queries. (Amended 2026-11-05, THE IDEA THE TOUR TEACHES:) The tour's one idea: one config, two data processing environments, and access to data depends on the user's assigned region as well as any other policy the organization creates. Every step serves that idea. (Amended 2026-11-05, TWO LAYERS: HOMING AND SECURITY:) The tour presents two separate layers. Homing is the engine's rules: a homed table's replicas and cache live only in its home region, and other regions reach a replicated table only through it. Security is the users' rules: row and column rules, masks and residency grants on roles, including rules on the reader's region, decide what each reader gets, and they ride in every statement, so they apply in the home region before anything leaves.
 
@@ -24314,11 +24314,11 @@ A named demo, GDPR at an international retail group (one group, EU and US subsid
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_retail_demo.py`, `tests/integration/test_retail_regions_tier_e2e.py`
 
 ### REQ-2036 · UI {#REQ-2036}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo, vulnerabilities (Are we shipping an exploited vulnerability?): A demo GitHub organization whose repositories pin old dependency versions (repositories, dependency manifests and Dependabot alerts through the GitHub source), joined to govdata's NVD vulnerabilities, CWE catalog, CISA Known Exploited Vulnerabilities and OSV tables, trimmed at build to the CVEs that touch those packages plus the whole KEV catalog. Dependabot's alerts match packages to vulnerabilities; govdata only enriches them. It shows public government data joined to private code data, a materialized view of exploited CVEs in the organization's code with days past the CISA due date, a Repository-Package-CVE-CWE graph, and glossary terms (KEV, CWE, CVSS). Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external account at run time: data from real accounts is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)). Its business question: "Which repos ship a known-exploited vulnerability, and how overdue are we?"
 
@@ -24330,7 +24330,7 @@ A named demo, vulnerabilities (Are we shipping an exploited vulnerability?): A d
 
 ### REQ-2037 · UI {#REQ-2037}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 An industry vertical demo, insurance: Where is our property exposure concentrated against hazard risk? Private data (generated): policies by county. Public data (govdata): disasters.fema_nri_earthquake_by_county (the NRI all-hazard composite risk and expected annual loss, with building value), wildfire_risk_by_county and disasters_storm_impact_by_county (county by year property damage); no daily weather (maintainer 2026-10-15). Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24338,7 +24338,7 @@ An industry vertical demo, insurance: Where is our property exposure concentrate
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_insurance_demo.py`
 
 ### REQ-2038 · UI {#REQ-2038}
 
@@ -24354,7 +24354,7 @@ An industry vertical demo, pharma: Which of our products face shortage or recall
 
 ### REQ-2039 · UI {#REQ-2039}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** SHOULD · **Type:** behavioral
 
 An industry vertical demo, agriculture: Does weather explain crop insurance losses in our portfolio? Private data (generated): farm portfolio. Public data (govdata): nass_crop_production, rma_crop_insurance, weather_daily_by_county. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms. (Amended 2026-10-16, CAUSE OF LOSS:) The public losses are ag.rma_cause_of_loss, not rma_crop_insurance: the Summary of Business carries no peril, and the question is whether weather explains the losses, so the demo reads the USDA's indemnities by cause of loss. Its three govdata tables are rma_cause_of_loss, weather_daily_by_county and nass_crop_production, each landed with a landing filter ([REQ-2062](#REQ-2062)) to the portfolio's 40 counties, corn and soybeans, and the crop years 2010 to 2017 (the weather to May to August): the years govdata holds both causes of loss and daily weather for. The answer's view matches the sources by county and crop year as one UNION of each source's figures, folded per county and year, with no join between them.
 
@@ -24366,7 +24366,7 @@ An industry vertical demo, agriculture: Does weather explain crop insurance loss
 
 ### REQ-2040 · UI {#REQ-2040}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 An industry vertical demo, audit firm: Single Audit readiness: do a nonprofit client's recorded federal awards match what the government reports paying it? It shows row rules by engagement (each team sees only its own clients), lineage, and the per-query audit record as evidence. Private data (generated): client general ledger and grant schedule. Public data (govdata): usaspending_* awards, exempt_org_master, exempt_org_990. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms. Unlike the other verticals, its solution is told as an analyst resolving a request with Polly (maintainer 2026-10-15): a narrated series of questions the analyst poses in turn (which awards the client records, what the government reports paying it, where they differ, which differences are timing and which are missing awards, what goes in the readiness memo), each answered by Polly from answers generated at template build and served stored ([REQ-2012](#REQ-2012)), with the SQL behind each answer shown. Its clients are fictional organisations, their award records generated as well, so no generated financial record is attributed to a real organisation (maintainer 2026-10-15); the public data illustrates the matching pattern. Its awards side waits on award-level public data in govdata (Federal Audit Clearinghouse federal awards and USAspending prime awards by recipient and assistance listing), requested from the adapter. Its narrated Polly questions are its own question set, graded against its own tables in the Polly bake-off; stored answers are generated at bundle build with Haiku through OpenRouter (the OPENROUTER_API_KEY secret).
 
@@ -24378,7 +24378,7 @@ An industry vertical demo, audit firm: Single Audit readiness: do a nonprofit cl
 
 ### REQ-2041 · UI {#REQ-2041}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** SHOULD · **Type:** behavioral
 
 An industry vertical demo, tax firm: Nonprofit 990 benchmarking: are a client's executive pay and overhead in line with peers of similar size and mission? It shows metrics (overhead ratio, pay as a share of expenses) and masking of client figures by role; it may ship as a second tour of the audit-firm demo, sharing the 990 tables. Private data (generated): client draft 990 figures. Public data (govdata): exempt_org_990 (peer filings), exempt_org_master. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24390,7 +24390,7 @@ An industry vertical demo, tax firm: Nonprofit 990 benchmarking: are a client's 
 
 ### REQ-2042 · UI {#REQ-2042}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** SHOULD · **Type:** behavioral
 
 An industry vertical demo, local government: Opioid settlement funds: which areas have the highest overdose deaths relative to current treatment spending? It shows a plain-language public-sector glossary, a materialized view for the council's dashboard, and a public role beside a staff role. Private data (generated): county or city budget lines and program spend. Public data (govdata): cdc_county_overdose_deaths, usaspending_by_county, ACS demographics. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24402,7 +24402,7 @@ An industry vertical demo, local government: Opioid settlement funds: which area
 
 ### REQ-2043 · UI {#REQ-2043}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** MAY · **Type:** behavioral
 
 An industry vertical demo, banking: Which loans are concentrated in counties at high disaster risk? Private data (generated): loan book. Public data (govdata): fema_nri_* and weather_daily_by_county. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24414,7 +24414,7 @@ An industry vertical demo, banking: Which loans are concentrated in counties at 
 
 ### REQ-2044 · UI {#REQ-2044}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** MAY · **Type:** behavioral
 
 An industry vertical demo, markets: Which portfolio holdings face regulatory or lobbying exposure? Private data (generated): holdings. Public data (govdata): sec_company_tickers, filing_*, lobbying_filings, cftc_trades. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24426,7 +24426,7 @@ An industry vertical demo, markets: Which portfolio holdings face regulatory or 
 
 ### REQ-2045 · UI {#REQ-2045}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** MAY · **Type:** behavioral
 
 An industry vertical demo, reinsurance: Catastrophe accumulation across ceded portfolios, by region. Private data (generated): treaties and ceded exposures. Public data (govdata): FEMA national risk index tables. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24438,7 +24438,7 @@ An industry vertical demo, reinsurance: Catastrophe accumulation across ceded po
 
 ### REQ-2046 · UI {#REQ-2046}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** MAY · **Type:** behavioral
 
 An industry vertical demo, healthcare: Are members steered to low-quality, understaffed facilities? Private data (generated): claims. Public data (govdata): cms_hospital_quality, cms_pbj_nurse_staffing. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24450,7 +24450,7 @@ An industry vertical demo, healthcare: Are members steered to low-quality, under
 
 ### REQ-2047 · UI {#REQ-2047}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** MAY · **Type:** behavioral
 
 An industry vertical demo, retail: Which stocked items are under a recall? Private data (generated): inventory. Public data (govdata): fda_device_recalls, vehicle_recalls. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24462,7 +24462,7 @@ An industry vertical demo, retail: Which stocked items are under a recall? Priva
 
 ### REQ-2048 · UI {#REQ-2048}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2037](#REQ-2037) · **Priority:** MAY · **Type:** behavioral
 
 An industry vertical demo, manufacturing: Which bill-of-materials parts depend on imported critical minerals? Private data (generated): bill of materials and suppliers. Public data (govdata): comtrade_flows, trade_exports_critical_minerals, epa_facilities. Pattern for every vertical demo: one focused business question, answered by joining generated private company data with public government data from govdata; one private source, two or three govdata tables and one materialized view. Its tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, [REQ-2012](#REQ-2012)) only where a conversational answer is the natural fit; then a recap. Data is landed at build as TTL -1 replicas ([REQ-2031](#REQ-2031)); the build fails, naming the table, when a govdata table it needs is empty. A per-vertical glossary uses the industry's own terms.
 
@@ -24528,7 +24528,7 @@ A feature demo, data quality (quality): a medallion over the demo's own Postgres
 
 ### REQ-2052 · UI {#REQ-2052}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934)) profiles a demo's tables on a schedule; its results are governed tables the tour shows (nulls, distinct counts, value ranges, outliers), and a profile run is visible on each profiled table. Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each step on its real row; the solution as predesigned queries and views over fitting transports; recap; then "Where next?" with its landing page). Its business question: "What is actually in this data?" It shows the profile's three tiers: its basic metrics; drift, a second run comparing each measure with the first after setup changed one column, which is flagged drifting while the others are not; and a synthetic environment whose tables are generated from the profile, read beside the real ones. (Amended 2026-10-21:) A hosted demo's profile runs are the bundle build's: the build exports every profile result relation of its setup's org, each with the table it profiles (source, schema, table), as seeded/profile_results.json beside the seed, and the template loads them under its own table ids instead of profiling the demo's sources again, since those hold the data as setup left it and a run there measures nothing a setup step changed between two runs. A bundle of a demo whose setup profiles and that carries no runs leaves its template not ready, named; runs of a table the template does not register are refused by name. A local start runs its setup as before. (Amended 2026-10-27, A FIRST RUN IS SEEDED:) Maintainer 2026-10-27: the demo starts with a profiling run already on each profiled table, local and hosted alike, seeded before the tour begins, so a visitor who stops the tour at any step, or never starts it, still finds a run to open. The tour's own steps add to it (the drift run) rather than creating the first; a step that would run the first profile instead opens the seeded one.
 
@@ -24596,7 +24596,7 @@ A capability demo, insider review at an investment bank: Is anyone sending deal-
 
 ### REQ-2060 · Security {#REQ-2060}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Rights follow the request. A request's data access AND its capabilities come only from the roles it names (X-Provisa-Role, or the session's acting role), never from every role the user holds; each named role must be held, and one that is not is refused by name, as X-Provisa-Role already is. Administrative work therefore needs the acting role to hold the right: the admin UI acts as, or switches to, a role holding it before an admin action.
 
@@ -24604,11 +24604,11 @@ Rights follow the request. A request's data access AND its capabilities come onl
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_rights_not_role_names.py`, `provisa-ui/src/__tests__/CapabilityGate.test.tsx`
 
 ### REQ-2057 · Security {#REQ-2057}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC). For each attribute in the org's declared list (an org setting with a UI surface), there is an implicit parent role named by the attribute (e.g. region) and, for each value, a child sub-role named <attribute>__<value> (e.g. region__eu), the double underscore as in GraphQL paths. A user holds a sub-role exactly when their claim has that value; the value comes from the org's own user record, and the identity provider's claim fills in only where the record has none. Derived roles carry no capabilities, no domain access, no row-filter term and no mask vote; they are never assigned by hand and never self-granted; they act only as grant qualifiers, so existing grant points use them unchanged (visible_to, writable_by, masks, meta-roles). Like every role they count only when the request names them ([REQ-2060](#REQ-2060)): a request acts as analyst,region__eu to get EU reveals; the role picker offers the derived roles a user holds. The node's own region is never taken as the user's. A service call a regional node makes on its own behalf (scheduled jobs, triggers, materialized-view and replica refreshes, reads of another region's store, calls to the control plane) carries that node's region derived role (region__<node region>) in the set it acts as, so grants naming the region apply to the region's own work. Row rules naming derived roles are not part of this. Role inheritance stays additive: a child holds its parent's rights plus its own, and nothing subtracts an inherited right; restriction comes from composition ([REQ-2058](#REQ-2058)), not from denials. A role's properties are different from its rights: each property (rate_limit, max_rows) is set by the nearest role in the chain that declares it, the role itself first, so a child may raise or lower its parent's. docs/security.md explains meta-roles and derived roles and why each is useful, led by the rationale that derived roles simplify a traditional ABAC column problem into a simpler RBAC solution, with guidance on hierarchy versus composition (inheritance within one axis, composition across independent axes, a small role catalogue).
 
@@ -24616,7 +24616,7 @@ Derived roles: roles derived from identity claims, which turn an attribute-condi
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_derived_roles.py`
 
 **Docs:** [regions.md](../regions.md), [security.md](../security.md)
 
@@ -24650,7 +24650,7 @@ Per-reader masks: a column's masking is one ordered list of entries, each {to: a
 
 ### REQ-2061 · Materialization Store {#REQ-2061}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Fixed table arguments: a table whose source takes arguments (a parameterized API table, such as a GitHub table taking owner and name) may declare the argument values in its config (arguments: {name: value}). A table with every argument fixed is an ordinary table: it lands whole as a replica like any other, so TTL -1 and the landed-at-build demo rule apply to it; the fixed arguments are no longer columns a reader supplies.
 
@@ -24658,11 +24658,11 @@ Fixed table arguments: a table whose source takes arguments (a parameterized API
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_fixed_arguments.py`
 
 ### REQ-2062 · Materialization Store {#REQ-2062}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Landing filter: a table may declare landing_filter, a SQL predicate over its own columns that is applied when its replica lands, so only matching rows are copied. It lets a demo or an operator carry a slice of a very large public table (for example the CVEs that touch a given set of packages out of all of NVD) instead of the whole table.
 
@@ -24670,13 +24670,13 @@ Landing filter: a table may declare landing_filter, a SQL predicate over its own
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_landing_filter.py`
 
 ## 10. UI & Admin Surfaces
 
 ### REQ-2063 · UI {#REQ-2063}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A feature demo, data vault: how to set up a data vault in Provisa. Built on a well-known public sample dataset (Northwind preferred: customers, orders, products, suppliers, employees; Chinook as the alternative), split into two or three operational sources with overlapping entities (for example the orders system and a CRM holding its own copy of the customers), in the demo's own stores and read live; a scripted series of changes to the source records (an address move, a renamed product, a corrected price) gives the satellites history. The dataset's licence is checked and stated in the demo. Hubs: one per business entity (customer, product, order), each a materialized view of the distinct business keys with a hash key (md5 of the key), the record source and the first-seen time. Links: the relationships between hubs (customer placed order, order contains product), each a materialized view of hash-key pairs. [SUPERSEDED by REQ-2063, 2026-10-16 -- satellites are plain views over insert-only rows, not bitemporal views. Kept here for history; do not implement against it.] Satellites: the descriptive attributes with their history, kept bitemporally ([REQ-1162](#REQ-1162): when each value was valid and when it was recorded), with a hashdiff column marking real changes. [END SUPERSEDED BLOCK] Loading: when a source changes, its hubs, links and satellites refresh through the existing view cascade from the source's change signal, with no orchestration code. Governance where a vault needs it: personal data lives in satellites, so masks and row rules are declared there while hubs and links stay readable for joining. On top: a business vault and marts as further views (a point-in-time customer view, a current-state dimension), with the hub-link-hub relationships declared so GraphQL walks them, and lineage from a mart column back through satellite and hub to the source field. Its tour states as a benefit that the vault is declared and the engine builds and refreshes it: there is no separate ETL platform, job server or pipeline code to run, the work runs on the engine where it scales, and one declared vault feeds the marts, the governed APIs and the lineage. Its tour follows the settled demo tour shape. Its business question: "What did we know about this customer, from which source, and when?", answered by one point-in-time query. (Amended 2026-10-16, INSERT-ONLY SOURCES, maintainer:) the vault is built the classic way, as plain reads and groups: the operational sources keep their customers, products and accounts insert-only, as a vault's staging receives them, and a scripted change arrives as a new row with its own load date, never an overwrite. A satellite is a plain view over those rows -- hash key, record source, load date, hashdiff and attributes, every version a row -- leaving out a row whose hashdiff is the one before it for its key (a resend that changed nothing). The point-in-time view takes, per customer and per load date of its satellites, each satellite's latest version loaded on or before it; the business vault joins that to the satellites' values, so one plain query answers what was known, from which source, and since when, at dates the tour names. No versions table and no as-of read. The demo is built on Northwind from microsoft/sql-server-samples (MIT licence, Copyright (c) Microsoft Corporation), its notice shipped as db/NORTHWIND-LICENSE: an order system and a CRM, two databases of their own. The lineage of a mart column is a tour step of its own ([REQ-2010](#REQ-2010)).
 
@@ -24690,7 +24690,7 @@ A feature demo, data vault: how to set up a data vault in Provisa. Built on a we
 
 ### REQ-2064 · Materialization Store {#REQ-2064}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2109](#REQ-2109) · **Priority:** SHOULD · **Type:** behavioral
 
 The as-of header (X-Provisa-As-Of, [REQ-1163](#REQ-1163)) also accepts a range, an ISO 8601 interval start/end. A read with a range answers every version of each row that was in force at any time within the range, one row per version, each with the time it was recorded from and to, so a client sees what changed and when in one read instead of one as-of read per moment. A single time keeps today's meaning. The range applies to the same tables and views as a single time, with the same rights, masks and row rules. [SUPERSEDED by [REQ-2109](#REQ-2109), 2026-10-20 -- a range is measured on valid time. Kept here for history; do not implement against it.] The range is measured on the source's time ([REQ-1163](#REQ-1163) as amended): each version is in force from its source time to the next version's, and the answer also carries each version's source time and Provisa's recorded time. [END SUPERSEDED BLOCK] (Amended 2026-10-20, VALID TIME, [REQ-2109](#REQ-2109):) the range is measured on valid time: a read with a range answers every version whose valid time falls within it, with its valid time and recorded time.
 
@@ -24734,7 +24734,7 @@ The load management window ([REQ-1141](#REQ-1141)'s off-peak window) also applie
 
 ### REQ-2067 · UI {#REQ-2067}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A capability demo, provisioning: a warehouse takes several feeds (orders, inventory, prices) and builds large datasets as materialized views refreshed by the view cascade as the feeds land, then provisions them downstream to two consumers (a finance mart and a data-science feature store). When a dataset is ready each consumer is told through a Kafka sink ([REQ-176](#REQ-176)), a GraphQL subscription or a trigger running a command ([REQ-2054](#REQ-2054)), with the dataset's version time, and pulls it at volume over Arrow Flight (columnar, streamed, from the Python client or any ADBC/Flight client), as of that version time so a refresh landing mid-pull cannot mix old and new data. Each consumer reads its own governed view of the same dataset (finance sees margins, data science sees them masked; row rules per team), with no copies. The dataset carries a load management window ([REQ-2066](#REQ-2066)): consumers are notified staggered within it (finance at its start, data science later) as a customization built from scheduled triggers and sinks, not a feature, and a pull outside the window is refused by name. The tour shows the time from ready to pulled, the Kafka message, a Python consumer pulling over Flight with its rows per second, the two consumers' different views of the same pull, and a refused out-of-window pull. It reuses the streaming demo's Kafka setup. Its tour follows the settled demo tour shape. Its business question: "How do downstream teams get the big datasets they need as soon as they are ready, without copying them or writing extraction jobs?"
 
@@ -24742,13 +24742,13 @@ A capability demo, provisioning: a warehouse takes several feeds (orders, invent
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_provisioning_demo.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
 ### REQ-2068 · Demo Provisioning {#REQ-2068}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A hosted demo sandbox can carry two regions, so a regions demo ([REQ-2035](#REQ-2035)) runs live and not only locally. The bundle build lands each region's replicas and builds each region's views (and their build state) into that region's own store, and carries every region's store in the bundle; each sandbox cloned from the template gets its regions declared and each region's store, so the visitor's node reads another region's replicas and views in place, the per-request record naming the serving region. A region's store in a sandbox is a captive PostgreSQL per region (or a DuckDB store, if the refusal of a DuckDB store for another region is lifted), never one store shared by both regions.
 
@@ -24756,7 +24756,7 @@ A hosted demo sandbox can carry two regions, so a regions demo ([REQ-2035](#REQ-
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_demo_region_seed.py`, `tests/integration/test_retail_regions_tier_e2e.py`
 
 ## 4. Source Connectors
 
@@ -24898,9 +24898,9 @@ A role grant Provisa holds (a user_role_assignments row) may be time-limited, an
 
 ### REQ-2078 · Security {#REQ-2078}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Derived roles join the Roles list. Each attribute the org declares as a derived role ([REQ-2057](#REQ-2057)) is a parent role in the main Roles list, marked derived, with its value roles (<attribute>__<value>, e.g. region__eu) listed under it as their values are seen. Adding one is Add role -> Derived from attribute; there is no separate derived-roles screen. A derived role is declared one at a time with a required description ([REQ-2080](#REQ-2080)); the org's list replaces the deployment config's, its first change copying the deployment's list. Saving or removing one re-reads the caller's identity, so the role picker offers the roles they now hold without a reload.
+Derived roles join the Roles list. Each attribute the org declares as a derived role ([REQ-2057](#REQ-2057)) is a parent role in the main Roles list, marked derived, with its value roles (<attribute>__<value>, e.g. region__eu) listed under it as their values are seen. Adding one is Add role -> Derived from attribute; there is no separate derived-roles screen. A derived role is declared one at a time with a required description ([REQ-2080](#REQ-2080)); the org's list replaces the deployment config's, its first change copying the deployment's list. Saving or removing one re-reads the caller's identity, so the role picker offers the roles they now hold without a reload. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-2079](#REQ-2079): their text stands as part of this one, and each is marked superseded by it.
 
 **Use case:** An administrator adds region as a derived role from the Roles page and sees region, region__eu and region__us in the same list as the granted roles.
 
@@ -24912,7 +24912,7 @@ Derived roles join the Roles list. Each attribute the org declares as a derived 
 
 ### REQ-2079 · Security {#REQ-2079}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2078](#REQ-2078) · **Priority:** SHOULD · **Type:** behavioral
 
 A derived role's detail panel, in the shared form layout with the standard save and notice: the source attribute, its description (editable), the values seen so far (from the org's member records and the identity providers' recorded claims) and where it is used: every row rule, column grant, mask entry and metric, command or webhook grant list that names the parent or one of its value roles, alone or in a composite entry. No grant controls: a derived role holds no rights. A value role shows a generated line, "Held when the user's region is eu", translated.
 
@@ -24926,9 +24926,9 @@ A derived role's detail panel, in the shared form layout with the standard save 
 
 ### REQ-2080 · Security {#REQ-2080}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes). An empty description is refused with a clear message by the configuration load, the REST and GraphQL role mutations and the UI. It is shown in the Roles lists and detail panels, edited in the detail panel, and returned even where a role's definition is withheld. A meta-role is never stored, so its description is generated from its members' descriptions. Derived value roles show a generated line. There are no per-domain role descriptions: a general role that does not describe its responsibilities within a domain means that domain needs a new role, usually a child of the general role; the description field's help and the roles docs say so. Descriptions are a policy and possibly regulatory requirement: access reviews read them.
+Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes). An empty description is refused with a clear message by the configuration load, the REST and GraphQL role mutations and the UI. It is shown in the Roles lists and detail panels, edited in the detail panel, and returned even where a role's definition is withheld. A meta-role is never stored, so its description is generated from its members' descriptions. Derived value roles show a generated line. There are no per-domain role descriptions: a general role that does not describe its responsibilities within a domain means that domain needs a new role, usually a child of the general role; the description field's help and the roles docs say so. Descriptions are a policy and possibly regulatory requirement: access reviews read them. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-2081](#REQ-2081): their text stands as part of this one, and each is marked superseded by it.
 
 **Use case:** An access reviewer reads, beside each role, what it is for.
 
@@ -24940,7 +24940,7 @@ Every role carries a required description of what it is for: ordinary roles, der
 
 ### REQ-2081 · Security {#REQ-2081}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ↪ superseded by [REQ-2080](#REQ-2080) · **Priority:** MUST · **Type:** behavioral
 
 Every row (RLS) rule carries a required description of what it is for, refused when empty by the configuration load, the GraphQL mutation and the UI, and shown in the rule's detail panel and in the Row rules list. Rules an importer writes (Hasura, DDN) and the profiler's prefilled rules carry a generated description the administrator can replace.
 
@@ -24956,7 +24956,7 @@ Every row (RLS) rule carries a required description of what it is for, refused w
 
 ### REQ-2082 · MCP Authentication {#REQ-2082}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 MCP tool describe_role returns only the caller's resolved role (for a meta-role, also its members, derived roles among them) with each one's description ([REQ-2080](#REQ-2080)), and the roles the caller may switch to: the set named_role checks a named role against (remote: the token's held roles, the role it maps to and its principal's derived roles; stdio: the pinned mcp.role set), each with its description. It never returns row rules, masks, grants, conditions or rule descriptions. Agents are not told why results are narrowed, since that would invite probing, and results carry no filtered flag: a role's data is its whole view.
 
@@ -24972,7 +24972,7 @@ MCP tool describe_role returns only the caller's resolved role (for a meta-role,
 
 ### REQ-2083 · UI {#REQ-2083}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo's tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns. When the step runs, the tour runner runs that statement again as it ran (the run-as role and the time travel the steps before it set) and sets the SQL explorer's as-recorded picker to that value; a refused statement or a missing value fails the step by name. The tour test checks the step names an earlier sql step, a valid row and a returned column, on the SQL explorer. It is a tour feature only: how Provisa stamps recording time does not change, and no recording time can be chosen, so a demo of transaction time cannot forge it. (Amended 2026-10-26, A BOUND VALUE:) Time travel is the relation's argument in the statement ([REQ-1163](#REQ-1163)), so the as_of and as_recorded step kinds that set the explorer's pickers are removed: a tour writes a literal time in its SQL. as_recorded_from stays: it binds the value it takes to the next statement's $1, which names it as a relation's argument ((as_recorded => $1)); the page sends it as that statement's params, and the tour warm-up does the same.
 
@@ -24986,7 +24986,7 @@ A named demo's tour step can take its "as recorded at" time from data instead of
 
 ### REQ-2084 · UI {#REQ-2084}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A named demo may ship a notebook (notebook.ipynb beside its tour.yaml). The setup status carries its code cells, in order, as demo_notebook. The Notebook tab offers it: "Add the demo's notebook" adds its cells to the open notebook, to run as the user's current role. A tour step notebook: true (on /notebook) hands the cells to the Notebook tab and runs them in the visitor's browser, and is shown once they have answered. The step hands them over as navigation state, the same mechanism the Graph page's grouped frame uses. The tour test refuses a notebook step when the demo ships none, a first cell that does not import provisa_client and call sign_in(), and a statement the notebook reads that names anything but the demo's own tables and views.
 
@@ -24998,7 +24998,7 @@ A named demo may ship a notebook (notebook.ipynb beside its tour.yaml). The setu
 
 ### REQ-2085 · UI {#REQ-2085}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The named demo churn answers which customers of a subscription business are about to cancel. Its customers and twelve months of their usage are read live from its Postgres. A materialized view of one row a customer (plan, region, tenure, sign-ins a month, tickets in the year, whether they cancelled) is built through the governed pipeline by its setup. Email addresses are masked for its analyst role. Its tour reads the features as the analyst in SQL and over GraphQL, then runs the demo's notebook in the Notebook tab: the features read into pandas as the analyst, a scikit-learn model trained on them and the customers most at risk listed, all in the browser on Pyodide. The tour says a desktop Jupyter reads large pulls over Arrow Flight with the same code.
 
@@ -25404,7 +25404,7 @@ A CSV or Parquet source can be given its file by download, a third way beside a 
 
 ### REQ-2114 · Catalog Explore {#REQ-2114}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses. She has two general tools in place of one tool per action: one reads the admin GraphQL schema and runs its queries, so she finds what exists as the UI does; the other proposes an admin mutation, shows it in the chat, and runs it as the user once the user confirms in the conversation, so it meets the same capability checks the UI meets. Every admin mutation is hers, createRelationship included, and a mutation added later is hers with no Polly change. propose_source/create_source_now and propose_table/register_table_now become cases of the general pair. A UI action that is a REST route and not an admin mutation (a file upload, a settings change, the org folder's encryption, a code archive upload and the like) is listed and reached as well, route by route. Given 'Create any relationships to the new table', she runs the existing relationship discovery (provisa/discovery) for that table, lists its candidates, and accepts the ones the user confirms through the path the admin UI uses. generate_explore_queries covers every query surface: GraphQL, Cypher, SQL, gRPC, JSON:API, OpenAPI, Natural Language, Python and Notebook. (Amended 2026-10-21, BUILD:) Her tools: admin_schema reads the schema's queries and mutations and any named type; admin_query runs a query through the admin schema with the chat's own request, as the user, and refuses a mutation; admin_mutation shows the mutation and a one-sentence summary in the chat and is sent by the user's own browser session (the UI's GraphQL client) only when the user confirms, the exchange recorded in the conversation; admin_rest_routes lists the UI's admin REST routes with their bodies, and admin_request calls one from the user's session, a change confirmed first and an upload's file chosen by the user in the chat. discover_relationships runs the Relationships page's own discovery for one table as the user and returns what it found. Where the UI refuses a user, so does she: a createSource or registerTable by a user without the capability is refused, as on its page, and is no longer queued as a request for approval in her chat (the external MCP server keeps that queue). generate_explore_queries answers nl, python and notebook from the same pipeline's question and SQL.
 
@@ -25416,7 +25416,7 @@ Polly can perform every action the UI can, as the chatting user, through the adm
 
 ### REQ-2115 · Catalog Explore {#REQ-2115}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API ([REQ-2114](#REQ-2114)). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. The product tour uses the same actions: a tour step may carry steps (fill a field, choose an option, press a button, show a list), run by the same code as Polly's, so a tour builds objects live on screen instead of only showing what setup built, and whatever Polly can show a tour can script. A tour step's press of a button that changes something runs as part of the tour the visitor started, without a further question. A tour fills in only values very unlikely to fail, such as a static, known address (a file Provisa publishes, a store the demo itself runs), and manipulates things handled within Provisa itself (registering a table, adding a relationship, defining a view, setting a rule, running a query). Where a step depends on something that could fail live, the tour may fill in the form to show how it is done, press Cancel, and say the demo set it up already, then show the one built at setup. Which objects a demo builds live and which it keeps built at setup is decided demo by demo, on that rule. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions ([REQ-2114](#REQ-2114)). (Amended 2026-10-21, READ SCREEN:) Polly can read the screen the user is looking at: a read_screen tool, run in the browser like her others, returns the current route, the open query editor's text (SQL, GraphQL, Cypher or Python, from the editor's own state, never scraped) with the query tab open, the visible labelled form fields with their values, and each result grid's columns and row count, never its rows. It reads only the user's own session, so a masked value stays masked as shown (a password as dots), and its answer is cut at the size her admin requests' answers are. Whenever the user refers to 'this', 'the query' or anything on the screen, she reads it first and never says she cannot see it. (Amended 2026-11-01, THE TOUR FILLS THE FORM AND CANCELS:) Maintainer 2026-11-01: "perhaps we don't actually save we fill out the form and then cancel", "Same with a lot of things where we are doing a live save/computation - if possible - we might complete a form then cancel." The core tour's source step opens the picker, chooses Parquet File, fills the form and presses Cancel; nothing is saved. A tour step whose purpose is to show a form does the same. This replaces the step's live build and save. (Amended 2026-11-04, THE DATA NODE IN READ SCREEN:) Maintainer 2026-11-04: read_screen also reports, app-wide and on every route, the data node a coordinator-served UI sends its data calls to ([REQ-1916](#REQ-1916)), so Polly can say which node is chosen as well as change it. Lists that are not result grids (a dialog's scans, Detect's results, a page's list) stay outside read_screen; Polly reads them through her admin API. A file the browser asks the user to pick (a JDBC driver jar) is left to the user: Polly fills the rest of the form and asks for it.
 
@@ -25442,7 +25442,7 @@ Lineage reaches below the registered table to the source itself. Each source nod
 
 ### REQ-2117 · Data Catalog Integration {#REQ-2117}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data product, as the BigQuery Analytics Hub target does ([REQ-1636](#REQ-1636)): Unity Catalog has no data-product entity. One data product becomes one Unity Catalog schema, <catalog>.<product id>, holding a view over each member table, the view reading the member at its real catalog, schema and table name as the org's Databricks runtime reports it (databricks_runtime.py _phys_parts); a schema cannot hold another schema's tables, and nothing is copied. The product's ODPS fields (owner, team, purpose, limitations, usage, version) are written to the schema's comment and Unity Catalog tags, and each member table and column carries its description and governance tags. The product may also be published to other data teams in the same enterprise as a Delta Share of that schema or a listing in a Databricks private exchange; sharing needs the members in Delta format. The export's rules hold as for every target: only member tables publish, a product with no exported members does not publish, and masked columns carry their MASKED governance tag, never the rule body. It is a listing in Unity Catalog's terms, aligned in spirit to a data product since Unity Catalog has none, not an ETL flow. (Amended 2026-10-21, BUILD:) The provider is unity_catalog and publishes only when Databricks is the configured engine; the catalog is the one the engine works in. Each view is named for its member's business name and reads the member's replica (Delta, in the org's replicas schema) or, for a lake table read in place, its external table. The schema's comment holds the product's prose fields (purpose, limitations, usage, service level, support) and its tags the short ones (owner, team, version, status); a view no longer a member is dropped. A target flag publishes the schema's views as the Delta Share provisa_<product id>, granted to recipients in Databricks; a member not in Delta is reported and left out of the share. Each schema's and view's full name is kept in the target's bindings. Publishing as a listing in a Databricks private exchange is a later phase.
 
@@ -25466,7 +25466,7 @@ The data product export publishes Provisa's data products as listings in the int
 
 ### REQ-2119 · Data Catalog Integration {#REQ-2119}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
 Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes a snapshot through the production publish path, with no injected seam or faked transport, and reads the published entities back from the target to check them: the data product with its fields and members, the tables and columns with descriptions and governance tags, glossary terms, lineage and data-quality outcomes where the target takes them. A wiring test publishes through that same path and fails when a configured target receives nothing. Self-hostable targets (OpenMetadata, DataHub, Apache Atlas, an OpenLineage receiver) run in containers the test starts. Cloud and SaaS targets (Snowflake Horizon, BigQuery and Dataplex, Microsoft Purview, AWS DataZone, Databricks Unity Catalog, Collibra, Atlan, Alation) run against the project's own accounts, the same way the warehouse lanes do. A test that cannot reach its target fails; it is never skipped. Unit tests with faked HTTP remain for request shaping but do not count as proof that a target works.
 
@@ -25480,7 +25480,7 @@ Every metadata export target has an end-to-end test against the real service, an
 
 ### REQ-2121 · Source Connectors {#REQ-2121}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A Node or Python code source can take its code from a folder on the developer's machine, and opens in VS Code from its form. On the code form's upload field, Choose folder zips the chosen folder in the browser, leaving out node_modules, .venv, __pycache__ and .git, and uploads it as the source's archive, named after the folder; in a browser that can keep the folder's handle (Chrome, Edge), Save zips and uploads it again in the background, and another browser asks for the folder again. Optionally, on a single-tenant install, a fourth code origin beside package, Git repository and upload: a directory on the server, read in place by the worker so an edit is read by the next query. It may name only a directory under the operator's allowed directories, as a file source's mount path may ([REQ-2113](#REQ-2113)), and is refused by name on a multi-tenant deployment. The form offers Open in VS Code: a server directory opens as a vscode://file/<path> link in the installed VS Code, a Git origin opens at its commit on vscode.dev, and a package or upload has no such link.
 
@@ -25488,13 +25488,13 @@ A Node or Python code source can take its code from a folder on the developer's 
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_code_directory.py`, `provisa-ui/src/pages/sources/__tests__/codeFolder.test.tsx`
 
 ## 1. Access Governance & Security
 
 ### REQ-2122 · Data Catalog Integration {#REQ-2122}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once: provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs (sales with one, finance with another): a domain's tables offer only its catalogs in the pick list, Refresh from catalog, import and lock, and its data products publish to its catalogs, [SUPERSEDED by REQ-2122, 2026-10-21 -- a data product has one owning domain and no cross-domain listing; see the amendment below. Kept here for history; do not implement against it.] a product shared across domains appearing in each listing domain's catalogs. [END SUPERSEDED BLOCK] A metadata export target names a catalog and keeps only its export settings, in place of its own endpoint and credentials. Description import: a table's description has From catalog, which opens a pick list of the connected catalogs' assets for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity and searchable; the steward picks one or none, and the picked asset's description, column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions only fill what the catalog never described, when the steward asks. A pick is stored as the table's catalog binding, the same binding an export records, so export and import share one link per table per catalog, an export updates the asset the steward picked, and a description can be refreshed from it later. Every export target records the catalog's id for what it publishes and, where the catalog's API allows, writes the table's Provisa address into the catalog asset, so after one export each published table is linked both ways. Catalog import: a catalog's Import action reads, for every table linked to that catalog (by an export or a pick), its current description, column descriptions, owners, tags and glossary links, and shows them as a review list beside Provisa's current values; the steward accepts all or table by table. A table not yet linked is listed as not linked, with the two ways to link it (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor of a linked table offers Refresh from catalog, which reads the linked asset's current description, column descriptions, owners, tags and glossary links and offers the changes beside the current values for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog its authority: the locked table's descriptive fields (descriptions, column descriptions, owners, tags, glossary links) are read-only in Provisa's editor with a link to edit them in the catalog, and the export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies a catalog's current metadata without review to the tables locked to it, and for its other linked tables lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row rules, masks) stays Provisa's on every table. (Amended 2026-10-21, DOMAIN SCOPE:) A catalog connection serves at least one domain. A table and its columns publish to the catalogs of their domain, a data product to the catalogs of its owning domain, and the glossary to every catalog; there is no cross-domain listing of a data product. Each other published fact (a source, a relationship, a lineage edge, a tag, a quality check, a term's link to an asset) goes to a catalog only with the assets it is about. The export's own settings for a catalog are the DataZone project that owns its data products and the Unity Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The Catalogs panel's connection test is the provider's own health check, the one the export runs.
 
@@ -25508,7 +25508,7 @@ Catalogs are their own admin panel, and Provisa both publishes to and reads from
 
 ### REQ-2123 · Profile Runs Terrain View {#REQ-2123}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
 The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column. Values beyond 3 times the IQR are excluded from the ridge and counted. Hovering shows the exact range and row count; selecting a column shows a linked 2D histogram and its stats. Columns whose values are restricted for the viewer's role show no ridge. The view has an expand button that opens it in a modal at 95% of the viewport. three.js is loaded lazily, only when the tab opens. (Amended 2026-10-21, TABLES, EXPAND, VERTICAL TABS, READ PANEL; maintainer:) [SUPERSEDED by REQ-2123, 2026-10-21 -- the modal's tables are now the explorer's results grid, which also filters by column and downloads as xlsx. Kept here for history; do not implement against it.] Every table in the profile runs modal (its list of runs, each result relation's table, and the drift table and a measure's history) sorts and groups as the app's other lists do (SortGroupTable): every column sorts, and a column with any value that is not a number groups. [END SUPERSEDED BLOCK] Every graph and table of a run's results has an expand button that draws it again in a modal at 95% of the viewport, as the 3D views do. The result tabs are listed down the side of the modal, one title per line, rather than across it. The table detail panel's read-only view offers View Profile Runs too, beside the profiler the table belongs to, opening the same modal (not for a governance-only viewer, who profiles nothing). (Amended 2026-10-21, XLSX AND COLUMN FILTERS; maintainer:) Every table in the profile runs modal (its list of runs, each result relation's table, the drift table and a measure's history) is the explorer's results grid (ResultsGrid): it sorts and groups by column as the explorer does, filters by column, and downloads as an xlsx workbook named after the table and the result, with the grid's provenance sheet. A click on a run's row still picks the run, and on a drift row still shows that measure's history; the grid draws the picked row as selected. (Amended 2026-10-27, TURNING PAUSES WHEN IDLE:) A 3D stage that turns on its own -- the product graph on a data product's page, the profile terrain, relations and joint views -- stops turning after about 10 seconds with no pointer or keyboard input anywhere on the page, and turns again on the next input. A stopped stage draws nothing, so a page left open costs no CPU. Under reduced motion no stage turns at all.
 
@@ -25516,11 +25516,11 @@ The profile runs modal (ProfileRunsModal, opened from the table editor's profile
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/pages/tables/profile3d/terrain/__tests__/terrainModel.test.ts`, `provisa-ui/src/pages/tables/profile3d/terrain/__tests__/ProfileTerrain.test.tsx`
 
 ### REQ-2124 · Profile Runs 3D Relationship and Distribution Views {#REQ-2124}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
 The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand button that opens the view in a modal at 95% of the viewport with its own camera. Relationships lays the selected run's columns out as nodes by a seeded 3D force simulation, with edges from Spearman and correlation-ratio correlations and from the in-network dependency sets (an arrow points toward the dependent column), filterable by minimum strength and by kind, and shows a parent table's columns as foreign nodes. Joint cloud shows one column and its in-network parents from joint_counts as a 3D grid of decile or category slots, one sphere per occupied cell sized by rows and coloured by rows or by lift over independence, and lists the most over- and under-represented combinations among cells of at least 0.5% of rows. Drift strata shows one column's distribution in the selected run and up to seven earlier successful runs, re-cut into common bins and stacked oldest to newest, with the median traced across the runs, the null share per run, and the runs that drifted for that column marked. Columns whose values are restricted for the viewer's role show no nodes, cells or strata.
 
@@ -25528,7 +25528,7 @@ The profile runs modal has three more 3D tabs that share the Terrain tab's contr
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_profiler_governance.py`
 
 ## 1. Access Governance & Security
 
@@ -25560,7 +25560,7 @@ The meta domain has a view-only data_product_edges view, related to data_product
 
 ### REQ-2127 · Data Products {#REQ-2127}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
 The Data Products page and the core of its detail panel are drawn from the meta domain through the governed pipeline as the signed-in user: the product list, and each panel section's summary (the product's fields, its domain, member tables, commands, tags, glossary terms, data-quality and profile evidence, related tables and lineage) come from data_products_meta and its relationships ([REQ-2125](#REQ-2125)) and data_product_edges ([REQ-2126](#REQ-2126)). [SUPERSEDED by [REQ-2156](#REQ-2156), 2026-11-06 -- lineage comes from the product lineage endpoint. Kept here for history; do not implement against it.] Related Tables and Lineage are rows of data_product_edges rather than derived in the browser from relationships and the federation lineage graph. [END SUPERSEDED BLOCK] A section the user's role cannot read through the meta domain is absent from the panel. Drilling down from a section opens the detail where it lives: a member table's rows, a profile run's results, a checker's results or a command's output are read in their own domains, through the governed pipeline as the same user, not copied into the meta domain. The product's GraphQL, SQL and JSON:API queries shown in the panel are the meta-domain queries the panel itself runs, so a user can copy them and get the same result. (Amended 2026-11-06, LINEAGE FROM THE LINEAGE ENDPOINT:) Related Tables are rows of data_product_edges; a product's lineage comes from the product lineage endpoint under the shared read-rights filter ([REQ-2156](#REQ-2156)), since data_product_edges holds relationship rows only.
 
@@ -25568,11 +25568,11 @@ The Data Products page and the core of its detail panel are drawn from the meta 
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_data_products_meta.py`, `provisa-ui/src/pages/data-products/__tests__/productCore.test.ts`
 
 ### REQ-2128 · Data Products {#REQ-2128}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
 The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped to the selected product. It shows a simplified graph with a fixed set of layers (the product, its member tables, its commands, and the glossary terms bound to its columns) and no layer controls or filters. three.js loads only when the panel scrolls into view. The panel's expand button opens the full graph at 95% of the viewport, starting on the Knowledge graph preset and focused on that product. The Data Products page has its own entry point that opens the full graph on the Product map preset, because that preset covers every product rather than one. The full graph is one 3D network graph, built on the profile3d scene components (Stage3D, Expandable3D, baseScene and the relations force layout). Its contents are layers that the user turns on and off. Each layer is a node type or an edge kind. The layers are: product and domain; member tables, with each table's columns collapsed into it until the user expands it; commands; data quality (checker tables linked to the table they check through dq_contract) and profile results; tags; ontology (glossary terms, term-to-term edges and term-to-column bindings); relationships between members, on by default; relationships from a member to a table outside the product, off by default; and lineage. Filters by domain, tag, sensitivity, and a focus term or product apply to every layer. Presets are named sets of layers, and each preset also sets the layout. Knowledge graph has every layer except outside relationships, with the force layout. Ontology has terms, term edges, the bound columns and the products that own those columns, with the force layout. Product map has products grouped by domain, with edges from data_product_edges and the force layout. Lineage has lineage edges only, drawn left to right in [REQ-1667](#REQ-1667)'s upstream lanes. Choosing a preset sets the layers and layout; after that the user can add or remove layers. All graph data comes from meta-domain queries run as the signed-in user ([REQ-2125](#REQ-2125), [REQ-2126](#REQ-2126), [REQ-2129](#REQ-2129)), so a layer the user's role cannot read is not offered. Both the panel and the full graph have the shared 3D controls: drag to rotate and a reset-view control. (Amended 2026-10-25, GRAPH, ALL / ONTOLOGY / PRODUCTS:) The panel is titled Graph and its expanded view '<product>: graph'. Its presets are All (every layer except outside relationships), Ontology and Products (the former Product map), all 3D. The Lineage preset is removed: the panel's lineage diagram ([REQ-1640](#REQ-1640)) is the one lineage view, and lineage edges stay a layer of All. 'Knowledge graph' is reserved for the instance level, data entities typed by ontology terms; this panel shows metadata. The Data Products page's entry point keeps its 'Product map' label. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data product requirements, not a feature: the earlier rules left expectations and promises undistinguished, contracts generated rather than declared, one view for owner and consumer, and two lineage views. It is resolved before the product is declared green.
 
@@ -25580,7 +25580,7 @@ The Data Product detail panel has a Knowledge Graph panel, one of its masonry pa
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/components/graph3d/__tests__/graphModel.test.ts`
 
 ## 1. Access Governance & Security
 
@@ -25628,7 +25628,7 @@ A code-source function (Node, [REQ-1984](#REQ-1984), or Python, [REQ-1993](#REQ-
 
 ### REQ-2132 · Data Products {#REQ-2132}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
 A data-quality checker table's description states its quality claim: why the check exists, in business terms (for example, "Orders are complete and unique so daily revenue reconciles with finance"). Its dq_contract ([REQ-1443](#REQ-1443)) says what is checked; the description says why. Registering a table on a checker source asks for this motivation in the description field, labelled as the reason the check exists. In a data product's detail panel, the Data Quality section shows each checker table's description as the headline above its results. The panel shows each checker table that touches the product in the state [REQ-1443](#REQ-1443)'s product assignment gives it. The Output Ports section has a Promises callout (checker tables assigned to the product that scan an output port). The Inputs section ([REQ-2126](#REQ-2126)) has an Expectations callout (checker tables assigned to the product that scan an input). Each shows the number of claims and a summary status: all passing, some failing, or not yet run. Clicking it opens that list, one row per checker table: its description, the datasets it covers, the outcome of its latest run and when it ran. Each row opens that checker table's results. In both sections, a dataset with checks has a DQ icon coloured by the latest result of its checks. Partner DQ (checker tables that scan an output port or input but are assigned to another product or to none) is listed beside the product's own claims under its own heading, so the owner sees what others check without it counting as theirs. Orphans (checker tables assigned to the product that scan neither an input nor an output port) are listed with a warning naming the table each scans. All of it comes from meta-domain queries run as the signed-in user (registered_tables_meta with description, dq_contract and product_id, data_product_edges, [REQ-2125](#REQ-2125), [REQ-2127](#REQ-2127)), so a checker table the user cannot read is absent from the icons, the counts and the lists.
 
@@ -25636,7 +25636,7 @@ A data-quality checker table's description states its quality claim: why the che
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/pages/data-products/__tests__/DataProductDetailPanel.claims.test.tsx`
 
 ## 9. Live Data & Events
 
@@ -25656,7 +25656,7 @@ The Python preflight check ([REQ-1165](#REQ-1165)) can call Provisa's services, 
 
 ### REQ-2134 · Extensible Functions {#REQ-2134}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A deployment setting, commands.allow_host_code (off by default), governs host code: the python command kind (an in-process module:attr callable) and the script command kind (a subprocess on the server's host). Both run with the server's full access to its memory, credentials, files and network, so code that is malicious, buggy or greedy can read anything the server can, starve it or take it down. A model entry holds only a reference to the code (module:attr or a path), so the code does not travel with the model when it is promoted. While the setting is off, registering or updating a command of either kind is refused, from the admin API and from a config file alike, and calling an existing one is refused; one check makes both refusals. The setting is the operator's, never an organization's, and has its field in Deployment settings. Code resolvers are the governed alternative: sandboxed, pinned, and promoted with the model.
 
@@ -25664,7 +25664,7 @@ A deployment setting, commands.allow_host_code (off by default), governs host co
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_host_code.py`
 
 ### REQ-2135 · SPARQL Query Frontend {#REQ-2135}
 
@@ -25682,7 +25682,7 @@ SPARQL is a graph query language served over the semantic model, a peer of Cyphe
 
 ### REQ-2136 · Glossary Admin {#REQ-2136}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 The Ontology page's filter controls are shorthand for a SPARQL query ([REQ-2135](#REQ-2135)) that scopes the graph. [SUPERSEDED by REQ-2136, 2026-10-22 -- the SPARQL button is the "Open as query" control of every graph view (OPEN AS QUERY below). Kept here for history; do not implement against it.] The page has a SPARQL button: it builds the SPARQL query equivalent to the current filter (search focus, edge types, domains, status, Orphans, Columns) and opens it in the SPARQL query surface, ready to edit and run. [END SUPERSEDED BLOCK] An export of the graph is that query as CONSTRUCT, serialized as Turtle, JSON-LD or N-Triples, and streamed. Terms only exports SKOS and OWL, with DCAT and DPROD for the links to columns, tables and data products. With instances extends the slice to the rows behind the grounded columns, read as the viewer. The server estimates the export's size first; past a limit it narrows the export or runs it as a background job. (Amended 2026-10-22, PHASING:) [SUPERSEDED by REQ-2136, 2026-10-22 -- the SPARQL button is the "Open as query" control of every graph view (OPEN AS QUERY below). Kept here for history; do not implement against it.] The SPARQL button is phase 5 of [REQ-2135](#REQ-2135)'s phasing, with the SPARQL tab: it comes after the SPARQL front end and endpoint, and can wait. [END SUPERSEDED BLOCK] (Amended 2026-10-22, OPEN AS QUERY:) [SUPERSEDED by REQ-2136, 2026-10-22 -- relations and terrain are excluded for now (OPEN AS QUERY SCOPE below). Kept here for history; do not implement against it.] Every graph view (the Ontology page, the product graph, relations, terrain) has an "Open as query" (→) control. [END SUPERSEDED BLOCK] It opens the view's own query, with the view's filters inside the query rather than applied in the browser, ready to edit in the surface chosen: GraphQL (the exact query the view runs), SQL (its compiled semantic SQL), Cypher (where the query maps to Cypher), or SPARQL (once [REQ-2135](#REQ-2135)'s endpoint exists). The scenario's "clicks SPARQL" reads as opening the view as SPARQL. (Amended 2026-10-22, OPEN AS QUERY SCOPE:) The Ontology page and the product graph have the "Open as query" control; relations and terrain do not, for now. Relations and terrain read through the REST profile-runs route, where governance.safe_run applies the profiled table's column rules. Their read moves to GraphQL, and they gain the control, only once that governance is expressed as the result tables' own column rules, never by loosening it. While a search focus (a neighbourhood traversal) is set, the GraphQL target is disabled; Cypher and SQL carry the focus. (Amended 2026-10-24, AN EXPORT IS EXACT OR REFUSED) A GraphQL read exports to Cypher only where an exact Cypher form exists; otherwise the export is refused, naming the construct with no Cypher form, never a near answer. A to-many field's own order, offset and limit are each parent's: the export reads them per parent in a CALL that orders and cuts that parent's rows (a parent with none keeps one row of nulls). Refused, as the first list of boundaries: a to-many field's condition beside its relationship; its distinct_on; an ordering by anything but a column; nulls placed otherwise than Cypher places them (last ascending, first descending); an offset or limit that is no literal. (Amended 2026-10-23, OPEN AS SPARQL:) Open as query's SPARQL for a GraphQL read is the read's Cypher export written as a SPARQL SELECT over the role's vocabulary, exact or refused by name, as the Cypher export is. A node is typed by its table class and a relationship is its edge type's predicate. Each property is bound in an OPTIONAL inside the group that matches its node. An OPTIONAL MATCH is an OPTIONAL group whose FILTER is its WHERE; the statement's WHERE is the query's FILTER; DISTINCT, COUNT, MIN and MAX with their grouping, ORDER BY, SKIP and LIMIT are the query's own. Refused, each by name: a nested object or list, CASE, a function other than COUNT, MIN and MAX (SPARQL's SUM and AVG of no values are 0, not null), arithmetic, a regular expression, a path, an undirected or variable-length relationship, WITH, UNWIND, UNION, IS NULL or OR in an OPTIONAL MATCH's WHERE, and a MATCH after an OPTIONAL MATCH. Each root field's compile result carries compiled_sparql and sparql_error beside its Cypher.
 
@@ -25710,7 +25710,7 @@ Later: SPARQL Update is lowered to the governed writes that exist: ontology cura
 
 ### REQ-2138 · SPARQL {#REQ-2138}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 A sparql source ([REQ-1683](#REQ-1683)) may name a reasoner, HermiT first, and an OWL axioms file. At each refresh it pulls the slice of the graph its axioms need from its endpoint by CONSTRUCT, classifies it, and serves the inferred class memberships and properties as tables, such as sanctions_exposed(party) and controls(controller, controlled). How often it reasons is the source's freshness declaration (cache_ttl, replica), as for any source. It works against any SPARQL 1.1 endpoint, Provisa's own among them ([REQ-2135](#REQ-2135)), which it reads as a service identity, so it reasons over only what that identity is granted; what it serves is governed again for every reader, as any table is. A source that would read predicates produced by its own inferred tables is refused, as a view that reads itself is. The reasoner runs in the source's own process or container, never in the server's. HermiT and owlready2 are LGPL: they are used as separate programs and imported libraries, never linked into Provisa, under the dependency rules, and HermiT needs a Java runtime in the source's image.
 
@@ -25738,7 +25738,7 @@ The named demo "beneficial ownership": KYC parties, companies, owners and their 
 
 ### REQ-2141 · Business Glossary & Ontology {#REQ-2141}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 A term stays the curated word, a SKOS concept, and its OWL role is derived from what it grounds. A term grounded in a table or view is a Class, whose instances are that table's rows. A term grounded in a column is a Property: a datatype property for a column of values, an object property for a reference column. A term grounded in nothing (an abstract term) is a Concept and may be a superclass. TABLE-LEVEL GROUNDING is new: [SUPERSEDED by REQ-2141, 2026-10-22 -- the requirement does not fix how a table grounding is stored (STORAGE-NEUTRAL below). Kept here for history; do not implement against it.] a term reference with no column grounds the term in the table itself, so glossary_term_refs no longer requires column_name. [END SUPERSEDED BLOCK] A class term may ground many tables or views, and a table is grounded by at most one class term. A table without a primary key cannot be grounded as a class, and the grounding is refused, naming the table. [SUPERSEDED by REQ-2141, 2026-10-23 -- a term's roles are exclusive (EXCLUSIVE ROLES below): a term owning column refs is not grounded in a table, nor the reverse. Kept here for history; do not implement against it.] Grounding is additive [END SUPERSEDED BLOCK] and never a prerequisite. EVERY TABLE IS A CLASS BY DEFAULT, as in the W3C Direct Mapping: each row is an instance with the IRI {public URL}/id/{domain}/{table}/{primary key}, typed by its table, and a class term additionally types the instances of every table it grounds. Column-grounded property terms work exactly as today, across many tables, with no class term required. IDENTITY ACROSS VARIANTS: instances from different tables are distinct by default. A relationship between two class-grounded tables can be marked "same entity" on its keys; SPARQL and the export then emit owl:sameAs between the instances it joins, the graph may draw them as one node with several sources, and counts at the class's level resolve once per real entity. A class grounded in several tables with no declared identity between them is a curation gap, flagged on the Ontology page ([REQ-2130](#REQ-2130)). THE MAPPING: column lineage (logical columns through views) and native references are the mapping from data to the ontology, provenance in the manner of R2RML, and are not class assertions. Docs, the export and SPARQL use the words class, property, instance and mapping; [SUPERSEDED by REQ-2141, 2026-10-23 -- the abstract flag is retired; the role is the only classification (ROLE ONLY below). Kept here for history; do not implement against it.] the curation UI keeps term, concrete, abstract and grounds, with the role badge. [END SUPERSEDED BLOCK] (Amended 2026-10-22, STORAGE-NEUTRAL:) A term may be grounded in one or more tables or views, and a table has at most one class term. How a table grounding is stored is the build's to decide. (Amended 2026-10-23, SAME ENTITY:) A relationship marked same entity joins two tables one class term grounds, one-to-one on a key of each, the primary key or a declared unique constraint, and never through a junction or a function; any other is refused, naming the rule it breaks. While such a relationship stands on a table, the table's class term cannot be withdrawn or replaced; the change is refused, naming the relationship. A class grounded in several tables is a curation gap until its same-entity relationships join all of them, every table reached from any one. [SUPERSEDED by REQ-2141, 2026-10-23 -- a Class holds the key refs of its tables and of the foreign keys referring to them (TABLE PROPOSALS, KEYS ON THE CLASS below); only non-key refs are exclusive. Kept here for history; do not implement against it.] (Amended 2026-10-23, EXCLUSIVE ROLES:) A term is a Class (grounded in tables) or a Property (owning column refs), never both. [END SUPERSEDED BLOCK] Grounding a table on a term that owns column refs is refused by the API, the Polly tool and config load (glossary.term_is_property, naming the term and its columns); moving a column ref into, or a table save claiming a column for, a term grounded in tables is refused (glossary.term_is_class, naming the term and its tables). Each refusal says why, in every UI locale. This supersedes any reading in which a term grounded in both is a Class. Data from before the rule is reported, not changed: GET /admin/glossary/role-conflicts lists each term holding both, with its tables and columns. (Amended 2026-10-23, ROLE ONLY:) The role -- Class (grounded in tables), Property (owning column refs) or Concept (grounding neither) -- is the only classification of a term. The separate abstract flag is retired: whether a term is abstract is derived, true exactly when it is a Concept, wherever it is read (the meta views, the API, the export, the live and grounded rules), and never stored or written. Declared domains apply to a Concept only. The API, the Polly and MCP tools and config load refuse an abstract setting (glossary.abstract_is_derived), saying it is derived from grounding. (Amended 2026-10-23, TABLE PROPOSALS, KEYS ON THE CLASS:) The model follows the W3C Direct Mapping, dbt entities and Palantir link types: a table is a class, its primary key is the class's identity, and a foreign key is a reference to the parent class. On table sync each keyed table proposes a draft Class term named for its concept (its business name's concept) and is grounded in it; tables of one concept share one term. A curated class grounding (config class_term, the UI, Polly) is never re-pointed by sync, and grounding a table on a curated term replaces its proposal. A primary key has no term of its own: every column of it, a composite key's parts and a natural key included, puts its ref on its table's Class. Every column of a declared foreign key (the many side of a many-to-one or one-to-many relationship, or a junction's key, composite ones included) puts its ref on the target table's Class whatever it is called, role names included (manager_id to employees lands on employee); the role lives on the relationship's name. A primary key that is also a foreign key puts its ref on the parent's Class, and its table still proposes its own Class. A column with no declared relationship is a Property even when its name matches a class; when the phrase it derives is a Class's name, it takes its table's concept as a qualifier. Key refs are placed by derivation alone, on sync and when a relationship or a table's Class changes: grounding a table on a term moves its key refs, and the foreign keys referring to it, onto the term at once, and ungrounding sends them back to the table's proposed class. A ref move into a Class is refused (glossary.term_is_class), and so is a move of a key column, whatever the target (glossary.key_column_derived, naming the column, its table and its class). A Class holds only key refs: grounding a table on a term holding non-key column refs is refused (glossary.term_is_property). A keyed table whose concept is already a Property with non-key refs gets no proposal. GET /admin/glossary/role-conflicts reports both cases: each Class holding non-key refs, and each such table. A proposal is a grounding sync made (stored as such) on a term no one has curated (no definition, edge, expert or retirement); a grounding a configuration declared or a person made is curated, whatever its name. A proposal is derived: the config export does not state it, and it goes with its table on deletion, while a curated class is kept as a Concept. (Amended 2026-10-23, DRAFT, NOT PROPOSED:) The words follow tables' Draft: what this requirement calls a table's proposal or proposed class is a draft Class term, derived on sync, and a term is draft, not proposed, until it is admitted ([REQ-2144](#REQ-2144)). A stored grounding marks whether sync derived it (derived), not whether it was proposed. (Amended 2026-10-23, ROLE IN THE CATALOGS:) Metadata export publishes each term's role (class, property or concept) as a property of the term on every glossary target: DataHub customProperties.provisaRole, the OpenMetadata custom property provisaRole on the glossaryTerm type, provisaRole in the Atlas, Purview and Atlan term's additionalAttributes, and the Collibra attribute type Provisa Role. Provisa owns only that key; a steward's other entries stand. In DataHub the org's Provisa node has a child node per role (Classes, Properties, Concepts) holding that role's terms. OpenMetadata's glossary has no node but a term, so each role is a group term of the Provisa glossary holding the role's top-level terms; a term with a KIND_OF parent stays beneath that parent.
 
@@ -25754,7 +25754,7 @@ A term stays the curated word, a SKOS concept, and its OWL role is derived from 
 
 ### REQ-2140 · UI {#REQ-2140}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The named demo "groupexposure" joins company data to public linked data by an identifier both share. A Prague bank's own database, read live, holds its corporate loans and records the company that owns each borrower by its Legal Entity Identifier (LEI). The bank, its borrowers and its loans are fictional; the owners and their groups are real, so no real company is shown breaching a limit. A sparql source ([REQ-1683](#REQ-1683)) on Wikidata's public query service finds each owner by its LEI (P1278) and the group at the top of its chain of parent organizations (P749, one property path). The question is one neither side answers alone: which corporate groups is the bank over its large-exposure limit to (25% of Tier 1, EU CRR Article 395) once each borrower is counted with the group that owns it? No borrower alone is near the limit; two groups are over it, and a joint venture with two owning groups counts in both. The tour and the card say the bank and its borrowers are fictional. The Wikidata tables are landed when the bundle is built (cache_ttl -1, replicate 0, as govdata's are), so the sandbox never calls the public endpoint, and every call names Provisa in its User-Agent, as Wikidata's policy asks. Its tour follows the settled demo shape: the scenario, how the pieces fit, then the solution in SQL, GraphQL and REST; its integration test captures the card's data.
 
@@ -25762,7 +25762,7 @@ The named demo "groupexposure" joins company data to public linked data by an id
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_groupexposure_demo.py`, `tests/unit/test_groupexposure_glossary.py`
 
 ## 1. Access Governance & Security
 
@@ -25856,25 +25856,25 @@ The profiler classifies columns from their profiled values, as Purview's classif
 
 ### REQ-2148 · Data Catalog Integration {#REQ-2148}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A feature that works but is not yet proven for production, such as a metadata export target not yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user picks or sees it, and its documentation states why it is beta. The label comes from one flag on the feature (for an export target, a beta attribute on its provider, returned by the admin API and written into a generated list for pages that cannot call that API), so clearing it is a one-line change followed by regenerating the list. The Atlan export is the first beta feature.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/CatalogsTab.test.tsx`
 
 ## 11. Platform, Infrastructure & Delivery
 
 ### REQ-2149 · CI/CD {#REQ-2149}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one server process serves a mixed request loop over every surface -- GraphQL, SQL, Cypher, SPARQL, pgwire, Arrow Flight, REST and JSON:API reads, a write, a subscription opened and closed, a sign-in and a sign-out -- for N iterations after a warm-up, then N more, and a churn of K demo sandbox orgs, each created, used and reaped. Over the second N, the process's resident memory, open file descriptors, threads, sockets and asyncio tasks grow by no more than a slack stated with the test, near zero; after the churn, every map the process keeps by org, by its schemas or by its users is the size it was before it. A failure names what grew, and for memory the allocation sites that grew most, from tracemalloc snapshot diffs taken over the second N.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_leak_probe.py`, `tests/integration/test_leak_loop.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -25892,7 +25892,7 @@ A glossary term's read view shows the term's neighbourhood as a small graph laid
 
 ### REQ-2151 · Demo Provisioning {#REQ-2151}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 A published named demo may declare, in its demo.yaml, the attributes its sandbox visitor carries (visitor: attributes: {name: value}). Opening a visitor's sandbox records each one as the org's attribute for that visitor, through the same user-attribute record an administrator writes, so a derived role the demo's tour acts as (retail's region__eu, [REQ-2057](#REQ-2057)) is held from an attribute as it is for any member. A visitor's token is a signed-in credential, and a signed-in principal holds a derived role only from its attributes; without the declaration a tour step naming one is refused as a role the visitor does not hold. Only a visitor's sandbox is given them, and there is no other path by which a visitor gets an attribute. A value that is not text, or a name that may not be recorded, refuses the demo by name.
 
@@ -25900,29 +25900,29 @@ A published named demo may declare, in its demo.yaml, the attributes its sandbox
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_sandbox_visitor_attributes.py`
 
 ## 1. Access Governance & Security
 
 ### REQ-2152 · Authorization {#REQ-2152}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-A capability assigned to a role never widens that role's read or write grants. A capability opens a feature only; whatever the feature shows or changes stays within the role's grants. Reads include field, table, column and check names, counts, error text and exports (lineage, source detail, column dependents, profiling and data quality results, ontology bindings, the model download, metadata export, audit views). Writes include model, glossary and settings edits, which are refused on a table or column the role cannot write. Every surface applies the same shared read-rights filter used by lineage. Two exceptions. The source registrant sees the raw source schema during registration only; after registration the registrant's grants apply. Provisa's own service identity (replica builds, fakes, checkers) is not capped, and never shows anything to a person. Each metadata export target names a role, and every publish to it (manual, the scheduled drain and the reconcile) carries exactly what that role can read; the role is a setting of the target with its own UI. A model or glossary edit is permitted on a column the acting role can read (the column_served rule); metadata edits are not data writes. Observability surfaces (materialized views, cache, hot tables, replica builds) list only tables the caller can read at least one column of. The registration-time raw schema is shown in the registration flow only; the table edit page of a registered table is capped like every other surface. There is no special capability for security administration: column_grant, masking_config and access_config are capped like any other, so a role grants, masks or configures access only on columns it can read itself, as a grant option works. Read rights flow only by delegation; the registrant sets the first grants at registration, and holders then delegate what they hold. This applies wherever grants and masks are written (the admin API, MCP tools and settings). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model's requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than a role's grants. It is resolved before the product is declared green.
+A capability assigned to a role never widens that role's read or write grants. A capability opens a feature only; whatever the feature shows or changes stays within the role's grants. Reads include field, table, column and check names, counts, error text and exports (lineage, source detail, column dependents, profiling and data quality results, ontology bindings, the model download, metadata export, audit views). Writes include model, glossary and settings edits, which are refused on a table or column the role cannot write. Every surface applies the same shared read-rights filter used by lineage. Two exceptions. The source registrant sees the raw source schema during registration only; after registration the registrant's grants apply. Provisa's own service identity (replica builds, fakes, checkers) is not capped, and never shows anything to a person. Each metadata export target names a role, and every publish to it (manual, the scheduled drain and the reconcile) carries exactly what that role can read; the role is a setting of the target with its own UI. A model or glossary edit is permitted on a column the acting role can read (the column_served rule); metadata edits are not data writes. Observability surfaces (materialized views, cache, hot tables, replica builds) list only tables the caller can read at least one column of. The registration-time raw schema is shown in the registration flow only; the table edit page of a registered table is capped like every other surface. There is no special capability for security administration: column_grant, masking_config and access_config are capped like any other, so a role grants, masks or configures access only on columns it can read itself, as a grant option works. Read rights flow only by delegation; the registrant sets the first grants at registration, and holders then delegate what they hold. This applies wherever grants and masks are written (the admin API, MCP tools and settings). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model's requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than a role's grants. It is resolved before the product is declared green. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries [REQ-2159](#REQ-2159): their text stands as part of this one, and each is marked superseded by it.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_metadata_export_scope.py`
 
 ### REQ-2153 · Governance Column Visibility {#REQ-2153}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A column's scope says how far beyond its table's domain it reaches, and nothing else: domain, listed or public. domain, the default: outside the domain the column does not exist; inside it, roles that reach the domain read and write it per grants. listed: every role of the organisation sees the table's name and the column's name in the catalog and nothing more (no description, type, sample, value or count); reading or writing it still needs a role that reaches the domain and holds a grant. listed is how a domain makes a table discoverable, so that someone in another domain (one allowed to bypass the relationship guard, for example) can find its keys and ask its owners for a grant. public: every role of the organisation sees the table's and column's names and descriptions, and the column is served to roles of every domain per grants; masks, row rules and limits apply as inside the domain ([REQ-1959](#REQ-1959)). Who reads or writes a column is decided only by its grants; scope decides only where. A table appears outside its domain only through its listed or public columns. The restricted scope and the '*' grant entry are removed: with an empty grant list meaning no role ([REQ-2154](#REQ-2154)) restricted is the same as domain, and a grant to the standard Viewer role ([REQ-2155](#REQ-2155)) is how a column is granted to every role. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model's requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than a role's grants. It is resolved before the product is declared green. (Amended 2026-10-28, LISTED IS NOT A PRODUCT'S CONTRACT:) listed stays a column scope of its own, for discovery by analysts outside any product. A data product's contract ([REQ-2158](#REQ-2158)) advertises the product's members independently of their columns' scope, and changes no column's scope. (Amended 2026-11-04, OWN-DOMAIN SCOPE:) A column's scope gains a value, own-domain: the column is served only to a role whose own domain access names the table's domain (a role listing every domain names it). A role that reaches the table's domain only through an ancestor domain ([REQ-1363](#REQ-1363)) is not served the column, even when visible_to names it. domain keeps its meaning: served to every role that reaches the table's domain, through an ancestor included. Example: an executive_settlements table in executive_litigation, a child of legal, whose columns are own-domain, is read by exec_litigation_counsel (granted executive_litigation) and never by legal_viewer (granted legal).
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_own_domain_scope.py`
 
 ### REQ-2154 · Security {#REQ-2154}
 
@@ -25946,25 +25946,25 @@ Provisa ships standard roles: named collections of capabilities, maintained by P
 
 ### REQ-2156 · Federation-Wide Provenance Graph {#REQ-2156}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Every lineage surface answers only what the caller can read, through one shared server-side filter: the admin Lineage page (the federation graph and statement lineage), the data product panel's Lineage and Inputs, the product Graph panel, and anything else that names a field from lineage. A registered column is shown only if the acting role is served it. A native node ([REQ-2116](#REQ-2116)) is shown only if the registered column it feeds is shown. A physical column nobody registered is never shown. A view's internal step (a CTE or a command call) is shown only if every field it feeds is shown. Hidden steps collapse: A to B to C with B hidden is drawn A to C, with no transform; an edge into a shown node that also had a hidden parent carries no transform text, since the expression would name the hidden column. A statement's own outputs are the caller's. Nothing marks that anything was hidden. The admin Lineage page keeps its view_governance gate and its roles lens, but the lens only narrows within what the caller can read. A data product's lineage comes from a product-scoped endpoint: the product's members, their filtered lineage and the product's nearest physical inputs computed on the filtered graph ([REQ-2126](#REQ-2126)). It needs no governance capability: any reader of the product sees its lineage trimmed to their own rights. data_product_edges holds relationship rows only, so no unfiltered second path to lineage exists. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model's requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than a role's grants. It is resolved before the product is declared green.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_lineage_read_rights.py`
 
 ## 10. UI & Admin Surfaces
 
 ### REQ-2157 · Data Products {#REQ-2157}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 A data product's data quality has three parts. Expectations are checks the product owns on its inputs; promises are checks it owns on its outputs, its member tables; related are checks on those same tables that the product does not own, such as another product's promises on one of its inputs. Whether a check is an expectation or a promise follows from what it checks; whether it is the product's follows from ownership. A checker table may name one data product as its owner, because several products' checks can run over the same table; a checker table naming none is related for every product whose tables it checks. The product panel's data quality section is three expandable rows: Expectations, Promises and Related. A check whose checked columns the reader cannot read is absent from every row, with its name and its results ([REQ-2152](#REQ-2152)). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the data product requirements, not a feature: the earlier rules left expectations and promises undistinguished, contracts generated rather than declared, one view for owner and consumer, and two lineage views. It is resolved before the product is declared green.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_product_dq.py`
 
 ## 1. Access Governance & Security
 
@@ -25980,7 +25980,7 @@ A data product (ODPS) declares a data contract (ODCS) for each output port, stor
 
 ### REQ-2159 · Security {#REQ-2159}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
+**Status:** ↪ superseded by [REQ-2152](#REQ-2152) · **Priority:** MUST · **Type:** constraint
 
 The access model has no carve-outs: one composition rule (inheritance as a union, [REQ-2155](#REQ-2155)), one access rule (a capability opens a feature and grants scope it, [REQ-2152](#REQ-2152)) and visible defaults ([REQ-2154](#REQ-2154)). Removed: the admin capability override of domain access ([REQ-1133](#REQ-1133)); lockdown domains, whose only purpose was an empty grant list meaning no role, now true everywhere ([REQ-2154](#REQ-2154)); and the read_restricted capability, which nothing uses. Convenience comes from defaults and composition (standard roles, Viewer's default grant, public and listed scope, derived roles), never from a bypass. The two things outside the rules are not people: registration, where data enters governance, and Provisa's service identity, which runs the rules and shows nothing to anyone ([REQ-2152](#REQ-2152)). (Amended 2026-10-25, THE OBJECTIVE:) The security model is described, documented and shown as one composition: scope (where a column reaches: domain, listed, public, [REQ-2153](#REQ-2153)) + capabilities (which features a role may use, [REQ-2155](#REQ-2155)) + read/write grants (which tables, columns and rows those features touch). Its objective is clarity: a person's effective rights follow unambiguously from that composition, for users, owners and auditors alike. It is held against user burden: common cases are covered by defaults and composition (standard roles, inheritance, the registrant's and Viewer's default grants, public scope), so that governing a model does not demand a stream of manual grant entries. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model's requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than a role's grants. It is resolved before the product is declared green. (Amended 2026-10-25, ADDITIVE ONLY, NO DENY:) Capabilities and grants are additive only. There is no deny: nothing subtracts from what another role or an ancestor grants, so no precedence rule exists to learn. Revoking takes back a grant itself and nothing else. What a deny would be used for is expressed additively: a role that should not have some inherited capability is composed from narrower parents; a column for everyone but some people is granted to the roles that should read it rather than to Viewer; seeing a column without its values is a mask, whose unmasking is a grant; and only some rows is a row rule, which adding a parent never lifts ([REQ-2155](#REQ-2155)).
 
@@ -26000,23 +26000,23 @@ The data product panel shows the product's owner a different subset from other r
 
 ### REQ-2161 · Security {#REQ-2161}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
 The Security page's role detail panel shows the role's effective rights, as the composition of scope, capabilities and grants ([REQ-2159](#REQ-2159)): every capability the role holds with the role it comes from (its own or the ancestor that carries it), its domain reach, and per table and column the access it has (read, write, masked, row rule) with the grant that gives it and the column's scope. It is shown for any role, including a meta-role, whose view is the union of its members'. A derived role ([REQ-2057](#REQ-2057)) carries no capabilities and is never granted by hand: its panel shows only the grants that name it, so it reads as what an attribute value unlocks. The view is itself capped by the viewer's read rights ([REQ-2152](#REQ-2152)): it lists only tables and columns the viewer can read, and nothing marks that others exist. (Amended 2026-10-25, TWO DIMENSIONS:) The effective rights are shown in two tabs, one per dimension. Capabilities: a role lineage drawn left to right with the lineage diagram component, from the standard roles to the selected role, each node listing the capabilities it adds and the last the accumulated set; a capability reached through two parents is shown where it first enters; a meta-role's members are its branches. Data access: every table the role reaches once scope is applied (its domains, and listed or public columns of other domains), each expanding to its columns with scope, read or write, mask, row rule and the granting role. A derived role has the data access tab only. (Amended 2026-10-25, DOMAIN SELECTOR:) [SUPERSEDED by REQ-2161, 2026-10-25 -- no selector: a role's reach is the selection; a standard role shows capabilities only. Kept here for history; do not implement against it.] The data access tab has a domain selector. For a role with domain reach it defaults to that reach and can narrow to one domain. For a standard role, which reaches none, it previews the role as if it reached the chosen domain, which is what a child role reaching that domain gets. The selected domain decides which other domains' columns appear as listed or public. [END SUPERSEDED BLOCK] (Amended 2026-10-25, NO DOMAIN SELECTOR:) The data access tab shows the role's own reach, with the listed and public columns of other domains; domain-specific roles are how reach varies, so there is no selector. [SUPERSEDED by REQ-2161, 2026-10-25 -- standard roles reach ALL ([REQ-2155](#REQ-2155)), so every role shows both tabs. Kept here for history; do not implement against it.] A standard role, which reaches no domain, shows the Capabilities tab only. [END SUPERSEDED BLOCK] The table list has the ordinary domain filter every list page has. (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access model's requirements, not a feature: the earlier rules let a capability or a default reveal or reach more than a role's grants. It is resolved before the product is declared green. (Amended 2026-10-25, EVERY ROLE HAS BOTH TABS:) Standard roles reach ALL ([REQ-2155](#REQ-2155)), so every role, standard or not, shows both tabs; a derived role shows the Data access tab only.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/pages/security/__tests__/RoleDataAccess.test.tsx`
 
 ### REQ-2162 · Security {#REQ-2162}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
 A table's detail panel answers who can read or write each of its columns: for a chosen column, every role that reads it, writes it, sees it masked or has a row rule on it, each with the chain that gives it (the granting role, the ancestor it is inherited through, the column's scope and the role's reach). It is the inverse of the role panel's data access tab ([REQ-2161](#REQ-2161)) and is resolved by the same rule (column_served). It is capped by the viewer's own read rights ([REQ-2152](#REQ-2152)): only columns the viewer can read can be chosen. This corrects a defect in the access model's requirements and is resolved before the product is declared green.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/pages/tables/__tests__/TableAccessPanel.test.tsx`
 
 ## 3. Source Registration & Data Modeling
 
@@ -26046,7 +26046,7 @@ Redacted log export: an operator can export the server's recent logs as one plai
 
 ### REQ-2165 · Business Glossary & Ontology {#REQ-2165}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Bulk RDF export of the governed graph, the counterpart of the Neo4j export ([REQ-392](#REQ-392)), so a customer who already runs a triple store (Jena, GraphDB, Stardog or another) uses it with Provisa's data: we work with what you have. Scope is the whole graph, a domain or a class. The export carries the ontology schema ([REQ-2163](#REQ-2163)'s RDFS/OWL/SKOS: classes, sub-classes, properties with domain and range, labels and definitions) together with the instances, so the receiving store's reasoner and tools work from the first load. It is governed: it contains exactly what the exporting role may read, masks applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports) and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time is mapped), so an export can be reproduced exactly later.
 
@@ -26080,7 +26080,7 @@ Every protocol and language Provisa serves is checked against its public conform
 
 ### REQ-2168 · Graph Query {#REQ-2168}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Common APOC calls work unchanged against Provisa's Cypher surface (HTTP and Bolt), scheduled before green because agent frameworks depend on them: LangChain's Neo4j integration and similar tools call apoc.meta.data / apoc.meta.schema to learn the graph's schema before writing Cypher. Four kinds, each mapped its own way. (1) Introspection procedures (apoc.meta.data, apoc.meta.schema and the like) are predefined commands answered from the acting role's label map, so a caller sees only what the role may read. (2) Scalar functions (apoc.text.*, apoc.coll.*, apoc.date.*, apoc.convert.* and the like) are translated to the engine's own SQL functions so they push down with the query; they are not commands. (3) Traversal procedures (apoc.path.expand, apoc.path.subgraphNodes) are predefined commands compiled to the same recursive SQL as variable-length paths. (4) Procedures that act outside the model (apoc.create.* dynamic labels, apoc.periodic.iterate, apoc.load.*) are listed on the Cypher Conformance page ([REQ-2167](#REQ-2167)) with their workarounds. The predefined commands live in a built-in apoc namespace, so CALL apoc.meta.data() YIELD ... works as written, and every one is governed like any command. The set is chosen from what real tools and agent frameworks call (captured as [REQ-2167](#REQ-2167) replays), not all of APOC. (Amended 2026-10-25, CALLING PATTERNS: NAMING ALIASES PER LANGUAGE:) Maintainer 2026-10-26: build a general mechanism first, then ship the APOC set on it as declarations. A command declares a calling pattern per language, each a naming alias with a generated default: SQL name(args) in FROM, Cypher CALL ns.name(args) YIELD, a GraphQL field, a REST endpoint, an MCP tool, a SPARQL function or property-function IRI. Any can be overridden (e.g. the Cypher name apoc.meta.data). A function is declared as a canonical SQL expression template with the same per-language names (apoc.text.join(list, sep) -> array_to_string({list}, {sep})); the transpiler renders it per engine so it pushes down, and the template is parsed and transpiled for every engine in the deployment when it is saved, so a broken one fails at save. The calling pattern is naming only: arguments, governance and grants are declared once on the command or function, and producing results in the format the caller expects is the command developer's responsibility. The prime use case is emulating the calls real tools expect (APOC for Cypher tools and agent frameworks, and likewise catalog functions or service descriptions on other surfaces), so end users extend it themselves. A declared name that would shadow a built-in or another command is refused, naming both. The built-in APOC set is shipped as declarations on this mechanism. (Amended 2026-10-25, TARGETED LANGUAGES:) Maintainer 2026-10-26: a command or function may be targeted to specific languages. When it lists its languages it is offered only in those (an APOC emulation only in Cypher, [SUPERSEDED by REQ-2168, 2026-10-25 -- SQL is always offered (amendment SQL ALWAYS). Kept here for history; do not implement against it.] [SUPERSEDED by REQ-2168, 2026-10-25 -- SQL is always offered (amendment SQL ALWAYS; VARIANTS ARE COMMANDS). Kept here for history; do not implement against it.] a catalog-function emulation only in SQL) [END SUPERSEDED BLOCK] [END SUPERSEDED BLOCK], so tool-emulation shims do not appear in GraphQL, REST or MCP. When it lists none it is offered in every language with the generated default names. A call in a language it is not offered in is refused by name like any unknown command. (Amended 2026-10-25, SQL ALWAYS:) Maintainer 2026-10-26: SQL is always offered, because every language compiles to it. A targeted command or function lists the other languages it is offered in, and SQL is implied and cannot be excluded. The APOC set is offered in Cypher and SQL. (Amended 2026-10-25, SQL ALWAYS; VARIANTS ARE COMMANDS:) Maintainer 2026-10-26: SQL is always offered, because every language compiles to it; [SUPERSEDED by REQ-2168, 2026-10-25 -- targeting is opt-out (amendment OPT-OUT). Kept here for history; do not implement against it.] targeting lists the other languages a command or function is offered in, and SQL cannot be excluded. [END SUPERSEDED BLOCK] Not everything is exposed in GraphQL, Cypher or SPARQL. Where a language expects a different result shape, the variant is a separate command with its own implementation and its own targeting, not an overload: e.g. meta_schema is the general command, and apoc.meta.data is a Cypher-targeted command that may call it and reshape its result into APOC's format. Calling patterns stay naming aliases. The APOC set is Cypher-targeted commands and functions (offered in SQL as always). (Amended 2026-10-25, OPT-OUT:) Maintainer 2026-10-26: language targeting is opt-out. A command or function is offered in every language under its generated default name; excluding it from a language, or renaming it there, is an explicit declaration, so leaving it out is always an active choice. SQL cannot be excluded. The APOC set's commands declare their exclusions from GraphQL, REST, MCP and SPARQL. (Amended 2026-10-25, TERM: COMMAND BINDINGS:) Maintainer 2026-10-26: the mechanism is named command bindings. A command (or function) has a binding per language; each binding has a name, defaulting to the generated one, and may be renamed or excluded; the SQL binding cannot be excluded. Always written in full as 'command binding', never a bare 'binding', since a term binding (a term bound to a column, [REQ-2163](#REQ-2163)) is a different thing; in the UI a command's tab is Bindings and a term shows Bound columns. It is the answer to 'does it support this library or tool we use?': it can, by creating command bindings for it. (Amended 2026-10-25, META IS REACHED BY EVERY ROLE:) Maintainer 2026-10-26: every role reaches the meta domain, for command admission as well as schema building, under one rule rather than two. The built-in APOC commands live in meta, and grants decide who may call them: they are granted to the standard roles ([REQ-2155](#REQ-2155)), changeable like any grant. A role without the grant cannot call them, whatever its domains. (Amended 2026-10-25, ARGUMENT DEFAULTS:) Maintainer 2026-10-26: a command or function argument may declare a default value. A call that omits it uses the default; an argument without a default stays required, and omitting it is refused by name as now. Defaults are validated against the argument's type at save. Every surface honours them (SQL, Cypher CALL, GraphQL optional arguments, REST, MCP tool schemas, gRPC), so apoc.meta.data() with no arguments, as older langchain_community sends, answers with its declared default sample.
 
@@ -26104,7 +26104,7 @@ Provisa is extended through drivers, one kind per core contract: source drivers,
 
 ### REQ-2170 · Schema Registration {#REQ-2170}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
 Discovery records the keys a source declares: its primary key, unique (alternate) keys and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres and DuckDB and then each other connector that can. Today keys are marked only as a side effect of registering a relationship, so a key the source declares is unknown until some relationship happens to point at it; every key-dependent feature (relationship candidates, [REQ-1385](#REQ-1385)'s introspected primary key, cardinality, row identity) reads the source's own declaration instead. A source that declares no keys records none, and nothing is guessed.
 
@@ -26346,13 +26346,13 @@ Maintainer 2026-10-30: a role is given R or RW on a model, and that is the ceili
 
 ### REQ-2189 · Admin UI {#REQ-2189}
 
-**Status:** 💡 proposed · **Priority:** MAY · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
 
 Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building a high quality diagram that can keep being revised. It holds the selection (domains and objects, as the focus link does), each table's and domain's position and size, and the display options (column detail, edge style, what is collapsed). The ERD's command bar has a Layout menu with Save, Save as and Delete. Automatic is the generated layout: it always exists and cannot be deleted. Editing a layout marks it unsaved. Only the arrangement is saved: columns and relationships always come from the live model, and positions are held by object id, so a rename keeps its place. A deleted table disappears with no error. A new table in a selected domain is not placed automatically: it waits in a 'new since saved' tray. A layout is stored in the model, so it versions with the environment, and read rights still apply, so a reader sees a shared layout without what they cannot read. A layout can be named in the URL, as ?view=erd&layout=<name>. (Amended 2026-10-29, EVERY OPTION IN THE BAR IS PART OF A LAYOUT:) Maintainer 2026-10-30: a layout saves every option in the ERD's bar: columns shown (keys only or all), edge style, snap, and whether orphans show, as well as what is collapsed.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/__tests__/erd-saved-layout.test.tsx`
 
 ## 8. Client Access & Protocols
 
@@ -26370,7 +26370,7 @@ Maintainer 2026-10-30: all metadata pgwire presents lives in the meta domain. pg
 
 ### REQ-2191 · Source Connectors {#REQ-2191}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a database with no named source type can be registered and behave similar to something. It takes a connection URL and a SQL dialect. The URL's scheme names the SQLAlchemy dialect and driver, and a scheme Provisa does not ship is an error naming the missing package. The SQL dialect is the flavor Provisa writes, chosen from SQLGlot's dialects plus generic ANSI; it says nothing about the connection, so the two may differ. [SUPERSEDED by REQ-2191, 2026-11-02 -- the scheme names a built-in source type; any type with a direct attach qualifies. Kept here for history; do not implement against it.] Which attach an engine can try follows from the URL scheme: postgresql the Postgres attach, mysql the MySQL attach, any other none. [END SUPERSEDED BLOCK] CAPABILITIES ARE SETTINGS: live attach and predicate, join, aggregate and key-range pushdown are settings on the source, all off to start, kept in the model and edited on the source form. Function pushdown is not offered. A setting that depends on the engine's attach is held per engine, so after an engine swap it is off on the new engine until set there. A capability that is off costs speed and not answers: the engine does that work itself. A capability an admin turned on wrongly fails with the source's own error. DETECT: a button on the form runs read-only checks against the real connection on the active engine, written in the source's SQL dialect the way real queries are, ticks the settings that passed and shows why the others failed. Nothing is saved until the form is saved. Checks run only from the button, never on connect. Changing the dialect means pressing it again. An admin may untick what passed or tick what the checks cannot see. THE FLOOR: with every capability off a source still reads, in simple SQL, the way an API table reads: a steward marks columns required, a query must supply them or is refused by name, the read is a column list with equality filters, the rows land per argument set, and a row limit is met by reading the cursor in batches and stopping. A small table may instead replicate whole by the table's existing replicate setting. Such rows join like any landed table. (Amended 2026-11-01, A CUSTOMER'S JDBC DRIVER:) Maintainer 2026-11-01: supplying your own JDBC driver is an option on Generic SQL, not a separate source. A jdbc: URL with a driver jar and class name selects it. Calcite is not involved: Provisa opens the driver directly through JPype, behind the same connection the rest of Generic SQL uses. The SQL dialect setting, the capability settings, Detect and the floor all apply as they do to a SQLAlchemy URL, and Provisa writes the SQL. A jdbc: URL has no direct attach ("the no-drivers have a shot at direct attach, but jdbc does not"), so the attach setting does not appear for one, and its rows land per argument set or as a replica. A customer's jar is the customer's code in Provisa's JVM, so this option is for self-hosted installs only; on cloud it is refused by name. Given a Generic SQL source with a jdbc: URL, a driver jar and a class name on a self-hosted install When an admin presses Detect Then the checks run through that driver in the source's SQL dialect, and no attach setting is offered When a query reads a table Then the read goes through the driver and the rows land Given the same source on cloud When it is saved Then it is refused by name (Amended 2026-11-01, THE ONLY FILE URL:) Maintainer 2026-11-01, on the customer scratch files area: "that's the only file:// you are allowed". On cloud a Generic SQL URL that names a file must name one in the org's own files area, written with the {files} or {org} token of [REQ-1997](#REQ-1997), and a path that resolves outside the org's folder is refused, naming the path, by the same check [REQ-1997](#REQ-1997) applies. No other file URL is allowed on cloud. Given a Generic SQL source on cloud When its URL is a SQLite file under {files} Then the source reads that file When its URL names a file anywhere else, or a path that resolves outside the org's folder Then it is refused, naming the path (Amended 2026-11-02, The floor's parameter kind:) Maintainer 2026-11-02: the floor uses a new parameter kind, column_value: a real column of the table, given by equality, that narrows the read to the rows having that value. A steward marks which are required; a query that omits a required one is refused by name, as for every other kind. partition_key keeps its Cosmos DB meaning and its level-prefix rule. (Amended 2026-11-02, Attach follows the built-in type the URL names:) Maintainer 2026-11-02: a Generic SQL operator is declaring that a source cannot use the standard connector but is close to it. So a SQLAlchemy URL scheme maps to the built-in source type of the same database (postgresql, mysql, mssql, oracle, sqlite, duckdb, clickhouse and every other built-in type with a SQLAlchemy scheme), and with live attach on the source attaches exactly as that built-in type does on the active engine, through that type's existing attach connector. Whether attach is offered is the active engine's answer for that type; a scheme naming no built-in type, or a type the engine cannot attach, has none. A jdbc: URL never attaches. (Amended 2026-11-02, Named the JDBC Connector:) Maintainer 2026-11-02: the source is named the JDBC Connector everywhere it is shown or declared (the source type, the UI, the docs, refusals and messages). Generic SQL is the old name; what the source does is unchanged. (Amended 2026-11-02, Its name is JDBC:) Maintainer 2026-11-02: the name shown is JDBC, like the other source types' names, and the source type is jdbc. It covers both a built-in driver URL and a customer's jar ("not entirely accurate - but since it lets you use built-in connectors or a jar - close enough"). (Amended 2026-11-03, The form picks a driver, takes a jar file, and names no engine:) Maintainer 2026-11-03, on the JDBC form: it is "supposed to have a list of standard drivers to pick from, an option to use a jar (from a local file)", "a probe to determine features", and selecting the dialect is correct. So: (1) the form's first choice is the driver, from a list of the standard drivers Provisa ships (the built-in types with a SQLAlchemy scheme), plus "Your own JDBC driver (jar)". Picking a standard driver asks for host, port, database (or file), user and password, and the form builds the connection URL from them; the raw URL is not what an admin types. (2) Picking the jar option takes the jar as a file chosen from the admin's machine and uploaded with the source, plus the driver class and the jdbc: URL; it stays self-hosted only, refused by name on cloud. (3) The probe is Detect: it runs the read-only checks against the connection and sets the capabilities that passed, showing why the others failed. (4) The SQL dialect choice stays. (5) No engine is named on the form: the capability settings read "Filter pushdown", "Join pushdown", "Aggregate pushdown", "Key-range pushdown" and "Live attach"; that they are held per engine is internal.
 
@@ -26378,7 +26378,7 @@ Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a data
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_jdbc_source_e2e.py`
 
 ### REQ-2192 · Source Connectors {#REQ-2192}
 
@@ -26396,7 +26396,7 @@ Maintainer 2026-11-01: a generic OData connector, source type odata, based on th
 
 ### REQ-2193 · OData {#REQ-2193}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit, a very clean mapping of the model. A table is an entity set, a column a property, a primary key a key, a relationship a navigation property with its referential constraint, and a command an action. $metadata is generated per role, so a role sees only its own tables and columns. A request's $filter, $select, $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline, with masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients it is built for, and it has its own conformance suite. It comes before the OData source of [REQ-2192](#REQ-2192). (Amended 2026-11-02, An OData viewer in the OData explorer:) Maintainer 2026-11-02: the OData explorer gains a viewer of its own: an entity-set browser read from the service's $metadata (entity types, keys, navigation properties) and a query builder for $filter, $select, $expand, $orderby and $top that writes the URL, runs it and shows the rows, paging with @odata.nextLink and showing the row-limit warning. No third-party viewer fits (archived, desktop-only, GPL or unclear licence), so it is built from Provisa's own UI parts.
 
@@ -26404,11 +26404,11 @@ Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commer
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_odata_service.py`, `tests/integration/test_odata_e2e.py`
 
 ### REQ-2194 · JDBC/ODBC Integration {#REQ-2194}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40.8x binary on 5M rows) replaces the Python path, and its blockers have to be resolved: named time zones, nanosecond units, date64, every type pgwire serves (inet, cidr, money, geometric, range, tsvector, xml, catalog types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the encoder with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are checked within a tolerance. (Amended 2026-11-02, Every encoder works directly on the engine result:) Maintainer 2026-11-02: any encoder (pgwire, GraphQL, gRPC, REST and the rest) must be very conscious of serialization and deserialization in Python; it works directly against the database result with no intervening Python code. The engine's result reaches the encoder as Arrow (or the driver's native columnar buffer) and is written to the wire without Python row objects, Python dicts, or a decode and re-encode in Python. Where a driver hands back Python rows today, the fetch path changes to a columnar one rather than the encoder accepting Python rows. (Amended 2026-11-02, Every engine hands the encoder an Arrow buffer or a direct row cursor:) Maintainer 2026-11-02: this holds for every engine, not only Trino: the encoder reads either the engine's Arrow buffer or a direct row cursor on the engine's own result, never rows a Python client has parsed (for example Trino's Python client turning JSON pages into Python rows). Each engine's read path is chosen to give one of the two. (Amended 2026-11-02, An engine that cannot is documented:) Maintainer 2026-11-02: where an engine or source offers neither an Arrow buffer nor a direct row cursor, the docs say so for that engine: which read path it uses, that rows pass through Python on the way to the encoder, and what that costs. (Amended 2026-11-02, A columnar endpoint that exists is the one called:) Maintainer 2026-11-02: where an engine or source offers a columnar or direct result but Provisa calls a row-at-a-time endpoint, the calls are redesigned to use it; the docs exception is only for engines that offer none. Data warehouses in particular (Snowflake, BigQuery, Databricks, Fabric, Redshift and the rest) are reviewed against their Arrow-returning interfaces. (Amended 2026-11-02, The encoders ship inside the provisa package:) Maintainer 2026-11-02: the Rust encoders are compiled into the provisa package itself, not published as a separate PyPI project; provisa is released as platform wheels (macOS arm64 and x86_64, Linux amd64 and arm64, Windows x64), each carrying the encoders and the UI. (Amended 2026-11-02, Stated as a fundamental design choice:) Maintainer 2026-11-02: the website, README and docs state it as a fundamental design choice: results from any data source that supports Arrow are written by a Rust encoder straight into the requested output (pgwire, GraphQL, gRPC and the rest). Stated once the encoders are wired in, not before. (Amended 2026-11-02, JSON:API, OpenAPI REST and OData encoders:) Maintainer 2026-11-02: the encoders also cover JSON:API, the OpenAPI (REST) surface and OData, beside pgwire, GraphQL and gRPC. The JSON-based ones share one Rust JSON writer and differ only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value, @odata.context, @odata.nextLink and annotations). (Amended 2026-11-02, Four platform wheels; no Intel Mac:) Maintainer 2026-11-02: Intel (x86_64) macOS is not distributed or supported, so provisa ships four platform wheels: macOS arm64, Linux amd64, Linux arm64 and Windows x64.
 
@@ -26418,19 +26418,19 @@ Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40
 
 ### REQ-2195 · JDBC/ODBC Integration {#REQ-2195}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent. Every language compiles to one governed statement and every encoder reads the engine result directly ([REQ-2194](#REQ-2194)), so any combination works, even one that makes little sense, such as a GraphQL query answered with the gRPC encoder. A new language, transport or encoder is an addition at one edge and changes neither the others nor the model. (Amended 2026-10-29, Conceptually possible; practical gaps are listed:) Maintainer 2026-11-02: "i can imagine there maybe practical gaps - but conceptually possible." The separation is a design principle: nothing in the model or compiler ties a language to a transport or an encoder. Where a combination is not offered today, that is a practical gap, listed as such, not a rule. (Amended 2026-11-02, An academic design idea, not a support matrix:) Maintainer 2026-11-02: "certain combos are so outside expectations there's no point. its more of an academic design idea." The separation is how Provisa is built, not a promise that every combination is offered or listed; a combination no client would use is neither built nor tracked as a gap. (Amended 2026-11-03, An encoder takes the result in the form it has:) Maintainer 2026-11-03, after the encoder benchmark showed gRPC 1.3-1.5x slower on a row-shaped source (rows converted to Arrow in Python only to be encoded): every result encoder (pgwire, gRPC and the JSON family) takes the result in the form it already has. An Arrow result goes through the Rust Arrow encoder; a row result is encoded from its rows; nothing is converted to Arrow only to be encoded. And where a source can be upgraded to return Arrow (for example Postgres read through ADBC), it is upgraded, so its results take the Arrow path. (Amended 2026-11-03, Postgres direct reads stay rows for now:) Maintainer 2026-11-03: Postgres read directly stays a row source (psycopg), its rows going straight to the encoders. Arrow through ADBC's Postgres driver is not taken now: it returns no value for infinity dates and timestamps, returns uuid, inet, cidr, macaddr, timetz, geometric types, bit, tsvector, reg* types and ranges as raw PostgreSQL wire bytes, money as cents, numeric NaN lowercased, and overflows oid above 2^31. Revisit when the driver reads these types.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/grpc_encoder/test_differential.py`
 
 ## 4. Source Connectors
 
 ### REQ-2196 · Source Connectors {#REQ-2196}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds each of these as its own source type, as HANA, Exasol and Athena are: Teradata, IBM Db2, Vertica, Netezza, Informix, Sybase (ASE and IQ) and Google Spanner. Each has its own setup form, its SQL dialect, discovery of its tables and columns, its type mapping, and the reach every other relational source has (direct route, replica, and the engine's attach where one exists). Each is read through its vendor's or a maintained Python driver. (Amended 2026-11-03, Untested engines are not offered:) Maintainer 2026-11-03: Teradata, SAP ASE and SAP SQL Anywhere are removed from the engine kinds a deployment can select until each is built and tested against a running instance; an engine nobody has connected to is not offered. They return with this requirement's source work.
 
@@ -26440,77 +26440,77 @@ Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds 
 
 ### REQ-2197 · Source Connectors {#REQ-2197}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-03 (after asking how feasible QuickBooks and NetSuite are, and adding QuickBooks sandbox credentials): QuickBooks Online is a source type. Its entities (customers, invoices, bills, payments, accounts, items and the rest the Accounting API exposes) are tables; a read pushes simple filters into QuickBooks' own query language; it signs in with OAuth2 against the company (realm) the admin authorizes and keeps the refresh token QuickBooks hands back on each refresh.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_quickbooks_source.py`, `tests/integration/test_quickbooks_source_live_e2e.py`
 
 ## 10. UI & Admin Surfaces
 
 ### REQ-2198 · UI {#REQ-2198}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table be used while it was being deleted. A delete in any detail panel behaves like a save: every field and action in the panel is disabled, the delete control shows a spinner, the panel closes when the delete has finished, and the list refreshes without the deleted item; a delete that fails unlocks the panel and names the reason. While the delete runs, nothing else in the UI offers the item for use.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/components/list/__tests__/PanelDelete.test.tsx`
 
 ### REQ-2199 · UI {#REQ-2199}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-03: the entity/fact form ([REQ-1164](#REQ-1164)) is built from the right primitives, but people won't get how to interpret their method into the primitive. The modeling helper is positioned as a kind of wizard, starting with a picker between the two methods: star schema (Kimball) and Data Vault (Linstedt). Each path asks its questions in that method's own vocabulary. Star schema: the business process, the grain, the dimensions, the measures and their additivity, how each dimension handles change (SCD type 1, type 2 or snapshot), conformed dimensions, and whether the fact is a transaction, periodic snapshot or accumulating snapshot. Data Vault: the core business concepts and their business keys (hubs), the sources of each key (record source, same-as links), the units of work between concepts and whether they end (links, effectivity), the descriptive attributes grouped by source, rate of change and sensitivity (satellites, multi-active satellites), how far back history goes, and what business rules derive (business vault). Before anything is created, a review shows what each answer becomes in Provisa's primitives (an entity, a fact, a relationship, a history setting); then the wizard creates them all through the entity/fact lowering of [REQ-1164](#REQ-1164), unchanged, and shows the result with its relationships. The plain entity/fact form stays for people who think in the primitives. (Lead's reading of the mapping, shown to the maintainer 2026-11-03: hub plus satellite is an entity keyed on the business key with SCD2 history; a link is a fact with no measures whose grain is the participating keys; a link or effectivity satellite is an entity keyed on the link's keys with valid time; PIT, bridge tables and marts are views over them.) (Amended 2026-11-03, Where the wizard lives, and one way:) Maintainer 2026-11-03: + Model on the Tables page [SUPERSEDED by REQ-2199, 2026-11-03 -- the first choice is named Entity/Fact. Kept here for history; do not implement against it.] has a drop down: New | Star Schema | Data Vault. New is the entity/fact form as it is; [END SUPERSEDED BLOCK] Star Schema and Data Vault each open that method's wizard, so the drop down is the picker and the wizard starts at the method's own questions. Each opens in the + Model detail panel, its steps inside the panel. The wizard is one way: once generated, the entities, facts and relationships are modified through the primitives (the entity/fact form and Registered Tables); the wizard never regenerates or edits what it made. (Amended 2026-11-03, The drop down's names:) Maintainer 2026-11-03: the + Model drop down reads Entity/Fact | Star Schema | Data Vault. Entity/Fact opens the entity/fact form as it is. (Amended 2026-11-03, Conventional names and draft descriptions:) Maintainer 2026-11-03: the generated entities and facts use each method's naming conventions to identify its common terms, and carry those terms in draft descriptions. Names: the review step proposes the conventional name of each generated table (Data Vault hub_, sat_, lnk_; star schema dim_, fact_), prefilled and editable per table, so a team that does not want prefixes in consumer-facing names clears them there. Descriptions: every generated table gets a draft description saying its role in the method and the answers that made it (for example a satellite's hub, sources and history; a fact's process, grain and dimensions), [SUPERSEDED by REQ-2199, 2026-11-03 -- a draft description is the table's ordinary description, worded as a first draft; there is no approval step. Kept here for history; do not implement against it.] left as a draft for a steward to approve. [END SUPERSEDED BLOCK] (Amended 2026-11-03, What a draft description is:) Lead 2026-11-03, correcting its own wording: the maintainer asked for the common terms in "draft descriptions". A generated table's draft description is its ordinary description, written as a first draft for the modeler to revise; the review and result screens say so. Provisa has no description status or approval step, and this requirement adds none. The entity and fact inputs carry an optional description, which the lowering passes to the registered table.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `provisa-ui/src/pages/tables/modeling/__tests__/wizards.test.tsx`
 
 ## 4. Source Connectors
 
 ### REQ-2200 · Source Connectors {#REQ-2200}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-03: asked whether a Go or Java code resolver is possible, and chose Go first. A Go code source is a third language for code sources ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-1993)), behind the same language-neutral worker protocol, manifest, sandbox and build image ([REQ-2098](#REQ-2098)) as Node and Python; nothing in the shared layer names Go. (Lead's reading of what a language adds, from docs/arch/code-sources.md, shown to the maintainer: a reader that prints the same manifest from the code's exported functions and types; a host program that speaks the worker protocol over the Unix socket and returns rows as Arrow; package fetch and install from go.sum through the organisation's registries; the runtime, which for Go is a static binary compiled once per code hash with the code linked in and cached like an install; the sandbox profile on macOS and Linux; and the remote image.) Java is a later, separate language.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_go_source.py`, `tests/integration/test_go_worker.py`
 
 ## 10. UI & Admin Surfaces
 
 ### REQ-2201 · UI {#REQ-2201}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a bank example, then querying based on a concept, could interesting"; chose the Bank Secrecy Act. The demo reads the currency transaction reporting rule (31 CFR 1010.311 and the definitions it uses in 31 CFR 1010.100), a public-domain US regulation, with Find terms in a document, and the terms it extracts (transaction in currency, financial institution, person, business day, multiple transactions, on behalf of) are grounded on a bank's tables: customers, accounts, branches, and cash deposits and withdrawals. The tour then asks by concept which transactions require a currency transaction report (cash in or out over $10,000 by or on behalf of one person in one business day, aggregated across accounts and branches) and who is structuring (repeated cash just under the threshold), with a teller role that sees account numbers masked and a compliance role that sees them. (Lead's proposal shown to the maintainer 2026-11-03; the concept queries and roles are the lead's reading.) (Amended 2026-11-03, The scan is done ahead:) Maintainer 2026-11-03: "to do this efficiently you will need to preprocess, maybe show keystrokes to load, and then cancel." Extracting terms from the regulation runs when the demo is built, and its result (the candidate terms with their passages) ships in the demo. The tour shows the steps that load the document and start a scan, then cancels it, and opens the scan already done, so a visitor sees the result at once. (Amended 2026-11-03, Its public address, and the reference library:) Maintainer 2026-11-03: "if the doc were a public url - even better": the regulation is read from its public address (the official eCFR page of 31 CFR 1010.311 and the definitions it uses), not an uploaded copy. And "the bank secrecy act can then be added to a ref lib": the tour points out that the regulation can then be added to the reference library, so it stays with the model as a governed reference document. (Amended 2026-11-03, Read from eCFR's official API:) Maintainer 2026-11-03: eCFR's web pages refuse automated clients (a request-access page), so the demo reads the regulation from eCFR's official API, which returns XML: the reference library learns to read that XML (its sections and paragraphs), and the demo reads 31 CFR 1010.311 and 1010.100 from it. (Amended 2026-11-03, The aggregation rule is read too:) Lead 2026-11-03, correcting its own wording: the terms "multiple transactions" and "on behalf of" come from 31 CFR 1010.313 (aggregation of currency transactions), not from 1010.311 or 1010.100, and the concept query is that aggregation rule. So the demo reads three sections from eCFR's API: 1010.311 (the filing obligation), 1010.313 (aggregation) and 1010.100 (the definitions). In the sandbox, the live scan the tour starts and cancels uses the same AI model the sandbox's other AI steps use, and the tour's role holds glossary_rw so Find terms is offered. (Amended 2026-11-03, Asked in plain words too:) Maintainer 2026-11-03: besides the concept-named views over SQL and GraphQL, the tour asks the concept in plain words, through the AI surface as compliance ("which cash needs a currency transaction report?"), answered from the governed views.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_banksecrecy_demo.py`
 
 ## 3. Source Registration & Data Modeling
 
 ### REQ-2202 · Business Glossary & Ontology {#REQ-2202}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query with id + text against a registered table", then "it could literally just be domain,,table,id,text". Find terms ([REQ-2179](#REQ-2179)) can scan a registered table instead of a document: the steward picks a domain, a table in it, its id column and its text column, and each row is one passage. A candidate term's source passages name the table and the row's id. The rows are read through the governed pipeline as the steward's acting role, so masks and row rules apply and no text the steward cannot read reaches the model; the scan is held to the role's LLM budget like a document scan ([REQ-1174](#REQ-1174)). (Lead's reading, 2026-11-03: a table scan is a scan only, not a reference library document.) (Amended 2026-11-03, For sources that hold definitions:) Maintainer 2026-11-03: "not sure I would use this feature to look at support tickets they would not define a term. This is not about connecting transactions to terms, this is to take any relational sources that truly have definitions/docs." A table scan is for relational sources that hold definitions or documentation (a data dictionary or glossary table, policy or procedure text kept as rows, knowledge-base articles kept in a table), not transactional text. (Amended 2026-11-03, Two ways in from a table:) Maintainer 2026-11-03: "there are 2 ways to move terms in from tables - it could be explicit, domain,table,term,definition OR inferred: domain,table,id,text." Explicit: the steward picks a domain, a table, its term column and its definition column; each row is a term with its definition, read through the governed pipeline with no model call, matched against the glossary's terms and synonyms like a scan's candidates, and offered in the same review queue (a new term, or a merge into the term it matches). Inferred: the domain, table, id column and text column described above, each row a passage the model reads for the terms it defines.
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_term_finding.py`
 
 ## 1. Access Governance & Security
 
 ### REQ-2203 · Protocol Conformance {#REQ-2203}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-04: the PostgreSQL drivers' own upstream test suites run against a Provisa test instance over pgwire, as CockroachDB runs them against its own server: pgjdbc, psycopg, asyncpg, npgsql and pgx, each at a pinned upstream version. Each driver has a list of expected failures, every entry naming its reason: a skipped-by-design decision (transactions are no-ops, no sequences, no writes, no LISTEN/NOTIFY, no large-object writes, the catalog is the model's) or an open defect. A run fails only when a test not on the list fails, or a listed test now passes (then the list is corrected). The results are published per driver beside the other conformance results, in the four counts: passed, skipped by design, failed, not tested. No code, test data or runner is taken from CockroachDB; only the method.
 
@@ -26520,7 +26520,7 @@ Maintainer 2026-11-04: the PostgreSQL drivers' own upstream test suites run agai
 
 ### REQ-2204 · Protocol Conformance {#REQ-2204}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-04: the catalog queries that DBeaver, Metabase, Grafana and psql's \d commands send when they connect and browse a schema are captured from each tool at a pinned version, stored as statements, and replayed against both PostgreSQL 17 and a Provisa test instance serving the same fixture model; the answers are compared as the catalog check compares them ([REQ-2167](#REQ-2167)). A difference is a failure unless a skipped-by-design decision covers it. The results are published per tool beside the other conformance results.
 
@@ -26532,7 +26532,7 @@ Maintainer 2026-11-04: the catalog queries that DBeaver, Metabase, Grafana and p
 
 ### REQ-2205 · Developer Experience {#REQ-2205}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 Maintainer 2026-11-04: the repository carries a dev container definition (.devcontainer) that VS Code and GitHub Codespaces open as is. It provides the pinned Python with the project's dependencies synced from uv.lock, the Rust toolchain with the provisa._encoders extension built for the checkout, the pinned Go toolchain, Node with provisa-ui's dependencies, and a control-plane PostgreSQL with pgvector (the same image the compose stack uses), with Docker available for the tests that start their own containers. Opening it ends with the unit suite runnable by one command, and the README's contributing section says so. (Amended 2026-11-04, THREE STEPS IN A CODESPACE:) Maintainer: using the demo in a Codespace is three steps: open the Codespace, run ./start-ui-install.sh --demo, click Open in Browser on the UI's port. Nothing else is typed, set or installed by hand: the container's environment is the one the script uses, every directory the script needs is made by the product, and the UI works through the Codespace's private forwarded port. A CI check builds the dev container and runs those steps inside it on every change to the container, the script or what the script starts.
 
