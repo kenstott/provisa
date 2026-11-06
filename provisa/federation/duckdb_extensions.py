@@ -70,6 +70,9 @@ CORE_EXTENSION_WHEELS: dict[str, str] = {
     "iceberg": "duckdb_extension_iceberg",
     "azure": "duckdb_extension_azure",
     "delta": "duckdb_extension_delta",
+    # iceberg's init loads avro ("The iceberg extension requires the avro extension"): staged
+    # beside it from the same source (lead's ruling 2026-11-06, under the maintainer's decision).
+    "avro": "duckdb_extension_avro",
 }
 
 

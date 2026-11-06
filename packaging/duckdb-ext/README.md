@@ -18,7 +18,7 @@ There is no source distribution. Provisa's
 into a writable directory on first run and points `PROVISA_DUCKDB_EXT_DIR` at it.
 
 For DuckDB 2.0 this is temporary. The core extensions (`postgres_scanner`, `httpfs`, `sqlite_scanner`,
-`iceberg`, `azure`, `delta`) come from third-party PyPI wheels, one per extension and platform
+`iceberg`, `azure`, `delta`, and `avro`, which `iceberg` loads) come from third-party PyPI wheels, one per extension and platform
 (`duckdb-extension-*`). Each holds the official signed binary, and Provisa stages it beside this
 package's.
 

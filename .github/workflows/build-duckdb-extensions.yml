@@ -5,7 +5,7 @@ name: Build DuckDB Extensions
 # official community builds and Query.Farm's crypto, pinned + collected into a self-hostable repo
 # layout for offline installs. Contrast build-pg-extensions.yml (Family B: native PG .so/.dylib we
 # compile). TEMPORARY for DuckDB 2.0 (REQ-1142 amendment, TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0):
-# the core extensions (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta) come from the
+# the core extensions (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta, avro) come from the
 # third-party per-extension PyPI wheels the embedded extra pins, so they are not mirrored here.
 #
 # Broader matrix than Family B: DuckDB ships arm64-Linux + Windows wheels, so the standalone engine

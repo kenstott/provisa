@@ -68,7 +68,7 @@ def _provisa_ext(tmp_path, ver, plat):
     return pkg
 
 
-def test_the_core_extensions_are_the_six_third_party_wheels():
+def test_the_core_extensions_are_the_third_party_wheels():
     assert CORE_EXTENSION_WHEELS == {
         "postgres_scanner": "duckdb_extension_postgres_scanner",
         "httpfs": "duckdb_extension_httpfs",
@@ -76,6 +76,7 @@ def test_the_core_extensions_are_the_six_third_party_wheels():
         "iceberg": "duckdb_extension_iceberg",
         "azure": "duckdb_extension_azure",
         "delta": "duckdb_extension_delta",
+        "avro": "duckdb_extension_avro",  # iceberg loads it
     }
 
 
