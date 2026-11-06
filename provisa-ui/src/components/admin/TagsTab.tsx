@@ -49,7 +49,19 @@ import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
-const SCOPES: TagObjectType[] = ["source", "table", "column", "relationship", "command"];
+// REQ-1634, REQ-2145, REQ-2208: a data product, a glossary term, and a reference library document
+// and its sections are tagged as the other objects are.
+const SCOPES: TagObjectType[] = [
+  "source",
+  "table",
+  "column",
+  "relationship",
+  "command",
+  "product",
+  "term",
+  "document",
+  "section",
+];
 
 const POLICIES: TagFieldPolicy[] = ["hidden", "optional", "required"];
 
