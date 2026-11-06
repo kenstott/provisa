@@ -126,7 +126,7 @@ const STEPS = demoTourSteps(
   [
     { key: "find", route: "/admin/ontology", capability: "glossary_read", find_terms: RULE },
     { key: "scan", scan: RULE },
-    { key: "lib", route: "/admin/reference-library", capability: "org_settings", library: RULE },
+    { key: "lib", route: "/admin/reference-library", capability: "glossary_rw", library: RULE },
   ],
   [],
 );
