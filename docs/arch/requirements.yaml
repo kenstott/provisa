@@ -33316,7 +33316,7 @@
   - REQ-121
   superseded_by: REQ-1279
 - id: REQ-1027
-  status: proposed
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: First-Customer Deployment
   feature: deployment-cloud-vm
@@ -33623,7 +33623,7 @@
   - helm/provisa/templates/trino-configmap.yaml
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Worker HPA and include-coordinator=false exist but HPA scales on CPU only, not queue depth; no test asserts them.'
 - id: REQ-1042
-  status: proposed
+  status: in-progress
   group: 5. Query Languages, Compilation & Operations
   category: Trino Resource Management
   feature: performance-and-scale-engine-resources
@@ -40659,16 +40659,18 @@
     '
   notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1251
-  status: proposed
+  status: accepted
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   feature: organizations-membership
   priority: SHOULD
   type: behavioral
-  description: Admin approval/denial of org_join_requests. When an admin approves a request, the approval
+  description: 'Admin approval/denial of org_join_requests. When an admin approves a request, the approval
     path reuses the membership-insert logic (provisa/api/auth_router.py and related) minus the token check,
-    granting the lowest-privilege member role (never admin). Deny path closes the request (status='denied').
-    Both actions record decided_by (admin user_id) and decided_at.
+    granting the lowest-privilege member role (never admin). Deny path closes the request (status=''denied'').
+    Both actions record decided_by (admin user_id) and decided_at. (Amended 2026-11-06, CONSOLIDATED:) This
+    requirement now also carries REQ-1252: their text stands as part of this one, and each is marked superseded
+    by it.'
   use_case: Enables org admins to gate membership while supporting the pull-based admission model.
   code:
   - provisa/api/admin/orgs_router.py
@@ -40694,7 +40696,8 @@
     '
   notes: 'Maintainer 2026-10-03: unbuilt; prioritised by score.'
 - id: REQ-1252
-  status: proposed
+  status: superseded
+  superseded_by: REQ-1251
   group: 10. UI & Admin Surfaces
   category: Org Administration
   feature: organizations-membership
@@ -46185,7 +46188,7 @@
   related_reqs:
   - REQ-1364
 - id: REQ-1366
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 6. Execution, Routing, Caching & Performance
   category: Federation Engine Abstraction
@@ -48020,7 +48023,7 @@
   - tests/unit/test_derived_tags.py
 - id: REQ-1414
   value: 'Query tag assignments as a SQL view and join them with any other data in your model.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Tag Registry
@@ -49880,7 +49883,8 @@
   - REQ-1450
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: cloudsql_ha toggle provides a regional admin database; published recovery targets and baseline-for-every-tier default are not enforced, and the standby control plane is deferred.'
 - id: REQ-1460
-  status: proposed
+  status: rejected
+  rejection_reason: 'Not a requirement: cost analysis and a negotiated Enterprise item with no behaviour to build (maintainer 2026-11-06).'
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Deployment Topology
@@ -51132,7 +51136,8 @@
   - sources.md
 - id: REQ-1492
   value: 'Write operations are locked to the environment they were granted in, so a promotion cannot mutate production.'
-  status: proposed
+  status: superseded
+  superseded_by: REQ-1539
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -59590,19 +59595,26 @@
   feature: replicas-and-freshness-landed-shape
   priority: MUST
   type: behavioral
-  description: 'A landed replica carries the landed model''s keys, converged by the landing reconcile
-    with the tables themselves and for every landed table regardless of Data Product membership: its declared
-    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose
-    referenced columns are the referenced table''s PRIMARY KEY (many-to-one on the source, one-to-many
-    on the target, a junction relationship as one key per hop). Applied only on stores that hold constraints
-    as informational metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook);
-    an enforcing store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching
-    PRIMARY KEY is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped,
-    and a provisa_fk_* constraint no relationship declares is withdrawn. A key the store cannot hold is
-    withheld and logged with its reason, never emitted. Where the compiler''s physical name is a VIEW
-    over the replica, the view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY
-    (referenced physical column) column TAGs, with stale key tags unset. The metadata export publishes
-    no constraints.'
+  description: 'A landed replica carries the landed model''s keys, converged by the landing reconcile with
+    the tables themselves and for every landed table regardless of Data Product membership: its declared
+    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose referenced
+    columns are the referenced table''s PRIMARY KEY (many-to-one on the source, one-to-many on the target,
+    a junction relationship as one key per hop). Applied only on stores that hold constraints as informational
+    metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook); an enforcing
+    store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching PRIMARY KEY
+    is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped, and a provisa_fk_*
+    constraint no relationship declares is withdrawn. A key the store cannot hold is withheld and logged
+    with its reason, never emitted. Where the compiler''s physical name is a VIEW over the replica, the
+    view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical column)
+    column TAGs, with stale key tags unset. The metadata export publishes no constraints. (Amended 2026-11-06,
+    RELATIONSHIPS INDEX, UNIQUENESS KEYS:) A relationship''s cardinality never makes a key. Every relationship
+    whose ends are landed gets a plain, non-unique index on each side''s join columns, which any store accepts
+    whatever the data, so a legitimate join over duplicated values is indexed on both sides. A landed table''s
+    PRIMARY KEY or UNIQUE key comes only from real uniqueness: the table''s declared primary key, or a column
+    its profile shows to be unique; a FOREIGN KEY is placed only where its referenced columns are such a
+    key, as before. When the side a relationship declares as its ''one'' side has duplicated values (registration
+    or the profiler can see it), the relationship shows it, so the steward corrects the cardinality or declares
+    it many-to-many.'
   use_case: 'Horizon Catalog renders a table''s keys and join paths from Snowflake''s informational constraints,
     and consumers query the per-source views. Keys are model state, not catalog state: tying them to the
     catalog publish left every landed table key-less until a publish ran and left every table outside
@@ -75893,7 +75905,8 @@
 
     '
 - id: REQ-466
-  status: proposed
+  status: superseded
+  superseded_by: REQ-467
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -75911,21 +75924,23 @@
     does not exist; grep for same_dataset/dataset_identity finds no implementation. Maintainer 2026-10-03:
     unbuilt; prioritised by score.'
 - id: REQ-467
-  status: proposed
+  status: accepted
+  scenario: 'Given a dataset reference in any query language When it is resolved Then one identity service names the same dataset and its query name for every language'
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
   priority: SHOULD
   type: behavioral
-  description: Query-language dataset name resolution via centralized identity service (extends REQ-466).
-    Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the
-    identity service, accounting for each language's canonical form (SQL=snake_case schema.table, Cypher=PascalCase
+  description: 'Query-language dataset name resolution via centralized identity service (extends REQ-466).
+    Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity
+    service, accounting for each language''s canonical form (SQL=snake_case schema.table, Cypher=PascalCase
     label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources
     → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)`
-    accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)`
-    produces the correct form for a given language. All inline normalization (e.g., `_normalize_op_id`
-    in config_loader.py:104) must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md
-    under "Query-language representations".
+    accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces
+    the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104)
+    must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language
+    representations". (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries REQ-466: their
+    text stands as part of this one, and each is marked superseded by it.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-07 under the heading ''Data & Storage''; it was dropped when requirements.md became
     generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No dataset_identity
@@ -79810,14 +79825,25 @@
   - admin.md
   - sources.md
 - id: REQ-1955
-  status: proposed
+  status: in-progress
+  scenario: 'Given two registered tables a role can read When the paths endpoint is asked for paths between them Then it returns only paths the role may traverse and read, and says when the bound cut the result'
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: MCP & AI Integration
   feature: roles-and-capabilities-join-guard
   priority: SHOULD
   type: behavioral
-  description: 'One endpoint, given any two registered tables, returns the valid paths that connect them, and it is the only place paths are computed: the MCP server''s tool calls it and the relationship guard''s refusal (REQ-1956) calls it, so the three never disagree. A path is a chain of registered relationships leading from the first table to the second; each step names its relationship, the two tables it joins, the join condition and its cardinality, so an agent can write the join without guessing. Only relationships the caller''s role may traverse are walked, and only tables it may read appear on a path, so every returned path is a join the relationship guard (REQ-603) accepts for that caller. Paths are returned shortest first, up to a bound on length and on the number returned; the answer says when the bound cut it short. Two tables with no path return an empty list, not an error. The two tables may be the same table: the paths are then its registered self-relationships.'
+  description: 'One endpoint, given any two registered tables, returns the valid paths that connect them,
+    and it is the only place paths are computed: the MCP server''s tool calls it and the relationship guard''s
+    refusal (REQ-1956) calls it, so the three never disagree. A path is a chain of registered relationships
+    leading from the first table to the second; each step names its relationship, the two tables it joins,
+    the join condition and its cardinality, so an agent can write the join without guessing. Only relationships
+    the caller''s role may traverse are walked, and only tables it may read appear on a path, so every returned
+    path is a join the relationship guard (REQ-603) accepts for that caller. Paths are returned shortest
+    first, up to a bound on length and on the number returned; the answer says when the bound cut it short.
+    Two tables with no path return an empty list, not an error. The two tables may be the same table: the
+    paths are then its registered self-relationships. (Amended 2026-11-06, CONSOLIDATED:) This requirement
+    now also carries REQ-1956: their text stands as part of this one, and each is marked superseded by it.'
   use_case: An agent asked for revenue by region finds how orders reach regions through customers before it writes
     the query, and does not try a join the guard would refuse.
   related_reqs:
@@ -79825,7 +79851,8 @@
   - REQ-1825
   notes: 'Maintainer 2026-10-08: new MCP requirement -- for any 2 tables, return a list of valid paths to connect them. (Later the same day:) we just need a single endpoint that returns valid paths between 2 tables, wired into the MCP and the error response. Maintainer confirmed the same day: the paths returned depend on the caller''s roles. Lead''s additions, open to correction: scoped to the caller''s role, shortest first, bounded with a stated cut, each step carries condition and cardinality. The MCP server already lists the relationships a role may traverse (provisa/api/mcp/tools.py); this tool walks them.'
 - id: REQ-1956
-  status: proposed
+  status: superseded
+  superseded_by: REQ-1955
   since: 2026-10
   group: 1. Access Governance & Security
   category: Query Governance
@@ -80910,7 +80937,8 @@
   - api-reference.md
   - sources.md
 - id: REQ-1987
-  status: proposed
+  status: in-progress
+  scenario: 'Given a source with a nested object column When its schema is served on GraphQL, gRPC and a code source Then each surface names the same structured type'
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: Compiler & Schema
@@ -81735,14 +81763,34 @@
   - tests/integration/test_sandbox_visitor_walk.py
   - tests/unit/test_sandbox_visitor_walk_state.py
 - id: REQ-1998
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_motherduck_duckdb_engine.py
+  - tests/integration/test_motherduck_duckdb_e2e.py
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
   feature: connector-catalog-relational-and-warehouses
   priority: SHOULD
   type: behavioral
-  description: 'A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres engine: the DuckDB engine attaches it with DuckDB''s MotherDuck extension (md:<database>), signed in with the source''s MotherDuck token (its password field) resolved with the standard resolution. The token is given to the connection as a bound value, never in a statement''s text, so no log, trace or error carries it; a MotherDuck source with no token is refused by name before anything is attached. One engine connection is signed in to one MotherDuck account: a second MotherDuck source signed in with another token is refused by name. Writes reach the MotherDuck database through the engine, as on the Postgres engine. MotherDuck''s hybrid (dual) execution needs no setting of its own: on the DuckDB engine every source is attached on one connection, so a statement that joins a DuckDB file source''s table with a MotherDuck source''s table runs as one DuckDB statement on it, with MotherDuck deciding where each part executes, instead of being federated across two sources. Under dual execution MotherDuck may move local rows to its side for the parts it runs, so such a statement can send data from the local file into the organization''s MotherDuck account. On an engine that reaches neither in place, the tables land as replicas as today.'
+  description: 'A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres
+    engine: the DuckDB engine attaches it with DuckDB''s MotherDuck extension (md:<database>), signed in
+    with the source''s MotherDuck token (its password field) resolved with the standard resolution. The
+    token is given to the connection as a bound value, never in a statement''s text, so no log, trace or
+    error carries it; a MotherDuck source with no token is refused by name before anything is attached.
+    One engine connection is signed in to one MotherDuck account: a second MotherDuck source signed in with
+    another token is refused by name. Writes reach the MotherDuck database through the engine, as on the
+    Postgres engine. MotherDuck''s hybrid (dual) execution needs no setting of its own: on the DuckDB engine
+    every source is attached on one connection, so a statement that joins a DuckDB file source''s table
+    with a MotherDuck source''s table runs as one DuckDB statement on it, with MotherDuck deciding where
+    each part executes, instead of being federated across two sources. Under dual execution MotherDuck may
+    move local rows to its side for the parts it runs, so such a statement can send data from the local
+    file into the organization''s MotherDuck account. On an engine that reaches neither in place, the tables
+    land as replicas as today. (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT:) Provisa runs
+    DuckDB 2.0.0 (it removes the 1.5.x race in which an engine error met in a later batch came back as Interrupted
+    instead of its own error). MotherDuck''s extension does not yet load on DuckDB 2.0, so until MotherDuck
+    supports it a MotherDuck source is refused by name, saying MotherDuck does not yet support the DuckDB
+    version Provisa runs; the rest of this requirement applies again once it does.'
   use_case: 'An analyst keeps shared reference tables in MotherDuck and a large local DuckDB file of event data; a join between them runs as one DuckDB statement under hybrid execution.'
   scenario: 'Given a MotherDuck source with a token, on the DuckDB engine
 
@@ -81881,7 +81929,10 @@
   - REQ-1359
   notes: 'Maintainer 2026-10-13, through the lead, approving it as an addition to the aggregate naming fix: GroupBy gets its own order_by mirroring the result and having; groupKey entries offer only the by dimensions and a key not in by is refused at compile; plain column sorting is removed from GroupBy; the Aggregate root is left alone; carried to gRPC.'
 - id: REQ-2008
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_control_plane_id.py
+  - provisa-ui/src/__tests__/storageScopeIsolation.test.tsx
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -81902,7 +81953,9 @@
   related_reqs: [REQ-1297, REQ-1326, REQ-1349]
   notes: 'Maintainer 2026-10-13, through the lead: scope all browser-saved UI state by org and control plane, so each named demo, org or instance keeps its own state; switching demos must not carry state across, and coming back to a demo restores its own state. The lead set the key shape (<control plane id>:<org id>:<key>), the id served on an endpoint the UI already loads, one helper with a guard and an explicit global flag. The list of global keys, the no-org scope, the remount on a change of scope and the catalog cache tag are the implementation''s, for the lead to confirm.'
 - id: REQ-2009
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_named_demo_example_queries.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -81954,7 +82007,10 @@
   related_reqs: [REQ-1008, REQ-1797, REQ-1598, REQ-2006]
   notes: 'Maintainer 2026-10-13, through the lead: meter Polly spend per sandbox org ($0.25; raised to $0.50 by the maintainer 2026-10-14) with a deployment-wide daily cap ($10), both operator settings with an admin UI surface; meter by tokens times the model''s price from a price table the operator can see; refuse by name, no fallback model; sandboxes use a small cheap model, default the current Haiku; tour answers generated once at template build and served stored; an MCP tour step costs nothing. Lead: measure with a model bake-off over OpenRouter (Kimi plus a Haiku, a Gemini Flash and a GPT mini; maintainer approved its ~$1-3 spend), and enable prompt caching. Built in two commits: this one (prompt caching, usage events, the price table, the bake-off); the meter, caps, refusals, sandbox model, budget display and tour answers follow once the sandbox tier (feat/sandbox-duckdb) is on main.'
 - id: REQ-2010
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_named_demo_tour.py
+  - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -81979,7 +82035,10 @@
   related_reqs: [REQ-1945, REQ-2008, REQ-2009, REQ-1641]
   notes: 'Maintainer approval through the lead, 2026-10-13: a use-case tour for unattended demos; a named demo gets its own story track told with its own data, shown first when that demo is open, the generic Deep Dives still available after it; the demo''s steps live with it (tour.yaml), delivered through /setup/status; the existing tour engine runs them; step text translated like other tour steps; a CI check verifies every step target exists in the demo''s config/queries. The role step uses the SQL explorer''s run-as picker (REQ-1013) rather than the app-wide role, because the explorer''s statements run as its own picker; the target kinds, the done mark per control plane and org, and "start the tour" opening the track are the implementation''s. Maintainer 2026-10-14, through the lead: the track shape (scenario, how it fits together, one Polly question, recap); the done mark versioned by the track and cleared by a fresh demo session; the Polly question answered at template build and served stored (REQ-2012), never live, left out where there is no stored answer; REST, JSON:API, gRPC and Cypher steps. Maintainer 2026-10-14, through the lead: the solution is not always a chat question and answer; part 3 is the predesigned queries and views over the fitting transports, Polly optional; weblogs leads with SQL and REST over the views.'
 - id: REQ-2013
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/__tests__/tourPrerequisites.test.tsx
+  - provisa-ui/src/__tests__/tourClickBefore.test.tsx
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -82189,24 +82248,27 @@
   - tests/integration/test_elasticsearch_native_search_e2e.py
   - provisa-ui/e2e/source-to-query.spec.ts
 - id: REQ-2018
-  status: proposed
+  status: accepted
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
   feature: connector-catalog-nosql-search-and-graph
   priority: SHOULD
   type: behavioral
-  description: 'A table on a Prometheus source can be registered from a native PromQL query: an instant or range
-    PromQL query (e.g. rate(http_requests_total{job="{{job}}"}[{{window}}])), with range start, end and step as
-    optional parameters; each series sample is a row, one column per label plus timestamp and value. The table stores
-    the native query in query_template. Each "{{name}}" placeholder is a parameter of the table (query_arg, REQ-1986)
-    with an IR type, optional unless a steward makes it required; a caller passes it as a GraphQL field argument
-    or an equality condition on the parameter column in SQL. Each value is checked against its type and bound into
-    the parsed query, or as the source''s own bound parameter, never spliced into the query text. Output columns
-    are fixed at registration (declared, or typed from one preview run with sample arguments) and every returned
-    row is checked against them. A query that writes or changes state at the source is refused by name. The table
-    joins with any other table and is governed on every surface like any registered table; with no arguments it
-    behaves as a view.'
+  description: 'A table on a Prometheus source can be registered from a native PromQL query: an instant
+    or range PromQL query (e.g. rate(http_requests_total{job="{{job}}"}[{{window}}])), with range start,
+    end and step as optional parameters; each series sample is a row, one column per label plus timestamp
+    and value. The table stores the native query in query_template. Each "{{name}}" placeholder is a parameter
+    of the table (query_arg, REQ-1986) with an IR type, optional unless a steward makes it required; a caller
+    passes it as a GraphQL field argument or an equality condition on the parameter column in SQL. Each
+    value is checked against its type and bound into the parsed query, or as the source''s own bound parameter,
+    never spliced into the query text. Output columns are fixed at registration (declared, or typed from
+    one preview run with sample arguments) and every returned row is checked against them. A query that
+    writes or changes state at the source is refused by name. The table joins with any other table and is
+    governed on every surface like any registered table; with no arguments it behaves as a view. (Amended
+    2026-11-06, CONSOLIDATED:) This requirement now also carries REQ-2019, REQ-2020, REQ-2021, REQ-2022,
+    REQ-2023, REQ-2024, REQ-2025, REQ-2026, REQ-2027: their text stands as part of this one, and each is
+    marked superseded by it.'
   use_case: An SRE registers request_rate from a PromQL rate() query with a required job argument and joins it to
     the deploys table to see the request rate around each deploy.
   scenario: 'Given a Prometheus source and a table registered from a native PromQL query with a required argument
@@ -82236,7 +82298,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2019
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82282,7 +82345,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2020
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82328,7 +82392,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2021
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82374,7 +82439,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2022
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82421,7 +82487,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2023
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82468,7 +82535,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2024
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82514,7 +82582,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2025
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82561,7 +82630,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2026
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82606,7 +82676,8 @@
     table (REQ-1980), for every source type with its own query language. Lead''s elaboration: the per-source query
     shape and row mapping in the description.'
 - id: REQ-2027
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2018
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -82941,7 +83012,9 @@
   - tests/integration/test_files_demo.py
   - tests/unit/test_named_demo_tour.py
 - id: REQ-2033
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_streaming_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83020,7 +83093,10 @@
     enterprise SaaS, files, streaming, data residency, cybersecurity). Lead''s elaboration: the scenario, data and
     feature assignment in the description.'
 - id: REQ-2035
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_retail_demo.py
+  - tests/integration/test_retail_regions_tier_e2e.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83096,7 +83172,7 @@
     "one bank, three jurisdictions" residency scenario, and carries the regional form of the insider review (REQ-2056
     is the single-region investment bank form).'
 - id: REQ-2036
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83139,7 +83215,9 @@
     enterprise SaaS, files, streaming, data residency, cybersecurity). Lead''s elaboration: the scenario, data and
     feature assignment in the description.'
 - id: REQ-2037
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_insurance_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83224,7 +83302,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2039
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83280,7 +83359,7 @@
   - tests/integration/test_agriculture_demo.py
   - tests/unit/test_named_demo_tour.py
 - id: REQ-2040
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83322,7 +83401,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2041
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83364,7 +83444,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2042
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83406,7 +83487,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2043
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83446,7 +83528,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2044
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83486,7 +83569,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2045
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83526,7 +83610,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2046
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83566,7 +83651,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2047
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83606,7 +83692,8 @@
     audit, tax, local government), measured by sandbox events before others are built. Lead''s elaboration: the
     questions and table choices.'
 - id: REQ-2048
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2037
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -83943,7 +84030,7 @@
   - tests/unit/test_named_demo_tour.py
   - tests/unit/test_named_demo_example_queries.py
 - id: REQ-2052
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -84229,7 +84316,10 @@
   - tests/unit/test_named_demo_tour.py
   - tests/unit/test_polly_bakeoff_questions.py
 - id: REQ-2060
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_rights_not_role_names.py
+  - provisa-ui/src/__tests__/CapabilityGate.test.tsx
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
@@ -84253,7 +84343,9 @@ And a request naming a role the user does not hold is refused by name'
   - REQ-2057
   notes: 'Maintainer 2026-10-15: "what''s the point of an acting role, if you get all rights anyway"; "the user could just have to be explicit in their request, if they claim a role, it must exist". Built first, as step 0 of REQ-2035 (ui).'
 - id: REQ-2057
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_derived_roles.py
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
@@ -84351,7 +84443,9 @@ And a reviewer without it sees the pseudonym, and anyone else the mask'
   docs:
   - security.md
 - id: REQ-2061
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_fixed_arguments.py
   since: 2026-10
   group: 6. Execution, Routing, Caching & Performance
   category: Materialization Store
@@ -84372,7 +84466,9 @@ Then it lands whole and reads are served from the replica without calling the so
   - REQ-2036
   notes: 'Maintainer 2026-10-15, on the vulnerabilities demo: allow fixed arguments in config.'
 - id: REQ-2062
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_landing_filter.py
   since: 2026-10
   group: 6. Execution, Routing, Caching & Performance
   category: Materialization Store
@@ -84393,7 +84489,7 @@ Then only the matching rows are in the replica'
   - REQ-2036
   notes: 'Maintainer 2026-10-15, on the vulnerabilities demo: landing_filter on the table.'
 - id: REQ-2063
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -84424,7 +84520,8 @@ And every tour step shows its real object and every predesigned query returns ro
   - tests/integration/test_datavault_demo.py
   - tests/unit/test_named_demo_tour.py
 - id: REQ-2064
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2109
   since: 2026-10
   group: 4. Source Connectors
   category: Materialization Store
@@ -84512,7 +84609,9 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   - tests/unit/test_mv_load_window.py
   notes: 'Maintainer 2026-10-16: reuse the exact load management window; for an MV it means do not pull from this MV outside the window; Provisa-scheduled work is told apart from user workloads. 2026-10-21, the lead: a demo tour''s sql step is ready on its statement''s refusal as on its rows and highlights the refusal, so the provisioning close read outside its window shows the refusal the step describes instead of ending the tour (provisa-ui/src/tour/demoTour.ts, provisa-ui/src/__tests__/tourDemoTrack.test.tsx).'
 - id: REQ-2067
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_provisioning_demo.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -84539,7 +84638,10 @@ And a pull outside the window is refused by name'
   - REQ-2066
   notes: 'Maintainer 2026-10-16: a provisioning demo (Arrow for large pulls, subscription or Kafka sink to listen for change, then pull); pull windows via load management; staggering is a customization with triggers, not a feature.'
 - id: REQ-2068
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_demo_region_seed.py
+  - tests/integration/test_retail_regions_tier_e2e.py
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Provisioning
@@ -84955,14 +85057,21 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   docs:
   - security.md
 - id: REQ-2078
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-capabilities
   priority: SHOULD
   type: behavioral
-  description: 'Derived roles join the Roles list. Each attribute the org declares as a derived role (REQ-2057) is a parent role in the main Roles list, marked derived, with its value roles (<attribute>__<value>, e.g. region__eu) listed under it as their values are seen. Adding one is Add role -> Derived from attribute; there is no separate derived-roles screen. A derived role is declared one at a time with a required description (REQ-2080); the org''s list replaces the deployment config''s, its first change copying the deployment''s list. Saving or removing one re-reads the caller''s identity, so the role picker offers the roles they now hold without a reload.'
+  description: 'Derived roles join the Roles list. Each attribute the org declares as a derived role (REQ-2057)
+    is a parent role in the main Roles list, marked derived, with its value roles (<attribute>__<value>,
+    e.g. region__eu) listed under it as their values are seen. Adding one is Add role -> Derived from attribute;
+    there is no separate derived-roles screen. A derived role is declared one at a time with a required
+    description (REQ-2080); the org''s list replaces the deployment config''s, its first change copying
+    the deployment''s list. Saving or removing one re-reads the caller''s identity, so the role picker offers
+    the roles they now hold without a reload. (Amended 2026-11-06, CONSOLIDATED:) This requirement now also
+    carries REQ-2079: their text stands as part of this one, and each is marked superseded by it.'
   use_case: 'An administrator adds region as a derived role from the Roles page and sees region, region__eu and region__us in the same list as the granted roles.'
   scenario: 'Given members whose recorded region is eu or us
 
@@ -84991,7 +85100,8 @@ Then the Roles list shows region marked derived, with region__eu and region__us 
   docs:
   - security.md
 - id: REQ-2079
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2078
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
@@ -85023,14 +85133,24 @@ Then its panel lists the values seen and the column whose mask names it, and off
   docs:
   - security.md
 - id: REQ-2080
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
   feature: roles-and-capabilities-capabilities
   priority: MUST
   type: behavioral
-  description: 'Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes). An empty description is refused with a clear message by the configuration load, the REST and GraphQL role mutations and the UI. It is shown in the Roles lists and detail panels, edited in the detail panel, and returned even where a role''s definition is withheld. A meta-role is never stored, so its description is generated from its members'' descriptions. Derived value roles show a generated line. There are no per-domain role descriptions: a general role that does not describe its responsibilities within a domain means that domain needs a new role, usually a child of the general role; the description field''s help and the roles docs say so. Descriptions are a policy and possibly regulatory requirement: access reviews read them.'
+  description: 'Every role carries a required description of what it is for: ordinary roles, derived parent
+    roles and the seeded roles (whose descriptions the deployment writes). An empty description is refused
+    with a clear message by the configuration load, the REST and GraphQL role mutations and the UI. It is
+    shown in the Roles lists and detail panels, edited in the detail panel, and returned even where a role''s
+    definition is withheld. A meta-role is never stored, so its description is generated from its members''
+    descriptions. Derived value roles show a generated line. There are no per-domain role descriptions:
+    a general role that does not describe its responsibilities within a domain means that domain needs a
+    new role, usually a child of the general role; the description field''s help and the roles docs say
+    so. Descriptions are a policy and possibly regulatory requirement: access reviews read them. (Amended
+    2026-11-06, CONSOLIDATED:) This requirement now also carries REQ-2081: their text stands as part of
+    this one, and each is marked superseded by it.'
   use_case: 'An access reviewer reads, beside each role, what it is for.'
   scenario: 'Given a role saved with an empty description
 
@@ -85062,7 +85182,8 @@ Then it is refused, naming the role and saying it needs a description'
   docs:
   - security.md
 - id: REQ-2081
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2080
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
@@ -85096,7 +85217,7 @@ Then it is refused, saying a row rule needs a description'
   - security.md
   - sources.md
 - id: REQ-2082
-  status: proposed
+  status: complete
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: MCP Authentication
@@ -85131,7 +85252,7 @@ And a role its token does not hold is not listed'
   docs:
   - security.md
 - id: REQ-2083
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85178,7 +85299,7 @@ Then the SQL explorer reads the report as Provisa had recorded it then, and the 
   docs:
   - named-demos.md
 - id: REQ-2084
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85213,7 +85334,7 @@ Then the SQL explorer reads the report as Provisa had recorded it then, and the 
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
   - provisa-ui/src/__tests__/DataSciencePage.demoNotebook.test.tsx
 - id: REQ-2085
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -86534,7 +86655,7 @@ Then it is refused by name and nothing is copied"
   - provisa-ui/src/pages/sources/__tests__/fileDownload.test.tsx
   notes: "Maintainer 2026-10-20, through the lead: download a CSV or Parquet source's file into the org folder and /files; Polly can take a fully resolved path (file mount, http, s3) to a single file, add it to the download UI and run it. Queued as one requirement, with the allowed-directories setting for mount paths. Maintainer: a file mount cannot work in a multi-tenant org, so it is single-tenant only. Maintainer: Polly differentiates a single CSV or Parquet source request from a more complex file request. Maintainer: a single CSV or Parquet source gets its table set up at once, in draft, as a choice when the source is created."
 - id: REQ-2114
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Catalog Explore
@@ -86573,7 +86694,7 @@ Then the mutation is refused as it is in the UI"
   - provisa-ui/src/components/ChatPanel.tsx
 
 - id: REQ-2115
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Catalog Explore
@@ -86690,7 +86811,7 @@ Then the graph starts at customers.postal_code"
   - REQ-862
   notes: "Maintainer 2026-10-20, through the lead: lineage shows the original back data source; for an API, the actual endpoint and the raw names moving into the landing table, even if virtual. Queued. Maintainer: the nodes get visual branding by source (Kaggle, CSV, etc.). Maintainer: every element in the lineage a hyperlink to its definition, where possible."
 - id: REQ-2117
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86846,7 +86967,7 @@ Then customer_360's ODPS document and an ODCS 3.1 contract for each member table
   - REQ-1389
   notes: "Maintainer 2026-10-20, through the lead: add the internal-marketplace targets other than Snowflake (which is fine as is), scoped to an enterprise publishing internally to other data teams. Maintainer: this is data team A in enterprise 1 publishing for data team B in enterprise 1, partly just part of Provisa; the issue is when team A uses Provisa and team B does not and uses BigQuery. Maintainer: not one-off ETL flows, but the data products infra creating listings in other locations that match a data product's terminology or, if not available, align to it in spirit. Decisions: several targets per org; contracts per member table; approvers derived from roles; Alation later (no account); others tested on existing cloud accounts. Research: Dataplex data products, Purview Unified Catalog (API in preview), AWS DataZone, Alation, and ODPS/ODCS for the catalogs that import them."
 - id: REQ-2119
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86881,7 +87002,10 @@ Then it fails naming the target"
   - REQ-2118
   notes: "Maintainer 2026-10-20, through the lead: all must have e2e tests. Prompted by the audit finding that bigquery_dataplex passed unit tests on a faked transport and an injected runtime while matching no Google API and never running in production. Existing e2e: Atlas, OpenLineage, OpenMetadata only."
 - id: REQ-2121
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_code_directory.py
+  - provisa-ui/src/pages/sources/__tests__/codeFolder.test.tsx
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -86907,7 +87031,7 @@ Then the form offers Open in VS Code as a vscode://file link to it"
   - REQ-2113
   notes: "Maintainer 2026-10-21, through the lead: point at a local directory and zip it in the background on save; a shortcut to VS Code. Queued as one requirement, the server-directory origin as an option."
 - id: REQ-2122
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86932,7 +87056,10 @@ Then it updates the linked asset rather than creating another"
   notes: "Maintainer 2026-10-21, through the lead: pull descriptions and references from the customer's catalog when describing a table; a human pick list rather than LLM matching; catalogs as their own admin panel reused by export and import; store each pick; an export records the reference in the catalog too, so the catalog can later become the authority by importing. Maintainer: a catalog import, useful once a table is linked by an export or a pick in the table editor. Maintainer: a scheduled import, so for certain tables the catalog is the authority and they are updated on a stated schedule. Maintainer: authority can't be known for sure, so show when descriptions were last imported from which catalog, and let a steward elect to lock a table to a catalog. Maintainer: the table editor lets you refresh descriptions from the catalog. Maintainer: different domains can use their own catalogs."
 - id: REQ-2123
   value: 'Explore column profiles as a rotatable 3D terrain, making shape anomalies visible at a glance.'
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/pages/tables/profile3d/terrain/__tests__/terrainModel.test.ts
+  - provisa-ui/src/pages/tables/profile3d/terrain/__tests__/ProfileTerrain.test.tsx
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Profile Runs Terrain View
@@ -86950,7 +87077,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   notes: '2026-10-21, the maintainer via the lead: the profiling demo''s tour shows its graphs, each step opening the customers table''s View Profile Runs and picking the graph itself, then explaining it once drawn (a stage carries data-ready): the terrain, and the drift strata on postal_code. Relationships and Joint cloud are left out: this run''s correlations and dependencies are all below the map''s lowest strength (0.1), and customers has no joint counts.'
 - id: REQ-2124
   value: 'Compare column distributions, completeness and outliers in three additional 3D views from the same profile.'
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_profiler_governance.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Profile Runs 3D Relationship and Distribution Views
@@ -87112,7 +87241,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_product_inputs_and_checks.py
 - id: REQ-2127
   value: 'Browse and inspect your data products in a dedicated page, with metadata drawn live from the governed model.'
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_data_products_meta.py
+  - provisa-ui/src/pages/data-products/__tests__/productCore.test.ts
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Data Products
@@ -87155,7 +87287,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2026-Q4"
 - id: REQ-2128
   value: 'See a data product''s member tables, contracts and linked glossary terms as an interactive knowledge graph.'
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/components/graph3d/__tests__/graphModel.test.ts
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Data Products
@@ -87423,7 +87557,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2132
   value: 'State the business meaning of each data quality check in plain language, not just its technical predicate.'
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/pages/data-products/__tests__/DataProductDetailPanel.claims.test.tsx
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Data Products
@@ -87528,7 +87664,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2126
   target: "2027-Q1"
 - id: REQ-2134
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_host_code.py
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: Extensible Functions
@@ -87830,7 +87968,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa-ui/src/__tests__/GraphPageCypherExport.test.tsx
 - id: REQ-2136
   value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Glossary Admin
@@ -87920,7 +88058,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q2"
 - id: REQ-2138
   value: 'Attach an OWL reasoner to a SPARQL source so Provisa reads inferred triples alongside the asserted ones.'
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 4. Source Connectors
   category: SPARQL
@@ -87985,7 +88123,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2141
   value: 'Glossary terms derive their OWL type automatically from what they are grounded in—no manual classification.'
-  status: proposed
+  status: in-progress
   docs:
   - admin-graphql.md
   - api-reference.md
@@ -88062,7 +88200,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1591
   target: "2027-Q1"
 - id: REQ-2140
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_groupexposure_demo.py
+  - tests/unit/test_groupexposure_glossary.py
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -88446,7 +88587,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa-ui/src/__tests__/ClassificationKindsTab.test.tsx
     - tests/integration/test_profiler_classification_e2e.py
 - id: REQ-2148
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/__tests__/CatalogsTab.test.tsx
+  since: 2026-10
   target: "2027-Q1"
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -88468,7 +88612,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When the flag is cleared and the provider list regenerated
     Then Atlan is listed without "(beta)"
 - id: REQ-2149
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_leak_probe.py
+  - tests/integration/test_leak_loop.py
+  since: 2026-10
   target: 2027-Q1
   group: 11. Platform, Infrastructure & Delivery
   category: CI/CD
@@ -88511,7 +88659,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     graph extends along its edges until each path is grounded, ending at the columns or tables that ground
     it, where that is possible. A path that does not ground ends where it ends.'
 - id: REQ-2151
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_sandbox_visitor_attributes.py
+  since: 2026-10
   target: "2027-Q1"
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Provisioning
@@ -88546,7 +88697,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2006
   - REQ-2068
 - id: REQ-2152
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_metadata_export_scope.py
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Authorization
@@ -88574,7 +88728,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     then delegate what they hold. This applies wherever grants and masks are written (the admin API, MCP
     tools and settings). (Amended 2026-10-25, A REQUIREMENT DEFECT:) This corrects a defect in the access
     model''s requirements, not a feature: the earlier rules let a capability or a default reveal or reach
-    more than a role''s grants. It is resolved before the product is declared green.'
+    more than a role''s grants. It is resolved before the product is declared green. (Amended 2026-11-06,
+    CONSOLIDATED:) This requirement now also carries REQ-2159: their text stands as part of this one, and
+    each is marked superseded by it.'
   scenario: |
     Given a role holding the view_governance capability that cannot read column ssn of table customers
     When a member of that role opens lineage, source detail, column dependents, profiling, data quality, ontology bindings, the model download, metadata export or an audit view
@@ -88588,7 +88744,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When it grants ssn to another role or sets a mask on it
     Then the change is refused, and the refusal names nothing the role cannot read
 - id: REQ-2153
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_own_domain_scope.py
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Governance Column Visibility
@@ -88783,7 +88942,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And it reads only the columns its grants name'
 - id: REQ-2156
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_lineage_read_rights.py
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Federation-Wide Provenance Graph
@@ -88816,7 +88978,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then it sees raw.orders feeding orders_v directly, with no transform and no sign of a hidden step'
 - id: REQ-2157
   value: 'Define input expectations and output promises for a data product, with check results tracked over time.'
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_product_dq.py
+  since: 2026-10
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Data Products
@@ -89084,7 +89249,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And its input port orders names fulfilment''s contract for orders'
 - id: REQ-2159
-  status: proposed
+  status: superseded
+  superseded_by: REQ-2152
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -89157,7 +89323,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the panel shows Promises, access, support and lineage only'
 - id: REQ-2161
   value: 'See a role''s effective rights—the composition of its scope, capabilities and grants—in one panel.'
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/pages/security/__tests__/RoleDataAccess.test.tsx
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -89204,7 +89373,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And each readable column with its scope and the grant that serves it to dq_lead'
 - id: REQ-2162
   value: 'See every role that can read, write or mask a column, with the inheritance chain that gave each role access.'
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/pages/tables/__tests__/TableAccessPanel.test.tsx
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -89334,7 +89506,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And no network request is made'
 - id: REQ-2165
   value: 'Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.'
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -89688,7 +89860,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And the CI report shows the Cypher pass rate'
 - id: REQ-2168
   value: 'LangChain, Neo4j Browser and other Cypher tools connect and learn your graph''s schema without any changes.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Graph Query
@@ -89809,7 +89981,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And a driver that fails a test is reported by test name'
 - id: REQ-2170
-  status: proposed
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Schema Registration
@@ -91336,7 +91509,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2189
   value: An ERD arrangement can be saved as a named layout, reloaded and revised, while its content stays
     live from the model.
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/__tests__/erd-saved-layout.test.tsx
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -91431,7 +91607,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2191
   value: A Generic SQL source reaches any database with a SQLAlchemy dialect, written in a chosen SQL
     dialect, using only the capabilities it has been shown to have.
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_jdbc_source_e2e.py
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -91643,7 +91822,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2193
   value: Provisa serves OData, so a governed table opens in Excel or Power BI from a URL with no driver.
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_odata_service.py
+  - tests/integration/test_odata_e2e.py
+  since: 2026-11
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: OData
@@ -91685,7 +91868,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2194
   value: pgwire encodes result rows in Rust, straight from Arrow batches, for every type it serves.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
@@ -91743,7 +91926,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2195
   value: Transport, query language and result encoder are three separate choices, combinable freely.
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/grpc_encoder/test_differential.py
+  since: 2026-11
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
@@ -91788,7 +91974,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2196
   value: Teradata, IBM Db2, Vertica, Netezza, Informix, Sybase and Google Spanner are named source types.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -91822,7 +92008,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2197
   value: QuickBooks Online is a named source type.
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_quickbooks_source.py
+  - tests/integration/test_quickbooks_source_live_e2e.py
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -91847,7 +92037,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2198
   value: 'A delete in a detail panel works like a save: the panel is locked, shows progress, and the list
     refreshes when the delete is done.'
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/components/list/__tests__/PanelDelete.test.tsx
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: UI
@@ -91873,7 +92066,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2199
   value: A modeling wizard builds a star schema or a Data Vault from questions asked in that method's
     own terms, and creates the entities and facts it needs.
-  status: proposed
+  status: complete
+  tests:
+  - provisa-ui/src/pages/tables/modeling/__tests__/wizards.test.tsx
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: UI
@@ -91942,7 +92138,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2200
   value: A code source can be written in Go, with the same tables, commands and streams as a Node or Python
     code source.
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_go_source.py
+  - tests/integration/test_go_worker.py
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -91977,7 +92177,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2201
   value: A named demo reads the Bank Secrecy Act's currency transaction rule, extracts its terms, grounds
     them on a bank's data, and queries by concept.
-  status: proposed
+  status: complete
+  tests:
+  - tests/integration/test_banksecrecy_demo.py
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: UI
@@ -92033,7 +92236,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2202
   value: 'Find terms can read a registered table: a domain, a table, its id column and its text column,
     each row one passage.'
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_term_finding.py
+  since: 2026-11
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -92074,7 +92280,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2203
   value: Real PostgreSQL drivers pass their own test suites against Provisa's pgwire, apart from listed
     differences, so a client that works with PostgreSQL works with Provisa.
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 1. Access Governance & Security
   category: Protocol Conformance
@@ -92100,7 +92306,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2204
   value: The catalog queries BI tools and psql send are answered as PostgreSQL answers them, so their
     schema browsers work on Provisa.
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 1. Access Governance & Security
   category: Protocol Conformance
@@ -92122,7 +92328,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2205
   value: A contributor opens the repository in a dev container and has a working toolchain and test setup
     without reading setup docs.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Developer Experience
