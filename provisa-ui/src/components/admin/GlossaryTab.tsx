@@ -48,7 +48,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useScreenInputs } from "../../mcp/screenState";
-import { GlossaryOntologyView, OntologyToggle } from "../graph3d/GlossaryOntologyView";
+import { OntologyToggle, OntologyView } from "../graph3d/OntologyGraph";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
@@ -596,7 +596,7 @@ export function GlossaryTab() {
 
       {/* REQ-2130: the Ontology View in place of the list, read and drawn once it is opened. */}
       {ontology ? (
-        <GlossaryOntologyView search={query} />
+        <OntologyView search={query} />
       ) : (
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
           <div

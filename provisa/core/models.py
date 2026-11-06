@@ -403,6 +403,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         return self
 
     @model_validator(mode="after")
+    def _kafka_security_agrees(self) -> "Source":  # REQ-147
+        """A Kafka source's TLS and SASL settings are refused when saved if they disagree: a SASL
+        protocol with no mechanism or credential, a CA with no TLS. A reference stands for its
+        value here; what it resolves to is read at use."""
+        if self.type == SourceType.kafka:
+            from provisa.kafka.security import check_settings
+
+            check_settings(self.username, self.password, self.federation_hints)
+        return self
+
+    @model_validator(mode="after")
     def _connection_string_has_no_port(self) -> "Source":  # REQ-1985
         """A MongoDB source given by a connection string carries its hosts in it; a port beside it
         is refused. A host held as a secret reference is checked where it is resolved, at use."""

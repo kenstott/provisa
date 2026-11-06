@@ -1,0 +1,13 @@
+{
+  "kafkaFields": {
+    "securityProtocol": "פרוטוקול אבטחה",
+    "securityProtocolHint": "Confluent Cloud ו-MSK משתמשים ב-SASL_SSL. אשכול ללא אבטחה משתמש ב-PLAINTEXT.",
+    "saslMechanism": "מנגנון SASL",
+    "username": "שם משתמש",
+    "usernameHint": "מפתח ה-API ב-Confluent Cloud.",
+    "password": "סיסמה",
+    "passwordHint": "סוד ה-API ב-Confluent Cloud. הפניה לסוד, כגון ${secret:NAME}, נפתרת בעת פתיחת האשכול.",
+    "caCertificate": "אישור CA (PEM)",
+    "caCertificateHint": "השאירו ריק עבור ברוקר שהאישור שלו מגיע מ-CA ציבורי, כמו ב-Confluent Cloud וב-MSK. הדביקו אישור של CA פרטי כדי לתת אמון ב-CA הזה בלבד."
+  }
+}

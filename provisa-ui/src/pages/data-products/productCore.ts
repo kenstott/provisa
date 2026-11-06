@@ -17,27 +17,14 @@
 import { runSql } from "../../api/admin";
 import {
   dataGraphql,
-  operation,
   rootQuery,
   rowsOf,
   type MetaReader,
   type Selection,
 } from "../../api/metaGraph";
-import {
-  COLUMN_FACTS,
-  RANK_TYPES,
-  TABLE_FACTS,
-  TERM_FACTS,
-  rankChains,
-  rankField,
-  toGraphData,
-  type ProductRow as GraphProductRow,
-  type TermEdgeRow,
-} from "../../components/graph3d/productGraphData";
-import type { ContractVersion } from "../../types/admin";
-import type { GraphData } from "../../components/graph3d/graphModel";
+import { COLUMN_FACTS, TABLE_FACTS, TERM_FACTS } from "../../components/graph3d/ontologyData";
 import { catalogTableName, quoteIdent, tableSqlRef } from "../../naming";
-import type { DataContract, DataProduct } from "../../types/admin";
+import type { ContractVersion, DataContract, DataProduct } from "../../types/admin";
 import type { LifecycleStatus } from "../../types/lifecycle";
 
 /** The product row's own fields, as data_products_meta names them. */
@@ -358,9 +345,6 @@ export interface ProductCore {
   tags?: string[];
   terms?: CoreTerm[];
   edges?: CoreEdge[];
-  /** REQ-2174: the term edges ranking one term under another, the graph's term hierarchy;
-   * absent when the role cannot read them. */
-  ranks?: TermEdgeRow[];
   queries: { graphql: string; sql: string; jsonapi: string };
 }
 
@@ -455,21 +439,13 @@ export async function loadProductCore(
 ): Promise<ProductCore | null> {
   const queries = panelQueries(m, product);
   if (queries === null) return null;
-  const ranksField = rankField(m, RANK_TYPES);
-  const [nested, sql, jsonapi, ranked] = await Promise.all([
+  const [nested, sql, jsonapi] = await Promise.all([
     dataGraphql<{ data_products: PanelRow[] }>(queries.graphql, {}, role),
     runSql(queries.sql, role),
     fetch(queries.jsonapi, { headers: { "X-Provisa-Role": role } }).then(async (r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
       return (await r.json()) as { data: { attributes: Record<string, unknown> }[] };
     }),
-    ranksField === null
-      ? null
-      : dataGraphql<{ _term_edges: TermEdgeRow[] | null }>(
-          operation("TermRanks", [ranksField]),
-          {},
-          role,
-        ),
   ]);
   if (sql.error) throw new Error(sql.error);
   const [row] = nested.data_products;
@@ -497,26 +473,6 @@ export async function loadProductCore(
       ? await termClosure(m, role, [...bound.values()])
       : undefined,
     edges: rowsOf(row.edges),
-    ranks: ranked === null ? undefined : rowsOf(ranked._term_edges),
     queries,
   };
-}
-
-/** The product's graph as its core holds it -- the product, its member tables and checkers, their
- *  columns and the terms bound to them, its commands and its links -- built the way the product's
- *  graph query is (toGraphData), so the graph card is drawn from the panel's one read. */
-export function coreGraph(core: ProductCore): GraphData {
-  const row: GraphProductRow = {
-    id: core.product.id,
-    name: core.product.name,
-    domainId: core.product.domainId,
-    status: core.product.status,
-    ownerRole: core.product.ownerRole,
-    memberTables: core.tables ?? [],
-    commands: core.commands ?? [],
-    edges: core.edges ?? [],
-    tags: (core.tags ?? []).map((tagId) => ({ tagId })),
-  };
-  // The term hierarchy above the bound terms, when the role reads the term edges.
-  return toGraphData([row], core.ranks ? rankChains([row], core.ranks) : null, null);
 }
