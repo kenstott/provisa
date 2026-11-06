@@ -73,6 +73,8 @@ _MENTIONED = re.compile(
 )
 _TEXTS = (exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
 _JSON_CALLS = frozenset({"to_json", "to_jsonb"})
+#: A json or jsonb function's answer is never an instant: its text is jsonb_out's to refuse.
+_JSON_PREFIXES = ("json", "to_json")
 _JSON_OBJECTS = frozenset({"json_build_object", "jsonb_build_object"})
 _DAY = (exp.DataType.Type.DATE,)
 #: What a zone cannot move: a count of seconds since the epoch, and a unit no offset is a part of.
@@ -96,10 +98,26 @@ def _clickhouse_local(v: str, zone: str) -> str:
     )
 
 
+def _clickhouse_two_digits(count: str) -> str:
+    return f"substring(toString(100 + {count}), 2)"
+
+
+def _clickhouse_offset(local: str) -> str:
+    """The local instant's offset as PostgreSQL writes it: +HH, +HH:MM or +HH:MM:SS. From its count
+    of seconds, not formatDateTime, which the function forms read as to_char and refuse."""
+    seconds = f"timeZoneOffset({local})"
+    whole = f"abs({seconds})"
+    minutes = _clickhouse_two_digits(f"intDiv({whole} % 3600, 60)")
+    return (
+        f"concat(if({seconds} < 0, '-', '+'), {_clickhouse_two_digits(f'intDiv({whole}, 3600)')}, "
+        f"if({whole} % 3600 = 0, '', concat(':', {minutes})), "
+        f"if({whole} % 60 = 0, '', concat(':', {_clickhouse_two_digits(f'{whole} % 60')})))"
+    )
+
+
 def _clickhouse_text(local: str) -> str:
     wall = rf"replaceRegexpOne(toString({local}), '([.][0-9]*[1-9])0+$', '\\1')"
-    offset = rf"replaceRegexpOne(formatDateTime({local}, '%z'), '^(...)(..)$', '\\1:\\2')"
-    return f"concat(replaceRegexpOne({wall}, '[.]0+$', ''), replaceRegexpOne({offset}, ':00$', ''))"
+    return f"concat(replaceRegexpOne({wall}, '[.]0+$', ''), {_clickhouse_offset(local)})"
 
 
 def _trino_wall(local: str) -> str:
@@ -242,7 +260,7 @@ def _may_be_instant(value: exp.Expr) -> bool:
         return value.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
     if isinstance(value, exp.Anonymous):
         name = str(value.this).lower()
-        return not (name.startswith(_MARKED) or name in _TEXT_CALLS)
+        return not (name.startswith((_MARKED, *_JSON_PREFIXES)) or name in _TEXT_CALLS)
     if isinstance(value, exp.Case):
         taken = [branch.args["true"] for branch in value.args["ifs"]] + [value.args.get("default")]
         return any(_may_be_instant(branch) for branch in taken if branch is not None)
@@ -259,10 +277,7 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
         return None
     v = value.sql(dialect=dialect)
     if isinstance(node, exp.Cast) and is_text:
-        written = engine.text(engine.local(v, _zone_named(engine)))
-        if node.to.expressions:  # c::varchar(5) is the text, cut
-            return f"CAST({written} AS {node.to.sql(dialect=dialect)})"
-        return written
+        return engine.text(engine.local(v, _zone_named(engine)))
     if is_day:
         return engine.day(engine.local(v, _zone_named(engine)))
     if isinstance(node, exp.Extract) and node.name.upper() not in _NOT_ZONED_PARTS:
@@ -296,7 +311,12 @@ def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
         return None if plain is None else sqlglot.parse_one(plain, read=dialect)
     asked = engine.is_instant(value.sql(dialect=dialect))
     otherwise = node.sql(dialect=dialect) if plain is None else plain
-    return sqlglot.parse_one(f"CASE WHEN {asked} THEN {instant} ELSE {otherwise} END", read=dialect)
+    form = sqlglot.parse_one(f"CASE WHEN {asked} THEN {instant} ELSE {otherwise} END", read=dialect)
+    if isinstance(node, exp.Cast) and node.to.this in _TEXTS:
+        # The text the statement says it is, which a function's overload reads (sha256(c::varchar)
+        # is refused), and c::varchar(5) the text cut.
+        return exp.Cast(this=form, to=node.to.copy())
+    return form
 
 
 def _said_instant(value: exp.Expr) -> bool:

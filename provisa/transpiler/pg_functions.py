@@ -891,9 +891,10 @@ def after(sql: str) -> str:
             if name == _TO_JSON and len(node.expressions) == 1:
                 value = node.expressions[0]
                 if value.find(exp.AggFunc, exp.Window) is None:  # written twice: never an aggregate
-                    return sqlglot.parse_one(
-                        _instant_to_json(value.sql(dialect="duckdb")), read="duckdb"
-                    )
+                    # Its value's own placeholders written first: the form replacing the call is
+                    # not walked again.
+                    written = value.transform(_written).sql(dialect="duckdb")
+                    return sqlglot.parse_one(_instant_to_json(written), read="duckdb")
         return node
 
     return sqlglot.parse_one(sql, read="duckdb").transform(_written).sql(dialect="duckdb")
