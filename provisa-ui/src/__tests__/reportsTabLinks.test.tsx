@@ -14,15 +14,24 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "../test-utils/render";
 
+// The rights the viewer holds: reading reports is the ops domain's right (observability), which
+// opened the page; adding and removing one is registering a table in the ops domain.
+const held = vi.hoisted(() => ({ capabilities: ["observability", "table_registration"] }));
 vi.mock("../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../context/AuthContext")>()),
-  useAuth: () => ({ actingRoles: "org_admin" }),
+  useAuth: () => ({
+    actingRoles: "org_admin",
+    capabilities: held.capabilities,
+    demonstrated: [],
+    loading: false,
+  }),
 }));
 vi.mock("../hooks/useAdminQueries", () => ({
   useTables: () => ({
     tables: [
       { id: 1, domainId: "ops", tableName: "ontology_quality", alias: null, sourceId: "x" },
       { id: 2, domainId: "ops", tableName: "sensitive_column_coverage", alias: null, sourceId: "x" },
+      { id: 3, domainId: "ops", tableName: "zz_my_report", alias: null, sourceId: "__derived__" },
     ],
     loading: false,
     refetch: vi.fn(),
@@ -43,6 +52,7 @@ vi.mock("../components/admin/OntologyDriftPanel", () => ({
 }));
 
 import { ReportsTab } from "../components/admin/ReportsTab";
+import { DERIVED_SOURCE_ID } from "../types/admin";
 
 describe("ReportsTab", () => {
   it("links a report's term cells to the term", () => {
@@ -53,6 +63,22 @@ describe("ReportsTab", () => {
   it("shows drift with the Ontology quality report", () => {
     render(<ReportsTab />);
     expect(screen.getByTestId("ontology-drift")).toBeInTheDocument();
+  });
+
+  it("offers adding and removing a report to a table registrar only", () => {
+    expect(DERIVED_SOURCE_ID).toBe("__derived__");
+    held.capabilities = ["observability", "table_registration"];
+    const { unmount } = render(<ReportsTab />);
+    expect(screen.getByTestId("add-report-btn")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete report" })).toBeInTheDocument();
+    unmount();
+
+    held.capabilities = ["observability"];
+    render(<ReportsTab />);
+    expect(screen.getByTestId("report-item-zz_my_report")).toBeInTheDocument();
+    expect(screen.queryByTestId("add-report-btn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete report" })).not.toBeInTheDocument();
+    held.capabilities = ["observability", "table_registration"];
   });
 
   it("opens the report its deep link names", () => {

@@ -633,6 +633,9 @@ services:
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
       # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       # REQ-972..979: the deployment's federation-engine selection. resolve_deployment writes
       # it to config.yaml (\`engine:\`) for the node tier, but the API process selects its engine
       # from \$PROVISA_ENGINE / \$PROVISA_ENGINE_URL / \$PROVISA_MATERIALIZE_URL
@@ -701,6 +704,9 @@ services:
       - ${CERT_DIR}:/app/certs:ro
     environment:
       PROVISA_ROLE: "secondary"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       PROVISA_TLS_CERT: "/app/certs/provisa.crt"
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
@@ -816,6 +822,9 @@ services:
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:?the SaaS control plane is multitenant}"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       # Cloud SQL over the PSA-peered VPC.
       PG_HOST: "\${CONFIG_DB_HOST:?Cloud SQL private IP}"
       PG_PORT: "\${CONFIG_DB_PORT:-5432}"
@@ -1096,6 +1105,9 @@ services:
       # Its Compute Engine instance, which the UI server starts when it finds the tier down
       # (provisa/sandbox_wake.py); empty for a tier on this node.
       PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
+      # REQ-1276: the base domain org subdomains live under, served to the UI at
+      # /deployment-config.js. Unset, the UI reads no org from its host.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
       VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
@@ -1244,6 +1256,7 @@ write_env_file() {
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
              PROVISA_SUPERUSER_USERNAME PROVISA_SUPERUSER_PASSWORD \
              VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
+             VITE_ORG_BASE_DOMAIN \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \

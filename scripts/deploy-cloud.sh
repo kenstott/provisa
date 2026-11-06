@@ -181,9 +181,25 @@ preflight_commerce() {
   printf '%s\n' "$env_dump" | sed -n 's/^\(TEST_\)\{0,1\}\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1\2=<set>/p'
 }
 
+# REQ-1276/REQ-1348: the base domain org subdomains live under. The control plane is
+# cloud.<base>, so it is $SITE's host without its `cloud.` label: cloud.provisa.dev declares
+# provisa.dev. Every process that reads an org from a Host reads it under this value, as
+# VITE_ORG_BASE_DOMAIN: the UI's build and its /deployment-config.js, and the API containers
+# (provisa/security/sni.py org_from_host). Unset, no host names an org, so a deploy without it
+# would leave every org subdomain unaddressable.
+org_base_domain() {
+  local base="${SITE#https://cloud.}"
+  case "$base" in
+    ""|*/*|*:*) echo "SITE=$SITE is not https://cloud.<base domain>; cannot declare the base domain" >&2; exit 1 ;;
+  esac
+  printf '%s\n' "$base"
+}
+
 build_ui() {
-  echo "== building UI"
-  (cd "$REPO/provisa-ui" && npm run build)
+  local base
+  base="$(org_base_domain)" || exit 1
+  echo "== building UI (org base domain: $base)"
+  (cd "$REPO/provisa-ui" && VITE_ORG_BASE_DOMAIN="$base" npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
   # left behind, the control plane answers an org subdomain's token request with a stale page or
@@ -434,11 +450,17 @@ RUNTIME_DEPS_DIR="/root/.provisa/runtime-deps"
 REGIONS_NODES_OVERLAY=""
 
 push_overlay() {
+  local ORG_BASE
+  ORG_BASE="$(org_base_domain)" || exit 1
   cat > "$STAGE/docker-compose.overlay.yml" <<YAML
 # Installed by scripts/deploy-cloud.sh — the deployed app tree, on the host disk, so that a
 # container recreate (every idle-stop on this node) does not revert it.
 services:
   provisa:
+    # REQ-1276: the API reads an org from a Host only under this base domain. Literal here, not
+    # interpolated from the node's provisa.env, so the deploy is what puts it in the container.
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
@@ -449,6 +471,8 @@ services:
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
   provisa-ui:
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
@@ -470,6 +494,7 @@ services:
     ports:
       - "${SANDBOX_PUBLISH}:8000"
     environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
       # The demos cloud.provisa.dev offers (packaging/linux/demo-stores/sandbox-tier-bundles,
       # the list first-launch.sh and terraform's sandbox VM read).
       PROVISA_DEMO_BUNDLES: "$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/sandbox-tier-bundles")"
@@ -486,6 +511,8 @@ services:
   # (provisa-sandbox-regions.yaml, shipped in CONFIG_FILES); without the tree it ran the image's
   # code and the image's config directory.
   provisa-sandbox-regions:
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
@@ -1070,6 +1097,22 @@ verify_commerce() {
   esac
 }
 
+# REQ-1276: the API container must carry the base domain after a deploy. Read from the RUNNING
+# container, like the engine's keys: that is what org_from_host sees. Without it every host names
+# no org, and the deploy would otherwise report success on a cloud nobody can sign in to.
+verify_org_base() {
+  echo "== org base domain"
+  local want have
+  want="$(org_base_domain)" || exit 1
+  have="$(ssh_node "sudo docker exec $API_CONTAINER printenv VITE_ORG_BASE_DOMAIN || true" | tr -d '\r')"
+  if [ "$have" != "$want" ]; then
+    echo "$API_CONTAINER has VITE_ORG_BASE_DOMAIN='${have:-<unset>}', expected '$want'." >&2
+    echo "The API reads an org from a Host only under it; without it no host names an org." >&2
+    exit 1
+  fi
+  echo "   VITE_ORG_BASE_DOMAIN=$have"
+}
+
 verify_engine() {
   echo "== verifying the engine path (cold start may take ~90s)"
   # Read the two keys rather than sourcing .env: .env also carries names this script uses
@@ -1338,16 +1381,16 @@ deploy_sandbox_vm() {
 
 case "$TARGET" in
   ui)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
@@ -1355,10 +1398,10 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

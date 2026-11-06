@@ -78,7 +78,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "^4.7.2",
     "@eslint/js": "^10.0.1",
     "@graphql-tools/graphql-file-loader": "^8.1.14",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.61.1",
     "@rollup/plugin-graphql": "^3.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

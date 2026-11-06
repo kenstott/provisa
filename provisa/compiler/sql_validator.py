@@ -200,7 +200,9 @@ def _violations(
             primary_keys=registered_primary_keys(raw_tables),
         )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
-    violations += _check_dag(tree, gov_ctx, cte_names_set)
+    # On its own copy: it prunes joins in place, and the checks after it judge the statement as
+    # written -- a pruned join's alias is still in scope, its columns still governed (REQ-039).
+    violations += _check_dag(tree.copy(), gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_xmltable(tree, gov_ctx, cte_names_set)
     violations += _check_xml_mappings(tree)
@@ -868,11 +870,19 @@ def _relation_names_by_scope(tree: exp.Expr) -> dict[int, set[str]]:
     """The names a column may be qualified by in each scope of ``tree`` (by ``id`` of its
     statement node): each FROM item's alias, else a table's name, else a function's name -- as
     PostgreSQL names an unaliased ``generate_series(1, 3)``. A CTE's name is listed where the CTE
-    is declared; it is a relation where it is read."""
+    is declared; it is a relation where it is read. A FROM item's column list names its columns,
+    each a value whose fields a qualified column reads -- ``"__b"."n"`` over
+    ``UNNEST($1) AS _uw0(__b)``, as REQ-2176 unwinds the rows a write gave."""
     names: dict[int, set[str]] = {}
     for node in tree.find_all(exp.TableAlias, exp.Table, exp.Unnest):
         if isinstance(node, exp.TableAlias):
             name = node.name
+            if not isinstance(node.parent, exp.CTE):
+                scope = node.find_ancestor(*_SCOPES)
+                if scope is not None:
+                    names.setdefault(id(scope), set()).update(
+                        column.name for column in node.args.get("columns") or ()
+                    )
         elif node.alias:
             continue  # its TableAlias names it
         elif isinstance(node, exp.Table) and isinstance(node.this, exp.Identifier):
