@@ -202,6 +202,8 @@ class OrgRuntime:
     # table names and table ids that repeat from one org to the next.
     kafka_windows: dict[str, str] = field(default_factory=dict)
     kafka_bootstrap: dict[str, str] = field(default_factory=dict)
+    # REQ-147: each Kafka source's entry as declared, its references resolved where a client opens.
+    kafka_declared: dict[str, dict] = field(default_factory=dict)
     kafka_table_configs: dict[str, KafkaTableConfig] = field(default_factory=dict)
     kafka_table_physical: dict[str, str] = field(default_factory=dict)
     table_approval_hooks: dict[int, bool] = field(default_factory=dict)

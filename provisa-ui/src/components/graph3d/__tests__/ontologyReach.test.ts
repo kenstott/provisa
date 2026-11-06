@@ -22,9 +22,10 @@ import {
   type Introspection,
   type MetaReader,
 } from "../../../api/metaGraph";
-import { ontologyGraph, ontologyQuery, type OntologyRows } from "../glossaryGraphData";
+import { ontologyGraph, ontologyQuery, type OntologyRows } from "../ontologyData";
 import {
-  GLOSSARY_SCOPE,
+  ONTOLOGY_SCOPE,
+  PRODUCT_MAP_SCOPE,
   NO_FILTERS,
   visibleGraph,
   type GraphData,
@@ -203,8 +204,9 @@ function answer(query: string): OntologyRows & { data_products?: unknown[] } {
   return out;
 }
 
-/** The view as drawn with ``layers`` on: its query run, its answer drawn. */
-function drawn(layers: LayerId[]): GraphData {
+/** The view as drawn with ``layers`` on: its query run, its answer drawn -- by the Ontology
+ * preset's rules, or with ``products`` the Product map's (REQ-2174, ONE GRAPH, RULES PER PRESET). */
+function drawn(layers: LayerId[], products = false): GraphData {
   const scope: QueryScope = {
     layers: new Set(layers),
     domains: [],
@@ -214,20 +216,23 @@ function drawn(layers: LayerId[]): GraphData {
     tags: [],
     sensitivities: [],
     search: [],
+    focus: null,
+    depth: 2,
+    ...(products ? { products } : {}),
   };
   const query = ontologyQuery(reader(), scope);
   expect(query).not.toBeNull();
   return visibleGraph(
-    ontologyGraph(answer(query!)),
+    ontologyGraph(answer(query!), scope),
     scope.layers,
     NO_FILTERS,
     new Set(),
-    GLOSSARY_SCOPE,
+    products ? PRODUCT_MAP_SCOPE : ONTOLOGY_SCOPE,
   );
 }
 
 // Every layer the view has: whichever are on, nothing unreached is drawn.
-const EVERY: LayerId[] = GLOSSARY_SCOPE.layerOrder;
+const EVERY: LayerId[] = ONTOLOGY_SCOPE.layerOrder;
 const ids = (g: GraphData) => g.nodes.map((n) => n.id);
 
 describe("the Ontology View draws only what a shown term reaches", () => {
@@ -255,8 +260,8 @@ describe("the Ontology View draws only what a shown term reaches", () => {
     );
   });
 
-  it("draws no relationship edge between tables", () => {
-    const g = drawn(EVERY);
+  it("draws no relationship edge between tables, even with the Product map's Tables asked for", () => {
+    const g = drawn([...EVERY, "ownerTables"]);
     const tables = new Set(g.nodes.filter((n) => n.type === "table").map((n) => n.id));
     expect(g.edges.filter((e) => tables.has(e.a) && tables.has(e.b))).toEqual([]);
     expect(g.edges.filter((e) => e.kind === "relationship")).toEqual([]);
@@ -296,8 +301,49 @@ describe("the Ontology View draws only what a shown term reaches", () => {
       tags: [],
       sensitivities: [],
       search: [],
+      focus: null,
+      depth: 2,
     });
     expect(q).not.toContain("data_products");
     expect(q).not.toContain("sourceRelationships");
+  });
+
+  it("offers no owner-tables layer and none of the product layers", () => {
+    for (const l of ["ownerTables", "commands", "quality", "productLinks", "lineage"] as LayerId[])
+      expect(ONTOLOGY_SCOPE.layerOrder).not.toContain(l);
+    expect(ONTOLOGY_SCOPE.readWhenOn).toEqual({});
+  });
+});
+
+// REQ-2174 (ONE GRAPH, RULES PER PRESET): the same model on the Product map, which keeps what the
+// product graph showed.
+const MAP: LayerId[] = ["ontology", "domains", "columns", "data"];
+
+describe("the Product map keeps the product graph's layers and member tables", () => {
+  it("draws every product with all its member tables and their columns, reached or not", () => {
+    const g = drawn(MAP, true);
+    for (const id of ["p:pet_store", "p:catalog", "p:vet_clinic", "t:90", "t:91"])
+      expect(ids(g)).toContain(id);
+    for (const id of ["c:10:name", "c:10:photo_urls", "c:90:outcome", "c:12:id"])
+      expect(ids(g)).toContain(id);
+    expect(g.edges).toContainEqual(
+      expect.objectContaining({ kind: "member", a: "p:vet_clinic", b: "t:91" }),
+    );
+  });
+
+  it("joins the tables drawn by their declared relationships under Tables, with Columns", () => {
+    const rel = (g: GraphData) =>
+      g.edges.filter((e) => e.kind === "relationship").map((e) => [e.a, e.b, e.label]);
+    expect(rel(drawn(MAP, true))).toEqual([]);
+    expect(rel(drawn([...MAP, "ownerTables"], true)).sort()).toEqual([
+      ["t:11", "t:10", "PLACED_FOR"],
+      ["t:90", "t:10", "CHECKS"],
+    ]);
+  });
+
+  it("offers the owner-tables layer and the product layers, lineage read once it is on", () => {
+    for (const l of ["ownerTables", "commands", "quality", "productLinks", "lineage"] as LayerId[])
+      expect(PRODUCT_MAP_SCOPE.layerOrder).toContain(l);
+    expect(PRODUCT_MAP_SCOPE.readWhenOn).toEqual({ lineage: "product" });
   });
 });

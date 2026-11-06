@@ -84,6 +84,7 @@
       "search_sources": "針對搜尋索引的查詢。",
       "grpc_services": "gRPC 查詢介面，包括傳入與傳出。"
     },
+    "tracesTableCheckFailed": "無法檢查 Provisa 的追蹤表（{{reason}}）。不清楚它們是否正在接收資料列；檢查每 30 秒重複一次。",
     "tracesTableEmpty": "已設定端點，但 Provisa 的追蹤表尚無任何資料列。若該端點是外部供應商而非 Provisa 的收集器，請將它移至收集器的匯出器。",
     "tracesTableStale": "已設定端點，但 Provisa 的追蹤表在過去 {{minutes}} 分鐘內沒有收到任何資料列。若 Provisa 一直閒置，這屬正常。否則請確認該端點是 Provisa 的收集器，而非外部供應商。"
   }

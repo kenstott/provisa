@@ -24,8 +24,8 @@ import type { DataContractInput } from "../../../hooks/useDataProductMutations";
 import type { OdcsContract } from "../../../api/dataProductContracts";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
 }));
 // REQ-2158: a contract row reads its port's contract when it opens.
 const fetchProductContract = vi.fn<(id: string, member: string) => Promise<OdcsContract>>();
