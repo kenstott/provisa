@@ -52,9 +52,20 @@ MAX_WHEEL_BYTES = 100 * 1000 * 1000
 #: the gap between this estimate and the wheel builder's own compression. check-wheels is the gate.
 HEADROOM_BYTES = 2 * 1000 * 1000
 
-#: The order a platform's wheel is filled in (maintainer decision 2026-11-06); a mirrored extension
-#: not named here comes after these, by name.
-PRIORITY = ("crypto", "mssql", "snowflake", "bigquery", "mongo", "firebird")
+#: The order a platform's wheel is filled in (maintainer decision 2026-11-06; gsheets and airport
+#: placed by the lead, firebird last): crypto and every community extension the DuckDB engine's
+#: connectors declare (tests/unit/test_mirror_duckdb_extensions.py holds the two lists equal). A
+#: mirrored extension not named here would come after these, by name.
+PRIORITY = (
+    "crypto",
+    "mssql",
+    "snowflake",
+    "bigquery",
+    "mongo",
+    "gsheets",
+    "airport",
+    "firebird",
+)
 
 
 def _pinned_duckdb_version() -> str:

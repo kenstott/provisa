@@ -126,7 +126,7 @@ def test_collect_fills_in_priority_order_and_names_what_it_leaves_out(
         "snowflake": 40,
         "bigquery": 50,
         "mongo": 5,
-        "airport": 1,
+        "zz_other": 1,
     }.items():
         _incompressible(plat / f"{name}.duckdb_extension", size * kb)
 
@@ -134,27 +134,37 @@ def test_collect_fills_in_priority_order_and_names_what_it_leaves_out(
 
     packed = dest / f"v{version}" / "linux_amd64"
     assert sorted(p.name for p in packed.glob("*.duckdb_extension")) == [
-        "airport.duckdb_extension",
         "mongo.duckdb_extension",
         "mssql.duckdb_extension",
+        "zz_other.duckdb_extension",
     ]
     assert (packed / "repositories/query_farm/crypto.duckdb_extension.info").is_file()
     out = capsys.readouterr().out
     assert "LEFT OUT snowflake" in out and "LEFT OUT bigquery" in out
     assert "left out (over the size limit): snowflake, bigquery" in out
-    assert "left out (not mirrored): firebird" in out
-    assert "packed crypto, mssql, mongo, airport" in out
+    assert "left out (not mirrored): gsheets, airport, firebird" in out
+    assert "packed crypto, mssql, mongo, zz_other" in out
 
 
 def test_the_fill_order_is_the_maintainers_priority_then_by_name():
     collect = _collect()
-    assert collect.PRIORITY == ("crypto", "mssql", "snowflake", "bigquery", "mongo", "firebird")
-    assert collect._fill_order({"airport", "firebird", "crypto", "a", "mssql"}) == [
+    assert collect.PRIORITY == (
         "crypto",
         "mssql",
+        "snowflake",
+        "bigquery",
+        "mongo",
+        "gsheets",
+        "airport",
+        "firebird",
+    )
+    assert collect._fill_order({"airport", "firebird", "crypto", "a", "mssql", "zz"}) == [
+        "crypto",
+        "mssql",
+        "airport",
         "firebird",
         "a",
-        "airport",
+        "zz",
     ]
 
 

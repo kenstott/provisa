@@ -60,3 +60,20 @@ def test_crypto_is_mirrored_from_query_farms_repository_and_required():
     assert mirror._sources()["crypto"] == "query_farm"
     assert mirror._REQUIRED == {"crypto"}
     assert set(mirror._sources().values()) == {"community", "query_farm"}
+
+
+def test_the_wheel_fill_order_names_crypto_and_every_mirrored_community_extension():
+    # Derived from the engine's connectors, so a community extension a connector adds is never
+    # missed by the fill order (packaging/duckdb-ext/collect.py PRIORITY).
+    import sys
+
+    spec = importlib.util.spec_from_file_location(
+        "duckdb_ext_collect_mirror", _SCRIPT.parents[2] / "packaging/duckdb-ext/collect.py"
+    )
+    assert spec is not None and spec.loader is not None
+    collect = importlib.util.module_from_spec(spec)
+    sys.modules["duckdb_ext_collect_mirror"] = collect
+    spec.loader.exec_module(collect)
+
+    assert set(collect.PRIORITY) == set(_mirror()._sources())
+    assert {"gsheets", "airport"} <= set(collect.PRIORITY)
