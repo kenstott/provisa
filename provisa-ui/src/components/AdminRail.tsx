@@ -67,6 +67,7 @@ export function AdminRail() {
               key={item.to}
               capability={item.capability}
               orCapability={item.orCapability}
+              anyOf={item.anyOf}
               navigable
             >
               <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>

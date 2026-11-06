@@ -34,6 +34,8 @@ const hooks = vi.hoisted(() => {
         "observability",
         "access_config",
       ],
+      // What the real AuthContext always carries: the rights a role is shown but not given.
+      demonstrated: [] as string[],
       selectedRoles: ["org_admin"],
       user: { id: "u", username: "u" },
       activeOrgId: "acme",

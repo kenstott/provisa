@@ -39,6 +39,7 @@ import { reportCellHref } from "../../lib/reportCellHref";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { CapabilityGate } from "../CapabilityGate";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
@@ -162,15 +163,19 @@ export function ReportsTab() {
           <Text size="sm" fw={600}>
             {t("reportsTab.title")}
           </Text>
-          <Button
-            size="compact-xs"
-            variant="default"
-            leftSection={<Plus size={12} />}
-            onClick={() => setAddOpen(true)}
-            data-testid="add-report-btn"
-          >
-            {t("reportsTab.add")}
-          </Button>
+          {/* A report is a view registered in the ops domain, so adding one asks what
+              registering a table asks; reading the reports is the ops domain's right. */}
+          <CapabilityGate capability="table_registration">
+            <Button
+              size="compact-xs"
+              variant="default"
+              leftSection={<Plus size={12} />}
+              onClick={() => setAddOpen(true)}
+              data-testid="add-report-btn"
+            >
+              {t("reportsTab.add")}
+            </Button>
+          </CapabilityGate>
         </Group>
         <div style={{ flex: 1, overflow: "auto" }}>
           {tablesLoading && reports.length === 0 ? (
@@ -194,20 +199,22 @@ export function ReportsTab() {
                   data-testid={`report-item-${report.tableName}`}
                   rightSection={
                     custom ? (
-                      <Tip text={t("reportsTab.delete")} named>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="sm"
-                          aria-label={t("reportsTab.delete")}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleDelete(report);
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </ActionIcon>
-                      </Tip>
+                      <CapabilityGate capability="table_registration">
+                        <Tip text={t("reportsTab.delete")} named>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            size="sm"
+                            aria-label={t("reportsTab.delete")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDelete(report);
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </ActionIcon>
+                        </Tip>
+                      </CapabilityGate>
                     ) : undefined
                   }
                 />

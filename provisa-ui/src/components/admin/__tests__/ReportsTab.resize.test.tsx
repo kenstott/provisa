@@ -14,7 +14,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../../../test-utils/render";
 
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    actingRoles: "analyst",
+    loading: false,
+    capabilities: ["table_registration"],
+    demonstrated: [],
+  }),
+}));
 vi.mock("../../../hooks/useAdminQueries", () => ({
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useRegisterTable: () => ({ registerTable: vi.fn() }),

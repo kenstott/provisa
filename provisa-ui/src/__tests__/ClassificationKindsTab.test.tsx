@@ -54,7 +54,7 @@ beforeEach(() => {
 
 describe("ClassificationKindsTab", () => {
   it("lists each kind with its test, threshold and mask", async () => {
-    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS, canEdit: true });
+    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
     render(<ClassificationKindsTab />);
     const ssn = await screen.findByTestId("classification-kind-us_ssn");
     expect(ssn).toHaveTextContent("US social security number");
@@ -66,10 +66,9 @@ describe("ClassificationKindsTab", () => {
   });
 
   it("disables a kind, sending every kind left enabled", async () => {
-    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS, canEdit: true });
+    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
     api.setEnabledClassificationKinds.mockResolvedValue({
       kinds: [KINDS[0], { ...KINDS[1], enabled: false }],
-      canEdit: true,
     });
     render(<ClassificationKindsTab />);
     fireEvent.click(await screen.findByTestId("classification-kind-enabled-city"));
@@ -79,9 +78,15 @@ describe("ClassificationKindsTab", () => {
     );
   });
 
-  it("shows the switches read-only to a caller who may not change org settings", async () => {
-    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS, canEdit: false });
+  it("holds every switch while one change is saving", async () => {
+    // The page is reached only with the right the switch needs (sensitive_data), so a switch is
+    // never shown read-only; it waits only for the change already on its way.
+    api.fetchClassificationKinds.mockResolvedValue({ kinds: KINDS });
+    api.setEnabledClassificationKinds.mockReturnValue(new Promise(() => {}));
     render(<ClassificationKindsTab />);
-    expect(await screen.findByTestId("classification-kind-enabled-us_ssn")).toBeDisabled();
+    fireEvent.click(await screen.findByTestId("classification-kind-enabled-city"));
+    await waitFor(() =>
+      expect(screen.getByTestId("classification-kind-enabled-us_ssn")).toBeDisabled(),
+    );
   });
 });
