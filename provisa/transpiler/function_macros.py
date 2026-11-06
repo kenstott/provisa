@@ -2403,7 +2403,13 @@ _EXACT = {
     "trino": {
         "sorted": "array_sort(filter(array_agg({k}), _e -> _e IS NOT NULL))",
         "descending": "reverse({sorted})",
-        "bound": "element_at(transform(ARRAY[{sorted}], _s -> {answer}), 1)",
+        # No keys answer NULL, as PostgreSQL does: the line between two of none would read
+        # element_at(_s, 0), which Trino refuses ("SQL array indices start at 1"). Only NULL keys
+        # leave _s empty; no rows leave it NULL (array_agg over none), whose cardinality is NULL.
+        "bound": (
+            "element_at(transform(ARRAY[{sorted}], "
+            "_s -> CASE WHEN coalesce(cardinality(_s), 0) = 0 THEN NULL ELSE {answer} END), 1)"
+        ),
         "each": "transform(ARRAY[{fractions}], _f -> {answer})",
         "disc": "element_at(_s, CAST(greatest(ceiling({f} * cardinality(_s)), 1) AS BIGINT))",
         "cont": (
