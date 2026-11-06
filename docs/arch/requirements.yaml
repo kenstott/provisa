@@ -65930,14 +65930,20 @@
     discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately
     after source creation succeeds. The crawled table/file list is cached and presented to the admin on
     the source''s Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state
-    friction of manually invoking crawl_directory per source. The flag defaults to false (disabled) to
-    avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow
-    or noisy for large HTTP-crawled directories (REQ-1784/1785). The source-creation form (SourceFormFields.tsx)
-    shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite)
-    that, when checked, passes discover_tables_now: true to the mutation. (Amended 2026-10-03, THIS IS
-    A PERFORMANCE AID:) Discovery at source creation exists to make the later table registration faster:
-    the list of a source''s tables is already to hand when the steward opens Register Table. It adds no
-    capability, since registration discovers tables on demand today.'
+    friction of manually invoking crawl_directory per source. [SUPERSEDED by REQ-1786, 2026-11-06 -- discovery
+    runs on every creation, for every source type; see the 2026-11-06 amendment. Kept here for history;
+    do not implement against it.] The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference
+    passes on every source creation, which could be slow or noisy for large HTTP-crawled directories (REQ-1784/1785).
+    The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox
+    for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true
+    to the mutation. [END SUPERSEDED BLOCK] (Amended 2026-10-03, THIS IS A PERFORMANCE AID:) Discovery at
+    source creation exists to make the later table registration faster: the list of a source''s tables is
+    already to hand when the steward opens Register Table. It adds no capability, since registration discovers
+    tables on demand today. (Amended 2026-11-06, DISCOVERY ON EVERY CREATION:) Creating a source of any
+    type starts its table discovery in the background, with no flag and no checkbox: the cost is incurred
+    when tables are registered anyway, so it is moved earlier rather than added. Register Table uses the
+    discovered list when there is one and discovers on demand otherwise, and can discover again on request.
+    A discovery failure is shown on the source and never refuses the creation.'
   use_case: Admins registering file-connector sources (especially HTTP-crawled ones per REQ-1784) should
     not face a blank Tables page requiring a manual discovery step; opt-in automatic discovery provides
     convenience without imposing latency or unexpected remote fetches on all source creations.
