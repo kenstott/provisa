@@ -546,13 +546,13 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/tags",
-    capability: "org_settings",
+    capability: "table_registration",
     element: '[data-testid="tags-scope-bar"]',
     key: "stepTags",
   },
   {
     route: "/admin/requests",
-    capability: "org_settings",
+    capability: "usage",
     element: '[data-testid="requests-tab-pending"]',
     key: "stepRequests",
   },

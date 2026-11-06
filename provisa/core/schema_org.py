@@ -107,6 +107,16 @@ model_seed = Table(
     CheckConstraint("id = 1", name="model_seed_id_check"),
 )
 
+# The layout this schema was given (db.layout_digest): written once schema.sql and the audit schema
+# have both run, and read before either runs again.
+schema_layout = Table(
+    "schema_layout",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("digest", Text, nullable=False),
+    CheckConstraint("id = 1", name="schema_layout_id_check"),
+)
+
 sources = Table(
     "sources",
     metadata,
