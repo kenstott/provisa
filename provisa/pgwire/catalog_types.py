@@ -22,7 +22,7 @@ import functools
 
 import sqlglot
 import sqlglot.expressions as exp
-from sqlglot.errors import OptimizeError, ParseError
+from sqlglot.errors import ParseError
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.schema import MappingSchema
@@ -123,30 +123,23 @@ def result_types(sql: str) -> tuple[tuple[str, str], ...]:
         tree = sqlglot.parse_one(sql, read="postgres")
     except ParseError:
         return ()  # a call sqlglot reads as syntax (convert): the engine's types describe it
-    try:
-        qualified = _qualified(tree.copy())
-    except OptimizeError:
-        # sqlglot will not resolve a correlated subquery's column while a source's columns are
-        # unknown (psql's FDW options read pg_options_to_table(c.reloptions)): a pg_catalog
-        # table function's columns are its OUT parameters.
-        qualified = _qualified(_with_out_columns(tree))
+    # A pg_catalog table function's columns are its OUT parameters: sqlglot will not resolve a
+    # correlated subquery's column while a source's columns are unknown (psql's FDW options read
+    # pg_options_to_table(c.reloptions)).
+    qualified = qualify(
+        _with_out_columns(tree),
+        db="pg_catalog",
+        schema=_schema(),
+        dialect="postgres",
+        validate_qualify_columns=False,
+        quote_identifiers=False,
+    )
     annotated = annotate_types(qualified, schema=_schema(), dialect="postgres")
     if not isinstance(annotated, exp.Query):
         return ()
     return tuple(
         (select.alias_or_name, _function_type(select.unalias()) or _format_type(select.type))
         for select in annotated.selects
-    )
-
-
-def _qualified(tree: exp.Expr) -> exp.Expr:
-    return qualify(
-        tree,
-        db="pg_catalog",
-        schema=_schema(),
-        dialect="postgres",
-        validate_qualify_columns=False,
-        quote_identifiers=False,
     )
 
 
@@ -170,6 +163,8 @@ def _with_out_columns(tree: exp.Expr) -> exp.Expr:
     for table in tree.find_all(exp.Table):
         call = table.this
         if not isinstance(call, exp.Anonymous) or table.alias_column_names:
+            continue
+        if table.db and table.db.lower() != "pg_catalog":
             continue
         columns = _out_columns().get(call.name.lower())
         if columns is None:
