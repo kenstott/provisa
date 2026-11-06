@@ -154,6 +154,17 @@ def test_mssql_attach_uses_tds_dsn():
     assert "Server=mssqlhost,1433" in d["attach"]
 
 
+def test_mssql_attach_trusts_the_server_certificate_only_where_the_source_pins_it():
+    # The mssql extension for DuckDB 2.0 verifies the server's TLS certificate; a self-signed one
+    # (an on-prem or test SQL Server) is accepted only where the source says so, as Trino's URL is.
+    pinned = DuckDBMssqlConnector().details(
+        _src("sql", SourceType.sqlserver, federation_hints={"trust_server_certificate": "true"})
+    )
+    assert ";TrustServerCertificate=yes'" in pinned["attach"]
+    plain = DuckDBMssqlConnector().details(_src("sql", SourceType.sqlserver))
+    assert "TrustServerCertificate" not in plain["attach"]
+
+
 def test_snowflake_attach_is_read_only_via_secret():
     d = DuckDBSnowflakeConnector().details(_src("sf", SourceType.snowflake))
     assert "TYPE snowflake" in d["attach"] and "READ_ONLY" in d["attach"]

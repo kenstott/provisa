@@ -554,6 +554,11 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
                 f"Server={source.host},{source.port};Database={source.database};"
                 f"User Id={source.username};Password={source.password}"
             )
+            # The mssql extension for DuckDB 2.0 verifies the server's TLS certificate: a
+            # self-signed one is accepted only where the source pins it (federation_hints), as
+            # Source.jdbc_url does for Trino -- never a default.
+            if source.federation_hints.get("trust_server_certificate"):
+                dsn += ";TrustServerCertificate=yes"
             return {"attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE mssql)", "raw_alias": alias}
         from provisa.compiler.sql_literals import sql_literal
         from provisa.core.secrets import resolve_secrets
