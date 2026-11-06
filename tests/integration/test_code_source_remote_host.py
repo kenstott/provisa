@@ -237,57 +237,64 @@ def test_a_statement_that_fills_the_images_spill_volume_is_refused_naming_the_ca
     python, front = config["Entrypoint"][0], config["Entrypoint"][2]
     import time as _t  # J858 DIAGNOSTIC
 
-    _cname = f"j858-diag-{_t.time_ns()}"
-    proc = subprocess.Popen(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "--name",
-            _cname,
-            "--tmpfs",
-            "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
-            "--entrypoint",
-            python,
-            image,
-            "-c",
-            _SPILL_FILLS,
-            str(Path(front).parent),
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        out, err = proc.communicate(timeout=150)
-    except subprocess.TimeoutExpired:
-        pid = subprocess.run(
-            ["docker", "inspect", "-f", "{{.State.Pid}}", _cname], capture_output=True, text=True
-        ).stdout.strip()
-        diag = subprocess.run(
+    for _i in range(20):  # J858 DIAGNOSTIC: repeat to catch the intermittent hang
+        _cname = f"j858-diag-{_t.time_ns()}"
+        proc = subprocess.Popen(
             [
-                "bash",
+                "docker",
+                "run",
+                "--rm",
+                "--cpus",
+                "1" if _i % 2 else "4",
+                "--name",
+                _cname,
+                "--tmpfs",
+                "/var/lib/provisa-spill:size=16m,uid=65532,gid=65532",
+                "--entrypoint",
+                python,
+                image,
                 "-c",
-                f"for t in /proc/{pid}/task/*; do echo $t $(cat $t/comm) $(sudo cat $t/wchan); sudo cat $t/stack 2>/dev/null | head -8; done; "
-                f"sudo gdb -p {pid} -batch -ex 'info threads' -ex 'thread apply all bt 40' 2>&1 | grep -v '^warning' | head -400",
+                _SPILL_FILLS,
+                str(Path(front).parent),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
         )
-        subprocess.run(["docker", "rm", "-f", _cname], capture_output=True)
-        out, err = proc.communicate()
-        raise AssertionError(
-            "J858 DIAGNOSTIC hang\nSTDOUT:"
-            + out
-            + "\nSTDERR:"
-            + err
-            + "\nDIAG:"
-            + diag.stdout
-            + diag.stderr
+        try:
+            out, err = proc.communicate(timeout=150)
+        except subprocess.TimeoutExpired:
+            pid = subprocess.run(
+                ["docker", "inspect", "-f", "{{.State.Pid}}", _cname],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            diag = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    f"for t in /proc/{pid}/task/*; do echo $t $(cat $t/comm) $(sudo cat $t/wchan); sudo cat $t/stack 2>/dev/null | head -8; done; "
+                    f"sudo gdb -p {pid} -batch -ex 'info threads' -ex 'thread apply all bt 40' 2>&1 | grep -v '^warning' | head -400",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(["docker", "rm", "-f", _cname], capture_output=True)
+            out, err = proc.communicate()
+            raise AssertionError(
+                "J858 DIAGNOSTIC hang\nSTDOUT:"
+                + out
+                + "\nSTDERR:"
+                + err
+                + "\nDIAG:"
+                + diag.stdout
+                + diag.stderr
+            )
+
+        class run:  # noqa: N801
+            returncode, stdout, stderr = proc.returncode, out, err
+
+        assert run.returncode == 0, run.stdout + run.stderr
+        assert "REFUSED" in run.stdout and "codesource.duckdb_spill_cap_mb" in run.stdout, (
+            run.stdout
         )
-
-    class run:  # noqa: N801
-        returncode, stdout, stderr = proc.returncode, out, err
-
-    assert run.returncode == 0, run.stdout + run.stderr
-    assert "REFUSED" in run.stdout and "codesource.duckdb_spill_cap_mb" in run.stdout, run.stdout
