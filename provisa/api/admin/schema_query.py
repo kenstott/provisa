@@ -1030,9 +1030,9 @@ class Query:  # REQ-021, REQ-042
                 reason=r["reason"],
                 expires_on=r["expires_on"],
                 why=r.get("why"),  # REQ-2094
-                rls_rule_id=r["rls_rule_id"],  # REQ-2208
-                role_id=r["role_id"],
-                metric_name=r["metric_name"],
+                rls_rule_id=r.get("rls_rule_id"),  # REQ-2208
+                role_id=r.get("role_id"),
+                metric_name=r.get("metric_name"),
             )
             for r in rows
         ]
