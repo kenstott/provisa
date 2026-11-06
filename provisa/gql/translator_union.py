@@ -294,6 +294,12 @@ class _UnionMixin:  # mixin for _Translator
         # on node types the query never asked for don't trip V003 column-visibility checks.
         src_props_wanted = set(self._collect_var_props(src_props_of or src_col))
         tgt_props_wanted = set(self._collect_var_props(tgt_props_of or tgt_col))
+        # The edge properties a MATCH's WHERE filters its rows on: a relationship type without one
+        # of them reads it as null, so no row of it is matched -- the union is read over the types
+        # that have them, as an unlabeled node's is over its types (_build_domain_union). Read over
+        # every type, `MATCH ()-[r]-() WHERE r.email IS NOT NULL` on a model of a few hundred
+        # tables was a quarter-megabyte statement, a minute to transpile (run 42209460301).
+        rel_required = set(self._required_var_props(rel_var)) if rel_var else set()
 
         branches: list[exp.Select] = []
         # The node types each end may be, and the relationships the edge may be, which a property
@@ -314,6 +320,8 @@ class _UnionMixin:  # mixin for _Translator
                 continue
             if loop and rm.source_label != rm.target_label:
                 continue  # a relationship between two tables relates no row to itself
+            if not rel_required <= set(rm.via.attributes if rm.via is not None else ()):
+                continue  # an edge property the WHERE requires, which this type has not
             # A self-loop read from either end is one match: read forward.
             for reverse in (False, True) if undirected and not loop else (False,):
                 # The end the pattern reads first, and the one it reads last: read backward, the

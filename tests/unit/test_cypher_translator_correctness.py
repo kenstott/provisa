@@ -177,3 +177,70 @@ def test_a_numeric_parameter_name_is_a_parameter_not_a_number(terms):
     sql = apply_graph_rewrites(sql_ast, graph_vars, lm).sql(dialect="duckdb")
     assert ordered == ["3"]
     assert con.execute(sql, ["ledger"]).fetchall() == [("ledger",)]
+
+
+def _with_same_as(terms):
+    """``terms``, with SAME_AS: a foreign-key edge from each term to itself, which carries no
+    property of its own (no junction row); and edge 9 noted."""
+    from provisa.gql.label_map import RelationshipMapping
+
+    lm, con = terms
+    same = RelationshipMapping(
+        rel_type="SAME_AS",
+        source_label="GlossaryTerm",
+        target_label="GlossaryTerm",
+        join_source_column="id",
+        join_target_column="id",
+        field_name="same_as",
+    )
+    lm = CypherLabelMap(
+        nodes=lm.nodes,
+        relationships={**lm.relationships, "SAME_AS": same},
+        aliases={**lm.aliases, "SAME_AS": [same]},
+    )
+    con.execute("UPDATE provisa_admin.public.glossary_term_edges SET note = 'via' WHERE id = 9")
+    return lm, con
+
+
+def _engine_sql(lm, cypher: str) -> str:
+    """The statement as the engine runs it: PostgreSQL SQL, transpiled as the server does."""
+    from provisa.transpiler.transpile import transpile_to_duckdb
+
+    sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
+    return transpile_to_duckdb(apply_graph_rewrites(sql_ast, graph_vars, lm).sql("postgres"))
+
+
+def _engine_rows(lm, con, cypher: str) -> list[tuple]:
+    return sorted(con.execute(_engine_sql(lm, cypher)).fetchall(), key=repr)
+
+
+def test_an_untyped_hop_filtered_on_an_edge_property_reads_the_types_that_have_it(terms):
+    """REQ-347: a relationship whose type has no property ``note`` reads ``r.note`` as null, so
+    ``WHERE r.note IS NOT NULL`` matches none of it: the union over every relationship type is
+    read only over the types that have the property, as an unlabeled node's union is over the
+    node types (_required_var_props). Read over all of them, a model of a few hundred tables
+    made a statement of a quarter megabyte that took a minute to transpile (run 42209460301)."""
+    lm, con = _with_same_as(terms)
+    cypher = "MATCH ()-[r]-() WHERE r.note IS NOT NULL RETURN type(r), r.note"
+
+    assert _engine_rows(lm, con, cypher) == [("KIND_OF", "via"), ("KIND_OF", "via")]
+    assert "SAME_AS" not in _engine_sql(lm, cypher)
+
+
+def test_an_untyped_hop_whose_property_no_type_has_matches_nothing(terms):
+    lm, con = _with_same_as(terms)
+
+    assert _engine_rows(lm, con, "MATCH ()-[r]-() WHERE r.email IS NOT NULL RETURN type(r)") == []
+
+
+def test_an_optional_untyped_hop_filtered_on_an_edge_property_keeps_its_row(terms):
+    """An OPTIONAL MATCH's WHERE removes no row (REQ-347): every term is answered, with the noted
+    edge where it has one."""
+    lm, con = _with_same_as(terms)
+
+    assert _engine_rows(
+        lm,
+        con,
+        "MATCH (a:GlossaryTerm) OPTIONAL MATCH (a)-[r]->() WHERE r.note IS NOT NULL "
+        "RETURN a.name, type(r)",
+    ) == sorted([("party", None), ("customer", None), ("ledger", "KIND_OF")], key=repr)
