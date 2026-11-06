@@ -2485,6 +2485,11 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
     ordered = node.expression.expressions[0]
     nothing = None in fractions
     known = [0.0] if nothing else [fraction for fraction in fractions if fraction is not None]
+    if dialect == "clickhouse" and array and nothing:  # no Array is Nullable: no NULL to answer
+        raise FunctionRefused(
+            "percentile_cont" if isinstance(node.this, exp.PercentileCont) else "percentile_disc",
+            dialect,
+        )
     if dialect in _TRINO or dialect == "clickhouse":
         exact = _exact(node, known, array, dialect)
         return exp.Case(ifs=[exp.If(this=exp.false(), true=exact)]) if nothing else exact
