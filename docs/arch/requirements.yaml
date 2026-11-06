@@ -26749,18 +26749,30 @@
     A freshness command answers within the call: it returns its version token synchronously, never by starting
     a job, a callback or a later message, and a call that does not answer within its declared time limit
     counts as failed (freshness unknown). (Amended 2026-11-06, WHY A FRESHNESS GUARANTEE IS WHAT IT IS:)
-    A freshness guarantee may carry a description of why it is what it is, and may cite the reference library
-    section that sets it (a policy, a requirements document, a data contract''s SLA section), with the same
-    reference, text hash and drift handling as a security item''s citation (REQ-2208): a revised cited section
-    flags the guarantee for review. Both are optional and out of the way: the freshness settings show them
-    only once set, as the guarantee''s "why" with a link to the cited section, and otherwise offer them
-    behind a single add control, never as fields every table must look at. (Amended 2026-11-06, WHY IS ANSWERABLE,
-    THEN AND NOW:) A guarantee''s description and citation are model configuration that Polly and the MCP
-    server read, under the reader''s rights, so they can answer why something happened (why a view refreshed,
-    why a stale result was served, which policy set that). Every freshness decision that is logged or traced
-    (a refresh, a stale result served, a freshness command''s answer or failure) records the guarantee''s
-    description and citation as they were at that moment, the cited section''s version and text hash included,
-    so a later reading of the log or trace explains the decision by the rule in force then, not by today''s.'
+    [SUPERSEDED by REQ-858, 2026-11-06 -- the description and citation are carried by a freshness-policy
+    tag (2026-11-06). Kept here for history; do not implement against it.] A freshness guarantee may carry
+    a description of why it is what it is, and may cite the reference library section that sets it (a policy,
+    a requirements document, a data contract''s SLA section), with the same reference, text hash and drift
+    handling as a security item''s citation (REQ-2208): a revised cited section flags the guarantee for
+    review. Both are optional and out of the way: the freshness settings show them only once set, as the
+    guarantee''s "why" with a link to the cited section, and otherwise offer them behind a single add control,
+    never as fields every table must look at. [END SUPERSEDED BLOCK] (Amended 2026-11-06, WHY IS ANSWERABLE,
+    THEN AND NOW:) [SUPERSEDED by REQ-2208, 2026-11-06 -- the why is read from policy and freshness-policy
+    tags, for every governed decision (2026-11-06). Kept here for history; do not implement against it.]
+    A guarantee''s description and citation are model configuration that Polly and the MCP server read,
+    under the reader''s rights, so they can answer why something happened (why a view refreshed, why a stale
+    result was served, which policy set that). Every freshness decision that is logged or traced (a refresh,
+    a stale result served, a freshness command''s answer or failure) records the guarantee''s description
+    and citation as they were at that moment, the cited section''s version and text hash included, so a
+    later reading of the log or trace explains the decision by the rule in force then, not by today''s.
+    [END SUPERSEDED BLOCK] (Amended 2026-11-06, FRESHNESS-POLICY TAGS:) Freshness can be set by a freshness-policy
+    tag (a tag kind whose parameters are the freshness rule: the strategy, the TTL or freshness command,
+    and the behaviour when stale; whose definition says why and may cite the library section that sets it,
+    REQ-2208). Tagging a table or view with it gives that table its freshness, so changing the tag''s parameters
+    changes every table carrying it. A table carries at most one freshness-policy tag (a second is refused
+    by name); an untagged table keeps its own freshness settings; a tagged table takes its freshness from
+    the tag, which its settings show as the source, and is not overridden there (an override is a different
+    tag). This replaces the dedicated description and citation fields: the tag carries them.'
   use_case: Decouples freshness evaluation from refresh logic. Strategies are swappable and composable,
     enabling rich policies (e.g., TTL for cost-sensitive tables, PROBE for zero-lag accuracy, TRANSITIVE
     for derived caches/medallion chains).
@@ -92587,7 +92599,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     residency (data residency and transfer), access (access control), classification (classification and
     confidentiality), quality (data quality standards), and agreement, which marks a document as a data
     use agreement (REQ-2210), so a domain''s agreement library is its documents tagged agreement. An organization
-    adds its own tags for any other policy type.'
+    adds its own tags for any other policy type. (Amended 2026-11-06, POLICY TAGS ON GOVERNED OBJECTS:)
+    A policy tag kind explains governed objects: its definition says why and cites the library section that
+    sets it, and it applies to row rules, roles, commands, relationships, data products, freshness and any
+    other taggable object; what is governed per column (a mask, a column''s scope or visibility) is explained
+    by policy tags on the column itself (column tags). It changes no behaviour. Coverage reads both ways:
+    a governed object with no policy tag, and a policy section no tagged object cites; a revised cited section
+    flags every object carrying the tag for review. Polly and the MCP server read these tags under the reader''s
+    rights to answer why an object is as it is, and every governed decision that is logged or traced (a
+    row rule or mask applied, a role granted, a freshness choice) records the policy and freshness-policy
+    tags of the objects it applied, each with its definition, parameters and citation (the cited section''s
+    version and text hash) as they were at that moment, so a later reading of the log or trace explains
+    the decision by the rules in force then.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
