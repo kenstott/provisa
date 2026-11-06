@@ -558,6 +558,24 @@ async def test_the_admin_api_adds_lists_rescopes_and_removes_a_document(api):
     assert gone.value.status_code == 404 and gone.value.code == "reference_library.not_found"
 
 
+@pytest.mark.parametrize(
+    ("held", "admitted"),
+    [({"glossary_rw"}, True), ({"org_settings"}, False), (set(), False)],
+)
+def test_the_admin_api_is_the_glossary_curators(monkeypatch, held, admitted):
+    """The library is curated with the glossary, so its page asks glossary_rw and nothing in its
+    place: org_settings alone is refused."""
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda _identity, _state: held)
+    if admitted:
+        assert router._guard(_request()) == "default"
+        return
+    with pytest.raises(ApiError) as refused:
+        router._guard(_request())
+    assert refused.value.status_code == 403 and "glossary_rw" in str(refused.value.detail)
+
+
 async def test_the_admin_api_refuses_by_name(api):
     async def refused(body: dict) -> ApiError:
         with pytest.raises(ApiError) as caught:

@@ -29,6 +29,7 @@ import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
 import { JDBC_SOURCE, jdbcSourceHints } from "./jdbcSource";
 import { excelHintsFromMapping, withExcelHints } from "./excelHints";
+import { KAFKA, kafkaFieldsFromSource } from "./kafka";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
 import { WIKIPEDIA, wikipediaFieldsFromHints } from "./wikipedia";
@@ -197,6 +198,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === COSMOSDB) {
     authFields = cosmosFieldsFromHints(hintsJson); // REQ-1982
+  }
+  if (s.type === KAFKA) {
+    authFields = kafkaFieldsFromSource(s); // REQ-147
   }
   if (s.type === JDBC_SOURCE && hintsJson) {
     authFields = jdbcSourceHints(JSON.parse(hintsJson)); // REQ-2191: its settings are its hints

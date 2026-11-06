@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import hashlib
 import json
 import logging
@@ -657,6 +658,18 @@ async def _ensure_shard_secret(shard: str, name: str) -> None:
     # 409: it exists, which is what was asked for.
     if resp.status_code >= 400 and resp.status_code != 409:
         raise K8sProvisioningError(f"creating Secret {name} failed: {gcp_error_detail(resp)}")
+
+
+def put_kafka_client_on_shard(shard: str, catalog: str, text: str) -> float:  # REQ-2073
+    """Put a catalog's client properties into the shard's Secret, and return how long its catalog
+    may wait for the kubelet to sync them in."""
+    from provisa.core import settings_registry
+
+    # Synchronous callers (the boot's Kafka pass) run on the event loop's thread, so the
+    # Kubernetes call runs on a loop of its own.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(asyncio.run, put_kafka_client_properties(shard, catalog, text)).result()
+    return float(settings_registry.value("engine.ready_timeout"))
 
 
 async def put_kafka_client_properties(shard: str, catalog: str, text: str) -> None:  # REQ-2073

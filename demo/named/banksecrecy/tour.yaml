@@ -49,7 +49,7 @@ steps:
   scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100
 - key: banksecrecyLibrary
   route: /admin/reference-library
-  capability: org_settings
+  capability: glossary_rw
   library: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
 # The terms grounded on the bank's tables.
 - key: banksecrecyGrounded

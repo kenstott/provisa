@@ -44,6 +44,7 @@ from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batch
 from provisa.executor.result import ArrowResult, ArrowStreamResult, QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
+from provisa.core import engine_memory
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
 from provisa.federation.land_guard import LandGuard
@@ -414,11 +415,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if parts[0] not in self._phys_catalogs:
             return  # nothing of this source was ever exposed on this connection
         is_view = self._listing(
-            lambda: self._con.execute(
-                "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
-                "AND view_name = ?",
-                parts,
-            ).fetchone()
+            lambda: engine_memory.first_row(
+                self._con.execute(
+                    "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
+                    "AND view_name = ?",
+                    parts,
+                )
+            )
         )
         if is_view is not None:
             self._con.execute(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
@@ -1413,9 +1416,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._ext_loaded.add("vss")
         for column in columns:
             quoted = '"' + column.replace('"', '""') + '"'
-            found = cur.execute(
-                f"SELECT len({quoted}) FROM {target} WHERE {quoted} IS NOT NULL LIMIT 1"
-            ).fetchone()
+            found = engine_memory.first_row(
+                cur.execute(
+                    f"SELECT len({quoted}) FROM {target} WHERE {quoted} IS NOT NULL LIMIT 1"
+                )
+            )
             if found is None:
                 continue
             cur.execute(f"ALTER TABLE {target} ALTER {quoted} TYPE FLOAT[{int(found[0])}]")

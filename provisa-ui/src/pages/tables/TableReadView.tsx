@@ -531,242 +531,256 @@ export function TableReadView({
           <div data-testid="table-section-columns-panel">
             {/* The same topics as the column editor: the name first, a tab's attributes after. */}
             <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
-            <Table.ScrollContainer minWidth={480}>
-              <Table className="data-table" style={{ margin: 0 }}>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("tableReadView.colColumn")}</Table.Th>
-                    {tab === "naming" && (
-                      <>
-                        <Table.Th>{t("tableReadView.colSqlAlias")}</Table.Th>
-                        <Table.Th w="60%">{t("tableReadView.colDescription")}</Table.Th>
-                      </>
-                    )}
-                    {tab === "type" && (
-                      <>
-                        <Table.Th>{t("tableEditForm.dataTypeHeader")}</Table.Th>
-                        <Table.Th>{t("tableReadView.colPk")}</Table.Th>
-                        <Table.Th>{t("tableReadView.colScope")}</Table.Th>
-                      </>
-                    )}
-                    {tab === "access" && (
-                      <>
-                        <Table.Th>{t("tableReadView.colVisibleTo")}</Table.Th>
-                        <Table.Th>{t("tableReadView.colMasking")}</Table.Th>
-                      </>
-                    )}
-                    {tab === "testing" && (
-                      <>
-                        <Table.Th>{t("testData.fake")}</Table.Th>
-                        <Table.Th>{t("testData.syntheticRule")}</Table.Th>
-                        <Table.Th>{t("testData.stable")}</Table.Th>
-                      </>
-                    )}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {table.columns.map((c) => (
-                    <Fragment key={c.id}>
-                      <Table.Tr
-                        ref={c.columnName === column ? linkedRow : undefined}
-                        className={c.columnName === column ? "row-selected" : undefined}
-                        data-linked={c.columnName === column || undefined}
-                        data-testid={`table-read-column-${c.columnName}`}
-                      >
-                        <Table.Td>
-                          {/* REQ-1387: glossary term summary card on column-name hover. */}
-                          <ColumnGlossaryHover
-                            tableId={table.id}
-                            columnName={c.columnName}
-                            // Every attribute of the column, whichever tab shows it.
-                            definition={[
-                              { label: t("tableReadView.colColumn"), value: c.columnName },
-                              {
-                                label: t("tableReadView.colSqlAlias"),
-                                value: c.computedSqlAlias || "",
-                              },
-                              {
-                                label: t("tableReadView.colDescription"),
-                                value: c.description || "",
-                              },
-                              {
-                                label: t("tableEditForm.dataTypeHeader"),
-                                value: shownType(c.dataType, c.subtype),
-                              },
-                              { label: t("tableReadView.colPk"), value: c.isPrimaryKey ? "✓" : "" },
-                              {
-                                label: t("tableReadView.colScope"),
-                                value: c.scope || t("tableReadView.scopeDomain"),
-                              },
-                              {
-                                label: t("tableReadView.colVisibleTo"),
-                                value:
-                                  c.visibleTo === null
-                                    ? ""
-                                    : c.visibleTo.map((e) => grantLabel(e, t)).join(", "),
-                              },
-                              {
-                                label: t("tableReadView.colMasking"),
-                                value: c.masks === null ? "" : masksSummary(c.masks, t),
-                              },
-                            ]}
-                          >
-                            <code>{c.columnName}</code>
-                          </ColumnGlossaryHover>
-                          {c.nativeFilterType && (
-                            <Badge
-                              ml="0.4rem"
-                              size="xs"
-                              variant="light"
-                              color={c.nativeFilterType === "path_param" ? "yellow" : "blue"}
-                              style={{ fontFamily: "monospace" }}
-                            >
-                              {c.nativeFilterType === "path_param"
-                                ? t("tableReadView.pathBadge")
-                                : t("tableReadView.queryBadge")}
-                            </Badge>
-                          )}
-                          {c.isForeignKey && (
-                            <Badge
-                              ml="0.4rem"
-                              size="xs"
-                              variant="light"
-                              color="green"
-                              style={{ fontFamily: "monospace" }}
-                            >
-                              {t("tableReadView.fkBadge")}
-                            </Badge>
-                          )}
-                          {c.isAlternateKey && (
-                            <Badge
-                              ml="0.4rem"
-                              size="xs"
-                              variant="light"
-                              color="yellow"
-                              style={{ fontFamily: "monospace" }}
-                            >
-                              {t("tableReadView.akBadge")}
-                            </Badge>
-                          )}{" "}
-                          <TagControl
-                            objectType="column"
-                            tableId={table.id}
-                            columnName={c.columnName}
-                            piiTerm={c.piiTerm}
-                          />
-                        </Table.Td>
-                        {tab === "naming" && (
-                          <>
-                            <Table.Td c={c.alias ? "white" : "dimmed"}>
-                              {c.computedSqlAlias}
-                            </Table.Td>
-                            <Table.Td className="reasoning-cell">{c.description || ""}</Table.Td>
-                          </>
-                        )}
-                        {tab === "type" && (
-                          <>
-                            <Table.Td ff="monospace">{shownType(c.dataType, c.subtype)}</Table.Td>
-                            <Table.Td ta="center">
-                              {c.isPrimaryKey && (
-                                <Text span c="blue">
-                                  &#10003;
-                                </Text>
-                              )}
-                            </Table.Td>
-                            <Table.Td>{c.scope || t("tableReadView.scopeDomain")}</Table.Td>
-                          </>
-                        )}
-                        {tab === "testing" && (
-                          <>
-                            {/* REQ-1494: what the column shows in test data. No fake is the real
-                              value, said as that; a pii column with none is marked. */}
-                            <Table.Td data-testid={`read-fake-${c.columnName}`}>
-                              {c.fake ? (
-                                <Text span ff="monospace" size="sm">
-                                  {c.fake}
-                                </Text>
-                              ) : (
-                                <Text span size="sm" c="dimmed">
-                                  {t("testData.realValue")}
-                                </Text>
-                              )}
-                              {c.isPii && !c.fake && (
-                                <Badge ml="xs" size="xs" color="red" variant="light">
-                                  {t("testData.piiNoFake")}
-                                </Badge>
-                              )}
-                            </Table.Td>
-                            <Table.Td ff="monospace" data-testid={`read-rule-${c.columnName}`}>
-                              {c.syntheticRule || ""}
-                            </Table.Td>
-                            <Table.Td ta="center">
-                              {c.fakeStable && (
-                                <Text span c="blue">
-                                  &#10003;
-                                </Text>
-                              )}
-                            </Table.Td>
-                          </>
-                        )}
-                        {tab === "access" && (
-                          <>
-                            {/* REQ-1958/REQ-1134: null grant lists are withheld (the caller lacks
-                              view_governance), which is said — never shown as "all" or "none". */}
-                            <Table.Td>
-                              {c.visibleTo === null ? (
-                                <Text span size="sm" c="dimmed" data-testid="grants-not-shown">
-                                  {t("tableReadView.notShown")}
-                                </Text>
-                              ) : (
-                                <Group gap={4} wrap="nowrap">
-                                  <Text span size="sm">
-                                    {c.visibleTo.length > 0
-                                      ? c.visibleTo.map((e) => grantLabel(e, t)).join(", ")
-                                      : t("tableReadView.all")}
-                                  </Text>
-                                  {c.visibleTo.length > 0 && (
-                                    <OwnerResolutionIcon
-                                      refs={c.visibleTo}
-                                      ariaLabel={t("ownerResolution.columnIconLabel")}
-                                    />
-                                  )}
-                                </Group>
-                              )}
-                            </Table.Td>
-                            <Table.Td c={c.visibleTo === null ? "dimmed" : undefined}>
-                              {c.visibleTo === null
-                                ? t("tableReadView.notShown")
-                                : c.masks !== null && masksSummary(c.masks, t)}
-                            </Table.Td>
-                          </>
-                        )}
-                      </Table.Tr>
-                      {tab === "access" && c.masks !== null && c.masks.length > 0 && (
-                        <Table.Tr>
-                          <Table.Td
-                            colSpan={4}
-                            c="dimmed"
-                            fz="0.75rem"
-                            pl="1.5rem"
-                            data-testid={`mask-list-read-${c.columnName}`}
-                          >
-                            {c.masks.map((e, n) => (
-                              <div key={n}>
-                                {t("maskList.entryLine", {
-                                  n: n + 1,
-                                  to: maskToLabel(e.to, t),
-                                  mask: maskSpecLabel(e.mask, t),
-                                })}
-                              </div>
-                            ))}
-                          </Table.Td>
-                        </Table.Tr>
+            {tab === "writeGrants" ? (
+              // REQ-2074: what each role may write to the table.
+              <WriteGrantsPanel
+                grants={table.writeGrants}
+                columns={table.columns.map((c) => c.columnName)}
+                sourceWriteOps={table.writeOps}
+                roles={[]}
+                kept={false}
+              />
+            ) : (
+              <Table.ScrollContainer minWidth={480}>
+                <Table className="data-table" style={{ margin: 0 }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>{t("tableReadView.colColumn")}</Table.Th>
+                      {tab === "naming" && (
+                        <>
+                          <Table.Th>{t("tableReadView.colSqlAlias")}</Table.Th>
+                          <Table.Th w="60%">{t("tableReadView.colDescription")}</Table.Th>
+                        </>
                       )}
-                    </Fragment>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+                      {tab === "type" && (
+                        <>
+                          <Table.Th>{t("tableEditForm.dataTypeHeader")}</Table.Th>
+                          <Table.Th>{t("tableReadView.colPk")}</Table.Th>
+                          <Table.Th>{t("tableReadView.colScope")}</Table.Th>
+                        </>
+                      )}
+                      {tab === "access" && (
+                        <>
+                          <Table.Th>{t("tableReadView.colVisibleTo")}</Table.Th>
+                          <Table.Th>{t("tableReadView.colMasking")}</Table.Th>
+                        </>
+                      )}
+                      {tab === "testing" && (
+                        <>
+                          <Table.Th>{t("testData.fake")}</Table.Th>
+                          <Table.Th>{t("testData.syntheticRule")}</Table.Th>
+                          <Table.Th>{t("testData.stable")}</Table.Th>
+                        </>
+                      )}
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {table.columns.map((c) => (
+                      <Fragment key={c.id}>
+                        <Table.Tr
+                          ref={c.columnName === column ? linkedRow : undefined}
+                          className={c.columnName === column ? "row-selected" : undefined}
+                          data-linked={c.columnName === column || undefined}
+                          data-testid={`table-read-column-${c.columnName}`}
+                        >
+                          <Table.Td>
+                            {/* REQ-1387: glossary term summary card on column-name hover. */}
+                            <ColumnGlossaryHover
+                              tableId={table.id}
+                              columnName={c.columnName}
+                              // Every attribute of the column, whichever tab shows it.
+                              definition={[
+                                { label: t("tableReadView.colColumn"), value: c.columnName },
+                                {
+                                  label: t("tableReadView.colSqlAlias"),
+                                  value: c.computedSqlAlias || "",
+                                },
+                                {
+                                  label: t("tableReadView.colDescription"),
+                                  value: c.description || "",
+                                },
+                                {
+                                  label: t("tableEditForm.dataTypeHeader"),
+                                  value: shownType(c.dataType, c.subtype),
+                                },
+                                {
+                                  label: t("tableReadView.colPk"),
+                                  value: c.isPrimaryKey ? "✓" : "",
+                                },
+                                {
+                                  label: t("tableReadView.colScope"),
+                                  value: c.scope || t("tableReadView.scopeDomain"),
+                                },
+                                {
+                                  label: t("tableReadView.colVisibleTo"),
+                                  value:
+                                    c.visibleTo === null
+                                      ? ""
+                                      : c.visibleTo.map((e) => grantLabel(e, t)).join(", "),
+                                },
+                                {
+                                  label: t("tableReadView.colMasking"),
+                                  value: c.masks === null ? "" : masksSummary(c.masks, t),
+                                },
+                              ]}
+                            >
+                              <code>{c.columnName}</code>
+                            </ColumnGlossaryHover>
+                            {c.nativeFilterType && (
+                              <Badge
+                                ml="0.4rem"
+                                size="xs"
+                                variant="light"
+                                color={c.nativeFilterType === "path_param" ? "yellow" : "blue"}
+                                style={{ fontFamily: "monospace" }}
+                              >
+                                {c.nativeFilterType === "path_param"
+                                  ? t("tableReadView.pathBadge")
+                                  : t("tableReadView.queryBadge")}
+                              </Badge>
+                            )}
+                            {c.isForeignKey && (
+                              <Badge
+                                ml="0.4rem"
+                                size="xs"
+                                variant="light"
+                                color="green"
+                                style={{ fontFamily: "monospace" }}
+                              >
+                                {t("tableReadView.fkBadge")}
+                              </Badge>
+                            )}
+                            {c.isAlternateKey && (
+                              <Badge
+                                ml="0.4rem"
+                                size="xs"
+                                variant="light"
+                                color="yellow"
+                                style={{ fontFamily: "monospace" }}
+                              >
+                                {t("tableReadView.akBadge")}
+                              </Badge>
+                            )}{" "}
+                            <TagControl
+                              objectType="column"
+                              tableId={table.id}
+                              columnName={c.columnName}
+                              piiTerm={c.piiTerm}
+                            />
+                          </Table.Td>
+                          {tab === "naming" && (
+                            <>
+                              <Table.Td c={c.alias ? "white" : "dimmed"}>
+                                {c.computedSqlAlias}
+                              </Table.Td>
+                              <Table.Td className="reasoning-cell">{c.description || ""}</Table.Td>
+                            </>
+                          )}
+                          {tab === "type" && (
+                            <>
+                              <Table.Td ff="monospace">{shownType(c.dataType, c.subtype)}</Table.Td>
+                              <Table.Td ta="center">
+                                {c.isPrimaryKey && (
+                                  <Text span c="blue">
+                                    &#10003;
+                                  </Text>
+                                )}
+                              </Table.Td>
+                              <Table.Td>{c.scope || t("tableReadView.scopeDomain")}</Table.Td>
+                            </>
+                          )}
+                          {tab === "testing" && (
+                            <>
+                              {/* REQ-1494: what the column shows in test data. No fake is the real
+                              value, said as that; a pii column with none is marked. */}
+                              <Table.Td data-testid={`read-fake-${c.columnName}`}>
+                                {c.fake ? (
+                                  <Text span ff="monospace" size="sm">
+                                    {c.fake}
+                                  </Text>
+                                ) : (
+                                  <Text span size="sm" c="dimmed">
+                                    {t("testData.realValue")}
+                                  </Text>
+                                )}
+                                {c.isPii && !c.fake && (
+                                  <Badge ml="xs" size="xs" color="red" variant="light">
+                                    {t("testData.piiNoFake")}
+                                  </Badge>
+                                )}
+                              </Table.Td>
+                              <Table.Td ff="monospace" data-testid={`read-rule-${c.columnName}`}>
+                                {c.syntheticRule || ""}
+                              </Table.Td>
+                              <Table.Td ta="center">
+                                {c.fakeStable && (
+                                  <Text span c="blue">
+                                    &#10003;
+                                  </Text>
+                                )}
+                              </Table.Td>
+                            </>
+                          )}
+                          {tab === "access" && (
+                            <>
+                              {/* REQ-1958/REQ-1134: null grant lists are withheld (the caller lacks
+                              view_governance), which is said — never shown as "all" or "none". */}
+                              <Table.Td>
+                                {c.visibleTo === null ? (
+                                  <Text span size="sm" c="dimmed" data-testid="grants-not-shown">
+                                    {t("tableReadView.notShown")}
+                                  </Text>
+                                ) : (
+                                  <Group gap={4} wrap="nowrap">
+                                    <Text span size="sm">
+                                      {c.visibleTo.length > 0
+                                        ? c.visibleTo.map((e) => grantLabel(e, t)).join(", ")
+                                        : t("tableReadView.all")}
+                                    </Text>
+                                    {c.visibleTo.length > 0 && (
+                                      <OwnerResolutionIcon
+                                        refs={c.visibleTo}
+                                        ariaLabel={t("ownerResolution.columnIconLabel")}
+                                      />
+                                    )}
+                                  </Group>
+                                )}
+                              </Table.Td>
+                              <Table.Td c={c.visibleTo === null ? "dimmed" : undefined}>
+                                {c.visibleTo === null
+                                  ? t("tableReadView.notShown")
+                                  : c.masks !== null && masksSummary(c.masks, t)}
+                              </Table.Td>
+                            </>
+                          )}
+                        </Table.Tr>
+                        {tab === "access" && c.masks !== null && c.masks.length > 0 && (
+                          <Table.Tr>
+                            <Table.Td
+                              colSpan={4}
+                              c="dimmed"
+                              fz="0.75rem"
+                              pl="1.5rem"
+                              data-testid={`mask-list-read-${c.columnName}`}
+                            >
+                              {c.masks.map((e, n) => (
+                                <div key={n}>
+                                  {t("maskList.entryLine", {
+                                    n: n + 1,
+                                    to: maskToLabel(e.to, t),
+                                    mask: maskSpecLabel(e.mask, t),
+                                  })}
+                                </div>
+                              ))}
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
           </div>
         )}
         {actions}
@@ -783,15 +797,6 @@ export function TableReadView({
         )}
         {/* REQ-2162: who can read or write each column. */}
         {section === "access" && <TableAccessPanel tableId={table.id} />}
-        {section === "writes" && (
-          // REQ-2074: what each role may write to the table.
-          <WriteGrantsPanel
-            grants={table.writeGrants}
-            columns={table.columns.map((c) => c.columnName)}
-            roles={[]}
-            kept={false}
-          />
-        )}
       </div>
       {deployMsg[table.id] && (
         <Box
