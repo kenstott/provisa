@@ -10,6 +10,7 @@
 
 import { test, expect, type Page } from "./coverage";
 import type { Request } from "@playwright/test";
+import { addLateralEdge } from "./ontology-lateral-edge";
 
 /**
  * REQ-2136: a graph view opens as its own query, its filters inside it. Against the real backend
@@ -80,6 +81,18 @@ function strings(v: unknown, out = new Set<string>()): Set<string> {
 
 test.describe("Open as query", () => {
   test.setTimeout(180_000);
+
+  // A third edge type for Taxonomy to leave out: with PART_OF alone in the config, its two types
+  // are every type there is, and the view reads that as no narrowing (no relType in its query).
+  let removeLateralEdge: (() => Promise<void>) | null = null;
+  test.beforeEach(async ({ page }) => {
+    removeLateralEdge = await addLateralEdge(page.request);
+  });
+  test.afterEach(async () => {
+    const remove = removeLateralEdge;
+    removeLateralEdge = null;
+    if (remove) await remove();
+  });
 
   test("the Ontology View's filtered query, run on the GraphQL page, answers what the view read", async ({
     page,

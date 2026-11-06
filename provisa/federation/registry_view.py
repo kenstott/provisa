@@ -86,7 +86,7 @@ async def _attach_file_glob_tables(sources: list[Source], conn: Any) -> None:
         return
     from provisa.api.admin.db_queries import fetch_tables
 
-    rows = await fetch_tables(conn)
+    rows = await fetch_tables(conn, catalog=False)  # a SQL catalog's views hold no file glob
     by_source: dict[str, list] = {}
     for row in rows:
         glob = row.get("file_glob")

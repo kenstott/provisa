@@ -36139,11 +36139,34 @@
   feature: deployment-state-and-engine
   priority: MUST
   type: behavioral
-  description: DuckDB extensions (sqlite_scanner, postgres_scanner, iceberg, delta, community) required
+  description: 'DuckDB extensions (sqlite_scanner, postgres_scanner, iceberg, delta, community) required
     by the embedded engine are shipped offline via a separate PyPI package `provisa-duckdb-ext` (py3-none-any
     universal wheel) that embeds pinned, per-platform `.duckdb_extension` blobs. On embedded launch, the
     extensions are staged into a writable local directory without any call to extensions.duckdb.org. Missing
-    extensions fail loud; silent network fallback is disabled.
+    extensions fail loud; silent network fallback is disabled. (Amended 2026-11-06, TEMPORARY EXTENSION
+    SOURCES FOR DUCKDB 2.0:) Temporary, until the maintainer can add PyPI projects with trusted publishers
+    (PyPI login unavailable): for DuckDB 2.0 the core extensions (postgres_scanner, httpfs, sqlite_scanner,
+    iceberg, azure, delta) are installed from the third-party per-extension, per-platform PyPI wheels (duckdb-extension-*,
+    santosh-d3vpl3x/duckdb_extensions, MIT), pinned to the DuckDB version and loaded only with DuckDB''s
+    signature check on; provisa-duckdb-ext carries the extensions those wheels lack (crypto from Query.Farm''s
+    repository and the community extensions), one wheel per platform under PyPI''s 100 MB limit, filled
+    in priority order (crypto, mssql, snowflake, bigquery, mongo, firebird) and naming any it leaves out.
+    Once PyPI is available again, the core extensions move into Provisa''s own per-extension projects and
+    the third-party wheels are dropped. (Amended 2026-11-06, AVRO WITH ICEBERG:) The temporary third-party
+    core set includes avro (duckdb-extension-avro), which iceberg needs to load; it is verified byte-identical
+    to DuckDB''s signed binary like the others. (Amended 2026-11-06, ATTACHABLE MEANS STAGED:) The DuckDB
+    engine counts a connector as attachable only when its extension is staged for the running DuckDB version
+    and platform, read from the staged extensions'' manifest, not from the connectors it declares. A source
+    whose extension is staged attaches; one whose extension is not staged lands into the materialization
+    store when it is landable, as any source the engine cannot read in place does; [SUPERSEDED by REQ-1142,
+    2026-11-06 -- a source not read in place is a replica (2026-11-06). Kept here for history; do not implement
+    against it.] otherwise registration refuses it by name, saying which extension is not available for
+    this DuckDB version and platform, so the refusal comes when the source is added, never at its first
+    query. [END SUPERSEDED BLOCK] (Amended 2026-11-06, NOT ATTACHABLE MEANS REPLICA:) A source the engine
+    cannot read in place is a replica: it lands into the materialization store and is read from there, shown
+    and refreshed as any replica is. A source is unreachable only when no reader in the deployment can read
+    it at all; that is shown on the source when it is added, naming what is missing, never left to its first
+    query.'
   use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
     extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
     delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped environments without
@@ -59595,19 +59618,26 @@
   feature: replicas-and-freshness-landed-shape
   priority: MUST
   type: behavioral
-  description: 'A landed replica carries the landed model''s keys, converged by the landing reconcile
-    with the tables themselves and for every landed table regardless of Data Product membership: its declared
-    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose
-    referenced columns are the referenced table''s PRIMARY KEY (many-to-one on the source, one-to-many
-    on the target, a junction relationship as one key per hop). Applied only on stores that hold constraints
-    as informational metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook);
-    an enforcing store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching
-    PRIMARY KEY is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped,
-    and a provisa_fk_* constraint no relationship declares is withdrawn. A key the store cannot hold is
-    withheld and logged with its reason, never emitted. Where the compiler''s physical name is a VIEW
-    over the replica, the view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY
-    (referenced physical column) column TAGs, with stale key tags unset. The metadata export publishes
-    no constraints.'
+  description: 'A landed replica carries the landed model''s keys, converged by the landing reconcile with
+    the tables themselves and for every landed table regardless of Data Product membership: its declared
+    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose referenced
+    columns are the referenced table''s PRIMARY KEY (many-to-one on the source, one-to-many on the target,
+    a junction relationship as one key per hop). Applied only on stores that hold constraints as informational
+    metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook); an enforcing
+    store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching PRIMARY KEY
+    is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped, and a provisa_fk_*
+    constraint no relationship declares is withdrawn. A key the store cannot hold is withheld and logged
+    with its reason, never emitted. Where the compiler''s physical name is a VIEW over the replica, the
+    view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical column)
+    column TAGs, with stale key tags unset. The metadata export publishes no constraints. (Amended 2026-11-06,
+    RELATIONSHIPS INDEX, UNIQUENESS KEYS:) A relationship''s cardinality never makes a key. Every relationship
+    whose ends are landed gets a plain, non-unique index on each side''s join columns, which any store accepts
+    whatever the data, so a legitimate join over duplicated values is indexed on both sides. A landed table''s
+    PRIMARY KEY or UNIQUE key comes only from real uniqueness: the table''s declared primary key, or a column
+    its profile shows to be unique; a FOREIGN KEY is placed only where its referenced columns are such a
+    key, as before. When the side a relationship declares as its ''one'' side has duplicated values (registration
+    or the profiler can see it), the relationship shows it, so the steward corrects the cardinality or declares
+    it many-to-many.'
   use_case: 'Horizon Catalog renders a table''s keys and join paths from Snowflake''s informational constraints,
     and consumers query the per-source views. Keys are model state, not catalog state: tying them to the
     catalog publish left every landed table key-less until a publish ran and left every table outside
@@ -81781,9 +81811,25 @@
     file into the organization''s MotherDuck account. On an engine that reaches neither in place, the tables
     land as replicas as today. (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT:) Provisa runs
     DuckDB 2.0.0 (it removes the 1.5.x race in which an engine error met in a later batch came back as Interrupted
-    instead of its own error). MotherDuck''s extension does not yet load on DuckDB 2.0, so until MotherDuck
-    supports it a MotherDuck source is refused by name, saying MotherDuck does not yet support the DuckDB
-    version Provisa runs; the rest of this requirement applies again once it does.'
+    instead of its own error). [SUPERSEDED by REQ-1998, 2026-11-06 -- a source the engine cannot attach
+    is a replica, not refused (2026-11-06). Kept here for history; do not implement against it.] MotherDuck''s
+    extension does not yet load on DuckDB 2.0, so until MotherDuck supports it a MotherDuck source is refused
+    by name, saying MotherDuck does not yet support the DuckDB version Provisa runs; the rest of this requirement
+    applies again once it does. [END SUPERSEDED BLOCK] (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE
+    IT CANNOT ATTACH:) Where the engine cannot attach MotherDuck (on DuckDB 2.0 its extension does not load),
+    a MotherDuck source is a replica: its tables are landed into the materialization store by a reader that
+    can reach MotherDuck and read from there, shown and refreshed as any replica is; it is read in place
+    again once the engine can attach it. (Amended 2026-11-06, A LANDING-ONLY MOTHERDUCK READER:) The reader
+    that lands a MotherDuck replica on a DuckDB 2.0 engine is a separate, landing-only process pinned to
+    the last DuckDB version MotherDuck supports (1.5.x), with that version''s motherduck extension staged:
+    it reads the source''s tables into the materialization store and serves no queries, so the engine and
+    every query stay on DuckDB 2.0. It is retired once MotherDuck supports the engine''s DuckDB version
+    and the source is read in place again. (Amended 2026-11-06, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT:)
+    (Replacing the landing-only DuckDB 1.5.x reader the same day, maintainer''s choice:) a MotherDuck replica
+    lands through MotherDuck''s own Postgres-wire endpoint (pg.<region>.motherduck.com:5432) with the source''s
+    token, read by Provisa''s existing Postgres client; no second DuckDB version is run. A Google Sheets
+    source likewise lands through the Google Sheets API where the engine has no gsheets extension. An extension
+    that lags a future DuckDB release gets its own reader decision.'
   use_case: 'An analyst keeps shared reference tables in MotherDuck and a large local DuckDB file of event data; a join between them runs as one DuckDB statement under hybrid execution.'
   scenario: 'Given a MotherDuck source with a token, on the DuckDB engine
 
@@ -91326,7 +91372,16 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a question passage search cannot answer: for a customer who keeps depositing cash just under $10,000,
     graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
     recorded for comparison, does not. The aggregation question (1010.313), which passage search already
-    finds, stays as a second check.'
+    finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
+    workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by
+    its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read
+    as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
+    A WORKBOOK ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s
+    own terms (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph
+    is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
+    the first row holds no labels, so a quoted row reads on its own. Rows move when others are inserted:
+    a cited row found again by its hash at another row follows silently, and one whose hash is gone is flagged
+    for review, as any drifted citation is.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
