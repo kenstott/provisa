@@ -36152,7 +36152,9 @@
     repository and the community extensions), one wheel per platform under PyPI''s 100 MB limit, filled
     in priority order (crypto, mssql, snowflake, bigquery, mongo, firebird) and naming any it leaves out.
     Once PyPI is available again, the core extensions move into Provisa''s own per-extension projects and
-    the third-party wheels are dropped.'
+    the third-party wheels are dropped. (Amended 2026-11-06, AVRO WITH ICEBERG:) The temporary third-party
+    core set includes avro (duckdb-extension-avro), which iceberg needs to load; it is verified byte-identical
+    to DuckDB''s signed binary like the others.'
   use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
     extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
     delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped environments without
