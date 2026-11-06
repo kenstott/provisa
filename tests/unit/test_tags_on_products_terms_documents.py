@@ -26,7 +26,6 @@ import pytest
 from sqlalchemy import insert
 
 from provisa.api.admin import schema_mutation, schema_query
-from provisa.api.admin.read_rights import DependentsReader, _tag_assignment_readable
 from provisa.api.admin.types import TagAssignmentInput
 from provisa.core.models import TagAssignment
 from provisa.core.repositories import glossary as glossary_repo
@@ -40,6 +39,16 @@ CURATORS = {
         "id": "sales_curator",
         "capabilities": ["data_product_rw", "glossary_read", "glossary_rw"],
         "domain_access": ["sales"],
+    },
+    "finance_curator": {
+        "id": "finance_curator",
+        "capabilities": ["data_product_rw", "glossary_read", "glossary_rw"],
+        "domain_access": ["finance"],
+    },
+    "all_curator": {
+        "id": "all_curator",
+        "capabilities": ["data_product_rw", "glossary_read", "glossary_rw"],
+        "domain_access": ["*"],
     },
     # a table editor in sales, who curates neither products nor the library
     "sales_tables": {
@@ -189,13 +198,19 @@ async def test_a_product_that_is_not_there_is_not_found(library):
 # --- a glossary term --------------------------------------------------------------------------------
 
 
-async def test_a_glossary_curator_tags_a_term_without_the_table_editors_right(library):
-    result = await schema_mutation.Mutation().assign_tag(
-        _info("sales_curator"), _on("term", term_id=library["term"])
-    )
-    assert result.success, result.message
+async def test_a_terms_tags_are_read_as_the_term_is(library):
+    # Which tags a term may take is REQ-2145's (test_pii_term_tags); here, how one is read back.
+    from provisa.core.repositories import tag as tag_repo
+
+    import provisa.api.app as appmod
+
+    async with appmod.state.tenant_db.acquire() as conn:
+        await tag_repo.assign(
+            conn, TagAssignment(tag_id="reviewed", object_type="term", term_id=library["term"])
+        )
     seen = await _seen("sales_curator")
     assert [(a.object_type, a.term_id) for a in seen] == [("term", library["term"])]
+    assert await _seen("finance_curator") == []
 
 
 # --- a library document and its sections ------------------------------------------------------------
@@ -261,10 +276,12 @@ async def test_a_documents_tags_are_read_as_the_document_is(library):
     mutation = schema_mutation.Mutation()
     for document_id in (library["policy"], library["finance_policy"]):
         assert (
-            await mutation.assign_tag(_info("everywhere"), _on("document", document_id=document_id))
+            await mutation.assign_tag(
+                _info("all_curator"), _on("document", document_id=document_id)
+            )
         ).success
     assert {a.document_id for a in await _seen("sales_curator")} == {library["policy"]}
-    assert {a.document_id for a in await _seen("everywhere")} == {
+    assert {a.document_id for a in await _seen("all_curator")} == {
         library["policy"],
         library["finance_policy"],
     }
@@ -274,6 +291,8 @@ async def test_a_refusal_names_a_document_tag_only_to_a_reader_of_the_document(
     library,
     plane,  # noqa: F811
 ):
+    from provisa.api.admin.read_rights import DependentsReader, _tag_assignment_readable
+
     reads_sales = DependentsReader(
         column=lambda table_id, column: True,
         metric=lambda row: True,

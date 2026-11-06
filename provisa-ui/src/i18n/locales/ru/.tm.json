@@ -9716,5 +9716,11 @@
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
   "ru/writeGrants.json::writeGrants.source_session": "A session variable",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "ru/tagsTab.json::tagsTab.scope_product": "Data product",
+  "ru/tagsTab.json::tagsTab.scope_term": "Glossary term",
+  "ru/tagsTab.json::tagsTab.scope_document": "Library document",
+  "ru/tagsTab.json::tagsTab.scope_section": "Library section",
+  "ru/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
+  "ru/referenceLibrary.json::referenceLibrary.fieldTags": "Tags"
 }
