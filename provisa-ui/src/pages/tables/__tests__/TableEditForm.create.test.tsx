@@ -132,7 +132,8 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
   });
 
   it("keeps its write grants to save with the table", async () => {
-    const setEditingTable = renderForm(draft, null, "writes");
+    const setEditingTable = renderForm(draft, null, "columns");
+    fireEvent.click(screen.getByTestId("column-tab-writeGrants"));
     fireEvent.click(screen.getByTestId("write-grant-add"));
     fireEvent.click(screen.getByTestId("write-grants-save"));
     await waitFor(() =>
