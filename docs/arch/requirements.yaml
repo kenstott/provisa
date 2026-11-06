@@ -92662,7 +92662,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and only to the catalogs whose domains include it. Everything withheld beyond that is a tag with a metadata-export
     gate (condition always) and its why: the glossary term''s separate export-excluded flag and the built-in
     rule that prunes technical columns become such tags (the technical tag declares the gate rather than
-    carrying hidden behaviour), so withholding anything from a catalog is always a tag, explained and reviewable.'
+    carrying hidden behaviour), so withholding anything from a catalog is always a tag, explained and reviewable.
+    (Amended 2026-11-06, A GATE TALKS BACK WITH ITS WHY:) When a gate refuses a promotion or export, the
+    refusal answers with the tag''s why, not only its name: the tag''s definition, the section it cites
+    (who said so) and its last attestation, beside what is missing, so the person stopped reads the reason,
+    its source and who validated it in the same place.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
