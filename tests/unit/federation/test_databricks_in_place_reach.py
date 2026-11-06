@@ -31,6 +31,17 @@ from provisa.federation.strategy import Strategy, federate
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def one_organisation(monkeypatch):
+    """The deployment's answer to whether it holds many organisations, which resolve() asks when
+    it reads a source's secrets: here, one. The API layer gives it at import; a test that does not
+    import it gives it itself, so it passes on its own as well as beside other files."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 _ENGINES = ["duckdb", "pg"]
 
 
