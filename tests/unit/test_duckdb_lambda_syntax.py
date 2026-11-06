@@ -67,3 +67,24 @@ def test_writing_a_lambda_leaves_the_tree_unchanged():
     lam.sql(dialect="duckdb")
     assert lam.args.get("colon") is None
     assert lam.sql(dialect="trino") == "x -> x"
+
+
+def test_json_extraction_is_written_as_a_function_never_an_arrow():
+    # `v -> '$.a'` read back inside a call is taken for a lambda (sqlglot reads DuckDB's arrow
+    # both ways), and DuckDB 2.0 then binds `LAMBDA v : '$.a'`: json_array_elements' unnest of
+    # json_extract(v, '$[*]') failed so. The function form reads back as itself.
+    import sqlglot
+
+    tree = sqlglot.parse_one("SELECT unnest(json_extract(v, '$[*]')) FROM t", read="duckdb")
+    written = tree.sql(dialect="duckdb")
+    assert "->" not in written
+    assert sqlglot.parse_one(written, read="duckdb").sql(dialect="duckdb") == written
+
+
+def test_json_array_elements_runs_on_duckdb():
+    sql = transpile_to_duckdb("SELECT x FROM json_array_elements('[1, 2]') AS t(x)")
+    con = duckdb.connect()
+    try:
+        assert [str(v) for (v,) in con.execute(sql).fetchall()] == ["1", "2"]
+    finally:
+        con.close()

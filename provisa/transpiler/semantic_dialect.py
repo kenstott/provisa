@@ -175,5 +175,15 @@ def _keyword_lambda_sql(
 
 DuckDB.Generator.lambda_sql = _keyword_lambda_sql  # type: ignore[method-assign]
 
+
+def _json_extract_call(self: Generator, expression: exp.JSONExtract) -> str:
+    """DuckDB's JSON extraction as its function, never the arrow: sqlglot reads ``v -> '$.a'``
+    inside a call back as a lambda, which DuckDB 2.0 then binds as one (json_array_elements'
+    unnest of json_extract(v, '$[*]') was written ``UNNEST(LAMBDA v : '$[*]')``)."""
+    return self.func("JSON_EXTRACT", expression.this, expression.expression)
+
+
+DuckDB.Generator.TRANSFORMS[exp.JSONExtract] = _json_extract_call
+
 from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
 from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads

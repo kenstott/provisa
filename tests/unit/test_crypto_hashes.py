@@ -134,9 +134,15 @@ def crypto_extension(tmp_path_factory):
 
 
 @pytest.fixture
-def con(crypto_extension, monkeypatch):
-    # The engine's own connection: opened on the staged directory (duckdb_extensions.connect).
+def crypto_staged(crypto_extension, monkeypatch):
+    """The staged directory named to the process (PROVISA_DUCKDB_EXT_DIR) for this test alone."""
     monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", crypto_extension)
+    return crypto_extension
+
+
+@pytest.fixture
+def con(crypto_staged):
+    # The engine's own connection: opened on the staged directory (duckdb_extensions.connect).
     connection = duckdb_extensions.connect()
     register(connection)
     return connection
