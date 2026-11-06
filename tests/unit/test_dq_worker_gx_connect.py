@@ -22,6 +22,8 @@ records what ``run_gx`` hands ``add_postgres`` and connects the way GX 1.20's
 is replaced, by an endpoint that answers like Provisa.
 """
 
+# Requirements: REQ-1443, REQ-1742
+
 from __future__ import annotations
 
 import sys
@@ -117,3 +119,30 @@ def test_gx_connects_without_the_hstore_catalog_probe_provisa_refuses(monkeypatc
 
     assert len(add_postgres_calls) == 1
     assert not [q for q in queries if "typarray" in q]
+
+
+def test_gx_hands_the_driver_credentials_exactly_as_configured(monkeypatch):
+    # @ / : end the user/password part of a URL and a space would be read back as + by a
+    # form-style escape: each must reach the driver exactly as the connection states it.
+    user, password = "dq@org:1", "p@ss/w:rd +%x"
+    payload = {
+        **_PAYLOAD,
+        "connection": {**_PAYLOAD["connection"], "user": user, "password": password},
+    }
+    for module_name, module in _stand_in_gx([]).items():
+        monkeypatch.setitem(sys.modules, module_name, module)
+    driver_kwargs: list[dict] = []
+
+    def connect(*args, **kwargs):
+        driver_kwargs.append(kwargs)
+        raise _PastHandshake("the driver was called")
+
+    monkeypatch.setattr(psycopg2, "connect", connect)
+
+    with pytest.raises(_PastHandshake):
+        worker.run_gx(payload)
+
+    assert len(driver_kwargs) == 1
+    sent = driver_kwargs[0]
+    assert (sent["user"], sent["password"]) == (user, password)
+    assert (sent["host"], sent["port"], sent["dbname"]) == ("provisa", 5432, "provisa")

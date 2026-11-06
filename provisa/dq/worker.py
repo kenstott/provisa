@@ -32,6 +32,7 @@ import logging
 import sys
 from abc import ABC, abstractmethod
 from typing import Any, NoReturn
+from urllib.parse import quote
 
 # Which diagnostic metric counts the FAILING rows, per soda check type. Explicit rather than
 # pattern-matched on "*_count": several types carry more than one count (an invalidity check reports
@@ -234,8 +235,13 @@ def run_gx(payload: dict) -> dict:
     suite_document = yaml.safe_load(payload["contract_text"])
     _, schema, table_name = suite_document["meta"]["dataset"].split("/")
     connection = payload["connection"]
+    # The user and password are percent-escaped: an @ / : in either would otherwise end the
+    # credentials part of the URL. Not quote_plus -- SQLAlchemy reads a + back as itself, so a
+    # space in a password would reach the server as +.
+    user = quote(connection["user"], safe="")
+    password = quote(connection["password"], safe="")
     connection_string = (
-        f"postgresql+psycopg2://{connection['user']}:{connection['password']}"
+        f"postgresql+psycopg2://{user}:{password}"
         f"@{connection['host']}:{connection['port']}/{connection['database']}"
     )
     # Ephemeral: the whole GX project lives in this process and dies with it. GX's file-backed
