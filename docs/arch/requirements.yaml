@@ -92640,7 +92640,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     A tag needs only a name and a definition; it may be purely informational. Citations, required evidence,
     reviews and attestation workflows are layers its author adds when its why must stand up to someone.
     Every one of them serves one purpose: explaining why to whoever asks, a stakeholder, a newcomer, the
-    person left holding the decision, an auditor, a regulator or an executive.'
+    person left holding the decision, an auditor, a regulator or an executive. (Amended 2026-11-06, METRICS
+    CARRY TAGS:) Metrics carry tags like any other governed object, so a metric''s definition can say why
+    it is calculated as it is, cite the policy or requirement that defines it, and be reviewed and attested.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
