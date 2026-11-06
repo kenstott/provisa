@@ -633,6 +633,9 @@ services:
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
       # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       # REQ-972..979: the deployment's federation-engine selection. resolve_deployment writes
       # it to config.yaml (\`engine:\`) for the node tier, but the API process selects its engine
       # from \$PROVISA_ENGINE / \$PROVISA_ENGINE_URL / \$PROVISA_MATERIALIZE_URL
@@ -701,6 +704,9 @@ services:
       - ${CERT_DIR}:/app/certs:ro
     environment:
       PROVISA_ROLE: "secondary"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       PROVISA_TLS_CERT: "/app/certs/provisa.crt"
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
@@ -816,6 +822,9 @@ services:
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:?the SaaS control plane is multitenant}"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       # Cloud SQL over the PSA-peered VPC.
       PG_HOST: "\${CONFIG_DB_HOST:?Cloud SQL private IP}"
       PG_PORT: "\${CONFIG_DB_PORT:-5432}"
