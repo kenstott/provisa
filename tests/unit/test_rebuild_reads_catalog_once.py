@@ -98,3 +98,36 @@ async def test_the_replica_registry_reads_no_catalog_view(plane, monkeypatch) ->
 
     assert {r["table_name"] for r in registry.registered} == {"orders"}
     assert read == [2]  # one read, the two columns of orders and none of a view
+
+
+async def test_the_store_model_reads_no_seeded_table_s_columns(plane, monkeypatch) -> None:
+    from provisa.core.store_config import store_model
+
+    read: list[int] = []
+    real = table_repo.list_all
+
+    async def counted(conn, **kw):
+        out = await real(conn, **kw)
+        read.append(_column_rows(out))
+        return out
+
+    monkeypatch.setattr(table_repo, "list_all", counted)
+    async with plane.acquire() as conn:
+        model = await store_model(conn)
+
+    assert [t["table"] for t in model["tables"]] == ["orders"]
+    assert [c["name"] for c in model["tables"][0]["columns"]] == ["id", "n"]
+    assert read == [2]
+
+
+async def test_a_table_left_without_its_parts_carries_no_empty_ones(plane) -> None:
+    """A table ``parts_of`` refuses is its row alone: an absent key, never an empty list a reader
+    could take for a table with no columns."""
+    async with plane.acquire() as conn:
+        tables = await table_repo.list_all(conn, parts_of=lambda t: t["table_name"] == "orders")
+    by_name = {t["table_name"]: t for t in tables}
+    assert set(by_name) == {"orders", *_VIEWS}
+    assert [c["column_name"] for c in by_name["orders"]["columns"]] == ["id", "n"]
+    assert "write_grants" in by_name["orders"]
+    for name in _VIEWS:
+        assert "columns" not in by_name[name] and "write_grants" not in by_name[name]
