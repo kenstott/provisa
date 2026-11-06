@@ -59595,19 +59595,26 @@
   feature: replicas-and-freshness-landed-shape
   priority: MUST
   type: behavioral
-  description: 'A landed replica carries the landed model''s keys, converged by the landing reconcile
-    with the tables themselves and for every landed table regardless of Data Product membership: its declared
-    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose
-    referenced columns are the referenced table''s PRIMARY KEY (many-to-one on the source, one-to-many
-    on the target, a junction relationship as one key per hop). Applied only on stores that hold constraints
-    as informational metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook);
-    an enforcing store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching
-    PRIMARY KEY is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped,
-    and a provisa_fk_* constraint no relationship declares is withdrawn. A key the store cannot hold is
-    withheld and logged with its reason, never emitted. Where the compiler''s physical name is a VIEW
-    over the replica, the view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY
-    (referenced physical column) column TAGs, with stale key tags unset. The metadata export publishes
-    no constraints.'
+  description: 'A landed replica carries the landed model''s keys, converged by the landing reconcile with
+    the tables themselves and for every landed table regardless of Data Product membership: its declared
+    PRIMARY KEY, and a FOREIGN KEY for each approved relationship whose two ends are landed and whose referenced
+    columns are the referenced table''s PRIMARY KEY (many-to-one on the source, one-to-many on the target,
+    a junction relationship as one key per hop). Applied only on stores that hold constraints as informational
+    metadata (Snowflake; Databricks and BigQuery when their terminals implement the hook); an enforcing
+    store gets no FOREIGN KEY, since a REPLACE land would violate it. Idempotent: a matching PRIMARY KEY
+    is left alone, a differing one replaced, an existing FOREIGN KEY of the same name skipped, and a provisa_fk_*
+    constraint no relationship declares is withdrawn. A key the store cannot hold is withheld and logged
+    with its reason, never emitted. Where the compiler''s physical name is a VIEW over the replica, the
+    view mirrors the keys as PRIMARY_KEY (1-based key position) and FOREIGN_KEY (referenced physical column)
+    column TAGs, with stale key tags unset. The metadata export publishes no constraints. (Amended 2026-11-06,
+    RELATIONSHIPS INDEX, UNIQUENESS KEYS:) A relationship''s cardinality never makes a key. Every relationship
+    whose ends are landed gets a plain, non-unique index on each side''s join columns, which any store accepts
+    whatever the data, so a legitimate join over duplicated values is indexed on both sides. A landed table''s
+    PRIMARY KEY or UNIQUE key comes only from real uniqueness: the table''s declared primary key, or a column
+    its profile shows to be unique; a FOREIGN KEY is placed only where its referenced columns are such a
+    key, as before. When the side a relationship declares as its ''one'' side has duplicated values (registration
+    or the profiler can see it), the relationship shows it, so the steward corrects the cardinality or declares
+    it many-to-many.'
   use_case: 'Horizon Catalog renders a table''s keys and join paths from Snowflake''s informational constraints,
     and consumers query the per-source views. Keys are model state, not catalog state: tying them to the
     catalog publish left every landed table key-less until a publish ran and left every table outside
