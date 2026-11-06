@@ -259,14 +259,15 @@ def connect() -> duckdb.DuckDBPyConnection:
 
 # Settings an extension is loaded with, whatever loads it. SET GLOBAL: a plain SET stays on the one
 # connection that ran it and never reaches the cursors (con.cursor()) queries run on.
-_EXTENSION_SETTINGS: dict[str, tuple[str, ...]] = {
-    # #241 (upstream duckdb/duckdb-postgres#564, open): with filter pushdown on, the Top-N dynamic
-    # filter of `ORDER BY <col> … NULLS FIRST LIMIT n` reaches Postgres as `WHERE <col> IS NULL`,
-    # so a sorted page of a Postgres-attached relation holds only its NULL-key rows (every DESC sort
-    # the UI sends). Off, every row and every order is correct; WHERE predicates are then applied
-    # in DuckDB instead of in Postgres. Re-enable once a postgres_scanner build fixes #564.
-    "postgres": ("SET GLOBAL pg_experimental_filter_pushdown = false",),
-}
+#
+# None today. #241 turned the postgres extension's filter pushdown off on DuckDB 1.5 (upstream
+# duckdb/duckdb-postgres#564: the Top-N dynamic filter of `ORDER BY <col> ... NULLS FIRST LIMIT n`
+# reached Postgres as `WHERE <col> IS NULL`, so a sorted page held only its NULL-key rows).
+# postgres_scanner 2.0.0 answers that page correctly with pushdown on (measured 2026-11-06: 20,000
+# rows, 2,000 NULL keys, DESC NULLS FIRST LIMIT 2005 -- 1.5.5 with pushdown on answered 2,000 rows,
+# 2.0.0 answers all 2,005), and renamed the setting pg_enable_filter_pushdown, so filters reach
+# Postgres again at the extension's default.
+_EXTENSION_SETTINGS: dict[str, tuple[str, ...]] = {}
 
 
 def _snowflake_driver() -> dict[str, str]:
