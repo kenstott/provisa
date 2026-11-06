@@ -36158,9 +36158,15 @@
     engine counts a connector as attachable only when its extension is staged for the running DuckDB version
     and platform, read from the staged extensions'' manifest, not from the connectors it declares. A source
     whose extension is staged attaches; one whose extension is not staged lands into the materialization
-    store when it is landable, as any source the engine cannot read in place does; otherwise registration
-    refuses it by name, saying which extension is not available for this DuckDB version and platform, so
-    the refusal comes when the source is added, never at its first query.'
+    store when it is landable, as any source the engine cannot read in place does; [SUPERSEDED by REQ-1142,
+    2026-11-06 -- a source not read in place is a replica (2026-11-06). Kept here for history; do not implement
+    against it.] otherwise registration refuses it by name, saying which extension is not available for
+    this DuckDB version and platform, so the refusal comes when the source is added, never at its first
+    query. [END SUPERSEDED BLOCK] (Amended 2026-11-06, NOT ATTACHABLE MEANS REPLICA:) A source the engine
+    cannot read in place is a replica: it lands into the materialization store and is read from there, shown
+    and refreshed as any replica is. A source is unreachable only when no reader in the deployment can read
+    it at all; that is shown on the source when it is added, naming what is missing, never left to its first
+    query.'
   use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
     extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
     delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped environments without
@@ -81805,9 +81811,15 @@
     file into the organization''s MotherDuck account. On an engine that reaches neither in place, the tables
     land as replicas as today. (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT:) Provisa runs
     DuckDB 2.0.0 (it removes the 1.5.x race in which an engine error met in a later batch came back as Interrupted
-    instead of its own error). MotherDuck''s extension does not yet load on DuckDB 2.0, so until MotherDuck
-    supports it a MotherDuck source is refused by name, saying MotherDuck does not yet support the DuckDB
-    version Provisa runs; the rest of this requirement applies again once it does.'
+    instead of its own error). [SUPERSEDED by REQ-1998, 2026-11-06 -- a source the engine cannot attach
+    is a replica, not refused (2026-11-06). Kept here for history; do not implement against it.] MotherDuck''s
+    extension does not yet load on DuckDB 2.0, so until MotherDuck supports it a MotherDuck source is refused
+    by name, saying MotherDuck does not yet support the DuckDB version Provisa runs; the rest of this requirement
+    applies again once it does. [END SUPERSEDED BLOCK] (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE
+    IT CANNOT ATTACH:) Where the engine cannot attach MotherDuck (on DuckDB 2.0 its extension does not load),
+    a MotherDuck source is a replica: its tables are landed into the materialization store by a reader that
+    can reach MotherDuck and read from there, shown and refreshed as any replica is; it is read in place
+    again once the engine can attach it.'
   use_case: 'An analyst keeps shared reference tables in MotherDuck and a large local DuckDB file of event data; a join between them runs as one DuckDB statement under hybrid execution.'
   scenario: 'Given a MotherDuck source with a token, on the DuckDB engine
 
