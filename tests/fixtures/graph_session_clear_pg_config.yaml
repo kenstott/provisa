@@ -1,0 +1,34 @@
+# REQ-2176: a graph session written, read and cleared over HTTP on the pg engine.
+# One model table, so the role has a schema; the session's nodes are all its own.
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+roles: []
+domains:
+  - id: clear
+    description: Graph session clear
+sources:
+  - id: clear-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: clear-pg
+    table: orders
+    schema: graph_session_clear_pg
+    domain_id: clear
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: region, data_type: varchar, visible_to: [org_admin]}
