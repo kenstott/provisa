@@ -41,3 +41,18 @@ def test_the_core_scanners_and_file_location_extensions_are_mirrored_from_core()
     listed = _mirror()._extension_list()
     for ext in ("postgres", "sqlite", "httpfs", "azure"):
         assert listed[ext] is False, ext  # DuckDB's core repository
+
+
+def test_crypto_is_mirrored_from_query_farms_repository_and_required():
+    # DuckDB 2.0's repositories do not carry crypto; Query.Farm documents its own
+    # (https://query.farm/duckdb_extension_crypto.html). The maintainer's decision is that it ships.
+    mirror = _mirror()
+    from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
+
+    assert EXTENSION_REPOSITORIES["crypto"] == (
+        "query_farm",
+        "https://duckdb-extensions.query.farm",
+    )
+    assert mirror._sources()["crypto"] == "query_farm"
+    assert "crypto" in mirror._REQUIRED
+    assert mirror._sources()["postgres"] == "core"

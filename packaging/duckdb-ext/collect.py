@@ -7,7 +7,8 @@
 """Merge per-platform DuckDB mirror outputs into provisa_duckdb_ext/_ext for the universal wheel.
 
 CI runs scripts/ci/mirror_duckdb_extensions.py on each platform (macos/linux/windows × arch); each
-emits ``<version>/<platform>/*.duckdb_extension``. This gathers all of them (from downloaded build
+emits ``<version>/<platform>/*.duckdb_extension`` (a named repository's extension, crypto's, under
+``repositories/<repo>/`` with its ``.info``). This gathers all of them (from downloaded build
 artifacts) into one tree so a single ``provisa-duckdb-ext`` wheel carries every platform.
 
 Usage: python collect.py <artifacts_root>   # a dir containing the per-platform mirror outputs
@@ -15,6 +16,7 @@ Usage: python collect.py <artifacts_root>   # a dir containing the per-platform 
 
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 import tomllib
@@ -22,6 +24,8 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _DEST = _HERE / "provisa_duckdb_ext" / "_ext"
+#: DuckDB's on-disk version dir ("v2.0.0"), where the loader's layout begins.
+_VERSION_DIR = re.compile(r"v\d+\.\d+\.\d+.*")
 
 
 def _pinned_duckdb_version() -> str:
@@ -33,9 +37,17 @@ def _pinned_duckdb_version() -> str:
 def main(src_root: Path) -> int:
     pinned = _pinned_duckdb_version()
     n = 0
-    for ext_file in sorted(src_root.rglob("*.duckdb_extension")):
-        # Preserve the trailing <raw_version>/<platform>/<name>.duckdb_extension the loader expects.
-        rel = Path(*ext_file.parts[-3:])
+    for ext_file in sorted(src_root.rglob("*.duckdb_extension*")):
+        if ext_file.suffix not in (".duckdb_extension", ".info"):
+            continue
+        # Preserve <raw_version>/<platform>/[repositories/<repo>/]<name>.duckdb_extension[.info],
+        # the layout the loader expects.
+        parts = ext_file.relative_to(src_root).parts
+        start = next((i for i, part in enumerate(parts) if _VERSION_DIR.fullmatch(part)), None)
+        if start is None:
+            print(f"[collect] ERROR: {ext_file} is under no DuckDB version dir", file=sys.stderr)
+            return 1
+        rel = Path(*parts[start:])
         if rel.parts[0].lstrip("v") != pinned:
             print(
                 f"[collect] ERROR: {ext_file} was mirrored from DuckDB {rel.parts[0]}, "
@@ -46,7 +58,7 @@ def main(src_root: Path) -> int:
         dst = _DEST / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ext_file, dst)
-        n += 1
+        n += ext_file.suffix == ".duckdb_extension"
     print(f"[collect] gathered {n} .duckdb_extension binaries into {_DEST}")
     if not n:
         print("[collect] ERROR: no extension binaries found — nothing to package", file=sys.stderr)

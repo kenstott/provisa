@@ -16,12 +16,16 @@ Family A (contrast Family B, the PG extensions). The standalone DuckDB engine (b
 reaches its sources by INSTALL/LOADing DuckDB extensions. Rather than compile, we mirror the official
 core + community builds pinned to our exact DuckDB version, per platform, so offline/air-gapped installs
 work deterministically. The extension list is DERIVED from the connector definitions (single source of
-truth) plus the core scanners the base ATTACH connectors need.
+truth) plus the core scanners the base ATTACH connectors need, and the extensions DuckDB's own
+repositories do not carry (provisa.federation.duckdb_extensions.EXTENSION_REPOSITORIES: crypto, from
+Query.Farm's repository), installed from the named repository their publisher documents.
 
 Output (into $OUT, default dist/duckdb-ext/<platform>):
   <duckdb_version>/<platform>/<name>.duckdb_extension    the mirrored, signed extension binaries
-  manifest.json    {duckdb_version, platform, extensions:[{name,repo:core|community,file,sha256,
-                                                            loaded,required}]}
+  <duckdb_version>/<platform>/repositories/<repo>/<name>.duckdb_extension(.info)
+                   a named repository's extension, in DuckDB's own layout (LOAD <name> FROM <repo>)
+  manifest.json    {duckdb_version, platform, extensions:[{name,repo:core|community|<repo>,file,
+                                                            sha256,loaded,required}]}
 
 Required members (core) must load; community members are best-effort (availability varies per version/
 platform) and recorded but non-fatal. Usage: python mirror_duckdb_extensions.py [out-dir]
@@ -43,7 +47,8 @@ _CORE_SCANNERS = {"postgres": True, "sqlite": True}
 # REQ-1997: what a file source's location needs (connector_duckdb.file_location_details): httpfs
 # for https, s3 and gcs, azure for Azure -- loaded by the runtime, declared by no connector.
 _LOCATION_EXTENSIONS = ("httpfs", "azure")
-_REQUIRED_CORE = {"postgres", "sqlite", "iceberg"}
+# crypto: sha224/sha384/sha512 (REQ-2171) -- the maintainer's decision (2026-11-05) is that it ships.
+_REQUIRED = {"postgres", "sqlite", "iceberg", "crypto"}
 
 
 def _extension_list() -> dict[str, bool]:
@@ -60,6 +65,16 @@ def _extension_list() -> dict[str, bool]:
     for ext in (*_CORE_SCANNERS, *_LOCATION_EXTENSIONS):
         exts.setdefault(ext, False)
     return exts
+
+
+def _sources() -> dict[str, str]:
+    """name -> the repository it is installed from: core, community, or the named repository
+    (EXTENSION_REPOSITORIES) its publisher documents."""
+    from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
+
+    sources = {name: "community" if c else "core" for name, c in _extension_list().items()}
+    sources.update({name: repo for name, (repo, _prefix) in EXTENSION_REPOSITORIES.items()})
+    return sources
 
 
 def _sha256(p: Path) -> str:
@@ -81,18 +96,24 @@ def main(out: Path) -> int:
     ).resolve()  # DuckDB drops <ext_dir>/<version>/<platform>/<real>.duckdb_extension
     ext_dir.mkdir(parents=True)
     con.execute(f"SET extension_directory = '{ext_dir}'")
+    from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
+
+    if EXTENSION_REPOSITORIES:
+        con.execute("SET allow_extension_repositories = 'allowed'")
+    for repo, prefix in set(EXTENSION_REPOSITORIES.values()):
+        con.execute(f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repo} WITH PREFIX '{prefix}'")
 
     print(f"DuckDB {version} / {platform}")
-    exts = _extension_list()
+    sources = _sources()
     records, failures = [], []
-    for name in sorted(exts):
-        community = exts[name]
-        required = name in _REQUIRED_CORE
-        repo = "community" if community else "core"
+    for name in sorted(sources):
+        repo = sources[name]
+        required = name in _REQUIRED
+        named = repo not in ("core", "community")
         real_name = name  # the INSTALL alias may differ from the real extension name (sqlite->sqlite_scanner)
         try:
-            con.execute(f"INSTALL {name}" + (" FROM community" if community else ""))
-            con.execute(f"LOAD {name}")
+            con.execute(f"INSTALL {name}" + ("" if repo == "core" else f" FROM {repo}"))
+            con.execute(f"LOAD {name}" + (f" FROM {repo}" if named else ""))
             row = con.execute(
                 "SELECT extension_name, loaded FROM duckdb_extensions() "
                 "WHERE extension_name = ? OR list_contains(aliases, ?)",
@@ -105,12 +126,16 @@ def main(out: Path) -> int:
             ok = False
             if required:
                 failures.append(f"{name}: {str(e).splitlines()[0][:90]}")
-        src = ext_dir / raw_version / platform / f"{real_name}.duckdb_extension"
+        # DuckDB keeps a named repository's extension apart, with the .info it is loaded by.
+        sub = Path(raw_version, platform, *(("repositories", repo) if named else ()))
+        src = ext_dir / sub / f"{real_name}.duckdb_extension"
         if ok and src.exists():
-            dst_dir = out / raw_version / platform
+            dst_dir = out / sub
             dst_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy(src, dst_dir / src.name)
-            rel = f"{raw_version}/{platform}/{src.name}"
+            if named:
+                shutil.copy(src.with_name(f"{src.name}.info"), dst_dir / f"{src.name}.info")
+            rel = (sub / src.name).as_posix()
             records.append({"name": name, "repo": repo, "file": rel,
                             "sha256": _sha256(dst_dir / src.name), "loaded": True,
                             "required": required})  # fmt: skip
