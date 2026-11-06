@@ -236,6 +236,42 @@ def _column_types(result) -> list[str] | None:
     return None if types is None else [str(t) for t in types]
 
 
+async def _registered_integers(result) -> list[bool]:  # REQ-1961
+    """For each result column, whether it is a registered column the model types integer.
+
+    A result column that IS a registered column (``compiler.result_shape.RegisteredType``) is
+    written as its registered type, whatever the engine read it as: Trino reads Oracle's
+    NUMBER(10), registered integer, as decimal(10,0), and its value is the number GraphQL writes
+    for it (``ctx.integer_columns``). Matched by name, as every surface reads the shape
+    (``federation.runtime_support.read_targets``). Any other column keeps the engine's type."""
+    from provisa.compiler.result_shape import RegisteredType
+    from provisa.compiler.sql_types import is_integer_type
+
+    shape = None if result.result_shape is None else await result.result_shape()
+    by_name = dict(shape or [])
+    return [
+        isinstance(declared := by_name.get(name), RegisteredType) and is_integer_type(declared)
+        for name in result.column_names
+    ]
+
+
+async def _typed_rows(result) -> list[list]:  # REQ-1961
+    """The result's rows, each a registered integer column's value as the number it is."""
+    from provisa.executor.serialize import integer_value
+
+    integers = await _registered_integers(result)
+    names = result.column_names
+    if not any(integers):
+        return [list(row) for row in result.rows]
+    return [
+        [
+            integer_value(v, name) if integer else v
+            for v, name, integer in zip(row, names, integers, strict=True)
+        ]
+        for row in result.rows
+    ]
+
+
 def _with_warnings(body: dict) -> dict:
     """``body`` with what the request's answer says about itself (REQ-1350) in
     ``extensions.warnings``, as the GraphQL endpoint does; unchanged when there is nothing."""
@@ -308,7 +344,7 @@ async def _each_body(
         if o.result.redirect is not None:
             entry["redirect"] = o.result.redirect
         else:
-            entry["data"] = [list(row) for row in o.result.rows]
+            entry["data"] = await _typed_rows(o.result)
             entry["columns"] = list(o.result.column_names)
             entry["column_types"] = _column_types(o.result)
         entries.append(entry)
@@ -354,7 +390,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         _qs_mod.begin(plan_entries=True)
     _t0 = _time.perf_counter()
 
-    def _finalize(result):
+    async def _finalize(result):
         # REQ-536: HIT (with the entry's age) when the pipeline served this result from the
         # response cache, else MISS — reported on every response shape below.
         from provisa.cache.middleware import build_cache_headers
@@ -368,7 +404,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 _with_warnings({"data": {"sql": None}, "redirect": result.redirect}),
                 headers=cache_headers,
             )
-        rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
+        # REQ-1961: a registered column is written as its registered type.
+        rows_as_dicts = [dict(zip(result.column_names, row)) for row in await _typed_rows(result)]
         if stats_enabled:
             # REQ-1517: the entries and the execution DAG are recorded by the pipeline terminal
             # (provisa.executor.plan_stats), which knows the real route, source and optimizations.
@@ -414,11 +451,15 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         from provisa.compiler.sql_gen import ColumnRef
         from provisa.compiler.sql_types import is_json_type
 
-        # A column the engine types json or jsonb is written as its JSON (REQ-1867).
+        # A column the engine types json or jsonb is written as its JSON (REQ-1867); a registered
+        # integer column as its number (REQ-1961).
         types = result.column_types or [None] * len(result.column_names)
+        integers = await _registered_integers(result)
         columns = [
-            ColumnRef(alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t))
-            for c, t in zip(result.column_names, types, strict=True)
+            ColumnRef(
+                alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t), integer=i
+            )
+            for c, t, i in zip(result.column_names, types, integers, strict=True)
         ]
         return _with_cache_headers(
             _format_response(result, columns, "sql", output_format), cache_headers
@@ -477,7 +518,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         if mapped is exc:
             raise
         raise mapped from exc
-    return _finalize(result)
+    return await _finalize(result)
 
 
 class SplitRequest(BaseModel):
