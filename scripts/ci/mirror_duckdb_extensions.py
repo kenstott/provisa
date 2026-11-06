@@ -9,25 +9,27 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Mirror the DuckDB-proper extensions the standalone DuckDB engine needs, for THIS platform + the
-pinned DuckDB version, into a self-hostable repo layout — and prove each LOADs.
+"""Mirror the DuckDB extensions provisa-duckdb-ext carries, for THIS platform + the pinned DuckDB
+version, into a self-hostable repo layout -- and prove each LOADs.
 
 Family A (contrast Family B, the PG extensions). The standalone DuckDB engine (build_duckdb_engine)
-reaches its sources by INSTALL/LOADing DuckDB extensions. Rather than compile, we mirror the official
-core + community builds pinned to our exact DuckDB version, per platform, so offline/air-gapped installs
-work deterministically. The extension list is DERIVED from the connector definitions (single source of
-truth) plus the core scanners the base ATTACH connectors need, and the extensions DuckDB's own
-repositories do not carry (provisa.federation.duckdb_extensions.EXTENSION_REPOSITORIES: crypto, from
-Query.Farm's repository), installed from the named repository their publisher documents.
+reaches its sources by LOADing DuckDB extensions, staged offline from PyPI. For DuckDB 2.0 the core
+extensions come from third-party per-extension PyPI wheels (REQ-1142 amendment, TEMPORARY EXTENSION
+SOURCES FOR DUCKDB 2.0; provisa.federation.duckdb_extensions.CORE_EXTENSION_WHEELS), so this mirrors
+only what those wheels lack: the community extensions the connector definitions declare (single
+source of truth) and the extensions DuckDB's own repositories do not carry
+(provisa.federation.duckdb_extensions.EXTENSION_REPOSITORIES: crypto, from Query.Farm's repository),
+installed from the named repository their publisher documents. packaging/duckdb-ext/collect.py then
+fills each platform's wheel from this mirror in priority order, under PyPI's size limit.
 
 Output (into $OUT, default dist/duckdb-ext/<platform>):
   <duckdb_version>/<platform>/<name>.duckdb_extension    the mirrored, signed extension binaries
   <duckdb_version>/<platform>/repositories/<repo>/<name>.duckdb_extension(.info)
                    a named repository's extension, in DuckDB's own layout (LOAD <name> FROM <repo>)
-  manifest.json    {duckdb_version, platform, extensions:[{name,repo:core|community|<repo>,file,
+  manifest.json    {duckdb_version, platform, extensions:[{name,repo:community|<repo>,file,
                                                             sha256,loaded,required}]}
 
-Required members (core) must load; community members are best-effort (availability varies per version/
+Required members (crypto) must load; community members are best-effort (availability varies per version/
 platform) and recorded but non-fatal. Usage: python mirror_duckdb_extensions.py [out-dir]
 """
 
@@ -41,38 +43,32 @@ from pathlib import Path
 
 import duckdb
 
-# Core scanners the base DuckDB connectors (postgres/sqlite ATTACH) need but don't declare as an
-# extension (DuckDB auto-loads them); mirrored so offline attach works. name -> required.
-_CORE_SCANNERS = {"postgres": True, "sqlite": True}
-# REQ-1997: what a file source's location needs (connector_duckdb.file_location_details): httpfs
-# for https, s3 and gcs, azure for Azure -- loaded by the runtime, declared by no connector.
-_LOCATION_EXTENSIONS = ("httpfs", "azure")
 # crypto: sha224/sha384/sha512 (REQ-2171) -- the maintainer's decision (2026-11-05) is that it ships.
-_REQUIRED = {"postgres", "sqlite", "iceberg", "crypto"}
+_REQUIRED = {"crypto"}
 
 
-def _extension_list() -> dict[str, bool]:
-    """name -> from_community: every extension the DuckDB engine's own connectors declare (the
-    engine is built as the runtime builds it, so a connector moved between modules is still
-    found), the core scanners, and the file-location extensions."""
+def _extension_list() -> list[str]:
+    """Every community extension the DuckDB engine's own connectors declare (the engine is built
+    as the runtime builds it, so a connector moved between modules is still found). Core ones come
+    from the third-party wheels, not from this mirror."""
     from provisa.federation.engine import build_duckdb_engine
 
-    exts: dict[str, bool] = {}
-    for connector in build_duckdb_engine().connectors.values():
-        ext = getattr(connector, "extension", None)
-        if ext:
-            exts[ext] = bool(getattr(connector, "install_from_community", False))
-    for ext in (*_CORE_SCANNERS, *_LOCATION_EXTENSIONS):
-        exts.setdefault(ext, False)
-    return exts
+    return sorted(
+        {
+            extension
+            for connector in build_duckdb_engine().connectors.values()
+            if (extension := connector.extension)
+            and getattr(connector, "install_from_community", False)
+        }
+    )
 
 
 def _sources() -> dict[str, str]:
-    """name -> the repository it is installed from: core, community, or the named repository
+    """name -> the repository it is installed from: community, or the named repository
     (EXTENSION_REPOSITORIES) its publisher documents."""
     from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
 
-    sources = {name: "community" if c else "core" for name, c in _extension_list().items()}
+    sources = dict.fromkeys(_extension_list(), "community")
     sources.update({name: repo for name, (repo, _prefix) in EXTENSION_REPOSITORIES.items()})
     return sources
 
@@ -85,11 +81,9 @@ def _sha256(p: Path) -> str:
 
 def main(out: Path) -> int:
     con = duckdb.connect()
-    raw_version = con.execute("SELECT version()").fetchone()[
-        0
-    ]  # "v1.5.3" — DuckDB's on-disk dir name
+    (raw_version,) = con.execute("SELECT version()").fetchall()[0]  # "v2.0.0": the on-disk dir
     version = raw_version.lstrip("v")
-    platform = con.execute("PRAGMA platform").fetchone()[0]
+    (platform,) = con.execute("PRAGMA platform").fetchall()[0]
     shutil.rmtree(out, ignore_errors=True)
     ext_dir = (
         out / "_install"
@@ -109,10 +103,10 @@ def main(out: Path) -> int:
     for name in sorted(sources):
         repo = sources[name]
         required = name in _REQUIRED
-        named = repo not in ("core", "community")
+        named = repo != "community"
         real_name = name  # the INSTALL alias may differ from the real extension name (sqlite->sqlite_scanner)
         try:
-            con.execute(f"INSTALL {name}" + ("" if repo == "core" else f" FROM {repo}"))
+            con.execute(f"INSTALL {name} FROM {repo}")
             con.execute(f"LOAD {name}" + (f" FROM {repo}" if named else ""))
             row = con.execute(
                 "SELECT extension_name, loaded FROM duckdb_extensions() "

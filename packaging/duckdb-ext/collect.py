@@ -8,7 +8,10 @@
 
 provisa-duckdb-ext is published as one wheel per platform (maintainer decision 2026-11-06: a single
 wheel of every platform's DuckDB 2.0 extensions passes PyPI's 100 MB limit), each tagged for its
-platform and holding only that platform's extensions. CI runs scripts/ci/mirror_duckdb_extensions.py
+platform and holding only that platform's extensions. Since DuckDB 2.0 it carries only what the
+third-party core-extension wheels lack (REQ-1142 amendment, TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0):
+crypto and the community extensions, filled in PRIORITY order while the wheel stays under PyPI's
+100 MB limit; any extension that does not fit is left out, by name, in the output. CI runs scripts/ci/mirror_duckdb_extensions.py
 on each platform of the matrix; each mirror is extracted as ``<label>/<version>/<duckdb_platform>/``
 (a named repository's extension, crypto's, under ``repositories/<repo>/`` with its ``.info``).
 
@@ -25,6 +28,7 @@ import re
 import shutil
 import sys
 import tomllib
+import zlib
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -44,6 +48,13 @@ PLATFORMS: dict[str, tuple[str, str]] = {
 #: PyPI's per-file limit for this project ("Limit for project 'provisa-duckdb-ext' is 100 MB").
 #: Decimal megabytes: the stricter reading, so a wheel this passes PyPI accepts either way.
 MAX_WHEEL_BYTES = 100 * 1000 * 1000
+#: Room kept under the limit for what the fill does not count: the wheel's metadata, zip headers, and
+#: the gap between this estimate and the wheel builder's own compression. check-wheels is the gate.
+HEADROOM_BYTES = 2 * 1000 * 1000
+
+#: The order a platform's wheel is filled in (maintainer decision 2026-11-06); a mirrored extension
+#: not named here comes after these, by name.
+PRIORITY = ("crypto", "mssql", "snowflake", "bigquery", "mongo", "firebird")
 
 
 def _pinned_duckdb_version() -> str:
@@ -57,9 +68,25 @@ def _err(message: str) -> int:
     return 1
 
 
-def main(src_root: Path, label: str) -> int:
+def _deflated_size(path: Path) -> int:
+    """The bytes ``path`` takes in a wheel: deflate at zlib's default level, as the wheel builder
+    writes it."""
+    deflate = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
+    size = 0
+    with path.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            size += len(deflate.compress(chunk))
+    return size + len(deflate.flush())
+
+
+def _fill_order(names: set[str]) -> list[str]:
+    return [n for n in PRIORITY if n in names] + sorted(names - set(PRIORITY))
+
+
+def main(src_root: Path, label: str, budget: int = MAX_WHEEL_BYTES - HEADROOM_BYTES) -> int:
     """Replace _ext with ``<src_root>/<label>``'s extensions, in the layout DuckDB loads from:
-    ``<raw_version>/<duckdb_platform>/[repositories/<repo>/]<name>.duckdb_extension[.info]``."""
+    ``<raw_version>/<duckdb_platform>/[repositories/<repo>/]<name>.duckdb_extension[.info]``,
+    filled in PRIORITY order while their compressed size stays within ``budget``."""
     if label not in PLATFORMS:
         return _err(f"unknown platform label {label!r}; known: {', '.join(PLATFORMS)}")
     duckdb_platform = PLATFORMS[label][0]
@@ -69,7 +96,9 @@ def main(src_root: Path, label: str) -> int:
     pinned = _pinned_duckdb_version()
     # The previous platform's blobs must never ride along in this platform's wheel.
     shutil.rmtree(_DEST, ignore_errors=True)
-    n = 0
+    # extension name -> its files (the binary and, for a named repository's, its .info), each with
+    # its path in the layout.
+    extensions: dict[str, list[tuple[Path, Path]]] = {}
     for ext_file in sorted(src.rglob("*.duckdb_extension*")):
         if ext_file.suffix not in (".duckdb_extension", ".info"):
             continue
@@ -88,13 +117,37 @@ def main(src_root: Path, label: str) -> int:
                 f"{ext_file} is not under DuckDB platform {duckdb_platform}, "
                 f"the platform of the {label} wheel"
             )
-        dst = _DEST / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ext_file, dst)
-        n += ext_file.suffix == ".duckdb_extension"
-    print(f"[collect] gathered {n} {label} .duckdb_extension binaries into {_DEST}")
-    if not n:
+        name = ext_file.name.split(".duckdb_extension")[0]
+        extensions.setdefault(name, []).append((ext_file, rel))
+    if not extensions:
         return _err(f"no extension binaries found for {label} — nothing to package")
+    packed: list[str] = []
+    left_out: list[str] = []
+    used = 0
+    for name in _fill_order(set(extensions)):
+        size = sum(_deflated_size(f) for f, _rel in extensions[name])
+        if used + size > budget:
+            left_out.append(name)
+            print(
+                f"[collect] {label}: LEFT OUT {name} ({size / 1e6:.1f} MB compressed; "
+                f"{used / 1e6:.1f} of {budget / 1e6:.1f} MB already used)"
+            )
+            continue
+        used += size
+        packed.append(name)
+        for ext_file, rel in extensions[name]:
+            dst = _DEST / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ext_file, dst)
+    unmirrored = [n for n in PRIORITY if n not in extensions]
+    print(
+        f"[collect] {label}: packed {', '.join(packed) or 'nothing'} "
+        f"({used / 1e6:.1f} MB compressed) into {_DEST}"
+    )
+    print(f"[collect] {label}: left out (over the size limit): {', '.join(left_out) or 'none'}")
+    print(f"[collect] {label}: left out (not mirrored): {', '.join(unmirrored) or 'none'}")
+    if not packed:
+        return _err(f"no extension of {label} fits under {budget / 1e6:.1f} MB")
     return 0
 
 

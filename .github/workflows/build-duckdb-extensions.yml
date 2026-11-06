@@ -1,9 +1,12 @@
 name: Build DuckDB Extensions
 
-# Family A: mirror the DuckDB-proper extensions the standalone DuckDB engine needs (derived from the
-# connector defs) for the pinned DuckDB version, per platform, and prove each LOADs. No compilation —
-# these are official core + community builds, pinned + collected into a self-hostable repo layout for
-# offline installs. Contrast build-pg-extensions.yml (Family B: native PG .so/.dylib we compile).
+# Family A: mirror the DuckDB extensions provisa-duckdb-ext carries (derived from the connector defs)
+# for the pinned DuckDB version, per platform, and prove each LOADs. No compilation — these are the
+# official community builds and Query.Farm's crypto, pinned + collected into a self-hostable repo
+# layout for offline installs. Contrast build-pg-extensions.yml (Family B: native PG .so/.dylib we
+# compile). TEMPORARY for DuckDB 2.0 (REQ-1142 amendment, TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0):
+# the core extensions (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta) come from the
+# third-party per-extension PyPI wheels the embedded extra pins, so they are not mirrored here.
 #
 # Broader matrix than Family B: DuckDB ships arm64-Linux + Windows wheels, so the standalone engine
 # (and thus its extensions) reach platforms the embedded-PG engine cannot.
@@ -50,7 +53,7 @@ jobs:
           PIN=$(uv run --no-sync python -c "import tomllib;d=tomllib.load(open('packaging/duckdb-ext/pyproject.toml','rb'));print([x for x in d['project']['dependencies'] if x.startswith('duckdb==')][0])")
           uv pip install "$PIN"
 
-      # Core + community from DuckDB's repositories; crypto from Query.Farm's (query_farm,
+      # Community from DuckDB's community repository; crypto from Query.Farm's (query_farm,
       # https://duckdb-extensions.query.farm -- DuckDB 2.0 has it nowhere else), kept in DuckDB's
       # repositories/query_farm/ layout so the runtime LOADs it offline from the staged copy.
       - name: Mirror + prove-load DuckDB extensions
@@ -97,7 +100,8 @@ jobs:
   # One provisa-duckdb-ext wheel per mirrored platform (maintainer decision 2026-11-06), each tagged
   # for its platform (py3-none-<platform tag>) and holding only that platform's blobs: one universal
   # wheel of every platform's DuckDB 2.0 extensions (crypto included) passed PyPI's 100 MB per-file
-  # limit. pip/uv pick the running platform's wheel; the runtime
+  # limit. collect.py fills each in priority order (crypto, mssql, snowflake, bigquery, mongo,
+  # firebird, then the rest by name) and prints, by name, any it leaves out to stay under the limit. pip/uv pick the running platform's wheel; the runtime
   # (provisa.federation.duckdb_extensions.stage_bundled_extensions) copies its blobs out on first run,
   # so `provisa[embedded]` gets the extensions through PyPI/Artifactory, never extensions.duckdb.org.
   # No sdist: it would carry every platform's blobs again. The label -> tag map is

@@ -87,3 +87,13 @@ def test_publishing_stays_trusted_in_this_workflow():
     assert publish["with"]["packages-dir"] == "dist-ext/"
     assert "password" not in publish["with"]
     assert "provisa-duckdb-ext" in (REPO / "packaging/duckdb-ext/pyproject.toml").read_text()
+
+
+def test_the_mirror_carries_crypto_and_community_only():
+    # The core extensions come from the third-party duckdb-extension-* wheels (REQ-1142 amendment,
+    # TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0): nothing here installs or packs them.
+    steps = _steps("mirror")
+    run = steps["Mirror + prove-load DuckDB extensions"]["run"]
+    assert run.startswith("uv run --no-sync python scripts/ci/mirror_duckdb_extensions.py ")
+    assert "duckdb-extension-" not in WORKFLOW.read_text()
+    assert _collect().PRIORITY == ("crypto", "mssql", "snowflake", "bigquery", "mongo", "firebird")

@@ -11,6 +11,8 @@ without which ``LOAD crypto FROM query_farm`` finds nothing."""
 from __future__ import annotations
 
 import importlib.util
+import inspect
+import os
 import sys
 from pathlib import Path
 
@@ -31,7 +33,7 @@ def _collect():
 def _mirrored(root: Path, version: str) -> Path:
     plat = root / "osx-arm64" / f"v{version}" / "osx_arm64"
     (plat / "repositories" / "query_farm").mkdir(parents=True)
-    (plat / "sqlite_scanner.duckdb_extension").write_bytes(b"SQLITE")
+    (plat / "mssql.duckdb_extension").write_bytes(b"MSSQL")
     (plat / "repositories" / "query_farm" / "crypto.duckdb_extension").write_bytes(b"CRYPTO")
     (plat / "repositories" / "query_farm" / "crypto.duckdb_extension.info").write_bytes(b"INFO")
     (root / "osx-arm64" / "manifest.json").write_text("{}")
@@ -47,7 +49,7 @@ def test_collect_keeps_a_named_repositorys_layout_and_info(tmp_path, monkeypatch
     assert collect.main(_mirrored(tmp_path / "mirror", version), "osx-arm64") == 0
 
     plat = dest / f"v{version}" / "osx_arm64"
-    assert (plat / "sqlite_scanner.duckdb_extension").read_bytes() == b"SQLITE"
+    assert (plat / "mssql.duckdb_extension").read_bytes() == b"MSSQL"
     assert (plat / "repositories/query_farm/crypto.duckdb_extension").read_bytes() == b"CRYPTO"
     assert (plat / "repositories/query_farm/crypto.duckdb_extension.info").read_bytes() == b"INFO"
     assert not (dest / "manifest.json").exists()
@@ -69,15 +71,13 @@ def test_collect_holds_only_the_named_platform_and_clears_the_previous_one(tmp_p
     mirror = _mirrored(tmp_path / "mirror", version)
     linux = mirror / "linux-x64" / f"v{version}" / "linux_amd64"
     linux.mkdir(parents=True)
-    (linux / "sqlite_scanner.duckdb_extension").write_bytes(b"LINUX")
+    (linux / "mssql.duckdb_extension").write_bytes(b"LINUX")
 
     assert collect.main(mirror, "osx-arm64") == 0
     assert collect.main(mirror, "linux-x64") == 0
 
     assert sorted(p.name for p in (dest / f"v{version}").iterdir()) == ["linux_amd64"]
-    assert (
-        dest / f"v{version}/linux_amd64/sqlite_scanner.duckdb_extension"
-    ).read_bytes() == b"LINUX"
+    assert (dest / f"v{version}/linux_amd64/mssql.duckdb_extension").read_bytes() == b"LINUX"
 
 
 def test_collect_refuses_a_mirror_of_another_platform(tmp_path, monkeypatch):
@@ -88,7 +88,7 @@ def test_collect_refuses_a_mirror_of_another_platform(tmp_path, monkeypatch):
     mirror = tmp_path / "mirror"
     wrong = mirror / "linux-x64" / f"v{version}" / "osx_arm64"
     wrong.mkdir(parents=True)
-    (wrong / "sqlite_scanner.duckdb_extension").write_bytes(b"OSX")
+    (wrong / "mssql.duckdb_extension").write_bytes(b"OSX")
 
     assert collect.main(mirror, "linux-x64") == 1
 
@@ -100,6 +100,79 @@ def test_collect_refuses_an_unknown_label_and_a_missing_mirror(tmp_path, monkeyp
 
     assert collect.main(mirror, "osx-x64") == 1
     assert collect.main(mirror, "windows-x64") == 1
+
+
+def _incompressible(path: Path, size: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(os.urandom(size))
+
+
+def test_collect_fills_in_priority_order_and_names_what_it_leaves_out(
+    tmp_path, monkeypatch, capsys
+):
+    # crypto, mssql, snowflake, bigquery, mongo, firebird (maintainer decision 2026-11-06), then any
+    # other mirrored one by name. One that does not fit is left out by name; a later, smaller one
+    # that still fits goes in.
+    collect = _collect()
+    dest = tmp_path / "_ext"
+    monkeypatch.setattr(collect, "_DEST", dest)
+    version = collect._pinned_duckdb_version()
+    plat = tmp_path / "mirror" / "linux-x64" / f"v{version}" / "linux_amd64"
+    kb = 1000
+    _incompressible(plat / "repositories/query_farm/crypto.duckdb_extension", 30 * kb)
+    _incompressible(plat / "repositories/query_farm/crypto.duckdb_extension.info", 1 * kb)
+    for name, size in {
+        "mssql": 30,
+        "snowflake": 40,
+        "bigquery": 50,
+        "mongo": 5,
+        "airport": 1,
+    }.items():
+        _incompressible(plat / f"{name}.duckdb_extension", size * kb)
+
+    assert collect.main(tmp_path / "mirror", "linux-x64", budget=100 * kb) == 0
+
+    packed = dest / f"v{version}" / "linux_amd64"
+    assert sorted(p.name for p in packed.glob("*.duckdb_extension")) == [
+        "airport.duckdb_extension",
+        "mongo.duckdb_extension",
+        "mssql.duckdb_extension",
+    ]
+    assert (packed / "repositories/query_farm/crypto.duckdb_extension.info").is_file()
+    out = capsys.readouterr().out
+    assert "LEFT OUT snowflake" in out and "LEFT OUT bigquery" in out
+    assert "left out (over the size limit): snowflake, bigquery" in out
+    assert "left out (not mirrored): firebird" in out
+    assert "packed crypto, mssql, mongo, airport" in out
+
+
+def test_the_fill_order_is_the_maintainers_priority_then_by_name():
+    collect = _collect()
+    assert collect.PRIORITY == ("crypto", "mssql", "snowflake", "bigquery", "mongo", "firebird")
+    assert collect._fill_order({"airport", "firebird", "crypto", "a", "mssql"}) == [
+        "crypto",
+        "mssql",
+        "firebird",
+        "a",
+        "airport",
+    ]
+
+
+def test_the_fill_budget_leaves_room_under_pypis_limit():
+    collect = _collect()
+    assert 0 < collect.HEADROOM_BYTES < collect.MAX_WHEEL_BYTES
+    default = inspect.signature(collect.main).parameters["budget"].default
+    assert default == collect.MAX_WHEEL_BYTES - collect.HEADROOM_BYTES
+
+
+def test_deflated_size_is_what_deflate_makes_of_the_file(tmp_path):
+    import zlib
+
+    collect = _collect()
+    blob = tmp_path / "x.duckdb_extension"
+    blob.write_bytes(b"A" * 100_000 + os.urandom(10_000))
+    expected = len(zlib.compress(blob.read_bytes(), wbits=-15))
+    assert collect._deflated_size(blob) == expected
 
 
 def _wheels(dist: Path, sizes: dict[str, int]) -> Path:
