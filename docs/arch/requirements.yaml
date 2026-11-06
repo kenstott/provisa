@@ -27035,7 +27035,10 @@
     role''s row rules and masks among what its DuckDB applies to the functions'' rows (REQ-2100), so such
     a statement passes trusted_to_answer and is read on its own driver; dialect_supports judges it by DuckDB''s
     capability list, its source''s dialect. An API source''s plan is unchanged: it declares no capability
-    and lands.'
+    and lands. (Amended 2026-11-06, SQLITE PUSHES PROJECTIONS ONLY:) Measured on DuckDB 2.0: the sqlite
+    extension pushes projections only, not filters, so sqlite''s capability list does not claim filter pushdown.
+    A capability another dialect is documented to gain (mssql joins and aggregates, mongo limits and aggregates)
+    is added only after a live check confirms it.'
   use_case: 'Direct single-source execution is materially faster than Trino federation. Today the route
     is decided on the governed SQL BEFORE hot-CTE inlining runs (inlining is nested inside the Route.TRINO
     branch), so a query whose second source is fully inlined still executes federated. Correct phase ordering
@@ -36166,6 +36169,10 @@
     cannot read in place is a replica: it lands into the materialization store and is read from there, shown
     and refreshed as any replica is. A source is unreachable only when no reader in the deployment can read
     it at all; that is shown on the source when it is added, naming what is missing, never left to its first
+    query. (Amended 2026-11-06, THE SERVER TIER STAGES AT START:) A deployment that installs extensions
+    from DuckDB''s repositories (no bundled set) installs its extension set when the server starts and applies
+    the same rule to what actually installed: a connector is attachable only when its extensions installed,
+    so an extension with no build for the running DuckDB shows when a source is added, never at its first
     query.'
   use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
     extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
@@ -81880,7 +81887,21 @@
   integration_test_reason: 'The store is a real MotherDuck database: a replica landed through the engine connection and read there in place is verifiable only against the account (tests/integration/test_motherduck_engine_store_e2e.py, in a scratch database created and dropped for the run).'
   e2e: true
   e2e_reason: 'Landing a replica in MotherDuck and reading it back, from the engine and from another connection to the account, needs the live service.'
-  description: 'MotherDuck is a federation engine, the production counterpart of the embedded DuckDB engine: an organization that chooses it has its replicas kept in a database of its own MotherDuck account and its governed SQL run there, in the same DuckDB dialect it runs in on the embedded engine, so what was built and checked on local DuckDB in development runs unchanged in production. Every node of the deployment reads the same replicas from MotherDuck, so replicas need no shared file mount; the coordinator builds and refreshes them (REQ-1916). The engine signs in with the organization''s MotherDuck token, resolved with the standard resolution and given to the connection as a bound value that no log, trace or error carries. Choosing it commits the organization to three things, said where it is chosen: every replica of every source is stored in its MotherDuck account (data residency); its engine is signed in to one MotherDuck account; and a source the engine can read only from the node (a database on a private network) is still read there, MotherDuck''s dual execution moving its rows to MotherDuck for the parts it runs.'
+  description: 'MotherDuck is a federation engine, the production counterpart of the embedded DuckDB engine:
+    an organization that chooses it has its replicas kept in a database of its own MotherDuck account and
+    its governed SQL run there, in the same DuckDB dialect it runs in on the embedded engine, so what was
+    built and checked on local DuckDB in development runs unchanged in production. Every node of the deployment
+    reads the same replicas from MotherDuck, so replicas need no shared file mount; the coordinator builds
+    and refreshes them (REQ-1916). The engine signs in with the organization''s MotherDuck token, resolved
+    with the standard resolution and given to the connection as a bound value that no log, trace or error
+    carries. Choosing it commits the organization to three things, said where it is chosen: every replica
+    of every source is stored in its MotherDuck account (data residency); its engine is signed in to one
+    MotherDuck account; and a source the engine can read only from the node (a database on a private network)
+    is still read there, MotherDuck''s dual execution moving its rows to MotherDuck for the parts it runs.
+    (Amended 2026-11-06, UNAVAILABLE ON DUCKDB 2.0:) The MotherDuck engine loads MotherDuck''s extension,
+    which does not yet load on DuckDB 2.0: on a DuckDB 2.0 install, choosing the MotherDuck engine is refused
+    by name when it is configured, never at a first query, until MotherDuck supports the DuckDB version
+    Provisa runs.'
   use_case: 'A team develops against the embedded DuckDB engine on a laptop and runs production on MotherDuck: the same model and the same SQL, its replicas shared by every node of the production deployment.'
   scenario: 'Given an organization whose engine is MotherDuck
 
