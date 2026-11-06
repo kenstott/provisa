@@ -71,6 +71,8 @@ class _Connection:
 
 def _runtime() -> Any:
     runtime: Any = SimpleNamespace(_con=_Connection(), _motherduck_account=None)
+    # The runtime's statements on the instance (each on a cursor of its own), recorded here.
+    runtime._on_instance = lambda sql, params=None: runtime._con.execute(sql, params)
     runtime._sign_in = lambda src: DuckDBFederationRuntime._sign_in_motherduck(runtime, src)
     runtime._sign_in_motherduck_as = lambda token, who: (
         DuckDBFederationRuntime._sign_in_motherduck_as(runtime, token, who)
@@ -112,6 +114,7 @@ def test_the_engine_signs_in_before_it_attaches():
         _file_holders={},
         _motherduck_account=None,
     )
+    runtime._on_instance = lambda sql, params=None: ran.append((sql, params))
     runtime._reach_location = lambda d: DuckDBFederationRuntime._reach_location(runtime, d)
     runtime._hold_file = lambda s, a: DuckDBFederationRuntime._hold_file(runtime, s, a)
     runtime._sign_in_motherduck = lambda s: DuckDBFederationRuntime._sign_in_motherduck(runtime, s)

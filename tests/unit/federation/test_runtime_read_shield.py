@@ -28,6 +28,9 @@ class _Cursor:
     def execute(self, *args: Any, **kwargs: Any) -> None:
         raise DeadlinePassed()
 
+    def sql(self, *args: Any, **kwargs: Any) -> None:  # the Arrow terminals' relation API
+        raise DeadlinePassed()
+
     def close(self) -> None:
         self.closed = True
 

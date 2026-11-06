@@ -129,6 +129,12 @@ class _RecordingCon:
         self.sql.append(sql)
         return self
 
+    def cursor(self):  # the runtime runs each statement on a cursor of its own (DuckDB 2.0)
+        return self
+
+    def close(self) -> None:
+        pass
+
 
 @pytest.fixture
 def stub_resolver(monkeypatch):
