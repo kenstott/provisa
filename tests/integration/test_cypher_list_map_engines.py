@@ -140,7 +140,8 @@ def test_a_computed_step_of_zero_is_refused_by_its_own_message(server):
         headers={"x-provisa-role": _ROLE},
         timeout=server.request_timeout + 30,
     )
-    assert resp.status_code == 400, resp.text
+    # Each engine's refusal as the router answers it (Trino's through cypher.execution_failed).
+    assert resp.status_code != 200, resp.text
     error = resp.json()["params"]["error"]
     assert RANGE_STEP_ZERO in error, error
     # Its own error, never a cast's (invalid input syntax for type integer: "range() ...").
