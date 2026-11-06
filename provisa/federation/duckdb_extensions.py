@@ -39,6 +39,16 @@ from provisa.federation.engine import build_duckdb_engine
 
 _EXT_DIR_ENV = "PROVISA_DUCKDB_EXT_DIR"
 
+#: Extensions DuckDB 2.0's own repositories do not carry, by name: (the named repository they are
+#: published in, its prefix as the publisher documents it). provisa-duckdb-ext mirrors them; DuckDB
+#: keeps one under ``<version>/<platform>/repositories/<repository>/`` with its ``.info`` and loads
+#: it with ``LOAD <name> FROM <repository>``, offline -- the prefix is used by the mirror alone.
+EXTENSION_REPOSITORIES: dict[str, tuple[str, str]] = {
+    # https://query.farm/duckdb_extension_crypto.html (DuckDB 2.0) and
+    # https://query.farm/blog/duckdb-2-query-farm-repository/
+    "crypto": ("query_farm", "https://duckdb-extensions.query.farm"),
+}
+
 
 def extension_directory() -> str | None:
     """The bundled DuckDB extension directory, or None to use DuckDB's default per-user cache."""
@@ -77,18 +87,20 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     platform = _plat[0] if _plat else ""
 
     src = ext_root() / raw_version / platform
-    blobs = sorted(src.glob("*.duckdb_extension")) if src.is_dir() else []
-    if not blobs:
+    # Every file below the platform dir: a named repository's extension (EXTENSION_REPOSITORIES)
+    # sits under repositories/<repository>/ beside the .info DuckDB loads it by.
+    files = sorted(p for p in src.rglob("*") if p.is_file()) if src.is_dir() else []
+    if not any(p.suffix == ".duckdb_extension" for p in files):
         raise BundledExtensionsMissing(
             f"provisa-duckdb-ext has no DuckDB extensions for {platform} @ {raw_version} "
             f"(looked in {src}); rebuild the package against duckdb {raw_version}."
         )
 
     dst = Path(target) / raw_version / platform
-    dst.mkdir(parents=True, exist_ok=True)
-    for blob in blobs:
-        out = dst / blob.name
+    for blob in files:
+        out = dst / blob.relative_to(src)
         if not out.exists():
+            out.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(blob, out)
     return Path(target)
 
@@ -146,15 +158,23 @@ def install_and_load(
 
 def load_staged(con: duckdb.DuckDBPyConnection, extension: str) -> bool:
     """LOAD ``extension`` from the extension directory, never INSTALLing it, so the connection does
-    not reach the network (REQ-2171). False where it is not staged: the caller refuses by name."""
+    not reach the network (REQ-2171). False where it is not staged: the caller refuses by name.
+
+    An extension of EXTENSION_REPOSITORIES loads from its repository's staged copy; a DuckDB before
+    2.0 has no ``LOAD ... FROM`` (a parser error) and loads the plain, community install."""
     directory = extension_directory()
     if directory:
         con.execute(f"SET extension_directory = '{directory}'")
-    try:
-        con.execute(f"LOAD {extension}")
-    except duckdb.IOException:
-        return False
-    return True
+    statements = [f"LOAD {extension}"]
+    if extension in EXTENSION_REPOSITORIES:
+        statements.insert(0, f"LOAD {extension} FROM {EXTENSION_REPOSITORIES[extension][0]}")
+    for statement in statements:
+        try:
+            con.execute(statement)
+        except (duckdb.IOException, duckdb.ParserException):
+            continue
+        return True
+    return False
 
 
 def _fetch(con: duckdb.DuckDBPyConnection):

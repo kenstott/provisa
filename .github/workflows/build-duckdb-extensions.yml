@@ -50,6 +50,9 @@ jobs:
           PIN=$(uv run --no-sync python -c "import tomllib;d=tomllib.load(open('packaging/duckdb-ext/pyproject.toml','rb'));print([x for x in d['project']['dependencies'] if x.startswith('duckdb==')][0])")
           uv pip install "$PIN"
 
+      # Core + community from DuckDB's repositories; crypto from Query.Farm's (query_farm,
+      # https://duckdb-extensions.query.farm -- DuckDB 2.0 has it nowhere else), kept in DuckDB's
+      # repositories/query_farm/ layout so the runtime LOADs it offline from the staged copy.
       - name: Mirror + prove-load DuckDB extensions
         run: uv run --no-sync python scripts/ci/mirror_duckdb_extensions.py dist/duckdb-ext/${{ matrix.label }}
 

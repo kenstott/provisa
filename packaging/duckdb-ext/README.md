@@ -15,6 +15,12 @@ acquisition flows through PyPI instead. One universal wheel carries every platfo
 `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the running platform's blobs
 into a writable directory on first run and points `PROVISA_DUCKDB_EXT_DIR` at it.
 
+On DuckDB 2.0 the `crypto` extension is published by Query.Farm in its own extension repository
+(`query_farm`, prefix `https://duckdb-extensions.query.farm`), not in DuckDB's. It is mirrored here
+like the others, in DuckDB's layout for a named repository
+(`<version>/<platform>/repositories/query_farm/crypto.duckdb_extension` and its `.info`), and Provisa
+loads it from the staged copy with `LOAD crypto FROM query_farm` — never from Query.Farm at runtime.
+
 Extensions are locked to the exact DuckDB build they were mirrored from, so an incompatible `duckdb`
 version can never silently load a mismatched extension.
 
