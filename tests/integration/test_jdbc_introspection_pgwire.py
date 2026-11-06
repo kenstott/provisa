@@ -41,10 +41,8 @@ import yaml
 from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
 # `isolated`: pgjdbc runs in a jpype JVM, which is process-global and cannot be
-# restarted with a new classpath. Another jpype test (e.g. govdata) starting the
-# JVM first with a different classpath makes pgjdbc classes unresolvable here.
-# Deselected from the default lane and run in its own pytest process by
-# scripts/test-all so the JVM is always fresh for this module.
+# restarted. Deselected from the default lane; the isolated lane runs it in one process
+# with the other isolated modules, so pgjdbc has a class loader of its own (jvm()).
 pytestmark = [pytest.mark.integration, pytest.mark.isolated]
 
 jpype = pytest.importorskip("jpype", reason="jpype required to drive the real pgjdbc driver")
@@ -69,31 +67,41 @@ def _ensure_pgjdbc_jar() -> str:
     return str(_JAR_PATH)
 
 
+_PGJDBC: dict[str, object] = {}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def jvm():
-    """Start the JVM once with pgjdbc on the classpath. jpype cannot restart a JVM,
-    so this is session-scoped and never shut down within the run."""
+    """pgjdbc, in the process's one JVM. The isolated lane runs every isolated module in one
+    process, and test_jdbc_source_jar_e2e may start the JVM first, without pgjdbc on its
+    classpath; jpype cannot restart it. So pgjdbc is loaded by a class loader of its own, as
+    Provisa loads a customer's driver (provisa.jdbc_source.jdbc), and connected to directly."""
     jar = _ensure_pgjdbc_jar()
-    # The isolated lane runs every isolated module in one process, test_jdbc_source_jar_e2e
-    # (jpype.dbapi2) after this one. dbapi2 makes java.sql.SQLException's Python class derive from
-    # its Error, which it can only do before that class is first made -- and a PSQLException this
-    # module's driver raises makes it. Register dbapi2 first, as the JVM starts.
+    # jpype.dbapi2 (the JDBC source's) makes java.sql.SQLException's Python class derive from its
+    # Error, which it can only do before that class is first made -- and a PSQLException this
+    # module's driver raises makes it. Register dbapi2 first, whichever module runs first.
     import jpype.dbapi2  # noqa: F401
 
     if not jpype.isJVMStarted():
-        jpype.startJVM(classpath=[jar])
-    # Register the driver explicitly (JDBC 4 autoloading may not fire under jpype).
-    jpype.JClass("java.lang.Class").forName("org.postgresql.Driver")
+        jpype.startJVM()
+    url = jpype.JClass("java.io.File")(jar).toURI().toURL()
+    parent = jpype.JClass("java.lang.ClassLoader").getSystemClassLoader()
+    loader = jpype.JClass("java.net.URLClassLoader")([url], parent)
+    driver = jpype.JClass("java.lang.Class").forName("org.postgresql.Driver", True, loader)
+    _PGJDBC["driver"] = driver.getDeclaredConstructor().newInstance()
     yield
 
 
-def _connect(port: int):
-    DriverManager = jpype.JClass("java.sql.DriverManager")
+def _pgjdbc_connect(port: int, user: str, password: str):
     url = f"jdbc:postgresql://127.0.0.1:{port}/provisa"
     props = jpype.JClass("java.util.Properties")()
-    props.setProperty("user", "admin")
-    props.setProperty("password", "x")
-    return DriverManager.getConnection(url, props)
+    props.setProperty("user", user)
+    props.setProperty("password", password)
+    return _PGJDBC["driver"].connect(url, props)  # type: ignore[attr-defined]
+
+
+def _connect(port: int):
+    return _pgjdbc_connect(port, "admin", "x")
 
 
 _ORG = "jdbc_introspection"
@@ -142,12 +150,7 @@ def server(tmp_path_factory):
 
 
 def _connect_as(port: int, user: str):
-    DriverManager = jpype.JClass("java.sql.DriverManager")
-    url = f"jdbc:postgresql://127.0.0.1:{port}/provisa"
-    props = jpype.JClass("java.util.Properties")()
-    props.setProperty("user", user)
-    props.setProperty("password", "provisa")
-    return DriverManager.getConnection(url, props)
+    return _pgjdbc_connect(port, user, "provisa")
 
 
 def test_jdbc_getTables_lists_governed_table(server):
