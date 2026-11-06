@@ -91375,7 +91375,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
     workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by
     its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read
-    as its value (a formula as the value it last computed), not its formula.'
+    as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
+    A WORKBOOK ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s
+    own terms (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph
+    is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
+    the first row holds no labels, so a quoted row reads on its own. Rows move when others are inserted:
+    a cited row found again by its hash at another row follows silently, and one whose hash is gone is flagged
+    for review, as any drifted citation is.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
