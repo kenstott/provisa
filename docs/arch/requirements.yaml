@@ -92610,7 +92610,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     row rule or mask applied, a role granted, a freshness choice) records the policy and freshness-policy
     tags of the objects it applied, each with its definition, parameters and citation (the cited section''s
     version and text hash) as they were at that moment, so a later reading of the log or trace explains
-    the decision by the rules in force then.'
+    the decision by the rules in force then. (Amended 2026-11-06, POLICY TAG REVIEWS:) Policy tags may be
+    reviewed on a calendar cadence, as REQ-2209 states; an object''s why then includes when its tags were
+    last attested, by which role and against which section version.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -92667,7 +92669,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     roles. (Amended 2026-11-05, THE REPORTS ARE STANDARD ADMIN REPORTS:) The review and policy reports are
     standard reports on Admin > Reports (REQ-1386): reviews overdue, each item''s attestation history, security
     items with no review schedule, and, from REQ-2208, policy sections no security item cites and security
-    items that cite no policy, with flagged and broken policy references.'
+    items that cite no policy, with flagged and broken policy references. (Amended 2026-11-06, POLICY TAGS
+    ARE REVIEWED ON A CALENDAR:) Policy and freshness-policy tags (REQ-2208, REQ-858) are a reviewable kind,
+    optionally: a tag may declare a review cadence and its reviewer (by default the steward of the tag''s
+    domain, a role holding the review capability); a tag with no cadence is never reviewed. The review is
+    of the tag, once per cycle, not of each object: the reviewer sees the tag''s definition, its parameters,
+    the cited section as it now reads and every object carrying it, and either attests it still holds (recorded
+    with who, when, the period and the cited section''s version) or changes it through the normal model
+    promotion (edit the tag, unmark an object, re-cite a section). The cadence is calendar based, so reviews
+    of the same cadence fall due together: monthly, quarterly, semi-annual (twice a year), annual, bi-annual
+    (every two years), or a fixed list of dates given as day of month and month (for example the 31st of
+    January and of July); a cadence follows the org''s fiscal calendar where one is declared, else the calendar
+    year. A review opens when its period ends and is due a declared number of days later. A revision of
+    the cited section opens a review at once, whatever the cadence, and a review done off cycle does not
+    move the tag''s calendar. Nothing is changed or switched off when a review is overdue: the tag shows
+    it, and overdue reviews are listed to the reviewer and the domain''s owner. Due reviews appear in the
+    reviewer''s own queue and as a marker on the tag, never on the objects it carries.'
   scenario: 'Given a role with a 90-day membership review whose overdue reviews lapse, and a holder no one attests
 
 
