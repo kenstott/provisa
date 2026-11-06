@@ -1423,6 +1423,11 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "relationship": model.relationship_id,
         "command": model.command_name,
         "term": model.term_id,  # REQ-2145
+        "product": model.product_id,  # REQ-1634
+        "document": model.document_id,  # REQ-2208
+        # REQ-2208: a section is named by its heading, or by its page when it has none.
+        "section": model.document_id is not None
+        and (bool(model.section_heading) or model.section_page is not None),
     }
     if model.object_type not in TAG_OBJECT_TYPES:
         return MutationResult(
@@ -1441,12 +1446,27 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
     return None
 
 
-def _require_tag_editor(info: StrawberryInfo) -> None:  # REQ-1944
+#: REQ-1634, REQ-2145, REQ-2208: the right that edits each object curated outside the table
+#: registry, so the one who curates it tags it: a data product, a glossary term, a library document
+#: and its sections.
+_CURATING_RIGHT = {
+    "product": "data_product_rw",
+    "term": "glossary_rw",
+    "document": "glossary_rw",
+    "section": "glossary_rw",
+}
+
+
+def _require_tag_editor(info: StrawberryInfo, object_type: str | None = None) -> None:  # REQ-1944
     """The surface gate for tag definitions and assignments: a table editor, or a holder of
-    sensitive_data (whose reach the per-tag checks then narrow). Admits the caller to ask; what
-    the edit then needs is decided once the tag is known."""
+    sensitive_data (whose reach the per-tag checks then narrow); for an assignment on a data
+    product, a term or a library document or section, the right that curates it. Admits the
+    caller to ask; what the edit then needs is decided once the tag is known."""
     from provisa.api.admin.capabilities import has_capability
 
+    if object_type in _CURATING_RIGHT:
+        require_capability(info, _CURATING_RIGHT[object_type])
+        return
     if not has_capability(info, SENSITIVE_DATA):
         require_capability(info, "table_registration")
 
@@ -1469,10 +1489,13 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     object_type: str,
     table_id: int | None,
     term_id: int | None = None,
+    product_id: str | None = None,
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
     domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
-    (REQ-2145). Any other assignment is a table editor's act."""
+    (REQ-2145). A tag on a data product is its editor's act in its domain (REQ-1634), and on a
+    library document or section its curator's (REQ-2208). Any other assignment is a table
+    editor's act."""
     if object_type == "term":  # REQ-2145: what the term's columns are hidden by
         from provisa.core.repositories import glossary as glossary_repo
 
@@ -1480,8 +1503,20 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
         if tag_row["sensitive"]:
             domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
             require_right_in_domains(info, SENSITIVE_DATA, domains)
-        else:
-            require_capability(info, "table_registration")
+        # Any other tag on a term is curation of the term, which _require_term_tagger asked.
+        return
+    if object_type == "product":  # REQ-1634: the product's editor, in the product's domain
+        from provisa.core.repositories import data_product as data_product_repo
+
+        assert product_id is not None  # _assignment_target_problem: a product assignment names it
+        product = await data_product_repo.get(conn, product_id)
+        assert product is not None  # tag_target_domains refused a product that is not there
+        require_right_in_domains(info, "data_product_rw", {product["domain_id"]})
+        return
+    if object_type in ("document", "section"):
+        # REQ-2208: the library's curator; tag_target_domains placed it in the document's domains.
+        # A sensitive tag hides nothing on a document: no value of it is served by a column.
+        require_capability(info, "glossary_rw")
         return
     if not (tag_row["sensitive"] and object_type == "column"):
         require_capability(info, "table_registration")
@@ -1724,6 +1759,10 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             table_ref=r["table_ref"],
             term_id=r["term_id"],  # REQ-2145
             term=r["term"],
+            product_id=r["product_id"],  # REQ-1634
+            document_id=r["document_id"],  # REQ-2208
+            section_heading=r["section_heading"],
+            section_page=r["section_page"],
             reason=r["reason"],
             expires_on=r["expires_on"],
         )
@@ -3498,7 +3537,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def assign_tag(
         self, info: StrawberryInfo, input: TagAssignmentInput
     ) -> MutationResult:  # REQ-1376/1377, REQ-1944
-        _require_tag_editor(info)
+        _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -3511,6 +3550,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             relationship_id=input.relationship_id,
             command_name=input.command_name,
             term_id=input.term_id,  # REQ-2145
+            product_id=input.product_id,  # REQ-1634
+            document_id=input.document_id,  # REQ-2208
+            section_heading=input.section_heading,
+            section_page=input.section_page,
             reason=(input.reason or "").strip() or None,
             expires_on=(input.expires_on or "").strip() or None,
             why=input.why,  # REQ-2094
@@ -3578,6 +3621,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.object_type,
                 model.table_id,
                 model.term_id,
+                model.product_id,
             )
             refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
             if refused is not None:
@@ -3597,7 +3641,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def unassign_tag(
         self, info: StrawberryInfo, input: TagAssignmentInput
     ) -> MutationResult:  # REQ-1377, REQ-1944
-        _require_tag_editor(info)
+        _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -3610,6 +3654,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             relationship_id=input.relationship_id,
             command_name=input.command_name,
             term_id=input.term_id,  # REQ-2145
+            product_id=input.product_id,  # REQ-1634
+            document_id=input.document_id,  # REQ-2208
+            section_heading=input.section_heading,
+            section_page=input.section_page,
         )
         problem = _assignment_target_problem(model)
         if problem is not None:
@@ -3624,7 +3672,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 assert model.term_id is not None
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)
             if tag_row is None:
-                require_capability(info, "table_registration")
+                require_capability(
+                    info, _CURATING_RIGHT.get(model.object_type, "table_registration")
+                )
             else:
                 # REQ-1943: removing a sensitive tag from a column stops it being sensitive.
                 await _require_tag_assignment_right(
@@ -3634,6 +3684,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.object_type,
                     input.table_id,
                     input.term_id,
+                    input.product_id,
                 )
             if model.object_type == "column":  # REQ-2145
                 from provisa.core.term_tags import inherited_from

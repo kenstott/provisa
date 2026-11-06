@@ -290,12 +290,19 @@ class TagType:  # REQ-1373, REQ-1375
 @strawberry.type
 class TagAssignmentType:  # REQ-1377
     tag_id: str
-    object_type: str  # source | table | column | relationship
+    object_type: str  # one of models.TAG_OBJECT_TYPES
     source_id: str | None = None
     table_id: int | None = None
     column_name: str | None = None
     relationship_id: str | None = None
     command_name: str | None = None  # tracked function/webhook name
+    product_id: str | None = None  # REQ-1634: the data product a "product" assignment is on
+    term_id: int | None = None  # REQ-2145: the glossary term a "term" assignment is on
+    # REQ-2208: the library document a "document" assignment is on, or a "section" one is in,
+    # and that section's heading, or its page when it has none.
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
     table_ref: str | None = None  # qualified "source.schema.table" for table/column targets
     reason: str | None = None  # required for 'deprecated'
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
@@ -1198,7 +1205,7 @@ class TagParamValueInput:  # REQ-1467
 @strawberry.input
 class TagAssignmentInput:  # REQ-1377
     tag_id: str
-    object_type: str  # source | table | column | relationship
+    object_type: str  # one of models.TAG_OBJECT_TYPES
     source_id: str | None = None
     table_id: int | None = None
     column_name: str | None = None
@@ -1211,6 +1218,12 @@ class TagAssignmentInput:  # REQ-1377
     why: JsonScalar | None = None
     # REQ-2145: the glossary term an object_type "term" assignment is on.
     term_id: int | None = None
+    product_id: str | None = None  # REQ-1634: the data product a "product" assignment is on
+    # REQ-2208: the library document a "document" assignment is on, or a "section" one is in,
+    # and that section's heading, or its page when it has none.
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
     # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False

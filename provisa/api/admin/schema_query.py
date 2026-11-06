@@ -30,6 +30,7 @@ from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import (
+    data_products,
     domains,
     registered_tables,
     relationships,
@@ -424,7 +425,9 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
 
     An assignment's domain comes from its object: a table or column from the registered table's
     domain; a relationship only when BOTH its source and target tables' domains are reachable; a command (tracked function or webhook)
-    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is). An
+    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is); a
+    data product from its domain (REQ-1634). A glossary term's tag is read as the term is
+    (REQ-2145), and a library document's or section's as the document is (REQ-2208). An
     object with no domain (an empty domain id, or a source with no ``allowed_domains``) is not
     restricted by a domain scope and stays visible. An assignment whose object cannot be found is
     dropped: it cannot be shown to be in scope.
@@ -459,6 +462,28 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             await conn.execute_core(select(registry.c.name, registry.c.domain_id))
         ).fetchall():
             command_domain[r.name] = r.domain_id
+    kinds = {r["object_type"] for r in rows}
+    from provisa.core.glossary import readable_term
+    from provisa.reference_library.retrieve import readable as library_readable
+
+    product_domain: dict[str, str] = {}
+    if "product" in kinds:  # REQ-1634
+        product_domain = {
+            r.id: r.domain_id
+            for r in (
+                await conn.execute_core(select(data_products.c.id, data_products.c.domain_id))
+            ).fetchall()
+        }
+    term_domain: dict[int, set[str]] = {}
+    if "term" in kinds:  # REQ-2145
+        from provisa.core.repositories.glossary import term_domains
+
+        term_domain = await term_domains(conn)
+    document_domains: dict[int, set[str]] = {}
+    if kinds & {"document", "section"}:  # REQ-2208
+        from provisa.reference_library import store
+
+        document_domains = {d.id: set(d.domains) for d in await store.documents(conn)}
 
     def reachable(domain: str) -> bool:
         return domain == "" or domain in scope
@@ -480,6 +505,17 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
         if kind == "command":
             return row["command_name"] in command_domain and reachable(
                 command_domain[row["command_name"]]
+            )
+        if kind == "product":
+            return row["product_id"] in product_domain and reachable(
+                product_domain[row["product_id"]]
+            )
+        if kind == "term":  # read as the term is (REQ-1593): its domains, or the whole org's
+            # A term absent from term_domains is unscoped, which every glossary reader reaches.
+            return readable_term(scope, term_domain.get(row["term_id"], set()))
+        if kind in ("document", "section"):  # read as the library document is (REQ-2185)
+            return row["document_id"] in document_domains and library_readable(
+                scope, document_domains[row["document_id"]]
             )
         return False
 
@@ -975,6 +1011,11 @@ class Query:  # REQ-021, REQ-042
                 column_name=r["column_name"],
                 relationship_id=r["relationship_id"],
                 command_name=r["command_name"],
+                product_id=r["product_id"],  # REQ-1634
+                term_id=r["term_id"],  # REQ-2145
+                document_id=r["document_id"],  # REQ-2208
+                section_heading=r["section_heading"],
+                section_page=r["section_page"],
                 table_ref=r["table_ref"],
                 reason=r["reason"],
                 expires_on=r["expires_on"],

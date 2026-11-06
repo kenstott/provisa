@@ -645,6 +645,11 @@ tag_assignments = Table(
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1634
     # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
+    # REQ-2208: a reference library document the tag is on, and for one of its sections the
+    # section's address as the library reads it: its heading, or its page for a PDF.
+    Column("document_id", Integer, ForeignKey("reference_documents.id", ondelete="CASCADE")),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -662,7 +667,7 @@ tag_assignments = Table(
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
         "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
-        "'term')",
+        "'term', 'document', 'section')",
         name="tag_assignments_object_type_check",
     ),
 )

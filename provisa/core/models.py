@@ -818,7 +818,19 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
         return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
+# REQ-2208: a reference library document, and a section of one, carry registry tags as columns and
+# terms do (a pii policy section tagged as the pii columns are).
+TAG_OBJECT_TYPES = (
+    "source",
+    "table",
+    "column",
+    "relationship",
+    "command",
+    "product",
+    "term",
+    "document",
+    "section",
+)
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -941,7 +953,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
-        applies_to=["column", "term"],
+        # REQ-2208: and on reference library documents and their sections, so the policy sections
+        # about personal data carry the same tag as the columns.
+        applies_to=["column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -1080,6 +1094,12 @@ class TagAssignment(BaseModel):  # REQ-1377
     # loader as table_ref is.
     term_id: int | None = None
     term: str | None = None
+    # REQ-2208: a library document the tag is on (object_type "document"), or the document a
+    # tagged section is in (object_type "section"), the section named by its heading, or by its
+    # page when it has none (a PDF's sections are its pages).
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -1101,6 +1121,14 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"command:{self.command_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
+        if self.object_type == "product":  # REQ-1634
+            return f"product:{self.product_id}"
+        if self.object_type == "document":  # REQ-2208
+            return f"document:{self.document_id}"
+        if self.object_type == "section":  # REQ-2208
+            if self.section_heading is not None:
+                return f"section:{self.document_id}:heading:{self.section_heading}"
+            return f"section:{self.document_id}:page:{self.section_page}"
         return f"relationship:{self.relationship_id}"
 
 

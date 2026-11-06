@@ -628,7 +628,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'document', 'section')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -642,6 +642,12 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
     -- glossary_terms is declared after that table, below.
     term_id         INTEGER,
+    -- REQ-2208: a reference library document a tag is on, and for a section of it the section's
+    -- address as the library's extraction reads it: its heading, or its page for a PDF. The
+    -- reference to reference_documents is declared after that table, below.
+    document_id     INTEGER,
+    section_heading TEXT,
+    section_page    INTEGER,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -674,7 +680,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'document', 'section'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1928,6 +1934,13 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     tenant_id   UUID,
     UNIQUE (document_id, ordinal)
 );
+
+-- REQ-2208: a tag on a library document or one of its sections goes with the document.
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_document_id_fkey
+        FOREIGN KEY (document_id) REFERENCES reference_documents(id) ON DELETE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by
 -- the org's vector model), under one partial HNSW index per dimension in use

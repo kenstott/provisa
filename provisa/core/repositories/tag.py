@@ -186,6 +186,10 @@ async def assign(  # REQ-1377, REQ-1919
             "relationship_id": assignment.relationship_id,
             "command_name": assignment.command_name,
             "term_id": assignment.term_id,  # REQ-2145
+            "product_id": assignment.product_id,  # REQ-1634
+            "document_id": assignment.document_id,  # REQ-2208
+            "section_heading": assignment.section_heading,
+            "section_page": assignment.section_page,
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,

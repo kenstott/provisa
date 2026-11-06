@@ -169,7 +169,48 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
         if not await glossary_repo.term_exists(conn, assignment.term_id):
             raise DomainLookupError(f"no term {assignment.term_id!r}")
         return (await glossary_repo.term_domains(conn)).get(assignment.term_id, set())
+    if kind == "product":  # REQ-1634: the product's own domain
+        from provisa.core.repositories import data_product as data_product_repo
+
+        product = await data_product_repo.get(conn, assignment.product_id)
+        if product is None:
+            raise DomainLookupError(f"no data product {assignment.product_id!r}")
+        return {product["domain_id"]}
+    if kind in ("document", "section"):  # REQ-2208: the library document's domains
+        return await library_target_domains(conn, assignment)
     raise DomainLookupError(f"a {kind!r} tag assignment has no target this gate can place")
+
+
+async def library_target_domains(conn: "Connection", assignment: Any) -> set[str]:
+    """The domains of the library document a document or section tag is on (REQ-2208): those it
+    names, ``*`` for the whole org's. A section must be one the library read from the document:
+    its heading, or for a section with none its page. Raises :class:`DomainLookupError` when the
+    document or the section is not there."""
+    from sqlalchemy import select
+
+    from provisa.reference_library import store
+    from provisa.core.schema_org import reference_passages as rp
+
+    document = await store.document(conn, assignment.document_id)
+    if document is None:
+        raise DomainLookupError(f"no library document {assignment.document_id!r}")
+    if assignment.object_type == "section":
+        where = (
+            rp.c.section == assignment.section_heading
+            if assignment.section_heading is not None
+            else rp.c.section.is_(None) & (rp.c.page == assignment.section_page)
+        )
+        found = (
+            await conn.execute_core(
+                select(rp.c.id).where((rp.c.document_id == document.id) & where).limit(1)
+            )
+        ).fetchone()
+        if found is None:
+            raise DomainLookupError(
+                f"no section {assignment.section_heading or assignment.section_page!r} in "
+                f"library document {document.id}"
+            )
+    return set(document.domains)
 
 
 def require_domains(info: "StrawberryInfo", domain_ids: Iterable[str]) -> None:

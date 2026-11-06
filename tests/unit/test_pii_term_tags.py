@@ -147,7 +147,8 @@ async def test_moving_a_column_off_the_term_removes_the_tag_it_carried(control_p
 
 def test_pii_goes_on_columns_and_terms_and_a_column_marked_by_hand_says_why():
     (pii,) = [t for t in SYSTEM_TAGS if t.id == "pii"]
-    assert pii.applies_to == ["column", "term"]
+    # REQ-2208 (amended 2026-11-05): and on library documents and their sections.
+    assert pii.applies_to == ["column", "term", "document", "section"]
     assert pii.reason_policy == "required"
 
 

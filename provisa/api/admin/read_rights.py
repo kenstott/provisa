@@ -19,7 +19,9 @@ column rename would break (REQ-1484), the objects a refused delete is still refe
 - a table, view or materialized view: the acting role is served a column of it;
 - a column, a relationship end, a tag on a column: the acting role is served that column;
 - a metric or a command: it is granted to the acting role;
-- a glossary term: the caller's domains read it.
+- a glossary term: the caller's domains read it;
+- a tag on a term or on a library document or section: the caller reads the term, or the
+  document's domains, as a term's.
 
 Anything else a refusal names (a domain, a source, a role, a region...) is not a field, table,
 column or check, and is named as before.
@@ -156,15 +158,9 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
         return row is not None and (row.table_id is None or reader.column(row.table_id, None))
     if kind == "tag_assignment":
         row = (
-            await conn.execute_core(
-                select(tag_assignments.c.table_id, tag_assignments.c.column_name).where(
-                    tag_assignments.c.id == key
-                )
-            )
+            await conn.execute_core(select(tag_assignments).where(tag_assignments.c.id == key))
         ).fetchone()
-        return row is not None and (
-            row.table_id is None or reader.column(row.table_id, row.column_name)
-        )
+        return row is not None and await _tag_assignment_readable(conn, reader, dict(row._mapping))
     if kind == "materialized_view":
         # A view's storage row is kept under ``view-<table name>`` (integrity._attributes); any
         # other materialized view is named by the tables it reads.
@@ -180,6 +176,25 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
         tables = await _tables_named(conn, names)
         return bool(tables) and all(reader.column(t, None) for t in tables)
     return True
+
+
+async def _tag_assignment_readable(
+    conn: "Connection", reader: DependentsReader, row: dict
+) -> bool:  # REQ-2152
+    """A tag assignment is read as the object it is on: a table's or column's as that column is
+    served, a term's as the term is read (REQ-2145), and a library document's or section's as the
+    document is: by its domains, the rule a term is read by (REQ-2185, REQ-2208)."""
+    from provisa.core.repositories.glossary import term_domains
+
+    kind = row["object_type"]
+    if kind == "term":
+        return reader.term((await term_domains(conn)).get(row["term_id"], set()))
+    if kind in ("document", "section"):
+        from provisa.reference_library import store
+
+        document = await store.document(conn, row["document_id"])
+        return document is not None and reader.term(set(document.domains))
+    return row["table_id"] is None or reader.column(row["table_id"], row["column_name"])
 
 
 async def relationship_readable(conn: "Connection", reader: DependentsReader, rel_id: str) -> bool:
