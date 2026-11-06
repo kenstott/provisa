@@ -32,7 +32,7 @@ El flujo de trabajo de CI (`build-dmg.yml`, llamado "Build Provisa Packages") se
 1. **Resolve release metadata** — detecta el canal a partir del sufijo de la etiqueta, deriva la versión PEP 440 y los nombres de los assets
 2. **Download / package Trino plugins** — descarga los conectores Calcite Trino y empaqueta un tarball
 3. **Pull core / obs / demo Docker images** — guarda los tarballs de las imágenes de servicio (arm64, más amd64 core para el nivel de contenedor de Windows)
-4. **Build macOS Core / Obs / Demo DMGs** — se ejecuta en `macos-14` (Apple Silicon), sin conexión (airgapped)
+4. **Build macOS Core / Obs / Demo DMGs** — se ejecuta en `macos-15` (Apple Silicon), sin conexión (airgapped)
 5. **Build Linux AppImage** — core, sin conexión (airgapped)
 6. **Build Windows Core installer** — nativo, Python embebido, sin Docker
 7. **Build Windows Container-tier installer** — WSL2 + Trino, obtiene las imágenes bajo demanda (sin VirtualBox/OVA)
