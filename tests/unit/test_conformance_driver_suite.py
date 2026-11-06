@@ -307,6 +307,13 @@ def test_main_writes_the_report_and_its_exit_status_is_the_gate(tmp_path, monkey
 # --- seeding a list from a run ----------------------------------------------------------------------
 
 
+def test_a_defect_masks_the_values_that_vary_and_keeps_the_names():
+    message = "org.opentest4j.AssertionFailedError: expected: <12> but was: <3.5> in 'tbl_7'"
+    assert ds._defect(message) == (
+        "org.opentest4j.AssertionFailedError: expected: <N> but was: <N> in '…'"
+    )
+
+
 def test_a_seeded_list_names_every_failure_and_keeps_the_reasons_it_had(tmp_path):
     lists = _list(tmp_path, _LIST)
     run = [

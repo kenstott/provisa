@@ -195,7 +195,7 @@ def read_attempts(spec: str) -> dict[str, dict]:
 #: What makes one failure's message another's: numbers and quoted values.
 _VARYING = (
     (re.compile(r"'[^']*'|\"[^\"]*\""), "'…'"),
-    (re.compile(r"\b0x[0-9a-fA-F]+\b|\d+(\.\d+)?"), "N"),
+    (re.compile(r"\b0x[0-9a-fA-F]+\b|\b\d+(\.\d+)?\b"), "N"),
 )
 #: How much of a message names its defect.
 DEFECT_CHARS = 120
