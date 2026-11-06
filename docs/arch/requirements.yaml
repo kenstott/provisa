@@ -81819,7 +81819,12 @@
     IT CANNOT ATTACH:) Where the engine cannot attach MotherDuck (on DuckDB 2.0 its extension does not load),
     a MotherDuck source is a replica: its tables are landed into the materialization store by a reader that
     can reach MotherDuck and read from there, shown and refreshed as any replica is; it is read in place
-    again once the engine can attach it.'
+    again once the engine can attach it. (Amended 2026-11-06, A LANDING-ONLY MOTHERDUCK READER:) The reader
+    that lands a MotherDuck replica on a DuckDB 2.0 engine is a separate, landing-only process pinned to
+    the last DuckDB version MotherDuck supports (1.5.x), with that version''s motherduck extension staged:
+    it reads the source''s tables into the materialization store and serves no queries, so the engine and
+    every query stay on DuckDB 2.0. It is retired once MotherDuck supports the engine''s DuckDB version
+    and the source is read in place again.'
   use_case: 'An analyst keeps shared reference tables in MotherDuck and a large local DuckDB file of event data; a join between them runs as one DuckDB statement under hybrid execution.'
   scenario: 'Given a MotherDuck source with a token, on the DuckDB engine
 
