@@ -66,7 +66,8 @@ class BundledExtensionsMissing(RuntimeError):
 
 def stage_bundled_extensions(target: str | Path) -> Path:
     """Copy the running platform's DuckDB extension blobs from the ``provisa-duckdb-ext`` PyPI package
-    into ``target`` (idempotent) and return it — the offline, firewall-safe alternative to DuckDB's
+    into ``target`` (idempotent) and return it. The package is one wheel per platform, holding only that
+    platform's ``<version>/<platform>/`` tree, so the installer's own wheel choice brings this tree — the offline, firewall-safe alternative to DuckDB's
     network ``INSTALL``. Point ``PROVISA_DUCKDB_EXT_DIR`` at the returned dir so every ``LOAD`` resolves
     locally and ``extensions.duckdb.org`` is never contacted.
 
@@ -93,7 +94,8 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     if not any(p.suffix == ".duckdb_extension" for p in files):
         raise BundledExtensionsMissing(
             f"provisa-duckdb-ext has no DuckDB extensions for {platform} @ {raw_version} "
-            f"(looked in {src}); rebuild the package against duckdb {raw_version}."
+            f"(looked in {src}); install this platform's provisa-duckdb-ext wheel, built against "
+            f"duckdb {raw_version}."
         )
 
     dst = Path(target) / raw_version / platform

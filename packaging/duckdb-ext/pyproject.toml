@@ -5,8 +5,10 @@
 # them from extensions.duckdb.org at runtime. Behind an enterprise firewall where only PyPI/Maven/npm/
 # NuGet are proxied (Artifactory), that host is unreachable and the embedded tier breaks. This package
 # embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so acquisition
-# flows through PyPI instead. One universal wheel carries every platform (the blobs are small and
-# DuckDB-version-locked); `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the
+# flows through PyPI instead. One wheel per platform (py3-none-<platform tag>), each holding that
+# platform's blobs alone: a universal wheel of every platform's DuckDB 2.0 extensions passed PyPI's
+# 100 MB per-file limit. CI (build-duckdb-extensions.yml) fills _ext with one platform's mirror
+# (collect.py), builds, and retags the wheel; `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the
 # running platform's blobs into a writable dir on first run and points PROVISA_DUCKDB_EXT_DIR at it.
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -26,5 +28,5 @@ dependencies = ["duckdb==2.0.0"]
 packages = ["provisa_duckdb_ext"]
 
 [tool.setuptools.package-data]
-# The blobs: <raw_duckdb_version>/<platform>/<name>.duckdb_extension (+ manifest.json), all platforms.
+# The blobs: <raw_duckdb_version>/<platform>/<name>.duckdb_extension, the wheel's one platform.
 "provisa_duckdb_ext" = ["_ext/**/*"]

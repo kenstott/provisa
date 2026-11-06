@@ -11,7 +11,9 @@ from `extensions.duckdb.org` at runtime. Behind an enterprise firewall where onl
 are proxied (Artifactory), that host is unreachable and the embedded tier breaks.
 
 This package embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so
-acquisition flows through PyPI instead. One universal wheel carries every platform. Provisa's
+acquisition flows through PyPI instead. Each platform has its own wheel (macOS arm64, Linux x86_64
+and aarch64, Windows x64), holding only that platform's extensions; pip picks the one for the machine.
+There is no source distribution. Provisa's
 `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the running platform's blobs
 into a writable directory on first run and points `PROVISA_DUCKDB_EXT_DIR` at it.
 
