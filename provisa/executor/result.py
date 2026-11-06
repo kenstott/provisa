@@ -105,6 +105,11 @@ class QueryResult:  # REQ-028
     # set by the pipeline on a HIT; None for a result that was executed. A surface reports
     # HIT/MISS and the entry's age from it (``cache.middleware.build_cache_headers``).
     cache_entry: Any = field(default=None)
+    # REQ-1961: the governed statement's result shape (its plan's ``result_shape``; awaited, each
+    # result column's name and registered type, or None), set by the batch pipeline for a surface
+    # that writes the rows without holding the plan (/data/sql). None for a result no governed
+    # plan answered.
+    result_shape: Any = field(default=None, init=False, repr=False)
     stats: StreamStats = field(init=False)
 
     def __post_init__(self) -> None:

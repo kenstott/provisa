@@ -283,10 +283,12 @@ def test_a_query_table_sends_its_argument_as_a_parameter(server):
 
 
 def test_a_cosmos_table_joins_another(server):
+    # The relationship's column is customerId, which SQL names quoted: unquoted, PostgreSQL reads
+    # customerid, a column no relationship joins on (REQ-039).
     rows = _rows(
         _sql(
             server,
-            "SELECT c.name, o.total FROM orders o JOIN customers c ON c.id = o.customerId "
+            'SELECT c.name, o.total FROM orders o JOIN customers c ON c.id = o."customerId" '
             "WHERE o._nf_customerId = 'c2'",
         )
     )
