@@ -714,16 +714,13 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                     # relationship field): read by the engine to join, never returned (REQ-603).
                     continue
                 if not tbl_ref:
-                    for tid in am.values():
-                        vis = gov_ctx.visible_columns.get(tid)
-                        if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
-                            violations.append(
-                                ValidationViolation(
-                                    "V003",
-                                    f"Column {col_name!r} is not visible to this role",
-                                )
+                    if _unqualified_column_refused(col_name, am, gov_ctx):
+                        violations.append(
+                            ValidationViolation(
+                                "V003",
+                                f"Column {col_name!r} is not visible to this role",
                             )
-                            break
+                        )
                 else:
                     tid = am.get(tbl_ref)
                     if tid is None:
@@ -739,6 +736,31 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
         violations += _hidden_sort_keys(select, am, gov_ctx)
         violations += _hidden_join_keys(select, am, gov_ctx)
     return violations
+
+
+def _unqualified_column_refused(  # REQ-039, REQ-2190
+    col_name: str, am: dict[str, int], gov_ctx: GovernanceContext
+) -> bool:
+    """Whether an unqualified ``col_name`` read beside the relations of ``am`` is refused (V003).
+
+    It is judged at the relations in scope that have it -- register it, or serve it: refused when
+    any of them hides it. A relation without the name has no say: psycopg2's hstore lookup
+    (``SELECT t.oid, typarray FROM pg_type t JOIN pg_namespace ns ...``, sent by every SQLAlchemy
+    psycopg2 connection) names pg_type's column beside pg_namespace. When no relation in scope
+    has the name it is refused if any of them is governed, as before: a physical column the model
+    does not serve is never passed through."""
+    holders: list[int] = []
+    for tid in am.values():
+        name = registered_name(gov_ctx, tid, col_name)
+        vis = gov_ctx.visible_columns.get(tid)
+        registered = {c for c, _ in gov_ctx.all_columns.get(tid, [])}
+        if name in registered or (vis is not None and name in vis):
+            holders.append(tid)
+            if vis is not None and name not in vis:
+                return True
+    if holders:
+        return False
+    return any(gov_ctx.visible_columns.get(tid) is not None for tid in am.values())
 
 
 def _hidden_columns(tid: int, gov_ctx: GovernanceContext) -> set[str]:
