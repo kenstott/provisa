@@ -3715,19 +3715,15 @@ async def _rewire_lifecycle() -> None:
     # registered live through the Sources+Register Table forms never got its listener started or
     # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
     # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
-    # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
+    # calls are idempotent by design (wire_push_listeners skips nodes already running;
     # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
     # here is never harmful, only occasionally redundant with register_runtime's own call.
     from provisa.events.push_wiring import wire_push_listeners
 
-    try:
-        await wire_push_listeners(state=state, log=logging.getLogger(__name__))
-    except Exception:
-        logging.getLogger(__name__).exception("wire_push_listeners failed during schema rebuild")
-    try:
-        await _init_ingest_engines()
-    except Exception:
-        logging.getLogger(__name__).exception("_init_ingest_engines failed during schema rebuild")
+    # A step that fails is the rebuild's failure (J743): inline at boot it fails the rebuild;
+    # detached, spawn_background reports it by the task's name.
+    await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+    await _init_ingest_engines()
     # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
     # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
     # function does not — a table registered against an already-running runtime (the common case
@@ -3748,8 +3744,6 @@ async def _rewire_lifecycle() -> None:
         # The runtime this rebuild is for was dropped while it ran (a change of the
         # environment's data, an engine wake): the one built in its place wires its own.
         left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
-    except Exception:
-        logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
 
     # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
     # same posture as wire_push_listeners above (registered jobs are idempotent via
