@@ -92418,3 +92418,30 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     Then it receives the same rows and governance as the PostgreSQL statement SELECT name, COALESCE(region, ''none'')
     FROM shop.customers LIMIT 5, and a view definition it asks for comes back written in T-SQL'
+- id: REQ-2213
+  value: 'A table''s API can offer search: one query over all its text columns, ranked by a BM25 keyword score and,
+    where the table has an embedding, a similarity score.'
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Vector Search
+  feature: vector-search-queries
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: search is an API query pattern offered from the table''s API tab (REQ-1972),
+    beside Aggregates and Group By. A query names one search text; it is matched with stemmed words across all the
+    table''s varchar columns as one document, and each row comes back with a BM25 relevance score. On a table with
+    an embedding column (REQ-430) the same request also returns the row''s similarity score to that text, so a client
+    gets keyword and semantic relevance together. Each engine computes BM25 with its own function where it has one.'
+  use_case: A client searches a product table for 'running shoes' and gets rows ranked by keyword relevance with
+    their similarity to the same text beside it.
+  scenario: 'Given a table whose API offers search and whose varchar columns are name and description
+
+
+    When a client searches for running shoes
+
+
+    Then rows whose name or description contain run or shoe come back, each with a BM25 score
+
+
+    And on a table with an embedding column each row also carries its similarity score'

@@ -26617,3 +26617,17 @@ Maintainer 2026-11-05: a dialect parameter on SQL connections, so a client writt
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2213 · Vector Search {#REQ-2213}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-05: search is an API query pattern offered from the table's API tab ([REQ-1972](#REQ-1972)), beside Aggregates and Group By. A query names one search text; it is matched with stemmed words across all the table's varchar columns as one document, and each row comes back with a BM25 relevance score. On a table with an embedding column ([REQ-430](#REQ-430)) the same request also returns the row's similarity score to that text, so a client gets keyword and semantic relevance together. Each engine computes BM25 with its own function where it has one.
+
+**Use case:** A client searches a product table for 'running shoes' and gets rows ranked by keyword relevance with their similarity to the same text beside it.
+
+**Code:** —
+
+**Tests:** —
