@@ -248,17 +248,8 @@ def run_gx(payload: dict) -> dict:
     # context would put a second, drifting copy of the suite on disk next to the contract text that
     # is already the single definition.
     context = gx.get_context(mode="ephemeral")
-    # use_native_hstore=False: by default SQLAlchemy's psycopg2 dialect probes pg_type.typarray for
-    # hstore OIDs on every new connection, and Provisa's pg-wire endpoint refuses that catalog
-    # column ([V003]) — GX's test_connection then failed before any expectation ran (UI e2e run
-    # 42233953096). The flag only skips psycopg2's native hstore typecaster; SQLAlchemy still
-    # supports the HSTORE type without it.
-    # ``kwargs`` is the PostgresDatasource field GX passes to create_engine(); GX's generated stub
-    # for add_postgres omits it though the runtime model accepts it, hence the narrow ignore.
     data_source = context.data_sources.add_postgres(
-        name=payload["data_source_name"],
-        connection_string=connection_string,
-        kwargs={"use_native_hstore": False},  # pyright: ignore[reportCallIssue]
+        name=payload["data_source_name"], connection_string=connection_string
     )
     asset = data_source.add_table_asset(name=table_name, table_name=table_name, schema_name=schema)
     batch_definition = asset.add_batch_definition_whole_table("provisa_scan")

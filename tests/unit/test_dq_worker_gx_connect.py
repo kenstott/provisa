@@ -10,16 +10,17 @@
 
 """Unit tests: the great_expectations checker can open a connection to Provisa's pg-wire endpoint.
 
-GX connects through a SQLAlchemy ``postgresql+psycopg2`` engine. By default that dialect's connect
-hook probes ``pg_type.typarray`` for hstore OIDs, and Provisa refuses that catalog column
-(``[V003] Column 'typarray' is not visible to this role``) — so every GX dry run and scan died in
-``test_connection`` before a single expectation ran (UI e2e core lane run 42233953096).
+GX connects through a SQLAlchemy ``postgresql+psycopg2`` engine at its defaults. That dialect's
+connect hook looks hstore up (``SELECT t.oid, typarray FROM pg_type t JOIN pg_namespace ns ...``);
+Provisa answers it -- refusing it (V003) once killed every GX dry run and scan in
+``test_connection`` (UI e2e core lane run 42233953096; the server side is tested in
+test_v003_unqualified_column.py and the pgwire integration test).
 
 great_expectations is an optional extra the unit lane does not install, so a stand-in module
 records what ``run_gx`` hands ``add_postgres`` and connects the way GX 1.20's
 ``SQLDatasource.test_connection`` does: ``create_engine(connection_string, **kwargs)`` then
 ``engine.connect()``. SQLAlchemy and psycopg2 are the real ones; only psycopg2's socket connection
-is replaced, by an endpoint that answers like Provisa.
+is replaced, by an endpoint that answers like Provisa: no hstore type, so no rows.
 """
 
 # Requirements: REQ-1443, REQ-1742
@@ -31,7 +32,6 @@ import types
 from unittest import mock
 
 import psycopg2
-import psycopg2.errors
 import psycopg2.extensions
 import psycopg2.extras
 import pytest
@@ -50,11 +50,11 @@ class _ProvisaCursor:
 
     def execute(self, sql: str, *args, **kwargs) -> None:
         self._queries.append(sql)
-        if "typarray" in sql:
-            raise psycopg2.errors.InsufficientPrivilege(
-                "[V003] Column 'typarray' is not visible to this role"
-            )
-        raise _PastHandshake(sql)
+        if "typarray" not in sql:
+            raise _PastHandshake(sql)
+
+    def __iter__(self):
+        return iter(())  # the hstore lookup: Provisa has no hstore type
 
     def close(self) -> None:
         pass
@@ -104,7 +104,7 @@ _PAYLOAD = {
 }
 
 
-def test_gx_connects_without_the_hstore_catalog_probe_provisa_refuses(monkeypatch):
+def test_gx_connects_through_the_hstore_lookup_provisa_answers(monkeypatch):
     queries: list[str] = []
     add_postgres_calls: list[dict] = []
     for module_name, module in _stand_in_gx(add_postgres_calls).items():
@@ -118,7 +118,8 @@ def test_gx_connects_without_the_hstore_catalog_probe_provisa_refuses(monkeypatc
         worker.run_gx(_PAYLOAD)
 
     assert len(add_postgres_calls) == 1
-    assert not [q for q in queries if "typarray" in q]
+    # The engine is SQLAlchemy's default one: the lookup is sent, and answered, not avoided.
+    assert [q for q in queries if "typarray" in q]
 
 
 def test_gx_hands_the_driver_credentials_exactly_as_configured(monkeypatch):
