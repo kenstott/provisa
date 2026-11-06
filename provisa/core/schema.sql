@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS model_seed (
     seeded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The layout this schema was given (provisa.core.db.layout_digest): written once schema.sql and
+-- the audit schema have both run, and read before either runs again. A build that finds it
+-- current runs no DDL beside a live runtime's reads.
+CREATE TABLE IF NOT EXISTS schema_layout (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    digest  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sources (
     id            TEXT PRIMARY KEY,
     type          TEXT NOT NULL,

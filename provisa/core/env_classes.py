@@ -179,6 +179,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # a copy or a merge makes to this environment's tables; carrying another environment's
         # value over it would move it backwards and hide a change from the workers watching it.
         "config_stamp",
+        # The layout this environment's schema was given: its own DDL's, which no copy changes.
+        "schema_layout",
         # REQ-1939: an environment's synthetic datasets belong to it alone -- they replace its
         # bindings with data in its own store -- so no copy or promotion carries them.
         "synthetic_datasets",

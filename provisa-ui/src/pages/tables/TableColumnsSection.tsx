@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
 import { Tip } from "../../components/Tip";
@@ -45,6 +45,7 @@ export function TableColumnsSection({
   editSource,
   roles,
   hidingOnly,
+  writeGrants,
   describeColumn,
   scanTableId,
 }: {
@@ -53,6 +54,8 @@ export function TableColumnsSection({
   editSource: Source | undefined;
   roles: Role[];
   hidingOnly: boolean;
+  /** The Write grants tab's editor. */
+  writeGrants: ReactNode;
   /** Writes a column's description from the saved table; absent while it is being created. */
   describeColumn?: (column: string) => Promise<string>;
   /** REQ-2147: the saved table a scan for sensitive values reads; absent while it is being
@@ -120,7 +123,9 @@ export function TableColumnsSection({
       {/* One tab bar for everything of a column: its own attributes, and its test data. */}
       <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
       {tab === "access" && <SensitiveScanBar scan={scan} />}
-      {tab === "testing" ? (
+      {tab === "writeGrants" ? (
+        writeGrants
+      ) : tab === "testing" ? (
         <TestDataColumns table={editingTable} updateEditCol={updateEditCol} />
       ) : (
         <Table.ScrollContainer minWidth={640}>

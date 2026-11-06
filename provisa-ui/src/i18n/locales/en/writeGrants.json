@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Who may write this table is shown to administrators who see governance.",
     "empty": "No role may write this table.",
+    "sourceAcceptsNone": "The source accepts no writes (see the API tab), so no role can be granted any.",
     "role": "Role",
     "operation": "Operation",
     "op_insert": "Insert",

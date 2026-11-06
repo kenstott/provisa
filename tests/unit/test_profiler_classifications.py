@@ -261,6 +261,40 @@ async def test_a_disabled_kind_is_not_tested(control_plane):
     assert len(await classifications.enabled_kinds(db)) == len(catalogue())
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("held", "admitted"),
+    [({"sensitive_data"}, True), ({"org_settings"}, False), (set(), False)],
+)
+async def test_the_kinds_are_listed_and_switched_by_the_decisions_own_right(
+    control_plane, monkeypatch, held, admitted
+):
+    """Classification is the steward's: the kinds' page and their switch ask sensitive_data, the
+    right a classification decision asks, and org_settings alone is refused."""
+    import provisa.api.admin.capabilities as capmod
+
+    db = control_plane.org()
+    monkeypatch.setattr(router_mod, "_db", lambda: db)
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda _identity, _state: held)
+    request = cast(Any, _request())
+    if admitted:
+        listed = await router_mod.list_kinds(request)
+        assert {k["id"] for k in listed["kinds"]} == {k.id for k in catalogue()}
+        everything_but_city = [k.id for k in catalogue() if k.id != "city"]
+        switched = await router_mod.set_enabled_kinds(
+            request, router_mod.EnabledKinds(enabled=everything_but_city)
+        )
+        assert {k["id"] for k in switched["kinds"] if not k["enabled"]} == {"city"}
+        return
+    with pytest.raises(ApiError) as read:
+        await router_mod.list_kinds(request)
+    with pytest.raises(ApiError) as write:
+        await router_mod.set_enabled_kinds(request, router_mod.EnabledKinds(enabled=[]))
+    for refused in (read.value, write.value):
+        assert refused.status_code == 403 and "sensitive_data" in str(refused.detail)
+    assert {k.id for k in await classifications.enabled_kinds(db)} == {k.id for k in catalogue()}
+
+
 def test_an_unknown_disabled_kind_is_refused_by_name():
     with pytest.raises(ValueError, match="horoscope_sign"):
         classifications.setting_for({"horoscope_sign"})
