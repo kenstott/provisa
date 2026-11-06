@@ -92346,7 +92346,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     its domain''s library; a table or column outside a data product uses its domain''s default agreement.
     Agreements are documents in the reference library (REQ-2185), assigned to their domain: they are versioned
     through the library''s review, their sections can be cited (REQ-2208) and tagged, and a new version
-    asks current holders to accept it.'
+    asks current holders to accept it. (Amended 2026-11-06, ACCEPTING A PRODUCT''S AGREEMENT:) Requesting
+    a data product requires accepting its agreement, even for a requester who already reads every dataset
+    in it: the request is where the use is declared. Reading a member table directly, without requesting
+    the product, is not gated by the product''s agreement; that is the operator''s modelling choice: datasets
+    shared widely are reference data under the domain''s default agreement (or none), and datasets specific
+    to a purpose belong in a product and are reached by requesting it. An acceptance records, for each dataset
+    the product covers, whether the person could already read it when they accepted and whether they could
+    not, so the record shows which access the agreement newly governed and which it was signed over.'
   scenario: Given a data product a user cannot read, and a role that serves it whose requests need the domain steward's
     approval for at most 30 days When the user requests access, accepts the data product's data use agreement, and
     the steward approves Then the user holds the role until 30 days from approval, reads the data product, and the
