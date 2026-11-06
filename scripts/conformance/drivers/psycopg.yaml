@@ -2417,14 +2417,6 @@ expected:
   tests.types.test_datetime.TestDatetime::test_overflow_message[10000-01-01 12:00-timestamp too large-SQL]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDatetime::test_overflow_message_binary[1000-01-01 12:00 BC-timestamp too small]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_datetime.TestDatetime::test_overflow_message_binary[10000-01-01 12:00-timestamp too large]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestInterval::test_dump_interval[iso_8601--1m--0.000001 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[iso_8601--1s--1 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[postgres--1m--0.000001 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[postgres--1s--1 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[postgres_verbose--1m--0.000001 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[postgres_verbose--1s--1 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[sql_standard--1m--0.000001 s]: assert-false-is-true
-  tests.types.test_datetime.TestInterval::test_dump_interval[sql_standard--1s--1 s]: assert-false-is-true
   tests.types.test_datetime.TestInterval::test_dump_interval_binary[-1d--1 day]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_datetime.TestInterval::test_dump_interval_binary[-1m--0.000001 s]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_datetime.TestInterval::test_dump_interval_binary[-1s--1 s]: psycopg-errors-internalerror-unsupported-binary
