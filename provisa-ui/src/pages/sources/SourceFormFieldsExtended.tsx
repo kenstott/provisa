@@ -30,7 +30,6 @@ import {
   BRAND_AUTH,
   BRAND_SETUP,
   FILE_TRANSPORTS,
-  KAFKA_AUTH_TYPES,
 } from "./constants";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
@@ -54,6 +53,7 @@ import { COSMOSDB } from "./cosmosdb";
 import { JdbcSourceFields } from "./JdbcSourceFields";
 import { JDBC_SOURCE } from "./jdbcSource";
 import { ExcelHintsFields } from "./ExcelHintsFields";
+import { KafkaFields } from "./KafkaFields";
 import { QdrantFields } from "./QdrantFields";
 import { QDRANT } from "./qdrant";
 import { WikipediaFields } from "./WikipediaFields";
@@ -638,22 +638,7 @@ export function SourceFormFieldsExtended({
               data-testid="kafka-schema-registry-input"
             />
           </FormField>
-          <FormField section="authentication" size="medium">
-            <Select
-              label={t("sourceFormFieldsExtended.authentication")}
-              value={authType}
-              onChange={(v) => {
-                setAuthType(v ?? "");
-                setAuthFields({});
-              }}
-              data={KAFKA_AUTH_TYPES.map((a) => ({ value: a.value, label: a.label }))}
-              allowDeselect={false}
-              data-testid="kafka-auth-type-select"
-            />
-          </FormField>
-          {authType !== "none" && (
-            <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
-          )}
+          <KafkaFields fields={authFields} setFields={setAuthFields} />
         </>
       )}
       {form.type === "data_profiler" && (

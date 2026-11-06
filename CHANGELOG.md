@@ -3,6 +3,48 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.503
+
+Released 2026-11-05.
+
+### Changes
+
+#### api
+
+- region-lane rebuild skips schema DDL; row-materialize wiring failure raises
+
+#### contract
+
+- Every remote call of a REST, GraphQL, gRPC or SPARQL connector is its contract's call
+- A remote GraphQL table's keyed fetch is its contract's call
+
+#### deploy
+
+- Refresh the node's control-plane compose; name the container a failed verify finds down
+
+#### graph3d
+
+- The one graph's product layers -- commands, quality, product links, lineage
+- A snippet holds its panel's place before it is seen
+
+#### kafka
+
+- A Kafka source reaches a secured cluster over TLS and SASL
+- A sandbox's live landing reaches a secured Kafka source over its TLS and SASL
+
+#### routing
+
+- A SPARQL or remote GraphQL source is an API source: it lands for want of a capability
+
+#### ui
+
+- Observability says the ops traces table could not be checked, with the reason
+
+#### validator
+
+- A column is judged where it resolves; pg_catalog.unnest is a client table function
+- A hidden column is refused in every clause; unknown sources never end the check (J597b)
+
 ## v0.1.0-alpha.502
 
 Released 2026-11-05.

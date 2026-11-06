@@ -217,6 +217,15 @@ _KAFKA_DESCRIPTIONS = "/etc/trino/kafka"
 _KAFKA_CLIENT = "/etc/trino/kafka-client"
 
 
+#: The catalog property naming a Kafka catalog's client properties file.
+KAFKA_CLIENT_PROPERTY = "kafka.config.resources"
+
+
+def kafka_client_resource(catalog: str) -> str:
+    """Where the engine reads ``catalog``'s client properties."""
+    return f"{_KAFKA_CLIENT}/{catalog}.properties"
+
+
 def _named_brokers(kafka_source: dict) -> str:
     """The brokers a Kafka source names — never a default one (REQ-812)."""
     if not kafka_source.get("bootstrap_servers"):
@@ -229,6 +238,7 @@ def _kafka_source_config(kafka_source: dict):
     from pydantic import TypeAdapter
 
     from provisa.core.auth_models import KafkaAuth
+    from provisa.kafka.security import of_declared
     from provisa.kafka.source import (
         KafkaColumn,
         KafkaSourceConfig,
@@ -237,8 +247,9 @@ def _kafka_source_config(kafka_source: dict):
         ValueFormat,
     )
 
-    auth_raw = kafka_source.get("auth")
-    auth = TypeAdapter(KafkaAuth).validate_python(auth_raw) if auth_raw else None
+    # The declared auth is held to its shape, then read as the settings every client opens with.
+    if kafka_source.get("auth"):
+        TypeAdapter(KafkaAuth).validate_python(kafka_source["auth"])
     topics = [
         KafkaTopicConfig(
             id=t.get("id", t["topic"]),
@@ -265,7 +276,7 @@ def _kafka_source_config(kafka_source: dict):
         bootstrap_servers=resolve_secrets(_named_brokers(kafka_source)),
         schema_registry_url=kafka_source.get("schema_registry_url"),
         topics=topics,
-        auth=auth,
+        security=of_declared(kafka_source),
     )
 
 
@@ -318,6 +329,11 @@ def engine_files_gid(setting: str, default: int) -> int:
     not a guess: the image fixes the group its process runs as."""
     raw = os.environ.get(setting, "")
     return int(raw) if raw else default
+
+
+def kafka_client_path(catalog: str, etc_dir: Path | None = None) -> Path:
+    """Where the app writes ``catalog``'s client properties, shared with the engine."""
+    return (etc_dir or trino_etc_dir()) / "kafka-client" / f"{catalog}.properties"
 
 
 def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147, REQ-2073
@@ -425,7 +441,7 @@ def write_kafka_catalog_files(
 
     client_props = generate_kafka_client_properties(cfg)
     if client_props is not None:
-        client_path = base / "kafka-client" / f"{catalog}.properties"
+        client_path = kafka_client_path(catalog, base)
         write_kafka_client_file(client_path, client_props)
         written.append(client_path)
 
@@ -445,12 +461,6 @@ def generate_trino_kafka_properties(
     Returns the content for a kafka.properties file to be placed
     in Trino's catalog directory.
     """
-    from provisa.core.auth_models import (
-        KafkaAuthSaslPlain,
-        KafkaAuthSaslScram256,
-        KafkaAuthSaslScram512,
-    )
-
     lines = [
         "connector.name=kafka",
         f"kafka.nodes={source.bootstrap_servers}",
@@ -472,7 +482,7 @@ def generate_trino_kafka_properties(
         if table_names:
             lines.append("kafka.table-names=" + ",".join(table_names))
 
-    if isinstance(source.auth, (KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512)):
-        lines.append(f"kafka.config.resources={_KAFKA_CLIENT}/{catalog}.properties")
+    if source.security.client_properties() is not None:
+        lines.append(f"{KAFKA_CLIENT_PROPERTY}={kafka_client_resource(catalog)}")
 
     return "\n".join(lines)

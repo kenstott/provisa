@@ -44646,7 +44646,13 @@
     an organization. It replaces or removes an org admin by granting or revoking the role; removing the
     person from the organization stays the organization''s decision. A debug-trace window over a whole organization
     is the platform''s; listing, stopping and hinting a role or source window are the org admin''s in that
-    organization, and an org admin lists only its organization''s windows.'
+    organization, and an org admin lists only its organization''s windows. (Amended 2026-11-05, triggers,
+    tag reads and residency grants:) Scheduled triggers (their page, create/update/delete/toggle, their
+    list and their import) ask query_development: a trigger runs a statement, and it may act only as roles
+    the caller holds. The tag list stays readable by every admin surface that shows tags, as model metadata;
+    changing tags keeps its own rights. A role''s data_residency capability is added or removed by the org
+    admin with the role (user_management); which regions it covers (its residency values) is set by the
+    steward and asks access_config.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -80389,7 +80395,13 @@
   feature: admin-console-design
   priority: SHOULD
   type: ui
-  description: An item's detail is divided into sections shown as top-level tabs, not as one scrolling form with expanding sections. The read view and the edit view use the SAME tabs, and the read view summarises every detail of the item. For a table the tabs are Identity, Associations, Load and timeliness, Query, Quality, Columns.
+  description: 'An item''s detail is divided into sections shown as top-level tabs, not as one scrolling
+    form with expanding sections. The read view and the edit view use the SAME tabs, and the read view summarises
+    every detail of the item. For a table the tabs are Identity, Associations, Load and timeliness, Query,
+    Quality, Columns. (Amended 2026-11-05, the Query tab is the API tab:) A table''s Query tab is named
+    API: it lists what the table''s API offers clients, each feature offered or not by the curator, and
+    a feature can be offered only when the table itself supports it. Its features today are Aggregates and
+    Group By, with the writes the source accepts shown beside them; no other setting moves to it.'
   use_case: An operator looking for a table's refresh settings goes to the same tab whether reading or editing, and sees everything the table is set to without opening an editor.
   related_reqs:
   - REQ-1968
@@ -84249,7 +84261,11 @@ And a user whose record says us cannot act as region__eu'
   feature: row-security-and-masking-masking
   priority: SHOULD
   type: behavioral
-  description: 'Composite grant entries: an entry in a grant list (visible_to, writable_by, a mask entry''s to) may be a+b, meaning the reader holds all of the named roles. Meta-roles are a union of their members'' rights; in a grant entry the same + means all-of. The column editor composes them as chips joined by "and".'
+  description: 'Composite grant entries: an entry in a grant list (visible_to, writable_by, a mask entry''s
+    to) may be a+b, meaning the reader holds all of the named roles. Meta-roles are a union of their members''
+    rights; in a grant entry the same + means all-of. The column editor composes them as chips joined by
+    "and". (Amended 2026-11-05, read grants:) In the UI the roles a column is visible to are its Read grants,
+    the same noun the table''s Write grants use.'
   use_case: 'A column is shown only to readers acting as both analyst and region__eu.'
   scenario: 'Given a column visible_to analyst+region__eu
 
@@ -84750,22 +84766,34 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
     UPDATE leaves must satisfy (a SQL predicate), and presets: columns the grant sets itself from a session
     variable, a literal or the time of the write, which the statement may not supply. A table holds at most
     one grant per role and operation. A grant that states no rows or no check takes the role''s read row
-    filter on the table, by design: a role writes the rows it reads unless its grant says otherwise; TRUE is
-    every row. The one write admission (REQ-1925) admits a write on every surface by the write right
-    (REQ-868) and the grant: an operation without its grant is refused naming the table, role and
-    operation; a column outside the grant, or a preset column the statement supplies, is refused; the
-    presets are added to the statement; the rows predicate is ANDed into an UPDATE or DELETE; the check is
-    evaluated on the new rows before anything is written, and what cannot be decided is refused. A
-    TRUNCATE needs a delete grant over every row; a MERGE an insert and an update grant over every row; an
-    INSERT ... ON CONFLICT DO UPDATE an update grant over every row with no presets; a COPY an insert grant
-    with no presets. Mutation fields, gRPC insert routes and their inputs are offered per role for exactly
-    the operations it holds grants for, with the grants'' columns. A child role takes, per table and
-    operation, the grant of the nearest role in its chain holding one; a meta role the first member''s.
-    Grants are stored with their table (rows and check encrypted at rest as row filters are), carried by
-    environments, exported with the model, block deleting the role they name and are taken off by revoking
-    the role from the table. A column''s writable_by and a table''s column_presets are refused by name. A
-    Hasura v2 import carries each insert, update and delete permission as the role''s grant (columns,
-    filter, check, set), and Hasura''s admin as org_admin''s grants over every column.'
+    filter on the table, by design: a role writes the rows it reads unless its grant says otherwise; TRUE
+    is every row. The one write admission (REQ-1925) admits a write on every surface by the write right
+    (REQ-868) and the grant: an operation without its grant is refused naming the table, role and operation;
+    a column outside the grant, or a preset column the statement supplies, is refused; the presets are added
+    to the statement; the rows predicate is ANDed into an UPDATE or DELETE; the check is evaluated on the
+    new rows before anything is written, and what cannot be decided is refused. A TRUNCATE needs a delete
+    grant over every row; a MERGE an insert and an update grant over every row; an INSERT ... ON CONFLICT
+    DO UPDATE an update grant over every row with no presets; a COPY an insert grant with no presets. Mutation
+    fields, gRPC insert routes and their inputs are offered per role for exactly the operations it holds
+    grants for, with the grants'' columns. A child role takes, per table and operation, the grant of the
+    nearest role in its chain holding one; a meta role the first member''s. Grants are stored with their
+    table (rows and check encrypted at rest as row filters are), carried by environments, exported with
+    the model, block deleting the role they name and are taken off by revoking the role from the table.
+    A column''s writable_by and a table''s column_presets are refused by name. A Hasura v2 import carries
+    each insert, update and delete permission as the role''s grant (columns, filter, check, set), and Hasura''s
+    admin as org_admin''s grants over every column. (Amended 2026-11-05, a write grant may name combined
+    roles:) A write grant''s role may be a combined entry (REQ-2058): analyst+region__eu is held only by
+    a request acting as every one of the named roles. The Writes section''s role picker composes it the
+    way the column grant picker does (Combine). (Amended 2026-11-05, write grants:) In the UI a table''s
+    write grants are labelled Write grants, matching the columns'' Read grants. (Amended 2026-11-05, write
+    grants sit beside read grants:) The table''s Write grants are edited under its Columns section, as a
+    sub-tab beside Read grants, so every grant on the table is edited in one place; the editor stays per
+    role and operation, and the table no longer has a separate Writes section. The table''s Access section
+    stays the per-column summary. (Amended 2026-11-05, writes the source accepts are an API capability:)
+    The writes a table''s source accepts are shown in the table''s Query section, among what the table''s
+    API offers clients (beside Aggregates and Group By), labelled as what the source accepts, with No writes
+    when it accepts none. The Write grants sub-tab refers to it: the source sets which writes exist, the
+    grants decide which roles may use them.'
   use_case: An administrator lets a customer place orders for themselves only (insert of ship_to, with
     customer_id set from their session and status set to placed) and lets support change the status of
     placed or packed orders only, without either role gaining any other write.
@@ -87267,7 +87295,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     VIEW:) Maintainer 2026-10-29: the Ontology view shows an ontology with the elements that ground it,
     not data flow. Its edges are the terms'' relationships and the grounding chain only (term to the column
     or table it grounds, column to its table, table to its data product); no relationship, join or lineage
-    edge between tables or columns is drawn in it.'
+    edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
+    Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
+    Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
+    managed, so a term is made a Class or a Property in one place.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
@@ -92394,3 +92425,56 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     Then it receives the same rows and governance as the PostgreSQL statement SELECT name, COALESCE(region, ''none'')
     FROM shop.customers LIMIT 5, and a view definition it asks for comes back written in T-SQL'
+- id: REQ-2213
+  value: 'A table''s API can offer search: one query over all its text columns, ranked by a BM25 keyword score and,
+    where the table has an embedding, a similarity score.'
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Vector Search
+  feature: vector-search-queries
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: search is an API query pattern offered from the table''s API tab
+    (REQ-1972), beside Aggregates and Group By. A query names one search text; it is matched with stemmed
+    words across all the table''s varchar columns as one document, and each row comes back with a BM25 relevance
+    score. On a table with an embedding column (REQ-430) the same request also returns the row''s similarity
+    score to that text, so a client gets keyword and semantic relevance together. Each engine computes BM25
+    with its own function where it has one. (Amended 2026-11-05, its GraphQL shape:) In GraphQL a table
+    that offers search has a <table>_search field beside <table> and <table>_aggregate, returning the same
+    row type so where, order_by, limit and relationships work as on the table. Its query argument is one
+    string in the web-search syntax people type (words all required, a quoted phrase, -word to exclude,
+    or between alternatives). Each row carries _bm25 and, on a table with an embedding, _similarity, named
+    like the existing _similarity field. [SUPERSEDED by REQ-2213, 2026-11-05 -- replaced by the _hybrid
+    field; search takes no rank argument. Kept here for history; do not implement against it.] A rank argument
+    chooses how _rank is computed: bm25, similarity, or hybrid (the two rankings fused by reciprocal rank),
+    and bm25 when it is not given. The search imposes no order and no cutoff: _rank, _bm25 and _similarity
+    can be used in order_by and where like any column, and the client decides whether to sort or filter
+    by them. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-2213, 2026-11-05 -- replaced by the _hybrid field;
+    search takes no rank argument. Kept here for history; do not implement against it.] (Amended 2026-11-05,
+    _rank:) Each row also carries _rank, the score of the chosen rank: equal to _bm25 under bm25, to _similarity
+    under similarity, and the fused reciprocal-rank score under hybrid, so a client reads one value whichever
+    rank it asked for. [END SUPERSEDED BLOCK] (Amended 2026-11-05, _hybrid:) Search takes only its query
+    argument. On a table with an embedding each row also carries _hybrid, its BM25 and similarity rankings
+    fused by reciprocal rank. The search imposes no order and no cutoff: _bm25, _similarity and _hybrid
+    can be used in order_by and where like any column, and the client decides whether to sort or filter
+    by them. (Amended 2026-11-05, its index:) Offering search on a table adds a search index to its replica
+    build, as replica keys and indexes are built: on PostgreSQL a GIN index over the stemmed text of the
+    varchar columns, kept current by writes; on DuckDB its full-text index, rebuilt at each replica refresh.
+    Where the engine has no such index search still answers by scanning, and offering it says so. (Amended
+    2026-11-05, in SQL:) SQL clients get the same search as a table function named like the GraphQL field,
+    SELECT * FROM <table>_search(''running shoes''), taking the same query string and returning the table''s
+    rows with _bm25, and on a table with an embedding _similarity and _hybrid, for the client to sort or
+    filter.'
+  use_case: A client searches a product table for 'running shoes' and gets rows ranked by keyword relevance with
+    their similarity to the same text beside it.
+  scenario: 'Given a table whose API offers search and whose varchar columns are name and description
+
+
+    When a client searches for running shoes
+
+
+    Then rows whose name or description contain run or shoe come back, each with a BM25 score
+
+
+    And on a table with an embedding column each row also carries its similarity score'

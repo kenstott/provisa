@@ -1,0 +1,13 @@
+{
+  "kafkaFields": {
+    "securityProtocol": "安全协议",
+    "securityProtocolHint": "Confluent Cloud 和 MSK 使用 SASL_SSL。没有安全设置的集群使用 PLAINTEXT。",
+    "saslMechanism": "SASL 机制",
+    "username": "用户名",
+    "usernameHint": "Confluent Cloud 上的 API 密钥。",
+    "password": "密码",
+    "passwordHint": "Confluent Cloud 上的 API 密钥机密。密钥引用（如 ${secret:NAME}）在打开集群时解析。",
+    "caCertificate": "CA 证书 (PEM)",
+    "caCertificateHint": "如果代理的证书来自公共 CA（如 Confluent Cloud 和 MSK），请留空。粘贴私有 CA 的证书以仅信任该 CA。"
+  }
+}
