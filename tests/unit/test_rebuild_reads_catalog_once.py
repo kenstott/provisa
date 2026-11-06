@@ -36,7 +36,6 @@ from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, sources
 from provisa.security.rights import META_DOMAIN_ID, SQL_CATALOG_TABLES
 
-pytestmark = pytest.mark.asyncio
 
 _VIEWS = sorted(name for _, name in SQL_CATALOG_TABLES)[:3]
 _VIEW_COLUMNS = ["a", "b", "c", "d"]
@@ -131,3 +130,83 @@ async def test_a_table_left_without_its_parts_carries_no_empty_ones(plane) -> No
     assert "write_grants" in by_name["orders"]
     for name in _VIEWS:
         assert "columns" not in by_name[name] and "write_grants" not in by_name[name]
+
+
+@pytest.fixture
+def counted_reads(plane, monkeypatch) -> list[int]:
+    """The column rows of each ``fetch_tables`` read, in order."""
+    read: list[int] = []
+    real = db_queries.fetch_tables
+
+    async def counted(conn, **kw):
+        out = await real(conn, **kw)
+        read.append(_column_rows(out))
+        return out
+
+    monkeypatch.setattr(db_queries, "fetch_tables", counted)
+    monkeypatch.setattr("provisa.federation.replica_builds.store_identity", lambda _s: "store")
+    return read
+
+
+async def test_one_rebuild_reads_the_model_for_its_routes_once(plane, counted_reads) -> None:
+    """A rebuild reconciles the landed tables and publishes the routes, each by ``_registry``:
+    within one rebuild the model is read for both once; outside one, every call reads it."""
+    from provisa.federation import replica_routing
+
+    state = SimpleNamespace(config=object(), model_db=plane, tenant_db=plane)
+    with replica_routing.one_model_read():
+        first = await replica_routing._registry(state)
+        second = await replica_routing._registry(state)
+    assert counted_reads == [2]
+    assert first.registered is second.registered
+
+    await replica_routing._registry(state)
+    await replica_routing._registry(state)
+    assert counted_reads == [2, 2, 2]
+
+
+async def test_a_task_made_in_a_rebuild_reads_afresh_once_it_ends(plane, counted_reads) -> None:
+    """A task started inside the rebuild carries its context past the rebuild's end: from then
+    on it reads the model as any caller does, never the rebuild's read."""
+    import asyncio
+
+    from provisa.federation import replica_routing
+
+    state = SimpleNamespace(config=object(), model_db=plane, tenant_db=plane)
+    ended = asyncio.Event()
+
+    async def later() -> None:
+        await ended.wait()
+        await replica_routing._registry(state)
+
+    with replica_routing.one_model_read():
+        await replica_routing._registry(state)
+        task = asyncio.create_task(later())
+    ended.set()
+    await task
+    assert counted_reads == [2, 2]
+
+
+def test_the_rebuild_runs_in_one_model_read() -> None:
+    import ast
+    import inspect
+
+    from provisa.api import app
+
+    def named(call: ast.expr) -> str | None:
+        return (
+            call.func.id if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) else None
+        )
+
+    blocks = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(app._rebuild_schemas)))
+        if isinstance(node, ast.With)
+        and "one_model_read" in {named(item.context_expr) for item in node.items}
+    ]
+    assert [
+        call
+        for block in blocks
+        for call in ast.walk(block)
+        if named(call) == "_rebuild_schemas_impl"
+    ]
