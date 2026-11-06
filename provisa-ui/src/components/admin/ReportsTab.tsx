@@ -41,6 +41,7 @@ import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { CapabilityGate } from "../CapabilityGate";
+import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
@@ -51,6 +52,7 @@ const LIST_INITIAL = 240;
 const LIST_MIN = 160;
 const LIST_MAX = 560;
 const KEY_STEP = 32;
+const DESCRIPTION_LINES = 2;
 
 export function ReportsTab() {
   const { t } = useTranslation();
@@ -106,15 +108,6 @@ export function ReportsTab() {
     e.preventDefault();
     setListWidth(clampWidth(listWidth + (e.key === "ArrowRight" ? KEY_STEP : -KEY_STEP)));
   };
-
-  // A description is clamped to two lines; clicking it shows all of it, and again folds it.
-  const [expandedIds, setExpandedIds] = useState<ReadonlySet<number>>(new Set());
-  const toggleExpanded = (id: number) =>
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -222,39 +215,17 @@ export function ReportsTab() {
                   label={report.alias || report.tableName}
                   description={
                     report.description ? (
-                      // Clicking the text folds or unfolds it and stops there: it does not select
-                      // the report (a click elsewhere on the row still does).
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        aria-expanded={expandedIds.has(report.id)}
-                        data-testid={`report-description-${report.tableName}`}
-                        data-expanded={expandedIds.has(report.id) || undefined}
-                        style={
-                          expandedIds.has(report.id)
-                            ? { display: "block", cursor: "pointer", overflowWrap: "anywhere" }
-                            : {
-                                display: "-webkit-box",
-                                WebkitBoxOrient: "vertical",
-                                WebkitLineClamp: 2,
-                                overflow: "hidden",
-                                cursor: "pointer",
-                                overflowWrap: "anywhere",
-                              }
-                        }
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleExpanded(report.id);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== " ") return;
-                          e.preventDefault();
-                          e.stopPropagation();
-                          toggleExpanded(report.id);
-                        }}
+                      // Held to two lines; a click on the text opens or closes it and stops there,
+                      // so it does not select the report (a click elsewhere on the row still does).
+                      <ClampedDetail
+                        testId={`report-description-${report.tableName}`}
+                        lines={DESCRIPTION_LINES}
+                        // The row's own type, not the browser's button type.
+                        buttonStyle={{ font: "inherit", color: "inherit" }}
+                        onToggle={(e) => e.stopPropagation()}
                       >
                         {report.description}
-                      </span>
+                      </ClampedDetail>
                     ) : undefined
                   }
                   onClick={() => handleSelect(report)}

@@ -11,7 +11,7 @@
 // The report list: sorted by name, each description clamped to two lines and unfolded by a click
 // that does not select the report.
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", () => ({
@@ -56,8 +56,16 @@ vi.mock("../../GovernedTableViewer", () => ({
 
 import { ReportsTab } from "../ReportsTab";
 
+function laidOut(lines: number) {
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(lines * 20);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(Math.min(lines, 2) * 20);
+}
+
+afterEach(() => vi.restoreAllMocks());
+
 describe("ReportsTab list", () => {
   it("lists the ops reports alphabetically by the name shown, case ignored", () => {
+    laidOut(1);
     render(<ReportsTab />);
     const list = screen.getByTestId("reports-list");
     const names = within(list)
@@ -67,31 +75,34 @@ describe("ReportsTab list", () => {
   });
 
   it("clamps a long description to two lines and expands it on click, then folds it", () => {
+    laidOut(6);
     render(<ReportsTab />);
+    const text = screen.getByTestId("report-description-mid-text");
+    expect(text.style.webkitLineClamp).toBe("2");
+    expect(text.style.overflow).toBe("hidden");
     const d = screen.getByTestId("report-description-mid");
-    expect(d.style.webkitLineClamp).toBe("2");
-    expect(d.style.overflow).toBe("hidden");
     expect(d).toHaveAttribute("aria-expanded", "false");
 
     fireEvent.click(d);
     expect(d).toHaveAttribute("aria-expanded", "true");
-    expect(d.style.webkitLineClamp).toBe("");
-    expect(d.style.overflow).toBe("");
-    expect(d.textContent).toBe(LONG);
+    expect(text.style.webkitLineClamp).toBe("");
+    expect(text.style.overflow).toBe("");
+    expect(text.textContent).toBe(LONG);
 
     fireEvent.click(d);
     expect(d).toHaveAttribute("aria-expanded", "false");
-    expect(d.style.webkitLineClamp).toBe("2");
+    expect(text.style.webkitLineClamp).toBe("2");
   });
 
-  it("expands from the keyboard", () => {
+  it("shows a description that fits in two lines as it is, with nothing to expand", () => {
+    laidOut(2);
     render(<ReportsTab />);
-    const d = screen.getByTestId("report-description-mid");
-    fireEvent.keyDown(d, { key: "Enter" });
-    expect(d).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByTestId("report-description-alpha_view")).toBeNull();
+    expect(screen.getByTestId("report-description-alpha_view-text")).toHaveTextContent("short");
   });
 
   it("does not select the report when its description is clicked; the row still does", () => {
+    laidOut(6);
     render(<ReportsTab />);
     // The first report in order is the fallback selection.
     expect(screen.getByTestId("report-pane")).toHaveAttribute("data-report", "alpha_view");
