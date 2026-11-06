@@ -91372,7 +91372,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a question passage search cannot answer: for a customer who keeps depositing cash just under $10,000,
     graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
     recorded for comparison, does not. The aggregation question (1010.313), which passage search already
-    finds, stays as a second check.'
+    finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
+    workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by
+    its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read
+    as its value (a formula as the value it last computed), not its formula.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
