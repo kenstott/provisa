@@ -92666,7 +92666,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (Amended 2026-11-06, A GATE TALKS BACK WITH ITS WHY:) When a gate refuses a promotion or export, the
     refusal answers with the tag''s why, not only its name: the tag''s definition, the section it cites
     (who said so) and its last attestation, beside what is missing, so the person stopped reads the reason,
-    its source and who validated it in the same place.'
+    its source and who validated it in the same place. (Amended 2026-11-06, EVERY NO ANSWERS WHY NOT:) Every
+    governed refusal answers why not the same way a gate does: a refused or hidden column, a masked value,
+    rows a row rule filters out, a blocked download or extract, carries the why of the tags on the rule
+    that applied (definition, cited section, last attestation, what is missing), and Polly answers from
+    the same. The why is given only for what the refusal already discloses and only as far as the caller
+    has the right to read those tags: a column the caller is not told exists is never explained, so explaining
+    never discloses.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
