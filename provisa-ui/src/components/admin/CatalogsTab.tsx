@@ -18,6 +18,7 @@
 // when the administrator typed in it, which is what makes editing a catalog's address safe for its
 // token.
 
+import { assignableDomainIds } from "../../lib/internalDomains";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -260,7 +261,10 @@ export function CatalogsTab() {
             <MultiSelect
               label={t("catalogsTab.domains")}
               data-testid={tid("domains")}
-              data={domains.map((d) => ({ value: d.id, label: d.id }))}
+              data={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                value: id,
+                label: id,
+              }))}
               value={catalog.domains}
               onChange={(v) => patchRow(i, { domains: v })}
               searchable
