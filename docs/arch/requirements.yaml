@@ -92684,7 +92684,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the cited section opens a review at once, whatever the cadence, and a review done off cycle does not
     move the tag''s calendar. Nothing is changed or switched off when a review is overdue: the tag shows
     it, and overdue reviews are listed to the reviewer and the domain''s owner. Due reviews appear in the
-    reviewer''s own queue and as a marker on the tag, never on the objects it carries.'
+    reviewer''s own queue and as a marker on the tag, never on the objects it carries. (Amended 2026-11-06,
+    FIXED REVIEW DATES BY WEEKDAY OR DAY:) A fixed list of review dates may name each date either as the
+    nth weekday of a month (the 1st to 4th, or the last, of a weekday, e.g. the second Tuesday of March
+    or the last Friday of September) or as a day of a month; the two forms may be mixed in one list. A day
+    of month that the named month does not have every year (the 29th to 31st of February, the 31st of a
+    30-day month) is refused when the cadence is declared, saying so.'
   scenario: 'Given a role with a 90-day membership review whose overdue reviews lapse, and a holder no one attests
 
 
