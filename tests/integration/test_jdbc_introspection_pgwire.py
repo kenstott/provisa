@@ -74,6 +74,12 @@ def jvm():
     """Start the JVM once with pgjdbc on the classpath. jpype cannot restart a JVM,
     so this is session-scoped and never shut down within the run."""
     jar = _ensure_pgjdbc_jar()
+    # The isolated lane runs every isolated module in one process, test_jdbc_source_jar_e2e
+    # (jpype.dbapi2) after this one. dbapi2 makes java.sql.SQLException's Python class derive from
+    # its Error, which it can only do before that class is first made -- and a PSQLException this
+    # module's driver raises makes it. Register dbapi2 first, as the JVM starts.
+    import jpype.dbapi2  # noqa: F401
+
     if not jpype.isJVMStarted():
         jpype.startJVM(classpath=[jar])
     # Register the driver explicitly (JDBC 4 autoloading may not fire under jpype).
