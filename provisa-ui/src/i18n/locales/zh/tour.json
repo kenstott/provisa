@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "追踪与调试追踪",
-        "description": "🔭 追踪为每个请求记录一个 span。“调试追踪”标签页会为每个管道阶段和每次数据源调用各增加一个 span,并附带 SQL 文本。这会增加负载,因此只在一段设定的时间内针对某个组织、角色或数据源开启;时间到后它会自动关闭。"
+        "description": "🔭 每个请求都会被追踪，各生成一个 span。追踪动态列出您最近的追踪：可以筛选、暂停列表，或打开某条追踪查看其 span。如果您的角色可以更改设置，调试追踪标签页会在设定的时间内，为每个管道阶段和每次数据源调用各增加一个 span。"
       },
       "stepCache": {
         "title": "缓存与副本",
@@ -1704,22 +1704,6 @@
         "title": "这个演示讲什么",
         "description": "一家布拉格银行向企业放贷，并按法人识别编码（LEI）记录每家企业的所有者。欧盟规定，银行对单一客户或同一所有者控制的企业集团的授信不得超过其一级资本（Tier 1）的 25%。问题是：银行对哪些集团超出了这一限额？银行的账簿记录了每个借款人的所有者，却不记录谁拥有这个所有者。银行、借款人及其贷款是虚构的，拥有它们的集团是真实的。"
       },
-      "groupexposureJoin": {
-        "title": "按 LEI 关联",
-        "description": "银行的所有者表与 Wikidata 的表共享所有者的 LEI，这些关系把它们关联起来。银行的数据留在其数据库中，Wikidata 的数据留在其副本中；关联在查询中完成。"
-      },
-      "groupexposureAnswer": {
-        "title": "SQL 中的答案",
-        "description": "视图 group_exposure 通过所有者的 LEI 和 Wikidata，将每笔授信归入借款人所属集团。Veolia 和 Vinci 集团各自超过一级资本的 25%，Veolia 与 EPH 的合资企业在两个集团中都计入。无论银行账簿还是 Wikidata，单独都看不出这一点。借款人及其贷款是虚构的。"
-      },
-      "groupexposureExample": {
-        "title": "GraphQL 中的答案",
-        "description": "GraphQL 中的同一视图：银行放贷最多的集团、其借款人、承诺金额，以及各集团是否超限。"
-      },
-      "groupexposureRecap": {
-        "title": "您看到了什么",
-        "description": "一家虚构银行的贷款账簿与 Wikidata 的公共关联数据，按 LEI 在一个受治理的模型中关联。Wikidata 的所有权链把许多小额贷款变成少数几个大额集团敞口，答案通过 SQL、GraphQL 和 REST 提供。"
-      },
       "groupexposureWikidata": {
         "title": "谁拥有这些所有者：来自 Wikidata",
         "description": "公共知识图谱 Wikidata 记录了每家企业的 LEI 及其母公司。此数据源通过 Wikidata 的 SPARQL 查询服务读取这些信息。其表在构建演示时只加载一次，因此您使用演示时它从不调用 Wikidata。"
@@ -1732,6 +1716,10 @@
         "title": "每个所有者所属的集团",
         "description": "对银行记录的每个所有者，取其在 Wikidata 上母公司链顶端的企业，只用一条 SPARQL 属性路径即可找到。即使银行账簿不知道，Wikidata 也知道某家捷克控股公司属于 Veolia 或 E.ON。"
       },
+      "groupexposureJoin": {
+        "title": "按 LEI 关联",
+        "description": "银行的所有者表与 Wikidata 的表共享所有者的 LEI，这些关系把它们关联起来。银行的数据留在其数据库中，Wikidata 的数据留在其副本中；关联在查询中完成。"
+      },
       "groupexposureTerms": {
         "title": "通俗解释",
         "description": "术语表解释风险人员使用的术语：大额风险暴露、一级资本、法人识别编码和母公司。关联客户集团是指因一家控制其他各家而构成同一风险的一组企业。"
@@ -1740,9 +1728,21 @@
         "title": "只看账簿",
         "description": "银行账簿所见的每个借款人自身的敞口。最大的也低于一级资本的 10%，没有任何借款人接近 25% 的限额。"
       },
+      "groupexposureAnswer": {
+        "title": "SQL 中的答案",
+        "description": "视图 group_exposure 通过所有者的 LEI 和 Wikidata，将每笔授信归入借款人所属集团。Veolia 和 Vinci 集团各自超过一级资本的 25%，Veolia 与 EPH 的合资企业在两个集团中都计入。无论银行账簿还是 Wikidata，单独都看不出这一点。借款人及其贷款是虚构的。"
+      },
+      "groupexposureExample": {
+        "title": "GraphQL 中的答案",
+        "description": "GraphQL 中的同一视图：银行放贷最多的集团、其借款人、承诺金额，以及各集团是否超限。"
+      },
       "groupexposureRest": {
         "title": "通过 REST 获得同一答案",
         "description": "该视图也是一个 REST 端点，这里按是否超限分组并在服务器端汇总，可直接用于风险报告或电子表格。"
+      },
+      "groupexposureRecap": {
+        "title": "您看到了什么",
+        "description": "一家虚构银行的贷款账簿与 Wikidata 的公共关联数据，按 LEI 在一个受治理的模型中关联。Wikidata 的所有权链把许多小额贷款变成少数几个大额集团敞口，答案通过 SQL、GraphQL 和 REST 提供。"
       },
       "agentdataScenario": {
         "title": "把数据交给智能体",

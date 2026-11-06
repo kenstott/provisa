@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "Traces and debug tracing",
-        "description": "🔭 Tracing records one span per request. The Debug tracing tab adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one org, role or source for a set time; it turns itself off when the time is up."
+        "description": "🔭 Every request is traced, one span each. The trace feed lists your latest traces: filter them, pause the list, or open one to see its spans. Where your role may change settings, the Debug tracing tab adds a span per pipeline stage and per source call, for a set time."
       },
       "stepCache": {
         "title": "Caches and replicas",
