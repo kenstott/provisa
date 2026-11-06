@@ -568,7 +568,9 @@ def answer_reads(
     try:
         for relation, held in relations.items():
             con.register(relation, held)
-        answered = con.execute(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
+        # The statement as a relation: DuckDB 2.0's DB-API result hands its Arrow reader over
+        # only once it has computed and held the whole answer.
+        answered = con.sql(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
     except duckdb.Error as exc:
         done()
         if failed:
