@@ -8090,7 +8090,6 @@
   "zh-HK/tableSections.json::tableSections.checkerSource": "Checker source",
   "zh-HK/tableSections.json::tableSections.checkerTable": "Checker table",
   "zh-HK/tableSections.json::tableSections.classTerm": "Rows are instances of",
-  "zh-HK/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "zh-HK/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
   "zh-HK/tableSections.json::tableSections.columns": "Columns",
   "zh-HK/tableSections.json::tableSections.contractSet": "Set",
