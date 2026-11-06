@@ -8080,7 +8080,6 @@
   "es/tableSections.json::tableSections.checkerSource": "Checker source",
   "es/tableSections.json::tableSections.checkerTable": "Checker table",
   "es/tableSections.json::tableSections.classTerm": "Rows are instances of",
-  "es/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "es/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
   "es/tableSections.json::tableSections.columns": "Columns",
   "es/tableSections.json::tableSections.contractSet": "Set",

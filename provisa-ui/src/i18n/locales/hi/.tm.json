@@ -8083,7 +8083,6 @@
   "hi/tableSections.json::tableSections.checkerSource": "Checker source",
   "hi/tableSections.json::tableSections.checkerTable": "Checker table",
   "hi/tableSections.json::tableSections.classTerm": "Rows are instances of",
-  "hi/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "hi/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
   "hi/tableSections.json::tableSections.columns": "Columns",
   "hi/tableSections.json::tableSections.contractSet": "Set",
