@@ -15,6 +15,7 @@
 // document opens its form in the same panel. Above the list, the library's retrieval setting,
 // passage or graph (GRAPH RETRIEVAL), saved as it is changed.
 
+import { assignableDomainIds } from "../../lib/internalDomains";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -120,7 +121,7 @@ function useDomainOptions() {
   return useMemo(
     () => [
       { value: WHOLE_ORG, label: t("referenceLibrary.wholeOrg") },
-      ...domains.map((d) => ({ value: d.id, label: d.id })),
+      ...assignableDomainIds(domains.map((d) => d.id)).map((id) => ({ value: id, label: id })),
     ],
     [domains, t],
   );

@@ -263,11 +263,13 @@ def test_a_statement_with_no_table_runs_on_the_engine(server):
 
 
 def test_a_function_only_the_plane_has_is_not_answered_for_a_statement_with_no_table(server):
-    """The plane answered box(point, point) as '(1,1),(0,0)'; the engine has no such function."""
-    sql = "SELECT pg_database_size(1::oid), box('(0,0)'::point, '(1,1)'::point)"
+    """The plane would answer pg_notify('c', 'p'); no engine has a form of it (REQ-2167,
+    pg_forms_enum.NOT_SUPPORTED), so the statement is refused by name. box(point, point) was this
+    test's function until the geometric forms (J455) gave every engine one."""
+    sql = "SELECT pg_database_size(1::oid), pg_notify('c', 'p')"
     with pytest.raises(psycopg2.Error) as refused:
         _read(server, _RESTRICTED, sql)
-    assert "box" in str(refused.value)
+    assert "pg_notify" in str(refused.value)
 
 
 def test_a_server_function_beside_a_view_is_refused_by_name(server):
@@ -278,12 +280,14 @@ def test_a_server_function_beside_a_view_is_refused_by_name(server):
 
 
 def test_privilege_and_visibility_functions_are_the_catalogs(server):
+    # As PostgreSQL answers: oid 1 is no function, and the visibility of an object no catalog
+    # holds is NULL (metadata_functions._VISIBLE_IN); oid 23 is int4, on the search path.
     assert _read(
         server,
         _RESTRICTED,
         "SELECT has_schema_privilege('public', 'usage'), pg_type_is_visible(23), "
         "pg_function_is_visible(1), pg_has_role('x', 'member')",
-    ) == [(True, True, True, True)]
+    ) == [(True, True, None, True)]
 
 
 #: A table of meta of each kind: a catalog view, told who asks, and a table of the plane, which is

@@ -46858,7 +46858,11 @@
     (Amended 2026-11-05, REVIEW AND POLICY REPORTS:) The review and policy reports are standard reports
     on Admin > Reports (REQ-1386): reviews overdue, each item''s attestation history, security items with
     no review schedule, and, from REQ-2208, policy sections no security item cites and security items that
-    cite no policy, with flagged and broken policy references.'
+    cite no policy, with flagged and broken policy references. (Amended 2026-11-06, THE REPORTS LIST:) The
+    list of reports is sorted alphabetically by report name, ignoring case; its panel''s width is resizable
+    and is remembered and restored in the browser; each report''s description shows at most two lines with
+    an ellipsis and expands in place on click, and collapses on a second click, without changing which report
+    is selected.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -51941,18 +51945,27 @@
   type: behavioral
   description: 'An organization may replicate an environment whole -- bindings, secrets, users and role
     assignments included -- when what it wants is the control plane as it stands rather than the governed
-    model alone. The replicate is the deliberate opposite of REQ-1489 and is fenced accordingly. Its target
-    must be a non-prod environment and never prod, which takes merges only; it is an org_admin act carrying
-    an explicit acknowledgement that the target will hold production credentials, recorded in the org''s
-    admin audit log with who, when and from where; and the target environment is thereafter marked as
-    replicated, which means it is governed as production. Every grant in it reaches production data,
-    so it is neither a safe place for developers nor a substitute for the masked extract of REQ-1493.
-    Only replicate into an environment whose members already hold the production access it confers. (Amended
-    2026-08-21:) A replicate targets an environment that ALREADY EXISTS and never creates one, because
-    REQ-1491 makes a newly created environment unbound without exception. The order is the fence: the
-    environment is created unbound, its members are established, and only then does an org_admin acknowledge
-    that it will hold production credentials and replicate into it. Creating and crediting an environment
-    in one act is what this forbids.'
+    model alone. The replicate is the deliberate opposite of REQ-1489 and is fenced accordingly. [SUPERSEDED
+    by REQ-1499, 2026-11-06 -- the fences beyond ''never prod'' were ceremony; see the 2026-11-06 amendment.
+    Kept here for history; do not implement against it.] Its target must be a non-prod environment and never
+    prod, which takes merges only; it is an org_admin act carrying an explicit acknowledgement that the
+    target will hold production credentials, recorded in the org''s admin audit log with who, when and from
+    where; and the target environment is thereafter marked as replicated, which means it is governed as
+    production. Every grant in it reaches production data, so it is neither a safe place for developers
+    nor a substitute for the masked extract of REQ-1493. Only replicate into an environment whose members
+    already hold the production access it confers. [END SUPERSEDED BLOCK] (Amended 2026-08-21:) [SUPERSEDED
+    by REQ-1499, 2026-11-06 -- a replicate may create its target; see the 2026-11-06 amendment. Kept here
+    for history; do not implement against it.] A replicate targets an environment that ALREADY EXISTS and
+    never creates one, because REQ-1491 makes a newly created environment unbound without exception. The
+    order is the fence: the environment is created unbound, its members are established, and only then does
+    an org_admin acknowledge that it will hold production credentials and replicate into it. Creating and
+    crediting an environment in one act is what this forbids. [END SUPERSEDED BLOCK] (Amended 2026-11-06,
+    REPLICATE WITHOUT CEREMONY:) A replicate copies an environment whole, bindings, secrets, users and role
+    assignments included, into any environment except prod, which takes merges only; the target may be new
+    or existing. It is an admin act gated by its capability and logged in the org''s admin audit log like
+    every admin act, with a confirmation in the UI and no separate acknowledgement step, required order
+    or replicated marker: the copy is governed by its grants like every environment, so it reaches production
+    data only through the roles its members hold.'
   use_case: An administrator reproduces a production incident in a scratch environment that reaches exactly
     what production reaches, and the environment is marked so nobody mistakes it for a development environment.
   code:
@@ -65921,14 +65934,20 @@
     discover_tables_now flag that, when true, triggers an automatic background crawl_directory call immediately
     after source creation succeeds. The crawled table/file list is cached and presented to the admin on
     the source''s Tables page as a pre-populated "discovered, not-yet-registered" state, eliminating blank-state
-    friction of manually invoking crawl_directory per source. The flag defaults to false (disabled) to
-    avoid unrequested remote fetch/schema-inference passes on every source creation, which could be slow
-    or noisy for large HTTP-crawled directories (REQ-1784/1785). The source-creation form (SourceFormFields.tsx)
-    shall conditionally render a "Discover tables now" checkbox for file-connector sources (csv/parquet/sqlite)
-    that, when checked, passes discover_tables_now: true to the mutation. (Amended 2026-10-03, THIS IS
-    A PERFORMANCE AID:) Discovery at source creation exists to make the later table registration faster:
-    the list of a source''s tables is already to hand when the steward opens Register Table. It adds no
-    capability, since registration discovers tables on demand today.'
+    friction of manually invoking crawl_directory per source. [SUPERSEDED by REQ-1786, 2026-11-06 -- discovery
+    runs on every creation, for every source type; see the 2026-11-06 amendment. Kept here for history;
+    do not implement against it.] The flag defaults to false (disabled) to avoid unrequested remote fetch/schema-inference
+    passes on every source creation, which could be slow or noisy for large HTTP-crawled directories (REQ-1784/1785).
+    The source-creation form (SourceFormFields.tsx) shall conditionally render a "Discover tables now" checkbox
+    for file-connector sources (csv/parquet/sqlite) that, when checked, passes discover_tables_now: true
+    to the mutation. [END SUPERSEDED BLOCK] (Amended 2026-10-03, THIS IS A PERFORMANCE AID:) Discovery at
+    source creation exists to make the later table registration faster: the list of a source''s tables is
+    already to hand when the steward opens Register Table. It adds no capability, since registration discovers
+    tables on demand today. (Amended 2026-11-06, DISCOVERY ON EVERY CREATION:) Creating a source of any
+    type starts its table discovery in the background, with no flag and no checkbox: the cost is incurred
+    when tables are registered anyway, so it is moved earlier rather than added. Register Table uses the
+    discovered list when there is one and discovers on demand otherwise, and can discover again on request.
+    A discovery failure is shown on the source and never refuses the creation.'
   use_case: Admins registering file-connector sources (especially HTTP-crawled ones per REQ-1784) should
     not face a blank Tables page requiring a manual discovery step; opt-in automatic discovery provides
     convenience without imposing latency or unexpected remote fetches on all source creations.
@@ -87100,19 +87119,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: catalog-and-discovery-data-products
   priority: SHOULD
   type: ui
-  description: >-
-    The Data Products page and the core of its detail panel are drawn from the meta domain through the
-    governed pipeline as the signed-in user: the product list, and each panel section's summary (the
-    product's fields, its domain, member tables, commands, tags, glossary terms, data-quality and
-    profile evidence, related tables and lineage) come from data_products_meta and its relationships
-    (REQ-2125) and data_product_edges (REQ-2126). Related Tables and Lineage are rows of
-    data_product_edges rather than derived in the browser from relationships and the federation lineage
-    graph. A section the user's role cannot read through the meta domain is absent from the panel.
-    Drilling down from a section opens the detail where it lives: a member table's rows, a profile
-    run's results, a checker's results or a command's output are read in their own domains, through the
-    governed pipeline as the same user, not copied into the meta domain. The product's GraphQL, SQL and
-    JSON:API queries shown in the panel are the meta-domain queries the panel itself runs, so a user can
-    copy them and get the same result.
+  description: 'The Data Products page and the core of its detail panel are drawn from the meta domain through
+    the governed pipeline as the signed-in user: the product list, and each panel section''s summary (the
+    product''s fields, its domain, member tables, commands, tags, glossary terms, data-quality and profile
+    evidence, related tables and lineage) come from data_products_meta and its relationships (REQ-2125)
+    and data_product_edges (REQ-2126). [SUPERSEDED by REQ-2156, 2026-11-06 -- lineage comes from the product
+    lineage endpoint. Kept here for history; do not implement against it.] Related Tables and Lineage are
+    rows of data_product_edges rather than derived in the browser from relationships and the federation
+    lineage graph. [END SUPERSEDED BLOCK] A section the user''s role cannot read through the meta domain
+    is absent from the panel. Drilling down from a section opens the detail where it lives: a member table''s
+    rows, a profile run''s results, a checker''s results or a command''s output are read in their own domains,
+    through the governed pipeline as the same user, not copied into the meta domain. The product''s GraphQL,
+    SQL and JSON:API queries shown in the panel are the meta-domain queries the panel itself runs, so a
+    user can copy them and get the same result. (Amended 2026-11-06, LINEAGE FROM THE LINEAGE ENDPOINT:)
+    Related Tables are rows of data_product_edges; a product''s lineage comes from the product lineage endpoint
+    under the shared read-rights filter (REQ-2156), since data_product_edges holds relationship rows only.'
   use_case: >-
     The meta domain is proven complete as a catalog by the product's own UI: if the core of the panel
     can't be built from meta-domain queries, an outside consumer can't find the product's parts either,
@@ -89653,7 +89674,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     pg_global, with an empty pg_tablespace_location; pg_relation_is_publishable is false. pg_relation_size
     and pg_total_relation_size stay NULL (Provisa holds no storage). These replace, for these functions
     and views only, the skipped-by-design decisions above; every other server-state function stays skipped
-    by design.'
+    by design. (Amended 2026-11-06, PGWIRE CONFORMANCE ON EVERY ENGINE:) The full pgwire conformance suite
+    runs on every engine Provisa supports, not only the default: the protocol, type conversion and catalog
+    cases as well as the function replay. The pgwire conformance page gives each engine its own pass rate,
+    by-design groups and differences, beside the function results by engine, generated from the CI runs
+    like the rest of the page.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -89940,35 +89965,37 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Provisa already has geometry functions, so a shape function maps to one wherever it can: a shape converts
     to its geometry form and the existing function answers, on every dialect geometry is native to. A shape
     function with no such mapping is limited as tsvector''s functions are: it runs on PostgreSQL and is
-    refused by name elsewhere. Shapes get no parallel set of functions. (Amended 2026-10-29, HOW THE LIMITS
-    ARE TESTED:) Maintainer 2026-10-30: conformance runs on two engines, the default and PostgreSQL, because
-    running every engine is not practical. A compile-only test covers every function on every dialect: each
-    resolves as the IR declares, native, mapped, emulated or refused by name, and never a raw engine error.
-    (Amended 2026-10-29, MONEY ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric
-    base, and its operators answer as PostgreSQL''s: result types, rounding to the cent, and the text and
-    binary wire forms. It is native on PostgreSQL and emulated elsewhere. (Amended 2026-10-29, A SHAPE FUNCTION
-    WITH NO GEOMETRY FUNCTION IS INLINE ARITHMETIC:) Maintainer 2026-10-30, correcting SHAPE FUNCTIONS MAP
-    TO THE GEOMETRY FUNCTIONS: geometry stays the IR under the shapes, and a shape function still maps to
-    a geometry function where one answers as PostgreSQL does. A shape function with no such mapping is no
-    longer limited to PostgreSQL: it compiles to an inline expression that extracts the coordinates from
-    the shape''s text and does the arithmetic, in that dialect''s SQL. It is refused by name only where
-    the dialect cannot express it. These are per-dialect rewrites in the compiler, so they add no set of
-    functions. (Amended 2026-10-29, THE RULE FOR TYPES AND FUNCTIONS:) Maintainer 2026-10-30, for every
-    type and function on every dialect: a type the dialect does not support is held as varchar. A function
-    the dialect does not support is written with the functions it does have where that is possible, and
-    where they cannot express it, with inline operators. Geometry on Trino therefore uses Trino''s geometry
-    functions, not inline arithmetic. A refusal by name remains only for what the dialect can express neither
-    way. (Amended 2026-10-29, THE SAME TYPE UNDER ANOTHER NAME:) Maintainer 2026-10-30, adding to THE RULE
-    FOR TYPES AND FUNCTIONS: a dialect may support a type under a different name, and then that is the dialect''s
-    type for it, not varchar: Trino''s ipaddress is inet, and PostgreSQL''s shapes have a geometry equivalent
-    where one exists. The same holds for a function a dialect has under another name. Varchar and inline
-    operators apply only once no such variant exists. (Amended 2026-10-29, THE TYPES ARE A SUPERSET OF POSTGRESQL''S:)
-    Maintainer 2026-10-30: Provisa''s types are a superset of PostgreSQL''s. Every PostgreSQL 17 built-in
-    type is a Provisa type or subtype that keeps its identity, including where it is held as text, so jsonb
-    is not json and timetz keeps its offset. The varchar rule applies to a type a dialect does not support,
-    not to a PostgreSQL type Provisa has not named. A source''s type that maps to no Provisa type is read
-    as text. A value of a type the dialect does not support MUST be in PostgreSQL''s canonical text form,
-    the form pgwire sends, when it leaves the source, on a landing and on a direct read alike: the compiler''s
+    refused by name elsewhere. Shapes get no parallel set of functions. [SUPERSEDED by REQ-2167, 2026-11-06
+    -- the full pgwire suite runs on every engine (2026-11-06). Kept here for history; do not implement
+    against it.] (Amended 2026-10-29, HOW THE LIMITS ARE TESTED:) Maintainer 2026-10-30: conformance runs
+    on two engines, the default and PostgreSQL, because running every engine is not practical. [END SUPERSEDED
+    BLOCK] A compile-only test covers every function on every dialect: each resolves as the IR declares,
+    native, mapped, emulated or refused by name, and never a raw engine error. (Amended 2026-10-29, MONEY
+    ANSWERS AS POSTGRESQL''S:) Maintainer 2026-10-30: money is held on its numeric base, and its operators
+    answer as PostgreSQL''s: result types, rounding to the cent, and the text and binary wire forms. It
+    is native on PostgreSQL and emulated elsewhere. (Amended 2026-10-29, A SHAPE FUNCTION WITH NO GEOMETRY
+    FUNCTION IS INLINE ARITHMETIC:) Maintainer 2026-10-30, correcting SHAPE FUNCTIONS MAP TO THE GEOMETRY
+    FUNCTIONS: geometry stays the IR under the shapes, and a shape function still maps to a geometry function
+    where one answers as PostgreSQL does. A shape function with no such mapping is no longer limited to
+    PostgreSQL: it compiles to an inline expression that extracts the coordinates from the shape''s text
+    and does the arithmetic, in that dialect''s SQL. It is refused by name only where the dialect cannot
+    express it. These are per-dialect rewrites in the compiler, so they add no set of functions. (Amended
+    2026-10-29, THE RULE FOR TYPES AND FUNCTIONS:) Maintainer 2026-10-30, for every type and function on
+    every dialect: a type the dialect does not support is held as varchar. A function the dialect does not
+    support is written with the functions it does have where that is possible, and where they cannot express
+    it, with inline operators. Geometry on Trino therefore uses Trino''s geometry functions, not inline
+    arithmetic. A refusal by name remains only for what the dialect can express neither way. (Amended 2026-10-29,
+    THE SAME TYPE UNDER ANOTHER NAME:) Maintainer 2026-10-30, adding to THE RULE FOR TYPES AND FUNCTIONS:
+    a dialect may support a type under a different name, and then that is the dialect''s type for it, not
+    varchar: Trino''s ipaddress is inet, and PostgreSQL''s shapes have a geometry equivalent where one exists.
+    The same holds for a function a dialect has under another name. Varchar and inline operators apply only
+    once no such variant exists. (Amended 2026-10-29, THE TYPES ARE A SUPERSET OF POSTGRESQL''S:) Maintainer
+    2026-10-30: Provisa''s types are a superset of PostgreSQL''s. Every PostgreSQL 17 built-in type is a
+    Provisa type or subtype that keeps its identity, including where it is held as text, so jsonb is not
+    json and timetz keeps its offset. The varchar rule applies to a type a dialect does not support, not
+    to a PostgreSQL type Provisa has not named. A source''s type that maps to no Provisa type is read as
+    text. A value of a type the dialect does not support MUST be in PostgreSQL''s canonical text form, the
+    form pgwire sends, when it leaves the source, on a landing and on a direct read alike: the compiler''s
     read form gives it, and nothing after that corrects it. An operation on such a value is chosen by its
     type, not by the engine''s. (Amended 2026-10-29, EXTENSIONS AND TOTAL LANDING:) Maintainer 2026-10-31:
     a function DuckDB SQL cannot express (xpath, xmltable, xml parsing, sha224/384/512, normalize, convert)
@@ -92246,7 +92273,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     personal data), with the same document-and-section reference, text hash and drift handling as a security
     item''s reference: a revised defining section flags the tag''s definition for review. Every item carrying
     the tag shows the link, so an auditor follows any tagged column, rule or mask to the clause that defines
-    the term. This is distinct from tagging a section, which says the section governs data with that tag.'
+    the term. This is distinct from tagging a section, which says the section governs data with that tag.
+    (Amended 2026-11-06, STANDARD POLICY-TYPE TAGS:) The registry ships standard tags that apply to reference
+    library documents and sections, each naming a common policy type the model already governs, so coverage
+    can be read the same way as for pii: pii (privacy and personal data), retention (retention and deletion),
+    residency (data residency and transfer), access (access control), classification (classification and
+    confidentiality), quality (data quality standards), and agreement, which marks a document as a data
+    use agreement (REQ-2210), so a domain''s agreement library is its documents tagged agreement. An organization
+    adds its own tags for any other policy type.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -92346,7 +92380,35 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     its domain''s library; a table or column outside a data product uses its domain''s default agreement.
     Agreements are documents in the reference library (REQ-2185), assigned to their domain: they are versioned
     through the library''s review, their sections can be cited (REQ-2208) and tagged, and a new version
-    asks current holders to accept it.'
+    asks current holders to accept it. (Amended 2026-11-06, ACCEPTING A PRODUCT''S AGREEMENT:) Requesting
+    a data product requires accepting its agreement, even for a requester who already reads every dataset
+    in it: the request is where the use is declared. Reading a member table directly, without requesting
+    the product, is not gated by the product''s agreement; that is the operator''s modelling choice: datasets
+    shared widely are reference data under the domain''s default agreement (or none), and datasets specific
+    to a purpose belong in a product and are reached by requesting it. An acceptance records, for each dataset
+    the product covers, whether the person could already read it when they accepted and whether they could
+    not, so the record shows which access the agreement newly governed and which it was signed over. (Amended
+    2026-11-06, AGREEMENTS ARE SEEN THROUGH THE PRODUCT:) Data use agreements are policy documents in the
+    reference library: they read like policies, are reused across products, and their sections cite the
+    policy sections they bind (REQ-2208), so a revised policy section flags the agreements that cite it.
+    An agreement is seen through the data product, not through general discovery: whoever can see a data
+    product reads its selected agreement in the product, and general reference library search never returns
+    an agreement. A person who signed sees, in the product, the agreement as they signed it: the version,
+    when, and the per-dataset record of the access they had and did not have. The data product''s owner
+    sees, in the product, every signatory: who, which version, when, and who has not yet accepted a newer
+    version. Polly answers from an agreement only for a question about a data product the person can see,
+    from the product''s selected agreement together with its contract, and answers what the person agreed
+    to from the version they signed. (Amended 2026-11-06, NEW AGREEMENT VERSIONS AND THE REVIEW PERIOD:)
+    An agreement is versioned through the library''s review, and every acceptance records the version accepted.
+    A data product may set an agreement review period: when a new version of its agreement is published,
+    each holder of an earlier version is asked, through the configured mail provider and in the app, to
+    accept the new version within that period. Until a holder accepts the new version or loses the access,
+    the version they accepted still binds them, so no holder is ever under no agreement. Nothing is revoked
+    automatically: when the period ends, the holders who have not accepted are listed to the data product''s
+    owner, on the product''s panel and in the acceptance report, and the owner decides whether to revoke.
+    Revoking removes the role the product request granted, so it takes away exactly the access that came
+    with the product; access the holder already had, which the acceptance records per dataset, is the operator''s
+    to keep or remove.'
   scenario: Given a data product a user cannot read, and a role that serves it whose requests need the domain steward's
     approval for at most 30 days When the user requests access, accepts the data product's data use agreement, and
     the steward approves Then the user holds the role until 30 days from approval, reads the data product, and the
