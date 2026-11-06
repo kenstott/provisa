@@ -81766,7 +81766,24 @@
   feature: connector-catalog-relational-and-warehouses
   priority: SHOULD
   type: behavioral
-  description: 'A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres engine: the DuckDB engine attaches it with DuckDB''s MotherDuck extension (md:<database>), signed in with the source''s MotherDuck token (its password field) resolved with the standard resolution. The token is given to the connection as a bound value, never in a statement''s text, so no log, trace or error carries it; a MotherDuck source with no token is refused by name before anything is attached. One engine connection is signed in to one MotherDuck account: a second MotherDuck source signed in with another token is refused by name. Writes reach the MotherDuck database through the engine, as on the Postgres engine. MotherDuck''s hybrid (dual) execution needs no setting of its own: on the DuckDB engine every source is attached on one connection, so a statement that joins a DuckDB file source''s table with a MotherDuck source''s table runs as one DuckDB statement on it, with MotherDuck deciding where each part executes, instead of being federated across two sources. Under dual execution MotherDuck may move local rows to its side for the parts it runs, so such a statement can send data from the local file into the organization''s MotherDuck account. On an engine that reaches neither in place, the tables land as replicas as today.'
+  description: 'A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres
+    engine: the DuckDB engine attaches it with DuckDB''s MotherDuck extension (md:<database>), signed in
+    with the source''s MotherDuck token (its password field) resolved with the standard resolution. The
+    token is given to the connection as a bound value, never in a statement''s text, so no log, trace or
+    error carries it; a MotherDuck source with no token is refused by name before anything is attached.
+    One engine connection is signed in to one MotherDuck account: a second MotherDuck source signed in with
+    another token is refused by name. Writes reach the MotherDuck database through the engine, as on the
+    Postgres engine. MotherDuck''s hybrid (dual) execution needs no setting of its own: on the DuckDB engine
+    every source is attached on one connection, so a statement that joins a DuckDB file source''s table
+    with a MotherDuck source''s table runs as one DuckDB statement on it, with MotherDuck deciding where
+    each part executes, instead of being federated across two sources. Under dual execution MotherDuck may
+    move local rows to its side for the parts it runs, so such a statement can send data from the local
+    file into the organization''s MotherDuck account. On an engine that reaches neither in place, the tables
+    land as replicas as today. (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT:) Provisa runs
+    DuckDB 2.0.0 (it removes the 1.5.x race in which an engine error met in a later batch came back as Interrupted
+    instead of its own error). MotherDuck''s extension does not yet load on DuckDB 2.0, so until MotherDuck
+    supports it a MotherDuck source is refused by name, saying MotherDuck does not yet support the DuckDB
+    version Provisa runs; the rest of this requirement applies again once it does.'
   use_case: 'An analyst keeps shared reference tables in MotherDuck and a large local DuckDB file of event data; a join between them runs as one DuckDB statement under hybrid execution.'
   scenario: 'Given a MotherDuck source with a token, on the DuckDB engine
 
