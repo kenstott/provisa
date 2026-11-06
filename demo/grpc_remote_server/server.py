@@ -72,7 +72,7 @@ async def serve() -> None:
     pb2_path, pb2_grpc_path = compile_proto_stubs(
         proto_text, proto_name="animal_catalog", out_dir=tempfile.mkdtemp(prefix="demo_grpc_stubs_")
     )
-    pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
+    pb2 = load_stubs(pb2_path)
 
     server = grpc.aio.server()
     server.add_generic_rpc_handlers((_make_handler(pb2),))

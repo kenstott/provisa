@@ -42,7 +42,8 @@ test.describe("the SPARQL tab", () => {
       (r: Request) => new URL(r.url()).pathname === "/data/sparql" && r.method() === "POST",
       { timeout: 60_000 },
     );
-    const cards = page.locator(".graph-frame");
+    // A result card is GraphFrame's root, .gf-frame (no element has a "graph-frame" class).
+    const cards = page.locator(".gf-frame");
     const before = await cards.count();
     await pill.click();
     const request = await asked;

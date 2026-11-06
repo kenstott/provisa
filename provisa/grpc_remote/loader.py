@@ -199,7 +199,9 @@ def compile_proto_stubs(  # REQ-329
     """Compile proto text to Python stubs using grpc_tools.protoc.
 
     Returns:
-        (pb2_path, pb2_grpc_path) — absolute paths to the generated modules.
+        (pb2_path, pb2_grpc_path) — absolute paths to the generated modules. Beside them, the
+        proto's descriptor set with its imports (:func:`descriptor_set_path`), which
+        :func:`provisa.grpc_remote.executor.load_stubs` builds the source's messages from.
 
     Raises:
         ValueError — if protoc compilation fails.
@@ -230,6 +232,8 @@ def compile_proto_stubs(  # REQ-329
         *include_flags,
         f"--python_out={tmp}",
         f"--grpc_python_out={tmp}",
+        f"--descriptor_set_out={os.path.join(tmp, f'{proto_name}.desc')}",
+        "--include_imports",
         proto_file,
     ]
     ret = protoc.main(args)
@@ -242,3 +246,8 @@ def compile_proto_stubs(  # REQ-329
         raise ValueError(f"protoc did not generate {pb2_path}")
 
     return pb2_path, pb2_grpc_path
+
+
+def descriptor_set_path(pb2_path: str) -> str:  # REQ-329
+    """The descriptor set :func:`compile_proto_stubs` wrote beside the ``_pb2`` module."""
+    return pb2_path.removesuffix("_pb2.py") + ".desc"

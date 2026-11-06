@@ -10,8 +10,8 @@
 
 """Execute gRPC calls against a remote service using dynamically compiled stubs.
 
-Requires grpcio and grpcio-tools. Stubs are compiled at source-registration time
-and loaded dynamically via importlib (same pattern as provisa/grpc/server.py).
+Requires grpcio and grpcio-tools. Stubs are compiled at source-registration time and their
+message classes built in a descriptor pool of the source's own (:func:`load_stubs`).
 """
 
 # Requirements: REQ-322, REQ-325, REQ-326, REQ-327
@@ -19,10 +19,10 @@ and loaded dynamically via importlib (same pattern as provisa/grpc/server.py).
 from __future__ import annotations
 
 import asyncio
-import importlib.util
 import logging
-import sys
 import weakref
+from pathlib import Path
+from types import SimpleNamespace
 
 import grpc
 import grpc.aio
@@ -31,35 +31,37 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Module loader (mirrors provisa/grpc/server.py:_load_module)
+# Stub loader
 # ---------------------------------------------------------------------------
 
 
-def _load_module(path: str, name: str):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Cannot load module from {path!r}")
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    try:
-        spec.loader.exec_module(mod)
-    except Exception:
-        del sys.modules[name]
-        raise
-    return mod
+def load_stubs(pb2_path: str) -> SimpleNamespace:  # REQ-617, REQ-329
+    """A source's message classes, each source's in a descriptor pool of its own.
 
+    Returned as the generated ``_pb2`` module would offer them: each top-level message of the
+    proto by its name, and the file's ``DESCRIPTOR``. They are built from the descriptor set
+    :func:`~provisa.grpc_remote.loader.compile_proto_stubs` writes beside the module, not by
+    importing the module: the module adds its file to protobuf's process-wide default pool, where
+    a message's full name (package.Message) is one symbol. A second source of the same proto, or
+    a source added again under a new id, was refused there ("duplicate symbol"), and a module
+    cached by its name in ``sys.modules`` kept serving a source's old proto after a refresh.
+    """
+    from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
 
-def load_stubs(pb2_path: str, pb2_grpc_path: str):  # REQ-617
-    """Load compiled pb2 and pb2_grpc modules. Returns (pb2, pb2_grpc)."""
-    import os
+    from provisa.grpc_remote.loader import descriptor_set_path
 
-    pb2_name = os.path.splitext(os.path.basename(pb2_path))[0]
-    pb2_grpc_name = os.path.splitext(os.path.basename(pb2_grpc_path))[0]
-    pb2 = _load_module(pb2_path, pb2_name)
-    pb2_grpc = _load_module(pb2_grpc_path, pb2_grpc_name)
-    return pb2, pb2_grpc
+    files = descriptor_pb2.FileDescriptorSet.FromString(
+        Path(descriptor_set_path(pb2_path)).read_bytes()
+    )
+    pool = descriptor_pool.DescriptorPool()
+    for file_proto in files.file:  # protoc lists a file's imports before the file
+        pool.Add(file_proto)
+    proto_file = pool.FindFileByName(files.file[-1].name)
+    messages = {
+        name: message_factory.GetMessageClass(descriptor)
+        for name, descriptor in proto_file.message_types_by_name.items()
+    }
+    return SimpleNamespace(DESCRIPTOR=proto_file, **messages)
 
 
 # ---------------------------------------------------------------------------
