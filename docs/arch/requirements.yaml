@@ -36154,7 +36154,13 @@
     Once PyPI is available again, the core extensions move into Provisa''s own per-extension projects and
     the third-party wheels are dropped. (Amended 2026-11-06, AVRO WITH ICEBERG:) The temporary third-party
     core set includes avro (duckdb-extension-avro), which iceberg needs to load; it is verified byte-identical
-    to DuckDB''s signed binary like the others.'
+    to DuckDB''s signed binary like the others. (Amended 2026-11-06, ATTACHABLE MEANS STAGED:) The DuckDB
+    engine counts a connector as attachable only when its extension is staged for the running DuckDB version
+    and platform, read from the staged extensions'' manifest, not from the connectors it declares. A source
+    whose extension is staged attaches; one whose extension is not staged lands into the materialization
+    store when it is landable, as any source the engine cannot read in place does; otherwise registration
+    refuses it by name, saying which extension is not available for this DuckDB version and platform, so
+    the refusal comes when the source is added, never at its first query.'
   use_case: Behind enterprise firewalls where only PyPI/Maven/npm/NuGet are proxied (e.g. Artifactory),
     extensions.duckdb.org is unreachable, breaking the embedded tier and `provisa run --demo`. Offline
     delivery via PyPI—already reachable—ensures embedded deployments work in air-gapped environments without
