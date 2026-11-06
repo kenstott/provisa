@@ -92380,7 +92380,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     sees, in the product, every signatory: who, which version, when, and who has not yet accepted a newer
     version. Polly answers from an agreement only for a question about a data product the person can see,
     from the product''s selected agreement together with its contract, and answers what the person agreed
-    to from the version they signed.'
+    to from the version they signed. (Amended 2026-11-06, NEW AGREEMENT VERSIONS AND THE REVIEW PERIOD:)
+    An agreement is versioned through the library''s review, and every acceptance records the version accepted.
+    A data product may set an agreement review period: when a new version of its agreement is published,
+    each holder of an earlier version is asked, through the configured mail provider and in the app, to
+    accept the new version within that period. Until a holder accepts the new version or loses the access,
+    the version they accepted still binds them, so no holder is ever under no agreement. Nothing is revoked
+    automatically: when the period ends, the holders who have not accepted are listed to the data product''s
+    owner, on the product''s panel and in the acceptance report, and the owner decides whether to revoke.
+    Revoking removes the role the product request granted, so it takes away exactly the access that came
+    with the product; access the holder already had, which the acceptance records per dataset, is the operator''s
+    to keep or remove.'
   scenario: Given a data product a user cannot read, and a role that serves it whose requests need the domain steward's
     approval for at most 30 days When the user requests access, accepts the data product's data use agreement, and
     the steward approves Then the user holds the role until 30 days from approval, reads the data product, and the
