@@ -128,5 +128,6 @@ def test_duckdb_answers_null_over_no_keys(connection, sql: str):
 def test_trino_reads_no_element_of_no_keys(sql: str):
     # Trino's element_at refuses an index below 1 ("SQL array indices start at 1"), and the line
     # between two keys over no keys reads index 0: the sorted keys answer NULL when there are none,
-    # before any element of them is read (test_percentile_null_elements_on_engines runs it).
-    assert "CASE WHEN CARDINALITY(_s) = 0 THEN NULL ELSE" in transpile(sql, "trino")
+    # before any element of them is read -- an empty array (only NULL keys) or no array at all
+    # (array_agg over no rows) (test_percentile_null_elements_on_engines runs it).
+    assert "CASE WHEN COALESCE(CARDINALITY(_s), 0) = 0 THEN NULL ELSE" in transpile(sql, "trino")

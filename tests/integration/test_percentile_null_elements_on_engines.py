@@ -51,7 +51,7 @@ def test_trino_answers_null_over_no_keys(trino_conn):
         cursor = trino_conn.cursor()
         cursor.execute(transpile(sql, "trino"))
         got[sql] = cursor.fetchall()[0][0]
-    assert got == dict.fromkeys(NO_KEYS), got
+    assert {sql: v for sql, v in got.items() if v is not None} == {}
 
 
 @pytest.mark.requires_clickhouse
