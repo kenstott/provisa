@@ -32,7 +32,6 @@
       "skipped": "Пропущено"
     },
     "classTerm": "Строки являются экземплярами",
-    "classTermPlaceholder": "Выберите термин",
     "noClassTerm": "Нет термина",
     "classTermUnreadable": "Не удалось прочитать его термин: {{error}}",
     "access": "Доступ"

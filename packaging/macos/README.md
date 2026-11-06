@@ -87,6 +87,6 @@ provisa uninstall   Remove Provisa
 
 ## GitHub Actions
 
-`.github/workflows/build-dmg.yml` triggers on `v*` tag pushes, builds on `macos-14` (arm64), and uploads the DMG as a GitHub Release asset.
+`.github/workflows/build-dmg.yml` triggers on `v*` tag pushes, builds on `macos-15` (arm64), and uploads the DMG as a GitHub Release asset.
 
 Required repository secrets: `APPLE_DEVELOPER_ID`, `APPLE_NOTARYTOOL_APPLE_ID`, `APPLE_NOTARYTOOL_PASSWORD`, `APPLE_NOTARYTOOL_TEAM_ID`.

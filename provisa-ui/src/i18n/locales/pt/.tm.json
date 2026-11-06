@@ -8081,7 +8081,6 @@
   "pt/tableSections.json::tableSections.checkerSource": "Checker source",
   "pt/tableSections.json::tableSections.checkerTable": "Checker table",
   "pt/tableSections.json::tableSections.classTerm": "Rows are instances of",
-  "pt/tableSections.json::tableSections.classTermPlaceholder": "Pick a term",
   "pt/tableSections.json::tableSections.classTermUnreadable": "Its term could not be read: {{error}}",
   "pt/tableSections.json::tableSections.columns": "Columns",
   "pt/tableSections.json::tableSections.contractSet": "Set",
