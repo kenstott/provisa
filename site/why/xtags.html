@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Extensible tags — Provisa</title>
+  <meta name="description" content="Why, what for, validated, why not: all managed and answered by tags. One place to say why across the whole data estate, cited, reviewed and, where you choose, enforced." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/xtags" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/compare">Compare</a>
+        <a href="/#deploy">Deploy</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Extensible tags</span></p>
+        <h1>Why, what for, validated, why not.</h1>
+        <p class="lead">All managed and answered by tags.</p>
+      </div>
+
+      <div class="doc-body">
+
+        <p>
+          Your systems have comments here and there: on some tables, on some columns, in each tool's own syntax. Grants, row policies, masks, freshness rules and metrics rarely have one at all, and nothing ties a comment to the policy or ticket behind it. Tracking down why something is the way it is means asking around, and the person who knew may have left.
+        </p>
+        <p>
+          Provisa gives the whole data estate one place to say why. A tag works on every governed object the same way: a table, a column, a metric, a row rule, a mask, a role, a command, a freshness rule, a data product. It is a chip until you look at it.
+        </p>
+
+        <h2 id="teams">Why, what for, validated</h2>
+        <ul>
+          <li><strong>Why.</strong> A tag's definition says why it is there. A tag can be purely informational and still save the next person an afternoon.</li>
+          <li><strong>What for.</strong> A tag can cite where its reason comes from: a section of a policy, a product requirement, a regulation, a design note or a ticket in your reference library. When that section changes, the tag is flagged for review.</li>
+          <li><strong>Validated.</strong> A tag can be reviewed on a calendar (monthly, quarterly, annually) by the role that owns it, and each sign-off is recorded with the version of the text it was checked against.</li>
+        </ul>
+        <p>
+          Templates get you started. <code>decision-traced</code> asks every modelling decision to cite the requirement behind it. <code>experimental</code> marks what is not ready for consumers. <code>test-covered</code> points each object at the test plan that covers it, so the untested ones become a list.
+        </p>
+
+        <h2 id="enterprise">But there's more: why not</h2>
+        <p>
+          That is enough for most teams. If you answer to complex regulatory or policy reporting, the same tags go further:
+        </p>
+        <ul>
+          <li><strong>Evidence per decision.</strong> A tag can require each use of it to cite its own evidence: the approval, the impact assessment, the test report. Missing evidence is a gap you can see, not a surprise in an audit.</li>
+          <li><strong>Attestation workflows.</strong> A review can run in steps (owner, then steward, then compliance), each affirming a stated checklist, with segregation of duties and a record of exactly what each person signed.</li>
+          <li><strong>Gates that answer back.</strong> Where you choose, a tag can stop an object from being promoted to production or exported until its condition is met. The refusal does not just say no: it answers with the tag's why, who said so and when it was last validated.</li>
+          <li><strong>The rule as it stood.</strong> Every governed decision is logged with its tags as they were at that moment, so the question asked a year later is answered by the rule in force then, not today's.</li>
+        </ul>
+
+        <h2 id="one-model">One coherent model, one simple way to explain why</h2>
+        <p>
+          The same tags explain a freshness rule to an analyst, a mask to a new hire, a gate to the developer it stopped, and the whole trail to an auditor or regulator. Your existing documentation stays where it is; tags connect it to the configuration it explains. Polly and the MCP server read the same tags, so an agent can answer why as well as what.
+        </p>
+        <p>
+          <a href="/why/governance">How governance works</a> &middot; <a href="/architecture-faq">Architecture FAQ</a>
+        </p>
+
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
