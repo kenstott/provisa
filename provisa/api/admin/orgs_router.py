@@ -409,7 +409,12 @@ async def on_its_region_lane(org_id: str, rt: "OrgRuntime") -> "OrgRuntime":  # 
 
     if await _region_lane_of(org_id, PROD) is None:
         return rt
-    return await _app_state.org_registry.rebuild(org_id, lambda oid: build_on_its_lane(oid, None))
+    # Its schema is current: provision_org and the build this replaces laid it out a moment ago,
+    # and that build's detached lifecycle wiring still reads it (build_org_runtime's
+    # ``schema_current``).
+    return await _app_state.org_registry.rebuild(
+        org_id, lambda oid: build_on_its_lane(oid, None, schema_current=True)
+    )
 
 
 @model_change.commits_itself  # REQ-1524: commits the model it writes itself
