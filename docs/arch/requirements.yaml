@@ -92642,7 +92642,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Every one of them serves one purpose: explaining why to whoever asks, a stakeholder, a newcomer, the
     person left holding the decision, an auditor, a regulator or an executive. (Amended 2026-11-06, METRICS
     CARRY TAGS:) Metrics carry tags like any other governed object, so a metric''s definition can say why
-    it is calculated as it is, cite the policy or requirement that defines it, and be reviewed and attested.'
+    it is calculated as it is, cite the policy or requirement that defines it, and be reviewed and attested.
+    (Amended 2026-11-06, TAG GATES:) A tag may declare a gate, from a fixed, system-defined set: promotion
+    (the tagged object cannot be promoted into a named environment), metadata export (it is not published
+    to an external catalog) and data export (its data is not downloaded or extracted: file downloads, model
+    report sheets, extracts to another region; querying is unaffected). Each gate takes one condition from
+    a fixed set: always; unless attested (the tag''s attestation for the current period, or for this version,
+    is complete, REQ-2209); unless evidence (the assignment carries its required citation). A refusal names
+    the tag and what is missing (e.g. blocked by uat: no attestation for this version, waiting on step 2,
+    tester); a promotion or export lists the gated objects before it runs. Adding, changing or removing
+    a gate is a model change, promoted, reviewed and audited like any other; there is no separate override:
+    a gate is passed by meeting its condition or by changing the tag through promotion. (Amended 2026-11-06,
+    MORE TEMPLATES:) Beside decision-traced, the builder''s templates include test-covered (each assignment
+    cites the test plan section or test report covering the object; uncovered objects are the gap list),
+    uat (an attestation workflow developer, then tester, then business owner, with a promotion gate into
+    production unless attested for the version) and experimental (marks an object not yet for consumers,
+    its assignment citing the design note or ticket).'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
