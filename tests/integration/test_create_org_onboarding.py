@@ -50,6 +50,7 @@ from provisa.core.schema_org import (
     user_role_assignments,
 )
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.served_config import served_config
 
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
@@ -115,6 +116,9 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
+    # A served app always holds its parsed config; provisioning reads the platform's default region
+    # grant from it (REQ-1922).
+    monkeypatch.setattr(app_state, "config", served_config(), raising=False)
 
     # Stub the data-plane build: this test isolates the control-plane onboarding contract. The
     # background task must still flip the row to "ready" and record the grant call.
@@ -131,6 +135,8 @@ def planes(monkeypatch):
         *,
         env=None,
         ephemeral=False,
+        data_mode=None,
+        mutation_handling=None,
         include_demo=False,
         isolated_engine=False,
         external_engine=None,
@@ -138,6 +144,8 @@ def planes(monkeypatch):
         engine_url=None,
         shard="",
         storage_url=None,
+        model_cloned=False,
+        provisioned=False,
     ):
         from provisa.api.org_runtime import OrgRuntime
         from tests.helpers import ready_org_folder

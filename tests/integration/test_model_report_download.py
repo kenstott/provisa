@@ -40,6 +40,7 @@ from provisa.api.startup_seed import _seed_view
 from provisa.api.metadata_export import workbook as wb
 from provisa.core import domain_policy
 from provisa.core.config_loader import apply_config, parse_config_dict
+from provisa.security.inheritance import with_own_domains
 
 pytestmark = [pytest.mark.integration]
 
@@ -237,7 +238,11 @@ async def served(
     acme = OrgRuntime(org_id=ORG_ID)
     acme.tenant_db = tenant_db
     acme.model_db = tenant_db
-    acme.roles = {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()}
+    # A served runtime keeps each role's own domain access beside the flattened one (REQ-2153,
+    # app._rebuild_schemas_impl); these domains have no parents, so the tree changes nothing else.
+    acme.roles = {
+        r["id"]: r for r in with_own_domains({"id": rid, **spec} for rid, spec in _ROLES.items())
+    }
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
     acme.role_build_inputs = {"draft_tables": []}
     registry = OrgRegistry()

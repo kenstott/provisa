@@ -34,7 +34,6 @@ from __future__ import annotations
 import base64
 import os
 import time
-import types
 
 import bcrypt
 import pytest
@@ -53,6 +52,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES, local_users, orgs
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources
+from tests.served_config import served_config
 
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
@@ -165,10 +165,12 @@ def planes(monkeypatch):
             "analyst": {"capabilities": ["query_development"]},
         },
     )
+    # A served app always holds its parsed config. Provisioning reads the platform's default region
+    # grant from it (REQ-1922), which a hand-built namespace does not carry.
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
+        served_config(auth={"provider": "basic"}, derived_roles=[]),
         raising=False,
     )
     monkeypatch.setattr(
