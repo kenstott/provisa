@@ -41667,9 +41667,16 @@
   type: behavioral
   description: 'HTTP request org is authoritative from Host subdomain (leftmost label of acme.provisa.org
     → org acme), except control-plane host cloud.provisa.* which requires explicit x-org-provisa header.
-    Apex/bare hosts (provisa.org, localhost) resolve to no org (None). Subdomain/header replaces prior
-    active_org token claim and x-org-id header. Membership validation unchanged: org not in user''s orgs
-    is rejected 403 (unless user is platform admin).'
+    Apex/bare hosts (provisa.org, localhost) resolve to no org (None). Subdomain/header replaces prior active_org
+    token claim and x-org-id header. Membership validation unchanged: org not in user''s orgs is rejected
+    403 (unless user is platform admin). (Amended 2026-11-05, only under a declared base domain:) Host-subdomain
+    org addressing and cross-subdomain sign-in apply only where the deployment declares its base domain
+    (VITE_ORG_BASE_DOMAIN, served at /deployment-config.js; cloud.provisa.dev declares provisa.dev). A host
+    is an org host only if it is a single label, other than cloud, in front of that base. Every other host
+    (a GitHub Codespace, localhost, a custom single host), and every host of a deployment that declares
+    no base, names no org, uses no relay and signs in locally. The server reads an org from the Host by
+    the same declared base, and every page that hands a session between siblings reads the same declaration
+    at runtime.'
   use_case: Establishes Host subdomain as the authoritative org identity source across HTTP transports,
     enabling transparent multi-org routing without requiring org claims in tokens or API headers. Exception
     for control-plane preserves bootstrap and cross-org admin access patterns.
@@ -45489,15 +45496,17 @@
   type: behavioral
   description: 'Interactive sign-in runs only on the control-plane host (`cloud.<base>`). An org subdomain
     (`{org}.<base>`, REQ-1276) must not attempt a local sign-in: identity providers authorize exact hostnames
-    only (Firebase Authentication rejects wildcard authorized domains with INVALID_AUTHORIZED_DOMAIN),
-    and registering each org''s hostname with the IdP would make org creation write to an external control
-    plane, which REQ-1054 zero-provisioning forbids. Instead an org subdomain acquires the bearer from
-    the control plane through a same-site hidden-iframe postMessage relay served at /auth-relay.html on
-    the control-plane origin, and falls back to a redirect handoff to `${controlPlane}/login?next=<this
-    url>` when the control plane has no session. Both the relay''s requester origin and the login page''s
-    `next` target must be validated as a single-label host under the same base domain, same scheme and
-    same port; replies are addressed to that exact origin, never "*". The borrowed token is re-acquired
-    periodically because the rotating Firebase SDK runs on the control-plane origin only.'
+    only (Firebase Authentication rejects wildcard authorized domains with INVALID_AUTHORIZED_DOMAIN), and
+    registering each org''s hostname with the IdP would make org creation write to an external control plane,
+    which REQ-1054 zero-provisioning forbids. Instead an org subdomain acquires the bearer from the control
+    plane through a same-site hidden-iframe postMessage relay served at /auth-relay.html on the control-plane
+    origin, and falls back to a redirect handoff to `${controlPlane}/login?next=<this url>` when the control
+    plane has no session. Both the relay''s requester origin and the login page''s `next` target must be
+    validated as a single-label host under the same base domain, same scheme and same port; replies are
+    addressed to that exact origin, never "*". The borrowed token is re-acquired periodically because the
+    rotating Firebase SDK runs on the control-plane origin only. (Amended 2026-11-05, only under a declared
+    base domain:) As REQ-1276 (amended 2026-11-05): cross-subdomain sign-in applies only under the deployment''s
+    declared base domain; elsewhere the UI signs in locally.'
   use_case: Org subdomains cannot perform independent authentication without violating IdP hostname validation
     constraints and zero-provisioning requirements; a secure relay mechanism allows token acquisition
     through the control plane while maintaining strict origin validation.
