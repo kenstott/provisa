@@ -14,6 +14,7 @@
 // the same session straight back. These tests pin the hand-off that makes the sign-out reach it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const signOutFirebase = vi.fn(async () => {});
 const installFirebaseTokenSync = vi.fn(async () => {});
@@ -21,6 +22,8 @@ vi.mock("../lib/firebase", () => ({ signOutFirebase, installFirebaseTokenSync })
 vi.mock("../apolloClient", () => ({ clearPersistedAdminCache: vi.fn() }));
 
 const realLocation = window.location;
+// The cloud deployment, whose org subdomains live under the base domain it declares.
+onDeclaredBaseDomain("provisa.dev");
 
 function setLocation(href: string) {
   const u = new URL(href);
