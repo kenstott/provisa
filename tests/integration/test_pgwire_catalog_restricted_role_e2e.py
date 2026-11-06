@@ -25,6 +25,7 @@ from pathlib import Path
 
 import psycopg2
 import pytest
+import sqlalchemy
 import yaml
 
 from sqlalchemy.engine import make_url
@@ -178,6 +179,22 @@ def test_a_column_the_role_is_not_served_is_refused_on_read(server):
     with pytest.raises(psycopg2.Error) as refused:
         _read(server, _RESTRICTED, "SELECT email FROM customers")
     assert refused.value.pgcode == "42501"
+
+
+@pytest.mark.parametrize("role", [_RESTRICTED, _EVERYTHING])
+def test_a_sqlalchemy_psycopg2_engine_connects(server, role):
+    # SQLAlchemy's psycopg2 dialect, at its default use_native_hstore=True, looks hstore up on
+    # every new connection: SELECT t.oid, typarray FROM pg_type t JOIN pg_namespace ns ... --
+    # typarray unqualified beside a relation that has no such column. Every SQLAlchemy client
+    # (pandas, Superset, great_expectations) connects through it (UI e2e run 42233953096).
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{role}:provisa@127.0.0.1:{server.pgwire_port}/provisa"
+    )
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(sqlalchemy.text("SELECT 1")).scalar() == 1
+    finally:
+        engine.dispose()
 
 
 def test_every_system_row_is_every_roles(server):
