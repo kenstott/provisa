@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+
 // A source whose connector server is still starting answers the columns read with null. The form
 // shows the starting state (not an empty table), then the columns once the server answers.
 
@@ -63,13 +64,7 @@ describe("RegisterTableForm — columns of a starting source", () => {
           schemaName: "openapi",
           tableName: "getStore",
           columns: [
-            {
-              name: "id",
-              dataType: "integer",
-              isPrimaryKey: true,
-              comment: null,
-              nativeFilterType: null,
-            },
+            { name: "id", dataType: "integer", isPrimaryKey: true, comment: null, nativeFilterType: null },
           ],
         }}
       />,
