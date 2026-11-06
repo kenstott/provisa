@@ -182,8 +182,18 @@ preflight_commerce() {
 }
 
 build_ui() {
-  echo "== building UI"
-  (cd "$REPO/provisa-ui" && npm run build)
+  # REQ-1276/REQ-1348: the base domain org subdomains live under. The control plane is
+  # cloud.<base>, so it is $SITE's host without its `cloud.` label: cloud.provisa.dev declares
+  # provisa.dev. The UI reads an org from a host under it and from no other host — a Codespace or
+  # localhost is the deployment's one address — so without it every org subdomain would stop
+  # borrowing its session from the control plane. The UI container's /deployment-config.js
+  # overrides it at runtime when set.
+  local base="${SITE#https://cloud.}"
+  case "$base" in
+    ""|*/*|*:*) echo "SITE=$SITE is not https://cloud.<base domain>; cannot declare the base domain" >&2; exit 1 ;;
+  esac
+  echo "== building UI (org base domain: $base)"
+  (cd "$REPO/provisa-ui" && VITE_ORG_BASE_DOMAIN="$base" npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
   # left behind, the control plane answers an org subdomain's token request with a stale page or

@@ -1096,6 +1096,9 @@ services:
       # Its Compute Engine instance, which the UI server starts when it finds the tier down
       # (provisa/sandbox_wake.py); empty for a tier on this node.
       PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
+      # REQ-1276: the base domain org subdomains live under, served to the UI at
+      # /deployment-config.js. Unset, the UI reads no org from its host.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
       VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
@@ -1244,6 +1247,7 @@ write_env_file() {
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
              PROVISA_SUPERUSER_USERNAME PROVISA_SUPERUSER_PASSWORD \
              VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
+             VITE_ORG_BASE_DOMAIN \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
