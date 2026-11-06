@@ -3046,7 +3046,11 @@ async def _rebuild_schemas(
     asked = time.monotonic()
     async with _rebuild_schemas_lock:
         began = time.monotonic()
-        with model_row_rules.unnarrowed():
+        # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
+        # landed tables' reconcile and the routes it publishes alike.
+        from provisa.federation.replica_routing import one_model_read
+
+        with model_row_rules.unnarrowed(), one_model_read():
             await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
     # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
     # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).

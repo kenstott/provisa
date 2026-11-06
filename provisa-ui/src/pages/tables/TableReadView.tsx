@@ -141,6 +141,13 @@ export function TableReadView({
   useEffect(() => {
     linkedRow.current?.scrollIntoView({ block: "center" });
   }, [column, section]);
+  // The profile the header button asks for is brought into view on Quality, when it is there
+  // (or, while it runs, its progress line).
+  const profileRef = useRef<HTMLDivElement | null>(null);
+  const shownProfile = tableProfiles[table.id];
+  useEffect(() => {
+    if (section === "quality") profileRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [section, shownProfile]);
 
   // The table's actions. In a detail panel they sit in its pinned head (PanelActions); under a
   // list row they stay in place. While the table is being edited they are not there: the form's
@@ -230,8 +237,14 @@ export function TableReadView({
                 data-testid="table-read-view-profile"
                 onClick={(e) => {
                   e.stopPropagation();
+                  // The profile is read on Quality, where it lands. A profile already taken is
+                  // opened there at once; only from Quality does the button hide it again.
+                  const taken = tableProfiles[table.id];
+                  if (taken !== undefined && taken !== "loading" && section !== "quality") {
+                    setSection("quality");
+                    return;
+                  }
                   handleProfile(table.id);
-                  // The profile is read on Quality, where it lands.
                   setSection("quality");
                 }}
                 loading={tableProfiles[table.id] === "loading"}
@@ -351,16 +364,37 @@ export function TableReadView({
             {profileColumnsTable && <LatestProfilePanel profileTable={profileColumnsTable} />}
             {(() => {
               const p = tableProfiles[table.id];
-              if (!p || p === "loading") return null;
+              if (!p) return null;
+              if (p === "loading")
+                return (
+                  <Box
+                    ref={profileRef}
+                    data-testid="table-read-view-profiling"
+                    px="0.75rem"
+                    py="0.5rem"
+                    fz="0.8rem"
+                    c="dimmed"
+                  >
+                    {t("tableReadView.profilingButton")}
+                  </Box>
+                );
               if (typeof p === "string")
                 return (
-                  <Box px="0.75rem" py="0.5rem" c="var(--destructive)" fz="0.8rem">
+                  <Box
+                    ref={profileRef}
+                    px="0.75rem" py="0.5rem" c="var(--destructive)" fz="0.8rem">
                     {p}
                   </Box>
                 );
               const prof = computeProfile(p.columns, p.rows);
               return (
-                <Box style={{ borderTop: "1px solid var(--border)" }} px="0.75rem" py="0.5rem">
+                <Box
+                  ref={profileRef}
+                  data-testid="table-read-view-profile-result"
+                  style={{ borderTop: "1px solid var(--border)" }}
+                  px="0.75rem"
+                  py="0.5rem"
+                >
                   <Box fz="0.75rem" c="dimmed" mb="0.4rem">
                     {t("tableReadView.profileHeading", { count: p.rowCount })}
                   </Box>

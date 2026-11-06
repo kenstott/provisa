@@ -14,7 +14,7 @@
 
 from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
 from provisa.core import model_change
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 
 from sqlalchemy import delete as _delete, select
@@ -1025,31 +1025,35 @@ async def find_by_table_name(
     return dict(rows[0]._mapping)
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
+async def list_all(
+    conn: "Connection", *, parts_of: "Callable[[dict], bool] | None" = None
+) -> list[dict]:  # REQ-013, REQ-016
+    """Every registered table's row with its ``columns`` and ``write_grants``. ``parts_of``, when
+    given, says which tables' parts are read: a table it refuses is its row alone, with neither
+    key — for a reader that needs no more of it than its row (``store_model``'s seeded tables)."""
     from provisa.core.repositories import write_grant as write_grant_repo
 
     result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
-    rows = result.fetchall()
+    rows = [dict(row._mapping) for row in result.fetchall()]
+    with_parts = [r["id"] for r in rows if parts_of is None or parts_of(r)]
     # Every table's columns in one read, each table's in registration order (as _load_columns
     # reads one table's): a rebuild lists every table, and a query per table was a query for each.
+    columns_read = select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
+        table_columns.c.table_id, table_columns.c.id
+    )
+    if parts_of is not None:
+        columns_read = columns_read.where(table_columns.c.table_id.in_(with_parts))
     columns: dict[int, list[dict]] = {}
-    for c in (
-        await conn.execute_core(
-            select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
-                table_columns.c.table_id, table_columns.c.id
-            )
-        )
-    ).fetchall():
+    for c in (await conn.execute_core(columns_read)).fetchall():
         column = dict(c._mapping)
         columns.setdefault(column.pop("table_id"), []).append(column)
     grants = await write_grant_repo.by_table(conn)
-    out = []
-    for row in rows:
-        r = dict(row._mapping)
-        r["columns"] = columns.get(r["id"], [])
-        r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
-        out.append(r)
-    return out
+    wanted = set(with_parts)
+    for r in rows:
+        if r["id"] in wanted:
+            r["columns"] = columns.get(r["id"], [])
+            r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
+    return rows
 
 
 async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-1918

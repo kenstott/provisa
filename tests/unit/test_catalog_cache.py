@@ -611,6 +611,59 @@ async def test_a_search_answers_with_what_is_known_and_the_columns_are_filled_of
 
 
 @pytest.mark.asyncio
+async def test_a_column_fill_reads_the_source_in_the_background(stores, monkeypatch, fills):
+    """Its read goes after a Register Table listing waiting for the same server
+    (``pgwire_replica.background_discovery``)."""
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+    from provisa.federation import pgwire_replica as pr
+
+    _, tenant_db = stores
+    await _seeded(tenant_db)
+    seen: list[bool] = []
+
+    async def _columns(source, schema):
+        seen.append(pr.in_background_discovery())
+        return {"financial_facts": ["cik"]}
+
+    _columns_through_the_adapter(monkeypatch, {})
+    monkeypatch.setattr(pr, "schema_columns", _columns)
+    known = await catalog_cache.read_cache(tenant_db, "test", "sec")
+    catalog_cache.request_column_fill(
+        "test", "govdata", "sec", known, SimpleNamespace(tenant_db=tenant_db)
+    )
+    await fills[0][1]
+    assert seen == [True]
+    assert not pr.in_background_discovery()
+
+
+@pytest.mark.asyncio
+async def test_the_index_reads_the_source_in_the_background(stores, monkeypatch):
+    """The index's reads go after a Register Table listing waiting for the same server: saving a
+    source starts the index, and its walk of every schema held the server's one discovery slot
+    for the whole walk (core lane run 42260219138: a govdata source's "weather" listing refused
+    for over a minute)."""
+    from types import SimpleNamespace
+
+    from provisa.discovery import catalog_cache
+    from provisa.federation import pgwire_replica as pr
+
+    model_db, tenant_db = stores
+    _attached_source_arranged(monkeypatch, ["sec"])
+    seen: list[bool] = []
+
+    async def _once(*args):
+        seen.append(pr.in_background_discovery())
+
+    monkeypatch.setattr(catalog_cache, "_index_source_once", _once)
+    state = SimpleNamespace(tenant_db=tenant_db, catalog_for=lambda sid: sid)
+    await catalog_cache.index_source("test", model_db, None, None, {"test": "govdata"}, state)
+    assert seen == [True]
+    assert not pr.in_background_discovery()
+
+
+@pytest.mark.asyncio
 async def test_a_schema_is_filled_at_most_once_per_index_generation(stores, monkeypatch, fills):
     from types import SimpleNamespace
 
