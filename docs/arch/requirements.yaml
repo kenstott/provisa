@@ -92246,7 +92246,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     personal data), with the same document-and-section reference, text hash and drift handling as a security
     item''s reference: a revised defining section flags the tag''s definition for review. Every item carrying
     the tag shows the link, so an auditor follows any tagged column, rule or mask to the clause that defines
-    the term. This is distinct from tagging a section, which says the section governs data with that tag.'
+    the term. This is distinct from tagging a section, which says the section governs data with that tag.
+    (Amended 2026-11-06, STANDARD POLICY-TYPE TAGS:) The registry ships standard tags that apply to reference
+    library documents and sections, each naming a common policy type the model already governs, so coverage
+    can be read the same way as for pii: pii (privacy and personal data), retention (retention and deletion),
+    residency (data residency and transfer), access (access control), classification (classification and
+    confidentiality), quality (data quality standards), and agreement, which marks a document as a data
+    use agreement (REQ-2210), so a domain''s agreement library is its documents tagged agreement. An organization
+    adds its own tags for any other policy type.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -92353,7 +92360,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     shared widely are reference data under the domain''s default agreement (or none), and datasets specific
     to a purpose belong in a product and are reached by requesting it. An acceptance records, for each dataset
     the product covers, whether the person could already read it when they accepted and whether they could
-    not, so the record shows which access the agreement newly governed and which it was signed over.'
+    not, so the record shows which access the agreement newly governed and which it was signed over. (Amended
+    2026-11-06, AGREEMENTS ARE SEEN THROUGH THE PRODUCT:) Data use agreements are policy documents in the
+    reference library: they read like policies, are reused across products, and their sections cite the
+    policy sections they bind (REQ-2208), so a revised policy section flags the agreements that cite it.
+    An agreement is seen through the data product, not through general discovery: whoever can see a data
+    product reads its selected agreement in the product, and general reference library search never returns
+    an agreement. A person who signed sees, in the product, the agreement as they signed it: the version,
+    when, and the per-dataset record of the access they had and did not have. The data product''s owner
+    sees, in the product, every signatory: who, which version, when, and who has not yet accepted a newer
+    version. Polly answers from an agreement only for a question about a data product the person can see,
+    from the product''s selected agreement together with its contract, and answers what the person agreed
+    to from the version they signed.'
   scenario: Given a data product a user cannot read, and a role that serves it whose requests need the domain steward's
     approval for at most 30 days When the user requests access, accepts the data product's data use agreement, and
     the steward approves Then the user holds the role until 30 days from approval, reads the data product, and the
