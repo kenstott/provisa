@@ -26184,7 +26184,7 @@ Provisa's Arrow Flight endpoint speaks the Arrow Flight SQL protocol (Arrow's Fl
 
 **Code:** `provisa/api/graph_session.py`, `provisa/api/rest/cypher_session.py`, `provisa/api/rest/cypher_router.py`, `provisa/ephemeral/store.py`, `provisa/compiler/temp_tables.py`, `provisa/pgwire/temp_exec.py`, `provisa/pgwire/temp_keeper.py`, `provisa/pgwire/_pipeline.py`, `provisa/cache/key.py`, `provisa-ui/src/components/graph/SessionPills.tsx`
 
-**Tests:** `tests/unit/test_cypher_page_session.py`, `tests/integration/test_graph_session_shared.py`, `provisa-ui/src/components/graph/__tests__/SessionPills.test.tsx`, `provisa-ui/src/__tests__/GraphPageSession.test.tsx`
+**Tests:** `tests/unit/test_cypher_page_session.py`, `tests/integration/test_graph_session_shared.py`, `tests/integration/test_graph_session_clear_pg.py`, `provisa-ui/src/components/graph/__tests__/SessionPills.test.tsx`, `provisa-ui/src/__tests__/GraphPageSession.test.tsx`
 
 ## 4. Source Connectors
 
