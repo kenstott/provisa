@@ -3,12 +3,14 @@
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
-"""Offline staging of the bundled DuckDB extensions (provisa-duckdb-ext PyPI package).
+"""Offline staging of the bundled DuckDB extensions (the embedded extra's PyPI packages).
 
-stage_bundled_extensions must copy the running platform's blobs out of the package into a writable
-dir WITHOUT touching extensions.duckdb.org, and fail loud (BundledExtensionsMissing) when the package
-carries no blobs for this exact DuckDB version+platform. The package is mocked so the test is hermetic
-(no dependency on the embedded extra being installed).
+stage_bundled_extensions must copy the running platform's blobs into a writable dir WITHOUT touching
+extensions.duckdb.org: the core extensions from their third-party per-extension wheels (REQ-1142
+amendment, TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0), every other one from provisa-duckdb-ext. It
+fails loud (BundledExtensionsMissing), naming each, when a package is absent or carries no blobs for
+this exact DuckDB version+platform. The packages are faked so the test is hermetic (no dependency on
+the embedded extra being installed).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ import duckdb
 import pytest
 
 from provisa.federation.duckdb_extensions import (
+    CORE_EXTENSION_WHEELS,
     BundledExtensionsMissing,
     stage_bundled_extensions,
 )
@@ -42,26 +45,104 @@ def _install_fake_package(monkeypatch, ext_root):
     monkeypatch.setitem(sys.modules, "provisa_duckdb_ext", mod)
 
 
-def test_stage_copies_current_platform_blobs(tmp_path, monkeypatch):
-    ver, plat = _duckdb_version_platform()
+def _install_fake_core_wheels(monkeypatch, site, version, skip=()):
+    """The third-party wheels as installed: an empty package per extension, holding the binary at
+    <package>/extensions/<version>/<name>.duckdb_extension -- no platform dir: the wheel is the
+    platform's own."""
+    for extension, package in CORE_EXTENSION_WHEELS.items():
+        if extension in skip:
+            continue
+        pkg = site / package
+        (pkg / "extensions" / version).mkdir(parents=True)
+        (pkg / "__init__.py").write_text("")
+        (pkg / "extensions" / version / f"{extension}.duckdb_extension").write_bytes(
+            f"CORE-{extension}".encode()
+        )
+    monkeypatch.syspath_prepend(str(site))
+
+
+def _provisa_ext(tmp_path, ver, plat):
     pkg = tmp_path / "pkg_ext"
     (pkg / ver / plat).mkdir(parents=True)
-    (pkg / ver / plat / "sqlite_scanner.duckdb_extension").write_bytes(b"FAKE-BLOB")
-    _install_fake_package(monkeypatch, pkg)
+    (pkg / ver / plat / "mssql.duckdb_extension").write_bytes(b"FAKE-MSSQL")
+    return pkg
+
+
+def test_the_core_extensions_are_the_third_party_wheels():
+    assert CORE_EXTENSION_WHEELS == {
+        "postgres_scanner": "duckdb_extension_postgres_scanner",
+        "httpfs": "duckdb_extension_httpfs",
+        "sqlite_scanner": "duckdb_extension_sqlite_scanner",
+        "iceberg": "duckdb_extension_iceberg",
+        "azure": "duckdb_extension_azure",
+        "delta": "duckdb_extension_delta",
+        "avro": "duckdb_extension_avro",  # iceberg loads it
+    }
+
+
+def test_stage_takes_core_from_the_third_party_wheels_and_the_rest_from_provisa_duckdb_ext(
+    tmp_path, monkeypatch
+):
+    ver, plat = _duckdb_version_platform()
+    _install_fake_package(monkeypatch, _provisa_ext(tmp_path, ver, plat))
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
 
     target = tmp_path / "staged"
     out = stage_bundled_extensions(target)
 
-    staged = out / ver / plat / "sqlite_scanner.duckdb_extension"
-    assert staged.exists() and staged.read_bytes() == b"FAKE-BLOB"
-    # Idempotent — a second call over the existing file does not raise.
+    staged = out / ver / plat
+    for extension in CORE_EXTENSION_WHEELS:
+        blob = staged / f"{extension}.duckdb_extension"
+        assert blob.read_bytes() == f"CORE-{extension}".encode(), extension
+    assert (staged / "mssql.duckdb_extension").read_bytes() == b"FAKE-MSSQL"
+    # Idempotent — a second call over the existing files does not raise.
     assert stage_bundled_extensions(target) == target
+
+
+def test_a_third_party_wheel_never_imported_only_located(tmp_path, monkeypatch):
+    # Its package is found, not run: code in its __init__ never executes.
+    ver, plat = _duckdb_version_platform()
+    _install_fake_package(monkeypatch, _provisa_ext(tmp_path, ver, plat))
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
+    trap = tmp_path / "site" / "duckdb_extension_httpfs" / "__init__.py"
+    trap.write_text("raise RuntimeError('imported')\n")
+    monkeypatch.delitem(sys.modules, "duckdb_extension_httpfs", raising=False)
+
+    stage_bundled_extensions(tmp_path / "staged")
+    assert "duckdb_extension_httpfs" not in sys.modules
+
+
+def test_a_missing_third_party_wheel_is_refused_by_name(tmp_path, monkeypatch):
+    ver, plat = _duckdb_version_platform()
+    _install_fake_package(monkeypatch, _provisa_ext(tmp_path, ver, plat))
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver, skip=("delta",))
+    for package in CORE_EXTENSION_WHEELS.values():
+        monkeypatch.delitem(sys.modules, package, raising=False)
+
+    with pytest.raises(
+        BundledExtensionsMissing, match="delta: duckdb-extension-delta is not installed"
+    ):
+        stage_bundled_extensions(tmp_path / "staged")
+    assert not (tmp_path / "staged").exists()  # nothing staged by halves
+
+
+def test_a_third_party_wheel_of_another_duckdb_is_refused_by_name(tmp_path, monkeypatch):
+    ver, plat = _duckdb_version_platform()
+    _install_fake_package(monkeypatch, _provisa_ext(tmp_path, ver, plat))
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", "v0.0.1")
+
+    with pytest.raises(
+        BundledExtensionsMissing, match="iceberg: duckdb-extension-iceberg has none"
+    ):
+        stage_bundled_extensions(tmp_path / "staged")
 
 
 def test_missing_platform_blobs_fails_loud(tmp_path, monkeypatch):
     # Package present but no blobs for this version/platform → packaging defect, never a silent network fetch.
+    ver, _plat = _duckdb_version_platform()
     _install_fake_package(monkeypatch, tmp_path / "empty_pkg")
-    with pytest.raises(BundledExtensionsMissing):
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
+    with pytest.raises(BundledExtensionsMissing, match="provisa-duckdb-ext has none"):
         stage_bundled_extensions(tmp_path / "staged")
 
 
@@ -84,6 +165,7 @@ def test_stage_copies_a_named_repositorys_extension_with_its_info(tmp_path, monk
     (repo / "crypto.duckdb_extension").write_bytes(b"FAKE-CRYPTO")
     (repo / "crypto.duckdb_extension.info").write_bytes(b"FAKE-INFO")
     _install_fake_package(monkeypatch, pkg)
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
 
     out = stage_bundled_extensions(tmp_path / "staged")
 

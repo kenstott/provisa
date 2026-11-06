@@ -24,6 +24,7 @@ per-user cache; the federation runtime reads the same variable so what is staged
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 from collections.abc import Callable
@@ -55,25 +56,67 @@ def extension_directory() -> str | None:
     return os.environ.get(_EXT_DIR_ENV) or None
 
 
-class BundledExtensionsMissing(RuntimeError):
-    """The provisa-duckdb-ext package is installed but lacks blobs for this DuckDB version/platform.
+#: The core extensions installed from the third-party per-extension, per-platform PyPI wheels, by the
+#: extension's file name -> the importable package of its wheel. TEMPORARY (REQ-1142 amendment,
+#: "TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0", 2026-11-06): duckdb-extension-<name>==<duckdb version>
+#: from https://github.com/santosh-d3vpl3x/duckdb_extensions (MIT), until Provisa's own per-extension
+#: PyPI projects exist. Each wheel holds the official, signed binary at
+#: ``<package>/extensions/<raw_duckdb_version>/<name>.duckdb_extension`` (its ``__init__.py`` is
+#: empty: the package is located, never imported), and DuckDB loads it with its signature check on.
+CORE_EXTENSION_WHEELS: dict[str, str] = {
+    "postgres_scanner": "duckdb_extension_postgres_scanner",
+    "httpfs": "duckdb_extension_httpfs",
+    "sqlite_scanner": "duckdb_extension_sqlite_scanner",
+    "iceberg": "duckdb_extension_iceberg",
+    "azure": "duckdb_extension_azure",
+    "delta": "duckdb_extension_delta",
+    # iceberg's init loads avro ("The iceberg extension requires the avro extension"): staged
+    # beside it from the same source (lead's ruling 2026-11-06, under the maintainer's decision).
+    "avro": "duckdb_extension_avro",
+}
 
-    This is a packaging defect (the wheel was built against a different DuckDB build), NOT a runtime
-    condition to paper over: an air-gapped/enterprise install must get every extension through PyPI, so
-    we fail loud with a precise remediation rather than silently reaching extensions.duckdb.org.
+
+class BundledExtensionsMissing(RuntimeError):
+    """The embedded extra is installed but an extension package lacks blobs for this DuckDB
+    version/platform, or one of its packages is absent.
+
+    This is a packaging defect (a wheel built against a different DuckDB build, or a partial install),
+    NOT a runtime condition to paper over: an air-gapped/enterprise install must get every extension
+    through PyPI, so we fail loud with a precise remediation rather than silently reaching
+    extensions.duckdb.org.
     """
 
 
-def stage_bundled_extensions(target: str | Path) -> Path:
-    """Copy the running platform's DuckDB extension blobs from the ``provisa-duckdb-ext`` PyPI package
-    into ``target`` (idempotent) and return it — the offline, firewall-safe alternative to DuckDB's
-    network ``INSTALL``. Point ``PROVISA_DUCKDB_EXT_DIR`` at the returned dir so every ``LOAD`` resolves
-    locally and ``extensions.duckdb.org`` is never contacted.
+def _core_wheel_blob(package: str, extension: str, raw_version: str) -> Path | None:
+    """Where ``package``'s wheel keeps ``extension`` for DuckDB ``raw_version``, or None when the
+    package is not installed. ``find_spec`` of a top-level package locates it without running it."""
+    spec = importlib.util.find_spec(package)
+    if spec is None or not spec.submodule_search_locations:
+        return None
+    (root,) = spec.submodule_search_locations
+    return Path(root) / "extensions" / raw_version / f"{extension}.duckdb_extension"
 
-    Raises ``ModuleNotFoundError`` when the package isn't installed (the caller decides whether to fall
-    back to the network — appropriate only for a dev checkout, never an enterprise embedded install),
-    and ``BundledExtensionsMissing`` when the package is present but has no blobs for this exact DuckDB
-    version + platform.
+
+def _copy_missing(files: list[Path], src: Path, dst: Path) -> None:
+    for blob in files:
+        out = dst / blob.relative_to(src)
+        if not out.exists():
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(blob, out)
+
+
+def stage_bundled_extensions(target: str | Path) -> Path:
+    """Copy the running platform's DuckDB extension blobs from the PyPI packages of the embedded extra
+    into ``target/<version>/<platform>/`` (idempotent) and return ``target``: the core extensions
+    (CORE_EXTENSION_WHEELS) from their third-party per-extension wheels, every other one from
+    ``provisa-duckdb-ext``. Each package is one wheel per platform, so the installer's own wheel
+    choice brings this platform's binaries -- the offline, firewall-safe alternative to DuckDB's
+    network ``INSTALL``. Point ``PROVISA_DUCKDB_EXT_DIR`` at the returned dir so every ``LOAD``
+    resolves locally, signature-checked, and ``extensions.duckdb.org`` is never contacted.
+
+    Raises ``ModuleNotFoundError`` when ``provisa-duckdb-ext`` isn't installed (a dev checkout without
+    the embedded extra; the caller decides), and ``BundledExtensionsMissing`` naming every package
+    that is absent or has no blobs for this exact DuckDB version + platform.
     """
     from provisa_duckdb_ext import ext_root  # type: ignore[import-not-found]  # ModuleNotFoundError propagates by design
 
@@ -90,18 +133,30 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     # Every file below the platform dir: a named repository's extension (EXTENSION_REPOSITORIES)
     # sits under repositories/<repository>/ beside the .info DuckDB loads it by.
     files = sorted(p for p in src.rglob("*") if p.is_file()) if src.is_dir() else []
+    problems: list[str] = []
     if not any(p.suffix == ".duckdb_extension" for p in files):
+        problems.append(f"provisa-duckdb-ext has none (looked in {src})")
+    core: list[Path] = []
+    for extension, package in CORE_EXTENSION_WHEELS.items():
+        wheel = package.replace("_", "-")
+        blob = _core_wheel_blob(package, extension, raw_version)
+        if blob is None:
+            problems.append(f"{extension}: {wheel} is not installed")
+        elif not blob.is_file():
+            problems.append(f"{extension}: {wheel} has none (looked for {blob})")
+        else:
+            core.append(blob)
+    if problems:
         raise BundledExtensionsMissing(
-            f"provisa-duckdb-ext has no DuckDB extensions for {platform} @ {raw_version} "
-            f"(looked in {src}); rebuild the package against duckdb {raw_version}."
+            f"DuckDB extensions missing for {platform} @ {raw_version}: "
+            + "; ".join(problems)
+            + f". Install provisa[embedded] for this platform, built against duckdb {raw_version}."
         )
 
     dst = Path(target) / raw_version / platform
-    for blob in files:
-        out = dst / blob.relative_to(src)
-        if not out.exists():
-            out.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(blob, out)
+    _copy_missing(files, src, dst)
+    for blob in core:
+        _copy_missing([blob], blob.parent, dst)
     return Path(target)
 
 
