@@ -994,9 +994,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         reads the store through its ATTACH, which caches the store's catalog: a schema created
         since is missing from it, and a read of a table in it fails "schema ... does not exist"
         (a view's first build, staged into an org schema the store did not hold yet). A Postgres
-        store's cache is cleared; an attached SQLite file has none."""
+        store's cache is cleared (postgres_scanner 2.0's postgres_clear_cache; pg_clear_cache is
+        gone); an attached SQLite file has none."""
         if self._ATTACH_TYPE_BY_SCHEME[self._store_scheme()] == "postgres":
-            self._con.cursor().execute("CALL pg_clear_cache()")
+            self._on_instance("CALL postgres_clear_cache()")
 
     def mv_store_schema(self, org_id: str) -> str:
         """The schema materialized views are written to: one that holds nothing else (REQ-1912).

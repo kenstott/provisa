@@ -70,3 +70,12 @@ def test_another_extension_is_loaded_with_no_postgres_setting():
         ).fetchone()[0]
         == 1
     )
+
+
+def test_a_postgres_store_s_catalog_cache_is_cleared_with_postgres_scanner_2_0_s_call(monkeypatch):
+    # postgres_scanner 2.0 names it postgres_clear_cache; pg_clear_cache is gone, and every read of
+    # a PostgreSQL store's replica or view failed on it.
+    rt = DuckDBFederationRuntime()
+    rt._ensure_postgres_loaded()
+    monkeypatch.setattr(rt, "_store_scheme", lambda: "postgresql")
+    rt._see_store_writes()
