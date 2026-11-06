@@ -20,6 +20,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { NAV_GROUPS } from "../components/navGroups";
+import { IMPORT_RIGHTS, IMPORT_SURFACE, meetsRequirement } from "../lib/capabilities";
 
 const SRC = resolve(__dirname, "..");
 
@@ -49,9 +51,15 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/ai-models": "org_settings",
   "/admin/catalogs": "org_settings", // REQ-2122: the org's own catalog connections
   "/admin/metadata-export": "org_settings",
-  "/admin/import": "org_settings", // REQ-1483: Hasura v2 / DDN import
-  "/admin/tags": "org_settings",
-  "/admin/classification-kinds": "org_settings", // REQ-2147: the kinds the org's profiler tests for
+  // REQ-1327: an import writes objects of several layers; any of their rights opens the page
+  // (asserted below with the rest of its requirement).
+  "/admin/import": "table_registration", // REQ-1483: Hasura v2 / DDN import
+  // REQ-1944: a table editor or a holder of sensitive_data, the rights the tag mutations ask.
+  "/admin/tags": "table_registration",
+  // REQ-2147, REQ-1327: classification is the steward's, on the decisions' own right.
+  "/admin/classification-kinds": "sensitive_data",
+  // REQ-2185, REQ-1327: curated with the glossary, which adds its documents.
+  "/admin/reference-library": "glossary_rw",
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
   // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
   // understand a column is not administering the org, so every seeded role reaches the surface;
@@ -69,7 +77,8 @@ const ORG_SCOPED: Record<string, string> = {
   // seeded role carries, so every member of an org reaches their own secrets and nobody else's.
   "/admin/my-secrets": "usage",
   "/admin/scheduled-tasks": "org_settings",
-  "/admin/requests": "org_settings",
+  // REQ-1327: every member sees the requests it made; each row's own right decides it.
+  "/admin/requests": "usage",
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external
   // coordinator) is the org's decision. The engine KIND stays deployment-wide, below.
   "/admin/org-engine": "org_settings",
@@ -100,21 +109,49 @@ const DEPLOYMENT_WIDE = [
   "/admin/platform",
 ];
 
+// Surfaces whose gate is its own <Route> rather than a row of the route table.
+const OWN_ROUTE = ["/admin/requests", "/admin/environments", "/admin/import", "/admin/tags"];
+
 describe("admin surface capabilities", () => {
   it("gates every org-scoped surface on the org-scoped right", () => {
     const routes = routeCapabilities();
     for (const [path, capability] of Object.entries(ORG_SCOPED)) {
-      // /admin/requests and /admin/environments carry their own <Route> rather than a table row,
-      // so each is checked below.
-      if (path === "/admin/requests" || path === "/admin/environments") continue;
+      // These carry their own <Route> rather than a table row, so each is checked below.
+      if (OWN_ROUTE.includes(path)) continue;
       expect(routes[path], path).toBe(capability);
     }
   });
 
-  it("gates the approvals route on org_settings", () => {
+  it("gates the approvals route on usage, as its nav entry is", () => {
     const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
     const requests = source.slice(source.indexOf('path="/admin/requests"'));
-    expect(requests.slice(0, 400)).toContain('capability="org_settings"');
+    expect(requests.slice(0, 400)).toContain('capability="usage"');
+    expect(navBarAdminCapabilities()["/admin/requests"]).toBe("usage");
+  });
+
+  it("gates tags on the tag mutations' rights, route and nav alike", () => {
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/tags"')).slice(0, 400);
+    expect(route).toContain('capability="table_registration"');
+    expect(route).toContain('orCapability="sensitive_data"');
+    const tags = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/tags");
+    expect(tags).toMatchObject({
+      capability: "table_registration",
+      orCapability: "sensitive_data",
+    });
+  });
+
+  it("opens import on any imported object's right, route and nav alike", () => {
+    const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const route = source.slice(source.indexOf('path="/admin/import"')).slice(0, 400);
+    expect(route).toContain("{...IMPORT_SURFACE}");
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/import");
+    expect(item).toMatchObject(IMPORT_SURFACE);
+    // The platform holds no data capability, so its rights never open an import.
+    expect(IMPORT_RIGHTS).not.toContain("platform_settings");
+    expect(IMPORT_RIGHTS).not.toContain("cross_org");
+    expect(meetsRequirement(["glossary_rw"], IMPORT_SURFACE)).toBe(true);
+    expect(meetsRequirement(["observability", "platform_settings"], IMPORT_SURFACE)).toBe(false);
   });
 
   it("gates the environments route on managing any environment or the ones the caller owns", () => {
@@ -154,7 +191,7 @@ describe("admin surface capabilities", () => {
     const nav = navBarAdminCapabilities();
     const routes = routeCapabilities();
     for (const [path, capability] of Object.entries(nav)) {
-      if (!(path in routes)) continue; // /admin/requests — its own Route, asserted above
+      if (!(path in routes)) continue; // its own Route, asserted above
       expect(routes[path], path).toBe(capability);
     }
   });
