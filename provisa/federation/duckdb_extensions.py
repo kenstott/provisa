@@ -57,6 +57,10 @@ EXTENSION_REPOSITORIES: dict[str, tuple[str, str]] = {
 #: platform: the extensions staged there (REQ-1142, ATTACHABLE MEANS STAGED).
 MANIFEST = "staged.json"
 
+#: Where staging gathers the named repositories' trust anchors, under ``<version>/<platform>/``:
+#: the extension_repository_directory a connection to the staged directory is given.
+REPOSITORY_ANCHORS = "extension_repositories"
+
 #: The name a connector gives an extension whose file is named otherwise (DuckDB's own aliases).
 _SHORT_NAMES = {"postgres_scanner": "postgres", "sqlite_scanner": "sqlite"}
 
@@ -165,6 +169,14 @@ def stage_bundled_extensions(target: str | Path) -> Path:
         for p in files
         if p.suffix == ".duckdb_extension" and not p.with_name(f"{p.name}.info").is_file()
     ]
+    # A named repository's extensions load only where DuckDB knows the repository and its keys.
+    anchors = _repository_anchors(src, files)
+    problems += [
+        f"{repo}: no trust anchor ({repo}.duckdb_extension.repo.json) beside its extensions in "
+        "provisa-duckdb-ext, so DuckDB does not know the repository"
+        for repo, anchor in anchors.items()
+        if anchor is None
+    ]
     core: list[Path] = []
     for extension, package in CORE_EXTENSION_WHEELS.items():
         wheel = package.replace("_", "-")
@@ -186,11 +198,44 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     _copy_missing(files, src, dst)
     for blob in core:
         _copy_missing([blob], blob.parent, dst)
-    _write_manifest(dst, raw_version, platform)
+    for anchor in anchors.values():
+        if anchor is not None:
+            _copy_missing([anchor], anchor.parent, dst / REPOSITORY_ANCHORS)
+    write_manifest(dst, raw_version, platform)
     return Path(target)
 
 
-def _write_manifest(dst: Path, raw_version: str, platform: str) -> None:
+def _repository_anchors(src: Path, files: list[Path]) -> dict[str, Path | None]:
+    """Each named repository the package carries extensions of (``repositories/<repo>/``), with
+    its trust anchor beside them, or None where it has none."""
+    out: dict[str, Path | None] = {}
+    for p in files:
+        rel = p.relative_to(src).parts
+        if p.suffix == ".duckdb_extension" and len(rel) == 3 and rel[0] == "repositories":
+            anchor = p.parent / f"{rel[1]}.duckdb_extension.repo.json"
+            out[rel[1]] = anchor if anchor.is_file() else None
+    return out
+
+
+def extension_config() -> dict[str, str | bool]:
+    """The configuration a DuckDB connection is opened with to load from the staged extension
+    directory: the directory, the named repositories' trust anchors staged in it (DuckDB 2.0 reads
+    them only at startup), and no network autoinstall. Empty where nothing is staged: DuckDB's own
+    directory and repositories (a server or a dev checkout, REQ-1142)."""
+    directory = extension_directory()
+    if directory is None:
+        return {}
+    raw_version, platform = running_version_platform()
+    return {
+        "extension_directory": directory,
+        "extension_repository_directory": str(
+            Path(directory) / raw_version / platform / REPOSITORY_ANCHORS
+        ),
+        "autoinstall_known_extensions": False,
+    }
+
+
+def write_manifest(dst: Path, raw_version: str, platform: str) -> None:
     """Record what ``dst`` holds: every extension staged there, a named repository's included,
     by its file name (REQ-1142, ATTACHABLE MEANS STAGED: the engine reads this, not the connectors
     it declares)."""
@@ -258,10 +303,7 @@ def connect() -> duckdb.DuckDBPyConnection:
     """A DuckDB connection honoring ``PROVISA_DUCKDB_EXT_DIR`` — the shared entry point for any
     caller that needs a bare connection able to load bundled extensions (probing here,
     the VSS catalog index in ``duckdb_runtime.build_vss_index_connection``)."""
-    ext_dir = extension_directory()
-    config: dict[str, str | bool | int | float | list[str]] = (
-        {"extension_directory": ext_dir} if ext_dir else {}
-    )
+    config: dict[str, str | bool | int | float | list[str]] = dict(extension_config())
     return engine_memory.connect(extra=config)
 
 
@@ -310,13 +352,23 @@ def load_staged(con: duckdb.DuckDBPyConnection, extension: str) -> bool:
     """LOAD ``extension`` from the extension directory, never INSTALLing it, so the connection does
     not reach the network (REQ-2171). False where it is not staged: the caller refuses by name.
 
-    An extension of EXTENSION_REPOSITORIES loads from its repository's staged copy alone."""
+    An extension of EXTENSION_REPOSITORIES loads from its repository's staged copy alone, and only
+    where this DuckDB knows the repository: DuckDB 2.0 keeps a user-provided repository, with the
+    keys it trusts its extensions' signatures by, in its extension_repository_directory, and one
+    it does not know cannot be loaded from (a machine that never staged it)."""
     directory = extension_directory()
     if directory:
         con.execute(f"SET extension_directory = '{directory}'")
     statement = f"LOAD {extension}"
     if extension in EXTENSION_REPOSITORIES:
-        statement += f" FROM {EXTENSION_REPOSITORIES[extension][0]}"
+        repository = EXTENSION_REPOSITORIES[extension][0]
+        known = con.execute(
+            "SELECT count(*) FROM duckdb_extension_repositories() WHERE repository_name = ?",
+            [repository],
+        ).fetchall()[0][0]
+        if not known:
+            return False
+        statement += f" FROM {repository}"
     try:
         con.execute(statement)
     except duckdb.IOException:

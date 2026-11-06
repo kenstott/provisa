@@ -110,8 +110,12 @@ def main(src_root: Path, label: str, budget: int = MAX_WHEEL_BYTES - HEADROOM_BY
     # extension name -> its files (the binary and, for a named repository's, its .info), each with
     # its path in the layout.
     extensions: dict[str, list[tuple[Path, Path]]] = {}
+    # A named repository's trust anchor (<repo>.duckdb_extension.repo.json), by the directory it
+    # shares with that repository's extensions: carried with each of them, never on its own.
+    anchors: dict[Path, tuple[Path, Path]] = {}
     for ext_file in sorted(src.rglob("*.duckdb_extension*")):
-        if ext_file.suffix not in (".duckdb_extension", ".info"):
+        is_anchor = ext_file.name.endswith(".duckdb_extension.repo.json")
+        if ext_file.suffix not in (".duckdb_extension", ".info") and not is_anchor:
             continue
         parts = ext_file.relative_to(src).parts
         start = next((i for i, part in enumerate(parts) if _VERSION_DIR.fullmatch(part)), None)
@@ -128,8 +132,15 @@ def main(src_root: Path, label: str, budget: int = MAX_WHEEL_BYTES - HEADROOM_BY
                 f"{ext_file} is not under DuckDB platform {duckdb_platform}, "
                 f"the platform of the {label} wheel"
             )
+        if is_anchor:
+            anchors[rel.parent] = (ext_file, rel)
+            continue
         name = ext_file.name.split(".duckdb_extension")[0]
         extensions.setdefault(name, []).append((ext_file, rel))
+    for files in extensions.values():
+        anchor = anchors.get(files[0][1].parent)
+        if anchor is not None:
+            files.append(anchor)
     if not extensions:
         return _err(f"no extension binaries found for {label} — nothing to package")
     packed: list[str] = []

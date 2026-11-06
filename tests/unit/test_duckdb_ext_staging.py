@@ -165,6 +165,7 @@ def test_stage_copies_a_named_repositorys_extension_with_its_info(tmp_path, monk
     repo.mkdir(parents=True)
     (repo / "crypto.duckdb_extension").write_bytes(b"FAKE-CRYPTO")
     (repo / "crypto.duckdb_extension.info").write_bytes(b"FAKE-INFO")
+    (repo / "query_farm.duckdb_extension.repo.json").write_text("{}")  # its trust anchor
     _install_fake_package(monkeypatch, pkg)
     _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
 
@@ -195,7 +196,10 @@ def test_load_staged_loads_crypto_from_its_repository_only(monkeypatch):
         def __init__(self):
             self.statements: list[str] = []
 
-        def execute(self, statement):
+        def execute(self, statement, params=None):
+            if statement.startswith("SELECT count(*) FROM duckdb_extension_repositories()"):
+                assert params == ["query_farm"]
+                return types.SimpleNamespace(fetchall=lambda: [(1,)])  # the repository is known
             self.statements.append(statement)
             raise duckdb.IOException("IO Error: not found")
 
@@ -219,3 +223,82 @@ def test_a_bundled_extension_without_its_info_is_refused_by_name(tmp_path, monke
         monkeypatch.delitem(sys.modules, package, raising=False)
     with pytest.raises(BundledExtensionsMissing, match=r"mongo: no \.info"):
         stage_bundled_extensions(tmp_path / "staged")
+
+
+def test_load_staged_crypto_where_query_farm_is_not_a_known_repository_is_false(tmp_path):
+    # A fresh machine knows no user-provided repository (DuckDB 2.0 keeps them, with their
+    # signing keys, in extension_repository_directory): LOAD crypto FROM query_farm is then a
+    # binder error, and the call is refused by name like any extension not staged.
+    from provisa.federation.duckdb_extensions import load_staged
+
+    con = duckdb.connect(
+        config={
+            "extension_directory": str(tmp_path / "ext"),
+            "extension_repository_directory": str(tmp_path / "no-repositories"),
+        }
+    )
+    try:
+        known = {
+            r[0]
+            for r in con.execute(
+                "SELECT repository_name FROM duckdb_extension_repositories()"
+            ).fetchall()
+        }
+        assert "query_farm" not in known
+        assert load_staged(con, "crypto") is False
+    finally:
+        con.close()
+
+
+def _with_trust(pkg, ver, plat):
+    repo = pkg / ver / plat / "repositories" / "query_farm"
+    repo.mkdir(parents=True)
+    (repo / "crypto.duckdb_extension").write_bytes(b"CRYPTO")
+    (repo / "crypto.duckdb_extension.info").write_bytes(b"INFO")
+    (repo / "query_farm.duckdb_extension.repo.json").write_text('{"name": "query_farm"}')
+    return repo
+
+
+def test_staging_gathers_the_trust_anchors_duckdb_reads_repositories_from(tmp_path, monkeypatch):
+    from provisa.federation.duckdb_extensions import REPOSITORY_ANCHORS
+
+    ver, plat = _duckdb_version_platform()
+    pkg = _provisa_ext(tmp_path, ver, plat)
+    _with_trust(pkg, ver, plat)
+    _install_fake_package(monkeypatch, pkg)
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
+    for package in CORE_EXTENSION_WHEELS.values():
+        monkeypatch.delitem(sys.modules, package, raising=False)
+
+    target = stage_bundled_extensions(tmp_path / "staged")
+    anchors = target / ver / plat / REPOSITORY_ANCHORS
+    assert (
+        anchors / "query_farm.duckdb_extension.repo.json"
+    ).read_text() == '{"name": "query_farm"}'
+
+
+def test_a_repositorys_extension_without_its_trust_anchor_is_refused_by_name(tmp_path, monkeypatch):
+    ver, plat = _duckdb_version_platform()
+    pkg = _provisa_ext(tmp_path, ver, plat)
+    repo = _with_trust(pkg, ver, plat)
+    (repo / "query_farm.duckdb_extension.repo.json").unlink()
+    _install_fake_package(monkeypatch, pkg)
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
+    for package in CORE_EXTENSION_WHEELS.values():
+        monkeypatch.delitem(sys.modules, package, raising=False)
+    with pytest.raises(BundledExtensionsMissing, match="query_farm: no trust anchor"):
+        stage_bundled_extensions(tmp_path / "staged")
+
+
+def test_a_staged_directory_is_connected_to_with_its_trust_anchors(tmp_path, monkeypatch):
+    from provisa.federation.duckdb_extensions import REPOSITORY_ANCHORS, extension_config
+
+    ver, plat = _duckdb_version_platform()
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(tmp_path))
+    assert extension_config() == {
+        "extension_directory": str(tmp_path),
+        "extension_repository_directory": str(tmp_path / ver / plat / REPOSITORY_ANCHORS),
+        "autoinstall_known_extensions": False,
+    }
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR")
+    assert extension_config() == {}

@@ -86,6 +86,7 @@ def _fake_bundle(tmp_path, monkeypatch, names) -> None:
     (pkg / "repositories" / "query_farm").mkdir(parents=True)
     (pkg / "repositories" / "query_farm" / "crypto.duckdb_extension").write_bytes(b"X")
     (pkg / "repositories" / "query_farm" / "crypto.duckdb_extension.info").write_bytes(b"I")
+    (pkg / "repositories" / "query_farm" / "query_farm.duckdb_extension.repo.json").write_text("{}")
     mod = types.ModuleType("provisa_duckdb_ext")
     mod.ext_root = lambda: tmp_path / "pkg"  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "provisa_duckdb_ext", mod)

@@ -102,3 +102,24 @@ def test_an_installed_extension_without_its_info_is_not_mirrored(tmp_path):
     (tmp_path / "x.duckdb_extension").write_bytes(b"BIN")
     with pytest.raises(FileNotFoundError, match="x.duckdb_extension.info"):
         mirror._copy_extension(tmp_path / "x.duckdb_extension", tmp_path / "out")  # noqa: SLF001
+
+
+def test_a_named_repositorys_trust_anchor_is_mirrored_beside_its_extensions(tmp_path):
+    # DuckDB 2.0 loads from a user-provided repository (crypto FROM query_farm) only where it
+    # knows the repository and the keys it signs with: the file CREATE EXTENSION REPOSITORY writes
+    # in extension_repository_directory, which an air-gapped install must be given.
+    mirror = _mirror()
+    repos = tmp_path / "repos"
+    repos.mkdir()
+    (repos / "query_farm.duckdb_extension.repo.json").write_text('{"name": "query_farm"}')
+    dst = tmp_path / "out" / "v2.0.0" / "osx_arm64" / "repositories" / "query_farm"
+    mirror._copy_trust(repos, "query_farm", dst)  # noqa: SLF001
+    assert (dst / "query_farm.duckdb_extension.repo.json").read_text() == '{"name": "query_farm"}'
+
+
+def test_a_repository_without_its_trust_anchor_is_not_mirrored(tmp_path):
+    import pytest
+
+    mirror = _mirror()
+    with pytest.raises(FileNotFoundError, match="query_farm.duckdb_extension.repo.json"):
+        mirror._copy_trust(tmp_path, "query_farm", tmp_path / "out")  # noqa: SLF001

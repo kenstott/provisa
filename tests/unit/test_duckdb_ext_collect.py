@@ -233,3 +233,20 @@ def test_check_wheels_fails_a_missing_platform_and_a_universal_wheel(tmp_path, c
 def test_the_100_mb_limit_is_pypis():
     # "400 File too large. Limit for project 'provisa-duckdb-ext' is 100 MB" (run 42238598659).
     assert _collect().MAX_WHEEL_BYTES == 100 * 1000 * 1000
+
+
+def test_collect_carries_a_repositorys_trust_anchor_with_its_extensions(tmp_path, monkeypatch):
+    collect = _collect()
+    dest = tmp_path / "_ext"
+    monkeypatch.setattr(collect, "_DEST", dest)
+    version = collect._pinned_duckdb_version()
+    mirror = _mirrored(tmp_path / "mirror", version)
+    repo = mirror / "osx-arm64" / f"v{version}" / "osx_arm64" / "repositories" / "query_farm"
+    (repo / "query_farm.duckdb_extension.repo.json").write_text("{}")
+
+    assert collect.main(mirror, "osx-arm64") == 0
+
+    packed = dest / f"v{version}" / "osx_arm64" / "repositories" / "query_farm"
+    assert (packed / "query_farm.duckdb_extension.repo.json").read_text() == "{}"
+    # It belongs to the repository, not a packed extension of its own name.
+    assert not list(dest.rglob("query_farm.duckdb_extension"))

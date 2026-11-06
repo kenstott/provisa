@@ -29,7 +29,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import re
 import threading
 from collections.abc import Callable, Iterator
@@ -217,12 +216,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # from the provisa-duckdb-ext PyPI package), load extensions from it and DISABLE network
         # autoinstall — an air-gapped/enterprise install must never silently reach extensions.duckdb.org;
         # a missing extension fails loud instead. Unset (dev/server) keeps DuckDB's default network path.
-        _ext_dir = os.environ.get("PROVISA_DUCKDB_EXT_DIR")
-        _cfg: dict[str, str | bool | int | float | list[str]] = (
-            {"extension_directory": _ext_dir, "autoinstall_known_extensions": False}
-            if _ext_dir
-            else {}
-        )
+        # The staged named repositories' trust anchors come with it (DuckDB 2.0 reads them at startup).
+        from provisa.federation.duckdb_extensions import extension_config
+
+        _cfg: dict[str, str | bool | int | float | list[str]] = dict(extension_config())
         # REQ-2050: the engine's zone is UTC, so an instant (TIMESTAMPTZ) reads as UTC and a
         # literal with no zone compared to one is UTC -- never the host's zone.
         _cfg["TimeZone"] = "UTC"

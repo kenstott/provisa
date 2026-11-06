@@ -92,12 +92,26 @@ def _copy_extension(src: Path, dst_dir: Path) -> None:
     shutil.copy(info, dst_dir / info.name)
 
 
+def _copy_trust(repos: Path, repo: str, dst_dir: Path) -> None:
+    """Copy a named repository's trust anchor (its name, prefix and signing keys, the file CREATE
+    EXTENSION REPOSITORY writes in ``extension_repository_directory``) beside its extensions:
+    DuckDB 2.0 loads from a repository only where it knows it, and an air-gapped install has
+    no other way to."""
+    anchor = repos / f"{repo}.duckdb_extension.repo.json"
+    if not anchor.is_file():
+        raise FileNotFoundError(f"{anchor} (DuckDB loads from {repo} only with it)")
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(anchor, dst_dir / anchor.name)
+
+
 def main(out: Path) -> int:
-    con = duckdb.connect()
+    shutil.rmtree(out, ignore_errors=True)
+    repos = (out / "_repositories").resolve()  # where CREATE EXTENSION REPOSITORY writes its anchor
+    repos.mkdir(parents=True)
+    con = duckdb.connect(config={"extension_repository_directory": str(repos)})
     (raw_version,) = con.execute("SELECT version()").fetchall()[0]  # "v2.0.0": the on-disk dir
     version = raw_version.lstrip("v")
     (platform,) = con.execute("PRAGMA platform").fetchall()[0]
-    shutil.rmtree(out, ignore_errors=True)
     ext_dir = (
         out / "_install"
     ).resolve()  # DuckDB drops <ext_dir>/<version>/<platform>/<real>.duckdb_extension
@@ -139,6 +153,8 @@ def main(out: Path) -> int:
         if ok and src.exists():
             dst_dir = out / sub
             _copy_extension(src, dst_dir)
+            if named:
+                _copy_trust(repos, repo, dst_dir)
             rel = (sub / src.name).as_posix()
             records.append({"name": name, "repo": repo, "file": rel,
                             "sha256": _sha256(dst_dir / src.name), "loaded": True,
@@ -153,6 +169,7 @@ def main(out: Path) -> int:
                 failures.append(f"{name}: not available for {platform}@{version}")
 
     shutil.rmtree(ext_dir, ignore_errors=True)
+    shutil.rmtree(repos, ignore_errors=True)
     (out / "manifest.json").write_text(
         json.dumps(
             {"duckdb_version": version, "platform": platform, "extensions": records}, indent=2

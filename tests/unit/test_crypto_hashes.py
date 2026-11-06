@@ -28,7 +28,13 @@ import pytest
 import sqlglot
 from sqlglot.dialects.dialect import Dialect
 
-from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
+from provisa.federation import duckdb_extensions
+from provisa.federation.duckdb_extensions import (
+    EXTENSION_REPOSITORIES,
+    REPOSITORY_ANCHORS,
+    running_version_platform,
+    write_manifest,
+)
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
@@ -102,26 +108,36 @@ RECORDED: dict[str, str | None] = {
 
 @pytest.fixture(scope="session")
 def crypto_extension(tmp_path_factory):
-    """The crypto extension staged, as an install's step does: register only loads it."""
-    directory = str(tmp_path_factory.mktemp("duckdb-extensions"))
-    con = duckdb.connect(config={"extension_directory": directory})
-    # crypto is Query.Farm's on DuckDB 2.0: installed from its repository (one DuckDB names), as
-    # provisa-duckdb-ext mirrors it, into repositories/query_farm/, where LOAD crypto FROM
-    # query_farm finds it.
+    """The crypto extension staged, as an install's step does: register only loads it. On DuckDB
+    2.0 crypto is Query.Farm's, from its own repository, which DuckDB trusts only by the anchor it
+    keeps in its extension_repository_directory: the repository is created there (the staged
+    directory's, extension_config's), crypto installed from it into repositories/query_farm/,
+    and the manifest written, as stage_bundled_extensions leaves a staged directory."""
+    directory = tmp_path_factory.mktemp("duckdb-extensions")
+    version, platform = running_version_platform()
+    staged = directory / version / platform
+    repository, prefix = EXTENSION_REPOSITORIES["crypto"]
+    con = duckdb.connect(
+        config={
+            "extension_directory": str(directory),
+            "extension_repository_directory": str(staged / REPOSITORY_ANCHORS),
+        }
+    )
     con.execute("SET allow_extension_repositories = 'allowed'")
-    con.execute(f"INSTALL crypto FROM {EXTENSION_REPOSITORIES['crypto'][0]}")
+    con.execute(f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repository} WITH PREFIX '{prefix}'")
+    con.execute(f"INSTALL crypto FROM {repository}")
     for extension in ("icu", "inet"):  # what a connection on this directory autoloads no more
         con.execute(f"INSTALL {extension}")
     con.close()
-    patch = pytest.MonkeyPatch()
-    patch.setenv("PROVISA_DUCKDB_EXT_DIR", directory)
-    yield directory
-    patch.undo()
+    write_manifest(staged, version, platform)
+    return str(directory)
 
 
 @pytest.fixture
-def con(crypto_extension):
-    connection = duckdb.connect()
+def con(crypto_extension, monkeypatch):
+    # The engine's own connection: opened on the staged directory (duckdb_extensions.connect).
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", crypto_extension)
+    connection = duckdb_extensions.connect()
     register(connection)
     return connection
 
