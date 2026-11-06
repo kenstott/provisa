@@ -25,8 +25,10 @@ from typing import Any
 
 import pytest
 
+from provisa.core.pg_error import from_engine
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_forms_types import REFUSED as NOT_READ
 from provisa.transpiler.pg_xml import XmlFunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 from tests.unit.pgwire.pg17_forms_answers import RECORDED
@@ -51,6 +53,13 @@ def _served(sql: str, rows: list[Any], oids: list[int]) -> list[tuple]:
     return [tuple(cell(i, value) for i, value in enumerate(row)) for row in rows]
 
 
+def _refused_by_its_form(error: Exception) -> bool:
+    """A value the form refuses by name where it runs, as not_served writes it: Provisa's refusal,
+    not the engine's own error (a pattern's anchor past regexp_replace's start)."""
+    said = from_engine(error)
+    return said is not None and said.sqlstate == "0A000" and str(said).endswith(NOT_READ)
+
+
 def replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) -> dict[str, str]:
     """Each statement's outcome, where it is not the answer PostgreSQL gave."""
     found: dict[str, str] = {}
@@ -61,6 +70,9 @@ def replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) -> 
         except (FunctionRefused, XmlFunctionRefused):
             found[sql] = REFUSED
         except Exception as error:  # noqa: BLE001 -- any error of the engine's is its outcome
+            if _refused_by_its_form(error):
+                found[sql] = REFUSED
+                continue
             found[sql] = ERROR
             _SAID[sql] = str(error)[:200]
         else:
