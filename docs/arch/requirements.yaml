@@ -92621,11 +92621,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a citation; an assignment without one is then shown as a gap in coverage and in the tag''s review, not
     refused. Assignment citations are seen in the assignment''s detail, never as fields on the object, and
     logged decisions and Polly''s answers include them alongside the definition''s. (Amended 2026-11-06,
-    DECISION-TRACED, A STANDARD POLICY TAG:) The registry also ships decision-traced, a standard policy
-    tag that applies to governed objects (relationships, masks, row rules, roles, freshness policies, data
-    products and their agreements) and requires a citation on each assignment: the project requirement section
-    that justifies that decision. A tagged decision with no citation is a gap in coverage and in the tag''s
-    review, and a revised requirement section flags exactly the decisions that cite it.'
+    DECISION-TRACED, A STANDARD POLICY TAG:) [SUPERSEDED by REQ-2208, 2026-11-06 -- decision-traced is a
+    template in the tag builder, not a shipped tag (2026-11-06). Kept here for history; do not implement
+    against it.] The registry also ships decision-traced, a standard policy tag that applies to governed
+    objects (relationships, masks, row rules, roles, freshness policies, data products and their agreements)
+    and requires a citation on each assignment: the project requirement section that justifies that decision.
+    A tagged decision with no citation is a gap in coverage and in the tag''s review, and a revised requirement
+    section flags exactly the decisions that cite it. [END SUPERSEDED BLOCK] (Amended 2026-11-06, ONE TAG
+    BUILDER, WITH TEMPLATES:) There is one tag builder, the registry''s tag editor, and no separate kind
+    of policy tag: any tag can be given a definition citing why it exists, the objects it applies to, whether
+    each assignment must carry its own citation, a review cadence and reviewer (REQ-2209), and, for freshness,
+    the freshness parameters (REQ-858); a tag uses only what its author sets. What earlier amendments call
+    a policy tag is a tag built this way. The builder offers templates that fill its form, and nothing from
+    a template exists until someone chooses and saves it. decision-traced is the worked example: it applies
+    to governed objects (relationships, masks, row rules, roles, freshness policies, data products and their
+    agreements), each assignment must cite the project requirement section that justifies the decision,
+    and a missing citation is a gap in coverage and in review.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
