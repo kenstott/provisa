@@ -55,6 +55,19 @@ NULL_ELEMENTS: dict[str, list[float | None]] = {
     ],
 }
 
+_NONE = "FROM (VALUES (1.0::float8)) AS t(c1) WHERE c1 > 9"
+_ALL_NULL = "FROM (VALUES (NULL::float8), (NULL::float8)) AS t(c1)"
+#: A percentile over no keys -- no rows, or only NULL ones -- is NULL, a fraction or an array of
+#: them alike, as PostgreSQL 17 answers (the profiler's quantiles of an empty column).
+NO_KEYS: tuple[str, ...] = (
+    f"SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY c1) AS v {_NONE}",
+    f"SELECT percentile_cont(ARRAY[0, 0.01, 0.5, 1]::float8[]) WITHIN GROUP (ORDER BY c1) AS v {_NONE}",
+    "SELECT percentile_cont(ARRAY[0, 0.01, 0.5, 1]::float8[]) WITHIN GROUP (ORDER BY c1 DESC) AS v "
+    f"{_ALL_NULL}",
+    f"SELECT percentile_disc(ARRAY[0.25, 1]::float8[]) WITHIN GROUP (ORDER BY c1) AS v {_ALL_NULL}",
+    f"SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY c1) AS v {_NONE}",
+)
+
 
 def agrees(got: list[float | None], want: list[float | None]) -> bool:
     """Each element PostgreSQL's: NULL where it is NULL, else within a relative 1e-14."""
@@ -104,3 +117,16 @@ def test_an_interval_percentile_keeps_a_null_element_in_its_place(connection):
     )
     got = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
     assert got == [datetime.timedelta(days=2), None]
+
+
+@pytest.mark.parametrize("sql", NO_KEYS)
+def test_duckdb_answers_null_over_no_keys(connection, sql: str):
+    assert connection.execute(transpile(sql, "duckdb")).fetchone()[0] is None
+
+
+@pytest.mark.parametrize("sql", NO_KEYS)
+def test_trino_reads_no_element_of_no_keys(sql: str):
+    # Trino's element_at refuses an index below 1 ("SQL array indices start at 1"), and the line
+    # between two keys over no keys reads index 0: the sorted keys answer NULL when there are none,
+    # before any element of them is read (test_percentile_null_elements_on_engines runs it).
+    assert "CASE WHEN CARDINALITY(_s) = 0 THEN NULL ELSE" in transpile(sql, "trino")

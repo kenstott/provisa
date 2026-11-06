@@ -21,7 +21,7 @@ import os
 import pytest
 
 from provisa.transpiler.transpile import transpile
-from tests.unit.test_percentile_forms_on_engines import NULL_ELEMENTS, agrees
+from tests.unit.test_percentile_forms_on_engines import NO_KEYS, NULL_ELEMENTS, agrees
 
 pytestmark = [pytest.mark.integration]
 
@@ -40,6 +40,18 @@ def test_trino_answers_a_null_element_in_its_place(trino_conn):
         if not agrees(got, want):
             wrong[sql] = got
     assert not wrong, wrong
+
+
+@pytest.mark.requires_trino
+def test_trino_answers_null_over_no_keys(trino_conn):
+    """No rows, or only NULL keys: NULL, as PostgreSQL answers, not Trino's refusal of the index 0
+    the line between two keys reads over none (the profiler's quantiles of an empty column)."""
+    got = {}
+    for sql in NO_KEYS:
+        cursor = trino_conn.cursor()
+        cursor.execute(transpile(sql, "trino"))
+        got[sql] = cursor.fetchall()[0][0]
+    assert got == dict.fromkeys(NO_KEYS), got
 
 
 @pytest.mark.requires_clickhouse
