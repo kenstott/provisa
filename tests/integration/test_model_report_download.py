@@ -38,7 +38,7 @@ from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import report_router
 from provisa.api.startup_seed import _seed_view
 from provisa.api.metadata_export import workbook as wb
-from provisa.core import domain_policy
+from provisa.core import domain_policy, pgvector
 from provisa.core.config_loader import apply_config, parse_config_dict
 from provisa.security.inheritance import with_own_domains
 
@@ -70,6 +70,9 @@ _ROLES = {
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def _init_schema(tenant_db):
     async with tenant_db.acquire() as conn:
+        # REQ-2185: schema.sql declares the library's pgvector columns; a node creates the
+        # extension before it lays an org's schema out (core.db), as it is here.
+        await pgvector.require(conn)
         await conn.execute(SCHEMA_SQL)
 
 
