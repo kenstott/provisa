@@ -160,21 +160,18 @@ def load_staged(con: duckdb.DuckDBPyConnection, extension: str) -> bool:
     """LOAD ``extension`` from the extension directory, never INSTALLing it, so the connection does
     not reach the network (REQ-2171). False where it is not staged: the caller refuses by name.
 
-    An extension of EXTENSION_REPOSITORIES loads from its repository's staged copy; a DuckDB before
-    2.0 has no ``LOAD ... FROM`` (a parser error) and loads the plain, community install."""
+    An extension of EXTENSION_REPOSITORIES loads from its repository's staged copy alone."""
     directory = extension_directory()
     if directory:
         con.execute(f"SET extension_directory = '{directory}'")
-    statements = [f"LOAD {extension}"]
+    statement = f"LOAD {extension}"
     if extension in EXTENSION_REPOSITORIES:
-        statements.insert(0, f"LOAD {extension} FROM {EXTENSION_REPOSITORIES[extension][0]}")
-    for statement in statements:
-        try:
-            con.execute(statement)
-        except (duckdb.IOException, duckdb.ParserException):
-            continue
-        return True
-    return False
+        statement += f" FROM {EXTENSION_REPOSITORIES[extension][0]}"
+    try:
+        con.execute(statement)
+    except duckdb.IOException:
+        return False
+    return True
 
 
 def _fetch(con: duckdb.DuckDBPyConnection):

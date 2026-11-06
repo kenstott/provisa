@@ -272,3 +272,14 @@ def test_run_sync_raises_any_other_engine_error_as_duckdb_raises_it(runtime):
     assert next(read)
     with pytest.raises(duckdb.InvalidInputException, match="Invalid Input Error: no$"):
         list(read)
+
+
+def test_run_arrow_stream_reads_its_batches_lazily(runtime):
+    """REQ-986: the Arrow transport's stream is pulled batch by batch, so opening it computes no
+    more than DuckDB runs to start the statement: an engine error in a later batch is met only as
+    that batch is read, after the first full batch has been handed over."""
+    schema, batches = runtime.run_arrow_stream(_LATE_ERROR)
+    assert schema.names == ["v"]
+    assert next(batches).num_rows == _ARROW_STREAM_BATCH_ROWS
+    with pytest.raises(OSError, match="postgresql-error 22012: division by zero"):
+        list(batches)

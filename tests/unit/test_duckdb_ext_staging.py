@@ -93,8 +93,7 @@ def test_stage_copies_a_named_repositorys_extension_with_its_info(tmp_path, monk
 
 
 def test_load_staged_crypto_unstaged_is_false_never_an_error(tmp_path, monkeypatch):
-    # Nothing staged: whichever LOAD this DuckDB parses (LOAD crypto FROM query_farm on 2.0, plain
-    # LOAD before it, where FROM is a parser error) fails, and the caller refuses by name.
+    # Nothing staged: LOAD crypto FROM query_farm fails, and the caller refuses by name.
     from provisa.federation.duckdb_extensions import load_staged
 
     monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(tmp_path / "empty"))
@@ -103,3 +102,22 @@ def test_load_staged_crypto_unstaged_is_false_never_an_error(tmp_path, monkeypat
         assert load_staged(con, "crypto") is False
     finally:
         con.close()
+
+
+def test_load_staged_loads_crypto_from_its_repository_only(monkeypatch):
+    # DuckDB 2.0 loads crypto from Query.Farm's staged copy alone: no plain LOAD is tried after it.
+    from provisa.federation import duckdb_extensions
+
+    class _Con:
+        def __init__(self):
+            self.statements: list[str] = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+            raise duckdb.IOException("IO Error: not found")
+
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    monkeypatch.setattr(duckdb_extensions, "extension_directory", lambda: None)
+    con = _Con()
+    assert duckdb_extensions.load_staged(con, "crypto") is False  # type: ignore[arg-type]
+    assert con.statements == ["LOAD crypto FROM query_farm"]

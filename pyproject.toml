@@ -157,7 +157,7 @@ dependencies = [
     # not fetched from an index — declaring it as a dependency would pull the wrong upstream package.
     # Its own runtime deps are folded in here instead (sqlglot already present):
     "python-dateutil",
-    "duckdb==1.5.5",
+    "duckdb==2.0.0",
     # REQ-1996: a Logs source reads Windows Event Log (.evtx) files, a binary chunked format;
     # pure Python, so nothing is built per platform.
     "python-evtx==0.8.1",

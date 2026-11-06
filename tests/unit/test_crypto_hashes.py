@@ -28,6 +28,7 @@ import pytest
 import sqlglot
 from sqlglot.dialects.dialect import Dialect
 
+from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
@@ -104,7 +105,11 @@ def crypto_extension(tmp_path_factory):
     """The crypto extension staged, as an install's step does: register only loads it."""
     directory = str(tmp_path_factory.mktemp("duckdb-extensions"))
     con = duckdb.connect(config={"extension_directory": directory})
-    con.execute("INSTALL crypto FROM community")
+    # crypto is Query.Farm's on DuckDB 2.0: installed from its repository (one DuckDB names), as
+    # provisa-duckdb-ext mirrors it, into repositories/query_farm/, where LOAD crypto FROM
+    # query_farm finds it.
+    con.execute("SET allow_extension_repositories = 'allowed'")
+    con.execute(f"INSTALL crypto FROM {EXTENSION_REPOSITORIES['crypto'][0]}")
     for extension in ("icu", "inet"):  # what a connection on this directory autoloads no more
         con.execute(f"INSTALL {extension}")
     con.close()

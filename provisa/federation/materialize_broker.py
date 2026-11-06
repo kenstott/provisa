@@ -767,7 +767,7 @@ def zoned_times_as_text(con: Any, relation: str) -> Any:
         if kind in ("TIME WITH TIME ZONE", "TIME WITH TIME ZONE[]")
     }
     if not zoned:
-        return con.execute(f"SELECT * FROM {relation}").fetch_arrow_table()
+        return con.sql(f"SELECT * FROM {relation}").to_arrow_table()
 
     def quoted(name: str) -> str:
         return '"' + name.replace('"', '""') + '"'
@@ -776,7 +776,7 @@ def zoned_times_as_text(con: Any, relation: str) -> Any:
         f"CAST({quoted(n)} AS {'VARCHAR[]' if k.endswith('[]') else 'VARCHAR'}) AS {quoted(n)}"
         for n, k in zoned.items()
     )
-    table = con.execute(f"SELECT * REPLACE ({as_text}) FROM {relation}").fetch_arrow_table()
+    table = con.sql(f"SELECT * REPLACE ({as_text}) FROM {relation}").to_arrow_table()
     fields = [
         f.with_metadata({ZONED_TIME_TYPE: zoned[f.name].encode()}) if f.name in zoned else f
         for f in table.schema
