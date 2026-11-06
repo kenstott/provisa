@@ -74327,7 +74327,14 @@
     SUPERSEDED BLOCK] (Amended 2026-11-02, A region runs independently:) Maintainer 2026-11-02: there is
     no cross-region health check. A region runs independently from the same config, under the region data-sharing
     rules, and that is all; giving each region both roles (a coordinator and query nodes, or an every node)
-    is the deployment''s job, stated in the docs.'
+    is the deployment''s job, stated in the docs. (Amended 2026-11-06, WHO REQUESTS AND WHO RUNS A BUILD:)
+    Who decides and who runs, stated exactly: the coordinator holds the central replica record and runs
+    every replica build and refresh and the scheduled materialized-view refreshes; it does not alone decide
+    them. A build is requested into the central record by a data node when a query finds a replica stale
+    or missing, by a source''s change signal, by a model change, by Hot promotion and by convergence. Row-level
+    replication is the exception: it is filled inline on the data node by the request that asks for the
+    rows (REQ-1865). An unhomed replica or view is built in every region, each in its own store; a homed
+    one only by its home region''s coordinator (REQ-1921, REQ-1922).'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
