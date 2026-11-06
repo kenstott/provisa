@@ -162,5 +162,17 @@ _reads_containment(DuckDB.Parser)
 DuckDB.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e, "<<=")
 DuckDB.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")
 
+
+def _reads_arrow_as_json(parser: type) -> None:
+    """DuckDB 2.0's ``->`` is JSON extraction alone: a lambda is ``LAMBDA x : ...``, which sqlglot
+    writes and every DuckDB form here is written in. sqlglot reads ``v -> '$[*]'`` in a function's
+    argument as a lambda, which it writes back as ``LAMBDA v : '$[*]'`` on the next rewrite."""
+    from sqlglot.tokens import TokenType
+
+    parser.LAMBDAS = {k: v for k, v in parser.LAMBDAS.items() if k != TokenType.ARROW}
+
+
+_reads_arrow_as_json(DuckDB.Parser)
+
 from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
 from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads
