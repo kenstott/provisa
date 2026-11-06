@@ -190,8 +190,6 @@ reasons:
   psycopg-errors-featurenotsupported-create-schema:
     defect: 'psycopg.errors.FeatureNotSupported: CREATE SCHEMA is not available here: create it in the
       model (admin pages, admin API '
-  assert-n-n-3:
-    defect: assert N < N
   psycopg-errors-internalerror-unsupported-binary:
     defect: 'psycopg.errors.InternalError_: Unsupported binary parameter type: N'
   assert:
@@ -1874,13 +1872,7 @@ expected:
   tests.test_typeinfo::test_fetch_by_schema_qualified_string[name1]: psycopg-errors-featurenotsupported-create-schema
   tests.test_typeinfo::test_fetch_by_schema_qualified_string[testschema.testtype]: psycopg-errors-featurenotsupported-create-schema
   tests.test_waiting::test_wait_conn_bad: failed-did-not-raise-operationalerror
-  tests.test_waiting::test_wait_no_busy_loop[wait]: assert-n-n-3
-  tests.test_waiting::test_wait_no_busy_loop[wait_epoll]: assert-n-n-3
-  tests.test_waiting::test_wait_no_busy_loop[wait_poll]: assert-n-n-3
-  tests.test_waiting::test_wait_no_busy_loop[wait_select]: assert-n-n-3
-  tests.test_waiting::test_wait_no_busy_loop[wait_selector]: assert-n-n-3
   tests.test_waiting_async::test_wait_conn_bad[asyncio]: failed-did-not-raise-operationalerror
-  tests.test_waiting_async::test_wait_no_busy_loop[asyncio-wait_async]: assert-n-n-3
   tests.types.test_array::test_all_chars[0-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_all_chars[0-s]: assert
   tests.types.test_array::test_all_chars[0-t]: assert
