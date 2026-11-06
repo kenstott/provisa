@@ -15,7 +15,7 @@
 // catalog serves, and hiding the reason a connection test failed.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { CatalogsTab } from "../components/admin/CatalogsTab";
 import type { CatalogConnection, CatalogsState } from "../api/catalogs";
 
@@ -28,7 +28,7 @@ vi.mock("../api/catalogs", () => ({
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
   useDomains: () => ({
-    domains: [{ id: "sales" }, { id: "finance" }],
+    domains: ["sales", "meta", "ontology", "ops", "finance"].map((id) => ({ id })),
     loading: false,
     error: undefined,
     refetch: vi.fn(),
@@ -143,6 +143,20 @@ describe("CatalogsTab", () => {
     const [first, second] = mockSet.mock.calls[0][0];
     expect("api_key" in first).toBe(false);
     expect(second.api_key).toBe("new-key");
+  });
+
+  it("offers the user's domains for a catalog, never a system domain", async () => {
+    mockFetch.mockResolvedValue(state());
+    render(<CatalogsTab />);
+    const field = await screen.findByTestId("catalog-domains-0");
+    fireEvent.click(field);
+    const listbox = document.getElementById(field.getAttribute("aria-controls") ?? "");
+    if (!listbox) throw new Error("Domains opened no list");
+    const labels = within(listbox)
+      .queryAllByRole("option", { hidden: true })
+      .map((o) => o.textContent ?? "");
+    expect(labels).toContain("finance");
+    expect(labels.filter((l) => ["meta", "ontology", "ops"].includes(l))).toEqual([]);
   });
 
   it("adds a catalog and removes one, and saves the list as it stands", async () => {
