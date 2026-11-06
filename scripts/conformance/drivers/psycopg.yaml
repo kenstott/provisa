@@ -172,8 +172,6 @@ reasons:
       it in the model (admin pages, ad'
   failed-did-not-raise-any-of-syntaxerror-invalidp:
     defect: 'Failed: DID NOT RAISE any of (SyntaxError, InvalidPreparedStatementDefinition)'
-  assertionerror-assert-f-b-f-b-f-b-f-b:
-    defect: 'AssertionError: assert [''…'', ''…'', ''…''F''…''B''…''F''…''B''…''F''…''B''…''F''…''B'']'
   psycopg-errors-featurenotsupported-create-type-i:
     defect: 'psycopg.errors.FeatureNotSupported: CREATE TYPE is not available here: create it in the model
       (admin pages, admin API or'
@@ -1524,7 +1522,6 @@ expected:
   tests.test_pipeline_async::test_errors_raised_on_transaction_exit[asyncio]: psycopg-errors-insufficientprivilege-v006-relati
   tests.test_pipeline_async::test_executemany[asyncio]: psycopg-errors-featurenotsupported-drop-table-is
   tests.test_pipeline_async::test_executemany_no_returning[asyncio]: psycopg-errors-featurenotsupported-drop-table-is
-  tests.test_pipeline_async::test_executemany_trace_returning[asyncio]: assertionerror-assert-f-b-f-b-f-b-f-b
   tests.test_pipeline_async::test_outer_transaction[asyncio]: psycopg-errors-featurenotsupported-drop-table-is
   tests.test_pipeline_async::test_pipeline_aborted[asyncio]: psycopg-errors-insufficientprivilege-v006-relati
   tests.test_pipeline_async::test_pipeline_errors_processed_at_exit[asyncio]: psycopg-errors-insufficientprivilege-v006-relati
