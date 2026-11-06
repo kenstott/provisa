@@ -23510,7 +23510,7 @@ The head of a detail panel is pinned: the item's name, then its actions. While t
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-An item's detail is divided into sections shown as top-level tabs, not as one scrolling form with expanding sections. The read view and the edit view use the SAME tabs, and the read view summarises every detail of the item. For a table the tabs are Identity, Associations, Load and timeliness, Query, Quality, Columns.
+An item's detail is divided into sections shown as top-level tabs, not as one scrolling form with expanding sections. The read view and the edit view use the SAME tabs, and the read view summarises every detail of the item. For a table the tabs are Identity, Associations, Load and timeliness, Query, Quality, Columns. (Amended 2026-11-05, the Query tab is the API tab:) A table's Query tab is named API: it lists what the table's API offers clients, each feature offered or not by the curator (for example time travel over kept history), and a feature can be offered only when the table itself supports it. Load and timeliness keeps how and when data arrives.
 
 **Use case:** An operator looking for a table's refresh settings goes to the same tab whether reading or editing, and sees everything the table is set to without opening an editor.
 
