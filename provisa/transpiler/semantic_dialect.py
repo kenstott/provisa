@@ -162,5 +162,18 @@ _reads_containment(DuckDB.Parser)
 DuckDB.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e, "<<=")
 DuckDB.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")
 
+
+def _keyword_lambda_sql(
+    self: Generator, expression: exp.Lambda, arrow_sep: str = "->", wrap: bool = True
+) -> str:
+    """DuckDB 2.0 binds a lambda only in its keyword form, ``LAMBDA x, y : body`` (the arrow form
+    is a binder error there), so every lambda written for DuckDB takes it, however it was built.
+    It is sqlglot's own spelling of a lambda read with the keyword (its ``colon`` form), written
+    here without marking the tree."""
+    return "LAMBDA " + Generator.lambda_sql(self, expression, arrow_sep=":", wrap=False)
+
+
+DuckDB.Generator.lambda_sql = _keyword_lambda_sql  # type: ignore[method-assign]
+
 from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
 from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads
