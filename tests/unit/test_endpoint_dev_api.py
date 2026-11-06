@@ -155,7 +155,9 @@ async def sql_client(monkeypatch):
     app_mod.state.source_pools = MagicMock()
     app_mod.state.view_sql_map = {}
     app_mod.state.proto_files = {}
-    app_mod.state.schema_build_cache = {}
+    # A served app with a role's schema has its build cache, the registry's column types in it
+    # (app._build_and_register_schemas); /data/sql types a registered column by them (REQ-1961).
+    app_mod.state.schema_build_cache = {"column_types": {}}
 
     transport = ASGITransport(app=the_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
