@@ -93,3 +93,53 @@ async def test_an_org_that_does_not_select_the_nodes_region_is_refused(registry,
     monkeypatch.setattr(app, "_region_lane_of", _lane(OrgNotInRegion("acme", "eu", ["us"])))
     with pytest.raises(OrgNotInRegion):
         await orgs_router.on_its_region_lane("acme", object())
+
+
+@pytest.mark.asyncio
+async def test_the_lane_build_does_not_lay_the_schema_out_again_beside_the_live_runtime(
+    registry, monkeypatch
+):
+    """The org was laid out a moment ago -- by provision_org, and again by the provisioning build
+    this one replaces -- and that build's lifecycle wiring, detached from it, is still reading
+    the org's model. schema.sql's ALTER TABLEs, run again here, took AccessExclusive locks beside
+    that reader's and deadlocked it (the regions tier's retail template, sbxtplretail)."""
+    monkeypatch.setattr(app, "_region_lane_of", _lane(_EU))
+    built: list[dict] = []
+
+    async def _build(org_id, **kwargs):
+        built.append(kwargs)
+        return SimpleNamespace(org_id=org_id, storage_url=kwargs["storage_url"])
+
+    monkeypatch.setattr(app, "build_org_runtime", _build)
+
+    async def _flags(org_id):
+        return app.OrgLane(True, False, None, None, None, "", None)
+
+    monkeypatch.setattr(app, "_read_org_flags", _flags)
+    await orgs_router.on_its_region_lane("sbxtplretail", object())
+    await app.build_on_its_lane("sbxtplretail", None)  # any later build of it
+    assert [call["schema_current"] for call in built] == [True, False]
+
+
+@pytest.mark.asyncio
+async def test_a_schema_already_current_is_given_its_grants_and_no_ddl(monkeypatch):
+    from provisa.audit import query_log
+    from provisa.core import db
+
+    ran: list[str] = []
+
+    def _step(name: str):
+        async def _ran(*args, **kwargs):
+            ran.append(name)
+
+        return _ran
+
+    monkeypatch.setattr(db, "init_schema", _step("init_schema"))
+    monkeypatch.setattr(db, "apply_tenancy_role_grants", _step("grants"))
+    monkeypatch.setattr(query_log, "init_audit_schema", _step("init_audit_schema"))
+    monkeypatch.setattr(app, "state", SimpleNamespace(model_db=object(), multitenancy=True))
+    await app._set_up_org_schema("sbxtplretail", "prod", run_script=False)
+    assert ran == ["grants"]
+    ran.clear()
+    await app._set_up_org_schema("sbxtplretail", "prod", run_script=True)
+    assert ran == ["init_schema", "grants", "init_audit_schema"]

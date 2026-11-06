@@ -32,6 +32,7 @@ import pytest
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.kafka import landed_offsets
 from provisa.kafka.fetch import KafkaConnection, iter_row_batches
+from provisa.kafka.security import PLAINTEXT
 from provisa.subscriptions.cdc_landing import consume_cdc_into_store
 from provisa.subscriptions.kafka_provider import KafkaNotificationProvider
 
@@ -240,8 +241,9 @@ async def test_a_debezium_listener_starts_where_the_tables_build_stopped_reading
     broker.capture(1)
     broker.capture(2)
     landed = landed_offsets.landed_group("shop_db")
-    stopped = await landed_offsets.end_offsets(_BOOTSTRAP, "shop.public.orders")
-    await landed_offsets.record(_BOOTSTRAP, landed, stopped)  # the build's rows are 1 and 2
+    # A CDC transport is a plain cluster (REQ-147). The build's rows are 1 and 2.
+    stopped = await landed_offsets.end_offsets(_BOOTSTRAP, "shop.public.orders", security=PLAINTEXT)
+    await landed_offsets.record(_BOOTSTRAP, landed, stopped, security=PLAINTEXT)
     broker.capture(3)
 
     provider = DebeziumNotificationProvider(
