@@ -92612,7 +92612,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     version and text hash) as they were at that moment, so a later reading of the log or trace explains
     the decision by the rules in force then. (Amended 2026-11-06, POLICY TAG REVIEWS:) Policy tags may be
     reviewed on a calendar cadence, as REQ-2209 states; an object''s why then includes when its tags were
-    last attested, by which role and against which section version.'
+    last attested, by which role and against which section version. (Amended 2026-11-06, CITATIONS PER ASSIGNMENT:)
+    A policy tag carries citations at two levels. Its definition may cite why the tag exists (the policy
+    section that sets it). Each assignment of the tag to an object may carry its own citations: the documents
+    or sections that policy requires that object to be traced to or confirmed by (an approval, an impact
+    assessment, a test report), each with the same reference, text hash and drift handling, so a revised
+    cited section flags that one assignment for review. A tag may declare that its assignments require such
+    a citation; an assignment without one is then shown as a gap in coverage and in the tag''s review, not
+    refused. Assignment citations are seen in the assignment''s detail, never as fields on the object, and
+    logged decisions and Polly''s answers include them alongside the definition''s.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
