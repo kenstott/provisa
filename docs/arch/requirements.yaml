@@ -92636,7 +92636,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a template exists until someone chooses and saves it. decision-traced is the worked example: it applies
     to governed objects (relationships, masks, row rules, roles, freshness policies, data products and their
     agreements), each assignment must cite the project requirement section that justifies the decision,
-    and a missing citation is a gap in coverage and in review.'
+    and a missing citation is a gap in coverage and in review. (Amended 2026-11-06, A TAG EXPLAINS WHY:)
+    A tag needs only a name and a definition; it may be purely informational. Citations, required evidence,
+    reviews and attestation workflows are layers its author adds when its why must stand up to someone.
+    Every one of them serves one purpose: explaining why to whoever asks, a stakeholder, a newcomer, the
+    person left holding the decision, an auditor, a regulator or an executive.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -92713,7 +92717,20 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     nth weekday of a month (the 1st to 4th, or the last, of a weekday, e.g. the second Tuesday of March
     or the last Friday of September) or as a day of a month; the two forms may be mixed in one list. A day
     of month that the named month does not have every year (the 29th to 31st of February, the 31st of a
-    30-day month) is refused when the cadence is declared, saying so.'
+    30-day month) is refused when the cadence is declared, saying so. (Amended 2026-11-06, ATTESTATION WORKFLOWS:)
+    A tag''s review may declare an attestation workflow: an ordered list of steps, each held by a role or
+    by the object''s owner (for example owner, then domain steward, then compliance). Each step may carry
+    a statement or checklist the tag''s author writes, which the person affirms, recorded word for word
+    with their answer, and may require evidence, attached as an assignment citation (REQ-2208). No one person
+    completes two steps of one review, and an owner is never the final approver of their own object. A step
+    attests or returns to the step before with a reason; nothing in the model changes automatically, since
+    a fix goes through the normal model promotion; the review completes only when every step has attested,
+    within the cadence''s review window, and an overdue review shows the step it waits on. The record keeps,
+    per step, who attested, the statement as worded, the evidence and the cited sections'' versions. The
+    builder offers workflow templates (a single attester, the default; owner then steward; owner, steward
+    then compliance). Each step''s event is emitted through the existing triggers and webhooks, and a step
+    may be completed through the governed API, so a team can run its steps in its own tools; the outcome
+    is recorded the same way. There is no branching, no custom action and no escalation chain.'
   scenario: 'Given a role with a 90-day membership review whose overdue reviews lapse, and a holder no one attests
 
 
