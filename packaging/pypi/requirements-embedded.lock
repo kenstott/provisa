@@ -3130,11 +3130,11 @@ protobuf==6.33.6 \
     #   proto-plus
     #   qdrant-client
     #   snowflake-connector-python
-provisa-duckdb-ext==0.2.0 \
-    --hash=sha256:233b99dd2516d7e72ffe25d7e87736c28534c9f8d153b38107a4f2bc8e1ec0b9 \
-    --hash=sha256:4d394959fa17733948f19975e063a3ff3bcd85976a61091e8165a65c1763d57e \
-    --hash=sha256:7306e45a3a4eb8ddb03a728de5e9f555128ea9eff85a57fe920110565312edb9 \
-    --hash=sha256:8ac0cc698e2cd3e11b475fc18169b31f8f83a3738bb8723c332e814deefa5305
+provisa-duckdb-ext==0.2.1 \
+    --hash=sha256:6b6bee2389fae7082f727873621645e995aee4a59295530b9ecbdcaffea07828 \
+    --hash=sha256:8e0c01f67f281efd23637e5d1be67958eb8ca00fedec4625c69c7cec81481f84 \
+    --hash=sha256:9c30d2f3c7e86058ea8d991e59671e1356532c000828ef885020c435064eeb6a \
+    --hash=sha256:f95286a21deed54a3df7df01552d1f2521355c06ec7e8bb7100f1dba2e5349f1
     # via provisa (pyproject.toml)
 psutil==7.2.2 \
     --hash=sha256:0746f5f8d406af344fd547f1c8daa5f5c33dbc293bb8d6a16d80b4bb88f59372 \

@@ -228,7 +228,7 @@ embedded = [
     "duckdb-extension-azure==2.0.0",
     "duckdb-extension-delta==2.0.0",
     "duckdb-extension-avro==2.0.0",  # iceberg loads it
-    "provisa-duckdb-ext>=0.2.0",
+    "provisa-duckdb-ext>=0.2.1",
 ]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the

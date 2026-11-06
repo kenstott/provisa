@@ -4310,7 +4310,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa", extras = ["cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica"], marker = "extra == 'all-drivers'" },
-    { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.2.0" },
+    { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.2.1" },
     { name = "provisa-notebook", editable = "provisa-notebook" },
     { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.2.0" },
     { name = "psycopg", extras = ["binary"] },
@@ -4380,16 +4380,16 @@ provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle"
 
 [[package]]
 name = "provisa-duckdb-ext"
-version = "0.2.0"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "duckdb" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2a/d8/ac526d71c797f93cf1b14ae0e27bfe6837a0dc3e8e7b11b4573027b0799c/provisa_duckdb_ext-0.2.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:8ac0cc698e2cd3e11b475fc18169b31f8f83a3738bb8723c332e814deefa5305", size = 76846670, upload-time = "2026-11-06T17:02:47.511Z" },
-    { url = "https://files.pythonhosted.org/packages/03/2f/d5d530a2e13d143bf3a5c6c10eef8579336c04766ca4e3a48b28b4393d2f/provisa_duckdb_ext-0.2.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:4d394959fa17733948f19975e063a3ff3bcd85976a61091e8165a65c1763d57e", size = 89754279, upload-time = "2026-11-06T17:02:53.037Z" },
-    { url = "https://files.pythonhosted.org/packages/02/9e/3f89d0e33406ceda0a541d6b28f3003be2a319eb3cfe89edc013d37b4c26/provisa_duckdb_ext-0.2.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:233b99dd2516d7e72ffe25d7e87736c28534c9f8d153b38107a4f2bc8e1ec0b9", size = 97741011, upload-time = "2026-11-06T17:03:00.703Z" },
-    { url = "https://files.pythonhosted.org/packages/02/18/5f28987364473b58d9d7d39ad1d6dd68900edfaa9efa6a77b50ce57f58b4/provisa_duckdb_ext-0.2.0-py3-none-win_amd64.whl", hash = "sha256:7306e45a3a4eb8ddb03a728de5e9f555128ea9eff85a57fe920110565312edb9", size = 55355812, upload-time = "2026-11-06T17:03:07.192Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/06/c854acf4304fc7045291ee963f202e3c9ae1f7f59d95a0d654e02812b0c8/provisa_duckdb_ext-0.2.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:8e0c01f67f281efd23637e5d1be67958eb8ca00fedec4625c69c7cec81481f84", size = 76850055, upload-time = "2026-11-06T19:04:42.046Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/97/1f0374e43060d2eaa3738cb5915e1d43c36644d0aeb1339fc17d19518134/provisa_duckdb_ext-0.2.1-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:f95286a21deed54a3df7df01552d1f2521355c06ec7e8bb7100f1dba2e5349f1", size = 89757230, upload-time = "2026-11-06T19:04:45.964Z" },
+    { url = "https://files.pythonhosted.org/packages/41/18/89c123791e78f9383b1e15de4801bdc2460fcbf721301b72f7f131cc21ab/provisa_duckdb_ext-0.2.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:6b6bee2389fae7082f727873621645e995aee4a59295530b9ecbdcaffea07828", size = 97743964, upload-time = "2026-11-06T19:04:50.016Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/74/8439020966e8410efd86e6a3cb6cbe9c39e5bfad8f4f78b29cc622b0e146/provisa_duckdb_ext-0.2.1-py3-none-win_amd64.whl", hash = "sha256:9c30d2f3c7e86058ea8d991e59671e1356532c000828ef885020c435064eeb6a", size = 55357890, upload-time = "2026-11-06T19:04:53.456Z" },
 ]
 
 [[package]]
