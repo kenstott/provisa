@@ -98,6 +98,9 @@ class DuckDBPostgresConnector(Connector):
     source_type = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
     mechanism = Mechanism.ATTACH_RW
+    # REQ-1142 (ATTACHABLE MEANS STAGED): what the attach needs staged. Not ``extension``, which
+    # names the extensions provisa-duckdb-ext mirrors (postgres is a core wheel's).
+    staged_needs = ("postgres",)
 
     def capability(self) -> Capability:
         # REQ-1934: no key_range. Measured: a BETWEEN on the key is pushed to Postgres and read
@@ -299,6 +302,7 @@ class DuckDBSqliteConnector(Connector):
     engine = "duckdb"
     source_type = "sqlite"
     mechanism = Mechanism.ATTACH_RW  # the sqlite extension attaches the file in place
+    staged_needs = ("sqlite",)  # REQ-1142: a core wheel's, as postgres
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True, write=True)
@@ -540,6 +544,8 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
         self.source_type = source_type
         # Unique per instance: the probe report and the disabled-connector list key on it.
         self.key = "duckdb_mssql" if source_type == "sqlserver" else f"duckdb_mssql_{source_type}"
+        # REQ-1142: an Entra sign-in is an azure secret, so it needs azure staged as well.
+        self.staged_needs = ("mssql", "azure") if source_type in self.ENTRA_TYPES else ("mssql",)
 
     def details(self, source: Source) -> dict:
         alias = f"_src_{source.id}"
@@ -796,6 +802,7 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
     source_type = "iceberg"
     key = "duckdb_iceberg"
     extension = "iceberg"
+    staged_needs = ("iceberg", "avro")  # REQ-1142: iceberg loads avro
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no attach (REQ-951)
@@ -850,6 +857,7 @@ class DuckDBDatabricksIcebergConnector(_DuckDBExtensionConnector):  # REQ-1867
     source_type = "databricks"
     key = "duckdb_databricks_iceberg"
     extension = "iceberg"
+    staged_needs = ("iceberg", "avro")  # REQ-1142: iceberg loads avro
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no copy (REQ-951)

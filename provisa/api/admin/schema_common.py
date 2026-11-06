@@ -816,6 +816,26 @@ async def _cache_prometheus_label_columns(pool, state, model) -> None:  # REQ-17
     state.prometheus_label_columns = cache
 
 
+def engine_extension_refusal(state, source_id: str, source_type: str) -> MutationResult | None:
+    """A source the bound engine refuses by name, refused when it is added, never at its first
+    query: its only way in needs a DuckDB extension not staged for the running DuckDB version and
+    platform (REQ-1142, ATTACHABLE MEANS STAGED), or MotherDuck has not yet caught up with the
+    DuckDB Provisa runs (REQ-1998)."""
+    runtime = getattr(state, "federation_engine", None)
+    engine = getattr(runtime, "engine", None)
+    if engine is None:
+        return None
+    why = engine.refusal(source_type)
+    if why is None:
+        return None
+    return MutationResult(
+        success=False,
+        message=f"Source {source_id!r} cannot be added on the {engine.name!r} engine: {why}",
+        code="schema.source_extension_unavailable",
+        params={"source": source_id, "type": source_type, "reason": why},
+    )
+
+
 def _register_source_on_engine(state, model, input: SourceInput) -> None:
     """Provision the source on the bound engine (mirrors config_loader path)."""
     from provisa.core.secrets import resolve_secrets

@@ -24,7 +24,9 @@ per-user cache; the federation runtime reads the same variable so what is staged
 
 from __future__ import annotations
 
+import functools
 import importlib.util
+import json
 import os
 import shutil
 from collections.abc import Callable
@@ -49,6 +51,32 @@ EXTENSION_REPOSITORIES: dict[str, tuple[str, str]] = {
     # https://query.farm/blog/duckdb-2-query-farm-repository/
     "crypto": ("query_farm", "https://duckdb-extensions.query.farm"),
 }
+
+
+#: The manifest stage_bundled_extensions writes beside what it staged, per DuckDB version and
+#: platform: the extensions staged there (REQ-1142, ATTACHABLE MEANS STAGED).
+MANIFEST = "staged.json"
+
+#: The name a connector gives an extension whose file is named otherwise (DuckDB's own aliases).
+_SHORT_NAMES = {"postgres_scanner": "postgres", "sqlite_scanner": "sqlite"}
+
+#: The source types whose rows are landed through a scratch DuckDB read with the same extension
+#: their connector attaches with (events/source_loader.make_firebird_loader, make_airport_loader):
+#: where it is not staged they cannot land either.
+LANDS_THROUGH_ITS_EXTENSION = frozenset({"firebird", "airport"})
+
+
+@functools.cache
+def running_version_platform() -> tuple[str, str]:
+    """The running DuckDB's version (``v2.0.0``) and platform (``osx_arm64``), as its extension
+    directory names them."""
+    con = engine_memory.connect()
+    try:
+        (version,) = con.execute("SELECT version()").fetchall()[0]
+        (platform,) = con.execute("PRAGMA platform").fetchall()[0]
+    finally:
+        con.close()
+    return str(version), str(platform)
 
 
 def extension_directory() -> str | None:
@@ -120,14 +148,7 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     """
     from provisa_duckdb_ext import ext_root  # type: ignore[import-not-found]  # ModuleNotFoundError propagates by design
 
-    con = engine_memory.connect()
-    try:
-        _ver = con.execute("SELECT version()").fetchone()
-        _plat = con.execute("PRAGMA platform").fetchone()
-    finally:
-        con.close()
-    raw_version = _ver[0] if _ver else ""
-    platform = _plat[0] if _plat else ""
+    raw_version, platform = running_version_platform()
 
     src = ext_root() / raw_version / platform
     # Every file below the platform dir: a named repository's extension (EXTENSION_REPOSITORIES)
@@ -157,7 +178,72 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     _copy_missing(files, src, dst)
     for blob in core:
         _copy_missing([blob], blob.parent, dst)
+    _write_manifest(dst, raw_version, platform)
     return Path(target)
+
+
+def _write_manifest(dst: Path, raw_version: str, platform: str) -> None:
+    """Record what ``dst`` holds: every extension staged there, a named repository's included,
+    by its file name (REQ-1142, ATTACHABLE MEANS STAGED: the engine reads this, not the connectors
+    it declares)."""
+    names = sorted(
+        {p.name.removesuffix(".duckdb_extension") for p in dst.rglob("*.duckdb_extension")}
+    )
+    manifest = {"duckdb": raw_version, "platform": platform, "extensions": names}
+    (dst / MANIFEST).write_text(json.dumps(manifest, indent=1) + "\n")
+
+
+class StagedManifestMissing(RuntimeError):
+    """An extension directory is set but holds no manifest for the running DuckDB and platform:
+    it was not staged by this Provisa for this DuckDB, so what it can attach is unknown."""
+
+
+def staged_extensions() -> frozenset[str] | None:
+    """The extensions staged for the running DuckDB version and platform, read from the staged
+    directory's manifest (REQ-1142, ATTACHABLE MEANS STAGED), each by its file name and by the
+    name a connector gives it (postgres for postgres_scanner). None where no extension directory
+    is staged: DuckDB installs from its own repositories (a server or a dev checkout, REQ-1142)."""
+    directory = extension_directory()
+    if directory is None:
+        return None
+    raw_version, platform = running_version_platform()
+    path = Path(directory) / raw_version / platform / MANIFEST
+    if not path.is_file():
+        raise StagedManifestMissing(
+            f"{_EXT_DIR_ENV}={directory} has no {MANIFEST} for DuckDB {raw_version} on {platform} "
+            f"(looked for {path}); stage it with stage_bundled_extensions (provisa[embedded])."
+        )
+    names = frozenset(json.loads(path.read_text())["extensions"])
+    return names | {_SHORT_NAMES[n] for n in names if n in _SHORT_NAMES}
+
+
+def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, ...]:
+    """The extensions ``connector``'s way of reaching needs that are not in ``staged``: each it
+    names in ``staged_needs``, else its ``extension``. Empty for a connector needing none (DuckDB's
+    own csv, parquet and database files) or one whose every extension is staged."""
+    needs = getattr(connector, "staged_needs", None)
+    if needs is None:
+        needs = (connector.extension,) if connector.extension else ()
+    return tuple(n for n in needs if n not in staged)
+
+
+def unstaged_refusal(source_type: str, missing: tuple[str, ...]) -> str:
+    """Why a ``source_type`` source is refused: the extensions it needs are not staged."""
+    raw_version, platform = running_version_platform()
+    which = " and ".join(missing)
+    return (
+        f"{source_type!r} sources need DuckDB's {which} extension"
+        f"{'s' if len(missing) > 1 else ''}, which {'are' if len(missing) > 1 else 'is'} not "
+        f"available for DuckDB {raw_version} on {platform}"
+    )
+
+
+def motherduck_refusal() -> str:
+    """REQ-1998 (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT)."""
+    return (
+        f"MotherDuck does not yet support DuckDB {duckdb.__version__}, the DuckDB version Provisa "
+        "runs, so a MotherDuck source cannot be added until it does"
+    )
 
 
 def connect() -> duckdb.DuckDBPyConnection:

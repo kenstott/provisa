@@ -31,11 +31,18 @@ def _source(**kw: Any):
     return SimpleNamespace(**{**base, **kw})
 
 
-def test_the_duckdb_engine_reaches_motherduck_in_place():
+def test_the_duckdb_engine_refuses_motherduck_until_it_supports_the_duckdb_provisa_runs():
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT): refused by name.
     from provisa.federation.engine import build_duckdb_engine
 
-    connector = build_duckdb_engine().connectors["motherduck"]
-    assert isinstance(connector, DuckDBMotherDuckConnector)
+    engine = build_duckdb_engine()
+    assert "motherduck" not in engine.connectors
+    assert "MotherDuck does not yet support DuckDB" in (engine.refusal("motherduck") or "")
+
+
+def test_the_motherduck_connector_waits_in_place_for_its_support():
+    # What the engine attaches with again once MotherDuck supports the DuckDB Provisa runs.
+    connector = DuckDBMotherDuckConnector()
     assert connector.extension == "motherduck" and connector.install_from_community is False
     assert connector.capability().write  # writes through the engine, as on the pg engine
 

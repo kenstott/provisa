@@ -139,6 +139,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _rebuild_table_input,
     _resolve_admin_context,
     _register_source_on_engine,
+    engine_extension_refusal,
     restart_source_server,
     _remove_view_mv,
     _expand_wikipedia_if_needed,
@@ -2468,6 +2469,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
             return _soda_refusal
+        from provisa.api.app import state as _app_state
+
+        # REQ-1142, REQ-1998: refused by name when it is added, never at its first query.
+        _extension_refusal = engine_extension_refusal(_app_state, input.id, input.type)
+        if _extension_refusal is not None:
+            return _extension_refusal
 
         from provisa.security.residency import CREATED
 
@@ -2879,6 +2886,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _soda_refusal = _refuse_soda_on_hosted_plane(input.type)
         if _soda_refusal is not None:
             return _soda_refusal
+        from provisa.api.app import state as _app_state
+
+        # REQ-1142, REQ-1998: refused by name when it is added, never at its first query.
+        _extension_refusal = engine_extension_refusal(_app_state, input.id, input.type)
+        if _extension_refusal is not None:
+            return _extension_refusal
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal
