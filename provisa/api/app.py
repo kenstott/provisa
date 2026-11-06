@@ -623,6 +623,15 @@ class AppState:
         self._active_runtime().kafka_bootstrap = value
 
     @property
+    def kafka_declared(self) -> dict[str, dict]:
+        """Kafka source id → its entry as declared (REQ-147)."""
+        return self._active_runtime().kafka_declared
+
+    @kafka_declared.setter
+    def kafka_declared(self, value: dict[str, dict]) -> None:
+        self._active_runtime().kafka_declared = value
+
+    @property
     def kafka_table_configs(self) -> dict[str, KafkaTableConfig]:
         """Table name → its Kafka table config."""
         return self._active_runtime().kafka_table_configs
