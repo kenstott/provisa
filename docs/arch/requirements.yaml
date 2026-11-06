@@ -26745,7 +26745,10 @@
     answer, no more often than a declared minimum interval, as a declared service identity, governed like
     any command. A command that fails, or answers outside the contract, leaves the subject''s freshness
     unknown, shown on it with the error, never read as fresh or as stale. A command that does not declare
-    the contract is not offered as a freshness strategy.'
+    the contract is not offered as a freshness strategy. (Amended 2026-11-06, THE FRESHNESS COMMAND IS SYNCHRONOUS:)
+    A freshness command answers within the call: it returns its version token synchronously, never by starting
+    a job, a callback or a later message, and a call that does not answer within its declared time limit
+    counts as failed (freshness unknown).'
   use_case: Decouples freshness evaluation from refresh logic. Strategies are swappable and composable,
     enabling rich policies (e.g., TTL for cost-sensitive tables, PROBE for zero-lag accuracy, TRANSITIVE
     for derived caches/medallion chains).
