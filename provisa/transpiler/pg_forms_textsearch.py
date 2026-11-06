@@ -642,6 +642,10 @@ def _word_count(e: Engine) -> str:
     )
 
 
+#: The name ts_bound gives a vector its search reads.
+_BOUND = "_sv"
+
+
 def _rows() -> tuple[Row, ...]:
     forms: dict[tuple[str, tuple[str, ...]], Forms] = {}
 
@@ -676,6 +680,7 @@ def _rows() -> tuple[Row, ...]:
         add(d, "ts_stripped", "v, x, p, w", _read(e, "ts_match_vq", _stripped(e), "v"))
         add(d, "ts_phrase", "l, r, n", e.keep.format("r", "_q", e.has.format("l", "_q - n")))
         add(d, "ts_found", "l", f"{e.size.format('l')} > 0")
+        add(d, "ts_bound", "v, b", e.let.format(_BOUND, "v", "b"))
         add(d, "ts_lexemes", "x", _lexeme_list(e))
         add(d, "ts_rank_or", "v, w, x, p", _read(e, "ts_rank", _rank_or(d, e), "v"))
         add(d, "ts_rank_and", "v, w, x", _read(e, "ts_rank", _rank_and(d, e), "v"))
@@ -982,7 +987,16 @@ def _matched(name: str, args: list[exp.Expr]) -> exp.Expr:
         return exp.null()
     first, second = args if name == "ts_match_vq" else reversed(args)
     vector, query = _vector(first), _query(second)
-    return _boolean(False) if query is None else _search(vector, query, name)
+    return _boolean(False) if query is None else _bound_search(vector, query, name)
+
+
+def _bound_search(vector: exp.Expr, query: Node, name: str) -> exp.Expr:
+    """:func:`_search`, a vector of a column read once: each term's form holds it, more than
+    once."""
+    if vector.find(exp.Column) is None:
+        return _search(vector, query, name)
+    searched = _search(exp.column(_BOUND), query, name)
+    return exp.Anonymous(this="ts_bound", expressions=[vector, searched])
 
 
 _RANKS = frozenset({"ts_rank", "ts_rank_cd"})
@@ -1151,7 +1165,7 @@ def _searched_text(name: str, args: list[exp.Expr]) -> exp.Expr:
             raise NoForm(name) from None
     else:
         query = _query(args[1])
-    return _boolean(False) if query is None else _search(vector, query, name)
+    return _boolean(False) if query is None else _bound_search(vector, query, name)
 
 
 def _lexized(name: str, args: list[exp.Expr]) -> exp.Expr:

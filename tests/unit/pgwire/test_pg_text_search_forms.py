@@ -186,3 +186,11 @@ def test_the_stemmer_keeps_a_word_whose_stem_is_empty_or_that_is_too_long():
     long = "x" * 995 + "running"
     assert lexize("''s") == ["''s"]
     assert lexize(long) == [long]
+
+
+def test_a_search_of_a_column_reads_its_vector_once_within_clickhouses_max_query_size():
+    sql = (
+        "SELECT to_tsvector(c1) @@ 'fat <-> rat'::tsquery AS v "
+        "FROM (VALUES ('The Fat Rats'::text)) AS t(c1)"
+    )
+    assert len(transpile(sql, "clickhouse")) < 262144
