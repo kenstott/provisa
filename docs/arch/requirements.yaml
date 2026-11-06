@@ -92657,7 +92657,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     cites the test plan section or test report covering the object; uncovered objects are the gap list),
     uat (an attestation workflow developer, then tester, then business owner, with a promotion gate into
     production unless attested for the version) and experimental (marks an object not yet for consumers,
-    its assignment citing the design note or ticket).'
+    its assignment citing the design note or ticket). (Amended 2026-11-06, WITHHOLDING FROM CATALOGS IS
+    A TAG:) What may publish to a catalog stays opt-in: a table publishes only as a member of a data product,
+    and only to the catalogs whose domains include it. Everything withheld beyond that is a tag with a metadata-export
+    gate (condition always) and its why: the glossary term''s separate export-excluded flag and the built-in
+    rule that prunes technical columns become such tags (the technical tag declares the gate rather than
+    carrying hidden behaviour), so withholding anything from a catalog is always a tag, explained and reviewable.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
