@@ -239,3 +239,54 @@ def test_a_statement_that_fails_stops_reading_the_functions_rows_and_lets_the_ho
     assert run.returncode == 0, run.stdout + run.stderr
     assert "FAILED ConversionException" in run.stdout, run.stdout
     assert "PULLED AFTER 0" in run.stdout, run.stdout
+
+
+_PULLED_WHERE = """
+import sys, threading
+sys.path.insert(0, sys.argv[1])
+import pyarrow as pa
+import residual
+residual.configure(memory_mb=128, threads=1, spill_cap_mb=1024, spill_dir=sys.argv[2])
+schema = pa.schema([("s", pa.utf8())])
+foreign = set()
+def rows(bad):
+    for i in range(50):
+        if threading.current_thread() is not threading.main_thread():
+            foreign.add(threading.current_thread().name)
+        yield pa.RecordBatch.from_arrays([pa.array(["x" if i == bad else "1"] * 1000)], schema=schema)
+for bad in (-1, 20):
+    reader = pa.RecordBatchReader.from_batches(schema, rows(bad))
+    try:
+        for _ in residual.answer("SELECT CAST(s AS INTEGER) AS n FROM t", "duckdb", "t", reader):
+            pass
+        print("ANSWERED", flush=True)
+    except Exception as failed:
+        print("FAILED", type(failed).__name__, flush=True)
+print("FOREIGN", sorted(foreign), flush=True)
+"""
+
+
+def test_the_functions_rows_are_pulled_only_on_the_statements_own_thread(tmp_path):
+    """A host whose DuckDB runs on one thread pulls the function's rows on the thread answering
+    the statement, never on Arrow's read-ahead pool: a pool thread that comes back into Python
+    after the statement has ended can do so as the interpreter finalizes, where CPython ends it
+    mid-task and Arrow's pool, at exit, waits for it forever (the built image's spill-cap refusal
+    printed, its process never ending)."""
+    spill = tmp_path / "spill"
+    spill.mkdir()
+    run = subprocess.run(  # noqa: S603 -- the test's own interpreter
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            _PULLED_WHERE,
+            str(Path(front.__file__).parent),
+            str(spill),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert "ANSWERED\nFAILED ConversionException\n" in run.stdout, run.stdout
+    assert "FOREIGN []" in run.stdout, run.stdout

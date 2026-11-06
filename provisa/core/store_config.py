@@ -304,7 +304,9 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.repositories import tag as tag_repo
     from provisa.core.repositories import table as table_repo
 
-    tables = await table_repo.list_all(conn)
+    # A seeded table is not the model's: only its id is used, to leave out what refers to it, so
+    # its columns are never read (the meta domain's SQL catalog views alone are hundreds).
+    tables = await table_repo.list_all(conn, parts_of=lambda t: not _internal_table(t))
     internal = {int(t["id"]) for t in tables if _internal_table(t)}
     # A table is named in a configuration by its virtual name: its alias when it has one.
     name_of = {int(t["id"]): str(t.get("alias") or t["table_name"]) for t in tables}
