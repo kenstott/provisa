@@ -26754,7 +26754,13 @@
     reference, text hash and drift handling as a security item''s citation (REQ-2208): a revised cited section
     flags the guarantee for review. Both are optional and out of the way: the freshness settings show them
     only once set, as the guarantee''s "why" with a link to the cited section, and otherwise offer them
-    behind a single add control, never as fields every table must look at.'
+    behind a single add control, never as fields every table must look at. (Amended 2026-11-06, WHY IS ANSWERABLE,
+    THEN AND NOW:) A guarantee''s description and citation are model configuration that Polly and the MCP
+    server read, under the reader''s rights, so they can answer why something happened (why a view refreshed,
+    why a stale result was served, which policy set that). Every freshness decision that is logged or traced
+    (a refresh, a stale result served, a freshness command''s answer or failure) records the guarantee''s
+    description and citation as they were at that moment, the cited section''s version and text hash included,
+    so a later reading of the log or trace explains the decision by the rule in force then, not by today''s.'
   use_case: Decouples freshness evaluation from refresh logic. Strategies are swappable and composable,
     enabling rich policies (e.g., TTL for cost-sensitive tables, PROBE for zero-lag accuracy, TRANSITIVE
     for derived caches/medallion chains).
