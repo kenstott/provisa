@@ -92445,7 +92445,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     string in the web-search syntax people type (words all required, a quoted phrase, -word to exclude,
     or between alternatives). Each row carries _bm25 and, on a table with an embedding, _similarity, named
     like the existing _similarity field. A rank argument chooses the order: bm25, similarity, or hybrid
-    (the two rankings fused by reciprocal rank), and bm25 when it is not given; order_by overrides it.'
+    (the two rankings fused by reciprocal rank), and bm25 when it is not given; order_by overrides it. (Amended
+    2026-11-05, _rank:) Each row also carries _rank, the score the chosen rank orders by: equal to _bm25
+    under bm25, to _similarity under similarity, and the fused reciprocal-rank score under hybrid, so a
+    client reads one value whichever rank it asked for.'
   use_case: A client searches a product table for 'running shoes' and gets rows ranked by keyword relevance with
     their similarity to the same text beside it.
   scenario: 'Given a table whose API offers search and whose varchar columns are name and description
