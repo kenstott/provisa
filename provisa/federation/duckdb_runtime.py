@@ -1488,13 +1488,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                     cur.execute(LOSSLESS_ARROW)
                     with request_deadline.cancel_on_deadline(cur.interrupt):
                         with named_write_conflict():
-                            res = cur.execute(sql, params) if params else cur.execute(sql)
-                        if not res.description:
+                            # The statement as a relation (see run_sync); None: it returns no
+                            # rows (DuckDB's sql() runs a statement that is not a query as-is).
+                            rel = cur.sql(sql, params=params)
+                        if rel is None or not rel.description:
                             return QueryResult(rows=[], column_names=[], column_types=[])
-                        types = [str(d[1]) for d in res.description]
+                        types = [str(d[1]) for d in rel.description]
                         # REQ-2194: the engine's Arrow, never its DB-API rows
                         # (duckdb_arrow.arrow_rows builds the rows from it).
-                        table = res.to_arrow_table()
+                        table = rel.to_arrow_table()
                     # Rows are built here, on the executor thread: the awaiting consumer must do
                     # no per-row work on the event loop.
                     return ArrowResult(table, types, to_rows=arrow_rows).with_rows()
@@ -1555,11 +1557,22 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             try:
                 cur.execute(LOSSLESS_ARROW)
                 with request_deadline.cancel_on_deadline(cur.interrupt):
+                    # The statement as a relation, read through its own Arrow reader: on DuckDB
+                    # 1.5 the DB-API result's reader (execute() + to_arrow_reader()) let a later
+                    # batch's error race the interrupt it raises to stop sibling pipeline tasks,
+                    # answering "INTERRUPT Error: Interrupted!" in place of the statement's own
+                    # error (REQ-2194). None: the statement returns no rows (DuckDB's sql() runs a
+                    # statement that is not a query as-is).
                     with named_write_conflict():
-                        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                    reader = (
-                        cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS) if cur.description else None
-                    )
+                        rel = cur.sql(duck_sql, params=params)
+                    reader = None
+                    types: list[str] = []
+                    if rel is not None and rel.description:
+                        # DuckDB's description carries each column's declared DuckDBPyType
+                        # ("BIGINT", "DECIMAL(18,2)"), even for a zero-row result — the pgwire
+                        # Describe relies on it.
+                        types = [str(d[1]) for d in rel.description]
+                        reader = rel.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
             except BaseException:
                 # No stream will own the cursor: it is closed here (REQ-1905).
                 close_cursor(cur)
@@ -1575,9 +1588,6 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if reader is None:
             _close()
             return QueryResult(rows=[], column_names=[])
-        # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
-        # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
-        types = [str(d[1]) for d in cur.description]
         # REQ-2194: the engine's Arrow batches, never its DB-API rows. A consumer that reads rows
         # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows); an engine error
         # met in a later batch is PostgreSQL's own (duckdb_arrow.answered_batches).
@@ -1616,7 +1626,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
     def run_arrow(self, duck_sql: str, params: list | None = None):
         """Execute dialect-DuckDB SQL and return a ``pyarrow.Table`` — DuckDB produces Arrow natively
-        (``fetch_arrow_table``), so no Python rows are materialized for the Flight transport."""
+        (``to_arrow_table``), so no Python rows are materialized for the Flight transport."""
         with self._catalog_gate.read():
             duck_sql = self._prepare_sql(duck_sql)
             duck_sql, live_http = self._rewrite_clickhouse_relations(
@@ -1629,8 +1639,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
-                        res = cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                    return res.to_arrow_table()
+                        rel = cur.sql(duck_sql, params=params)
+                    return rel.to_arrow_table()
             finally:
                 close_cursor(cur)
 
@@ -1639,8 +1649,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         streaming through the Flight server's GeneratorStream (REQ-986, REQ-1214).
 
         Truly lazy: the batches are pulled from a PRIVATE cursor's Arrow record-batch reader
-        (``to_arrow_reader`` — ``fetch_record_batch`` is deprecated as of duckdb 1.x, same
-        batch_size arg and RecordBatchReader return) on demand, so the full result never
+        (the statement's relation's ``to_arrow_reader``, as run_sync reads it) on demand, so the full result never
         materializes — peak memory is bounded by one record batch, not the total result size. A
         private cursor (not the shared connection) keeps concurrent worker-thread streams from
         corrupting each other's fetch state; it is closed when the generator drains or the
@@ -1656,8 +1665,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             try:
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
-                        cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
-                    reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
+                        rel = cur.sql(duck_sql, params=params)
+                    reader = rel.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
                 schema = reader.schema
             except BaseException:
                 # No stream will own the cursor: it is closed here (REQ-1905).
