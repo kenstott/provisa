@@ -185,5 +185,19 @@ def _json_extract_call(self: Generator, expression: exp.JSONExtract) -> str:
 
 DuckDB.Generator.TRANSFORMS[exp.JSONExtract] = _json_extract_call
 
+_postgres_json_arrow = Postgres.Generator.TRANSFORMS[exp.JSONExtract]
+
+
+def _json_arrow_read_back(self: Generator, expression: exp.JSONExtract) -> str:
+    """PostgreSQL's ``v -> p``, parenthesised where it is a call's argument: sqlglot reads
+    ``f(v -> p)`` back as a lambda over ``v``, which DuckDB 2.0 writes ``LAMBDA v : p`` and cannot
+    read inside a CAST (Cypher keys() of a relationship's properties). ``f((v -> p))`` reads back
+    as the extraction, in sqlglot and in PostgreSQL."""
+    written = _postgres_json_arrow(self, expression)
+    return f"({written})" if isinstance(expression.parent, exp.Func) else written
+
+
+Postgres.Generator.TRANSFORMS[exp.JSONExtract] = _json_arrow_read_back
+
 from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
 from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads

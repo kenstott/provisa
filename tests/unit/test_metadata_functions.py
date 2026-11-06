@@ -114,7 +114,7 @@ def test_a_value_function_stays_native_on_postgresql():
 def test_a_value_function_has_its_answer_on_a_dialect_without_it(call, answer):
     import duckdb
 
-    assert duckdb.sql(transpile_to_duckdb(f"SELECT {call}")).fetchone() == (answer,)
+    assert duckdb.sql(transpile_to_duckdb(f"SELECT {call}")).fetchall() == [(answer,)]
 
 
 # --- functions on a catalog ---------------------------------------------------------------------
@@ -320,7 +320,8 @@ _SPELLINGS = (
 def _duckdb_value(sql: str):
     import duckdb
 
-    return duckdb.sql(transpile_to_duckdb(f"SELECT {sql}")).fetchone()[0]
+    ((value,),) = duckdb.sql(transpile_to_duckdb(f"SELECT {sql}")).fetchall()
+    return value
 
 
 def _quoted(value: str | None) -> str:

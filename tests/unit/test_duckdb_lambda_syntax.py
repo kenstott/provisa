@@ -89,3 +89,29 @@ def test_json_array_elements_runs_on_duckdb():
         assert [str(v) for (v,) in con.execute(sql).fetchall()] == ["1", "2"]
     finally:
         con.close()
+
+
+def test_a_json_extraction_a_call_takes_reads_back_as_itself_in_postgresql():
+    # The PostgreSQL text the transpiler writes between its steps spelled json_extract(p, path),
+    # a call's argument, `p -> path`; read back, that argument was a lambda `LAMBDA p : path`,
+    # which DuckDB 2.0 cannot read inside a CAST (Cypher keys() of a relationship's properties).
+    import sqlglot
+
+    tree = sqlglot.parse_one("SELECT json_kind(json_extract(p, '$.' || k)) FROM t", read="postgres")
+    written = tree.sql(dialect="postgres")
+    read_back = sqlglot.parse_one(written, read="postgres")
+    assert read_back.find(exp.Lambda) is None
+    assert read_back.sql(dialect="postgres") == written
+
+
+def test_the_set_keys_of_a_json_object_run_on_duckdb():
+    # Cypher keys(properties): the keys whose values are set, each read by a lambda over the keys.
+    sql = transpile_to_duckdb(
+        "SELECT FILTER(JSON_KEYS(p), _k -> JSON_KIND(JSON_EXTRACT(p, '$.\"' || _k || '\"')) "
+        "<> 'null') AS keys FROM (SELECT CAST('{\"a\": 1, \"b\": null}' AS JSON) AS p) AS t"
+    )
+    con = duckdb.connect()
+    try:
+        assert con.execute(sql).fetchall() == [(["a"],)]
+    finally:
+        con.close()

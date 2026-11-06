@@ -435,15 +435,22 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._dbx_relations.pop(f'"{parts[0]}"."{parts[1]}"."{parts[2]}"', None)
         if parts[0] not in self._phys_catalogs:
             return  # nothing of this source was ever exposed on this connection
-        is_view = self._listing(
-            lambda: engine_memory.first_row(
-                self._on_instance(
-                    "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
-                    "AND view_name = ?",
-                    parts,
+
+        def view_row() -> Any:
+            # A cursor of its own (see _on_instance), read before it closes.
+            cur = open_cursor(self._con)
+            try:
+                return engine_memory.first_row(
+                    cur.execute(
+                        "SELECT 1 FROM duckdb_views() WHERE database_name = ? "
+                        "AND schema_name = ? AND view_name = ?",
+                        parts,
+                    )
                 )
-            )
-        )
+            finally:
+                close_cursor(cur)
+
+        is_view = self._listing(view_row)
         if is_view is not None:
             self._on_instance(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
 
