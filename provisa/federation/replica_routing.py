@@ -282,8 +282,10 @@ async def _registry(state: Any) -> _Registry:
     from provisa.synthetic.datasets import generated_tables, synthetic_sources
 
     # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
+    # A SQL catalog's views are on a built-in source, never among ``sources``: nothing here
+    # routes, floors or keeps them, so their rows and columns are not read (REQ-2190).
     async with mdb.acquire() as conn:
-        registered = await fetch_tables(conn)
+        registered = await fetch_tables(conn, catalog=False)
         sources = {s.id: s for s in await registered_sources(state, conn)}
         synthetic = await generated_tables(conn)
         bound = frozenset(await synthetic_sources(conn))
