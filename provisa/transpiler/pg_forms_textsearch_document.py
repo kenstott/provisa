@@ -325,9 +325,10 @@ def _parts(e: Engine) -> str:
         )
     )
     hyphened = e.concat.format(e.array.format("_u"), e.split.format("_u", "'-'"))
+    # searched: ClickHouse writes CASE _k WHEN as transform, which takes no array
     return (
-        f"CASE _k WHEN '' THEN {e.no_texts} WHEN {e.text(_URL)} THEN {url} "
-        f"WHEN {e.text(_HYPHENED)} THEN {hyphened} ELSE {e.array.format('_u')} END"
+        f"CASE WHEN _k = '' THEN {e.no_texts} WHEN _k = {e.text(_URL)} THEN {url} "
+        f"WHEN _k = {e.text(_HYPHENED)} THEN {hyphened} ELSE {e.array.format('_u')} END"
     )
 
 
