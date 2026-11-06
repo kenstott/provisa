@@ -139,7 +139,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _rebuild_table_input,
     _resolve_admin_context,
     _register_source_on_engine,
-    engine_extension_refusal,
+    engine_unreachable,
     restart_source_server,
     _remove_view_mv,
     _expand_wikipedia_if_needed,
@@ -2471,10 +2471,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return _soda_refusal
         from provisa.api.app import state as _app_state
 
-        # REQ-1142, REQ-1998: refused by name when it is added, never at its first query.
-        _extension_refusal = engine_extension_refusal(_app_state, input.id, input.type)
-        if _extension_refusal is not None:
-            return _extension_refusal
+        # REQ-1142, REQ-1998: no reader in this deployment: shown when it is added, never at
+        # its first query, naming what is missing.
+        _unreachable = engine_unreachable(_app_state, input.id, input.type)
+        if _unreachable is not None:
+            return _unreachable
 
         from provisa.security.residency import CREATED
 
@@ -2888,10 +2889,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             return _soda_refusal
         from provisa.api.app import state as _app_state
 
-        # REQ-1142, REQ-1998: refused by name when it is added, never at its first query.
-        _extension_refusal = engine_extension_refusal(_app_state, input.id, input.type)
-        if _extension_refusal is not None:
-            return _extension_refusal
+        # REQ-1142, REQ-1998: no reader in this deployment: shown when it is added, never at
+        # its first query, naming what is missing.
+        _unreachable = engine_unreachable(_app_state, input.id, input.type)
+        if _unreachable is not None:
+            return _unreachable
         _load_mgmt_refusal = _validate_source_load_management(input)  # REQ-1909
         if _load_mgmt_refusal is not None:
             return _load_mgmt_refusal

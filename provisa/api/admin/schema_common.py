@@ -816,23 +816,22 @@ async def _cache_prometheus_label_columns(pool, state, model) -> None:  # REQ-17
     state.prometheus_label_columns = cache
 
 
-def engine_extension_refusal(state, source_id: str, source_type: str) -> MutationResult | None:
-    """A source the bound engine refuses by name, refused when it is added, never at its first
-    query: its only way in needs a DuckDB extension not staged for the running DuckDB version and
-    platform (REQ-1142, ATTACHABLE MEANS STAGED), or MotherDuck has not yet caught up with the
-    DuckDB Provisa runs (REQ-1998)."""
+def engine_unreachable(state, source_id: str, source_type: str) -> MutationResult | None:
+    """A source no reader in this deployment can read, shown when it is added, never at its first
+    query, naming what is missing (REQ-1142, NOT ATTACHABLE MEANS REPLICA; REQ-1998). A source the
+    engine cannot read in place but Provisa lands is a replica and is added."""
     runtime = getattr(state, "federation_engine", None)
     engine = getattr(runtime, "engine", None)
     if engine is None:
         return None
-    why = engine.refusal(source_type)
+    why = engine.unreachable_reason(source_type)
     if why is None:
         return None
     return MutationResult(
         success=False,
-        message=f"Source {source_id!r} cannot be added on the {engine.name!r} engine: {why}",
-        code="schema.source_extension_unavailable",
-        params={"source": source_id, "type": source_type, "reason": why},
+        message=f"Source {source_id!r} is unreachable on the {engine.name!r} engine: {why}",
+        code="schema.source_unreachable",
+        params={"source": source_id, "type": source_type, "missing": why},
     )
 
 

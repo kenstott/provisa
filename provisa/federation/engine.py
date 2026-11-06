@@ -155,13 +155,14 @@ class FederationEngine:  # REQ-840
         capabilities: Any = None,
         default_materialize_store: Any = None,
         supported_materialize_stores: frozenset[str] | None = None,
-        refusals: Mapping[str, str] | None = None,
+        unreachable: Mapping[str, str] | None = None,
     ) -> None:
         self.name = name
-        # The source types this engine refuses by name, with why: one whose only way in needs an
-        # extension not staged for the running DuckDB (REQ-1142, ATTACHABLE MEANS STAGED), or that
-        # waits on its vendor (REQ-1998). Never reachable, never landed; registration refuses them.
-        self.refusals: dict[str, str] = dict(refusals or {})
+        # The source types no reader in this deployment can read, with what is missing (REQ-1142,
+        # NOT ATTACHABLE MEANS REPLICA; REQ-1998): the engine cannot read them in place and nothing
+        # lands them. A type the engine cannot read in place but Provisa can land is not here: it
+        # is a replica. Shown when such a source is added, naming what is missing.
+        self.unreachable: dict[str, str] = dict(unreachable or {})
         # DECLARED (REQ-1730), defaults True (every engine already exercised through this harness
         # supports it): whether this engine's own SQL dialect can express a catalog-qualified
         # (catalog.schema.table, 3-part) physical reference at all. Trino/DuckDB genuinely need
@@ -336,13 +337,14 @@ class FederationEngine:  # REQ-840
     # -- reachability (REQ-840) ------------------------------------------------
 
     def reachable(self, source_type: str) -> bool:
-        if source_type in self.refusals:
+        if source_type in self.unreachable:
             return False
         return source_type in self.connectors or self._is_landable(source_type)
 
-    def refusal(self, source_type: str) -> str | None:
-        """Why this engine refuses ``source_type`` sources by name, or None (REQ-1142, REQ-1998)."""
-        return self.refusals.get(source_type)
+    def unreachable_reason(self, source_type: str) -> str | None:
+        """What is missing for any reader in this deployment to read ``source_type`` sources, or
+        None where one can (REQ-1142, REQ-1998)."""
+        return self.unreachable.get(source_type)
 
     def _is_landable(self, source_type: str) -> bool:
         """A non-attachable remote source (openapi/graphql_remote/grpc/NoSQL/stream) is reachable
@@ -376,8 +378,8 @@ class FederationEngine:  # REQ-840
         for source_type in sorted(direct | fetch):
             if source_type in self.connectors:
                 continue  # already reached live (ATTACH/SCAN) — attach wins over a landed replica
-            if source_type in self.refusals:
-                continue  # refused by name: it cannot land either (REQ-1142)
+            if source_type in self.unreachable:
+                continue  # no reader lands it either (REQ-1142)
             mechanism = Mechanism.DIRECT if source_type in direct else Mechanism.FETCH
             connector = WarehouseNativeConnector(self.name, source_type, mechanism)
             self.connectors[source_type] = connector
@@ -436,8 +438,8 @@ class FederationEngine:  # REQ-840
         connector = self.connectors.get(source_type)
         if connector is not None:
             return connector
-        if source_type in self.refusals:
-            raise UnreachableSource(self.name, source_type, self.refusals[source_type])
+        if source_type in self.unreachable:
+            raise UnreachableSource(self.name, source_type, self.unreachable[source_type])
         # No attach/scan connector. A non-attachable remote source is not unreachable — it LANDs
         # into the materialization store (the user rule: "remote schemas are all required to be
         # landed"). Hand back a land-into-store connector so resolve() projects a LAND entry.
@@ -667,27 +669,29 @@ def _lands_without_attach(source_type: str) -> bool:
     from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
     from provisa.source_adapters.registry import _ADAPTER_MAP
 
+    if source_type in available_drivers():
+        return True  # Provisa's own driver lands it (firebird's, with provisa[firebird])
     if source_type in LANDS_THROUGH_ITS_EXTENSION:
         return False
     return (
-        source_type in available_drivers()
-        or source_type in _ADAPTER_MAP
+        source_type in _ADAPTER_MAP
         or source_type in _MATERIALIZE_ONLY
         or source_type in _CONNECTOR_PGWIRE_REPLICA
     )
 
 
 def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str, str]]:
-    """REQ-1142 (Amended 2026-11-06, ATTACHABLE MEANS STAGED): of the DuckDB engine's
-    ``connectors``, those whose every needed extension is staged for the running DuckDB version
-    and platform (the staged directory's manifest), and, by source type, why each type left with no
-    connector is refused: one that cannot land. A type that lands is not refused: complete_reach
-    gives it its land reach. With no staged extension directory DuckDB installs from its own
-    repositories (REQ-1142) and every connector stays."""
+    """REQ-1142 (Amended 2026-11-06, ATTACHABLE MEANS STAGED; NOT ATTACHABLE MEANS REPLICA): of
+    the DuckDB engine's ``connectors``, those whose every needed extension is staged for the
+    running DuckDB version and platform (the staged directory's manifest), and, by source type,
+    what is missing for each type left with no connector that no reader lands either. A type
+    Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. With no
+    staged extension directory DuckDB installs from its own repositories (REQ-1142) and every
+    connector stays."""
     from provisa.federation.duckdb_extensions import (
         staged_extensions,
         unstaged_needs,
-        unstaged_refusal,
+        unstaged_reason,
     )
 
     staged = staged_extensions()
@@ -702,12 +706,12 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
         elif not connector.opt_in_reach:  # an opt-in reach is asked for; its type has its own
             missing.setdefault(connector.source_type, needs)
     reached = {c.source_type for c in kept if not c.opt_in_reach}
-    refusals = {
-        source_type: unstaged_refusal(source_type, needs)
+    unreachable = {
+        source_type: unstaged_reason(source_type, needs)
         for source_type, needs in missing.items()
         if source_type not in reached and not _lands_without_attach(source_type)
     }
-    return kept, refusals
+    return kept, unreachable
 
 
 def build_duckdb_engine(
@@ -730,6 +734,7 @@ def build_duckdb_engine(
         DuckDBGsheetsConnector,
         DuckDBIcebergConnector,
         DuckDBMongoConnector,
+        DuckDBMotherDuckConnector,
         DuckDBMssqlConnector,
         DuckDBParquetConnector,
         DuckDBPostgresConnector,
@@ -743,9 +748,9 @@ def build_duckdb_engine(
     )
     from provisa.federation.codehost_connectors import DuckDBCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
-    from provisa.federation.duckdb_extensions import motherduck_refusal
+    from provisa.federation.duckdb_extensions import motherduck_reader_missing
 
-    connectors, refusals = _attachable(
+    connectors, unreachable = _attachable(
         [
             DuckDBPostgresConnector(),
             # REQ-2100: a built code host, attached as the Postgres server it speaks as.
@@ -762,8 +767,7 @@ def build_duckdb_engine(
             DuckDBMssqlConnector("synapse"),
             DuckDBMongoConnector(),
             DuckDBSnowflakeConnector(),
-            # REQ-1998: DuckDBMotherDuckConnector (md:<database>) waits for MotherDuck to support
-            # DuckDB 2.0; until then a MotherDuck source is refused by name (below).
+            # REQ-1998: md:<database>, where MotherDuck's extension loads on this DuckDB (below).
             DuckDBBigQueryConnector(),
             DuckDBFirebirdConnector(),
             DuckDBGsheetsConnector(),
@@ -786,12 +790,18 @@ def build_duckdb_engine(
             *load_custom_connectors("duckdb"),
         ]
     )
-    # REQ-1998 (Amended 2026-11-06): MotherDuck's extension does not load on DuckDB 2.0.
-    refusals["motherduck"] = motherduck_refusal()
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH): attached where
+    # MotherDuck's extension loads on this DuckDB; where it does not, no reader in this deployment
+    # lands it either, so it is unreachable, naming what is missing.
+    missing_reader = motherduck_reader_missing()
+    if missing_reader is None:
+        connectors.append(DuckDBMotherDuckConnector())
+    else:
+        unreachable["motherduck"] = missing_reader
     return FederationEngine(
         name,
         connectors,
-        refusals=refusals,
+        unreachable=unreachable,
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node embedded engine (REQ-894)

@@ -280,22 +280,55 @@ def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, .
     return tuple(n for n in needs if n not in staged)
 
 
-def unstaged_refusal(source_type: str, missing: tuple[str, ...]) -> str:
-    """Why a ``source_type`` source is refused: the extensions it needs are not staged."""
+#: The reader that lands a source type's replicas where the engine cannot attach it, decided and
+#: not yet built (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT, maintainer 2026-11-06:
+#: per-type readers; J866). A source of the type names it while the deployment lacks it.
+PENDING_READERS: dict[str, str] = {
+    "motherduck": "MotherDuck's Postgres-endpoint reader",
+    "google_sheets": "the Google Sheets API reader",
+}
+
+
+def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
+    """What is missing for a ``source_type`` source that no reader in this deployment reads: the
+    extensions its only reader needs are not staged for this DuckDB and platform, and the reader
+    that would land it instead, where one is decided (PENDING_READERS)."""
     raw_version, platform = running_version_platform()
     which = " and ".join(missing)
+    unavailable = (
+        f"DuckDB's {which} extension{'s' if len(missing) > 1 else ''} "
+        f"{'are' if len(missing) > 1 else 'is'} not available for DuckDB {raw_version} on {platform}"
+    )
+    if source_type in PENDING_READERS:
+        return (
+            f"needs {PENDING_READERS[source_type]} to land it, which this deployment does not "
+            f"have yet: {unavailable}"
+        )
     return (
-        f"{source_type!r} sources need DuckDB's {which} extension"
-        f"{'s' if len(missing) > 1 else ''}, which {'are' if len(missing) > 1 else 'is'} not "
-        f"available for DuckDB {raw_version} on {platform}"
+        f"no reader of {source_type!r} sources in this deployment: {unavailable}, and Provisa "
+        "has no other reader to land it"
     )
 
 
-def motherduck_refusal() -> str:
-    """REQ-1998 (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT)."""
+#: The newest DuckDB MotherDuck's extension loads on (its own refusal on 2.0.0, 2026-11-06:
+#: "Your DuckDB version (v2.0.0) is not yet supported by MotherDuck. The latest supported version
+#: is v1.5.6."). Raised when MotherDuck supports a later one.
+MOTHERDUCK_LATEST_DUCKDB = (1, 5, 6)
+
+
+def motherduck_reader_missing() -> str | None:
+    """What is missing to read a MotherDuck source in this deployment, or None where the engine's
+    DuckDB loads MotherDuck's extension (REQ-1998). Elsewhere a MotherDuck source is a replica
+    landed through MotherDuck's Postgres endpoint (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES
+    ENDPOINT), whose reader this deployment does not have yet: the source names it."""
+    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
+    if running <= MOTHERDUCK_LATEST_DUCKDB:
+        return None
+    latest = ".".join(map(str, MOTHERDUCK_LATEST_DUCKDB))
     return (
-        f"MotherDuck does not yet support DuckDB {duckdb.__version__}, the DuckDB version Provisa "
-        "runs, so a MotherDuck source cannot be added until it does"
+        f"needs {PENDING_READERS['motherduck']} to land it, which this deployment does not have "
+        f"yet: MotherDuck's extension supports DuckDB up to {latest} and the engine runs DuckDB "
+        f"{duckdb.__version__}"
     )
 
 

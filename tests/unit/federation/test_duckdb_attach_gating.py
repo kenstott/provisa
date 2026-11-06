@@ -8,12 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1142 (Amended 2026-11-06, ATTACHABLE MEANS STAGED): on a staged extension directory the
-DuckDB engine counts a connector attachable only when every extension its way of reaching needs is
-staged for the running DuckDB version and platform, read from the staged extensions' manifest. A
-source whose extension is not staged lands when it is landable, and is otherwise refused by name
-when it is added, naming the extension. REQ-1998 (Amended 2026-11-06): a MotherDuck source is
-refused by name, MotherDuck not yet supporting the DuckDB version Provisa runs."""
+"""REQ-1142 (Amended 2026-11-06, ATTACHABLE MEANS STAGED; NOT ATTACHABLE MEANS REPLICA): on a
+staged extension directory the DuckDB engine counts a connector attachable only when every
+extension its way of reaching needs is staged for the running DuckDB version and platform, read
+from the staged extensions' manifest. A source it cannot read in place is a replica wherever
+Provisa lands it; it is unreachable only when no reader in the deployment can read it, and that is
+shown when it is added, naming what is missing. REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A
+REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): on DuckDB 2.0 a
+MotherDuck source, and a Google Sheets source (gsheets has no 2.0 build), each needs its per-type
+reader, and names it while the deployment lacks it."""
 
 # Requirements: REQ-1142, REQ-1998
 
@@ -135,7 +138,7 @@ def test_a_staged_extension_attaches(tmp_path, monkeypatch):
 
     _staged(tmp_path, monkeypatch, _LINUX)
     engine = build_engine("duckdb")
-    assert engine.refusal("sqlserver") is None
+    assert engine.unreachable_reason("sqlserver") is None
     assert engine.connectors["sqlserver"].reads_in_place
     assert federate(_source("mongodb"), engine) is Strategy.VIRTUAL
 
@@ -151,32 +154,35 @@ def test_staged_means_every_way_the_extension_offers(tmp_path, monkeypatch):
 def test_firebird_attaches_where_it_is_staged(tmp_path, monkeypatch):
     _staged(tmp_path, monkeypatch, _MACOS)
     engine = build_engine("duckdb")
-    assert engine.refusal("firebird") is None
+    assert engine.unreachable_reason("firebird") is None
     assert engine.connectors["firebird"].reads_in_place
 
 
-# --- not staged, landable: lands ------------------------------------------------------------
+# --- not staged, landable: a replica ------------------------------------------------------------
 
 
-def test_an_unstaged_extension_lands_a_landable_source(tmp_path, monkeypatch):
+def test_an_unstaged_extension_makes_a_landable_source_a_replica(tmp_path, monkeypatch):
     from provisa.federation.strategy import Strategy, federate
 
     _staged(tmp_path, monkeypatch, _WINDOWS)  # no mongo on Windows
     engine = build_engine("duckdb")
-    assert engine.refusal("mongodb") is None
+    assert engine.unreachable_reason("mongodb") is None
     assert not engine.connectors["mongodb"].reads_in_place
     assert federate(_source("mongodb"), engine) is Strategy.MATERIALIZED
 
 
-# --- not staged, not landable: refused by name at registration ------------------------------
+# --- not staged, no reader: unreachable, shown when added ------------------------------
 
 
-def test_gsheets_has_no_build_for_this_duckdb_and_is_refused_by_name(tmp_path, monkeypatch):
+def test_gsheets_has_no_build_for_this_duckdb_and_no_reader_so_is_unreachable(
+    tmp_path, monkeypatch
+):
     _staged(tmp_path, monkeypatch, _MACOS)
     ver, plat = _version_platform()
     engine = build_engine("duckdb")
-    why = engine.refusal("google_sheets")
+    why = engine.unreachable_reason("google_sheets")
     assert why is not None
+    assert "the Google Sheets API reader" in why
     assert "gsheets" in why and ver in why and plat in why
     assert "google_sheets" not in engine.connectors
     assert not engine.reachable("google_sheets")
@@ -184,38 +190,65 @@ def test_gsheets_has_no_build_for_this_duckdb_and_is_refused_by_name(tmp_path, m
         engine.connector_for("google_sheets")
 
 
-def test_firebird_on_linux_is_refused_by_name(tmp_path, monkeypatch):
-    # Left out of the Linux bundle; its rows are read through the same extension, so it cannot
-    # land either.
+def test_firebird_on_linux_is_unreachable_naming_its_extension(tmp_path, monkeypatch):
+    # Left out of the Linux bundle; its loader reads through the same extension, so no reader
+    # lands it either.
     _staged(tmp_path, monkeypatch, _LINUX)
     engine = build_engine("duckdb")
-    why = engine.refusal("firebird")
+    why = engine.unreachable_reason("firebird")
     assert why is not None and "firebird" in why
     assert "firebird" not in engine.connectors
     with pytest.raises(UnreachableSource, match="firebird"):
         engine.connector_for("firebird")
 
 
+def test_firebird_with_provisas_own_driver_is_a_replica_where_it_is_not_staged(
+    tmp_path, monkeypatch
+):
+    # provisa[firebird] installs a direct driver: it lands firebird where the extension is absent.
+    from provisa.executor.drivers import registry
+    from provisa.federation.strategy import Strategy, federate
+
+    monkeypatch.setattr(registry, "available_drivers", lambda: {"firebird"})
+    _staged(tmp_path, monkeypatch, _LINUX)
+    engine = build_engine("duckdb")
+    assert engine.unreachable_reason("firebird") is None
+    assert not engine.connectors["firebird"].reads_in_place
+    assert federate(_source("firebird"), engine) is Strategy.MATERIALIZED
+
+
 def test_iceberg_needs_avro_staged_too(tmp_path, monkeypatch):
     _staged(tmp_path, monkeypatch, tuple(e for e in _LINUX if e != "avro"))
     engine = build_engine("duckdb")
-    why = engine.refusal("iceberg")
+    why = engine.unreachable_reason("iceberg")
     assert why is not None and "avro" in why
 
 
-def test_registration_refuses_an_unattachable_source_before_it_is_saved(tmp_path, monkeypatch):
-    from provisa.api.admin.schema_common import engine_extension_refusal
+def test_an_unreachable_source_is_shown_when_added_naming_what_is_missing(tmp_path, monkeypatch):
+    from provisa.api.admin.schema_common import engine_unreachable
 
     _staged(tmp_path, monkeypatch, _LINUX)
     state = types.SimpleNamespace(
         federation_engine=types.SimpleNamespace(engine=build_engine("duckdb"))
     )
-    refused = engine_extension_refusal(state, "my-sheet", "google_sheets")
-    assert refused is not None
-    assert refused.success is False
-    assert refused.code == "schema.source_extension_unavailable"
-    assert "gsheets" in refused.message and "my-sheet" in refused.message
-    assert engine_extension_refusal(state, "pg", "postgresql") is None
+    shown = engine_unreachable(state, "my-sheet", "google_sheets")
+    assert shown is not None
+    assert shown.success is False
+    assert shown.code == "schema.source_unreachable"
+    assert "gsheets" in shown.message and "my-sheet" in shown.message
+    assert engine_unreachable(state, "pg", "postgresql") is None  # staged: attaches
+    assert engine_unreachable(state, "mongo-1", "mongodb") is None  # not staged on Windows ...
+
+
+def test_a_replica_source_is_added(tmp_path, monkeypatch):
+    # ... and a source the engine cannot read in place but Provisa lands is added, a replica.
+    from provisa.api.admin.schema_common import engine_unreachable
+
+    _staged(tmp_path, monkeypatch, _WINDOWS)  # no mongo on Windows
+    state = types.SimpleNamespace(
+        federation_engine=types.SimpleNamespace(engine=build_engine("duckdb"))
+    )
+    assert engine_unreachable(state, "mongo-1", "mongodb") is None
 
 
 # --- the server tier: DuckDB's own install path ----------------------------------------------
@@ -225,31 +258,44 @@ def test_with_no_staged_directory_every_extension_connector_stays(monkeypatch):
     monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
     engine = build_engine("duckdb")
     for source_type in ("postgresql", "sqlserver", "firebird", "google_sheets", "iceberg"):
-        assert engine.refusal(source_type) is None, source_type
+        assert engine.unreachable_reason(source_type) is None, source_type
         assert engine.connectors[source_type].reads_in_place, source_type
 
 
-# --- MotherDuck (REQ-1998, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT) ---------------------------
+# --- MotherDuck (REQ-1998: a replica where it cannot attach, landed through its Postgres endpoint) ---
 
 
 @pytest.mark.parametrize("staged", [None, _MACOS])
-def test_motherduck_is_refused_by_name_on_every_tier(tmp_path, monkeypatch, staged):
+def test_motherduck_on_duckdb_2_needs_its_postgres_endpoint_reader_on_every_tier(
+    tmp_path, monkeypatch, staged
+):
     if staged is None:
         monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
     else:
         _staged(tmp_path, monkeypatch, staged)
     engine = build_engine("duckdb")
-    why = engine.refusal("motherduck")
+    why = engine.unreachable_reason("motherduck")
     assert why is not None
-    assert "MotherDuck does not yet support DuckDB" in why
-    assert duckdb.__version__ in why
+    assert "MotherDuck's Postgres-endpoint reader" in why
+    assert duckdb.__version__ in why and "1.5.6" in why
     assert "motherduck" not in engine.connectors
-    with pytest.raises(UnreachableSource, match="MotherDuck does not yet support"):
+    with pytest.raises(UnreachableSource, match="Postgres-endpoint reader"):
         engine.connector_for("motherduck")
 
 
-def test_the_motherduck_extension_is_never_installed(monkeypatch):
-    # Refused before anything is attached: no INSTALL motherduck reaches DuckDB.
+def test_motherduck_attaches_where_its_extension_loads_on_the_engines_duckdb(monkeypatch):
+    # The DuckDB MotherDuck supports (<= 1.5.6) attaches it in place, as before the pin.
+    from provisa.federation.connector_duckdb import DuckDBMotherDuckConnector
+
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    monkeypatch.setattr(duckdb, "__version__", "1.5.5")
+    engine = build_engine("duckdb")
+    assert engine.unreachable_reason("motherduck") is None
+    assert isinstance(engine.connectors["motherduck"], DuckDBMotherDuckConnector)
+
+
+def test_the_motherduck_extension_is_never_installed_on_duckdb_2(monkeypatch):
+    # Unreachable before anything is attached: no INSTALL motherduck reaches DuckDB.
     loaded: list[str] = []
     monkeypatch.setattr(
         duckdb_extensions, "install_and_load", lambda con, ext, **_: loaded.append(ext)

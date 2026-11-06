@@ -31,17 +31,20 @@ def _source(**kw: Any):
     return SimpleNamespace(**{**base, **kw})
 
 
-def test_the_duckdb_engine_refuses_motherduck_until_it_supports_the_duckdb_provisa_runs():
-    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK WAITS FOR DUCKDB 2.0 SUPPORT): refused by name.
+def test_on_duckdb_2_a_motherduck_source_needs_its_postgres_endpoint_reader():
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
+    # LANDS THROUGH ITS POSTGRES ENDPOINT): MotherDuck's extension does not load on DuckDB 2.0.
     from provisa.federation.engine import build_duckdb_engine
 
     engine = build_duckdb_engine()
     assert "motherduck" not in engine.connectors
-    assert "MotherDuck does not yet support DuckDB" in (engine.refusal("motherduck") or "")
+    assert "MotherDuck's Postgres-endpoint reader" in (
+        engine.unreachable_reason("motherduck") or ""
+    )
 
 
-def test_the_motherduck_connector_waits_in_place_for_its_support():
-    # What the engine attaches with again once MotherDuck supports the DuckDB Provisa runs.
+def test_the_motherduck_connector_attaches_where_its_extension_loads():
+    # What the engine attaches with on a DuckDB MotherDuck supports.
     connector = DuckDBMotherDuckConnector()
     assert connector.extension == "motherduck" and connector.install_from_community is False
     assert connector.capability().write  # writes through the engine, as on the pg engine
