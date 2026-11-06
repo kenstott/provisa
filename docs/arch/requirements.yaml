@@ -92457,7 +92457,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     argument. On a table with an embedding each row also carries _hybrid, its BM25 and similarity rankings
     fused by reciprocal rank. The search imposes no order and no cutoff: _bm25, _similarity and _hybrid
     can be used in order_by and where like any column, and the client decides whether to sort or filter
-    by them.'
+    by them. (Amended 2026-11-05, its index:) Offering search on a table adds a search index to its replica
+    build, as replica keys and indexes are built: on PostgreSQL a GIN index over the stemmed text of the
+    varchar columns, kept current by writes; on DuckDB its full-text index, rebuilt at each replica refresh.
+    Where the engine has no such index search still answers by scanning, and offering it says so. (Amended
+    2026-11-05, in SQL:) SQL clients get the same search as a table function named like the GraphQL field,
+    SELECT * FROM <table>_search(''running shoes''), taking the same query string and returning the table''s
+    rows with _bm25, and on a table with an embedding _similarity and _hybrid, for the client to sort or
+    filter.'
   use_case: A client searches a product table for 'running shoes' and gets rows ranked by keyword relevance with
     their similarity to the same text beside it.
   scenario: 'Given a table whose API offers search and whose varchar columns are name and description
