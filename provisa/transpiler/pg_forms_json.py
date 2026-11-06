@@ -92,7 +92,7 @@ def _rows(name: str, params: str, form: Callable[[str, str], str]) -> list[Row]:
 
 _EACH = (
     f"unnest(list_transform(json_keys(CAST({_guard(_D, 'v', 'object', 'json_each')} AS JSON)), "
-    """_k -> struct_pack(key := _k, value := json_extract(v, '$."' || """
+    """LAMBDA _k : struct_pack(key := _k, value := json_extract(v, '$."' || """
     """replace(_k, '"', '\\"') || '"'))))"""
 )
 #: A row: name, parameters, each dialect's form.
@@ -628,7 +628,7 @@ def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable)
 
     if name in _AGG_STRICT:
         return _duckdb(
-            "to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(member(args[0]))
+            "to_json(list_filter(_rows, LAMBDA _v : _v IS NOT NULL))", _rows=rows(member(args[0]))
         )
     if name in _OBJECT_AGGS or (filtered and name in ("json_object_agg", "jsonb_object_agg")):
         strict, unique = _OBJECT_AGGS.get(name, (False, False))

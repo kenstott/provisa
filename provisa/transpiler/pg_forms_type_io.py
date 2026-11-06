@@ -169,7 +169,7 @@ DUCKDB = Engine(
     size=lambda v: f"strlen({v})",
     chars=lambda v: f"length({v})",
     raises=refused,
-    let=lambda n, v, b: f"list_transform([{v}], {n} -> {b})[1]",
+    let=lambda n, v, b: f"list_transform([{v}], LAMBDA {n} : {b})[1]",
     days=lambda v: f"date_diff('day', DATE '2000-01-01', CAST({v} AS DATE))",
     valid_date=lambda v: f"TRY_CAST({v} AS DATE)",
     nan=lambda t: f"CAST('NaN' AS {t})",
@@ -182,7 +182,7 @@ DUCKDB = Engine(
     ),
     numbers=lambda v: (
         f"array_to_string(list_transform(regexp_extract_all({v}, '{_NUMBER_TEXT}'), "
-        "_n -> printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
+        "LAMBDA _n : printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
     ),
 )
 TRINO = Engine(

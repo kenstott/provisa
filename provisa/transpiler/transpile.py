@@ -287,7 +287,9 @@ def _json_list_compare(
         body = pair(f"{p}[1]", f"{p}[2]", depth - 1)
         if duck:
             zipped = f"list_zip({arr_a}, {arr_b}, true)"
-            decided = f"list_filter(list_transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+            decided = (
+                f"list_filter(list_transform({zipped}, LAMBDA {p} : {body}), LAMBDA {c} : {c} <> 0)"
+            )
             return f"list_extract(list_append({decided}, {shorter}), 1)"
         zipped = (
             f"slice(zip({arr_a}, {arr_b}), 1, least(cardinality({arr_a}), cardinality({arr_b})))"

@@ -161,9 +161,9 @@ def _let(e: Engine, name: str, value: str, body: str) -> str:
 
 DUCKDB = Engine(
     name="duckdb",
-    let="list_transform([{1}], {0} -> {2})[1]",
-    map="list_transform({0}, {1} -> {2})",
-    filter="list_filter({0}, {1} -> {2})",
+    let="list_transform([{1}], LAMBDA {0} : {2})[1]",
+    map="list_transform({0}, LAMBDA {1} : {2})",
+    filter="list_filter({0}, LAMBDA {1} : {2})",
     upto="range(CAST({} AS BIGINT))",
     size="len({})",
     extract="regexp_extract_all({}, '" + _NUMBER + "')",
@@ -187,7 +187,7 @@ DUCKDB = Engine(
     concat="list_concat({}, {})",
     sort="list_sort({})",
     raises=f"CASE WHEN {{0}} THEN error('{MARK} {{1}}') ELSE {{2}} END",
-    fold="list_reduce(list_prepend(CAST({2} AS BIGINT), {0}), ({1}, _item) -> {3})",
+    fold="list_reduce(list_prepend(CAST({2} AS BIGINT), {0}), LAMBDA {1}, _item : {3})",
     bigint="CAST({} AS BIGINT)",
     wide="CAST({} AS HUGEINT)",
     quotient="({} // {})",

@@ -358,7 +358,8 @@ _INDEXAM_PROPERTIES = {
 _ENCODING_MAX_LENGTHS = (1, 3, 3, 3, 4, 3, 4, 4, *(1,) * 27, 2, 2, 2, 2, 4, 3, 2)
 
 _XIP = (
-    "list_transform(string_split(nullif(split_part(s, ':', 3), ''), ','), _x -> CAST(_x AS BIGINT))"
+    "list_transform(string_split(nullif(split_part(s, ':', 3), ''), ','), "
+    "LAMBDA _x : CAST(_x AS BIGINT))"
 )
 _XMIN = "CAST(split_part(s, ':', 1) AS BIGINT)"
 _XMAX = "CAST(split_part(s, ':', 2) AS BIGINT)"
@@ -377,7 +378,8 @@ def _snapshot(family: str, visible: str) -> tuple[Macro, ...]:
                 "s",
                 "BLOB",
                 f"unhex(printf('%08x%016x%016x', coalesce(len({_XIP}), 0), {_XMIN}, {_XMAX}) || "
-                f"coalesce(array_to_string(list_transform({_XIP}, _x -> printf('%016x', _x)), ''), "
+                f"coalesce(array_to_string(list_transform({_XIP}, "
+                "LAMBDA _x : printf('%016x', _x)), ''), "
                 "''))",
             ),
         ),
@@ -1037,11 +1039,11 @@ def _clickhouse_refused(condition: str, function: str) -> str:
 
 def _filled(*rest: str) -> str:
     """array_fill of one dimension, from 1: a list has no other shape to hold what it asks for."""
-    ones = "".join(f" AND list_filter({r}, _b -> _b <> 1) = []" for r in rest)
+    ones = "".join(f" AND list_filter({r}, LAMBDA _b : _b <> 1) = []" for r in rest)
     missing = " OR ".join(f"{r} IS NULL" for r in ("dims", *rest))
     return (
         f"CASE WHEN {missing} THEN {raising('22004', _NO_DIMENSIONS)} "
-        f"WHEN len(dims) = 1{ones} THEN list_transform(range(dims[1]), _i -> v) "
+        f"WHEN len(dims) = 1{ones} THEN list_transform(range(dims[1]), LAMBDA _i : v) "
         f"ELSE {raising('0A000', f"'array_fill {pg_forms_types.REFUSED}'")} END"
     )
 
@@ -1070,7 +1072,8 @@ def _trimmed(limit: str, sqlstate: str, message: str, answer: str, length: str =
 
 
 _SHUFFLED = (
-    "list_transform(list_sort(list_transform(a, _x -> {'k': random(), 'v': _x})), _e -> _e.v)"
+    "list_transform(list_sort(list_transform(a, LAMBDA _x : {'k': random(), 'v': _x})), "
+    "LAMBDA _e : _e.v)"
 )
 _TRINO_SORTED_OUT = (
     "CASE WHEN a IS NULL OR n IS NULL THEN NULL WHEN n < 0 OR n > cardinality(a) THEN "
@@ -1104,7 +1107,7 @@ _ARRAYS: tuple[Macro, ...] = (
         "array_dims",
         "a",
         f"array_to_string(list_transform(range({_ARRAY_NDIMS}), "
-        f"_d -> '[1:' || {_dimension_length('_d')} || ']'), '')",
+        f"LAMBDA _d : '[1:' || {_dimension_length('_d')} || ']'), '')",
         {
             _TRINO: f"array_join(transform(sequence(1, {_TRINO_NDIMS}), d -> '[1:' || "
             f"CAST({_each_dimension(_trino_dimension_length)} AS VARCHAR) || ']'), '')",
@@ -1146,7 +1149,8 @@ _ARRAYS: tuple[Macro, ...] = (
     _macro(
         "array_positions",
         "a, v",
-        "CAST(list_filter(range(1, len(a) + 1), _i -> a[_i] IS NOT DISTINCT FROM v) AS INTEGER[])",
+        "CAST(list_filter(range(1, len(a) + 1), "
+        "LAMBDA _i : a[_i] IS NOT DISTINCT FROM v) AS INTEGER[])",
         {
             _TRINO: _TRINO_POSITIONS,
             _CLICKHOUSE: "arrayMap(_p -> toInt32(_p.2), arrayFilter(_p -> "
@@ -1156,7 +1160,7 @@ _ARRAYS: tuple[Macro, ...] = (
     _macro(
         "array_replace",
         "a, v, w",
-        "list_transform(a, _x -> CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
+        "list_transform(a, LAMBDA _x : CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
         {
             _TRINO: "transform(a, _x -> CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
             _CLICKHOUSE: f"arrayMap(_x -> CASE WHEN {_CLICKHOUSE_SAME} THEN w ELSE _x END, a)",
@@ -1269,7 +1273,8 @@ _OTHERS: tuple[Macro, ...] = (
     _macro(
         "pg_options_to_table",
         "options",
-        "unnest(list_transform(options, _o -> struct_pack(option_name := split_part(_o, '=', 1), "
+        "unnest(list_transform(options, "
+        "LAMBDA _o : struct_pack(option_name := split_part(_o, '=', 1), "
         "option_value := CASE WHEN contains(_o, '=') THEN "
         "substr(_o, strpos(_o, '=') + 1) END)))",
     ),
@@ -1493,7 +1498,7 @@ _ROWS: tuple[Macro, ...] = (
     _macro(
         "array_cat", "a, b", "CASE WHEN a IS NOT NULL OR b IS NOT NULL THEN list_concat(a, b) END"
     ),
-    _macro("array_remove", "a, v", "list_filter(a, _x -> _x IS DISTINCT FROM v)"),
+    _macro("array_remove", "a, v", "list_filter(a, LAMBDA _x : _x IS DISTINCT FROM v)"),
     _macro(
         "array_position",
         "a, v, start",
@@ -1732,8 +1737,9 @@ _ROWS: tuple[Macro, ...] = (
         "v",
         "(SELECT CASE WHEN v IS NOT NULL THEN unhex("
         "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(_v), 0) || "
-        "array_to_string(list_transform(_v, _o -> printf('00000004%08x', CAST(_o AS BIGINT))), "
-        "'')) END FROM (SELECT list_filter(string_split(v, ' '), _o -> _o <> '') AS _v))",
+        "array_to_string(list_transform(_v, "
+        "LAMBDA _o : printf('00000004%08x', CAST(_o AS BIGINT))), "
+        "'')) END FROM (SELECT list_filter(string_split(v, ' '), LAMBDA _o : _o <> '') AS _v))",
     ),
     _macro(
         "numrange",
@@ -2292,7 +2298,7 @@ def _counted(name: str, args: list[exp.Expr], dialect: str) -> exp.Expr:
         if isinstance(array, exp.Array):
             values = list(array.expressions)
         elif dialect in _DUCKDB:
-            written = f"CAST(len(list_filter(a, _x -> _x {test})) AS INTEGER)"
+            written = f"CAST(len(list_filter(a, LAMBDA _x : _x {test})) AS INTEGER)"
             bound = sqlglot.parse_one(written, read="duckdb")
             return bound.transform(lambda n: array.copy() if n == exp.column("a") else n)
         else:
@@ -2385,7 +2391,9 @@ def _of_intervals(node: exp.WithinGroup, fractions: list[float], array: bool) ->
     )
     said = ", ".join(map(repr, fractions))
     answer = (
-        f"list_transform([{said}], _f -> {each})" if array else pg_forms.bound("_f", said, each)
+        f"list_transform([{said}], LAMBDA _f : {each})"
+        if array
+        else pg_forms.bound("_f", said, each)
     )
     written = pg_forms.bound(
         "_k",

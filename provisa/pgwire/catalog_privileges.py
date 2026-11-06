@@ -142,7 +142,7 @@ def populate_privilege_macros(db, role_id: str) -> None:  # REQ-2167
     held = (
         "(SELECT CASE WHEN _r._k IS NULL THEN NULL ELSE EXISTS (SELECT 1 FROM "
         "_pg_table_privilege _p WHERE _p.relid = _r._k AND list_contains("
-        "list_transform(string_split(upper(priv), ','), _s -> trim(_s)), _p.privilege)) END "
+        "list_transform(string_split(upper(priv), ','), LAMBDA _s : trim(_s)), _p.privilege)) END "
         f"FROM (SELECT {_table_oid('tbl')} AS _k) _r)"
     )
     db.execute(

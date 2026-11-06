@@ -221,7 +221,7 @@ _LISTS = {
         "CAST({} AS DOUBLE)",
         "list_max",
         "list_min",
-        "list_filter({0}, {1} -> {2})",
+        "list_filter({0}, LAMBDA {1} : {2})",
         "regexp_matches({}, {})",
     ),
     "trino": _Lists(

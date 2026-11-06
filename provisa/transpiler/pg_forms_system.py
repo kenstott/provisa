@@ -214,9 +214,9 @@ _DUCKDB_TAIL = "substring(value, CAST(start AS BIGINT))"
 _DUCKDB_FOUND = f"regexp_extract_all({_DUCKDB_TAIL}, pattern)"
 _DUCKDB_HEAD = (
     f"coalesce(list_sum(list_transform(list_slice(regexp_split_to_array({_DUCKDB_TAIL}, pattern), "
-    "1, n), _p -> length(_p))), 0) + "
+    "1, n), LAMBDA _p : length(_p))), 0) + "
     f"coalesce(list_sum(list_transform(list_slice({_DUCKDB_FOUND}, 1, n - 1), "
-    "_m -> length(_m))), 0)"
+    "LAMBDA _m : length(_m))), 0)"
 )
 _DUCKDB_REPLACED = (
     f"CASE WHEN n = 0 THEN regexp_replace({_DUCKDB_TAIL}, pattern, replacement, 'g') "

@@ -31,7 +31,7 @@ dependencies = [
     "graphql-core>=3.2.9,<3.3",
     # Bounded to the release the suite runs on: an unbounded pin installed 30.23 into alpha.485's
     # image while every test ran 30.9, and a renamed scope attribute failed every query there.
-    "sqlglot>=30.23,<30.24",
+    "sqlglot>=30.29,<30.30",
     # REQ-2135: the SPARQL front end parses a query with rdflib and lowers its SPARQL algebra to
     # the graph IR. BSD-3-Clause, as are its isodate and pyparsing (MIT).
     "rdflib>=7.1,<8",

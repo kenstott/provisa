@@ -832,7 +832,7 @@ def _regexp_matches(args: list[exp.Expr]) -> str:
         items = ", ".join(f"REGEXP_EXTRACT_ALL({value}, {regex}, {g})[_m]" for g in groups)
         return (
             f"UNNEST(LIST_TRANSFORM(RANGE(1, LEN(REGEXP_EXTRACT_ALL({value}, {regex}, 0)) + 1), "
-            f"_m -> [{items}]))"
+            f"LAMBDA _m : [{items}]))"
         )
     items = ", ".join(f"REGEXP_EXTRACT({value}, {regex}, {g})" for g in groups)
     return (
@@ -845,7 +845,7 @@ def _encode_escape(value: str) -> str:
     """encode(bytea, 'escape'): a zero or high byte as \\ooo, a backslash doubled, any other
     byte as its character."""
     return (
-        f"ARRAY_TO_STRING(LIST_TRANSFORM(REGEXP_EXTRACT_ALL(HEX({value}), '..'), _h -> "
+        f"ARRAY_TO_STRING(LIST_TRANSFORM(REGEXP_EXTRACT_ALL(HEX({value}), '..'), LAMBDA _h : "
         "CASE WHEN _h = '5C' THEN '\\\\' "
         "WHEN _h = '00' OR _h >= '80' THEN PRINTF('\\%03o', CAST('0x' || _h AS INT)) "
         "ELSE CHR(CAST('0x' || _h AS INT)) END), '')"

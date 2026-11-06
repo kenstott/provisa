@@ -104,7 +104,7 @@ def points_differ_by_nothing(index: int) -> str:
 
 # --- DuckDB: a shape's measures, over its numbers ------------------------------------------------
 
-_DOUBLES = f"list_transform({numbers('value')}, _n -> CAST(_n AS DOUBLE))"
+_DOUBLES = f"list_transform({numbers('value')}, LAMBDA _n : CAST(_n AS DOUBLE))"
 _POINT_TEXT = "format('({{:g}},{{:g}})', {x}, {y})"
 _BOX_X = (number("value", 1), number("value", 3))
 _BOX_Y = (number("value", 2), number("value", 4))
@@ -112,8 +112,8 @@ _BOX_Y = (number("value", 2), number("value", 4))
 BOX_AREA = f"abs({_BOX_X[0]} - {_BOX_X[1]}) * abs({_BOX_Y[0]} - {_BOX_Y[1]})"
 CIRCLE_AREA = f"pi() * pow({number('value', 3)}, 2)"
 _SHOELACE = (
-    f"list_transform([{_DOUBLES}], _p -> abs(list_sum(list_transform(range(1, len(_p), 2), "
-    "_i -> _p[_i] * _p[(_i + 1) % len(_p) + 2] - _p[(_i + 1) % len(_p) + 1] * _p[_i + 1]))) "
+    f"list_transform([{_DOUBLES}], LAMBDA _p : abs(list_sum(list_transform(range(1, len(_p), 2), "
+    "LAMBDA _i : _p[_i] * _p[(_i + 1) % len(_p) + 2] - _p[(_i + 1) % len(_p) + 1] * _p[_i + 1]))) "
     "/ 2.0)[1]"
 )
 PATH_AREA = f"CASE WHEN NOT {_is_open('value')} THEN {_SHOELACE} END"
@@ -142,9 +142,10 @@ LSEG_LENGTH = (
     f"pow({number('value', 4)} - {number('value', 2)}, 2))"
 )
 PATH_LENGTH = (
-    f"CASE WHEN value IS NOT NULL THEN list_transform([{_DOUBLES}], _q -> list_transform(["
+    f"CASE WHEN value IS NOT NULL THEN list_transform([{_DOUBLES}], LAMBDA _q : list_transform(["
     f"CASE WHEN {is_closed('value')} AND len(_q) > 2 THEN list_concat(_q, _q[1:2]) ELSE _q END], "
-    f"_p -> coalesce(list_sum(list_transform(range(1, len(_p) - 1, 2), _i -> {_STEP})), 0.0))[1])"
+    "LAMBDA _p : coalesce(list_sum(list_transform(range(1, len(_p) - 1, 2), "
+    f"LAMBDA _i : {_STEP})), 0.0))[1])"
     "[1] END"
 )
 POINT_IN_CIRCLE = (
@@ -168,10 +169,11 @@ _CROSSES = (
 )
 #: On an edge, or inside by the even-odd rule.
 POINT_IN_POLYGON = (
-    f"list_transform([{_DOUBLES.replace('value', 'poly')}], _c -> "
-    f"list_transform([{number('p', 1)}], _x -> list_transform([{number('p', 2)}], _y -> "
-    f"len(list_filter({_EDGES}, _i -> {_ON_EDGE})) > 0 OR "
-    f"len(list_filter({_EDGES}, _i -> {_CROSSES})) % 2 = 1)[1])[1])[1]"
+    f"list_transform([{_DOUBLES.replace('value', 'poly')}], LAMBDA _c : "
+    f"list_transform([{number('p', 1)}], LAMBDA _x : "
+    f"list_transform([{number('p', 2)}], LAMBDA _y : "
+    f"len(list_filter({_EDGES}, LAMBDA _i : {_ON_EDGE})) > 0 OR "
+    f"len(list_filter({_EDGES}, LAMBDA _i : {_CROSSES})) % 2 = 1)[1])[1])[1]"
 )
 
 
@@ -263,13 +265,13 @@ _LEXEME = (
     f"ELSE {_BARE} END"
 )
 _MARK_LIST = (
-    f"list_filter(string_split(regexp_extract(_t, {_MARKED}, 1), ','), _m -> length(_m) > 0)"
+    f"list_filter(string_split(regexp_extract(_t, {_MARKED}, 1), ','), LAMBDA _m : length(_m) > 0)"
 )
 _ITEMS = (
-    f"list_sort(list_transform({_TOKENS}, _t -> struct_pack(lexeme := {_LEXEME}, "
+    f"list_sort(list_transform({_TOKENS}, LAMBDA _t : struct_pack(lexeme := {_LEXEME}, "
     f"positions := nullif(list_transform({_MARK_LIST}, "
-    "_m -> CAST(rtrim(_m, 'ABCD') AS SMALLINT)), []), "
-    f"weights := nullif(list_transform({_MARK_LIST}, _m -> "
+    "LAMBDA _m : CAST(rtrim(_m, 'ABCD') AS SMALLINT)), []), "
+    f"weights := nullif(list_transform({_MARK_LIST}, LAMBDA _m : "
     "CASE WHEN right(_m, 1) IN ('A', 'B', 'C') THEN right(_m, 1) ELSE 'D' END), []))))"
 )
 _QUOTED_LEXEME = "'''' || replace(_l, '''', '''''') || ''''"
@@ -277,8 +279,8 @@ _QUOTED_LEXEME = "'''' || replace(_l, '''', '''''') || ''''"
 TSVECTOR_LENGTH = f"len({_TOKENS})"
 TSVECTOR_UNNEST = f"unnest({_ITEMS})"
 TSVECTOR_STRIP = (
-    f"array_to_string(list_transform(list_sort(list_transform({_TOKENS}, _t -> {_LEXEME})), "
-    f"_l -> {_QUOTED_LEXEME}), ' ')"
+    f"array_to_string(list_transform(list_sort(list_transform({_TOKENS}, LAMBDA _t : {_LEXEME})), "
+    f"LAMBDA _l : {_QUOTED_LEXEME}), ' ')"
 )
 TRINO_TSVECTOR_LENGTH = f"cardinality({_TOKENS})"
 TRINO_TSVECTOR_STRIP = (
@@ -350,10 +352,10 @@ _WORD = (
 )
 _GROUPS = (
     "list_concat(list_transform([1000000000000000, 1000000000000, 1000000000, 1000000, 1000, 1], "
-    "_u -> CAST((abs(_c) // 100) // _u % 1000 AS INTEGER)), [CAST(abs(_c) % 100 AS INTEGER)])"
+    "LAMBDA _u : CAST((abs(_c) // 100) // _u % 1000 AS INTEGER)), [CAST(abs(_c) % 100 AS INTEGER)])"
 )
 _SCALED = (
-    "array_to_string(list_transform(range(1, 6), _i -> CASE WHEN _a[_i] > 0 "
+    "array_to_string(list_transform(range(1, 6), LAMBDA _i : CASE WHEN _a[_i] > 0 "
     f"THEN _w[_i] || ' ' || {_list(_SCALES)}[_i] || ' ' ELSE '' END), '')"
 )
 _SENTENCE = (
@@ -364,12 +366,14 @@ _SENTENCE = (
     "CASE WHEN _a[7] = 1 THEN ' cent' ELSE ' cents' END"
 )
 _WORDS = (
-    f"list_transform([{_list(_SMALL)}], _s -> list_transform([{_list(_TENS)}], _e -> "
-    f"list_transform([{_GROUPS}], _a -> list_transform([list_transform(_a, _g -> {_WORD})], "
-    f"_w -> list_transform([{_SENTENCE}], _o -> upper(_o[1]) || _o[2:])[1])[1])[1])[1])[1]"
+    f"list_transform([{_list(_SMALL)}], LAMBDA _s : list_transform([{_list(_TENS)}], LAMBDA _e : "
+    f"list_transform([{_GROUPS}], LAMBDA _a : "
+    f"list_transform([list_transform(_a, LAMBDA _g : {_WORD})], "
+    f"LAMBDA _w : list_transform([{_SENTENCE}], "
+    "LAMBDA _o : upper(_o[1]) || _o[2:])[1])[1])[1])[1])[1]"
 )
 MONEY_WORDS = (
-    f"CASE WHEN value IS NOT NULL THEN list_transform([{_WIDE_CENTS}], _c -> {_WORDS})[1] END"
+    f"CASE WHEN value IS NOT NULL THEN list_transform([{_WIDE_CENTS}], LAMBDA _c : {_WORDS})[1] END"
 )
 
 _SPACE = r"[ \t\n\r\f\v]*"
@@ -394,13 +398,14 @@ _ROUNDED = (
 )
 _SIGNED = f"CASE WHEN {_NEGATIVE} THEN -({_ROUNDED}) ELSE {_ROUNDED} END"
 _READ = (
-    f"list_transform([{_PARTS}], _m -> list_transform([{_DIGITS}], _d -> CASE WHEN length(_d) > 19 "
-    f"THEN {_OUT_OF_RANGE} ELSE list_transform([{_SIGNED}], _c -> "
+    f"list_transform([{_PARTS}], LAMBDA _m : "
+    f"list_transform([{_DIGITS}], LAMBDA _d : CASE WHEN length(_d) > 19 "
+    f"THEN {_OUT_OF_RANGE} ELSE list_transform([{_SIGNED}], LAMBDA _c : "
     f"CASE WHEN _c < -9223372036854775808 OR _c > 9223372036854775807 THEN {_OUT_OF_RANGE} "
     "ELSE CAST(CAST(_c AS DECIMAL(19,0)) * 0.01 AS DECIMAL(21,4)) END)[1] END)[1])[1]"
 )
 MONEY_INPUT = (
-    "CASE WHEN value IS NOT NULL THEN list_transform([CAST(value AS VARCHAR)], _t -> "
+    "CASE WHEN value IS NOT NULL THEN list_transform([CAST(value AS VARCHAR)], LAMBDA _t : "
     f"CASE WHEN NOT regexp_matches(_t, '{_MONEY_INPUT}') THEN {_INVALID} ELSE {_READ} END)[1] END"
 )
 
@@ -410,7 +415,7 @@ MONEY_INPUT = (
 
 def bound(name: str, value: str, body: str) -> str:
     """``body`` with ``name`` the value of ``value``, which it reads as often as it needs."""
-    return f"list_transform([{value}], {name} -> {body})[1]"
+    return f"list_transform([{value}], LAMBDA {name} : {body})[1]"
 
 
 def held(name: str, value: str, body: str) -> str:
@@ -766,11 +771,11 @@ ERFC = held(
 )
 INT2VECTOR_SEND = (
     "unhex(printf('%08x%08x%08x%08x%08x', 1, 0, 21, len(v), 0) || "
-    "array_to_string(list_transform(v, _o -> printf('00000002%04x', _o & 65535)), ''))"
+    "array_to_string(list_transform(v, LAMBDA _o : printf('00000002%04x', _o & 65535)), ''))"
 )
 #: int2int4_sum: a transition array is its count and its sum.
 INT2INT4_SUM = (
-    "CASE WHEN len(v) <> 2 OR len(list_filter(v, _x -> _x IS NULL)) > 0 THEN "
+    "CASE WHEN len(v) <> 2 OR len(list_filter(v, LAMBDA _x : _x IS NULL)) > 0 THEN "
     + _refused("XX000", "expected 2-element int8 array")
     + " WHEN v[1] = 0 THEN CAST(NULL AS BIGINT) ELSE v[2] END"
 )
