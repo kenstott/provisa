@@ -77,3 +77,28 @@ def test_the_wheel_fill_order_names_crypto_and_every_mirrored_community_extensio
 
     assert set(collect.PRIORITY) == set(_mirror()._sources())
     assert {"gsheets", "airport"} <= set(collect.PRIORITY)
+
+
+def test_every_mirrored_extension_keeps_the_info_duckdb_trusts_it_by(tmp_path):
+    # DuckDB 2.0 trusts a community extension's signature only with the .info that names the
+    # community repository beside it: provisa-duckdb-ext 0.2.0 shipped mssql, mongo, snowflake,
+    # bigquery and firebird without it, and DuckDB 2.0 refused to load every one (signature
+    # "missing or invalid"); the same binary with DuckDB's own .info loads.
+    mirror = _mirror()
+    src_dir = tmp_path / "install" / "v2.0.0" / "osx_arm64"
+    src_dir.mkdir(parents=True)
+    (src_dir / "mssql.duckdb_extension").write_bytes(b"BIN")
+    (src_dir / "mssql.duckdb_extension.info").write_bytes(b"INFO")
+    dst = tmp_path / "out" / "v2.0.0" / "osx_arm64"
+    mirror._copy_extension(src_dir / "mssql.duckdb_extension", dst)  # noqa: SLF001
+    assert (dst / "mssql.duckdb_extension").read_bytes() == b"BIN"
+    assert (dst / "mssql.duckdb_extension.info").read_bytes() == b"INFO"
+
+
+def test_an_installed_extension_without_its_info_is_not_mirrored(tmp_path):
+    import pytest
+
+    mirror = _mirror()
+    (tmp_path / "x.duckdb_extension").write_bytes(b"BIN")
+    with pytest.raises(FileNotFoundError, match="x.duckdb_extension.info"):
+        mirror._copy_extension(tmp_path / "x.duckdb_extension", tmp_path / "out")  # noqa: SLF001

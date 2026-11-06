@@ -157,6 +157,14 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     problems: list[str] = []
     if not any(p.suffix == ".duckdb_extension" for p in files):
         problems.append(f"provisa-duckdb-ext has none (looked in {src})")
+    # DuckDB 2.0 trusts an extension's signature by the repository its .info names, so one shipped
+    # without it does not load (provisa-duckdb-ext 0.2.0's community extensions).
+    problems += [
+        f"{p.name.removesuffix('.duckdb_extension')}: no .info beside it in provisa-duckdb-ext, "
+        "so DuckDB does not trust its signature"
+        for p in files
+        if p.suffix == ".duckdb_extension" and not p.with_name(f"{p.name}.info").is_file()
+    ]
     core: list[Path] = []
     for extension, package in CORE_EXTENSION_WHEELS.items():
         wheel = package.replace("_", "-")

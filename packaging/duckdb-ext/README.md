@@ -32,6 +32,10 @@ like the others, in DuckDB's layout for a named repository
 (`<version>/<platform>/repositories/query_farm/crypto.duckdb_extension` and its `.info`), and Provisa
 loads it from the staged copy with `LOAD crypto FROM query_farm` — never from Query.Farm at runtime.
 
+Every extension keeps the `.info` DuckDB wrote when it was installed. DuckDB 2.0 trusts an
+extension's signature by the repository that file names, so a community extension shipped without it
+does not load (0.2.0 shipped them so; 0.2.1 carries them), and staging refuses such a package by name.
+
 Extensions are locked to the exact DuckDB build they were mirrored from, so an incompatible `duckdb`
 version can never silently load a mismatched extension.
 

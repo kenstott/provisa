@@ -65,6 +65,7 @@ def _provisa_ext(tmp_path, ver, plat):
     pkg = tmp_path / "pkg_ext"
     (pkg / ver / plat).mkdir(parents=True)
     (pkg / ver / plat / "mssql.duckdb_extension").write_bytes(b"FAKE-MSSQL")
+    (pkg / ver / plat / "mssql.duckdb_extension.info").write_bytes(b"FAKE-INFO")
     return pkg
 
 
@@ -203,3 +204,18 @@ def test_load_staged_loads_crypto_from_its_repository_only(monkeypatch):
     con = _Con()
     assert duckdb_extensions.load_staged(con, "crypto") is False  # type: ignore[arg-type]
     assert con.statements == ["LOAD crypto FROM query_farm"]
+
+
+def test_a_bundled_extension_without_its_info_is_refused_by_name(tmp_path, monkeypatch):
+    # DuckDB 2.0 does not trust a community extension's signature without the .info naming its
+    # repository (provisa-duckdb-ext 0.2.0 shipped them so, and none loaded): staging one would
+    # only move the refusal to the first query.
+    ver, plat = _duckdb_version_platform()
+    pkg = _provisa_ext(tmp_path, ver, plat)
+    (pkg / ver / plat / "mongo.duckdb_extension").write_bytes(b"FAKE-MONGO")
+    _install_fake_package(monkeypatch, pkg)
+    _install_fake_core_wheels(monkeypatch, tmp_path / "site", ver)
+    for package in CORE_EXTENSION_WHEELS.values():
+        monkeypatch.delitem(sys.modules, package, raising=False)
+    with pytest.raises(BundledExtensionsMissing, match=r"mongo: no \.info"):
+        stage_bundled_extensions(tmp_path / "staged")

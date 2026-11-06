@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: f8b0cd0f-aaea-40fa-9c08-44cee3dc7e37
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -81,8 +82,10 @@ def _fake_bundle(tmp_path, monkeypatch, names) -> None:
     pkg.mkdir(parents=True)
     for name in names:
         (pkg / f"{name}.duckdb_extension").write_bytes(b"X")
+        (pkg / f"{name}.duckdb_extension.info").write_bytes(b"I")
     (pkg / "repositories" / "query_farm").mkdir(parents=True)
     (pkg / "repositories" / "query_farm" / "crypto.duckdb_extension").write_bytes(b"X")
+    (pkg / "repositories" / "query_farm" / "crypto.duckdb_extension.info").write_bytes(b"I")
     mod = types.ModuleType("provisa_duckdb_ext")
     mod.ext_root = lambda: tmp_path / "pkg"  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "provisa_duckdb_ext", mod)

@@ -79,6 +79,19 @@ def _sha256(p: Path) -> str:
     return h.hexdigest()
 
 
+def _copy_extension(src: Path, dst_dir: Path) -> None:
+    """Copy an installed extension and the .info DuckDB wrote beside it into ``dst_dir``. DuckDB
+    2.0 trusts an extension's signature by the repository its .info names: a community extension
+    without it is refused ("signature is either missing or invalid"), as a named repository's is
+    not found. Every extension keeps it; one installed without it is not mirrored."""
+    info = src.with_name(f"{src.name}.info")
+    if not info.is_file():
+        raise FileNotFoundError(f"{info} (DuckDB loads {src.name} only with it)")
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(src, dst_dir / src.name)
+    shutil.copy(info, dst_dir / info.name)
+
+
 def main(out: Path) -> int:
     con = duckdb.connect()
     (raw_version,) = con.execute("SELECT version()").fetchall()[0]  # "v2.0.0": the on-disk dir
@@ -125,10 +138,7 @@ def main(out: Path) -> int:
         src = ext_dir / sub / f"{real_name}.duckdb_extension"
         if ok and src.exists():
             dst_dir = out / sub
-            dst_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy(src, dst_dir / src.name)
-            if named:
-                shutil.copy(src.with_name(f"{src.name}.info"), dst_dir / f"{src.name}.info")
+            _copy_extension(src, dst_dir)
             rel = (sub / src.name).as_posix()
             records.append({"name": name, "repo": repo, "file": rel,
                             "sha256": _sha256(dst_dir / src.name), "loaded": True,
