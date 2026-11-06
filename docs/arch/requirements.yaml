@@ -46858,7 +46858,11 @@
     (Amended 2026-11-05, REVIEW AND POLICY REPORTS:) The review and policy reports are standard reports
     on Admin > Reports (REQ-1386): reviews overdue, each item''s attestation history, security items with
     no review schedule, and, from REQ-2208, policy sections no security item cites and security items that
-    cite no policy, with flagged and broken policy references.'
+    cite no policy, with flagged and broken policy references. (Amended 2026-11-06, THE REPORTS LIST:) The
+    list of reports is sorted alphabetically by report name, ignoring case; its panel''s width is resizable
+    and is remembered and restored in the browser; each report''s description shows at most two lines with
+    an ellipsis and expands in place on click, and collapses on a second click, without changing which report
+    is selected.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
