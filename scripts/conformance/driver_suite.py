@@ -44,9 +44,11 @@ Log lines, printed after the files are written, so the result is readable from t
     DRIVER-UNEXPECTED-FAILURE <test>
     DRIVER-UNEXPECTED-PASS <test>
 
-Usage:
-    driver_suite.py summarise <driver> <version> <junit.xml or dir>[,...] <out.json> <out.md> <suite>
+Usage (a JUnit spec is files or directories, comma-separated, and attempts, ``;``-separated: a
+later attempt's report of a test replaces an earlier one's):
+    driver_suite.py summarise <driver> <version> <junit spec> <out.json> <out.md> <suite>
     driver_suite.py fill-docs <conformance-driver-<driver>.json> [...]
+    driver_suite.py seed <driver> <version> <junit spec>
 """
 
 # Requirements: REQ-2203
@@ -177,6 +179,84 @@ def read_results(spec: str) -> dict[str, dict]:
             if seen is None or rank[outcome] > rank[seen["outcome"]]:
                 results[test] = {"outcome": outcome, "message": message}
     return results
+
+
+def read_attempts(spec: str) -> dict[str, dict]:
+    """As ``read_results``, over attempts separated by ``;``: the suite's run, then each rerun of
+    the tests it failed, as the driver's own CI reruns them (psycopg's tools/ci/ci_test.sh). A
+    later attempt's report of a test replaces an earlier one's; a test it did not rerun keeps
+    its earlier report."""
+    results: dict[str, dict] = {}
+    for attempt in filter(None, spec.split(";")):
+        results.update(read_results(attempt))
+    return results
+
+
+#: What makes one failure's message another's: numbers and quoted values.
+_VARYING = (
+    (re.compile(r"'[^']*'|\"[^\"]*\""), "'…'"),
+    (re.compile(r"\b0x[0-9a-fA-F]+\b|\d+(\.\d+)?"), "N"),
+)
+#: How much of a message names its defect.
+DEFECT_CHARS = 120
+
+
+def _defect(message: str) -> str:
+    """The open defect a failure's message names: the message, its varying values masked."""
+    text = message
+    for pattern, mask in _VARYING:
+        text = pattern.sub(mask, text)
+    return " ".join(text.split())[:DEFECT_CHARS] or "fails with no message"
+
+
+def _slug(text: str, taken: set[str]) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:48].rstrip("-") or "defect"
+    key, n = base, 1
+    while key in taken:
+        n += 1
+        key = f"{base}-{n}"
+    return key
+
+
+_HEADER = """\
+# {driver}'s expected-failure list (REQ-2203): every test of {driver}'s own suite that fails against
+# Provisa's pgwire, with its reason, seeded from a CI run of conformance-drivers.yml at the
+# pinned version (driver_suite.py seed). A reason is a skipped-by-design decision (requirement and
+# decision) or an open defect (defect). A failure seeded without a reason the list already gave
+# it is an open defect named by the error the suite saw. scripts/conformance/driver_suite.py
+# reads it.
+"""
+
+
+def seed(driver: str, version: str, results: dict[str, dict], lists: Path | None = None) -> Path:
+    """Write the driver's list from a run: every test that failed, at ``version``. A failure the
+    list already named keeps its reason; any other is an open defect, one per error the suite
+    saw, never a decision (a decision is a maintainer's, with its requirement). A test that
+    passed, was skipped or did not run is no longer listed."""
+    path = (lists or LISTS) / f"{driver}.yaml"
+    old = yaml.safe_load(path.read_text()) if path.exists() else {}
+    old_reasons = dict((old or {}).get("reasons") or {})
+    old_tests = {str(t): str(r) for t, r in ((old or {}).get("expected") or {}).items()}
+    reasons: dict[str, dict] = {}
+    tests: dict[str, str] = {}
+    by_defect: dict[str, str] = {}
+    for test, result in sorted(results.items()):
+        if result["outcome"] != "failed":
+            continue
+        kept = old_tests.get(test)
+        if kept is not None and kept in old_reasons:
+            reasons[kept] = old_reasons[kept]
+            tests[test] = kept
+            continue
+        defect = _defect(result["message"])
+        if defect not in by_defect:
+            by_defect[defect] = _slug(defect, set(old_reasons) | set(reasons))
+            reasons[by_defect[defect]] = {"defect": defect}
+        tests[test] = by_defect[defect]
+    doc = {"driver": driver, "version": version, "reasons": reasons, "expected": tests}
+    body = yaml.safe_dump(doc, sort_keys=False, width=100, allow_unicode=True)
+    path.write_text(_HEADER.format(driver=driver) + body)
+    return path
 
 
 def summarise(expected: Expected, version: str, results: dict[str, dict], suite: str) -> dict:
@@ -370,7 +450,7 @@ def main(argv: list[str]) -> int:
     command, *args = argv
     if command == "summarise":
         driver, version, junit, out_json, out_md, suite = args
-        doc = summarise(load(driver), version, read_results(junit), suite)
+        doc = summarise(load(driver), version, read_attempts(junit), suite)
         Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
         Path(out_md).write_text(section(doc, requirement=True))
         print("\n".join(log_lines(doc)), flush=True)
@@ -381,7 +461,12 @@ def main(argv: list[str]) -> int:
             PAGE.write_text(fill(PAGE.read_text(), doc))
             print(f"{PAGE}: {doc['driver']}: {counts_line(doc)}")
         return 0
-    raise SystemExit(f"unknown command {command!r}: summarise or fill-docs")
+    if command == "seed":
+        driver, version, junit = args
+        path = seed(driver, version, read_attempts(junit))
+        print(f"{path}: {driver} {version} seeded")
+        return 0
+    raise SystemExit(f"unknown command {command!r}: summarise, fill-docs or seed")
 
 
 if __name__ == "__main__":
