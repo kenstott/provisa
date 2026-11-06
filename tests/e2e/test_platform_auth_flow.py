@@ -264,7 +264,9 @@ class TestOrgEmailRuleOnRedemption:
         rule = await client.patch(
             f"/admin/orgs/{_ctx['org1']}/settings",
             json={"email_rule": "@acme\\.com$"},
-            headers=_basic("founder"),
+            # REQ-1327: join settings are the org admin's, never the platform's, so the request
+            # names the org the founder administers.
+            headers=_in_org("founder", _ctx["org1"]),
         )
         assert rule.status_code == 200, rule.text
         assert rule.json()["email_rule"] == "@acme\\.com$"
@@ -316,7 +318,7 @@ class TestOrgEmailRuleOnRedemption:
         cleared = await client.patch(
             f"/admin/orgs/{_ctx['org1']}/settings",
             json={"email_rule": None},
-            headers=_basic("founder"),
+            headers=_in_org("founder", _ctx["org1"]),  # REQ-1327: the org admin's act
         )
         assert cleared.status_code == 200, cleared.text
         assert cleared.json()["email_rule"] is None
@@ -520,7 +522,8 @@ class TestPlatformAdminHasZeroDataPlane:
         member = await client.post(
             f"/admin/orgs/{org1}/members",
             json={"user_id": ids["opsbot"]},
-            headers=_basic("founder"),
+            # REQ-1327: members are the org admin's, never the platform's; founder acts as org_admin.
+            headers=_in_org("founder", org1),
         )
         assert member.status_code == 200, member.text
         assign = await client.post(
