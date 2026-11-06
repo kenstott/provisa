@@ -298,10 +298,12 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
       "avg_lifespan_years",
     ]);
 
-    // 3. SQL page — the demo server's 3 deterministic breed rows
+    // 3. SQL page — the demo server's 3 deterministic breed rows. The table is named for its
+    // service and method (…__AnimalCatalog__ListBreeds): mixed case, so quoted, or the name folds
+    // to lower case as PostgreSQL folds it and names no table (V006).
     const rows = await runSqlOnPage(
       page,
-      `SELECT name, species FROM grpc_remote.${breedTable} ORDER BY name`,
+      `SELECT name, species FROM grpc_remote."${breedTable}" ORDER BY name`,
     );
     expect(rows).toHaveLength(3);
     expect(rows.map((r) => r[0])).toEqual(["Holland Lop", "Labrador Retriever", "Siamese"]);
