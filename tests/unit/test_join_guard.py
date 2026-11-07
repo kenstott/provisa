@@ -1008,3 +1008,81 @@ def test_branches_of_registered_tables_stay_alternatives():
         "SELECT u.id FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u "
         "JOIN customers c ON TRUE"
     )
+
+
+# --- a model reading the same views of a union again and again (#J915) ---------------------------
+
+_RECORDS = "(SELECT k, n FROM a UNION ALL SELECT k, n FROM b UNION ALL SELECT k, n FROM c " + (
+    "UNION ALL SELECT k, n FROM d)"
+)
+_IDS = {"a": 1, "b": 2, "c": 3, "d": 4}
+
+
+def _crosswalks(reads: int, crosswalks: int) -> str:
+    """customer360's ``master``: ``crosswalks`` reads of a crosswalk view, each reading a view of a
+    4-branch UNION ``reads`` times, every view read inlined as its own copy as governance does."""
+
+    def crosswalk() -> str:
+        joins = [f"FROM {_RECORDS} AS r0"] + [
+            f"LEFT JOIN {_RECORDS} AS r{i} ON r{i}.k = r0.k" for i in range(1, reads)
+        ]
+        return "(SELECT r0.k, r0.n " + " ".join(joins) + ")"
+
+    joins = [f"FROM {crosswalk()} AS c0"] + [
+        f"LEFT JOIN {crosswalk()} AS c{i} ON c{i}.k = c0.k" for i in range(1, crosswalks)
+    ]
+    return "SELECT c0.k " + " ".join(joins)
+
+
+def _crosswalk_check(sql: str, registered: set[tuple[int, int, str, str]]) -> list:
+    import sqlglot
+
+    from provisa.compiler import join_guard
+
+    return join_guard.unrelated_tables(
+        sqlglot.parse_one(sql),
+        resolve_table_id=lambda t: _IDS.get(t.name),
+        columns_of=lambda _table_id: {"k", "n"},
+        registered=registered,
+        exempt_table=lambda _table_id: False,
+        same_remote_source=lambda a, b: False,
+    )
+
+
+@pytest.mark.timeout(10)
+def test_views_of_a_union_read_again_and_again_are_checked_without_listing_their_product():
+    """#J915: customer360's ``master`` reads a crosswalk view 3 times, which reads a 4-branch
+    UNION view 4 times: 4 ** 12 (16.7M) choices of branch. The guard listed every one before
+    making them distinct -- 14 GB, the CI runner killed. Each choice is now its connected pieces
+    as seen from beyond it, combined as built: the same check in a fraction of a second."""
+    import time
+    import tracemalloc
+
+    every_pair = {(x, y, "k", "k") for x in range(1, 5) for y in range(1, 5)}
+    tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        found = _crosswalk_check(_crosswalks(4, 3), every_pair)
+        took = time.perf_counter() - started
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert found == []
+    # Measured: 0.13 s and ~66 MB RSS for the whole process; before, >120 s and 4.2 GB.
+    assert took < 2, took
+    assert peak < 100_000_000, peak
+
+
+def test_views_of_a_union_read_again_and_again_are_refused_as_before():
+    """The same shape with d related to nothing: each pairing with d is refused by name, as the
+    guard refused it listing every choice (expected below taken from that listing guard)."""
+    from provisa.compiler.join_guard import UNREGISTERED, Unrelated
+
+    without_d = {(x, y, "k", "k") for x in range(1, 4) for y in range(1, 4)}
+    found = _crosswalk_check(_crosswalks(4, 3), without_d)
+    assert found == [
+        Unrelated(1, 4, UNREGISTERED, "k", "k"),
+        Unrelated(2, 4, UNREGISTERED, "k", "k"),
+        Unrelated(3, 4, UNREGISTERED, "k", "k"),
+        Unrelated(4, 4, UNREGISTERED, "k", "k"),
+    ]
