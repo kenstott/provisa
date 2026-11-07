@@ -61468,17 +61468,20 @@
   type: behavioral
   description: 'A sharepoint source authenticating with a certificate reaches the real site on the non-Trino
     engines. The Calcite pgwire model operand names the adapter''s schema factory exactly (`SharePointListSchemaFactory`),
-    declares `authType: CERTIFICATE` — without it the adapter defaults to CLIENT_CREDENTIALS and fails
-    on the absent secret — and carries an ABSOLUTE `certificatePath`, because the server runs with its
-    bundle directory as its working directory. `certificatePassword` is always emitted, the empty string
-    for a password-less PFX, since the adapter rejects a null password; a `mapping` with no `certificate_password`
+    declares `authType: CERTIFICATE` — without it the adapter defaults to CLIENT_CREDENTIALS and fails on
+    the absent secret — and carries an ABSOLUTE `certificatePath`, because the server runs with its bundle
+    directory as its working directory. `certificatePassword` is always emitted, the empty string for a
+    password-less PFX, since the adapter rejects a null password; a `mapping` with no `certificate_password`
     key, or a relative `certificate_path`, raises `MissingConnectorConfig` naming the field rather than
     being defaulted. The connection-resolved source view a native engine introspects from carries `base_url`,
     which the endpoint-style connectors (sharepoint''s siteUrl, splunk''s url) read before falling back
     to `host`; omitting it raised AttributeError inside the connector and surfaced as an empty Register
     Table schema list. The Sources form carries auth_type, certificate_path and certificate_password into
     the source''s mapping, so a site configured through the UI registers its `documents` library and serves
-    a query against it.'
+    a query against it. (Amended 2026-11-07, THE CERTIFICATE PATH MUST EXIST ON THIS HOST:) A certificate_path
+    that does not exist on the host where the source''s own server runs (a path only an engine''s container
+    resolves) raises MissingConnectorConfig naming the field, rather than starting the server into a FileNotFoundException
+    (lead 2026-11-07, J904: the SharePoint e2e failed this way on the Trino lane).'
   code:
   - provisa/federation/pgwire_replica.py
   - provisa/federation/backend.py
@@ -93399,7 +93402,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     an empty list means nothing of that kind (maintainer 2026-11-07). (Amended 2026-11-07, THE PRINCIPLE:)
     The role determines capabilities (what its holders may do, and how values are masked); the entitlements
     tell you where those capabilities apply (which tables, columns and relationships). Neither crosses into
-    the other (maintainer 2026-11-07).'
+    the other (maintainer 2026-11-07). (Amended 2026-11-07, THE ENTITLEMENT MODEL:) 1. The role decides
+    capabilities. Each capability is unscoped (it holds wherever the role is held: managing users, settings,
+    observability, limits, Polly, ad hoc SQL) or scoped to exactly one kind of object (read to columns,
+    traverse to relationships, execute to commands, consume to data products, run to reports, build in to
+    environments, author against to sources). 2. Entitlements decide where scoped capabilities apply: semantic
+    identifiers with * wildcards, carried on the identity provider''s role grant. Domain, table, relationship
+    and column form a hierarchy (domain contains tables and relationships; a table contains columns), and
+    a grant on a node covers it and everything beneath it; other kinds are flat. 3. Within one hierarchy,
+    grants add together; across kinds, lists narrow each other; a missing list means the role''s default.
+    4. A role has a ceiling (the furthest it can reach) and default entitlements (what a holder gets with
+    no list: all for viewer, nothing for a deny-by-default role such as auditor); both are authored in a
+    branch and promoted. 5. Rows and masks stay with the role (row rules and masking rules); entitlements
+    never filter rows or unmask. 6. An identifier that names nothing, or a list for a kind no scoped capability
+    of the role uses, is flagged. 7. Provisa holds no per-person state, so expiring entitlements, certification,
+    separation of duties and joiner, mover and leaver changes are the identity provider''s and the governance
+    tool''s, where enterprises already run them (maintainer 2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
