@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "Ce que vous avez vu",
         "description": "La loi a été lue depuis son adresse publique, ses termes trouvés et ancrés dans les tables de la banque, et la banque a interrogé par concept. Le Currency Transaction Report atteint les données par ses transactions multiples, et chaque rôle a vu ce qu'il peut voir."
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "Déclarations d'espèces lues dans le Bank Secrecy Act",
         "summary": "Une banque lit la règle de déclaration des espèces du Bank Secrecy Act depuis son adresse publique officielle, en trouve les termes et les ancre dans ses propres tables. Puis elle interroge par concept : quelles espèces exigent un Currency Transaction Report, et qui fractionne juste sous 10 000 $. La banque et ses clients sont fictifs ; la réglementation est réelle."
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }

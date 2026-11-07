@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "Cosa hai visto",
         "description": "La legge è stata letta dal suo indirizzo pubblico, i suoi termini trovati e ancorati alle tabelle della banca, e la banca ha chiesto per concetto. Il Currency Transaction Report raggiunge i dati tramite le sue operazioni multiple, e ogni ruolo ha visto ciò che può vedere."
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "Segnalazioni di contante lette dal Bank Secrecy Act",
         "summary": "Una banca legge la norma sulle segnalazioni di contante del Bank Secrecy Act dal suo indirizzo pubblico ufficiale, ne trova i termini e li ancora alle proprie tabelle. Poi chiede per concetto quale contante richiede un Currency Transaction Report e chi fraziona appena sotto i 10.000 $. La banca e i clienti sono inventati; la norma è reale."
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }

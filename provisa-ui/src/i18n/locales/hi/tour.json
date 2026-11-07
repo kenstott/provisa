@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "आपने क्या देखा",
         "description": "कानून उसके सार्वजनिक पते से पढ़ा गया, उसके शब्द ढूँढकर बैंक की तालिकाओं से जोड़े गए, और बैंक ने अवधारणा से पूछा। Currency Transaction Report अपने कई लेनदेनों के ज़रिए डेटा तक पहुँचती है, और हर भूमिका ने वही देखा जो वह देख सकती है।"
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "Bank Secrecy Act से पढ़ी गई नकद रिपोर्टें",
         "summary": "एक बैंक Bank Secrecy Act का नकद रिपोर्टिंग नियम उसके आधिकारिक सार्वजनिक पते से पढ़ता है, उसके शब्द ढूँढता है और उन्हें अपनी तालिकाओं से जोड़ता है। फिर वह अवधारणा से पूछता है कि किस नकदी के लिए Currency Transaction Report चाहिए और कौन 10,000 $ से ठीक नीचे रकम बाँट रहा है। बैंक और उसके ग्राहक काल्पनिक हैं; विनियम वास्तविक है।"
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }

@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "Wat u zag",
         "description": "De wet werd vanaf het openbare adres gelezen, de begrippen gevonden en verankerd in de tabellen van de bank, en de bank vroeg per concept. Het Currency Transaction Report bereikt de gegevens via zijn meerdere transacties, en elke rol zag wat hij mag zien."
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "Contantenmeldingen gelezen uit de Bank Secrecy Act",
         "summary": "Een bank leest de meldregel voor contanten van de Bank Secrecy Act vanaf het officiële openbare adres, vindt de begrippen en verankert ze in haar eigen tabellen. Daarna vraagt ze per concept welke contanten een Currency Transaction Report vereisen en wie net onder 10.000 $ opsplitst. De bank en haar klanten zijn verzonnen; de regelgeving is echt."
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }

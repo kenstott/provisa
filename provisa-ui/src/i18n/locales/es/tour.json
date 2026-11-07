@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "Lo que vio",
         "description": "La ley se leyó desde su dirección pública, sus términos se encontraron y anclaron en las tablas del banco, y el banco preguntó por concepto. El Currency Transaction Report llega a los datos a través de sus transacciones múltiples, y cada rol vio lo que puede ver."
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "Reportes de efectivo leídos de la Bank Secrecy Act",
         "summary": "Un banco lee la norma de reporte de efectivo de la Bank Secrecy Act desde su dirección pública oficial, encuentra sus términos y los ancla en sus propias tablas. Luego pregunta por concepto qué efectivo requiere un Currency Transaction Report y quién fracciona justo por debajo de 10.000 $. El banco y sus clientes son ficticios; la normativa es real."
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }

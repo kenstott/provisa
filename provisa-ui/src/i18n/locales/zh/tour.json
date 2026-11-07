@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "您看到了什么",
         "description": "法律从公开地址读取，其术语被找出并落实到银行的表上，银行按概念进行了查询。Currency Transaction Report 通过其多笔交易到达数据，每个角色都看到了它可以看到的内容。"
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "从 Bank Secrecy Act 读出的现金报告",
         "summary": "一家银行从官方公开地址读取 Bank Secrecy Act 的现金报告规则，找出其中的术语并将其落实到自己的表上。然后按概念查询：哪些现金需要 Currency Transaction Report，谁在 10,000 美元以下拆分交易。银行和客户是虚构的，法规是真实的。"
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }

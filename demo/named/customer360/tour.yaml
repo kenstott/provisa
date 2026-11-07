@@ -1,0 +1,53 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The customer360 demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario and the features it shows; how the pieces fit, each step on its real
+# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
+# optional, its answer stored); a recap; and "Where next?", the landing page below.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario and the features the demo shows.
+- key: customer360Scenario
+  route: /sources
+  capability: source_registration
+  source: customer360-db
+# How the pieces fit: the tables the source becomes, and the relationship that joins them.
+- key: customer360Tables
+  route: /tables
+  capability: table_registration
+  table: customer360-db.orders
+- key: customer360Join
+  route: /relationships
+  capability: create_relationship
+  relationship: PLACED_BY
+# The solution: a predesigned query over the view that answers the question.
+- key: customer360Answer
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT a.name, a.orders, a.total
+    FROM "customer360"."view_answer" AS a
+    ORDER BY a.total DESC
+    LIMIT 20
+- key: customer360Example
+  route: /query
+  capability: query_development
+  example: 1-answer
+# The recap.
+- key: customer360Recap
+  route: /relationships
+  capability: create_relationship
+  relationship: PLACED_BY

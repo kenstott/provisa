@@ -1932,6 +1932,30 @@
       "banksecrecyRecap": {
         "title": "ご覧いただいた内容",
         "description": "法律を公開アドレスから読み、その用語を見つけて銀行のテーブルに結び付け、銀行は概念で問い合わせました。Currency Transaction Report は複数の取引を通じてデータに到達し、各ロールは見てよいものを見ました。"
+      },
+      "customer360Scenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "customer360Tables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "customer360Join": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "customer360Answer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "customer360Example": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "customer360Recap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2064,6 +2088,10 @@
       "banksecrecy": {
         "title": "Bank Secrecy Act から読む現金報告",
         "summary": "銀行が Bank Secrecy Act の現金報告規則を公式の公開アドレスから読み、その用語を見つけて自行のテーブルに結び付けます。そのうえで、どの現金に Currency Transaction Report が必要か、誰が 10,000 ドル直下に分割しているかを概念で問い合わせます。銀行と顧客は架空で、規則は本物です。"
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "TODO: Customer 360, in one sentence."
       }
     }
   }
