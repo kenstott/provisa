@@ -621,6 +621,32 @@ def test_lifecycle_start_writes_model_and_spawns(tmp_path):
     assert not any(f.startswith("PGWIRE_PORT") for f in cmd)
 
 
+def test_log_tail_names_innermost_java_cause_beyond_the_tail(tmp_path):
+    """A JVM failure's Caused-by chain is longer than the tail window: the error still names the
+    innermost cause, which is the last Caused-by line of the chain."""
+    server, _, _ = _server(tmp_path)
+    chain = ['Exception in thread "main" java.lang.RuntimeException: Error instantiating Schema']
+    for depth in range(30):
+        chain.append(f"\tat org.example.Frame{depth}.run(Frame.java:{depth})")
+    chain.append("Caused by: java.io.IOException: wrapper")
+    chain += [f"\tat org.example.Inner{d}.run(Inner.java:{d})" for d in range(30)]
+    chain.append("Caused by: java.security.cert.CertificateException: cannot read certificate")
+    chain += [f"\t... {d} more" for d in range(25)]
+    chain.append("Traceback (most recent call last):")
+    (tmp_path / pr.SERVER_LOG_NAME).write_text("\n".join(chain) + "\n")
+    tail = server.log_tail()
+    assert "Caused by: java.security.cert.CertificateException: cannot read certificate" in tail
+    assert "wrapper" not in tail
+    assert tail.endswith("\n".join(chain[-pr._LOG_TAIL_LINES :]))
+
+
+def test_log_tail_without_a_java_chain_is_only_the_tail(tmp_path):
+    server, _, _ = _server(tmp_path)
+    lines = [f"line {n}" for n in range(30)]
+    (tmp_path / pr.SERVER_LOG_NAME).write_text("\n".join(lines) + "\n")
+    assert server.log_tail() == "\n".join(lines[-pr._LOG_TAIL_LINES :])
+
+
 def test_lifecycle_health_and_stop(tmp_path):
     server, proc, _ = _server(tmp_path, health=True)
     server.start()

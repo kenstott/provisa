@@ -945,9 +945,15 @@ class PgwireServer:  # REQ-955
         return self._proc.exit_code()
 
     def log_tail(self) -> str:
-        """The last lines of the server's own output (written next to its working directory)."""
+        """The last lines of the server's own output (written next to its working directory),
+        led by the log's innermost Java "Caused by:" line when the tail does not show it."""
         lines = (self._bundle_dir / SERVER_LOG_NAME).read_text(errors="replace").splitlines()
-        return "\n".join(lines[-_LOG_TAIL_LINES:])
+        tail = lines[-_LOG_TAIL_LINES:]
+        # A JVM failure's stack trace outruns the tail; the innermost "Caused by:" is its root cause.
+        causes = [line for line in lines if line.startswith("Caused by:")]
+        if causes and causes[-1] not in tail:
+            tail = [f"root cause: {causes[-1]}", *tail]
+        return "\n".join(tail)
 
     def stop(self) -> None:
         """Terminate the server and wait for it to exit, so its port is free for the next start
