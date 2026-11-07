@@ -18,7 +18,8 @@ pure rewrite, and the manager module pulls the file-source and DuckDB connector 
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from provisa.compiler.sql_literals import sql_literal
@@ -42,12 +43,27 @@ class InlineRows:
 
     rows: list[dict]
     column_names: list[str]
+    #: Each column's IR type, where the read declares it (a registered table's live read). A NULL
+    #: in such a column is cast to it: an untyped NULL is the engine's NULL type, and a statement
+    #: built over the rows -- a view's store table, created from its probe -- takes that type
+    #: (text on DuckDB 2.0, INTEGER on 1.4).
+    column_types: Mapping[str, str] = field(default_factory=dict)
 
 
-def _cte_literal(value: Any) -> str:  # noqa: ANN401 — any value a hot row holds
+def _typed_null(ir_type: str) -> str:
+    """A NULL of the IR type ``ir_type``, in PostgreSQL SQL."""
+    from provisa.core.ir_types import to_physical
+
+    return f"CAST(NULL AS {to_physical(ir_type, 'postgresql')})"
+
+
+def _cte_literal(value: Any, ir_type: str | None = None) -> str:  # noqa: ANN401 — any value a hot row holds
     """A hot row's value as a PostgreSQL literal. A float is typed DOUBLE PRECISION: a bare
     ``2.0`` is a numeric literal, which the engine reads as a DECIMAL, and a DECIMAL is written as
-    the string of its digits (REQ-1867) -- a float column would answer as text."""
+    the string of its digits (REQ-1867) -- a float column would answer as text. A NULL of a column
+    whose IR type is given is cast to it (:attr:`InlineRows.column_types`)."""
+    if value is None and ir_type is not None:
+        return _typed_null(ir_type)
     literal = sql_literal(value, "postgres")
     if isinstance(value, float):
         return f"CAST({literal} AS DOUBLE PRECISION)"
@@ -106,13 +122,18 @@ def build_values_ctes_sql(
     for table_name, entry in rewritten.items():
         cte_name = f"_hot_{table_name}"
         col_defs = ", ".join(f'"{c}"' for c in entry.column_names)
+        types = entry.column_types if isinstance(entry, InlineRows) else {}
         if not entry.rows:
-            empty_nulls = ", ".join("NULL" for _ in entry.column_names)
+            empty_nulls = ", ".join(
+                _typed_null(types[c]) if c in types else "NULL" for c in entry.column_names
+            )
             cte_body = f"({col_defs}) AS (SELECT {empty_nulls} WHERE 1=0)"
         else:
             value_rows = [
                 # The query is PostgreSQL SQL here, transpiled to the engine's dialect afterwards.
-                "(" + ", ".join(_cte_literal(row.get(c)) for c in entry.column_names) + ")"
+                "("
+                + ", ".join(_cte_literal(row.get(c), types.get(c)) for c in entry.column_names)
+                + ")"
                 for row in entry.rows
             ]
             cte_body = f"({col_defs}) AS (VALUES {', '.join(value_rows)})"
