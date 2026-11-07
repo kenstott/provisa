@@ -151,7 +151,7 @@ class TestServicerRejectsBeforeAnyStatement:
         with patch(
             "provisa.pgwire._pipeline._govern_and_route_compiled", new_callable=AsyncMock
         ) as govern:
-            _ = [m async for m in _servicer()._handle_query(request, context, "Orders", "orders")]
+            _ = [m async for m in _servicer()._handle_query(request, context, "Orders")]
         _assert_rejected(context, govern)
 
     @pytest.mark.asyncio
