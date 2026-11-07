@@ -49,7 +49,7 @@ In the Snowflake/BigQuery column, the verdict is against whichever of the two is
 | Client-controlled redirect headers | P | **A** | **A** | **A** | **A** | N26 |
 | pgwire PostgreSQL wire protocol | **A** | **A** | P | **A** | **A** | N27 |
 | pg_catalog role-scoped intercept | — | — | P | — | — | N28 |
-| Client DDL (temporary tables on every surface; persistent objects defined in the model) | — | — | — | — | — | N29 |
+| Persistent objects governed from birth (no client DDL; temporary tables on every surface) | **A** | **A** | **A** | **A** | **A** | N29 |
 | COPY TO/FROM STDIN with RLS | **A** | **A** | **A** | P | P | N31 |
 | ADBC client over Arrow Flight | **A** | **A** | P | P | P | N32 |
 | Governed JDBC (no ungoverned path) | P | — | P | P | P | N33 |
@@ -85,10 +85,10 @@ Counts across the 295 cells:
 
 | Mark | Before 2026-11-07 | After |
 | --- | --- | --- |
-| A | 294 | 135 |
+| A | 294 | 140 |
 | P | 2 | 106 |
 | G | 9 | 0 |
-| — | 5 | 54 |
+| — | 5 | 49 |
 
 ---
 
@@ -240,7 +240,7 @@ Every non-A cell gets a line of reason, and so does the basis for each **A**. So
 
 **N29. Client DDL.** Every surface lets a session create its own temporary tables. Persistent objects are defined in the model, or defined in their source and admitted into the model, and reach production by promotion through branches (REQ-1926). CREATE, ALTER and DROP of persistent objects are refused on every surface, and pgwire answers with SQLSTATE 0A000. REQ-582 to REQ-584, the client DDL dispatch this row once described, are superseded. [tool-verified]
 
-The cells are — because the approaches differ by design. Trino [T8], Dremio [R7] and the warehouses create tables from a client, Hasura admins can send DDL through `run_sql` [H14], and Denodo creates tables in external databases through remote tables [D6]. Provisa keeps definitions in the versioned model. The three rows that once described client DDL routing and registration are removed, since that feature no longer exists.
+The cells are A for a governed estate. Every persistent object is born governed: owned by a domain, with its relationships, masks and tags, visible in lineage, and created through a reviewed, versioned branch that is promoted like any change. Competitors let clients create persistent objects directly: Trino [T8], Dremio [R7] and the warehouses take CREATE TABLE, Hasura admins can send DDL through `run_sql` [H14], and Denodo creates tables in external databases through remote tables [D6]. Those objects exist before anyone decides who owns them or who may read them. Some teams will want client DDL anyway; temporary tables on every surface cover scratch work. [inferred: the advantage is a design judgment] The three rows that once described client DDL routing and registration are removed, since that feature no longer exists.
 
 **N31. COPY TO/FROM STDIN with RLS.** [tool-verified: REQ-585; `provisa/pgwire/copy_handler.py`]
 - A basis (Trino, Hasura, Denodo): none offers bulk COPY over a client connection. [inferred]
@@ -381,11 +381,11 @@ The leads below hold against every competitor, or nearly every one. Evidence is 
 
 ---
 
-## 4. Honest Gaps
-
-### By design: objects are defined in the model [tool-verified]
+## Governed from birth: objects are defined in the model [tool-verified]
 
 A session can create temporary tables on every surface. Persistent tables, views and other objects are defined in the model and promoted through branches (REQ-1926), so a team used to creating tables from a SQL client works in the model instead. See N29.
+
+## 4. Honest Gaps
 
 ### Governance is parity [tool-verified]
 
