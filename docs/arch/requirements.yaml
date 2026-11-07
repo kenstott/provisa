@@ -3006,7 +3006,12 @@
     agent all read the same answer (maintainer 2026-11-07). (Amended 2026-11-07, ONLY ADMITTED OBJECTS:)
     The source-native names in the names table are those of admitted objects only: the tables, views, columns
     and commands registered into the model. Objects a source offers but that were never registered are not
-    in it (maintainer 2026-11-07).'
+    in it (maintainer 2026-11-07). (Amended 2026-11-07, NOT EVERY NAME HAS A SOURCE NAME:) Not every name
+    has a source-native counterpart: an object defined in the model rather than admitted from a source (a
+    view, a computed or derived column, a relationship, a metric, a model-defined command, a system or meta
+    table) has no source name, and its row records none; it is never given an invented one. Its other names
+    (client surfaces, engines it is built on, export targets, glossary terms) are recorded as for any object
+    (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
