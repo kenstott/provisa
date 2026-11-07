@@ -3011,7 +3011,12 @@
     view, a computed or derived column, a relationship, a metric, a model-defined command, a system or meta
     table) has no source name, and its row records none; it is never given an invented one. Its other names
     (client surfaces, engines it is built on, export targets, glossary terms) are recorded as for any object
-    (maintainer 2026-11-07).'
+    (maintainer 2026-11-07). (Amended 2026-11-07, EVERY EXPORTED NAME, ONLY WHERE EXPORTED:) The names table
+    records every name an object is exported under, one per export target that actually carries it (each
+    metadata export: Atlas, Dataplex, Snowflake Horizon, Unity Catalog, OpenLineage and the rest, with the
+    target''s own spelling). Export is opt-in (data-product membership and catalog domains, withholding
+    tags), so most objects are exported to few targets or none; an object not exported to a target has no
+    name for it, and the table never invents one (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
