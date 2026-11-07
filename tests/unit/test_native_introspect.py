@@ -686,8 +686,8 @@ async def test_native_tables_grpc_offers_every_query_method_by_its_registered_na
     result = await native_tables("src", "grpc", "grpc_remote", _empty_pool(), _no_conn(), state)
     assert result is not None
     assert [t.name for t in result] == [
-        "pets__PetService__StreamPets",
-        "pets__PetService__ListPets",
+        "pets__pet_service__stream_pets",
+        "pets__pet_service__list_pets",
     ]
     # The schema the tables do not register in offers nothing.
     assert await native_tables("src", "grpc", "grpc", _empty_pool(), _no_conn(), state) == []
