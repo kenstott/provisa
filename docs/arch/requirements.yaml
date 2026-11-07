@@ -83280,10 +83280,16 @@
     the business question through the hub, then asks how far that answer can be trusted, runs the check,
     and reveals a renewing account the hub links to the wrong Stripe customer, so its overdue invoice was
     missing from the first answer; the corrected answer includes it. The demo data is planted so that reveal
-    is real (maintainer 2026-11-07). (Amended 2026-11-07, REPLICAS ARE NOT PART OF THE STORY:) Landing the
-    SaaS data once as replicas is a choice made to keep the demo practical, not something the demo presents:
+    is real (maintainer 2026-11-07). (Amended 2026-11-07, REPLICAS ARE NOT PART OF THE STORY:) [SUPERSEDED
+    by REQ-2034, 2026-11-07 -- replicas may be shown; only their being built once and never refreshed is
+    kept out (maintainer 2026-11-07). Kept here for history; do not implement against it.] Landing the SaaS
+    data once as replicas is a choice made to keep the demo practical, not something the demo presents:
     the tour, queries and narration treat Salesforce, ServiceNow, Jira and Stripe as the sources they are
-    and never mention replicas, TTLs or how the data was landed (maintainer 2026-11-07).'
+    and never mention replicas, TTLs or how the data was landed (maintainer 2026-11-07). [END SUPERSEDED
+    BLOCK] (Amended 2026-11-07, WHAT THE TOUR NEVER SAYS ABOUT REPLICAS:) The tour may show replicas as
+    the feature they are (a SaaS source read through its replica, the replica''s build and lineage). It
+    never says that the demo''s replicas were generated in advance or that they do not refresh: landing
+    them once (TTL -1) is the choice that keeps the demo practical, not part of its story (maintainer 2026-11-07).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
