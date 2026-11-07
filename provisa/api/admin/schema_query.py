@@ -898,6 +898,15 @@ class Query:  # REQ-021, REQ-042
             conn = cast("Connection", conn)
             rows = await data_product_repo.list_all(conn)
             members = await data_product_repo.member_contracts(conn)
+            # REQ-1634: each product's members, from the membership relation.
+            member_tables: dict[str, list[int]] = {}
+            for table_id, pids in (await data_product_repo.table_memberships(conn)).items():
+                for pid in pids:
+                    member_tables.setdefault(pid, []).append(table_id)
+            member_commands: dict[str, list[str]] = {}
+            for name, pids in (await data_product_repo.command_memberships(conn)).items():
+                for pid in pids:
+                    member_commands.setdefault(pid, []).append(name)
             found = await product_findings.findings(
                 conn, await product_findings.context(datetime.date.today())
             )
@@ -929,6 +938,8 @@ class Query:  # REQ-021, REQ-042
                 successor_id=r["successor_id"],
                 successor_name=names.get(r["successor_id"]) if r["successor_id"] else None,
                 findings=len(found.get(r["id"], [])),
+                table_ids=sorted(member_tables.get(r["id"], [])),
+                command_names=sorted(member_commands.get(r["id"], [])),
             )
             for r in rows
         ]

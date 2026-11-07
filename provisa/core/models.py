@@ -601,6 +601,12 @@ class DataProduct(BaseModel):  # REQ-1634
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
+    # REQ-1634: the product's members, many-to-many: the tables and views it holds, each named as a
+    # relationship names a table (its alias, else its table name), and the commands, by name. A
+    # member joins only products of its own domain. The product owns its membership: these lists
+    # are the one place it is declared.
+    tables: list[str] = Field(default_factory=list)
+    commands: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":
@@ -1690,10 +1696,27 @@ def config_table_name(raw: dict) -> str:  # REQ-2052
     return raw["table"]
 
 
+def _refuse_member_product_id(data: Any, member: str) -> Any:  # REQ-1634
+    """A table, view or command declaring ``product_id`` is refused by name: membership is
+    many-to-many and declared on the product (DataProduct.tables / .commands), never on a member."""
+    if isinstance(data, dict) and "product_id" in data:
+        name = data.get("table") or data.get("table_name") or data.get("id") or data.get("name")
+        raise ValueError(
+            f"{member} {name!r} declares product_id; a data product's members are declared on the "
+            "product, in its tables or commands list"
+        )
+    return data
+
+
 class Table(
     BaseModel
 ):  # REQ-013, REQ-014, REQ-016, REQ-119, REQ-133, REQ-135, REQ-204, REQ-237, REQ-240, REQ-260, REQ-393
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
+        return _refuse_member_product_id(data, "table")
 
     source_id: str
     domain_id: str
@@ -1899,7 +1922,6 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
-    product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
     # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
     # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
     contract: DataContract | None = None
@@ -2530,6 +2552,11 @@ class CommandBinding(BaseModel):  # REQ-2168
 class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     """Tracked DB function exposed as a GraphQL query or mutation."""
 
+    @model_validator(mode="before")
+    @classmethod
+    def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
+        return _refuse_member_product_id(data, "command")
+
     name: str  # exposed field name
     source_id: str
     schema_name: str = Field(
@@ -2547,7 +2574,6 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     domain_id: str = ""
     description: str | None = None
     kind: str = "mutation"  # "mutation" or "query"
-    product_id: str | None = None  # REQ-1634: optional data-product membership
     # REQ-885: implementation-kind dimension. Addressing (name/function_name) is decoupled
     # from binding (transport + location, swappable). ``source_procedure`` is the existing
     # REQ-205–208 path; the others are Provisa-hosted / external implementations.

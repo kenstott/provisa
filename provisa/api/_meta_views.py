@@ -176,7 +176,9 @@ def _data_product_edges_sql() -> str:
     product's member, and the row targets that product; a table that belongs to no product is a
     target only where nothing reachable through it is another product's member (otherwise it
     supports that product's row). A related edge is a table one declared relationship from a
-    member, not one of the product's own. A product's lineage is no row here: it is cut to its
+    member, not one of the product's own: one row for each other product it is a member of
+    (REQ-1634: a table may be a member of several), its id naming that product, or one row when
+    it is a member of none. A product's lineage is no row here: it is cut to its
     caller's read rights, so it is served by the product lineage endpoint (REQ-2156).
 
     Everything is computed from reachability, never by enumerating routes: the path count is the
@@ -196,13 +198,17 @@ def _data_product_edges_sql() -> str:
             SELECT id AS table_id, domain_id || '.' || COALESCE(alias, table_name) AS model_name
             FROM registered_tables
         ),
+        -- REQ-1634: one row per product and member; a table may be a member of several.
         members AS (
-            SELECT id AS table_id, product_id, dq_contract
-            FROM registered_tables
-            WHERE product_id IS NOT NULL AND NOT draft
+            SELECT m.table_id, m.product_id, rt.dq_contract
+            FROM data_product_tables m
+            JOIN registered_tables rt ON rt.id = m.table_id
+            WHERE NOT rt.draft
         ),
         free AS (
-            SELECT id AS table_id FROM registered_tables WHERE product_id IS NULL AND NOT draft
+            SELECT id AS table_id FROM registered_tables rt
+            WHERE NOT rt.draft
+              AND NOT EXISTS (SELECT 1 FROM data_product_tables m WHERE m.table_id = rt.id)
         ),
         links AS (
             SELECT r.id AS rel_id, r.alias, r.source_table_id AS a, r.target_table_id AS b
@@ -382,7 +388,9 @@ def _data_product_edges_sql() -> str:
          AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
          AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
         UNION ALL
-        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT),
+        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT)
+                   || CASE WHEN o.product_id IS NOT NULL
+                           THEN ':product:' || o.product_id ELSE '' END,
                rl.product_id, 'related', o.product_id, rl.table_id,
                TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL
         FROM related rl
@@ -796,7 +804,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
                rt.alias, rt.description, rt.cache_ttl, rt.gql_naming_convention,
                rt.watermark_column,
-               rt.view_sql, rt.product_id, rt.materialize, rt.mv_refresh_interval,
+               rt.view_sql, rt.materialize, rt.mv_refresh_interval,
                rt.l1_cluster, rt.l2_cluster, rt.l3_cluster, rt.clusters_computed_at,
                rt.tenant_id,
                rt.dq_contract,
@@ -905,16 +913,24 @@ _META_TABLE_VIEWS: dict[str, str] = {
                domain_id, description, created_at, updated_at
         FROM tracked_webhooks
     """,
-    # REQ-2125: product_id is the data product the command is a member of.
     "tracked_functions": """
         CREATE OR REPLACE VIEW tracked_functions_meta AS
         SELECT id, name, source_id, schema_name, function_name, returns, kind,
                arguments,
                return_schema,
                visible_to,
-               domain_id, description, created_at, updated_at,
-               product_id
+               domain_id, description, created_at, updated_at
         FROM tracked_functions
+    """,
+    # REQ-1634: data-product membership, many-to-many: one row per product and member table, and
+    # one per product and member command.
+    "data_product_tables": """
+        CREATE OR REPLACE VIEW data_product_tables_meta AS
+        SELECT product_id, table_id FROM data_product_tables
+    """,
+    "data_product_commands": """
+        CREATE OR REPLACE VIEW data_product_commands_meta AS
+        SELECT product_id, command_name FROM data_product_commands
     """,
     # REQ-2190: what pgwire's catalog presents that the views above do not list. SQL alone serves
     # these (security.rights.SQL_ONLY_TABLES), and a role reads their rows as it reads

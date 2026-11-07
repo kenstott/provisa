@@ -141,11 +141,31 @@ def _unique_keys(table: Table) -> tuple[tuple[str, ...], ...]:  # REQ-1093, REQ-
     return tuple(keys)
 
 
+def product_memberships(config: ProvisaConfig) -> dict[tuple[str, ...], tuple[str, ...]]:
+    """REQ-1634: each member table's products, any number, in id order, keyed by the table's
+    physical triple: read off each product's ``tables``, which names a table by its virtual name
+    (its alias, else its table name). A name no table, or more than one, answers is refused."""
+    by_name: dict[str, list[Table]] = {}
+    for table in config.tables:
+        by_name.setdefault(table.alias or table.table_name, []).append(table)
+    out: dict[tuple[str, ...], list[str]] = {}
+    for product in config.data_products:
+        for name in product.tables:
+            found = by_name.get(name, [])
+            if len(found) != 1:
+                raise ValueError(
+                    f"data product {product.id!r} lists table {name!r}, which "
+                    + ("no table is named" if not found else "more than one table is named")
+                )
+            out.setdefault(table_ref(found[0]).parts, []).append(product.id)
+    return {parts: tuple(sorted(ids)) for parts, ids in out.items()}
+
+
 def _table_assets(
     tables: list[Table],
     org_id: str | None,
     technical_columns: frozenset[tuple[tuple[str, ...], str]],
-    product_ids: dict[tuple[str, ...], str | None],
+    product_ids: Mapping[tuple[str, ...], tuple[str, ...]],
     source_ttls: Mapping[str, int | None] | None = None,
     readers: Mapping[tuple[str, ...], tuple[str, ...]] | None = None,
 ) -> list[TableAsset]:
@@ -167,7 +187,9 @@ def _table_assets(
             ],
             semantic_uri=table_uri(org_id, table),
             # REQ-1592: model-report column, kept.
-            data_product=product_ids[table_ref(table).parts] is not None,
+            data_product=bool(product_ids.get(table_ref(table).parts)),
+            # REQ-1634: every product the table is a member of.
+            product_ids=product_ids.get(table_ref(table).parts, ()),
             # REQ-1652: every declared key column, technical-tagged or not -- the physical table
             # carries it whether or not the Data Product exposes it.
             primary_key=tuple(c.name for c in table.columns if getattr(c, "is_primary_key", False)),
@@ -212,7 +234,7 @@ def _data_product_assets(
     config: ProvisaConfig,
     exported: list[Table],
     org_id: str | None,
-    product_ids: dict[tuple[str, ...], str | None],
+    product_ids: Mapping[tuple[str, ...], tuple[str, ...]],
     documentation_base_url: str | None = None,
     page_org_id: str = "",
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
@@ -226,8 +248,8 @@ def _data_product_assets(
     # rather than left listing it as it last saw it.
     members_by_product: dict[str, list[Table]] = {}
     for table in exported:
-        product_id = product_ids[table_ref(table).parts]
-        if product_id is not None:
+        # REQ-1634: a table is a member of each product it belongs to, any number.
+        for product_id in product_ids.get(table_ref(table).parts, ()):
             members_by_product.setdefault(product_id, []).append(table)
     assets: list[DataProductAsset] = []
     for product in config.data_products:
@@ -540,6 +562,7 @@ def _dq_assertions(
     published_columns: set[tuple[str, ...]],
     dq_outcomes: dict[tuple[str, str, str], DataQualityOutcome],
     contexts: Mapping,
+    product_ids: Mapping[tuple[str, ...], tuple[str, ...]],
 ) -> list[DataQualityAssertion]:  # REQ-1443
     """Each registered contract's checks, published on the assets they observe.
 
@@ -591,7 +614,7 @@ def _dq_assertions(
                     outcome=dq_outcomes.get(
                         outcome_key, DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
                     ),
-                    owner_product_id=results.product_id,
+                    owner_product_ids=product_ids.get(table_ref(results).parts, ()),
                 )
             )
     return assertions
@@ -779,12 +802,12 @@ def build_snapshot(
     # steward's view of what is modelled, not a catalog publish — so it turns the export filter off
     # and reads the Data Product flag off each row instead.
     # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
-    # product it is assigned to.
-    product_ids = {table_ref(table).parts: table.product_id for table in config.tables}
+    # products it is a member of (REQ-1634: any number, declared on each product).
+    product_ids = product_memberships(config)
     exported = [
         table
         for table in config.tables
-        if product_ids[table_ref(table).parts] is not None or not data_products_only
+        if product_ids.get(table_ref(table).parts) or not data_products_only
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
@@ -852,7 +875,9 @@ def build_snapshot(
         glossary_terms=glossary_terms,
         glossary_edges=glossary_edges,
         glossary_axioms=_glossary_axioms(glossary, glossary_terms),
-        assertions=_dq_assertions(config, keep, published_columns, dq_outcomes or {}, contexts),
+        assertions=_dq_assertions(
+            config, keep, published_columns, dq_outcomes or {}, contexts, product_ids
+        ),
         sensitive_tags=frozenset(
             tag.id for tag in (*SYSTEM_TAGS, *config.tags) if tag.sensitive
         ),  # REQ-1943

@@ -1043,6 +1043,17 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def set_data_product_members(
+        id: str, table_ids: list[int], command_names: list[str], role: str | None = None
+    ) -> dict:
+        """Make a data product's members exactly these tables (by id) and commands (by name);
+        each must be in the product's domain."""
+        resolved = _role(role)
+        return await tools.set_data_product_members(
+            state, resolved, _capability_request(resolved), id, table_ids, command_names
+        )
+
+    @_tool
     async def delete_data_product(id: str, role: str | None = None) -> dict:
         """Delete a data product by id. Irreversible."""
         resolved = _role(role)

@@ -320,7 +320,6 @@ DO $$ BEGIN
     -- REQ-1443 clause 10: the contract's checks, parsed at registration, for the meta dq_rules.
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS dq_rules JSONB;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS profiler_source_id TEXT;  -- REQ-1934
-    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;  -- REQ-1634
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS row_materialize BOOLEAN NOT NULL DEFAULT FALSE;  -- REQ-1865
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS file_glob TEXT;  -- REQ-788
@@ -1427,11 +1426,23 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1634: optional data-product membership for commands, mirroring registered_tables.product_id.
-DO $$ BEGIN
-    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE SET NULL;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
+-- REQ-1634: data-product membership is many-to-many, a relation of its own: one row per product and
+-- member table (or view), and one per product and member command. A member joins only products of
+-- its own domain (checked when the product's members are set). A member's rows go with it; a
+-- product's members block its deletion (integrity.REFERENCES), so the cascade there never fires.
+CREATE TABLE IF NOT EXISTS data_product_tables (
+    product_id TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    table_id   INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    PRIMARY KEY (product_id, table_id)
+);
+CREATE INDEX IF NOT EXISTS idx_data_product_tables_table ON data_product_tables(table_id);
+
+CREATE TABLE IF NOT EXISTS data_product_commands (
+    product_id   TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    command_name TEXT NOT NULL REFERENCES tracked_functions(name) ON DELETE CASCADE ON UPDATE CASCADE,
+    PRIMARY KEY (product_id, command_name)
+);
+CREATE INDEX IF NOT EXISTS idx_data_product_commands_command ON data_product_commands(command_name);
 
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges

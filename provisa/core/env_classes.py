@@ -30,6 +30,9 @@ CARRIED: frozenset[str] = frozenset(
     {
         "domains",
         "data_products",  # REQ-1634: domain-scoped metadata, travels with the domain it belongs to
+        # REQ-1634: a product's members travel with the product and the tables and commands.
+        "data_product_tables",
+        "data_product_commands",
         "naming_rules",
         "registered_tables",
         "table_columns",

@@ -120,28 +120,31 @@ def require_provided(cid: str, contract: DataContract, column_types: dict[str, s
 
 def for_save(
     *,
-    product_id: str | None,
+    products: list[str],
     is_checker: bool,
     schema_name: str,
     table_name: str,
     declared: DataContract | None,
     stored: dict[str, Any] | None,
-    stored_product_id: str | None,
     column_types: dict[str, str],
     checks: list[ContractCheck] | None = None,
 ) -> DataContract | None:
-    """The contract a table's save stores: none outside a product (or for a checker); the one
-    declared, else the one stored for the same product, else a draft of its columns, with the
-    version this save made recorded on it. Refused (:class:`ContractRefused`) when it would break
-    the stored one or the columns break it. ``checks``: the product's promises on the member."""
-    if product_id is None or is_checker:
+    """The contract a table's save stores. ``products``: the products it is a member of (REQ-1634,
+    any number). None for a checker; the one declared, checked when the table is a member; else,
+    for a member, the one stored, else a draft of its columns; else none -- a table in no product
+    is no output port. The version this save made is recorded on it. Refused
+    (:class:`ContractRefused`) when it would break the stored one or the columns break it.
+    ``checks``: the products' promises on the member."""
+    if is_checker or (not products and declared is None):
         return None
-    cid = contract_id(product_id, schema_name, table_name)
-    previous = (
-        DataContract.model_validate(stored)
-        if stored is not None and stored_product_id == product_id
-        else None
+    # One contract per member, whichever of its products a reader names it under: named here by
+    # the first; a contract declared before the table joins a product, by the table alone.
+    cid = (
+        contract_id(products[0], schema_name, table_name)
+        if products
+        else f"{schema_name}.{table_name}"
     )
+    previous = DataContract.model_validate(stored) if stored is not None else None
     if declared is not None:
         declared = as_stored(cid, declared)
     if previous is not None and declared is not None:

@@ -416,7 +416,6 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
         await conn.execute_core(
             select(
                 registered_tables.c.id,
-                registered_tables.c.product_id,
                 registered_tables.c.contract,
             ).where(
                 registered_tables.c.source_id == table.source_id,
@@ -436,24 +435,54 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
             column_types[col.name] = stored_type_of(base_type(declared_type))
         except ReportedNumericMalformed as malformed:
             raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
-    product_id = getattr(table, "product_id", None)
+    # REQ-1634: the products the table is a member of are the product's to set (set_members); a
+    # table's save keeps its contract while it is a member of any.
+    products = [] if stored is None else await data_product_repo.products_of_table(conn, stored.id)
     is_checker = getattr(table, "dq_contract", None) is not None
     promised = (
-        await data_product_repo.promised_checks(conn, product_id, stored.id)
-        if stored is not None and product_id is not None and not is_checker
+        await data_product_repo.promised_checks(conn, stored.id)
+        if stored is not None and products and not is_checker
         else []
     )
     return data_contracts.for_save(
-        product_id=product_id,
+        products=products,
         is_checker=is_checker,
         schema_name=table.schema_name,
         table_name=table.table_name,
         declared=getattr(table, "contract", None),
         stored=None if stored is None else stored.contract,
-        stored_product_id=None if stored is None else stored.product_id,
         column_types=column_types,
         checks=promised,
     )
+
+
+async def _require_landed_if_member(  # REQ-1634
+    conn: "Connection", table: Table, domain_id: str
+) -> None:
+    """A data product's member keeps to what joining one requires (set_members), refused here, the
+    last write gate: it stays in each of its products' domain, and it does not become
+    parameterized -- a table with a native-filter (query/path-param) column is a function
+    f(args) -> rows with no snapshot (provisa/events/boot.py), which never lands and so can never
+    back a Share/listing export."""
+    stored = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+            )
+        )
+    ).fetchone()
+    products = [] if stored is None else await data_product_repo.products_of_table(conn, stored.id)
+    await data_product_repo.require_domain_of_products(
+        conn, products, domain_id, f"table {table.table_name}"
+    )
+    parameterized = any(getattr(c, "native_filter_type", None) is not None for c in table.columns)
+    if products and parameterized:
+        raise ValueError(
+            f"table {table.table_name} has a native-filter (parameterized) column and cannot "
+            f"be a member of data product {products[0]!r} — it is never landed"
+        )
 
 
 async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | None") -> int | None:
@@ -473,28 +502,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         from provisa.mv.readable_inputs import require_row_level_switch_allowed
 
         await require_row_level_switch_allowed(conn, table)
-    # REQ-1634: a DataProduct's member tables must all share its domain_id — a table cannot
-    # reference a DataProduct in a different domain. Enforced at the last write gate so every
-    # caller (config load, admin GraphQL, introspection) is covered, not only the picker UI.
-    product_id = getattr(table, "product_id", None)
-    if product_id is not None:
-        # A parameterized table (native-filter query/path-param column) is a function f(args) ->
-        # rows with no snapshot (provisa/events/boot.py) — it never lands and so can never back a
-        # Share/listing export. Membership must be rejected here, the same last-write gate that
-        # enforces domain matching, so every caller is covered.
-        if any(getattr(c, "native_filter_type", None) is not None for c in table.columns):
-            raise ValueError(
-                f"table {table.table_name} has a native-filter (parameterized) column and cannot "
-                f"be a member of data product {product_id!r} — it is never landed"
-            )
-        product = await data_product_repo.get(conn, product_id)
-        if product is None:
-            raise ValueError(f"data product {product_id!r} does not exist")
-        if product["domain_id"] != domain_id:
-            raise ValueError(
-                f"table {table.table_name} is in domain {domain_id!r} but data product "
-                f"{product_id!r} belongs to domain {product['domain_id']!r}"
-            )
+    await _require_landed_if_member(conn, table, domain_id)  # REQ-1634
     contract = await _contract_for_save(conn, table)  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
@@ -515,7 +523,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "view_metrics": (
             vm.model_dump() if (vm := getattr(table, "view_metrics", None)) else None
         ),  # REQ-1318
-        "product_id": getattr(table, "product_id", None),  # REQ-1634
         "contract": contract.model_dump(mode="json") if contract is not None else None,  # REQ-2158
         "materialize": getattr(table, "materialize", False),
         "mv_refresh_interval": getattr(table, "mv_refresh_interval", 300),
@@ -589,7 +596,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "dq_rules",  # REQ-1443 clause 10
         "profiler_source_id",  # REQ-1934
         "view_metrics",  # REQ-1318
-        "product_id",
         "contract",  # REQ-2158
         "materialize",
         "mv_refresh_interval",
@@ -971,6 +977,7 @@ async def get(conn: "Connection", table_id: int) -> dict | None:  # REQ-013, REQ
         return None
     result_dict = dict(row._mapping)
     result_dict["columns"] = await _load_columns(conn, table_id)
+    result_dict["product_ids"] = await data_product_repo.products_of_table(conn, table_id)
     return result_dict
 
 
@@ -989,6 +996,7 @@ async def get_by_name(
         return None
     result_dict = dict(row._mapping)
     result_dict["columns"] = await _load_columns(conn, result_dict["id"])
+    result_dict["product_ids"] = await data_product_repo.products_of_table(conn, result_dict["id"])
     return result_dict
 
 
@@ -1028,7 +1036,8 @@ async def find_by_table_name(
 async def list_all(
     conn: "Connection", *, parts_of: "Callable[[dict], bool] | None" = None
 ) -> list[dict]:  # REQ-013, REQ-016
-    """Every registered table's row with its ``columns`` and ``write_grants``. ``parts_of``, when
+    """Every registered table's row with its ``product_ids`` (REQ-1634: the products it is a
+    member of, in id order), ``columns`` and ``write_grants``. ``parts_of``, when
     given, says which tables' parts are read: a table it refuses is its row alone, with neither
     key — for a reader that needs no more of it than its row (``store_model``'s seeded tables)."""
     from provisa.core.repositories import write_grant as write_grant_repo
@@ -1048,8 +1057,10 @@ async def list_all(
         column = dict(c._mapping)
         columns.setdefault(column.pop("table_id"), []).append(column)
     grants = await write_grant_repo.by_table(conn)
+    memberships = await data_product_repo.table_memberships(conn)
     wanted = set(with_parts)
     for r in rows:
+        r["product_ids"] = memberships.get(r["id"], [])
         if r["id"] in wanted:
             r["columns"] = columns.get(r["id"], [])
             r["write_grants"] = grants.get(r["id"], [])  # REQ-2074

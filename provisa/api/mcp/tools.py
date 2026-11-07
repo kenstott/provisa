@@ -852,7 +852,8 @@ async def untag_glossary_term(
 
 
 async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:  # REQ-1855
-    """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
+    """The org's data products (id, domain, name, purpose, owner/team role, status, etc.), each
+    with its members: ``table_ids`` and ``command_names`` (REQ-1634)."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.repositories import data_product as data_product_repo
@@ -861,7 +862,46 @@ async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        return await data_product_repo.list_all(conn)
+        return [
+            {
+                **row,
+                "table_ids": await data_product_repo.member_table_ids(conn, row["id"]),
+                "command_names": await data_product_repo.member_command_names(conn, row["id"]),
+            }
+            for row in await data_product_repo.list_all(conn)
+        ]
+
+
+async def set_data_product_members(  # REQ-1634
+    state: Any,
+    role: str,
+    request: Any,
+    id: str,
+    table_ids: list[int],
+    command_names: list[str],
+) -> dict:
+    """Make a data product's members exactly these tables (by id) and commands (by name). A table
+    or command may be a member of any number of products, but only of products of its own domain;
+    one of another domain is refused by name and nothing changes."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability_request(request, "data_product_rw")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        stored = await data_product_repo.get(conn, id)
+        if stored is None:
+            raise ValueError(f"Data product not found: {id}")
+        require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        await data_product_repo.set_members(conn, id, table_ids=table_ids, commands=command_names)
+    await _rebuild_schemas()
+    return {"ok": True}
 
 
 async def create_data_product(  # REQ-1855
