@@ -34,6 +34,7 @@ import {
   acceptCandidate,
   rejectCandidate,
   clearRejectedCandidates,
+  fetchSettings,
 } from "../api/admin";
 import {
   useRelationships,
@@ -64,7 +65,7 @@ import {
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { domainToSqlName } from "../naming";
+import { applyConvention, domainToSqlName } from "../naming";
 import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 import { matchesQuery } from "../lib/searchItems";
@@ -123,6 +124,10 @@ export function RelationshipsPage() {
     retry: { kind: "add" } | { kind: "save" } | { kind: "delete"; id: string };
   } | null>(null);
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
+  // REQ-194: the deployment's GraphQL convention, which names the GraphQL alias a reverse is
+  // offered. Until it is read the reverse cannot be offered; a failed read is said on the page.
+  const [gqlConvention, setGqlConvention] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState("");
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   // The link names the filter, also on a page already open: a tour step moving on within the page
@@ -175,6 +180,11 @@ export function RelationshipsPage() {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    fetchSettings()
+      .then((s) => setGqlConvention(s.naming.convention))
+      .catch((e: Error) => setSettingsError(e.message));
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // The page's own content is the relationships table, so only its two queries can withhold it.
@@ -437,7 +447,7 @@ export function RelationshipsPage() {
   );
 
   const buildReverse = useCallback(
-    (r: Relationship): RelForm => {
+    (r: Relationship, convention: string): RelForm => {
       // One-to-one reads the same both ways.
       const flipCardinality = (c: string) =>
         c === "one-to-one" ? c : c === "many-to-one" ? "one-to-many" : "many-to-one";
@@ -447,16 +457,8 @@ export function RelationshipsPage() {
         if (alias.endsWith("_OF")) return alias.slice(0, -3);
         return `${alias}_BY`;
       };
-      const cqlToGql = (cql: string) => {
-        const parts = cql.toLowerCase().split("_").filter(Boolean);
-        return (
-          parts[0] +
-          parts
-            .slice(1)
-            .map((p) => p[0].toUpperCase() + p.slice(1))
-            .join("")
-        );
-      };
+      // REQ-194: the Cypher alias's words, named by the deployment's GraphQL convention.
+      const cqlToGql = (cql: string) => applyConvention(cql.toLowerCase(), convention);
       const suggestGqlAlias = (gql: string | null, cqlSuggestion: string) => {
         if (gql) {
           if (gql.endsWith("By")) return gql.slice(0, -2);
@@ -652,10 +654,14 @@ export function RelationshipsPage() {
         setSaveProblem("");
         startEditing(selectedRel);
       }}
-      onReverse={() => {
-        setSaveProblem("");
-        setReverseForm(buildReverse(selectedRel));
-      }}
+      onReverse={
+        gqlConvention === null
+          ? undefined
+          : () => {
+              setSaveProblem("");
+              setReverseForm(buildReverse(selectedRel, gqlConvention));
+            }
+      }
       onDelete={() => handleDelete(String(selectedRel.id))}
       onEditSave={() => handleEditSave()}
       saving={saving}
@@ -768,6 +774,11 @@ export function RelationshipsPage() {
       {discoverError && (
         <Alert color="red" mb="md" data-testid="rels-discover-error">
           {discoverError}
+        </Alert>
+      )}
+      {settingsError && (
+        <Alert color="red" mb="md" data-testid="rels-settings-error">
+          {settingsError}
         </Alert>
       )}
       {discoverMsg && (
