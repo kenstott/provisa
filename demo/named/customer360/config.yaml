@@ -590,8 +590,8 @@ relationships:
 - {id: incident-to-link, alias: RAISED_BY_CUSTOMER, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: xref, target_column: system_key}
 - {id: invoice-to-link, alias: BILLS_CUSTOMER, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: xref, target_column: system_key}
 # The check's rules: records sharing a domain or a normalised name.
-- {id: same-domain, alias: SAME_DOMAIN, cardinality: one-to-many, source_table_id: view_system_records, source_column: domain, target_table_id: view_system_records, target_column: domain}
-- {id: same-name, alias: SAME_NAME, cardinality: one-to-many, source_table_id: view_system_records, source_column: normalised_name, target_table_id: view_system_records, target_column: normalised_name}
+- {id: same-domain, alias: SAME_DOMAIN, graphql_alias: sameDomainRecords, cardinality: one-to-many, source_table_id: view_system_records, source_column: domain, target_table_id: view_system_records, target_column: domain}
+- {id: same-name, alias: SAME_NAME, graphql_alias: sameNameRecords, cardinality: one-to-many, source_table_id: view_system_records, source_column: normalised_name, target_table_id: view_system_records, target_column: normalised_name}
 - {id: hub-link-to-record, alias: LINKS_RECORD, cardinality: one-to-one, source_table_id: xref, source_column: system_key, target_table_id: view_system_records, target_column: system_key}
 # The crosswalk: each record to its anchor account, the records of one anchor, the master built
 # on it, and the hub's links it checks.
@@ -599,8 +599,8 @@ relationships:
 - {id: crosswalk-same-anchor, alias: SAME_ANCHOR, cardinality: one-to-many, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: view_crosswalk, target_column: anchor_account_id}
 - {id: crosswalk-to-stripe-customer, alias: MATCHES_BILLED, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: stripe_customers, target_column: id}
 - {id: master-to-crosswalk, alias: GROUPS, cardinality: one-to-many, source_table_id: view_master, source_column: anchor_account_id, target_table_id: view_crosswalk, target_column: anchor_account_id}
-- {id: crosswalk-to-link, alias: CHECKS, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: xref, target_column: system_key}
-- {id: anchor-to-link, alias: ANCHOR_LINK, cardinality: many-to-one, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: xref, target_column: system_key}
+- {id: crosswalk-to-link, alias: CHECKS, graphql_alias: hubLink, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: xref, target_column: system_key}
+- {id: anchor-to-link, alias: ANCHOR_LINK, graphql_alias: anchorHubLink, cardinality: many-to-one, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: xref, target_column: system_key}
 # The corrected crosswalk, joined as the hub's is.
 - {id: corrected-same-customer, alias: SAME_CORRECTED_CUSTOMER, cardinality: one-to-many, source_table_id: view_hub_corrected, source_column: master_id, target_table_id: view_hub_corrected, target_column: master_id}
 - {id: corrected-to-account, alias: CORRECTED_ACCOUNT, cardinality: one-to-one, source_table_id: view_hub_corrected, source_column: system_key, target_table_id: accounts, target_column: Id}
