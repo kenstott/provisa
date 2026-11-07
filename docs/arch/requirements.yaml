@@ -90687,7 +90687,35 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     shown term reaches is drawn, and no relationship, join or lineage edge between tables or columns is
     drawn. The Product map preset and the product panels'' snippets keep the product layers (commands, quality,
     product links, lineage) and the member tables, so nothing the product graph showed is lost. The owner-tables
-    relationship layer is not offered in the Ontology preset.'
+    relationship layer is not offered in the Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:)
+    The graph''s columns are Products, Tables, Columns and Terms, and a hop is one step across them, counted
+    from the focus item alone (a product''s count no longer also starts from its member tables). The hop
+    control is labelled with its focus, ''Hops from <focus>: 1 2 3 4'': 1 its tables and commands, 2 their
+    columns, 3 the terms those columns are tied to, 4 other columns tied to the same terms. A ''Related
+    tables'' checkbox draws the tables directly related to the drawn tables by relationships, named on the
+    link, and the products those tables belong to; it follows one step only, never a related table''s own
+    columns, terms or relationships. The Terms, Domains and Tags filters stay; the filter of term-to-term
+    link types is named ''Term relationships''. A product''s panel opens at 1 hop with Related tables on,
+    matching its Related Tables card; the full graph opens at 2 hops with Related tables off. A table''s
+    columns not tied to a term shown fold into one node labelled ''N columns with no term in this view''.
+    Reset view folds every table back as well as resetting the camera. The 2D view is the simple one: Product,
+    its tables, their columns and the terms those columns are tied to, left to right, with the links between
+    terms (filtered by Term relationships), and nothing else -- no related tables and no lineage. Its hop
+    control, ''Hops from <product>'', counts along that path: 1 the product''s tables, 2 their columns,
+    3 the terms those columns are tied to, and each hop beyond 3 one more step through term-to-term links;
+    a table''s columns not tied to a term fold into one node. Hops, Related tables, Term relationships and
+    every other layer belong to the 3D view, where table relationships and term relationships are told apart
+    by more than colour (a table link solid and named by the relationship, a term link dashed and named
+    by its type). The graph''s Lineage layer is named ''Inputs'' and shows where the product comes from,
+    never who consumes it: the graph is read by a consumer or prospective consumer. Each input links to
+    the member table that reads it (not to the product), an input that is another product''s member stands
+    for that product, and column lineage stays on unfolded tables. A product page''s Lineage panel is titled
+    ''Column lineage: where this product comes from'', its lanes named Inputs and This product''s tables
+    (Upstream hop n beyond the inputs), with no downstream lanes; its hint states what it draws (each published
+    column and the input column it comes from), and the Input Ports card links to it. A product''s Consumers
+    card is shown only to those who own the product: a session acting as the product''s owner_role, or holding
+    data_product_rw with entitlements (REQ-2219) that reach that product, which its creator holds from creation;
+    no one else sees it (maintainer 2026-11-07).'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
