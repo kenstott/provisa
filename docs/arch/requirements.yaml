@@ -93138,3 +93138,99 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the statement reads Orders_Archive
 
     And registering a second table named orders_archive in the same schema is refused, naming Orders_Archive'
+- id: REQ-2215
+  value: 'Provisa can resolve a role to the principals who hold it, whichever system owns role membership, so work
+    addressed to a role reaches people.'
+  status: proposed
+  target: 2026-Q4
+  group: 2. Authentication & Identity
+  category: Identity
+  feature: sign-in-and-identity-providers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: requests and other work are addressed to roles, and where membership comes
+    from an identity provider Provisa does not know who holds a role. One contract answers "the members of role R
+    in org O" with principals (id, display name, email), by whichever system owns membership: Provisa''s own role
+    assignments are read from its own tables; an external identity provider is reached through a resolver that
+    implements a system-defined contract (read-only, synchronous, a declared time limit), with resolvers for SCIM,
+    LDAP group membership, Microsoft Graph (Entra ID) and Google Directory, and any declared command that implements
+    the contract. Its first users: a request notifies the members of the role it is addressed to and shows who can
+    act on it; tag attestation workflows (REQ-2209) know who owes an attestation; and the tags report''s principal
+    checks (REQ-2208) know whether an attester is still a member and who the required attesters are, including
+    separation of duties across a role. The member list is used by the server to send and to check; showing it to
+    a person requires the user management right. A role whose membership source has no resolver has no resolvable
+    members, and anything addressed to it says so, naming the role, rather than notifying no one silently.'
+  use_case: An access request addressed to the data steward role emails the people who hold that role in the
+    identity provider.
+  scenario: 'Given a role whose members come from an identity provider with a SCIM resolver configured
+
+    When a request is addressed to that role
+
+    Then each member the resolver returns is notified
+
+    And with no resolver configured the request shows that the role has no resolvable members, naming it'
+- id: REQ-2216
+  value: 'External workflow tools run Provisa''s workflows: Provisa emits each workflow moment as an event and accepts
+    each decision through its API, and an org may turn its own email notices off.'
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: Workflow
+  feature: change-events-and-streams-sinks-and-events
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run
+    approvals in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal);
+    Provisa feeds them and stays the system of record for what was decided. Events out: each workflow moment
+    (a request created, an attestation coming due or overdue, a gate refusal, a cited section drifting,
+    a review step waiting) is an event delivered through the existing triggers and webhooks, naming the
+    object, the role it is addressed to, the resolved principals (REQ-2215) and a link back. Decisions in:
+    an API completes each step (approve or deny a request, record an attestation with its statement and
+    evidence, return a step); the acting person authenticates as themselves, Provisa checks their right,
+    and the decision is logged with the tags as they were (REQ-2208). Delivery is an org setting: email
+    (built in, the default), events only (Provisa sends no notice itself), or both. The contract is stable:
+    a versioned event schema, an idempotency key on every event and decision so a retried delivery cannot
+    apply twice, signed deliveries, and replay of missed events. This widens the tags unit''s events step
+    (REQ-2209) to requests and every other workflow. (Amended 2026-11-07, AN ENHANCEMENT OF WHAT EXISTS:)
+    This builds on what exists: requests are already recorded and already have the endpoints that carry
+    them out (creation requests'' approve, environment merge decisions, glossary term approval, profiler
+    constraint decisions), so an external tool can act today. [SUPERSEDED by REQ-2216, 2026-11-07 -- requests
+    become an ops table and events are its row changes, delivered by the existing subscriptions (maintainer
+    2026-11-07). Kept here for history; do not implement against it.] The work is four additions: an event
+    when a request is created or decided, through the existing triggers and webhooks, carrying the role
+    and its resolved members; the org delivery setting (email, events only, both); an idempotency key on
+    the approve and decide calls; and signed deliveries with replay where the existing webhooks lack them.
+    [END SUPERSEDED BLOCK] Attestation and review events stay with the tags unit (REQ-2209) (maintainer
+    2026-11-07). (Amended 2026-11-07, REQUESTS ARE AN OPS TABLE; EVENTS ARE ITS CHANGES:) Requests are published
+    as a table of the ops system schema (ops.requests): one row per request with what was asked, by whom,
+    the role it is addressed to and that role''s resolved members (REQ-2215), its state, the decision, who
+    decided and when; governed like any other table, so a row is visible only to those allowed to see it,
+    and readable by Polly, MCP, reports and metrics. There is no separate event mechanism: a workflow tool
+    subscribes to ops.requests through the subscriptions and change events tables already have, so request
+    created and request decided are an insert and an update, and the event''s schema is the table''s columns.
+    Decisions still enter through the existing approve and decide endpoints. The work left is the ops table,
+    the org delivery setting (email, events only, both) and an idempotency key on the approve and decide
+    calls; delivery, signing and replay are whatever the subscription mechanism provides (maintainer 2026-11-07).
+    (Amended 2026-11-07, PROVISA IS NOT THE WORKFLOW TOOL:) Whatever an enterprise does between a request
+    and its decision (gathering documents, attestations, a chain of approvals, escalations) runs in its
+    own tool and is its own concern; Provisa models no workflow steps or states beyond the request''s own
+    (pending, decided). [SUPERSEDED by REQ-2216, 2026-11-07 -- the trail lives in the enterprise''s own
+    table related to ops.requests (maintainer 2026-11-07). Kept here for history; do not implement against
+    it.] The approve and deny calls may carry the enterprise''s trail as given (a statement, links to evidence,
+    the approvals it collected), which Provisa stores with the decision and shows on the request row without
+    interpreting or validating it (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07, PROCESS
+    EXTENSIONS ARE THE ENTERPRISE''S OWN TABLES:) The decision calls carry no workflow trail. An enterprise
+    that keeps process data (documents gathered, attestations, its approval chain) registers its own table
+    as a governed source and relates it to ops.requests by request id, so the request and its process data
+    join in one query under the same governance, lineage and reports as any relationship, in the enterprise''s
+    own shape. An ops system table can therefore be the target of a relationship from a user''s table (maintainer
+    2026-11-07).'
+  use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
+    Provisa's own email notices off.
+  scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
+
+    When a request is addressed to a role
+
+    Then the tool receives a signed, versioned event naming the request, the role and its members, and no email is sent
+
+    And when the tool approves it through the API as an authorised person, the request is approved once, even if the call is retried'
