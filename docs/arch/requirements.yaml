@@ -43918,14 +43918,18 @@
   since: 2026-07
   description: Deletion scrubs personal data while preserving the record that the deletion happened. Deleting
     an org (REQ-1300) drops every tenant-scoped row and cascades the control-plane rows keyed to it; what
-    survives is the billing and usage record needed to invoice, which names the org and not a person,
-    and the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces every
-    reference to that user id - orgs.created_by, org_invites.created_by and used_by, audit attributions
-    - with an opaque tombstone token, and erases the personal attributes on user_profile (name, email,
-    avatar). References are tombstoned rather than nulled because org_invites.created_by is NOT NULL and
-    because a dangling id is worse than an explicit one - the record stays referentially intact and stops
-    identifying anyone. Audit entries are never deleted by either operation; an audit trail that erases
-    on request is not one.
+    survives is the billing and usage record needed to invoice, which names the org and not a person, and
+    the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces every reference
+    to that user id - orgs.created_by, org_invites.created_by and used_by, audit attributions - with an
+    opaque tombstone token, and erases the personal attributes on user_profile (name, email, avatar). References
+    are tombstoned rather than nulled because org_invites.created_by is NOT NULL and because a dangling
+    id is worse than an explicit one - the record stays referentially intact and stops identifying anyone.
+    Audit entries are never deleted by either operation; an audit trail that erases on request is not one.
+    (Amended 2026-11-07, THE USER DIRECTORY IS A CACHE:) user_directory (each user's display name and email,
+    copied from the identity provider) is a cache, used to send communications and show names. Deleting
+    a user removes that user's user_directory row, with their profile and local sign-in, and tombstones
+    their id in the query and admin audit logs; an erasure that leaves the name, the email or the identity
+    link behind in any of them is a defect (maintainer 2026-11-07).
   use_case: This is the shape every SaaS platform converges on under GDPR and CCPA. Article 17(3) permits
     retention for legal obligation and for establishing or defending legal claims, which is what keeps
     billing records and audit trails out of the erasure - and platforms that delete audit records on request
