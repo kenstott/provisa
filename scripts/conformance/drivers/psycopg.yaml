@@ -404,6 +404,9 @@ reasons:
     defect: assert ['…', '…'\x06'…'\x01'…'\x0..., '…', ...]
   assert-x06-x01-b:
     defect: assert ['…', '…'\x06'…'\x01'…'\... b'…', ...]
+  psycopg-errors-invalidtextrepresentation-convers-11:
+    defect: 'psycopg.errors.InvalidTextRepresentation: Conversion Error: Unimplemented type for cast (VARCHAR[]
+      -> UUID)'
   valueerror-bytes-is-not-a-n-char-string:
     defect: 'ValueError: bytes is not a N-char string'
 expected:
@@ -3504,7 +3507,12 @@ expected:
   tests.types.test_string::test_text_array_ascii[1-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_string::test_text_array_ascii[1-s]: assert-x06-x01-b
   tests.types.test_string::test_text_array_ascii[1-t]: assert-x06-x01-b
+  tests.types.test_uuid::test_uuid_dump[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-b]: psycopg-errors-invalidtextrepresentation-convers-11
+  tests.types.test_uuid::test_uuid_dump[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-s]: psycopg-errors-invalidtextrepresentation-convers-11
+  tests.types.test_uuid::test_uuid_dump[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-t]: psycopg-errors-invalidtextrepresentation-convers-11
   tests.types.test_uuid::test_uuid_load[01234567-89ab-cdef-0123-456789abcdef-1]: valueerror-bytes-is-not-a-n-char-string
   tests.types.test_uuid::test_uuid_load[0123456789abcdef0123456789abcdef-1]: valueerror-bytes-is-not-a-n-char-string
   tests.types.test_uuid::test_uuid_load[12345678-1234-5678-1234-567812345679-1]: valueerror-bytes-is-not-a-n-char-string
   tests.types.test_uuid::test_uuid_load[12345678123456781234567812345679-1]: valueerror-bytes-is-not-a-n-char-string
+  tests.types.test_uuid::test_uuid_load[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-0]: psycopg-errors-invalidtextrepresentation-convers-11
+  tests.types.test_uuid::test_uuid_load[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-1]: psycopg-errors-invalidtextrepresentation-convers-11
