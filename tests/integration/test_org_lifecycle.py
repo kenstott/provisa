@@ -41,6 +41,7 @@ from provisa.api.org_runtime import ActiveOrgPool
 from provisa.api.auth_router import router as auth_router
 from provisa.api.errors import ApiError
 from provisa.auth.middleware import AuthMiddleware
+from provisa.core import pgvector
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
@@ -60,6 +61,7 @@ from provisa.core.schema_org import (
     registered_tables,
     sources,
     table_columns,
+    user_attributes,
     user_directory,
     user_idp_attributes,
 )
@@ -92,6 +94,7 @@ _TENANT_TABLES = [
     user_role_assignments,
     admin_audit_log,
     user_directory,
+    user_attributes,
     user_idp_attributes,
 ]
 
@@ -192,6 +195,9 @@ def _prepare_sync():
             )
         )
 
+        # REQ-2185: acme's whole schema holds the library passages' pgvector columns; a node creates
+        # the extension in public before an org's schema is laid out (pgvector.require).
+        conn.execute(text(f'CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA "{pgvector.SCHEMA}"'))
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['acme']}"))
         # REQ-1304: acme carries the whole tenant schema, because the config export offered before
         # deletion walks every catalog table the org could have configured — anything missing reads
@@ -711,6 +717,18 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
                 action="remove_member", actor_id="bob", subject_id="carol"
             )
         )
+        # REQ-1439, REQ-1382, REQ-1383: the org's own copies of who bob is -- his name and email,
+        # what it records about him, what his identity provider said. alice's stay.
+        for who in ("bob", "alice"):
+            conn.execute(
+                insert(user_directory).values(
+                    user_id=who, display_name=who.title(), email=f"{who}@example.com"
+                )
+            )
+            conn.execute(insert(user_attributes).values(user_id=who, name="dept", value="ops"))
+            conn.execute(
+                insert(user_idp_attributes).values(user_id=who, name="email", value=f"{who}@x")
+            )
         conn.execute(
             insert(query_audit_log).values(
                 user_id="bob",
@@ -778,6 +796,10 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
     assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(query_audit_log.c.user_id)) == [
         (tombstone,)
     ]
+    # Nothing in the org still says who he was (REQ-1312): his directory entry, attributes and
+    # provider claims are gone with him; alice's are untouched.
+    for table in (user_directory, user_attributes, user_idp_attributes):
+        assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(table.c.user_id)) == [("alice",)]
 
 
 def test_account_deletion_is_blocked_for_the_last_platform_admin(planes):  # REQ-1307
