@@ -516,7 +516,7 @@ class TestWebhookApprovalGate:
             patch("provisa.api.app.state", fake_state),
             patch("provisa.api.app._rebuild_schemas", new=AsyncMock()) as rebuild,
             patch(
-                "provisa.core.repositories.creation_request.create",
+                "provisa.api.admin.request_queue.raise_request",
                 new=AsyncMock(return_value=42),
             ) as cr_create,
         ):
