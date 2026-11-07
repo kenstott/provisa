@@ -92,6 +92,26 @@ def test_attaching_again_is_a_no_op(control_plane, runtime):
     assert runtime.run_sync(_REGISTERED).rows == []
 
 
+def test_a_schema_the_control_plane_creates_after_a_read_is_read_after_the_next_walk(
+    control_plane, runtime
+):
+    """postgres_scanner 2.0 keeps the attached catalog's schemas as it first read them: an org's
+    schema created since (a later org's ``org_<id>``) is not there until the cache is cleared. The
+    registry walk that attaches the control plane clears it when it is attached already."""
+    _register(control_plane, 1, "orders")
+    assert [r[0] for r in runtime.run_sync(_REGISTERED).rows] == ["orders"]
+
+    async def _late_schema() -> None:
+        async with control_plane.org().acquire() as conn:
+            await conn.execute("CREATE SCHEMA org_late")
+            await conn.execute("CREATE TABLE org_late.t (x integer)")
+            await conn.execute("INSERT INTO org_late.t VALUES (1)")
+
+    asyncio.run(_late_schema())
+    runtime.attach_control_plane(libpq_dsn(control_plane.org().engine.url))
+    assert runtime.run_sync('SELECT x FROM "provisa_admin"."org_late"."t"').rows == [(1,)]
+
+
 def test_the_attach_is_read_only(runtime):
     with pytest.raises(duckdb.Error):
         runtime._con.execute(

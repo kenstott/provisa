@@ -940,8 +940,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         read-only and live, once: DuckDB's postgres extension maps every schema of it -- the org's
         ``org_<id>`` and the meta views it holds -- 1:1 under the catalog, so a row it commits is
         read by the next statement. Trino parity: there ``provisa_admin`` is a real catalog over
-        the same database. Called from NativeEngineBackend's registry walk."""
+        the same database. Called from NativeEngineBackend's registry walk.
+
+        postgres_scanner 2.0 keeps the catalog's schemas as it first read them, so a schema made
+        since (a later org's ``org_<id>``) is missing until its cache is cleared: a walk that
+        finds the control plane attached clears it (postgres_clear_cache), as a store's
+        write is made readable (``_see_store_writes``)."""
         if self._control_plane_attached:
+            self._on_instance("CALL postgres_clear_cache()")
             return
         catalog = self._CONTROL_PLANE
         self._ensure_postgres_loaded()
