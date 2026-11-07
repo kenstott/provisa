@@ -280,6 +280,10 @@ export function TagsTab() {
         }}
         data={SCOPES.map((s) => ({ label: scopeLabel(s), value: s }))}
         data-testid="tags-scope-bar"
+        // REQ-2208: twelve object kinds do not fit one row, in German not even at 1900px; the bar
+        // wraps onto further rows instead of clipping its labels, each row filled edge to edge.
+        fullWidth
+        styles={{ root: { flexWrap: "wrap" }, control: { flex: "1 0 auto" } }}
       />
 
       {showForm && (
