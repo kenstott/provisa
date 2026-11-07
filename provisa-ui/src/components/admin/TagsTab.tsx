@@ -49,8 +49,8 @@ import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
-// REQ-1634, REQ-2145, REQ-2208: a data product, a glossary term, and a reference library document
-// and its sections are tagged as the other objects are.
+// REQ-1634, REQ-2145, REQ-2208: a data product, a glossary term, a row rule, a role, a metric, and a
+// reference library document and its sections are tagged as the other objects are.
 const SCOPES: TagObjectType[] = [
   "source",
   "table",
@@ -59,6 +59,9 @@ const SCOPES: TagObjectType[] = [
   "command",
   "product",
   "term",
+  "rls_rule",
+  "role",
+  "metric",
   "document",
   "section",
 ];

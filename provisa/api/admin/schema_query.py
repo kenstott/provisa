@@ -426,7 +426,8 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     An assignment's domain comes from its object: a table or column from the registered table's
     domain; a relationship only when BOTH its source and target tables' domains are reachable; a command (tracked function or webhook)
     from its own domain; a source from its ``allowed_domains`` (reachable when any of them is); a
-    data product from its domain (REQ-1634). A glossary term's tag is read as the term is
+    data product from its domain (REQ-1634); a row rule from the domains it decides rows in, all
+    of which must be reachable (REQ-2208). A glossary term's tag is read as the term is
     (REQ-2145), and a library document's or section's as the document is (REQ-2208). An
     object with no domain (an empty domain id, or a source with no ``allowed_domains``) is not
     restricted by a domain scope and stays visible. An assignment whose object cannot be found is
@@ -517,9 +518,74 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             return row["document_id"] in document_domains and library_readable(
                 scope, document_domains[row["document_id"]]
             )
-        return False
+        if kind == "rls_rule":  # REQ-2208: the domains the rule decides rows in
+            return row["rls_rule_id"] in rule_domains and all(
+                reachable(d) for d in rule_domains[row["rls_rule_id"]]
+            )
+        # REQ-2208: a role is in no domain, and a metric is listed by its grant, not its domains
+        # (_assignments_on_readable).
+        return kind in ("role", "metric")
 
+    from provisa.api.admin.domain_guard import DomainLookupError
+    from provisa.api.admin.domain_guard import rule_domains as _rule_domains
+
+    rule_domains: dict[int, set[str]] = {}
+    for rule_id in {r["rls_rule_id"] for r in rows if r["object_type"] == "rls_rule"}:
+        try:
+            rule_domains[rule_id] = await _rule_domains(conn, rule_id)
+        except DomainLookupError:
+            continue
     return [r for r in rows if visible(r)]
+
+
+async def _readable_assignments(
+    info: StrawberryInfo, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2152, REQ-2208
+    """The one read gate on tag assignments: each is answered only when the caller may read the
+    object it is on. A table, column, relationship, command, source, data product, row rule,
+    glossary term, library document or section by the domains the caller reaches (None =
+    unrestricted: dev mode, single-domain mode, or a role whose domain_access is "*"), the same
+    scope the admin gates compute (:func:`_assignments_in_scope`); and a row rule, role or metric
+    by the right to read that rule, role definition or metric (:func:`_assignments_on_readable`).
+    """
+    scope = allowed_domains_request(info.context["request"])
+    if scope is not None:
+        rows = await _assignments_in_scope(conn, rows, scope)
+    return await _assignments_on_readable(info, conn, rows)
+
+
+async def _assignments_on_readable(
+    info: StrawberryInfo, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2152, REQ-2208
+    """The tag assignments whose object the caller may read: a tag on a row rule is read only by
+    a reader of row rules (access_config, the rules' own listing gate), one on a role only by
+    whoever may read the role's definition, one on a metric only by a caller the metric is
+    granted to. Every other assignment is left to the domain scope."""
+    from provisa.core.repositories import metric as metric_repo
+
+    kinds = {r["object_type"] for r in rows}
+    reads_rules = "rls_rule" not in kinds or has_capability(info, "access_config")
+    role_visible = None
+    if "role" in kinds:
+        request = info.context["request"]
+        identity = getattr(request.state, "identity", None)
+        role_visible = role_definitions_visible(request, getattr(identity, "roles", []))
+    metric_rows = (
+        {m["name"]: m for m in await metric_repo.list_all(conn)} if "metric" in kinds else {}
+    )
+
+    def readable(row: dict) -> bool:
+        kind = row["object_type"]
+        if kind == "rls_rule":
+            return reads_rules
+        if kind == "role":
+            return role_visible is not None and role_visible(row["role_id"])
+        if kind == "metric":
+            metric = metric_rows.get(row["metric_name"])
+            return metric is not None and _sees_metric(info, metric)
+        return True
+
+    return [r for r in rows if readable(r)]
 
 
 def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
@@ -994,9 +1060,6 @@ class Query:  # REQ-021, REQ-042
         from provisa.core.repositories import tag as tag_repo
 
         _resolve_admin_context(info)
-        # The domains the caller reaches (None = unrestricted: dev mode, single-domain mode, or a
-        # role whose domain_access is "*"), the same scope the admin gates compute.
-        scope = allowed_domains_request(info.context["request"])
         pool = await _get_pool()
         async with pool.acquire() as conn:
             # REQ-2208: the model's, and the library's on its documents and their sections.
@@ -1004,8 +1067,7 @@ class Query:  # REQ-021, REQ-042
                 *await tag_repo.list_assignments(cast("Connection", conn)),
                 *await tag_repo.list_library_assignments(cast("Connection", conn)),
             ]
-            if scope is not None:
-                rows = await _assignments_in_scope(conn, rows, scope)
+            rows = await _readable_assignments(info, cast("Connection", conn), rows)
         return [
             TagAssignmentType(
                 tag_id=r["tag_id"],
@@ -1024,6 +1086,9 @@ class Query:  # REQ-021, REQ-042
                 reason=r["reason"],
                 expires_on=r["expires_on"],
                 why=r.get("why"),  # REQ-2094
+                rls_rule_id=r.get("rls_rule_id"),  # REQ-2208
+                role_id=r.get("role_id"),
+                metric_name=r.get("metric_name"),
             )
             for r in rows
         ]

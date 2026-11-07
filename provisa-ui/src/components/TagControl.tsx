@@ -32,7 +32,8 @@ import { ColumnPiiForm } from "./ColumnPiiForm";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable object surface
 // (source, table, column, relationship, command; a data product, REQ-1634; a glossary term,
-// REQ-2145; a reference library document and each of its sections, REQ-2208).
+// REQ-2145; a row rule, a role, a metric, and a reference library document and each of its
+// sections, REQ-2208).
 // REQ-1375: each assignment may carry a reason and a planned-removal date;
 // the tag's reasonPolicy/expiresPolicy drive whether each field is shown
 // (not "hidden") and demanded ("required").
@@ -49,6 +50,10 @@ interface TagControlProps {
   /** A section: its heading, or its page when it has none. */
   sectionHeading?: string | null;
   sectionPage?: number | null;
+  /** REQ-2208: the row rule, role or metric the tags are on. */
+  rlsRuleId?: number;
+  roleId?: string;
+  metricName?: string;
   readOnly?: boolean;
   /** Called after a tag is put on or taken off the object, for a surface that also reads them. */
   onChanged?: () => void;
@@ -81,6 +86,9 @@ export function TagControl({
   documentId,
   sectionHeading,
   sectionPage,
+  rlsRuleId,
+  roleId,
+  metricName,
   readOnly,
   onChanged,
   piiTerm,
@@ -115,6 +123,12 @@ export function TagControl({
         return a.productId === productId;
       case "term":
         return a.termId === termId;
+      case "rls_rule":
+        return a.rlsRuleId === rlsRuleId;
+      case "role":
+        return a.roleId === roleId;
+      case "metric":
+        return a.metricName === metricName;
       case "document":
         return a.documentId === documentId;
       case "section":
@@ -134,6 +148,9 @@ export function TagControl({
     command: commandName,
     product: productId,
     term: termId,
+    rls_rule: rlsRuleId,
+    role: roleId,
+    metric: metricName,
     document: documentId,
     section: `${documentId}-${sectionHeading ?? `p${sectionPage}`}`,
   }[objectType];
@@ -167,6 +184,9 @@ export function TagControl({
     documentId: objectType === "document" || objectType === "section" ? documentId : undefined,
     sectionHeading: objectType === "section" ? sectionHeading : undefined,
     sectionPage: objectType === "section" ? sectionPage : undefined,
+    rlsRuleId: objectType === "rls_rule" ? rlsRuleId : undefined,
+    roleId: objectType === "role" ? roleId : undefined,
+    metricName: objectType === "metric" ? metricName : undefined,
   });
 
   const closeForm = () => {

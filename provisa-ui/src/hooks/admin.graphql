@@ -248,6 +248,9 @@ query TagAssignmentsQuery {
     documentId
     sectionHeading
     sectionPage
+    rlsRuleId
+    roleId
+    metricName
     tableRef
     reason
     expiresOn

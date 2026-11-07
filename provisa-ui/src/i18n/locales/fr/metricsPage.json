@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Dérivé de l'agrégat quand la métrique est construite à partir d'une mesure de faits",
     "fieldDescription": "Description",
     "fieldAiContext": "Contexte IA",
+    "fieldTags": "Étiquettes",
     "fieldAiContextPlaceholder": "Indications pour la génération de requêtes assistée par IA",
     "saveFailed": "Échec de l'enregistrement.",
     "editMetric": "Modifier la métrique {{name}}",

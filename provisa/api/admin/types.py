@@ -308,6 +308,10 @@ class TagAssignmentType:  # REQ-1377
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
     # REQ-2094: purpose, bases and review-by date, and who decided it, when and on what evidence.
     why: JsonScalar | None = None
+    # REQ-2208: the row rule (its id), role or metric the tag is on.
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
 
 @strawberry.type
@@ -1224,6 +1228,11 @@ class TagAssignmentInput:  # REQ-1377
     document_id: int | None = None
     section_heading: str | None = None
     section_page: int | None = None
+    # REQ-2208: the row rule (its id), role or metric an object_type "rls_rule", "role" or
+    # "metric" assignment is on.
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
     # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False

@@ -334,6 +334,10 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),
+    # REQ-2208: a tag on a row rule, a role or a metric goes with it.
+    _part("tag_assignments", "rls_rule_id", "row_filter"),
+    _part("tag_assignments", "role_id", "role"),
+    _part("tag_assignments", "metric_name", "metric"),
     # REQ-2185 (GRAPH RETRIEVAL): a term's embedding goes with the term.
     _part("glossary_term_vectors", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),

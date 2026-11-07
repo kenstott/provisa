@@ -1107,13 +1107,18 @@ async def _load_after_tables(  # REQ-1919
             continue
         await tag_repo.upsert(conn, tg)
     for ta in config.tag_assignments:
-        if ta.object_type == "term":
-            continue  # REQ-2145: placed once the glossary has settled, below
+        if ta.object_type in ("term", "rls_rule"):
+            continue  # REQ-2145: placed once the glossary has settled; REQ-2208: once rules are
         await tag_repo.assign(conn, await _resolve_tag_assignment_table(conn, ta))
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:
         await rls_repo.upsert(conn, rule)
+
+    # 7.1 Tags on row rules (REQ-2208), once every rule is in place.
+    for ta in config.tag_assignments:
+        if ta.object_type == "rls_rule":
+            await tag_repo.assign(conn, await _resolve_tag_assignment_rule(conn, ta))
 
     # 8. Tracked DB functions
     for func in config.functions:
@@ -1191,6 +1196,24 @@ async def _load_after_tables(  # REQ-1919
     for ta in config.tag_assignments:
         if ta.object_type == "term":
             await tag_repo.assign(conn, await _resolve_tag_assignment_term(conn, ta))
+
+
+async def _resolve_tag_assignment_rule(
+    conn: "Connection", ta: TagAssignment
+) -> TagAssignment:  # REQ-2208
+    """The row rule assignment with ``rls_rule_id`` resolved by the rule's role, target and rights
+    (``rls_rule``), which a configuration names it by; a serial alone is kept as given."""
+    if ta.rls_rule is None:
+        if ta.rls_rule_id is None:
+            raise ValueError(f"tag assignment {ta.tag_id!r} on a row rule names no rule")
+        return ta
+    resolved = await tag_repo.resolve_rls_rule_id(conn, ta.rls_rule)
+    if resolved is None:
+        raise ValueError(
+            f"tag assignment {ta.tag_id!r} names the row rule of {ta.rls_rule.role_id!r} "
+            f"{ta.rls_rule.model_dump(exclude_none=True)}, which does not exist"
+        )
+    return ta.model_copy(update={"rls_rule_id": resolved})
 
 
 async def _resolve_tag_assignment_term(

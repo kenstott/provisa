@@ -628,7 +628,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -642,6 +642,12 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
     -- glossary_terms is declared after that table, below.
     term_id         INTEGER,
+    -- REQ-2208: a tag on a row rule (its serial: a rule is updated in place, so the id is stable),
+    -- on a role, or on a governed metric (its name). The metric's reference to metrics is declared
+    -- after that table, below.
+    rls_rule_id     INTEGER REFERENCES rls_rules(id) ON DELETE CASCADE,
+    role_id         TEXT REFERENCES roles(id) ON DELETE CASCADE,
+    metric_name     TEXT,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -674,7 +680,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -893,6 +899,13 @@ CREATE TABLE IF NOT EXISTS metrics (
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
     from_fact   TEXT
 );
+
+-- REQ-2208: a tag on a metric goes with the metric.
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_metric_name_fkey
+        FOREIGN KEY (metric_name) REFERENCES metrics(name) ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- REQ-962: named, shared, VERSIONED calendars — the temporal-window boundary source. Holiday/
 -- business-day set is captured per version so a replay reproduces the same window existence.

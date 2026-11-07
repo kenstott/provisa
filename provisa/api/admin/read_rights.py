@@ -17,7 +17,8 @@ column rename would break (REQ-1484), the objects a refused delete is still refe
 (REQ-1918):
 
 - a table, view or materialized view: the acting role is served a column of it;
-- a column, a relationship end, a tag on a column: the acting role is served that column;
+- a column, a relationship end, a tag on a column: the acting role is served that column; a tag
+  on a row rule or a metric: the caller may read that rule or metric (REQ-2208);
 - a metric or a command: it is granted to the acting role;
 - a glossary term: the caller's domains read it;
 - a tag on a term or on a library document or section: the caller reads the term, or the
@@ -182,8 +183,9 @@ async def _tag_assignment_readable(
     conn: "Connection", reader: DependentsReader, row: dict
 ) -> bool:  # REQ-2152
     """A tag assignment is read as the object it is on: a table's or column's as that column is
-    served, a term's as the term is read (REQ-2145), and a library document's or section's as the
-    document is: by its domains, the rule a term is read by (REQ-2185, REQ-2208)."""
+    served, a row rule's or metric's as that rule or metric is (REQ-2208), a term's as the term is
+    read (REQ-2145), and a library document's or section's as the document is: by its domains,
+    the rule a term is read by (REQ-2185, REQ-2208)."""
     from provisa.core.repositories.glossary import term_domains
 
     kind = row["object_type"]
@@ -194,7 +196,20 @@ async def _tag_assignment_readable(
 
         document = await store.document(conn, row["document_id"])
         return document is not None and reader.term(set(document.domains))
+    # REQ-2208: a tag on a row rule or a metric is read by whoever may read that rule or metric.
+    if row["rls_rule_id"] is not None:
+        return await _readable(conn, reader, _ref_dependent("row_filter", row["rls_rule_id"]))
+    if row["metric_name"] is not None:
+        return await _readable(conn, reader, _ref_dependent("metric", row["metric_name"]))
     return row["table_id"] is None or reader.column(row["table_id"], row["column_name"])
+
+
+def _ref_dependent(kind: str, key: Any) -> "Dependent":
+    """A bare dependent naming ``kind`` ``key``, to ask :func:`_readable` about an object another
+    one is on."""
+    from provisa.core.repositories.integrity import Dependent, ObjectRef
+
+    return Dependent(ObjectRef(kind, key), via=())
 
 
 async def relationship_readable(conn: "Connection", reader: DependentsReader, rel_id: str) -> bool:

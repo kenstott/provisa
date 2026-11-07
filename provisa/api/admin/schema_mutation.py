@@ -1428,6 +1428,9 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         # REQ-2208: a section is named by its heading, or by its page when it has none.
         "section": model.document_id is not None
         and (bool(model.section_heading) or model.section_page is not None),
+        "rls_rule": model.rls_rule_id,  # REQ-2208
+        "role": model.role_id,
+        "metric": model.metric_name,
     }
     if model.object_type not in TAG_OBJECT_TYPES:
         return MutationResult(
@@ -1447,21 +1450,23 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
 
 
 #: REQ-1634, REQ-2145, REQ-2208: the right that edits each object curated outside the table
-#: registry, so the one who curates it tags it: a data product, a glossary term, a library document
-#: and its sections.
+#: registry, so the one who may change it tags it: a data product, a glossary term, a library
+#: document and its sections, a row rule and a role.
 _CURATING_RIGHT = {
     "product": "data_product_rw",
     "term": "glossary_rw",
     "document": "glossary_rw",
     "section": "glossary_rw",
+    "rls_rule": "masking_config",
+    "role": "user_management",
 }
 
 
 def _require_tag_editor(info: StrawberryInfo, object_type: str | None = None) -> None:  # REQ-1944
     """The surface gate for tag definitions and assignments: a table editor, or a holder of
     sensitive_data (whose reach the per-tag checks then narrow); for an assignment on a data
-    product, a term or a library document or section, the right that curates it. Admits the
-    caller to ask; what the edit then needs is decided once the tag is known."""
+    product, a term, a library document or section, a row rule or a role, the right that curates
+    it. Admits the caller to ask; what the edit then needs is decided once the tag is known."""
     from provisa.api.admin.capabilities import has_capability
 
     if object_type in _CURATING_RIGHT:
@@ -1490,12 +1495,21 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     table_id: int | None,
     term_id: int | None = None,
     product_id: str | None = None,
+    rule_domains: set[str] | None = None,
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
     domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
     (REQ-2145). A tag on a data product is its editor's act in its domain (REQ-1634), and on a
-    library document or section its curator's (REQ-2208). Any other assignment is a table
-    editor's act."""
+    library document or section its curator's (REQ-2208). A tag on a row rule is masking_config's
+    in the domains the rule decides rows in, one on a role user_management's (REQ-2208). Any other
+    assignment is a table editor's act."""
+    if object_type == "rls_rule":  # REQ-2208
+        assert rule_domains is not None  # the caller resolved the rule's domains
+        require_right_in_domains(info, "masking_config", rule_domains)
+        return
+    if object_type == "role":
+        require_capability(info, "user_management")
+        return
     if object_type == "term":  # REQ-2145: what the term's columns are hidden by
         from provisa.core.repositories import glossary as glossary_repo
 
@@ -1528,6 +1542,16 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
 
     assert table_id is not None  # _assignment_target_problem: a column names its table
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
+
+
+async def _rule_domains_of(conn: "Connection", model: Any) -> set[str] | None:  # REQ-2208
+    """For a tag on a row rule, the domains the rule decides rows in; None for any other target.
+    The target's existence was established by :func:`_require_tag_target_domains`."""
+    if model.object_type != "rls_rule":
+        return None
+    from provisa.api.admin.domain_guard import rule_domains
+
+    return await rule_domains(conn, model.rls_rule_id)
 
 
 async def _on_columns_term(  # REQ-2145
@@ -1763,6 +1787,10 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             term_id=r["term_id"],  # REQ-2145
             term=r["term"],
             product_id=r["product_id"],  # REQ-1634
+            rls_rule_id=r["rls_rule_id"],  # REQ-2208
+            rls_rule=r["rls_rule"],
+            role_id=r["role_id"],
+            metric_name=r["metric_name"],
             reason=r["reason"],
             expires_on=r["expires_on"],
         )
@@ -3554,6 +3582,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             document_id=input.document_id,  # REQ-2208
             section_heading=input.section_heading,
             section_page=input.section_page,
+            rls_rule_id=input.rls_rule_id,  # REQ-2208
+            role_id=input.role_id,
+            metric_name=input.metric_name,
             reason=(input.reason or "").strip() or None,
             expires_on=(input.expires_on or "").strip() or None,
             why=input.why,  # REQ-2094
@@ -3622,6 +3653,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.table_id,
                 model.term_id,
                 model.product_id,
+                await _rule_domains_of(cast("Connection", conn), model),
             )
             refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
             if refused is not None:
@@ -3658,6 +3690,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             document_id=input.document_id,  # REQ-2208
             section_heading=input.section_heading,
             section_page=input.section_page,
+            rls_rule_id=input.rls_rule_id,  # REQ-2208
+            role_id=input.role_id,
+            metric_name=input.metric_name,
         )
         problem = _assignment_target_problem(model)
         if problem is not None:
@@ -3685,6 +3720,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.table_id,
                     input.term_id,
                     input.product_id,
+                    await _rule_domains_of(cast("Connection", conn), model),
                 )
             if model.object_type == "column":  # REQ-2145
                 from provisa.core.term_tags import inherited_from

@@ -188,8 +188,8 @@ export interface UserSummary {
 }
 
 // REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
-// REQ-1634: a data product; REQ-2145: a glossary term; REQ-2208: a reference library document,
-// and a section of one. Mirrors provisa.core.models.TAG_OBJECT_TYPES.
+// REQ-1634: a data product; REQ-2145: a glossary term; REQ-2208: a row rule, a role, a metric, a
+// reference library document, and a section of one. Mirrors provisa.core.models.TAG_OBJECT_TYPES.
 export type TagObjectType =
   | "source"
   | "table"
@@ -198,6 +198,9 @@ export type TagObjectType =
   | "command"
   | "product"
   | "term"
+  | "rls_rule"
+  | "role"
+  | "metric"
   | "document"
   | "section";
 
@@ -264,6 +267,10 @@ export interface TagAssignment {
   documentId?: number | null;
   sectionHeading?: string | null;
   sectionPage?: number | null;
+  // REQ-2208: the row rule (its id), role or metric an assignment is on.
+  rlsRuleId?: number | null;
+  roleId?: string | null;
+  metricName?: string | null;
   // REQ-2145: on a column, put the tag on the column's term instead.
   alsoTerm?: boolean;
   tableRef?: string | null;
