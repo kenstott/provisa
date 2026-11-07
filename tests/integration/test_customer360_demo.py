@@ -271,15 +271,24 @@ def _watch(
             for row in Path(f"/proc/{proc.pid}/status").read_text().splitlines():
                 if row.startswith("VmRSS:"):
                     rss_kb = int(row.split()[1])
-        keep = 8
+        tail = log.read_text(errors="replace").splitlines()[-8:] if log.exists() else []
         if rss_kb > 4_000_000:
-            # The server dumps every thread's stack to its stderr on SIGUSR1 (main.py).
+            # The server dumps every thread's stack to its stderr on SIGUSR1 (main.py): show
+            # what the dump appends, its provisa and duckdb frames only.
             import signal
 
+            before = len(log.read_text(errors="replace").splitlines())
             os.kill(proc.pid, signal.SIGUSR1)
             time.sleep(2)
-            keep = 250
-        tail = log.read_text(errors="replace").splitlines()[-keep:] if log.exists() else []
+            dump = log.read_text(errors="replace").splitlines()[before:]
+            tail = [
+                row
+                for row in dump
+                if row.startswith(("Thread", "Current"))
+                or ("site-packages" not in row and "/lib/python3" not in row)
+                or "duckdb" in row
+                or "sqlglot" in row
+            ][:400]
         _say(
             f"\n[c360-watch {time.monotonic() - start:.0f}s]\n{mem}{disk}"
             + "\n".join(row[:240] for row in top)
