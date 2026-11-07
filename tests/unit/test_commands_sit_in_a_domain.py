@@ -56,6 +56,14 @@ async def plane(monkeypatch, control_plane) -> Database:
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
+    # REQ-2216: a webhook awaiting approval raises a request, which looks up the mail channel;
+    # none is configured here.
+    monkeypatch.setattr(
+        appmod.state,
+        "config",
+        types.SimpleNamespace(mail=types.SimpleNamespace(provider="")),
+        raising=False,
+    )
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
 
     async def _rebuild() -> None:

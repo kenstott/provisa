@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "ガバナンス違反",
     "reasonOutOfScope": "対象範囲外",
     "reasonEndpointUnreachable": "エンドポイントに到達不能",
-    "reasonSchemaMismatch": "スキーマの不一致"
+    "reasonSchemaMismatch": "スキーマの不一致",
+    "delivery": "通知方法",
+    "deliveryHelp": "リクエストの宛先ロールのメンバーにリクエストを知らせる方法。メール: Provisa が各メンバーに通知を送信します。イベントのみ: Provisa は通知を送信せず、ワークフローツールが ops.requests をサブスクライブします。両方: メールとイベント。",
+    "deliveryEmail": "メール",
+    "deliveryEvents": "イベントのみ",
+    "deliveryBoth": "両方"
   }
 }
