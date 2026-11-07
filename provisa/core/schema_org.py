@@ -645,11 +645,6 @@ tag_assignments = Table(
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1634
     # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
-    # REQ-2208: a reference library document the tag is on, and for one of its sections the
-    # section's address as the library reads it: its heading, or its page for a PDF.
-    Column("document_id", Integer, ForeignKey("reference_documents.id", ondelete="CASCADE")),
-    Column("section_heading", Text),
-    Column("section_page", Integer),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -667,7 +662,7 @@ tag_assignments = Table(
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
         "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
-        "'term', 'document', 'section')",
+        "'term')",
         name="tag_assignments_object_type_check",
     ),
 )
@@ -2147,6 +2142,42 @@ reference_passages = Table(
     Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
+)
+
+# REQ-2208: the registry's tags on library documents and their sections, kept with the library --
+# the environment's own, as the documents are -- rather than in tag_assignments, which travels with
+# the model: a tag follows its object's environment class. The columns are a tag assignment's; a
+# section is named by its heading, or by its page when it has none (a PDF's pages).
+reference_document_tags = Table(
+    "reference_document_tags",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("tag_id", Text, nullable=False),
+    Column("base_tag_id", Text, nullable=False),  # REQ-1467: the parameter stripped
+    Column("object_type", Text, nullable=False),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
+    Column("object_key", Text, nullable=False),
+    Column("reason", Text),
+    Column("expires_on", Text),
+    Column("purpose", Text),  # REQ-2094: the rest of the assignment's why, as tag_assignments'
+    Column("bases", JSON(none_as_null=True)),
+    Column("review_on", Text),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("evidence", JSON(none_as_null=True)),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("base_tag_id", "object_key"),
+    CheckConstraint(
+        "object_type IN ('document', 'section')",
+        name="reference_document_tags_object_type_check",
+    ),
 )
 
 # REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,

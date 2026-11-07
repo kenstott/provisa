@@ -1763,9 +1763,6 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             term_id=r["term_id"],  # REQ-2145
             term=r["term"],
             product_id=r["product_id"],  # REQ-1634
-            document_id=r["document_id"],  # REQ-2208
-            section_heading=r["section_heading"],
-            section_page=r["section_page"],
             reason=r["reason"],
             expires_on=r["expires_on"],
         )
@@ -3714,7 +3711,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         },
                     )
             removed = await tag_repo.unassign(
-                cast("Connection", conn), input.tag_id, model.object_key()
+                cast("Connection", conn), input.tag_id, model.object_key(), model.object_type
             )
         if not removed:
             return MutationResult(

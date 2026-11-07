@@ -832,6 +832,12 @@ TAG_OBJECT_TYPES = (
     "section",
 )
 
+# REQ-2208: the object types whose tags live with the reference library (reference_document_tags),
+# the environment's own as the documents are; every other type's live in tag_assignments, with the
+# model. A tag follows its object's environment class.
+LIBRARY_TAG_OBJECT_TYPES = ("document", "section")
+MODEL_TAG_OBJECT_TYPES = tuple(t for t in TAG_OBJECT_TYPES if t not in LIBRARY_TAG_OBJECT_TYPES)
+
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
 

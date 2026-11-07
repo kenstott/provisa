@@ -30,7 +30,12 @@ from sqlalchemy import CheckConstraint
 
 from provisa.core.env_classes import BINDINGS, SYNTHETIC
 from provisa.core.glossary import TERM_EDGE_TYPES
-from provisa.core.models import TAG_FIELD_POLICIES, TAG_OBJECT_TYPES, TAG_PARAM_POLICIES
+from provisa.core.models import (
+    LIBRARY_TAG_OBJECT_TYPES,
+    MODEL_TAG_OBJECT_TYPES,
+    TAG_FIELD_POLICIES,
+    TAG_PARAM_POLICIES,
+)
 from provisa.core.schema_org import metadata
 from provisa.events.queue import _VALID_EVENT
 
@@ -50,7 +55,9 @@ _CONSTANTS: dict[tuple[str, str], frozenset[str]] = {
         for table in ("stores", "kafka_sources", "api_sources")
     },
     ("glossary_term_edges", "rel_type"): frozenset(TERM_EDGE_TYPES),
-    ("tag_assignments", "object_type"): frozenset(TAG_OBJECT_TYPES),
+    ("tag_assignments", "object_type"): frozenset(MODEL_TAG_OBJECT_TYPES),
+    # REQ-2208: a library document's and a section's tags live with the library.
+    ("reference_document_tags", "object_type"): frozenset(LIBRARY_TAG_OBJECT_TYPES),
     ("tags", "expires_policy"): frozenset(TAG_FIELD_POLICIES),
     ("tags", "reason_policy"): frozenset(TAG_FIELD_POLICIES),
     ("tags", "param_policy"): frozenset(TAG_PARAM_POLICIES),

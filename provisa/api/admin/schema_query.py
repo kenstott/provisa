@@ -999,7 +999,11 @@ class Query:  # REQ-021, REQ-042
         scope = allowed_domains_request(info.context["request"])
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await tag_repo.list_assignments(cast("Connection", conn))
+            # REQ-2208: the model's, and the library's on its documents and their sections.
+            rows = [
+                *await tag_repo.list_assignments(cast("Connection", conn)),
+                *await tag_repo.list_library_assignments(cast("Connection", conn)),
+            ]
             if scope is not None:
                 rows = await _assignments_in_scope(conn, rows, scope)
         return [
@@ -1013,9 +1017,9 @@ class Query:  # REQ-021, REQ-042
                 command_name=r["command_name"],
                 product_id=r["product_id"],  # REQ-1634
                 term_id=r["term_id"],  # REQ-2145
-                document_id=r["document_id"],  # REQ-2208
-                section_heading=r["section_heading"],
-                section_page=r["section_page"],
+                document_id=r.get("document_id"),  # REQ-2208: a library tag's
+                section_heading=r.get("section_heading"),
+                section_page=r.get("section_page"),
                 table_ref=r["table_ref"],
                 reason=r["reason"],
                 expires_on=r["expires_on"],
