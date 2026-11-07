@@ -180,14 +180,66 @@ async def test_a_term_that_is_not_a_property_is_refused(control_plane, monkeypat
     assert refused.value.params["role"] == role
 
 
+# REQ-2145 (amended 2026-11-06, TERMS TAKE ANY TAG; ONLY PII FLOWS): a term may carry any tag whose
+# applies_to lists terms; only pii reaches its columns.
+
+
 @pytest.mark.asyncio
-async def test_only_pii_goes_on_a_term(control_plane, monkeypatch):
+@pytest.mark.parametrize("state", ["property", "draft", "retired", "class", "concept"])
+async def test_a_tag_that_stays_on_the_term_goes_on_any_term(control_plane, monkeypatch, state):
     async with _model(control_plane, monkeypatch) as (db, ids):
         async with db.acquire() as conn:
-            for tag in ("natural_language", "entity:customer", "technical"):
-                with pytest.raises(TermTagRefused) as refused:
-                    await refuse_term_tag(conn, ids["body"], tag)
-                assert refused.value.code == "tag.not_on_terms"
+            term = ids["body"]
+            if state in ("draft", "retired"):
+                await _set_status(conn, term, state)
+            elif state in ("class", "concept"):
+                term = await glossary_repo.create_abstract_term(
+                    conn, "party", definition="A person or company", domains={"sales"}
+                )
+                if state == "class":
+                    await glossary_repo.ground_table(conn, term, ids["customers"])
+            await refuse_term_tag(conn, term, "certified")  # not refused
+
+
+@pytest.mark.asyncio
+async def test_a_term_that_is_not_there_takes_no_tag(control_plane, monkeypatch):
+    async with _model(control_plane, monkeypatch) as (db, ids):
+        async with db.acquire() as conn:
+            with pytest.raises(TermTagRefused) as refused:
+                await refuse_term_tag(conn, 987654, "certified")
+    assert refused.value.code == "glossary.term_not_found"
+
+
+@pytest.mark.asyncio
+async def test_only_pii_flows_from_a_term_to_its_columns(control_plane, monkeypatch):
+    async with _model(control_plane, monkeypatch) as (db, ids):
+        async with db.acquire() as conn:
+            await tag_repo.assign(
+                conn,
+                TagAssignment(tag_id="certified", object_type="term", term_id=ids["address"]),
+            )
+            through = (await effective_column_tags(conn, {ids["customers"]}))[
+                (ids["customers"], "home_address")
+            ]
+            # the term carries both; its column carries pii alone
+            assert {t["base_tag_id"] for t in through if t["via"] == "term"} == {"pii"}
+            held = {r["tag_id"] for r in await glossary_repo.term_tags(conn, ids["address"])}
+            assert held == {"pii", "certified"}
+
+
+@pytest.mark.asyncio
+async def test_a_tag_that_stays_on_the_term_is_no_finding_whatever_the_terms_role(
+    control_plane, monkeypatch
+):
+    async with _model(control_plane, monkeypatch) as (db, ids):
+        async with db.acquire() as conn:
+            concept = await glossary_repo.create_abstract_term(
+                conn, "party", definition="A person or company", domains={"sales"}
+            )
+            await tag_repo.assign(
+                conn, TagAssignment(tag_id="certified", object_type="term", term_id=concept)
+            )
+            assert (await glossary_repo.role_conflicts(conn))["tags"] == []
 
 
 @pytest.mark.asyncio
@@ -262,7 +314,9 @@ def mutations(monkeypatch):
             return None
 
         monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
-        monkeypatch.setattr(schema_mutation, "_require_tag_editor", lambda info: None)
+        monkeypatch.setattr(
+            schema_mutation, "_require_tag_editor", lambda info, object_type=None: None
+        )
         monkeypatch.setattr(schema_mutation, "_require_tag_target_domains", _none)
         monkeypatch.setattr(schema_mutation, "_require_tag_assignment_right", _none)
         monkeypatch.setattr(schema_mutation, "_require_term_tagger", _none)

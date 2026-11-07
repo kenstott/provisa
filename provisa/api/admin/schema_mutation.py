@@ -1499,11 +1499,14 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     if object_type == "term":  # REQ-2145: what the term's columns are hidden by
         from provisa.core.repositories import glossary as glossary_repo
 
+        from provisa.core.term_tags import FLOWING_TAGS
+
         assert term_id is not None  # _assignment_target_problem: a term assignment names it
-        if tag_row["sensitive"]:
+        if tag_row["sensitive"] and tag_row["id"] in FLOWING_TAGS:
             domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
             require_right_in_domains(info, SENSITIVE_DATA, domains)
-        # Any other tag on a term is curation of the term, which _require_term_tagger asked.
+        # Any other tag on a term stays on the term (REQ-2145, TERMS TAKE ANY TAG): curation of
+        # the term, which _require_term_tagger asked.
         return
     if object_type == "product":  # REQ-1634: the product's editor, in the product's domain
         from provisa.core.repositories import data_product as data_product_repo
