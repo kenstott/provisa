@@ -59202,7 +59202,15 @@
     links to its contracts), as ODPS versions a product. Its edit form''s actions are Save, Save version
     and Cancel, as for contracts (REQ-2158) and term definitions (REQ-1387): Save writes the edit in place
     on the current version, Save version writes it as the next version and keeps the current one read-only,
-    and Cancel discards it. The product page steps back through earlier versions.'
+    and Cancel discards it. The product page steps back through earlier versions. (Amended 2026-11-07, MEMBERSHIP
+    IS MANY-TO-MANY AND EDITED ON THE PRODUCT:) A table or command may belong to any number of data products,
+    and a product to any number of tables and commands: membership is a relation of its own (one row per
+    product and member), replacing the single product_id on registered_tables and tracked_functions. A member
+    still joins only products owned by its own domain. A data product owns its membership: members are added
+    to and removed from a product only on that product, in the Products page. A table''s own page lists
+    the products it belongs to, read-only, each a link that opens the product, or shows that it belongs
+    to none; it offers no control to set or change them. The note that a product is published to the catalog
+    and exported to catalogs belongs with the product, not the table (maintainer 2026-11-07).'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
