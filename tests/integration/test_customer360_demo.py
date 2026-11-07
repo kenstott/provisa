@@ -235,9 +235,35 @@ def server(hub, proxy, tmp_path_factory):
         srv.stop_process()
 
 
+def _watch(
+    server, stop: threading.Event
+) -> None:  # DIAGNOSTIC (J915): reverted once the runner kill is found
+    import time
+
+    start = time.monotonic()
+    log = Path(server._stderr_file.name)
+    while not stop.wait(20):
+        mem = subprocess.run(["free", "-m"], capture_output=True, text=True).stdout
+        top = subprocess.run(
+            ["ps", "-eo", "rss,nlwp,etimes,args", "--sort=-rss"], capture_output=True, text=True
+        ).stdout.splitlines()[:6]
+        disk = subprocess.run(["df", "-h", "/", "/tmp"], capture_output=True, text=True).stdout
+        tail = log.read_text(errors="replace").splitlines()[-8:] if log.exists() else []
+        sys.__stderr__.write(
+            f"\n[c360-watch {time.monotonic() - start:.0f}s]\n{mem}{disk}"
+            + "\n".join(row[:240] for row in top)
+            + "\n-- server stderr tail --\n"
+            + "\n".join(row[:300] for row in tail)
+            + "\n"
+        )
+        sys.__stderr__.flush()
+
+
 @pytest.fixture(scope="module")
 def set_up(server):
-    done = subprocess.run(
+    stop = threading.Event()
+    threading.Thread(target=_watch, args=(server, stop), daemon=True).start()
+    proc = subprocess.Popen(
         [
             sys.executable,
             str(_REPO / "scripts" / "run_demo_setup.py"),
@@ -245,11 +271,20 @@ def set_up(server):
             "--url",
             server.base_url,
         ],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        timeout=1800,
     )
-    assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
+    out = []
+    try:
+        for line in proc.stdout:
+            out.append(line)
+            sys.__stderr__.write(f"[c360-setup] {line}")
+            sys.__stderr__.flush()
+        proc.wait(timeout=1800)
+    finally:
+        stop.set()
+    assert proc.returncode == 0, "".join(out)
     return server
 
 
