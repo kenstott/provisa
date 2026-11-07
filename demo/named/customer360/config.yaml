@@ -192,7 +192,7 @@ tables:
   - {name: created, data_type: timestamp, description: When it was raised, visible_to: [data_steward, customer_success]}
   - {name: updated, data_type: timestamp, description: When it last changed, visible_to: [data_steward, customer_success]}
   - {name: priority, data_type: varchar, description: 'Highest, High, Medium or Low', visible_to: [data_steward, customer_success]}
-  - {name: customer, data_type: varchar, path: customfield_10050, description: The customer it was raised for, as the support engineer typed it, visible_to: [data_steward, customer_success]}
+  - {name: customer, data_type: varchar, path: customfield_10050, description: 'The customer it was raised for, as the support engineer typed it', visible_to: [data_steward, customer_success]}
 - source_id: stripe
   domain_id: customer360
   schema: default
@@ -203,7 +203,7 @@ tables:
   - {name: id, data_type: varchar, is_primary_key: true, description: 'The customer''s Stripe id', visible_to: [data_steward, customer_success]}
   - {name: name, data_type: varchar, description: The customer's name as billing wrote it, visible_to: [data_steward, customer_success]}
   - {name: email, data_type: varchar, description: The address its invoices are sent to, visible_to: [data_steward, customer_success]}
-  - {name: created, data_type: bigint, description: When it was created, in seconds since 1970, visible_to: [data_steward, customer_success]}
+  - {name: created, data_type: bigint, description: 'When it was created, in seconds since 1970', visible_to: [data_steward, customer_success]}
   - {name: currency, data_type: varchar, description: The currency it is billed in, visible_to: [data_steward, customer_success]}
   - {name: delinquent, data_type: boolean, description: Whether its latest invoice is past due, visible_to: [data_steward, customer_success]}
   - {name: description, data_type: varchar, description: A note about it, visible_to: [data_steward, customer_success]}
@@ -218,11 +218,11 @@ tables:
   - {name: customer, data_type: varchar, description: 'The Stripe customer it bills', visible_to: [data_steward, customer_success]}
   - {name: number, data_type: varchar, description: The invoice number, visible_to: [data_steward, customer_success]}
   - {name: status, data_type: varchar, description: 'paid, or open while unpaid', visible_to: [data_steward, customer_success]}
-  - {name: amount_due, data_type: bigint, description: What it bills, in cents, visible_to: [data_steward, customer_success]}
-  - {name: amount_remaining, data_type: bigint, description: What is still unpaid, in cents, visible_to: [data_steward, customer_success]}
+  - {name: amount_due, data_type: bigint, description: 'What it bills, in cents', visible_to: [data_steward, customer_success]}
+  - {name: amount_remaining, data_type: bigint, description: 'What is still unpaid, in cents', visible_to: [data_steward, customer_success]}
   - {name: currency, data_type: varchar, description: Its currency, visible_to: [data_steward, customer_success]}
-  - {name: created, data_type: bigint, description: When it was raised, in seconds since 1970, visible_to: [data_steward, customer_success]}
-  - {name: due_date, data_type: bigint, description: When it is due, in seconds since 1970, visible_to: [data_steward, customer_success]}
+  - {name: created, data_type: bigint, description: 'When it was raised, in seconds since 1970', visible_to: [data_steward, customer_success]}
+  - {name: due_date, data_type: bigint, description: 'When it is due, in seconds since 1970', visible_to: [data_steward, customer_success]}
   - {name: collection_method, data_type: varchar, description: How it is collected, visible_to: [data_steward, customer_success]}
 - source_id: hub
   domain_id: customer360
@@ -496,7 +496,7 @@ views:
   - {name: month, data_type: date, description: The month, visible_to: [data_steward, customer_success]}
   - {name: links, data_type: bigint, description: The links the hub held at its end, visible_to: [data_steward, customer_success]}
   - {name: confirmed, data_type: bigint, description: How many of them the evidence confirms, visible_to: [data_steward, customer_success]}
-  - {name: match_rate_pct, data_type: double, description: The share confirmed, in percent, visible_to: [data_steward, customer_success]}
+  - {name: match_rate_pct, data_type: double, description: 'The share confirmed, in percent', visible_to: [data_steward, customer_success]}
 # The hub corrected by its check: each system record under the master of the account its evidence
 # matches it to, and under the hub's own master where no rule matches it. A stale link has no
 # record, so it is gone.

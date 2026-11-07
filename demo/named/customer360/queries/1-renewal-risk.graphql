@@ -1,0 +1,14 @@
+# The accounts renewing this quarter with an open P1 incident, a blocked fix or an overdue invoice,
+# read through the customer master: what each system holds for the customer the hub links it to.
+query RenewalRisk {
+  c__viewRenewalRiskHub(order_by: [{ renewalDate: asc }]) {
+    account
+    renewalDate
+    renewalAmount
+    masterId
+    openP1Incidents
+    blockedFixes
+    overdueInvoices
+    overdueUsd
+  }
+}

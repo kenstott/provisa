@@ -1934,28 +1934,72 @@
         "description": "De wet werd vanaf het openbare adres gelezen, de begrippen gevonden en verankerd in de tabellen van de bank, en de bank vroeg per concept. Het Currency Transaction Report bereikt de gegevens via zijn meerdere transacties, en elke rol zag wat hij mag zien."
       },
       "customer360Scenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "Customer 360 over vier systemen",
+        "description": "Halyard Software verkoopt aan bedrijven, en elke klant leeft in vier systemen: <strong>Salesforce</strong> bevat zijn account en verlengingen, <strong>ServiceNow</strong> zijn incidenten, <strong>Jira</strong> de bugs van engineering en <strong>Stripe</strong> zijn facturen. De vraag: <em>welke accounts die dit kwartaal verlengen hebben open P1-incidenten, geblokkeerde fixes of achterstallige facturen?</em> Onderweg: SaaS-bronnen, een live gelezen klantmaster, relaties, lineage, gematerialiseerde views, datakwaliteitsbevindingen en een dataproduct."
       },
-      "customer360Tables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "customer360Systems": {
+        "title": "Elk systeem heeft eigen id's",
+        "description": "<strong>stripe</strong> is het Stripe-account van Halyard, gelezen via de gepubliceerde API van Stripe. Net als Salesforce, ServiceNow en Jira kent het een klant alleen onder zijn eigen id: hier <code>cus_…</code>, in Salesforce <code>001…</code>, in ServiceNow de <code>sys_id</code> van een bedrijf, in het Customer-veld van Jira een getypte naam. Geen id wordt gedeeld."
       },
-      "customer360Join": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "customer360Hub": {
+        "title": "De klantmaster",
+        "description": "<strong>hub</strong> is de klantmaster (MDM-hub) van Halyard, een live gelezen Postgres-database. Hij bevat één masterklant per echte klant, en een kruistabel (crosswalk) van elke master naar zijn id in elk systeem. Hij is het bronsysteem voor wie wie is."
+      },
+      "customer360Crosswalk": {
+        "title": "De crosswalk van de hub",
+        "description": "<strong>xref</strong> is de crosswalk: elke rij is de id van één systeem voor een klant en de master waartoe die hoort, met wie hem koppelde en wanneer: de eerste lading, een steward, de supportdesk of een bulkimport."
+      },
+      "customer360JiraCustomer": {
+        "title": "Het Customer-veld van Jira",
+        "description": "Een Jira-tabel is een formulier: één project en issuetype, hier de bugs van project ENG. De kolom <strong>customer</strong> leest het aangepaste veld <code>customfield_10050</code>, de klantnaam zoals de supportmedewerker hem typte, dus één klant kan op meerdere manieren gespeld zijn."
+      },
+      "customer360Spoke": {
+        "title": "Hub and spoke",
+        "description": "<strong>IS_BILLED_AS</strong> koppelt een crosswalk-rij aan de Stripe-klant die hij noemt. Elk systeem is zo met de hub verbonden, niet met de andere systemen: een vijfde systeem is één relatie meer, geen vier."
+      },
+      "customer360FixedBy": {
+        "title": "De fix van een incident",
+        "description": "<strong>FIXED_BY</strong> volgt de correlation id van een ServiceNow-incident naar de Jira-bug die het oplost: de koppeling die beide teams al bijhouden."
+      },
+      "customer360Lineage": {
+        "title": "Waar het antwoord vandaan komt",
+        "description": "De lineage van het antwoord: elke kolom teruggevolgd via <strong>renewal_risk_hub</strong> naar de velden die hij leest in de opportunities en accounts van Salesforce, de crosswalk van de hub, de incidenten van ServiceNow, de bugs van Jira en de facturen van Stripe."
       },
       "customer360Answer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+        "title": "Het antwoord via de hub",
+        "description": "<strong>renewal_risk_hub</strong> beantwoordt de vraag: elk account waarvan de verlenging dit kwartaal sluit, met de open P1-incidenten, geblokkeerde fixes en achterstallige facturen van de records die de hub eraan koppelt. Zeven accounts. <em>Dit kwartaal</em> en <em>achterstallig</em> worden gemeten vanaf de laatste synchronisatie van de hub."
       },
-      "customer360Example": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "customer360Graphql": {
+        "title": "Hetzelfde antwoord in GraphQL",
+        "description": "Dezelfde view als GraphQL-query, met de masterklant waartoe elk account hoort. Elke tabel en view is een GraphQL-veld, op dezelfde manier beheerd."
+      },
+      "customer360Graph": {
+        "title": "Van account naar incident naar fix",
+        "description": "Het pad achter elke open P1, als graaf: een Salesforce-account, zijn crosswalk-rij, zijn masterklant, het ServiceNow-bedrijf van de master, de P1-incidenten die het meldde en de Jira-bug die elk oplost. Elke stap loopt via de hub."
+      },
+      "customer360Trust": {
+        "title": "Hoe ver kunt u dat antwoord vertrouwen?",
+        "description": "Het antwoord is zo goed als de koppelingen van de hub. <strong>hub_match_rate</strong> leidt elke koppeling opnieuw af uit het bewijs in de eigen records van de systemen en toont per maand het aandeel dat het bevestigt. Het daalde na de bulkimport."
+      },
+      "customer360Rules": {
+        "title": "De regels van de crosswalk",
+        "description": "<strong>crosswalk</strong> koppelt elk systeemrecord aan een Salesforce-account met een regel die hij noemt: het website- of e-maildomein, anders de genormaliseerde naam. De twee Larkspur-klanten in Stripe passen via het e-maildomein, de een bij Larkspur Analytics, de ander bij Larkspur Labs. <strong>master</strong> bouwt het golden record; zijn id is een hash van het ankeraccount, dus een herbouw nummert nooit opnieuw."
+      },
+      "customer360Findings": {
+        "title": "Wat de controle vindt",
+        "description": "<strong>hub_findings</strong> toont elke afwijking: twee foute samenvoegingen (de bulkimport verwisselde de Larkspur-klanten in Stripe), dubbele klanten, dekkingsgaten (records in geen enkele master) en verouderde koppelingen (naar records die een systeem niet meer heeft). Crosswalk, master en bevindingen zijn één cascade van gematerialiseerde views."
+      },
+      "customer360Corrected": {
+        "title": "Het gecorrigeerde antwoord",
+        "description": "<strong>renewal_risk_checked</strong> vraagt opnieuw via de hub, met de bevindingen toegepast. Larkspur Analytics verschijnt: zijn laatste factuur is achterstallig, maar de hub koppelde het aan de Stripe-klant van Larkspur Labs, dus het eerste antwoord miste het."
+      },
+      "customer360Product": {
+        "title": "Account Health als product",
+        "description": "<strong>Account Health</strong> is het dataproduct: het gecontroleerde antwoord, het golden record van de klant, de bevindingen en de matchrate, met doel, gebruik en beperkingen."
       },
       "customer360Recap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "Wat u zag",
+        "description": "Vier SaaS-systemen zonder gedeelde id, verbonden via een klantmaster; de vraag beantwoord in SQL, GraphQL en Cypher; daarna gecontroleerd: regels leidden elke koppeling opnieuw af uit bewijs en vonden de foute samenvoeging en het account dat die verborg. Kijk zelf rond vanaf de SQL-pagina."
       }
     },
     "status": {
@@ -2091,7 +2135,7 @@
       },
       "customer360": {
         "title": "Customer 360",
-        "summary": "TODO: Customer 360, in one sentence."
+        "summary": "Salesforce, ServiceNow, Jira en Stripe verbonden via een klantmaster om verlengingen met risico te vinden; daarna wordt de master gecontroleerd tegen het bewijs van elk systeem, dat het gemiste account vindt."
       }
     }
   }

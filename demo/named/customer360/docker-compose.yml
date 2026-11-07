@@ -8,10 +8,12 @@
 # permission from the copyright holder.
 #
 # The named demo "customer360" (start-ui-install.sh --demo customer360; REQ-1858). This file is its one
-# start point: `docker compose up -d` brings up its database and seeds it.
+# start point: `docker compose up -d` brings up Halyard Software's customer master hub, loaded from
+# db/init.sql (written by generate.py), with the role Provisa reads it as.
 #
-#   postgres  the demo's database (db/init.sql), with the role Provisa reads it as.
-#   seeder    TODO: writes what the demo's data needs beyond db/init.sql (seed.py), then exits.
+#   postgres  the customer master hub (schema mdm): master customers, the crosswalk to each
+#             system's id, and when it last synced. Salesforce, ServiceNow, Jira and Stripe need no
+#             service: the demo declares their rows (replica_rows/).
 #
 # Port: 30532 the database; it can be moved by its variable.
 x-demo-labels: &demo-labels
@@ -39,20 +41,6 @@ services:
       interval: 2s
       timeout: 5s
       retries: 60
-  seeder:
-    image: provisa-demo-customer360-seeder:1
-    build:
-      context: .
-      dockerfile: Dockerfile.seeder
-    restart: "no"
-    labels:
-      <<: *demo-labels
-      com.provisa.demo.role: seeder
-    volumes:
-      - ${PROVISA_NAMED_DEMO_DIR:-.}/data:/data-marker
-    depends_on:
-      postgres:
-        condition: service_healthy
 
 volumes:
   customer360_pg:

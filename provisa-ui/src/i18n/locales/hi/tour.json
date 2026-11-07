@@ -1934,28 +1934,72 @@
         "description": "कानून उसके सार्वजनिक पते से पढ़ा गया, उसके शब्द ढूँढकर बैंक की तालिकाओं से जोड़े गए, और बैंक ने अवधारणा से पूछा। Currency Transaction Report अपने कई लेनदेनों के ज़रिए डेटा तक पहुँचती है, और हर भूमिका ने वही देखा जो वह देख सकती है।"
       },
       "customer360Scenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "चार सिस्टम में Customer 360",
+        "description": "Halyard Software व्यवसायों को बेचता है, और हर ग्राहक चार सिस्टम में रहता है: <strong>Salesforce</strong> में उसका अकाउंट और रिन्यूअल, <strong>ServiceNow</strong> में उसके इंसिडेंट, <strong>Jira</strong> में इंजीनियरिंग के बग और <strong>Stripe</strong> में उसके इनवॉइस। सवाल: <em>इस तिमाही रिन्यू होने वाले किन अकाउंट के खुले P1 इंसिडेंट, ब्लॉक फ़िक्स या ओवरड्यू इनवॉइस हैं?</em> रास्ते में: SaaS स्रोत, लाइव पढ़ा जाने वाला कस्टमर मास्टर, रिलेशनशिप, लिनिएज, मटीरियलाइज़्ड व्यू, डेटा क्वालिटी फ़ाइंडिंग और एक डेटा प्रोडक्ट।"
       },
-      "customer360Tables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "customer360Systems": {
+        "title": "हर सिस्टम की अपनी ID",
+        "description": "<strong>stripe</strong> Halyard का Stripe अकाउंट है, जिसे Stripe के प्रकाशित API से पढ़ा जाता है। Salesforce, ServiceNow और Jira की तरह यह ग्राहक को सिर्फ़ अपनी ID से जानता है: यहाँ <code>cus_…</code>, Salesforce में <code>001…</code>, ServiceNow में कंपनी की <code>sys_id</code>, Jira के Customer फ़ील्ड में टाइप किया नाम। कोई ID साझा नहीं है।"
       },
-      "customer360Join": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "customer360Hub": {
+        "title": "कस्टमर मास्टर",
+        "description": "<strong>hub</strong> Halyard का कस्टमर मास्टर (MDM हब) है, एक Postgres डेटाबेस जो लाइव पढ़ा जाता है। इसमें हर असली ग्राहक का एक मास्टर ग्राहक है, और हर मास्टर से हर सिस्टम में उसकी ID तक एक क्रॉसवॉक। कौन कौन है, इसका यही सिस्टम ऑफ़ रिकॉर्ड है।"
+      },
+      "customer360Crosswalk": {
+        "title": "हब का क्रॉसवॉक",
+        "description": "<strong>xref</strong> क्रॉसवॉक है: हर पंक्ति किसी ग्राहक के लिए एक सिस्टम की ID और वह मास्टर जिसका वह हिस्सा है, साथ में किसने और कब जोड़ा: शुरुआती लोड, एक स्टुअर्ड, सपोर्ट डेस्क या कोई बल्क इंपोर्ट।"
+      },
+      "customer360JiraCustomer": {
+        "title": "Jira का Customer फ़ील्ड",
+        "description": "Jira टेबल एक फ़ॉर्म है: एक प्रोजेक्ट और इश्यू टाइप, यहाँ ENG प्रोजेक्ट के बग। इसका <strong>customer</strong> कॉलम कस्टम फ़ील्ड <code>customfield_10050</code> पढ़ता है, यानी ग्राहक का नाम जैसा सपोर्ट इंजीनियर ने टाइप किया, इसलिए एक ग्राहक कई तरह से लिखा हो सकता है।"
+      },
+      "customer360Spoke": {
+        "title": "Hub and spoke",
+        "description": "<strong>IS_BILLED_AS</strong> क्रॉसवॉक की एक पंक्ति को उस Stripe ग्राहक से जोड़ता है जिसका वह नाम लेती है। हर सिस्टम इसी तरह हब से जुड़ता है, बाकी सिस्टम से नहीं: पाँचवाँ सिस्टम एक और रिलेशनशिप है, चार नहीं।"
+      },
+      "customer360FixedBy": {
+        "title": "इंसिडेंट का फ़िक्स",
+        "description": "<strong>FIXED_BY</strong> ServiceNow इंसिडेंट की correlation id से उस Jira बग तक जाता है जो उसे ठीक करता है: वह लिंक जो दोनों टीमें पहले से रखती हैं।"
+      },
+      "customer360Lineage": {
+        "title": "जवाब कहाँ से आता है",
+        "description": "जवाब का लिनिएज: हर कॉलम <strong>renewal_risk_hub</strong> से होकर उन फ़ील्ड तक ट्रेस किया गया जिन्हें वह पढ़ता है: Salesforce की अपॉर्चुनिटी और अकाउंट, हब का क्रॉसवॉक, ServiceNow के इंसिडेंट, Jira के बग और Stripe के इनवॉइस।"
       },
       "customer360Answer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+        "title": "हब के ज़रिए जवाब",
+        "description": "<strong>renewal_risk_hub</strong> सवाल का जवाब देता है: हर वह अकाउंट जिसका रिन्यूअल इस तिमाही बंद होता है, उन रिकॉर्ड के खुले P1 इंसिडेंट, ब्लॉक फ़िक्स और ओवरड्यू इनवॉइस के साथ जिन्हें हब उससे जोड़ता है। सात अकाउंट। <em>इस तिमाही</em> और <em>ओवरड्यू</em> हब के आख़िरी सिंक से मापे जाते हैं।"
       },
-      "customer360Example": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "customer360Graphql": {
+        "title": "वही जवाब GraphQL में",
+        "description": "वही व्यू GraphQL क्वेरी के रूप में, हर अकाउंट के मास्टर ग्राहक के साथ। हर टेबल और व्यू एक GraphQL फ़ील्ड है, उसी तरह गवर्न किया गया।"
+      },
+      "customer360Graph": {
+        "title": "अकाउंट से इंसिडेंट से फ़िक्स तक",
+        "description": "हर खुले P1 के पीछे का रास्ता, ग्राफ़ के रूप में: एक Salesforce अकाउंट, उसकी क्रॉसवॉक पंक्ति, उसका मास्टर ग्राहक, मास्टर की ServiceNow कंपनी, उसके खोले P1 इंसिडेंट और हर एक को ठीक करने वाला Jira बग। हर कदम हब से होकर जाता है।"
+      },
+      "customer360Trust": {
+        "title": "उस जवाब पर कितना भरोसा करें?",
+        "description": "जवाब उतना ही अच्छा है जितने हब के लिंक। <strong>hub_match_rate</strong> सिस्टम के अपने रिकॉर्ड में मौजूद सबूत से हर लिंक दोबारा निकालता है और महीने-दर-महीने दिखाता है कि कितने हिस्से की पुष्टि होती है। बल्क इंपोर्ट के बाद यह गिर गया।"
+      },
+      "customer360Rules": {
+        "title": "क्रॉसवॉक के नियम",
+        "description": "<strong>crosswalk</strong> हर सिस्टम रिकॉर्ड को एक Salesforce अकाउंट से एक नियम के ज़रिए मिलाता है जिसका वह नाम देता है: वेबसाइट या ईमेल डोमेन, नहीं तो नॉर्मलाइज़ किया नाम। Larkspur के दो Stripe ग्राहक ईमेल डोमेन से मिलते हैं, एक Larkspur Analytics से और एक Larkspur Labs से। <strong>master</strong> गोल्डन रिकॉर्ड बनाता है; उसकी ID एंकर अकाउंट का हैश है, इसलिए दोबारा बनाने पर नंबर कभी नहीं बदलता।"
+      },
+      "customer360Findings": {
+        "title": "जाँच क्या पाती है",
+        "description": "<strong>hub_findings</strong> हर असहमति दिखाता है: दो ग़लत मर्ज (बल्क इंपोर्ट ने Larkspur के Stripe ग्राहक आपस में बदल दिए), डुप्लिकेट ग्राहक, कवरेज गैप (किसी मास्टर में नहीं रिकॉर्ड) और पुराने लिंक (ऐसे रिकॉर्ड तक जो सिस्टम में अब नहीं हैं)। क्रॉसवॉक, मास्टर और फ़ाइंडिंग मटीरियलाइज़्ड व्यू का एक कैस्केड हैं।"
+      },
+      "customer360Corrected": {
+        "title": "सुधारा गया जवाब",
+        "description": "<strong>renewal_risk_checked</strong> फ़ाइंडिंग लागू करके हब से फिर पूछता है। Larkspur Analytics दिखता है: उसका आख़िरी इनवॉइस ओवरड्यू है, लेकिन हब ने उसे Larkspur Labs के Stripe ग्राहक से जोड़ा था, इसलिए पहले जवाब में वह छूट गया।"
+      },
+      "customer360Product": {
+        "title": "Account Health, एक प्रोडक्ट के रूप में",
+        "description": "<strong>Account Health</strong> डेटा प्रोडक्ट है: जाँचा हुआ जवाब, ग्राहक का गोल्डन रिकॉर्ड, फ़ाइंडिंग और मैच रेट, उद्देश्य, उपयोग और सीमाओं के साथ।"
       },
       "customer360Recap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "आपने क्या देखा",
+        "description": "बिना साझा ID के चार SaaS सिस्टम, एक कस्टमर मास्टर से जुड़े; सवाल का जवाब SQL, GraphQL और Cypher में; फिर जाँच: नियमों ने सबूत से हर लिंक दोबारा निकाला और ग़लत मर्ज व उससे छिपा अकाउंट ढूँढा। SQL पेज से ख़ुद देखें।"
       }
     },
     "status": {
@@ -2091,7 +2135,7 @@
       },
       "customer360": {
         "title": "Customer 360",
-        "summary": "TODO: Customer 360, in one sentence."
+        "summary": "जोखिम वाले रिन्यूअल ढूँढने के लिए Salesforce, ServiceNow, Jira और Stripe एक कस्टमर मास्टर से जुड़े; फिर मास्टर को हर सिस्टम के सबूत से जाँचा जाता है, जो छूटा हुआ अकाउंट ढूँढता है।"
       }
     }
   }

@@ -1,8 +1,0 @@
-# TODO: what this example asks, in one sentence. Each example reads a view of the demo.
-query Answer {
-  c__viewAnswer(limit: 20) {
-    name
-    orders
-    total
-  }
-}

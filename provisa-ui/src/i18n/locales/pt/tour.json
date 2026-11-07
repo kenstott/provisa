@@ -1934,28 +1934,72 @@
         "description": "A lei foi lida do seu endereço público, os seus termos encontrados e ancorados nas tabelas do banco, e o banco perguntou por conceito. O Currency Transaction Report chega aos dados pelas suas transações múltiplas, e cada papel viu o que pode ver."
       },
       "customer360Scenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "Customer 360 em quatro sistemas",
+        "description": "A Halyard Software vende para empresas, e cada cliente vive em quatro sistemas: o <strong>Salesforce</strong> guarda sua conta e renovações, o <strong>ServiceNow</strong> seus incidentes, o <strong>Jira</strong> os bugs da engenharia e o <strong>Stripe</strong> suas faturas. A pergunta: <em>quais contas que renovam neste trimestre têm incidentes P1 abertos, correções bloqueadas ou faturas vencidas?</em> No caminho: fontes SaaS, um cadastro mestre de clientes lido ao vivo, relacionamentos, linhagem, exibições materializadas, constatações de qualidade de dados e um produto de dados."
       },
-      "customer360Tables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "customer360Systems": {
+        "title": "Cada sistema tem seus próprios ids",
+        "description": "<strong>stripe</strong> é a conta Stripe da Halyard, lida pela API publicada do Stripe. Como Salesforce, ServiceNow e Jira, ele conhece um cliente só pelo próprio id: aqui <code>cus_…</code>, no Salesforce <code>001…</code>, no ServiceNow o <code>sys_id</code> de uma empresa, no campo Customer do Jira um nome digitado. Nenhum id é compartilhado."
       },
-      "customer360Join": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "customer360Hub": {
+        "title": "O cadastro mestre de clientes",
+        "description": "<strong>hub</strong> é o cadastro mestre de clientes (MDM) da Halyard, um banco Postgres lido ao vivo. Ele guarda um cliente mestre para cada cliente real e uma tabela de correspondência (crosswalk) de cada mestre para seu id em cada sistema. É o sistema de registro de quem é quem."
+      },
+      "customer360Crosswalk": {
+        "title": "O crosswalk do hub",
+        "description": "<strong>xref</strong> é o crosswalk: cada linha é o id de um sistema para um cliente e o mestre ao qual pertence, com quem o vinculou e quando: a carga inicial, um steward, o suporte ou uma importação em massa."
+      },
+      "customer360JiraCustomer": {
+        "title": "O campo Customer do Jira",
+        "description": "Uma tabela do Jira é um formulário: um projeto e um tipo de item, aqui os bugs do projeto ENG. Sua coluna <strong>customer</strong> lê o campo personalizado <code>customfield_10050</code>, o nome do cliente como o engenheiro de suporte digitou, então um mesmo cliente pode ser escrito de vários jeitos."
+      },
+      "customer360Spoke": {
+        "title": "Hub and spoke",
+        "description": "<strong>IS_BILLED_AS</strong> relaciona uma linha do crosswalk ao cliente Stripe que ela nomeia. Cada sistema se relaciona assim com o hub, não com os outros sistemas: um quinto sistema é um relacionamento a mais, não quatro."
+      },
+      "customer360FixedBy": {
+        "title": "A correção de um incidente",
+        "description": "<strong>FIXED_BY</strong> segue o correlation id de um incidente do ServiceNow até o bug do Jira que o corrige: o vínculo que as duas equipes já mantêm."
+      },
+      "customer360Lineage": {
+        "title": "De onde vem a resposta",
+        "description": "A linhagem da resposta: cada coluna rastreada através de <strong>renewal_risk_hub</strong> até os campos que lê nas oportunidades e contas do Salesforce, no crosswalk do hub, nos incidentes do ServiceNow, nos bugs do Jira e nas faturas do Stripe."
       },
       "customer360Answer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+        "title": "A resposta pelo hub",
+        "description": "<strong>renewal_risk_hub</strong> responde à pergunta: cada conta cuja renovação fecha neste trimestre, com os incidentes P1 abertos, as correções bloqueadas e as faturas vencidas dos registros que o hub vincula a ela. Sete contas. <em>Este trimestre</em> e <em>vencida</em> são medidos a partir da última sincronização do hub."
       },
-      "customer360Example": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "customer360Graphql": {
+        "title": "A mesma resposta em GraphQL",
+        "description": "A mesma exibição como consulta GraphQL, com o cliente mestre de cada conta. Toda tabela e exibição é um campo GraphQL, governado da mesma forma."
+      },
+      "customer360Graph": {
+        "title": "Da conta ao incidente à correção",
+        "description": "O caminho por trás de cada P1 aberto, como grafo: uma conta do Salesforce, sua linha do crosswalk, seu cliente mestre, a empresa do ServiceNow do mestre, os incidentes P1 que ela abriu e o bug do Jira que corrige cada um. Cada salto passa pelo hub."
+      },
+      "customer360Trust": {
+        "title": "Até onde dá para confiar nessa resposta?",
+        "description": "A resposta só é tão boa quanto os vínculos do hub. <strong>hub_match_rate</strong> deriva de novo cada vínculo a partir das evidências nos próprios registros dos sistemas e mostra, mês a mês, a parcela que confirma. Ela caiu depois da importação em massa."
+      },
+      "customer360Rules": {
+        "title": "As regras do crosswalk",
+        "description": "<strong>crosswalk</strong> associa cada registro de um sistema a uma conta do Salesforce por uma regra que nomeia: o domínio do site ou do e-mail, senão o nome normalizado. Os dois clientes Stripe da Larkspur coincidem pelo domínio do e-mail, um com a Larkspur Analytics e outro com a Larkspur Labs. <strong>master</strong> monta o registro de ouro (golden record); seu id é um hash da conta âncora, então uma reconstrução nunca o renumera."
+      },
+      "customer360Findings": {
+        "title": "O que a verificação encontra",
+        "description": "<strong>hub_findings</strong> lista cada divergência: duas fusões erradas (a importação em massa trocou os clientes Stripe da Larkspur), clientes duplicados, lacunas de cobertura (registros em nenhum mestre) e vínculos obsoletos (para registros que um sistema não tem mais). Crosswalk, mestre e constatações são uma cascata de exibições materializadas."
+      },
+      "customer360Corrected": {
+        "title": "A resposta corrigida",
+        "description": "<strong>renewal_risk_checked</strong> pergunta de novo pelo hub, com as constatações aplicadas. A Larkspur Analytics aparece: sua última fatura está vencida, mas o hub a vinculou ao cliente Stripe da Larkspur Labs, por isso a primeira resposta a deixou de fora."
+      },
+      "customer360Product": {
+        "title": "Account Health, como produto",
+        "description": "<strong>Account Health</strong> é o produto de dados: a resposta verificada, o registro de ouro do cliente, as constatações e a taxa de correspondência, com propósito, uso e limitações declarados."
       },
       "customer360Recap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "O que você viu",
+        "description": "Quatro sistemas SaaS sem id compartilhado, unidos por um cadastro mestre de clientes; a pergunta respondida em SQL, GraphQL e Cypher; depois verificada: regras derivaram de novo cada vínculo a partir das evidências e encontraram a fusão errada e a conta que ela escondia. Explore por conta própria a partir da página SQL."
       }
     },
     "status": {
@@ -2091,7 +2135,7 @@
       },
       "customer360": {
         "title": "Customer 360",
-        "summary": "TODO: Customer 360, in one sentence."
+        "summary": "Salesforce, ServiceNow, Jira e Stripe unidos por um cadastro mestre de clientes para achar as renovações em risco; depois o cadastro é verificado contra as evidências de cada sistema, que encontram a conta que ele deixou de fora."
       }
     }
   }

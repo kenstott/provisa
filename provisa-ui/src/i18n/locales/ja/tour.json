@@ -1934,28 +1934,72 @@
         "description": "法律を公開アドレスから読み、その用語を見つけて銀行のテーブルに結び付け、銀行は概念で問い合わせました。Currency Transaction Report は複数の取引を通じてデータに到達し、各ロールは見てよいものを見ました。"
       },
       "customer360Scenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "4つのシステムにまたがる Customer 360",
+        "description": "Halyard Software は企業向けに販売しており、各顧客は4つのシステムに存在します。<strong>Salesforce</strong> にはアカウントと更新、<strong>ServiceNow</strong> にはインシデント、<strong>Jira</strong> には開発のバグ、<strong>Stripe</strong> には請求書があります。問い：<em>今四半期に更新を迎えるアカウントのうち、未解決の P1 インシデント、ブロックされた修正、期限切れの請求書があるのはどれか？</em> その過程で、SaaS ソース、ライブで読む顧客マスター、リレーションシップ、リネージ、マテリアライズドビュー、データ品質の検出結果、データプロダクトを見ていきます。"
       },
-      "customer360Tables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "customer360Systems": {
+        "title": "システムごとに独自の ID",
+        "description": "<strong>stripe</strong> は Halyard の Stripe アカウントで、Stripe が公開する API を通じて読みます。Salesforce、ServiceNow、Jira と同じく、顧客を自分の ID でしか知りません。ここでは <code>cus_…</code>、Salesforce では <code>001…</code>、ServiceNow では会社の <code>sys_id</code>、Jira の Customer フィールドでは手入力の名前です。共有される ID はありません。"
       },
-      "customer360Join": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "customer360Hub": {
+        "title": "顧客マスター",
+        "description": "<strong>hub</strong> は Halyard の顧客マスター（MDM ハブ）で、ライブで読む Postgres データベースです。実在の顧客ごとにマスター顧客を1件持ち、各マスターから各システムの ID へのクロスウォークを持ちます。誰が誰かを決める正のシステムです。"
+      },
+      "customer360Crosswalk": {
+        "title": "ハブのクロスウォーク",
+        "description": "<strong>xref</strong> がクロスウォークです。各行は、ある顧客に対する1つのシステムの ID と、それが属するマスター、そして誰がいつリンクしたか（初回ロード、スチュワード、サポートデスク、一括インポート）です。"
+      },
+      "customer360JiraCustomer": {
+        "title": "Jira の Customer フィールド",
+        "description": "Jira のテーブルはフォームです。1つのプロジェクトと課題タイプで、ここでは ENG プロジェクトのバグです。その <strong>customer</strong> 列はカスタムフィールド <code>customfield_10050</code>、つまりサポートエンジニアが入力したままの顧客名を読むため、同じ顧客がいくつもの綴りになり得ます。"
+      },
+      "customer360Spoke": {
+        "title": "ハブ＆スポーク",
+        "description": "<strong>IS_BILLED_AS</strong> はクロスウォークの行を、その行が指す Stripe 顧客に関連付けます。各システムは他のシステムではなく、このようにハブと関連します。5つ目のシステムを加えても、リレーションシップは4つではなく1つ増えるだけです。"
+      },
+      "customer360FixedBy": {
+        "title": "インシデントの修正",
+        "description": "<strong>FIXED_BY</strong> は ServiceNow インシデントの correlation id をたどり、それを修正する Jira のバグに至ります。両チームがすでに管理しているリンクです。"
+      },
+      "customer360Lineage": {
+        "title": "答えの出どころ",
+        "description": "答えのリネージ：各列を <strong>renewal_risk_hub</strong> からさかのぼり、読んでいるフィールドまで追跡します。Salesforce の商談とアカウント、ハブのクロスウォーク、ServiceNow のインシデント、Jira のバグ、Stripe の請求書です。"
       },
       "customer360Answer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+        "title": "ハブを通した答え",
+        "description": "<strong>renewal_risk_hub</strong> が問いに答えます。更新が今四半期に締まる各アカウントについて、ハブがリンクするレコードの未解決 P1 インシデント、ブロックされた修正、期限切れの請求書を示します。7アカウントです。<em>今四半期</em>と<em>期限切れ</em>はハブの最終同期日から測ります。"
       },
-      "customer360Example": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "customer360Graphql": {
+        "title": "同じ答えを GraphQL で",
+        "description": "同じビューを GraphQL クエリとして、各アカウントが属するマスター顧客とともに。すべてのテーブルとビューは同じガバナンスのもとで GraphQL フィールドになります。"
+      },
+      "customer360Graph": {
+        "title": "アカウントからインシデント、修正へ",
+        "description": "未解決の各 P1 の背後にある経路をグラフで：Salesforce アカウント、そのクロスウォーク行、マスター顧客、マスターの ServiceNow の会社、その会社が起票した P1 インシデント、そしてそれぞれを修正する Jira のバグ。すべての経路がハブを通ります。"
+      },
+      "customer360Trust": {
+        "title": "その答えをどこまで信頼できるか？",
+        "description": "答えの質はハブのリンクの質で決まります。<strong>hub_match_rate</strong> は各システム自身のレコードにある証拠から各リンクを導き直し、確認できた割合を月ごとに示します。一括インポートの後に低下しました。"
+      },
+      "customer360Rules": {
+        "title": "クロスウォークのルール",
+        "description": "<strong>crosswalk</strong> は各システムのレコードを、名前の付いたルールで Salesforce アカウントに照合します。Web サイトまたはメールのドメイン、なければ正規化した名前です。Larkspur の2つの Stripe 顧客はメールドメインで一致し、一方は Larkspur Analytics、もう一方は Larkspur Labs です。<strong>master</strong> はゴールデンレコードを作ります。その ID はアンカーアカウントのハッシュなので、再構築しても番号は変わりません。"
+      },
+      "customer360Findings": {
+        "title": "チェックが見つけるもの",
+        "description": "<strong>hub_findings</strong> はすべての不一致を一覧にします。2件の誤った統合（一括インポートが Larkspur の Stripe 顧客を入れ替えた）、重複顧客、カバレッジの欠落（どのマスターにも属さないレコード）、古いリンク（システムにもう存在しないレコードへのリンク）です。クロスウォーク、マスター、検出結果は1つのマテリアライズドビューのカスケードです。"
+      },
+      "customer360Corrected": {
+        "title": "修正後の答え",
+        "description": "<strong>renewal_risk_checked</strong> は検出結果を反映したハブを通して改めて問います。Larkspur Analytics が現れます。直近の請求書が期限切れですが、ハブが Larkspur Labs の Stripe 顧客にリンクしていたため、最初の答えから漏れていました。"
+      },
+      "customer360Product": {
+        "title": "プロダクトとしての Account Health",
+        "description": "<strong>Account Health</strong> はデータプロダクトです。チェック済みの答え、顧客のゴールデンレコード、検出結果、一致率を、目的・用途・制約とともに提供します。"
       },
       "customer360Recap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "ご覧いただいたもの",
+        "description": "共有 ID のない4つの SaaS システムを顧客マスターでつなぎ、SQL、GraphQL、Cypher で問いに答え、そしてチェックしました。ルールが証拠から各リンクを導き直し、誤った統合とそれが隠していたアカウントを見つけました。SQL ページから自由にご覧ください。"
       }
     },
     "status": {
@@ -2091,7 +2135,7 @@
       },
       "customer360": {
         "title": "Customer 360",
-        "summary": "TODO: Customer 360, in one sentence."
+        "summary": "Salesforce、ServiceNow、Jira、Stripe を顧客マスターでつないでリスクのある更新を見つけ、さらに各システムの証拠でマスターをチェックし、漏れていたアカウントを見つけます。"
       }
     }
   }

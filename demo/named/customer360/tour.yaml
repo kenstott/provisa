@@ -7,14 +7,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# The customer360 demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
-# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
-# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
-# tour.steps.<key> in the UI's tour.json, in every language.
+# The customer360 demo's own tour (REQ-2010, REQ-2034): Halyard Software asks which accounts renewing
+# this quarter have open P1 incidents, blocked fixes or overdue invoices. The step kinds and what each
+# names are listed in demo/named/weblogs/tour.yaml; every name here is checked against the demo by
+# tests/unit/test_named_demo_tour.py, and the words of each step are tour.steps.<key> in the UI's
+# tour.json, in every language.
 #
-# The track: the scenario and the features it shows; how the pieces fit, each step on its real
-# object; the solution, as predesigned queries over the transports that fit it (a Polly step is
-# optional, its answer stored); a recap; and "Where next?", the landing page below.
+# The track: the scenario and the features it shows; how the pieces fit -- the four systems, each
+# with its own ids, the customer master hub and its crosswalk, the relationships from each system to
+# the hub, the answer's lineage -- each step on its real object; the question answered through the
+# hub in SQL, GraphQL and Cypher; then how far that answer can be trusted -- the hub's match rate, the
+# crosswalk's rules, the findings -- and the corrected answer with the account the hub missed; the
+# data product; a recap; and "Where next?", the landing page below.
 landing:
   route: /sql
   capability: query_development
@@ -23,31 +27,100 @@ steps:
 - key: customer360Scenario
   route: /sources
   capability: source_registration
-  source: customer360-db
-# How the pieces fit: the tables the source becomes, and the relationship that joins them.
-- key: customer360Tables
+  source: salesforce
+# Four systems, each with its own id for a customer.
+- key: customer360Systems
+  source: stripe
+# The customer master, read live.
+- key: customer360Hub
+  source: hub
+# The hub's crosswalk: each system's id, and the master it belongs to.
+- key: customer360Crosswalk
   route: /tables
   capability: table_registration
-  table: customer360-db.orders
-- key: customer360Join
+  table: hub.xref
+# Jira's Customer field: the customer as support typed it.
+- key: customer360JiraCustomer
+  route: /tables
+  capability: table_registration
+  table: jira.bug
+  open: columns
+# Hub and spoke: each system's id relates to the hub's crosswalk.
+- key: customer360Spoke
   route: /relationships
   capability: create_relationship
-  relationship: PLACED_BY
-# The solution: a predesigned query over the view that answers the question.
+  relationship: IS_BILLED_AS
+# An incident's fix: the Jira bug its correlation id names.
+- key: customer360FixedBy
+  relationship: FIXED_BY
+# Where the answer comes from: each column traced back to the systems' fields.
+- key: customer360Lineage
+  route: /lineage
+  capability: view_governance
+  lineage: >-
+    SELECT h.account, h.renewal_date, h.open_p1_incidents, h.blocked_fixes, h.overdue_invoices
+    FROM "customer360"."view_renewal_risk_hub" AS h
+# The solution: the question answered through the hub, in SQL.
 - key: customer360Answer
   route: /sql
   capability: query_development
   sql: >-
-    SELECT a.name, a.orders, a.total
-    FROM "customer360"."view_answer" AS a
-    ORDER BY a.total DESC
-    LIMIT 20
-- key: customer360Example
+    SELECT account, renewal_date, open_p1_incidents, blocked_fixes, overdue_invoices, overdue_usd, master_id
+    FROM "customer360"."view_renewal_risk_hub"
+    ORDER BY renewal_date
+# The same answer in GraphQL.
+- key: customer360Graphql
   route: /query
   capability: query_development
-  example: 1-answer
+  example: 1-renewal-risk
+# Account to incident to fix, through the hub, as a graph.
+- key: customer360Graph
+  route: /graph
+  capability: query_development
+  cypher: >-
+    MATCH (a:C__Accounts)<-[r1:IS_ACCOUNT]-(x:C__Xref)-[r2:OF_CUSTOMER]->(m:C__MasterCustomer)<-[r3:OF_CUSTOMER]-(y:C__Xref)-[r4:IS_COMPANY]->(c:C__Companies)<-[r5:RAISED_BY]-(i:C__Incidents)-[r6:FIXED_BY]->(b:C__Bugs)
+    WHERE i.priority = 1 AND i.state < 6 RETURN a, r1, x, r2, m, r3, y, r4, c, r5, i, r6, b
+# How far can that answer be trusted? The hub's match rate, by month.
+- key: customer360Trust
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT month, links, confirmed, match_rate_pct
+    FROM "customer360"."view_hub_match_rate"
+    ORDER BY month
+# The crosswalk: each record matched by its evidence, naming the rule.
+- key: customer360Rules
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT c.system, c.system_key, c.record_name, c.rule, c.matched_on, m.master_id, m.name
+    FROM "customer360"."view_crosswalk" AS c
+    LEFT JOIN "customer360"."view_master" AS m ON m.anchor_account_id = c.anchor_account_id
+    WHERE LOWER(c.record_name) LIKE '%larkspur%'
+    ORDER BY m.name, c.system
+# The findings: where the hub and the evidence disagree.
+- key: customer360Findings
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT finding, system, record_name, hub_customer, evidence_customer, rule, linked_by
+    FROM "customer360"."view_hub_findings"
+    ORDER BY finding, system, record_name
+# The corrected answer, with the account the hub missed.
+- key: customer360Corrected
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT account, renewal_date, open_p1_incidents, blocked_fixes, overdue_invoices, overdue_usd, missed_by_hub
+    FROM "customer360"."view_renewal_risk_checked"
+    ORDER BY missed_by_hub DESC, renewal_date
+# The data product: account health, and the check that comes with it.
+- key: customer360Product
+  route: /data-products
+  capability: data_product_read
+  product: account_health
 # The recap.
 - key: customer360Recap
-  route: /relationships
-  capability: create_relationship
-  relationship: PLACED_BY
+  route: /sources
+  capability: source_registration
+  source: hub

@@ -1934,28 +1934,72 @@
         "description": "Закон был прочитан по его публичному адресу, его термины найдены и привязаны к таблицам банка, и банк спросил по концепции. Currency Transaction Report доходит до данных через свои множественные операции, и каждая роль увидела то, что ей положено."
       },
       "customer360Scenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "Customer 360 в четырёх системах",
+        "description": "Halyard Software продаёт компаниям, и каждый клиент живёт в четырёх системах: в <strong>Salesforce</strong> — его аккаунт и продления, в <strong>ServiceNow</strong> — инциденты, в <strong>Jira</strong> — баги разработки, в <strong>Stripe</strong> — счета. Вопрос: <em>у каких аккаунтов, продлевающихся в этом квартале, есть открытые инциденты P1, заблокированные исправления или просроченные счета?</em> По пути: SaaS-источники, мастер-данные клиентов, читаемые вживую, связи, происхождение данных, материализованные представления, находки качества данных и продукт данных."
       },
-      "customer360Tables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "customer360Systems": {
+        "title": "У каждой системы свои идентификаторы",
+        "description": "<strong>stripe</strong> — аккаунт Halyard в Stripe, читаемый через опубликованный API Stripe. Как Salesforce, ServiceNow и Jira, он знает клиента только по собственному идентификатору: здесь <code>cus_…</code>, в Salesforce — <code>001…</code>, в ServiceNow — <code>sys_id</code> компании, в поле Customer в Jira — набранное вручную имя. Общего идентификатора нет."
       },
-      "customer360Join": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "customer360Hub": {
+        "title": "Мастер-данные клиентов",
+        "description": "<strong>hub</strong> — хаб мастер-данных клиентов Halyard, база Postgres, читаемая вживую. В нём по одному мастер-клиенту на каждого реального клиента и таблица соответствий (crosswalk) от каждого мастера к его идентификатору в каждой системе. Это система записи о том, кто есть кто."
+      },
+      "customer360Crosswalk": {
+        "title": "Crosswalk хаба",
+        "description": "<strong>xref</strong> — это crosswalk: каждая строка — идентификатор клиента в одной системе и мастер, к которому он относится, с тем, кто и когда его связал: начальная загрузка, стюард, служба поддержки или массовый импорт."
+      },
+      "customer360JiraCustomer": {
+        "title": "Поле Customer в Jira",
+        "description": "Таблица Jira — это форма: один проект и тип задачи, здесь баги проекта ENG. Её столбец <strong>customer</strong> читает пользовательское поле <code>customfield_10050</code> — имя клиента в том виде, как его набрал инженер поддержки, поэтому один клиент может быть записан по-разному."
+      },
+      "customer360Spoke": {
+        "title": "Hub and spoke",
+        "description": "<strong>IS_BILLED_AS</strong> связывает строку crosswalk с клиентом Stripe, которого она называет. Каждая система так связана с хабом, а не с другими системами: пятая система — это одна связь, а не четыре."
+      },
+      "customer360FixedBy": {
+        "title": "Исправление инцидента",
+        "description": "<strong>FIXED_BY</strong> идёт по correlation id инцидента ServiceNow к багу Jira, который его исправляет, — связи, которую обе команды уже ведут."
+      },
+      "customer360Lineage": {
+        "title": "Откуда берётся ответ",
+        "description": "Происхождение ответа: каждый столбец прослежен через <strong>renewal_risk_hub</strong> до полей, которые он читает: возможности и аккаунты Salesforce, crosswalk хаба, инциденты ServiceNow, баги Jira и счета Stripe."
       },
       "customer360Answer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+        "title": "Ответ через хаб",
+        "description": "<strong>renewal_risk_hub</strong> отвечает на вопрос: каждый аккаунт, чьё продление закрывается в этом квартале, с открытыми инцидентами P1, заблокированными исправлениями и просроченными счетами записей, которые хаб с ним связывает. Семь аккаунтов. <em>Этот квартал</em> и <em>просрочен</em> отсчитываются от последней синхронизации хаба."
       },
-      "customer360Example": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "customer360Graphql": {
+        "title": "Тот же ответ в GraphQL",
+        "description": "То же представление как запрос GraphQL, с мастер-клиентом каждого аккаунта. Любая таблица и представление — поле GraphQL под тем же управлением."
+      },
+      "customer360Graph": {
+        "title": "От аккаунта к инциденту и исправлению",
+        "description": "Путь за каждым открытым P1 в виде графа: аккаунт Salesforce, его строка crosswalk, его мастер-клиент, компания мастера в ServiceNow, открытые ею инциденты P1 и баг Jira, исправляющий каждый. Каждый шаг идёт через хаб."
+      },
+      "customer360Trust": {
+        "title": "Насколько можно доверять этому ответу?",
+        "description": "Ответ хорош настолько, насколько хороши связи хаба. <strong>hub_match_rate</strong> заново выводит каждую связь из свидетельств в собственных записях систем и показывает по месяцам долю, которую подтверждает. Она упала после массового импорта."
+      },
+      "customer360Rules": {
+        "title": "Правила crosswalk",
+        "description": "<strong>crosswalk</strong> сопоставляет каждую запись системы с аккаунтом Salesforce по правилу, которое называет: домен сайта или почты, иначе нормализованное имя. Два клиента Larkspur в Stripe совпадают по домену почты: один с Larkspur Analytics, другой с Larkspur Labs. <strong>master</strong> строит эталонную запись (golden record); её идентификатор — хеш опорного аккаунта, поэтому перестроение её не перенумеровывает."
+      },
+      "customer360Findings": {
+        "title": "Что находит проверка",
+        "description": "<strong>hub_findings</strong> перечисляет каждое расхождение: два ошибочных слияния (массовый импорт перепутал клиентов Larkspur в Stripe), дубли клиентов, пробелы покрытия (записи ни в одном мастере) и устаревшие связи (на записи, которых в системе больше нет). Crosswalk, мастер и находки — один каскад материализованных представлений."
+      },
+      "customer360Corrected": {
+        "title": "Исправленный ответ",
+        "description": "<strong>renewal_risk_checked</strong> спрашивает снова через хаб с применёнными находками. Появляется Larkspur Analytics: его последний счёт просрочен, но хаб связал его с клиентом Stripe компании Larkspur Labs, и первый ответ его пропустил."
+      },
+      "customer360Product": {
+        "title": "Account Health как продукт",
+        "description": "<strong>Account Health</strong> — продукт данных: проверенный ответ, эталонная запись клиента, находки и доля совпадений, с указанными целью, использованием и ограничениями."
       },
       "customer360Recap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "Что вы увидели",
+        "description": "Четыре SaaS-системы без общего идентификатора, связанные через мастер-данные клиентов; ответ на вопрос в SQL, GraphQL и Cypher; затем проверка: правила заново вывели каждую связь из свидетельств и нашли ошибочное слияние и скрытый им аккаунт. Осмотритесь сами со страницы SQL."
       }
     },
     "status": {
@@ -2091,7 +2135,7 @@
       },
       "customer360": {
         "title": "Customer 360",
-        "summary": "TODO: Customer 360, in one sentence."
+        "summary": "Salesforce, ServiceNow, Jira и Stripe связаны через мастер-данные клиентов, чтобы найти продления под риском; затем мастер проверяется по свидетельствам каждой системы, которые находят пропущенный аккаунт."
       }
     }
   }

@@ -11,5 +11,5 @@
 -- build and after the bundle's dump where the demo runs from its bundle.
 
 CREATE ROLE provisa_reader LOGIN PASSWORD 'provisa_reader';
-GRANT USAGE ON SCHEMA public TO provisa_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO provisa_reader;
+GRANT USAGE ON SCHEMA mdm TO provisa_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA mdm TO provisa_reader;
