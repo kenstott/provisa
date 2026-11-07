@@ -61468,17 +61468,20 @@
   type: behavioral
   description: 'A sharepoint source authenticating with a certificate reaches the real site on the non-Trino
     engines. The Calcite pgwire model operand names the adapter''s schema factory exactly (`SharePointListSchemaFactory`),
-    declares `authType: CERTIFICATE` — without it the adapter defaults to CLIENT_CREDENTIALS and fails
-    on the absent secret — and carries an ABSOLUTE `certificatePath`, because the server runs with its
-    bundle directory as its working directory. `certificatePassword` is always emitted, the empty string
-    for a password-less PFX, since the adapter rejects a null password; a `mapping` with no `certificate_password`
+    declares `authType: CERTIFICATE` — without it the adapter defaults to CLIENT_CREDENTIALS and fails on
+    the absent secret — and carries an ABSOLUTE `certificatePath`, because the server runs with its bundle
+    directory as its working directory. `certificatePassword` is always emitted, the empty string for a
+    password-less PFX, since the adapter rejects a null password; a `mapping` with no `certificate_password`
     key, or a relative `certificate_path`, raises `MissingConnectorConfig` naming the field rather than
     being defaulted. The connection-resolved source view a native engine introspects from carries `base_url`,
     which the endpoint-style connectors (sharepoint''s siteUrl, splunk''s url) read before falling back
     to `host`; omitting it raised AttributeError inside the connector and surfaced as an empty Register
     Table schema list. The Sources form carries auth_type, certificate_path and certificate_password into
     the source''s mapping, so a site configured through the UI registers its `documents` library and serves
-    a query against it.'
+    a query against it. (Amended 2026-11-07, THE CERTIFICATE PATH MUST EXIST ON THIS HOST:) A certificate_path
+    that does not exist on the host where the source''s own server runs (a path only an engine''s container
+    resolves) raises MissingConnectorConfig naming the field, rather than starting the server into a FileNotFoundException
+    (lead 2026-11-07, J904: the SharePoint e2e failed this way on the Trino lane).'
   code:
   - provisa/federation/pgwire_replica.py
   - provisa/federation/backend.py
@@ -91582,7 +91585,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
     the first row holds no labels, so a quoted row reads on its own. Rows move when others are inserted:
     a cited row found again by its hash at another row follows silently, and one whose hash is gone is flagged
-    for review, as any drifted citation is.'
+    for review, as any drifted citation is. (Amended 2026-11-07, A TOP-LEVEL LIBRARY; ADD NOW, INDEX IN
+    THE BACKGROUND:) The reference library is a top-level Library page (not in Admin, not under Ontology;
+    not named Documents, beside the product''s Docs), shaped like every other top-level page: a list (title,
+    source, index status, readers, added or refreshed), the shared filter and a detail panel with the same
+    section tabs for viewing and editing (overview and status; sections and passages; cited by: the xtags,
+    terms and security items citing it, drifted citations flagged; readers). Everyone browses and searches
+    what they may read; the library-editing right adds, refreshes and removes on the same page. Adding is
+    one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
+    term finding run in a background job; its index status is a property (indexing with progress where known,
+    ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
+    citing one still indexing says so (maintainer 2026-11-07).'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
@@ -93399,7 +93412,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     an empty list means nothing of that kind (maintainer 2026-11-07). (Amended 2026-11-07, THE PRINCIPLE:)
     The role determines capabilities (what its holders may do, and how values are masked); the entitlements
     tell you where those capabilities apply (which tables, columns and relationships). Neither crosses into
-    the other (maintainer 2026-11-07).'
+    the other (maintainer 2026-11-07). (Amended 2026-11-07, THE ENTITLEMENT MODEL:) 1. The role decides
+    capabilities. Each capability is unscoped (it holds wherever the role is held: managing users, settings,
+    observability, limits, Polly, ad hoc SQL) or scoped to exactly one kind of object (read to columns,
+    traverse to relationships, execute to commands, consume to data products, run to reports, build in to
+    environments, author against to sources). 2. Entitlements decide where scoped capabilities apply: semantic
+    identifiers with * wildcards, carried on the identity provider''s role grant. Domain, table, relationship
+    and column form a hierarchy (domain contains tables and relationships; a table contains columns), and
+    a grant on a node covers it and everything beneath it; other kinds are flat. 3. Within one hierarchy,
+    grants add together; across kinds, lists narrow each other; a missing list means the role''s default.
+    4. A role has a ceiling (the furthest it can reach) and default entitlements (what a holder gets with
+    no list: all for viewer, nothing for a deny-by-default role such as auditor); both are authored in a
+    branch and promoted. 5. Rows and masks stay with the role (row rules and masking rules); entitlements
+    never filter rows or unmask. 6. An identifier that names nothing, or a list for a kind no scoped capability
+    of the role uses, is flagged. 7. Provisa holds no per-person state, so expiring entitlements, certification,
+    separation of duties and joiner, mover and leaver changes are the identity provider''s and the governance
+    tool''s, where enterprises already run them (maintainer 2026-11-07). (Amended 2026-11-07, NEVER THE
+    PHYSICAL LAYER:) Entitlements name semantic objects only, never physical ones: Provisa does not own
+    the physical layer. Physical access stays with each source''s own grants, which Provisa reaches through
+    the credentials its sources are configured with, and a rename or migration underneath changes no one''s
+    entitlements (maintainer 2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -93412,3 +93444,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     And a list entry naming no object is reported as a warning naming the identifier'
+- id: REQ-2220
+  value: 'A named demo shows a governed access request end to end: a masked column, a request, the enterprise''s own
+    approval workflow, a time-limited grant, the work it enabled, and the audit as one query.'
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: an analyst queries a data product and sees a column masked, and the why-not
+    trace shows the role and its mask. They request the column (building a view that needs it); the request lands in
+    ops.requests addressed to the data owner role with its members resolved (REQ-2215, REQ-2216). The enterprise''s
+    approval chain runs in a small workflow service in the demo''s own container (read live, nothing external), which
+    subscribes to ops.requests and keeps its process data in its own Postgres, registered and related to the request
+    by request id. On approval the steward grants it (a role that unmasks the column, or an entitlement adding it
+    with an expiry, written to ops.entitlements with source provisa, REQ-2219), and the analyst''s view now runs.
+    The audit is one query joining ops.requests, the workflow''s process table, ops.entitlements as of any date and
+    the access log: who asked, every approval step, what was granted and until when, and what was then read. The
+    grant expires, and the same query as of the next day shows the access gone. It follows the settled demo tour
+    shape and is built after REQ-2216''s ops.requests and REQ-2219''s entitlements.'
+  use_case: A visitor watches an access request go from a masked column to an approved, time-limited grant and back,
+    and audits it all with one query.
+  scenario: 'Given the access request demo started from its template
+
+    When a visitor walks its tour to the end
+
+    Then the masked column, the request row, each workflow step, the grant with its expiry and the audit query all
+    show their real rows
+
+    And the audit query as of the day after the expiry shows the access gone'
