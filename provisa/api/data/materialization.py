@@ -128,29 +128,41 @@ def _is_api_table(state, table: dict) -> bool:
     return (table["source_id"], table["table_name"]) in endpoints
 
 
+def _never_expires(state, table: dict) -> bool:
+    """Whether ``table``'s cache_ttl -- its own, else its source's
+    (``replica_routing.resolved_cache_ttl``) -- never expires (REQ-2031)."""
+    from provisa.core.cache_ttl import NEVER_EXPIRES
+
+    own = table.get("cache_ttl")
+    if own is not None:
+        return own == NEVER_EXPIRES
+    sources = getattr(state, "source_cache", None) or {}
+    return sources.get(table["source_id"], {}).get("cache_ttl") == NEVER_EXPIRES
+
+
+def _kept_api_table(state, table: dict) -> bool:
+    """Whether API table ``table`` never expires and its replica has landed here (REQ-2031)."""
+    return (
+        _is_api_table(state, table)
+        and _never_expires(state, table)
+        and _kept_for_good(state, table)
+    )
+
+
 def api_answered_from_replica(state, table: dict) -> bool:
     """REQ-2031, REQ-2089: whether API table ``table`` is answered from its replica, never from its
     endpoint: it never expires and its replica has landed here (``_kept_for_good``) -- a demo's
     declared rows, such as a Stripe source's. Refused (``ReplicaNotLanded``, naming it) when it
     never expires, its source's rows are declared and it has not landed: its rows are the declared
     ones, and the live service is never asked for them."""
-    if not _is_api_table(state, table):
+    if not _is_api_table(state, table) or not _never_expires(state, table):
         return False
     if _kept_for_good(state, table):
         return True
-    from provisa.core.cache_ttl import NEVER_EXPIRES
     from provisa.federation.declared_replica_rows import declares_rows
     from provisa.federation.replica_state import ReplicaNotLanded
 
-    own = table.get("cache_ttl")
-    ttl = (
-        own
-        if own is not None
-        else (getattr(state, "source_cache", None) or {})
-        .get(table["source_id"], {})
-        .get("cache_ttl")
-    )
-    if ttl == NEVER_EXPIRES and declares_rows(table["source_id"]):
+    if declares_rows(table["source_id"]):
         raise ReplicaNotLanded(
             ".".join((table["source_id"], table["schema_name"], table["table_name"]))
         )
@@ -272,10 +284,9 @@ def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str |
     types = getattr(state, "source_types", None) or {}
     filters: dict[str, str | None] = {}
     for t in getattr(state, "tables", None) or []:
-        if (
-            t.get("id") not in ids
-            or not (is_native_read(t, types, state) or _is_api_table(state, t))
-            or not _kept_for_good(state, t)
+        if t.get("id") not in ids or not (
+            (is_native_read(t, types, state) and _kept_for_good(state, t))
+            or _kept_api_table(state, t)
         ):
             continue
         landed = {c["column_name"] for c in t["columns"] if not is_parameter(c)}
@@ -636,8 +647,8 @@ def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
         for t in (getattr(state, "tables", None) or [])
         if t.get("id") in ids
         and not (
-            (is_native_read(t, types, state) or _is_api_table(state, t))
-            and _kept_for_good(state, t)
+            (is_native_read(t, types, state) and _kept_for_good(state, t))
+            or _kept_api_table(state, t)
         )
     }
 
