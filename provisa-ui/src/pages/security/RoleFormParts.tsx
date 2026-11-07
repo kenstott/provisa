@@ -9,11 +9,11 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Checkbox, Group, Text } from "@mantine/core";
+import { MultiSelect, Text } from "@mantine/core";
 import { alsoReached } from "../../lib/domainTree";
 import type { TreeDomain } from "../../lib/domainTree";
 import { FormField } from "../../components/form/FormLayout";
-import { Tip } from "../../components/Tip";
+import { CapabilityOption } from "./CapabilityOption";
 import type { Capability } from "../../types/auth";
 
 // Every right a role may be given but data_residency, which its own control carries, with what it
@@ -103,36 +103,37 @@ export function CapabilityGrid({
   onToggle: (cap: Capability) => void;
   label: string;
 }) {
-  const { t } = useTranslation();
+  const offered = (cap: Capability) => held === null || held.has(cap);
   return (
-    // One labelled set of ticks, a line of the role form to itself.
-    <FormField size="full">
-      <Checkbox.Group label={label} value={value} data-testid="capability-grid">
-        <Group gap="sm" mt="xs" style={{ rowGap: "0.35rem" }}>
-          {ALL_CAPABILITIES.map((cap) => {
-            const offered = held === null || held.has(cap);
-            return (
-              <Tip
-                key={cap}
-                text={offered ? t(`capabilityHelp.${cap}`) : t("capabilityHelp.notHeldByParent")}
-              >
-                {/* A disabled input takes no pointer events, so the hint is on what holds it. */}
-                <span data-testid={`capability-tick-${cap}`}>
-                  <Checkbox
-                    label={cap}
-                    // The group reads a box's state off its value.
-                    value={cap}
-                    checked={value.includes(cap)}
-                    disabled={!offered}
-                    onChange={() => onToggle(cap)}
-                    size="sm"
-                  />
-                </span>
-              </Tip>
-            );
-          })}
-        </Group>
-      </Checkbox.Group>
+    // One dropdown, a line of the role form to itself, shaped as Domain Access is.
+    <FormField size="long">
+      <MultiSelect
+        label={label}
+        aria-label={label}
+        data={ALL_CAPABILITIES.map((cap) => ({ value: cap, label: cap, disabled: !offered(cap) }))}
+        value={value}
+        // The picker reports the whole selection; the form's contract is one toggle at a time.
+        onChange={(next) => {
+          const changed = [
+            ...next.filter((c) => !value.includes(c as Capability)),
+            ...value.filter((c) => !next.includes(c)),
+          ];
+          for (const cap of changed) onToggle(cap as Capability);
+        }}
+        renderOption={({ option, checked }) => (
+          <CapabilityOption
+            cap={option.value as Capability}
+            checked={!!checked}
+            offered={offered(option.value as Capability)}
+          />
+        )}
+        searchable
+        clearable={false}
+        comboboxProps={{ withinPortal: true }}
+        placeholder={label}
+        size="sm"
+        data-testid="capability-grid"
+      />
     </FormField>
   );
 }
