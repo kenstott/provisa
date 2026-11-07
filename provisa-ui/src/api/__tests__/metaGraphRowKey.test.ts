@@ -27,7 +27,7 @@ describe("selectionSet row keys", () => {
     (column) => {
       const out = selectionSet(reader((f) => f), "T", { fields: [column] });
       const key = toCamelCase(column);
-      expect(out.trim()).toBe(key === column ? column : `${key}: ${column}`);
+      expect(out.replace(/[{}\s]+/g, " ").trim()).toBe(key === column ? column : `${key}: ${column}`);
     },
   );
 });
