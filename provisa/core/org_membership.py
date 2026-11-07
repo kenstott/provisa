@@ -679,6 +679,9 @@ def tombstone_id(user_id: str) -> str:  # REQ-1312
     Derived by hash rather than randomly so every reference to one deleted account collapses to the
     same token — the record still shows that one person did these things, without saying who. It is
     one-way: the digest cannot be turned back into the id.
+
+    query_audit_log's no_update_audit rule (provisa/audit/query_log.py) computes this same token
+    in SQL: the one UPDATE it lets through is a user_id going to its tombstone. Change both.
     """
     return "deleted-user-" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
 
