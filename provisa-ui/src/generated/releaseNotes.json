@@ -1,59 +1,50 @@
 {
-  "version": "v0.1.0-alpha.506",
-  "previous": "v0.1.0-alpha.505",
+  "version": "v0.1.0-alpha.507",
+  "previous": "v0.1.0-alpha.506",
   "date": "2026-11-07",
   "features": [],
   "changes": [
     {
-      "scope": "conformance",
+      "scope": "api",
       "entries": [
-        "Keep psycopg's brace-form UUID parameter failures listed"
+        "A TTL -1 API table with declared rows is read from its replica, never fetched",
+        "Resolve a table's TTL before asking whether it is kept for good"
       ]
     },
     {
       "scope": "demo",
       "entries": [
-        "setup_pulls waits for the view's read window to open"
+        "Banksecrecy relationships get their own GraphQL field names"
       ]
     },
     {
-      "scope": "naming",
+      "scope": "guard",
       "entries": [
-        "Name client-facing names through the naming authority",
-        "naming.ts answers as naming.py, takes presets; B16 alias follows the convention (D18, B16)",
-        "Type attach_catalog's source as Source | SimpleNamespace"
+        "A union's branch choices are judged unexpanded, never listed as their product"
       ]
     },
     {
-      "scope": "pgwire",
+      "scope": "macos",
       "entries": [
-        "Read a text Bind value as an array only for an array-typed parameter"
+        "Allow only the container-image unpack warning in Apple's notarization log"
       ]
     },
     {
-      "scope": "reference-library",
+      "scope": "packaging",
       "entries": [
-        "read.xlsx workbooks, a sheet a section and a row a paragraph"
+        "Retry a dropped staple connection and fail on Apple's notarization log"
       ]
     },
     {
-      "scope": "schema",
+      "scope": "tags",
       "entries": [
-        "Refuse a computed relationship's field another relationship holds",
-        "Add the row rule, role and metric tag columns to a tag_assignments that predates them"
+        "Library document and section tags kept with the library"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "metaGraph rowKey and ServiceNow schema name use naming.ts (D15, D17)",
-        "Filter box on the Admin Reports list"
-      ]
-    },
-    {
-      "scope": "",
-      "entries": [
-        "J856 /data/sql column_types lists a registered integer as integer"
+        "The tags scope bar wraps its twelve object kinds"
       ]
     }
   ]
