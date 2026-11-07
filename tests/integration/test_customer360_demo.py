@@ -216,12 +216,8 @@ def hub():
 
 
 @pytest.fixture(scope="module")
-def server(hub, proxy, tmp_path_factory, request):
+def server(hub, proxy, tmp_path_factory):
     from tests.integration.isolated_server import IsolatedServer
-
-    # DIAGNOSTIC (J915): pytest's fd capture holds fd 2; write to the fd it saved before that.
-    capman = request.config.pluginmanager.getplugin("capturemanager")
-    _OUT[0] = capman._global_capturing.err.targetfd_save
 
     home = tmp_path_factory.mktemp("customer360_demo")
     srv = IsolatedServer(
@@ -232,76 +228,16 @@ def server(hub, proxy, tmp_path_factory, request):
         materialize_store_url=f"duckdb:///{home / 'store.duckdb'}",
         env={**hub.env, **proxy.env, "PROVISA_DATA_DIR": str(home / "provisa")},
     )
-    stop = threading.Event()
-    threading.Thread(target=_watch, args=(srv, stop), daemon=True).start()
-    _say("[c360] server starting\n")
     srv.start(timeout=400)
-    _say("[c360] server up\n")
     try:
         yield srv
     finally:
-        stop.set()
         srv.stop_process()
-
-
-_OUT = [2]
-
-
-def _say(text: str) -> None:  # DIAGNOSTIC (J915)
-    os.write(_OUT[0], text.encode("utf-8", "replace"))
-
-
-def _watch(
-    server, stop: threading.Event
-) -> None:  # DIAGNOSTIC (J915): reverted once the runner kill is found
-    import time
-
-    start = time.monotonic()
-    while not stop.wait(20):
-        held = getattr(server, "_stderr_file", None)
-        log = Path(held.name) if held is not None else Path("/nonexistent")
-        mem = subprocess.run(["free", "-m"], capture_output=True, text=True).stdout
-        top = subprocess.run(
-            ["ps", "-eo", "rss,nlwp,etimes,args", "--sort=-rss"], capture_output=True, text=True
-        ).stdout.splitlines()[:6]
-        disk = subprocess.run(["df", "-h", "/", "/tmp"], capture_output=True, text=True).stdout
-        proc = getattr(server, "_proc", None)
-        rss_kb = 0
-        if proc is not None and Path(f"/proc/{proc.pid}/status").exists():
-            for row in Path(f"/proc/{proc.pid}/status").read_text().splitlines():
-                if row.startswith("VmRSS:"):
-                    rss_kb = int(row.split()[1])
-        tail = log.read_text(errors="replace").splitlines()[-8:] if log.exists() else []
-        if rss_kb > 4_000_000:
-            # The server dumps every thread's stack to its stderr on SIGUSR1 (main.py): show
-            # what the dump appends, its provisa and duckdb frames only.
-            import signal
-
-            before = len(log.read_text(errors="replace").splitlines())
-            os.kill(proc.pid, signal.SIGUSR1)
-            time.sleep(2)
-            dump = log.read_text(errors="replace").splitlines()[before:]
-            tail = [
-                row
-                for row in dump
-                if row.startswith(("Thread", "Current"))
-                or ("site-packages" not in row and "/lib/python3" not in row)
-                or "duckdb" in row
-                or "sqlglot" in row
-            ][:400]
-        _say(
-            f"\n[c360-watch {time.monotonic() - start:.0f}s]\n{mem}{disk}"
-            + "\n".join(row[:240] for row in top)
-            + "\n-- server stderr tail --\n"
-            + "\n".join(row[:300] for row in tail)
-            + "\n"
-        )
 
 
 @pytest.fixture(scope="module")
 def set_up(server):
-    _say("[c360] set_up starting\n")
-    proc = subprocess.Popen(
+    done = subprocess.run(
         [
             sys.executable,
             str(_REPO / "scripts" / "run_demo_setup.py"),
@@ -309,19 +245,11 @@ def set_up(server):
             "--url",
             server.base_url,
         ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        capture_output=True,
         text=True,
+        timeout=1800,
     )
-    out = []
-    try:
-        for line in proc.stdout:
-            out.append(line)
-            _say(f"[c360-setup] {line}")
-        proc.wait(timeout=1800)
-    finally:
-        _say(f"[c360] set_up ended {proc.poll()}\n")
-    assert proc.returncode == 0, "".join(out)
+    assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
     return server
 
 
