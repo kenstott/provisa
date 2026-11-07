@@ -21,8 +21,12 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from types import SimpleNamespace
+
     from inflect import Word
     from inflect import engine as _Engine
+
+    from provisa.core.models import Source
 
 # inflect's import + engine() build costs ~0.8s. Lazy-load it so that cost is paid ONCE on first
 # pluralization (schema generation), never at module import — keeps the desktop/demo cold start
@@ -180,6 +184,12 @@ def _to_pascal_case(name: str) -> str:
     return "".join(result)
 
 
+def to_pascal_case(name: str) -> str:  # REQ-194
+    """A name in pascal case (``active_users`` and ``activeUsers`` are ``ActiveUsers``), for a
+    client-facing name outside the convention presets: a gRPC RPC, a GraphQL type name."""
+    return _to_pascal_case(name)
+
+
 def _to_camel_case(name: str) -> str:
     """Convert snake_case or kebab-case to camelCase."""
     pascal = _to_pascal_case(name)
@@ -304,7 +314,7 @@ def engine_attach_name(kind: str, catalog: str) -> str:  # REQ-1266, REQ-1529
     return f"{kind}_{catalog}"
 
 
-def attach_catalog(source: object) -> str:  # REQ-1266, REQ-1529
+def attach_catalog(source: "Source | SimpleNamespace") -> str:  # REQ-1266, REQ-1529
     """The catalog name an engine attaches ``source`` under: carried by the attach view of a
     source its caller builds (``native_backend._walk_registry``, ``pg_backend``) from the org's
     ``source_catalogs``. A source that was not handed over that way has none (KeyError)."""
