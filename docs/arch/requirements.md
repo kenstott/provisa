@@ -26659,3 +26659,17 @@ Maintainer 2026-11-07: requests and other work are addressed to roles, and where
 **Code:** —
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-2216 · Workflow {#REQ-2216}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run approvals in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal); Provisa feeds them and stays the system of record for what was decided. Events out: each workflow moment (a request created, an attestation coming due or overdue, a gate refusal, a cited section drifting, a review step waiting) is an event delivered through the existing triggers and webhooks, naming the object, the role it is addressed to, the resolved principals ([REQ-2215](#REQ-2215)) and a link back. Decisions in: an API completes each step (approve or deny a request, record an attestation with its statement and evidence, return a step); the acting person authenticates as themselves, Provisa checks their right, and the decision is logged with the tags as they were ([REQ-2208](#REQ-2208)). Delivery is an org setting: email (built in, the default), events only (Provisa sends no notice itself), or both. The contract is stable: a versioned event schema, an idempotency key on every event and decision so a retried delivery cannot apply twice, signed deliveries, and replay of missed events. This widens the tags unit's events step ([REQ-2209](#REQ-2209)) to requests and every other workflow.
+
+**Use case:** An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns Provisa's own email notices off.
+
+**Code:** —
+
+**Tests:** —

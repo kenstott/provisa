@@ -93169,3 +93169,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then each member the resolver returns is notified
 
     And with no resolver configured the request shows that the role has no resolvable members, naming it'
+- id: REQ-2216
+  value: 'External workflow tools run Provisa''s workflows: Provisa emits each workflow moment as an event and accepts
+    each decision through its API, and an org may turn its own email notices off.'
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: Workflow
+  feature: change-events-and-streams-sinks-and-events
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run approvals
+    in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal); Provisa feeds
+    them and stays the system of record for what was decided. Events out: each workflow moment (a request created,
+    an attestation coming due or overdue, a gate refusal, a cited section drifting, a review step waiting) is an
+    event delivered through the existing triggers and webhooks, naming the object, the role it is addressed to,
+    the resolved principals (REQ-2215) and a link back. Decisions in: an API completes each step (approve or deny a
+    request, record an attestation with its statement and evidence, return a step); the acting person authenticates
+    as themselves, Provisa checks their right, and the decision is logged with the tags as they were (REQ-2208).
+    Delivery is an org setting: email (built in, the default), events only (Provisa sends no notice itself), or both.
+    The contract is stable: a versioned event schema, an idempotency key on every event and decision so a retried
+    delivery cannot apply twice, signed deliveries, and replay of missed events. This widens the tags unit''s events
+    step (REQ-2209) to requests and every other workflow.'
+  use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
+    Provisa's own email notices off.
+  scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
+
+    When a request is addressed to a role
+
+    Then the tool receives a signed, versioned event naming the request, the role and its members, and no email is sent
+
+    And when the tool approves it through the API as an authorised person, the request is approved once, even if the call is retried'
