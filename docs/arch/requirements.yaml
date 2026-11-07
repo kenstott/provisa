@@ -93274,7 +93274,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     it. What is never requested is a change to the model itself (a role''s definition, a mask, a relationship):
     it is authored in a feature branch and promoted. The request queue, its members resolution and its workflow
     events are the same for every environment, and ops.requests shows each request''s environment (maintainer
-    2026-11-07).'
+    2026-11-07). (Amended 2026-11-07, FORMAL REQUESTS ARE AN ENVIRONMENT SETTING:) Whether access in an
+    environment goes through formal requests is a setting of that environment: on, every grant of access
+    there is made by resolving a request, so it is recorded with its purpose and decision; off, the environment''s
+    administrators grant access directly, as an operational matter. It is off by default for lower lanes
+    and on by default for production, and each environment''s administrators may change it (maintainer 2026-11-07).'
   use_case: A production analyst preparing a business decision asks to see a masked revenue column for two weeks;
     the steward grants an existing role until the date, and the permanent change is promoted from a feature branch.
   scenario: 'Given a production analyst who can see that a column exists but sees it masked
