@@ -93396,7 +93396,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     [orders_customer]. Masking is the role''s alone: there is no unmask list, and a person who must see
     a column unmasked holds a role that does not mask it. Defaults: a list that is absent means the role''s
     full schema, the same as [*], so a plain role grant works exactly as a role does without entitlements;
-    an empty list means nothing of that kind (maintainer 2026-11-07).'
+    an empty list means nothing of that kind (maintainer 2026-11-07). (Amended 2026-11-07, THE PRINCIPLE:)
+    The role determines capabilities (what its holders may do, and how values are masked); the entitlements
+    tell you where those capabilities apply (which tables, columns and relationships). Neither crosses into
+    the other (maintainer 2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
