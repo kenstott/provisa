@@ -119,6 +119,8 @@ describe("a term's page", () => {
         otherTermOptions={[]}
         relLabel={(_o, relType) => relType}
         navigateToTerm={vi.fn()}
+        canEdit={false}
+        onTagsChanged={vi.fn()}
       />,
     );
     expect(screen.getByTestId("glossary-term-dag")).toBeInTheDocument();

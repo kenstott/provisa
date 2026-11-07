@@ -818,6 +818,8 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
         return data
 
 
+# REQ-2208: a reference library document, and a section of one, carry registry tags as columns and
+# terms do (a pii policy section tagged as the pii columns are).
 TAG_OBJECT_TYPES = (
     "source",
     "table",
@@ -829,7 +831,15 @@ TAG_OBJECT_TYPES = (
     "rls_rule",  # REQ-2208
     "role",  # REQ-2208
     "metric",  # REQ-2208
+    "document",
+    "section",
 )
+
+# REQ-2208: the object types whose tags live with the reference library (reference_document_tags),
+# the environment's own as the documents are; every other type's live in tag_assignments, with the
+# model. A tag follows its object's environment class.
+LIBRARY_TAG_OBJECT_TYPES = ("document", "section")
+MODEL_TAG_OBJECT_TYPES = tuple(t for t in TAG_OBJECT_TYPES if t not in LIBRARY_TAG_OBJECT_TYPES)
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -952,7 +962,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
-        applies_to=["column", "term"],
+        # REQ-2208: and on reference library documents and their sections, so the policy sections
+        # about personal data carry the same tag as the columns.
+        applies_to=["column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -1105,6 +1117,12 @@ class TagAssignment(BaseModel):  # REQ-1377
     # loader as table_ref is.
     term_id: int | None = None
     term: str | None = None
+    # REQ-2208: a library document the tag is on (object_type "document"), or the document a
+    # tagged section is in (object_type "section"), the section named by its heading, or by its
+    # page when it has none (a PDF's sections are its pages).
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
     # REQ-2208: a row rule (its serial, and its config-vocabulary identity ``rls_rule``: the rule's
     # role, target and rights, which a load resolves as it resolves table_ref), a role (its id) or
     # a governed metric (its name) the tag is on.
@@ -1133,6 +1151,14 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"command:{self.command_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
+        if self.object_type == "product":  # REQ-1634
+            return f"product:{self.product_id}"
+        if self.object_type == "document":  # REQ-2208
+            return f"document:{self.document_id}"
+        if self.object_type == "section":  # REQ-2208
+            if self.section_heading is not None:
+                return f"section:{self.document_id}:heading:{self.section_heading}"
+            return f"section:{self.document_id}:page:{self.section_page}"
         if self.object_type == "rls_rule":  # REQ-2208
             return f"rls_rule:{self.rls_rule_id}"
         if self.object_type == "role":

@@ -9728,5 +9728,11 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "it/tagsTab.json::tagsTab.scope_product": "Data product",
+  "it/tagsTab.json::tagsTab.scope_term": "Glossary term",
+  "it/tagsTab.json::tagsTab.scope_document": "Library document",
+  "it/tagsTab.json::tagsTab.scope_section": "Library section",
+  "it/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
+  "it/referenceLibrary.json::referenceLibrary.fieldTags": "Tags"
 }
