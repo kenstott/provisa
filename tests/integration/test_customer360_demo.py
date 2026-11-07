@@ -216,8 +216,12 @@ def hub():
 
 
 @pytest.fixture(scope="module")
-def server(hub, proxy, tmp_path_factory):
+def server(hub, proxy, tmp_path_factory, request):
     from tests.integration.isolated_server import IsolatedServer
+
+    # DIAGNOSTIC (J915): pytest's fd capture holds fd 2; write to the fd it saved before that.
+    capman = request.config.pluginmanager.getplugin("capturemanager")
+    _OUT[0] = capman._global_capturing.err.targetfd_save
 
     home = tmp_path_factory.mktemp("customer360_demo")
     srv = IsolatedServer(
@@ -228,11 +232,23 @@ def server(hub, proxy, tmp_path_factory):
         materialize_store_url=f"duckdb:///{home / 'store.duckdb'}",
         env={**hub.env, **proxy.env, "PROVISA_DATA_DIR": str(home / "provisa")},
     )
+    stop = threading.Event()
+    threading.Thread(target=_watch, args=(srv, stop), daemon=True).start()
+    _say("[c360] server starting\n")
     srv.start(timeout=400)
+    _say("[c360] server up\n")
     try:
         yield srv
     finally:
+        stop.set()
         srv.stop_process()
+
+
+_OUT = [2]
+
+
+def _say(text: str) -> None:  # DIAGNOSTIC (J915)
+    os.write(_OUT[0], text.encode("utf-8", "replace"))
 
 
 def _watch(
@@ -241,28 +257,27 @@ def _watch(
     import time
 
     start = time.monotonic()
-    log = Path(server._stderr_file.name)
     while not stop.wait(20):
+        held = getattr(server, "_stderr_file", None)
+        log = Path(held.name) if held is not None else Path("/nonexistent")
         mem = subprocess.run(["free", "-m"], capture_output=True, text=True).stdout
         top = subprocess.run(
             ["ps", "-eo", "rss,nlwp,etimes,args", "--sort=-rss"], capture_output=True, text=True
         ).stdout.splitlines()[:6]
         disk = subprocess.run(["df", "-h", "/", "/tmp"], capture_output=True, text=True).stdout
         tail = log.read_text(errors="replace").splitlines()[-8:] if log.exists() else []
-        sys.__stderr__.write(
+        _say(
             f"\n[c360-watch {time.monotonic() - start:.0f}s]\n{mem}{disk}"
             + "\n".join(row[:240] for row in top)
             + "\n-- server stderr tail --\n"
             + "\n".join(row[:300] for row in tail)
             + "\n"
         )
-        sys.__stderr__.flush()
 
 
 @pytest.fixture(scope="module")
 def set_up(server):
-    stop = threading.Event()
-    threading.Thread(target=_watch, args=(server, stop), daemon=True).start()
+    _say("[c360] set_up starting\n")
     proc = subprocess.Popen(
         [
             sys.executable,
@@ -279,11 +294,10 @@ def set_up(server):
     try:
         for line in proc.stdout:
             out.append(line)
-            sys.__stderr__.write(f"[c360-setup] {line}")
-            sys.__stderr__.flush()
+            _say(f"[c360-setup] {line}")
         proc.wait(timeout=1800)
     finally:
-        stop.set()
+        _say(f"[c360] set_up ended {proc.poll()}\n")
     assert proc.returncode == 0, "".join(out)
     return server
 
