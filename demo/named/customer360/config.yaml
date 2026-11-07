@@ -269,10 +269,9 @@ views:
       SELECT a."Id" AS account_id, a."Name" AS account, o."CloseDate" AS renewal_date, o."Amount" AS renewal_amount
       FROM "customer360"."opportunities" AS o
       JOIN "customer360"."accounts" AS a ON a."Id" = o."AccountId"
-      CROSS JOIN (SELECT CAST(MAX(synced_at) AS DATE) AS as_of FROM "customer360"."sync_run") AS d
       WHERE o."Type" = 'Renewal' AND NOT o."IsClosed"
-        AND o."CloseDate" >= DATE_TRUNC('quarter', d.as_of)
-        AND o."CloseDate" < DATE_TRUNC('quarter', d.as_of) + INTERVAL '3 months'
+        AND o."CloseDate" >= DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run"))
+        AND o."CloseDate" < DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run")) + INTERVAL '3 months'
     ) AS r
     JOIN "customer360"."xref" AS x ON x.system = 'salesforce' AND x.system_key = r.account_id
     LEFT JOIN (
@@ -289,8 +288,7 @@ views:
       SELECT l.master_id, COUNT(*) AS overdue, SUM(n.amount_remaining) / 100.0 AS overdue_usd
       FROM "customer360"."invoices" AS n
       JOIN "customer360"."xref" AS l ON l.system = 'stripe' AND l.system_key = n.customer
-      CROSS JOIN (SELECT CAST(MAX(synced_at) AS DATE) AS as_of FROM "customer360"."sync_run") AS d
-      WHERE n.status = 'open' AND CAST(TO_TIMESTAMP(n.due_date) AS DATE) < d.as_of GROUP BY l.master_id
+      WHERE n.status = 'open' AND CAST(TO_TIMESTAMP(n.due_date) AS DATE) < (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run") GROUP BY l.master_id
     ) AS v ON v.master_id = x.master_id
     WHERE COALESCE(p.open_p1, 0) + COALESCE(b.blocked, 0) + COALESCE(v.overdue, 0) > 0
   columns:
@@ -438,7 +436,7 @@ views:
       x.system, x.system_key, c.record_name, x.master_id AS hub_master_id, hm.name AS hub_customer,
       xa.master_id AS evidence_master_id, em.name AS evidence_customer, c.rule, x.linked_by, x.linked_at
     FROM "customer360"."xref" AS x
-    JOIN "customer360"."view_crosswalk" AS c ON c.system = x.system AND c.system_key = x.system_key
+    JOIN "customer360"."view_crosswalk" AS c ON x.system_key = c.system_key
     JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
     JOIN "customer360"."master_customer" AS hm ON hm.master_id = x.master_id
     JOIN "customer360"."master_customer" AS em ON em.master_id = xa.master_id
@@ -449,7 +447,7 @@ views:
     SELECT 'coverage gap', c.system, c.system_key, c.record_name, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
       xa.master_id, em.name, c.rule, CAST(NULL AS VARCHAR), CAST(NULL AS TIMESTAMP)
     FROM "customer360"."view_crosswalk" AS c
-    LEFT JOIN "customer360"."xref" AS x ON x.system = c.system AND x.system_key = c.system_key
+    LEFT JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
     LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
     LEFT JOIN "customer360"."master_customer" AS em ON em.master_id = xa.master_id
     WHERE x.system_key IS NULL
@@ -458,7 +456,7 @@ views:
       CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR), x.linked_by, x.linked_at
     FROM "customer360"."xref" AS x
     JOIN "customer360"."master_customer" AS hm ON hm.master_id = x.master_id
-    LEFT JOIN "customer360"."view_system_records" AS s ON s.system = x.system AND s.system_key = x.system_key
+    LEFT JOIN "customer360"."view_system_records" AS s ON s.system_key = x.system_key
     WHERE s.system_key IS NULL
   columns:
   - {name: finding, data_type: varchar, description: 'wrong merge, duplicate customer, coverage gap or stale link', visible_to: [data_steward, customer_success]}
@@ -480,18 +478,18 @@ views:
   materialize: true
   enable_aggregates: true
   enable_group_by: true
-  description: 'The customer master''s match rate by month: the share of its links the evidence confirms'
+  description: 'The customer master''s match rate by month: the share of the links it held at each month''s end that the evidence confirms'
   sql: >-
-    SELECT m.month, COUNT(*) AS links, SUM(l.confirmed) AS confirmed,
-      ROUND(100.0 * SUM(l.confirmed) / COUNT(*), 1) AS match_rate_pct
-    FROM (SELECT DISTINCT CAST(DATE_TRUNC('month', linked_at) AS DATE) AS month FROM "customer360"."xref") AS m
-    JOIN (
-      SELECT x.linked_at, CASE WHEN xa.master_id = x.master_id THEN 1 ELSE 0 END AS confirmed
+    SELECT month, SUM(links) OVER (ORDER BY month) AS links, SUM(confirmed) OVER (ORDER BY month) AS confirmed,
+      ROUND(100.0 * SUM(confirmed) OVER (ORDER BY month) / SUM(links) OVER (ORDER BY month), 1) AS match_rate_pct
+    FROM (
+      SELECT CAST(DATE_TRUNC('month', x.linked_at) AS DATE) AS month, COUNT(*) AS links,
+        SUM(CASE WHEN xa.master_id = x.master_id THEN 1 ELSE 0 END) AS confirmed
       FROM "customer360"."xref" AS x
-      LEFT JOIN "customer360"."view_crosswalk" AS c ON c.system = x.system AND c.system_key = x.system_key
+      LEFT JOIN "customer360"."view_crosswalk" AS c ON x.system_key = c.system_key
       LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
-    ) AS l ON l.linked_at < m.month + INTERVAL '1 month'
-    GROUP BY m.month
+      GROUP BY 1
+    ) AS m
   columns:
   - {name: month, data_type: date, description: The month, visible_to: [data_steward, customer_success]}
   - {name: links, data_type: bigint, description: The links the hub held at its end, visible_to: [data_steward, customer_success]}
@@ -512,7 +510,7 @@ views:
       CASE WHEN x.master_id IS NULL THEN 'added' WHEN xa.master_id IS NOT NULL AND xa.master_id <> x.master_id THEN 'moved'
         ELSE 'kept' END AS correction
     FROM "customer360"."view_crosswalk" AS c
-    LEFT JOIN "customer360"."xref" AS x ON x.system = c.system AND x.system_key = c.system_key
+    LEFT JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
     LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
     WHERE COALESCE(xa.master_id, x.master_id) IS NOT NULL
   columns:
@@ -533,15 +531,14 @@ views:
     SELECT r.account_id, r.account, r.renewal_date, r.renewal_amount, x.master_id,
       COALESCE(p.open_p1, 0) AS open_p1_incidents, COALESCE(b.blocked, 0) AS blocked_fixes,
       COALESCE(v.overdue, 0) AS overdue_invoices, COALESCE(v.overdue_usd, 0) AS overdue_usd,
-      h.account_id IS NULL AS missed_by_hub
+      r.account_id NOT IN (SELECT h.account_id FROM "customer360"."view_renewal_risk_hub" AS h) AS missed_by_hub
     FROM (
       SELECT a."Id" AS account_id, a."Name" AS account, o."CloseDate" AS renewal_date, o."Amount" AS renewal_amount
       FROM "customer360"."opportunities" AS o
       JOIN "customer360"."accounts" AS a ON a."Id" = o."AccountId"
-      CROSS JOIN (SELECT CAST(MAX(synced_at) AS DATE) AS as_of FROM "customer360"."sync_run") AS d
       WHERE o."Type" = 'Renewal' AND NOT o."IsClosed"
-        AND o."CloseDate" >= DATE_TRUNC('quarter', d.as_of)
-        AND o."CloseDate" < DATE_TRUNC('quarter', d.as_of) + INTERVAL '3 months'
+        AND o."CloseDate" >= DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run"))
+        AND o."CloseDate" < DATE_TRUNC('quarter', (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run")) + INTERVAL '3 months'
     ) AS r
     JOIN "customer360"."view_hub_corrected" AS x ON x.system = 'salesforce' AND x.system_key = r.account_id
     LEFT JOIN (
@@ -558,10 +555,8 @@ views:
       SELECT l.master_id, COUNT(*) AS overdue, SUM(n.amount_remaining) / 100.0 AS overdue_usd
       FROM "customer360"."invoices" AS n
       JOIN "customer360"."view_hub_corrected" AS l ON l.system = 'stripe' AND l.system_key = n.customer
-      CROSS JOIN (SELECT CAST(MAX(synced_at) AS DATE) AS as_of FROM "customer360"."sync_run") AS d
-      WHERE n.status = 'open' AND CAST(TO_TIMESTAMP(n.due_date) AS DATE) < d.as_of GROUP BY l.master_id
+      WHERE n.status = 'open' AND CAST(TO_TIMESTAMP(n.due_date) AS DATE) < (SELECT CAST(MAX(synced_at) AS DATE) FROM "customer360"."sync_run") GROUP BY l.master_id
     ) AS v ON v.master_id = x.master_id
-    LEFT JOIN "customer360"."view_renewal_risk_hub" AS h ON h.account_id = r.account_id
     WHERE COALESCE(p.open_p1, 0) + COALESCE(b.blocked, 0) + COALESCE(v.overdue, 0) > 0
   columns:
   - {name: account_id, data_type: varchar, description: 'The account''s Salesforce id', visible_to: [data_steward, customer_success]}
@@ -589,3 +584,26 @@ relationships:
 - {id: bug-to-link, alias: FOR_CUSTOMER, cardinality: many-to-one, source_table_id: bugs, source_column: customer, target_table_id: xref, target_column: system_key}
 # The check's findings, to the hub's master they question.
 - {id: finding-to-master, alias: QUESTIONS, cardinality: many-to-one, source_table_id: view_hub_findings, source_column: hub_master_id, target_table_id: master_customer, target_column: master_id}
+# What the views join along. The hub's crosswalk to itself (the records of one master) and to each
+# system's id for a customer, as each system's records name it.
+- {id: link-to-link, alias: SAME_CUSTOMER, cardinality: one-to-many, source_table_id: xref, source_column: master_id, target_table_id: xref, target_column: master_id}
+- {id: incident-to-link, alias: RAISED_BY_CUSTOMER, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: xref, target_column: system_key}
+- {id: invoice-to-link, alias: BILLS_CUSTOMER, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: xref, target_column: system_key}
+# The check's rules: records sharing a domain or a normalised name.
+- {id: same-domain, alias: SAME_DOMAIN, cardinality: one-to-many, source_table_id: view_system_records, source_column: domain, target_table_id: view_system_records, target_column: domain}
+- {id: same-name, alias: SAME_NAME, cardinality: one-to-many, source_table_id: view_system_records, source_column: normalised_name, target_table_id: view_system_records, target_column: normalised_name}
+- {id: hub-link-to-record, alias: LINKS_RECORD, cardinality: one-to-one, source_table_id: xref, source_column: system_key, target_table_id: view_system_records, target_column: system_key}
+# The crosswalk: each record to its anchor account, the records of one anchor, the master built
+# on it, and the hub's links it checks.
+- {id: crosswalk-to-anchor, alias: ANCHORED_ON, cardinality: many-to-one, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: accounts, target_column: Id}
+- {id: crosswalk-same-anchor, alias: SAME_ANCHOR, cardinality: one-to-many, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: view_crosswalk, target_column: anchor_account_id}
+- {id: crosswalk-to-stripe-customer, alias: MATCHES_BILLED, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: stripe_customers, target_column: id}
+- {id: master-to-crosswalk, alias: GROUPS, cardinality: one-to-many, source_table_id: view_master, source_column: anchor_account_id, target_table_id: view_crosswalk, target_column: anchor_account_id}
+- {id: crosswalk-to-link, alias: CHECKS, cardinality: one-to-one, source_table_id: view_crosswalk, source_column: system_key, target_table_id: xref, target_column: system_key}
+- {id: anchor-to-link, alias: ANCHOR_LINK, cardinality: many-to-one, source_table_id: view_crosswalk, source_column: anchor_account_id, target_table_id: xref, target_column: system_key}
+# The corrected crosswalk, joined as the hub's is.
+- {id: corrected-same-customer, alias: SAME_CORRECTED_CUSTOMER, cardinality: one-to-many, source_table_id: view_hub_corrected, source_column: master_id, target_table_id: view_hub_corrected, target_column: master_id}
+- {id: corrected-to-account, alias: CORRECTED_ACCOUNT, cardinality: one-to-one, source_table_id: view_hub_corrected, source_column: system_key, target_table_id: accounts, target_column: Id}
+- {id: incident-to-corrected, alias: RAISED_BY_CORRECTED, cardinality: many-to-one, source_table_id: incidents, source_column: company, target_table_id: view_hub_corrected, target_column: system_key}
+- {id: bug-to-corrected, alias: FOR_CORRECTED, cardinality: many-to-one, source_table_id: bugs, source_column: customer, target_table_id: view_hub_corrected, target_column: system_key}
+- {id: invoice-to-corrected, alias: BILLS_CORRECTED, cardinality: many-to-one, source_table_id: invoices, source_column: customer, target_table_id: view_hub_corrected, target_column: system_key}
