@@ -2,7 +2,7 @@
 
 Provisa's side of every judgement comes from `docs/arch/requirements.yaml` and the code. A claim tagged `[tool-verified]` was checked against a requirement's status and description, a line of code, or a competitor's public documentation listed in [Sources](#7-sources). A claim tagged `[inferred]` rests on general product knowledge, or on a feature's absence from the documentation we read. Confirm those before quoting them to a buyer.
 
-Last restructure: 2026-11-07. Earlier versions scored Provisa against Trino, Dremio, Snowflake and BigQuery. Those are engines Provisa runs on, so they moved to [Works with](#3-works-with) and carry no score. The columns now hold what a buyer would buy instead of Provisa. We re-judged every row against them. The per-cell reasons from the honesty pass of the same day carry over wherever they still apply.
+Last restructure: 2026-11-07. Earlier versions scored Provisa against Trino, Dremio, Snowflake and BigQuery. Trino, Snowflake and BigQuery are engines Provisa runs on, so they moved to [Works with](#3-works-with) and carry no score. Provisa does not run on Dremio, so it left the matrix. The columns now hold what a buyer would buy instead of Provisa. We re-judged every row against them. The per-cell reasons from the honesty pass of the same day carry over wherever they still apply.
 
 ---
 
@@ -93,20 +93,20 @@ The two Hasura releases are judged together. Where v2 and DDN differ, the note s
 | Governance facts published to external catalogs | **A** | **A** | **A** | **A** | — | **A** | **A** | N62 |
 | Governed metrics on every query surface | **A** | **A** | — | P | — | **G** | **A** | N63 |
 | Data products with lineage and quality | P | P | P | P | P | **A** | **A** | N64 |
-| MCP server under the same governance | **A** | P | P | P | — | P | **A** | N65 |
-| Automated sensitive-data classification | — | **G** | **G** | **G** | **G** | — | — | N66 |
-| Governs users who query the platform directly | — | — | **G** | **G** | **G** | — | — | N67 |
+| MCP server under the same governance | P | P | P | P | — | P | **A** | N65 |
+| Automated sensitive-data classification | — | P | P | P | P | — | — | N66 |
+| Governs users who query the platform directly | — | — | — | — | — | — | — | N67 |
 
 Counts across the 441 cells (63 rows, 7 columns):
 
 | Mark | Denodo | Starburst | Immuta | UC / Horizon | Catalogs | Semantic layers | Hasura / PostgREST | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A | 27 | 30 | 10 | 23 | 9 | 27 | 39 | 165 |
-| P | 30 | 25 | 16 | 30 | 9 | 28 | 15 | 153 |
-| G | 0 | 1 | 2 | 2 | 2 | 1 | 0 | 8 |
-| — | 6 | 7 | 35 | 8 | 43 | 7 | 9 | 115 |
+| A | 26 | 30 | 10 | 23 | 9 | 27 | 39 | 164 |
+| P | 31 | 26 | 17 | 31 | 10 | 28 | 15 | 158 |
+| G | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 1 |
+| — | 6 | 7 | 36 | 9 | 44 | 7 | 9 | 118 |
 
-For comparison, the honesty pass of the same day scored the old engine columns at 140 A, 106 P, 0 G and 49 dashes across 295 cells. The new columns produce the first gaps since that pass, in metrics (N63), classification (N66) and direct platform access (N67).
+For comparison, the honesty pass of the same day scored the old engine columns at 140 A, 106 P, 0 G and 49 dashes across 295 cells. The new columns produce the first gap since that pass, in metrics (N63).
 
 ---
 
@@ -466,7 +466,7 @@ Some teams will want client DDL anyway; temporary tables on every surface cover 
 - A basis (Semantic layers, Hasura / PostgREST): no data product object. [inferred]
 
 **N65. MCP server under the same governance.** AI agents discover catalog metadata and run SQL and Cypher through the same governed pipeline as every other client. [tool-verified: REQ-1008, REQ-1990]
-- A basis (Denodo): AI features and a chatbot over its API; we found no MCP server. [inferred]
+- Denodo P: the open-source Denodo AI SDK gives AI applications access to Denodo under its security [D10]. We could not confirm an MCP server in it, so parity is inferred. [inferred]
 - Starburst P: an MCP server runs read-only SQL under Galaxy roles, with OAuth [S8]. Provisa's server also runs Cypher. [tool-verified]
 - Immuta P: agentic data access governs agents acting for a user, with the agent's permissions intersected with the user's entitlements [I6]. [tool-verified]
 - UC / Horizon P: Databricks MCPs are Unity Catalog securables [U7]; Snowflake runs a managed MCP server [W20]. [tool-verified]
@@ -474,18 +474,20 @@ Some teams will want client DDL anyway; temporary tables on every surface cover 
 - A basis (Hasura / PostgREST): Hasura's AI access is PromptQL, a natural-language layer. [inferred]
 - Catalogs —: their MCP servers, where they exist, serve metadata. [inferred]
 
-**N66. Automated sensitive-data classification.** Provisa has no automatic classifier. A steward tags columns `pii` by hand, and tags drive masking. [tool-verified: no complete requirement for automatic classification; `pii` system tag in REQ-1373 family]
-- Starburst **G**: data classifier jobs analyze data and metadata, and their tags feed ABAC policies [S9]. [tool-verified]
-- Immuta **G**: identification discovers and tags sensitive data, and policies then target the tags [I1]. [tool-verified]
-- UC / Horizon **G**: Databricks Data Classification "uses an agent to automatically classify and tag tables" [U8]; Snowflake "automatically discovers sensitive data" [W18]. [tool-verified]
-- Catalogs **G** (Collibra): automatic classification and asset association [K7]. [inferred: Collibra docs refused our fetch]
+**N66. Automated sensitive-data classification.** The profiler tests each column's sampled values against classification kinds: the SSN rules, the Luhn check for card numbers, IBAN check digits, national-identifier formats, and lists of cities, countries and currencies. When enough values pass, it raises a suggestion with the evidence, for example "97% of sampled values pass the SSN rules". A steward accepts or rejects it. Accepting a sensitive kind marks the column PII and offers a mask preset such as `ssn_last4`. An org admin can disable any kind. [tool-verified: REQ-2147, in progress; `provisa/profiler/classify.py`, `provisa/api/admin/profiler_classifications_router.py`, Admin → Classification kinds]
+
+The P cells carry one difference. Provisa detects and a steward decides; the competitors below scan and apply tags automatically, and their policies follow the tags.
+- Starburst P: data classifier jobs analyze data and metadata, and their tags feed ABAC policies [S9]. [tool-verified]
+- Immuta P: identification discovers and tags sensitive data, and policies then target the tags [I1]. [tool-verified]
+- UC / Horizon P: Databricks Data Classification "uses an agent to automatically classify and tag tables" [U8]; Snowflake "automatically discovers sensitive data" [W18]. [tool-verified]
+- Catalogs P (Collibra): automatic classification and asset association [K7]. [inferred: Collibra docs refused our fetch]
 - Denodo, Semantic layers, Hasura / PostgREST —: none classifies data. [inferred]
 
-**N67. Governs users who query the platform directly.** Provisa governs every query that comes through Provisa. A user with direct credentials to Snowflake or Databricks bypasses it, because Provisa writes nothing into the platform's native controls. [tool-verified: the one requirement for pushing policy into a platform is proposed, unbuilt]
-- Immuta **G**: "Immuta administers Snowflake privileges on data registered in Immuta" [I7]; policies are built once and enforced across platforms [I9]. [tool-verified]
-- UC / Horizon **G**: they are the platform's own controls, so direct access is governed. [tool-verified: U1, W1]
-- Catalogs **G** (Collibra): Protect writes masking and row filters into Snowflake, Databricks, BigQuery and Lake Formation [K6]. [inferred: Collibra docs refused our fetch]
-- Denodo, Starburst, Semantic layers, Hasura / PostgREST —: each governs only queries through itself, as Provisa does.
+**N67. Governs users who query the platform directly.** Provisa governs what it serves. It does not own the physical layer, and the platform's own controls govern direct sessions. Every cell is — for that reason: the row compares scopes, and Provisa's scope ends at its own surfaces. [inferred: scope judgment]
+- Immuta —: it administers privileges inside the platforms it governs, "Immuta administers Snowflake privileges on data registered in Immuta" [I7]. That is the platform's layer.
+- UC / Horizon —: they are the platform's own controls [U1][W1].
+- Catalogs —: Collibra Protect writes masking and row filters into Snowflake, Databricks, BigQuery and Lake Formation [K6], again the platform's layer. [inferred: Collibra docs refused our fetch]
+- Denodo, Starburst, Semantic layers, Hasura / PostgREST —: each governs the queries it serves, as Provisa does.
 
 ### Rows removed in the restructure
 
@@ -518,9 +520,7 @@ Every engine below returns Arrow, materialized and streamed, which Provisa serve
 | Azure Synapse serverless SQL | Partial | Yes | No | The Fabric runtime over ADLS. Read-only: `transactional=(name == "fabric")`. [tool-verified: `_build_mssql_warehouse_engine`] |
 | Any SQLAlchemy database | Self only | No | Yes | MySQL, MariaDB, Oracle, SQL Server, Db2, Redshift, Greenplum, CockroachDB, YugabyteDB, openGauss, TiDB, SingleStore, Vertica, Exasol, SAP HANA, MonetDB and Firebird. No federation connectors: every source lands in the database. [tool-verified: `build_sqlalchemy_engine`, `_RDB_KINDS`; REQ-905, REQ-1421] |
 
-**Dremio is not on this list.** The code has no Dremio engine and no Dremio connector. [tool-verified: no match for "dremio" in `provisa/`] The site's compare page lists Dremio among engines you can keep and register in Provisa. That page needs either a Dremio engine or a correction.
-
-**Engines that are also competitors' platforms.** Starburst is Trino sold with governance on top, and Unity Catalog and Horizon are the governance of Databricks and Snowflake. If you run Provisa on one of them, its own controls still apply to anyone who connects to it directly (N67).
+**Engines that are also competitors' platforms.** Starburst is Trino sold with governance on top, and Unity Catalog and Horizon are the governance of Databricks and Snowflake. Run Provisa on one of them and its own controls keep governing anyone who connects to it directly, since Provisa governs what it serves (N67).
 
 ---
 
@@ -562,13 +562,13 @@ A session can create temporary tables on every surface. Persistent tables, views
 
 Every column that answers queries has row filters, column masking, role resolution and role switching. Starburst and Unity Catalog attach ABAC policies by tag. Immuta ships more mask types than Provisa. Where Provisa does lead, the lead is narrower. It comes from uniform enforcement across protocols and sources, and from the predicate guard that Denodo lacks (N8). See also N1, N12 and N13.
 
-### Direct access to the platform is ungoverned by Provisa [tool-verified]
+### Classification asks a steward [tool-verified]
 
-If your analysts also hold Snowflake or Databricks credentials, Provisa does nothing for those sessions. Immuta, Collibra Protect, Unity Catalog and Horizon govern them, because their rules live in the platform (N67). Provisa's answer today is to make itself the only door. A buyer who cannot close the other doors needs one of those products beside Provisa.
+The profiler finds sensitive columns from their values and suggests a kind with its evidence, and a steward decides. Starburst, Immuta, Unity Catalog, Snowflake and Collibra apply their tags automatically (N66). Classification is still in progress.
 
-### No automatic classification [tool-verified]
+### Scope: direct platform sessions [inferred]
 
-Starburst, Immuta, Unity Catalog, Snowflake and Collibra find sensitive columns by scanning data and tag them, and their policies follow the tags. In Provisa a steward tags `pii` by hand (N66).
+This is a boundary. Provisa governs what it serves and does not own the physical layer, so a session that connects straight to Snowflake or Databricks is governed by the platform's own controls (N67). Immuta, Collibra Protect, Unity Catalog and Horizon work in that layer. If your users keep direct credentials, run one of them beside Provisa.
 
 ### Metrics for Excel and Power BI [tool-verified]
 
@@ -588,7 +588,7 @@ Denodo 9.5 offers Arrow Flight SQL with JDBC and Python ADBC drivers, and its OD
 
 ### Denodo
 
-Denodo is a data virtualization platform. On protocols and governance it is the strongest match for Provisa, with 30 parity cells.
+Denodo is a data virtualization platform. On protocols and governance it is the strongest match for Provisa, with 31 parity cells.
 
 Denodo enforces row restrictions and tag-driven global security policies, masking included [D1]. Its own documentation concedes that masking does not stop inference through WHERE conditions. Provisa refuses masked columns in WHERE and HAVING, which is its clearest governance lead over Denodo. [tool-verified: REQ-531]
 
@@ -606,7 +606,7 @@ On query-path governance and domain-scoped grants the two are level. Trino's spo
 
 Provisa leads on every client protocol beyond Trino's HTTP protocol. Flight, ADBC, pgwire, GraphQL, JSON:API, Cypher and gRPC all count. It also leads on non-SQL sources, live delivery, governed metrics and publishing to catalogs.
 
-Starburst is ahead on automatic classification (N66).
+Classification is level with a difference: Starburst tags automatically, and Provisa asks a steward (N66). We found no verified gap.
 
 Starburst also appears in Works with. Provisa can run on Trino, and Starburst's own governance keeps working underneath.
 
@@ -614,13 +614,13 @@ Starburst also appears in Works with. Provisa can run on Trino, and Starburst's 
 
 Immuta sells governance itself. It registers data in Snowflake, Databricks, Starburst, BigQuery, Redshift and others. It writes subscription and protect policies into each platform and audits the queries that run there [I7][I8][I4]. Its Request app handles access requests and data product access [I5]. Its agentic data access governs AI agents acting for a user [I6].
 
-Immuta answers no queries of its own, so 35 of its 63 cells are —.
+Immuta answers no queries of its own, so 36 of its 63 cells are —.
 
 Masking and row filters are level, and so is tag-driven scope. Immuta's Trino plugin makes a policy decision per query, it audits, and it governs data products and agents.
 
 Provisa is ahead on the standalone compiler and on default invisibility through registration. The test endpoint, lineage, the grounded ontology and governed-from-birth objects are Provisa leads as well.
 
-Immuta wins on automatic classification (N66) and on governing direct platform access (N67). If your problem is policy across platforms people already query directly, buy Immuta, and put Provisa beside it.
+Classification is level, with Immuta tagging automatically where Provisa asks a steward (N66). Immuta works in the platforms' own layer, which Provisa does not own (N67). If your problem is policy across platforms people already query directly, buy Immuta, and put Provisa beside it.
 
 ### Unity Catalog and Snowflake Horizon
 
@@ -630,19 +630,19 @@ Both match Provisa on query-path governance, domain-scoped policies and audit. L
 
 Provisa reaches every source outside the platform. Unity Catalog federates relational databases read-only [U4], and Snowflake federates nothing at query time. Client protocols, live delivery, the test endpoint and governed-from-birth objects are Provisa leads, and Provisa runs on any engine.
 
-Classification (N66) and direct access (N67) go to them. Both platforms also appear in Works with. Run Provisa on Databricks or Snowflake and their controls stay in force for direct users, while Provisa governs everything else.
+Classification is level, automatic on their side and steward-decided on Provisa's (N66). Both platforms also appear in Works with. Run Provisa on Databricks or Snowflake and their controls stay in force for direct users, while Provisa governs everything else.
 
 ### Collibra, Atlan and Alation
 
 Catalogs describe and classify data across every system. Atlan's data policies mask and restrict queries run inside Atlan [K2], and it reverse-syncs tags into Snowflake [K1]. Alation's Policy Center surfaces policies read from Snowflake [K4]. Collibra Protect goes furthest and writes masking and row filters into Snowflake, Databricks, BigQuery and Lake Formation [K6].
 
-Because catalogs answer no queries, 43 of the 63 cells are —.
+Because catalogs answer no queries, 44 of the 63 cells are —.
 
 Where catalogs enforce masking, they match Provisa. Domain-scoped policy, lineage, the glossary, data products and role composition are level as well.
 
 Provisa leads by publishing enforcement facts outward (N62), and with the test endpoint and governed-from-birth objects.
 
-Collibra wins on classification (N66) and direct access (N67). All three catalogs see lineage and glossary terms in systems Provisa never queries. Provisa publishes to each of them, so most buyers will run both.
+Collibra classifies automatically, where Provisa asks a steward (N66). All three catalogs see lineage and glossary terms in systems Provisa never queries. Provisa publishes to each of them, so most buyers will run both.
 
 ### Semantic layers: dbt Semantic Layer, Cube, AtScale
 
@@ -684,6 +684,7 @@ Fetched 2026-11-07.
 - [D7] Kafka listeners. `vdp/administration/kafka_listeners/kafka_listeners`
 - [D8] Denodo Assistant view features. `platform/administration/denodo_assistant_features/denodo_assistant_large_language_models/view_features/denodo_assistant_view_features`
 - [D9] GraphQL service. `vdp/administration/restful_architecture/graphql_service/graphql_service`
+- [D10] Denodo AI SDK. https://github.com/denodo/denodo-ai-sdk
 
 **Starburst** (base `https://docs.starburst.io/starburst-galaxy/`)
 - [S1] Column masks. `security-and-compliance/manage-data-access/column-masks.html`
