@@ -43,6 +43,8 @@ import { Tip } from "../Tip";
 import { CapabilityGate } from "../CapabilityGate";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
+import { FilterInput } from "./FilterInput";
+import { matchesQuery } from "../../lib/searchItems";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
 const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
@@ -108,6 +110,13 @@ export function ReportsTab() {
     e.preventDefault();
     setListWidth(clampWidth(listWidth + (e.key === "ArrowRight" ? KEY_STEP : -KEY_STEP)));
   };
+
+  // The list is narrowed by name or description; the selection and the deep link still resolve
+  // over every report, so a filter never changes which report the pane shows.
+  const [filter, setFilter] = useState("");
+  const visibleReports = reports.filter((r) =>
+    matchesQuery([r.alias, r.tableName, r.description], filter),
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [addName, setAddName] = useState("");
@@ -196,6 +205,13 @@ export function ReportsTab() {
             </Button>
           </CapabilityGate>
         </Group>
+        <div style={{ padding: "0 var(--mantine-spacing-xs) 6px" }}>
+          <FilterInput
+            value={filter}
+            onChange={setFilter}
+            placeholder={t("reportsTab.filterPlaceholder")}
+          />
+        </div>
         <div style={{ flex: 1, overflow: "auto" }}>
           {tablesLoading && reports.length === 0 ? (
             <Group justify="center" py="md">
@@ -205,8 +221,12 @@ export function ReportsTab() {
             <Text size="xs" c="dimmed" px="xs" py="sm">
               {t("reportsTab.empty")}
             </Text>
+          ) : visibleReports.length === 0 ? (
+            <Text size="xs" c="dimmed" px="xs" py="sm" data-testid="reports-no-match">
+              {t("reportsTab.noMatch")}
+            </Text>
           ) : (
-            reports.map((report) => {
+            visibleReports.map((report) => {
               const custom = report.sourceId === DERIVED_SOURCE_ID;
               return (
                 <NavLink

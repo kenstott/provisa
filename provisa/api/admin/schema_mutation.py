@@ -16,7 +16,12 @@ from __future__ import annotations
 import logging
 from datetime import date
 from provisa.codesource.languages import CODE_SOURCE_TYPES
-from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
+from provisa.compiler.naming import (
+    LabelClash,
+    SqlAddressTaken,
+    apply_convention,
+    stored_convention,
+)
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -2181,6 +2186,13 @@ async def _publish_new_source(
     return said
 
 
+def _column_alias(column: str) -> str | None:  # REQ-194
+    """The alias the Register Table form gives a new table's column by default: its snake-case
+    name (naming.ts toSnakeCase), or None where the column is already named so."""
+    alias = apply_convention(column, "snake")
+    return alias if alias != column else None
+
+
 async def _register_draft_table(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
@@ -2207,13 +2219,6 @@ async def _register_draft_table(
     columns = await resolve_available_columns_metadata(input.id, "main", input.id)
     if not columns:
         return _without("its file has no columns")
-    import re
-
-    def _snake(name: str) -> str:
-        # As the Register Table form names a column's alias (naming.ts toSnakeCase).
-        name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-        return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
-
     # What the Register Table form gives a new table by default: every role sees each column,
     # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
     roles = sorted(state.roles or {})
@@ -2226,7 +2231,7 @@ async def _register_draft_table(
             ColumnInput(
                 name=c.name,
                 visible_to=roles,
-                alias=_snake(c.name) if _snake(c.name) != c.name else None,
+                alias=_column_alias(c.name),
                 data_type=c.data_type,
                 description=c.comment,
             )

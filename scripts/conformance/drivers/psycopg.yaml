@@ -198,8 +198,6 @@ reasons:
   psycopg-errors-invalidtextrepresentation-convers-3:
     defect: 'psycopg.errors.InvalidTextRepresentation: Conversion Error: Could not convert string ''…''
       to INT32'
-  assertionerror-assert-none:
-    defect: 'AssertionError: assert [''…'', ''…'', ''…''] == [''…'', None, ''…'']'
   assertionerror-assert-decimal-l-none:
     defect: 'AssertionError: assert [''…'', ''…'', ''…'', ''…''] == [Decimal(''…'')...l(''…''), None]'
   assertionerror-assert-float4-n-n-n-none:
@@ -217,16 +215,12 @@ reasons:
       ''…'', expected format is (YYY'
   assertionerror-assert-n-n-n-n-n-n-n-n-n:
     defect: 'AssertionError: assert [''…'', ''…'', ...)''…''(N''…''(N,N),(N,N)''…''(N,N),(N,N)'']'
-  assertionerror-assert-5:
-    defect: 'AssertionError: assert [''…''] == []'
   assertionerror-assert-6:
     defect: 'AssertionError: assert [''…''] == [[[[[[''…'']]]]]]'
   assertionerror-assert-none-2:
     defect: 'AssertionError: assert [''…''] == [[[[[[None]]]]]]'
   assert-2:
     defect: assert ['…'] == [[[[[['…']]]]]]
-  assert-3:
-    defect: assert ['…', '…', '…', '…'] == ['…', '…', '…', '…']
   assertionerror-assert-7:
     defect: 'AssertionError: assert [''…'', ''…'', ''…''] == [[''…'', ''…'', ''…'']]'
   assert-ux-fo-o-b-qu-ux:
@@ -299,14 +293,8 @@ reasons:
     defect: 'psycopg.DataError: can''…''N:N:N'''
   psycopg-errors-internalerror-jsonb-out-has-no-fo:
     defect: 'psycopg.errors.InternalError_: jsonb_out() has no form on duckdb'
-  assert-none-is-true:
-    defect: assert None is True
-  assertionerror-assert-none-5:
-    defect: 'AssertionError: assert None == ''…'''
   assert-4:
     defect: 'assert [''…''] == {''…'': ''…''}'
-  assert-n:
-    defect: 'assert [''…''] == {''…'': N}'
   assert-xt-te-xt:
     defect: assert ['…'xt'…'te'xt"]
   assertionerror-assert-n:
@@ -338,9 +326,6 @@ reasons:
       a NUL character'
   assertionerror-assert-multirange-none:
     defect: 'AssertionError: assert [''…'', ''…''] == [Multirange([...None, ''…'')])]'
-  psycopg-errors-invalidtextrepresentation-convers-6:
-    defect: 'psycopg.errors.InvalidTextRepresentation: Conversion Error: Failed to convert string ''…''
-      to inet: Expected a number'
   assertionerror-assert-none-none-ipv4ne-n-n-n:
     defect: 'AssertionError: assert [None, ''…''] == [None, IPv4Ne...N.N/N'')]'
   ipaddress-addressvalueerror-b-len-n-n-is-not-per:
@@ -1884,26 +1869,16 @@ expected:
   tests.types.test_array::test_array_with_bounds['[0:1]={a,b}'::text[]-want0-1]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_array::test_array_with_bounds['[1:1][-2:-1][3:5]={{{1,2,3},{4,5,6}}}'::int[]-want1-0]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_array::test_array_with_bounds['[1:1][-2:-1][3:5]={{{1,2,3},{4,5,6}}}'::int[]-want1-1]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_array::test_dump_empty_list[int4-b]: psycopg-errors-invalidtextrepresentation-convers-3
-  tests.types.test_array::test_dump_empty_list[int4-s]: psycopg-errors-invalidtextrepresentation-convers-3
-  tests.types.test_array::test_dump_empty_list[int4-t]: psycopg-errors-invalidtextrepresentation-convers-3
-  tests.types.test_array::test_dump_list_int[obj1-{10,null,30}]: psycopg-errors-invalidtextrepresentation-convers-3
   tests.types.test_array::test_dump_list_int[obj2-{{10,20},{30,40}}]: psycopg-errors-invalidtextrepresentation-convers-3
   tests.types.test_array::test_dump_list_no_comma_separator: assertionerror-assert
   tests.types.test_array::test_dump_list_str[obj0-{{{{{{a}}}}}}-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_dump_list_str[obj2-{{{{{{"NULL"}}}}}}-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_dump_list_str[obj3-{foo,bar,baz}-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_dump_list_str[obj4-{foo,null,baz}-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_array::test_dump_list_str[obj4-{foo,null,baz}-s]: assert-false
-  tests.types.test_array::test_dump_list_str[obj4-{foo,null,baz}-t]: assert-false
   tests.types.test_array::test_dump_list_str[obj5-{foo,"null","",baz}-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_dump_list_str[obj6-{{foo,bar},{baz,qux},{quux,quuux}}-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_dump_list_str[obj7-{{{"fo{o","ba}r"},{"ba\\"z",qu\\'x},{"qu ux"," "}}}-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_array::test_dump_list_str[obj7-{{{"fo{o","ba}r"},{"ba\\"z",qu\\'x},{"qu ux"," "}}}-s]: assert-false
-  tests.types.test_array::test_dump_list_str[obj7-{{{"fo{o","ba}r"},{"ba\\"z",qu\\'x},{"qu ux"," "}}}-t]: assert-false
   tests.types.test_array::test_dump_list_str_none[b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_array::test_dump_list_str_none[s]: assertionerror-assert-none
-  tests.types.test_array::test_dump_list_str_none[t]: assertionerror-assert-none
   tests.types.test_array::test_empty_list[b]: psycopg-errors-featurenotsupported-create-table
   tests.types.test_array::test_empty_list[s]: psycopg-errors-featurenotsupported-create-table
   tests.types.test_array::test_empty_list[t]: psycopg-errors-featurenotsupported-create-table
@@ -1952,8 +1927,6 @@ expected:
   tests.types.test_array::test_load_after_close['2020-01-01 00:00Z'::timestamptz-want3-0]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_array::test_load_after_close['2020-01-01 00:00Z'::timestamptz-want3-1]: psycopg-errors-invalidtextrepresentation-convers-4
   tests.types.test_array::test_load_array_no_comma_separator: assertionerror-assert-n-n-n-n-n-n-n-n-n
-  tests.types.test_array::test_load_empty_list_str[0]: assertionerror-assert-5
-  tests.types.test_array::test_load_empty_list_str[1]: assertionerror-assert-5
   tests.types.test_array::test_load_list_int[want0-{10,20,-30}-0]: psycopg-dataerror-malformed-array-no-after-dimen
   tests.types.test_array::test_load_list_int[want0-{10,20,-30}-1]: struct-error-unpack-from-requires-a-buffer-of-at
   tests.types.test_array::test_load_list_int[want1-{10,null,30}-0]: psycopg-errors-invalidtextrepresentation-convers-3
@@ -1966,16 +1939,10 @@ expected:
   tests.types.test_array::test_load_list_str[want1-{{{{{{NULL}}}}}}-1]: assertionerror-assert-none-2
   tests.types.test_array::test_load_list_str[want2-{{{{{{"NULL"}}}}}}-0]: assert-2
   tests.types.test_array::test_load_list_str[want2-{{{{{{"NULL"}}}}}}-1]: assert-2
-  tests.types.test_array::test_load_list_str[want4-{foo,null,baz}-0]: assertionerror-assert-none
-  tests.types.test_array::test_load_list_str[want4-{foo,null,baz}-1]: assertionerror-assert-none
-  tests.types.test_array::test_load_list_str[want5-{foo,"null","",baz}-0]: assert-3
-  tests.types.test_array::test_load_list_str[want5-{foo,"null","",baz}-1]: assert-3
   tests.types.test_array::test_load_list_str[want6-{{foo,bar},{baz,qux},{quux,quuux}}-0]: assertionerror-assert-7
   tests.types.test_array::test_load_list_str[want6-{{foo,bar},{baz,qux},{quux,quuux}}-1]: assertionerror-assert-7
   tests.types.test_array::test_load_list_str[want7-{{{"fo{o","ba}r"},{"ba\\"z",qu\\'x},{"qu ux"," "}}}-0]: assert-ux-fo-o-b-qu-ux
   tests.types.test_array::test_load_list_str[want7-{{{"fo{o","ba}r"},{"ba\\"z",qu\\'x},{"qu ux"," "}}}-1]: assert-ux-fo-o-b-qu-ux
-  tests.types.test_array::test_load_nested_array[0]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_array::test_load_nested_array[1]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_array::test_whitespaces[0-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_array::test_whitespaces[0-s]: assertionerror-failed-with-u-n
   tests.types.test_array::test_whitespaces[0-t]: assertionerror-failed-with-u-n
@@ -2728,7 +2695,6 @@ expected:
   tests.types.test_json::test_dump[b-Jsonb-null]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_json::test_dump[b-Jsonb-true]: psycopg-errors-internalerror-unsupported-binary
   'tests.types.test_json::test_dump[b-Jsonb-{"a": 100}]': psycopg-errors-internalerror-unsupported-binary
-  'tests.types.test_json::test_dump[s-Json-{"a": 100}]': assert-false-is-true
   tests.types.test_json::test_dump[s-Jsonb-"\\u00e0\\u20ac"]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   tests.types.test_json::test_dump[s-Jsonb-"te'xt"]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   tests.types.test_json::test_dump[s-Jsonb-123.45]: psycopg-errors-internalerror-jsonb-out-has-no-fo
@@ -2737,7 +2703,6 @@ expected:
   tests.types.test_json::test_dump[s-Jsonb-null]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   tests.types.test_json::test_dump[s-Jsonb-true]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   'tests.types.test_json::test_dump[s-Jsonb-{"a": 100}]': psycopg-errors-internalerror-jsonb-out-has-no-fo
-  'tests.types.test_json::test_dump[t-Json-{"a": 100}]': assert-false-is-true
   tests.types.test_json::test_dump[t-Jsonb-"\\u00e0\\u20ac"]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   tests.types.test_json::test_dump[t-Jsonb-"te'xt"]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   tests.types.test_json::test_dump[t-Jsonb-123.45]: psycopg-errors-internalerror-jsonb-out-has-no-fo
@@ -2747,37 +2712,17 @@ expected:
   tests.types.test_json::test_dump[t-Jsonb-true]: psycopg-errors-internalerror-jsonb-out-has-no-fo
   'tests.types.test_json::test_dump[t-Jsonb-{"a": 100}]': psycopg-errors-internalerror-jsonb-out-has-no-fo
   tests.types.test_json::test_dump_customise[Json-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise[Json-s]: assert-none-is-true
-  tests.types.test_json::test_dump_customise[Json-t]: assert-none-is-true
   tests.types.test_json::test_dump_customise[Jsonb-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise[Jsonb-s]: assert-none-is-true
-  tests.types.test_json::test_dump_customise[Jsonb-t]: assert-none-is-true
   tests.types.test_json::test_dump_customise_bytes[Json-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise_bytes[Json-s]: assert-none-is-true
-  tests.types.test_json::test_dump_customise_bytes[Json-t]: assert-none-is-true
   tests.types.test_json::test_dump_customise_bytes[Jsonb-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise_bytes[Jsonb-s]: assert-none-is-true
-  tests.types.test_json::test_dump_customise_bytes[Jsonb-t]: assert-none-is-true
   tests.types.test_json::test_dump_customise_context[Json-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise_context[Json-s]: assertionerror-assert-none-5
-  tests.types.test_json::test_dump_customise_context[Json-t]: assertionerror-assert-none-5
   tests.types.test_json::test_dump_customise_context[Jsonb-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise_context[Jsonb-s]: assertionerror-assert-none-5
-  tests.types.test_json::test_dump_customise_context[Jsonb-t]: assertionerror-assert-none-5
   tests.types.test_json::test_dump_customise_wrapper[Json-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise_wrapper[Json-s]: assert-none-is-true
-  tests.types.test_json::test_dump_customise_wrapper[Json-t]: assert-none-is-true
   tests.types.test_json::test_dump_customise_wrapper[Jsonb-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_json::test_dump_customise_wrapper[Jsonb-s]: assert-none-is-true
-  tests.types.test_json::test_dump_customise_wrapper[Jsonb-t]: assert-none-is-true
   tests.types.test_json::test_dump_dict[b-json-JsonBinaryDumper]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_json::test_dump_dict[b-jsonb-JsonbBinaryDumper]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_json::test_dump_dict[t-json-JsonDumper]: assert-4
   tests.types.test_json::test_dump_dict[t-jsonb-JsonbDumper]: assert-4
-  'tests.types.test_json::test_load[0-json-{"a": 100}]': assert-n
-  'tests.types.test_json::test_load[0-jsonb-{"a": 100}]': assert-n
-  'tests.types.test_json::test_load[1-json-{"a": 100}]': assert-n
-  'tests.types.test_json::test_load[1-jsonb-{"a": 100}]': assert-n
   tests.types.test_json::test_load_array[0-json-"\\u00e0\\u20ac"]: assert
   tests.types.test_json::test_load_array[0-json-"te'xt"]: assert-xt-te-xt
   tests.types.test_json::test_load_array[0-json-123.45]: assertionerror-assert-n
@@ -2906,18 +2851,6 @@ expected:
   tests.types.test_multirange::test_dump_builtin_empty[b-nummultirange]: psycopg-errors-internalerror-a-str-value-cannot
   tests.types.test_multirange::test_dump_builtin_empty[b-tsmultirange]: psycopg-errors-internalerror-a-str-value-cannot
   tests.types.test_multirange::test_dump_builtin_empty[b-tstzmultirange]: psycopg-errors-internalerror-a-str-value-cannot
-  tests.types.test_multirange::test_dump_builtin_empty[s-datemultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[s-int4multirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[s-int8multirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[s-nummultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[s-tsmultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[s-tstzmultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[t-datemultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[t-int4multirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[t-int8multirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[t-nummultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[t-tsmultirange]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_empty[t-tstzmultirange]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_multirange::test_dump_builtin_empty_wrapper[b-DateMultirange]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_multirange::test_dump_builtin_empty_wrapper[b-Int4Multirange]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_multirange::test_dump_builtin_empty_wrapper[b-Int8Multirange]: psycopg-errors-internalerror-unsupported-binary
@@ -2938,28 +2871,10 @@ expected:
   tests.types.test_multirange::test_dump_builtin_empty_wrapper[t-TimestamptzMultirange]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_multirange::test_dump_builtin_multirange[b-datemultirange-ranges5]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_multirange::test_dump_builtin_multirange[b-int4multirange-ranges0]: psycopg-errors-internalerror-a-str-value-cannot
-  tests.types.test_multirange::test_dump_builtin_multirange[b-int4multirange-ranges1]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_multirange::test_dump_builtin_multirange[b-int8multirange-ranges2]: psycopg-errors-internalerror-a-str-value-cannot
-  tests.types.test_multirange::test_dump_builtin_multirange[b-int8multirange-ranges3]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_multirange::test_dump_builtin_multirange[b-nummultirange-ranges4]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_multirange::test_dump_builtin_multirange[b-tsmultirange-ranges6]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_multirange::test_dump_builtin_multirange[b-tstzmultirange-ranges7]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_multirange::test_dump_builtin_multirange[s-datemultirange-ranges5]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-int4multirange-ranges0]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-int4multirange-ranges1]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-int8multirange-ranges2]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-int8multirange-ranges3]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-nummultirange-ranges4]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-tsmultirange-ranges6]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[s-tstzmultirange-ranges7]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-datemultirange-ranges5]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-int4multirange-ranges0]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-int4multirange-ranges1]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-int8multirange-ranges2]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-int8multirange-ranges3]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-nummultirange-ranges4]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-tsmultirange-ranges6]: psycopg-errors-invalidtextrepresentation-convers-2
-  tests.types.test_multirange::test_dump_builtin_multirange[t-tstzmultirange-ranges7]: psycopg-errors-invalidtextrepresentation-convers-2
   tests.types.test_multirange::test_dump_custom_empty: failed-on-setup-with
   tests.types.test_multirange::test_dump_custom_none[b]: failed-on-setup-with
   tests.types.test_multirange::test_dump_custom_none[s]: failed-on-setup-with
@@ -2990,10 +2905,8 @@ expected:
   tests.types.test_multirange::test_load_custom_empty[1]: failed-on-setup-with
   tests.types.test_net::test_address_dump[192.168.0.1-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_address_dump[192.168.0.1-s]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_net::test_address_dump[192.168.0.1-t]: psycopg-errors-invalidtextrepresentation-convers-6
   tests.types.test_net::test_address_dump[2001:db8::-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_address_dump[2001:db8::-s]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_net::test_address_dump[2001:db8::-t]: psycopg-errors-invalidtextrepresentation-convers-6
   tests.types.test_net::test_cidr_load[127.0.0.0/24-0]: assertionerror-assert-none-none-ipv4ne-n-n-n
   tests.types.test_net::test_cidr_load[127.0.0.0/24-1]: ipaddress-addressvalueerror-b-len-n-n-is-not-per
   tests.types.test_net::test_cidr_load[::ffff:102:300/128-0]: assertionerror-assert-none-none-ipv6ne-n-n-n
@@ -3008,13 +2921,10 @@ expected:
   tests.types.test_net::test_inet_load_network[::ffff:102:300/127-1]: assertionerror-assert-none-mask
   tests.types.test_net::test_interface_dump[127.0.0.1/24-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_interface_dump[127.0.0.1/24-s]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_net::test_interface_dump[127.0.0.1/24-t]: psycopg-errors-invalidtextrepresentation-convers-6
   tests.types.test_net::test_interface_dump[::ffff:102:300/128-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_interface_dump[::ffff:102:300/128-s]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_net::test_interface_dump[::ffff:102:300/128-t]: psycopg-errors-invalidtextrepresentation-convers-6
   tests.types.test_net::test_network_dump[127.0.0.0/24-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_network_dump[127.0.0.0/24-s]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_net::test_network_dump[127.0.0.0/24-t]: assert-false-is-true
   tests.types.test_net::test_network_dump[::ffff:102:300/128-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_network_dump[::ffff:102:300/128-s]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_net::test_network_dump[::ffff:102:300/128-t]: assert-false-is-true
@@ -3434,17 +3344,9 @@ expected:
   tests.types.test_string::test_bytea_array[1-s]: psycopg-errors-invalidtextrepresentation-convers-9
   tests.types.test_string::test_bytea_array[1-t]: psycopg-errors-invalidtextrepresentation-convers-9
   tests.types.test_string::test_dump_1byte[Binary-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_string::test_dump_1byte[Binary-s]: psycopg-errors-invalidtextrepresentation-convers-9
-  tests.types.test_string::test_dump_1byte[Binary-t]: psycopg-errors-invalidtextrepresentation-convers-9
   tests.types.test_string::test_dump_1byte[bytearray-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_string::test_dump_1byte[bytearray-s]: psycopg-errors-invalidtextrepresentation-convers-9
-  tests.types.test_string::test_dump_1byte[bytearray-t]: psycopg-errors-invalidtextrepresentation-convers-9
   tests.types.test_string::test_dump_1byte[bytes-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_string::test_dump_1byte[bytes-s]: psycopg-errors-invalidtextrepresentation-convers-9
-  tests.types.test_string::test_dump_1byte[bytes-t]: psycopg-errors-invalidtextrepresentation-convers-9
   tests.types.test_string::test_dump_1byte[memoryview-b]: psycopg-errors-internalerror-unsupported-binary
-  tests.types.test_string::test_dump_1byte[memoryview-s]: psycopg-errors-invalidtextrepresentation-convers-9
-  tests.types.test_string::test_dump_1byte[memoryview-t]: psycopg-errors-invalidtextrepresentation-convers-9
   tests.types.test_string::test_dump_badenc[b]: psycopg-errors-invalidtextrepresentation-convers-10
   tests.types.test_string::test_dump_badenc[s]: psycopg-errors-invalidtextrepresentation-convers-10
   tests.types.test_string::test_dump_badenc[t]: psycopg-errors-invalidtextrepresentation-convers-10
@@ -3499,12 +3401,8 @@ expected:
   tests.types.test_string::test_text_array_ascii[1-b]: psycopg-errors-internalerror-unsupported-binary
   tests.types.test_string::test_text_array_ascii[1-s]: assert-x06-x01-b
   tests.types.test_string::test_text_array_ascii[1-t]: assert-x06-x01-b
-  tests.types.test_uuid::test_uuid_dump[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-b]: psycopg-errors-invalidtextrepresentation-convers-11
-  tests.types.test_uuid::test_uuid_dump[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-s]: psycopg-errors-invalidtextrepresentation-convers-11
-  tests.types.test_uuid::test_uuid_dump[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-t]: psycopg-errors-invalidtextrepresentation-convers-11
   tests.types.test_uuid::test_uuid_load[01234567-89ab-cdef-0123-456789abcdef-1]: valueerror-bytes-is-not-a-n-char-string
   tests.types.test_uuid::test_uuid_load[0123456789abcdef0123456789abcdef-1]: valueerror-bytes-is-not-a-n-char-string
   tests.types.test_uuid::test_uuid_load[12345678-1234-5678-1234-567812345679-1]: valueerror-bytes-is-not-a-n-char-string
   tests.types.test_uuid::test_uuid_load[12345678123456781234567812345679-1]: valueerror-bytes-is-not-a-n-char-string
-  tests.types.test_uuid::test_uuid_load[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-0]: psycopg-errors-invalidtextrepresentation-convers-11
   tests.types.test_uuid::test_uuid_load[{a0eebc99-9c0b4ef8-bb6d6bb9-bd380a11}-1]: psycopg-errors-invalidtextrepresentation-convers-11

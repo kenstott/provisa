@@ -2957,10 +2957,85 @@
   description: 'The naming authority is the single source of truth for all client-facing names. Physical
     backend column names are never exposed to clients. **Alias** (`column.alias` in config): the canonical
     name. SQL uses it verbatim (no convention applied). GQL applies its configured convention to it. CQL
-    derives from GQL. **No alias**: each query language derives its name from the physical column name
-    via its configured convention. **SQL convention**: configurable, default `snake_case`. Applied via
-    `apply_sql_name()`. **GQL convention**: configurable (`apollo_graphql` default = camelCase, `hasura_graphql`
-    = snake_case). Applied via `apply_gql_name()`. **CQL**: derived from the GQL name.'
+    derives from GQL. **No alias**: each query language derives its name from the physical column name via
+    its configured convention. **SQL convention**: configurable, default `snake_case`. Applied via `apply_sql_name()`.
+    **GQL convention**: configurable (`apollo_graphql` default = camelCase, `hasura_graphql` = snake_case).
+    Applied via `apply_gql_name()`. **CQL**: derived from the GQL name. (Amended 2026-11-07, EVERY CLIENT-FACING
+    NAME KIND HAS ITS RULE HERE:) The naming authority covers every kind of client-facing name, not only
+    tables and columns, and each kind has exactly one rule in it (provisa/compiler/naming.py, mirrored in
+    provisa-ui/src/naming.ts where the UI needs it): mutation field names (insert/update/delete per convention);
+    domain-prefixed field and type names and their inverses; root-field variants (Aggregate, GroupBy, Connection)
+    under the table''s own convention; GraphQL enum type and value names; Cypher node labels, properties
+    and relationship types (IS_/HAS_ plus UPPER_SNAKE, junction types included); proto message, field and
+    RPC names for Provisa''s gRPC surface; and pg constraint names served through pgwire and Flight metadata.
+    Code outside the authority never shapes a client-facing name by string manipulation (case conversion,
+    capitalisation, inflection, sanitising, prefix composition); where a rule is missing it is added to
+    the authority first, then called (maintainer 2026-11-07, after the naming audit found 18 bypasses).
+    A check refuses new name shaping outside the authority. (Amended 2026-11-07, ONE NAMES TABLE PER MODEL
+    VERSION:) The naming authority runs once per model version, where the schema is built, and produces
+    one names table: for every model object (source, table, view, column, relationship, command, enum, metric)
+    every surface''s name (physical, SQL, GraphQL field and type, Cypher label and relationship type, proto
+    message, field and RPC, pg constraint), plus an index of SQL names ignoring case (REQ-2214). Every clash
+    (case-only, cross-surface, a taken address) is refused while the table is built, naming both objects.
+    Every consumer (compiler, protocols, catalogs, metadata export, the UI) reads names from this table
+    and never computes one; a name not in it does not exist. The table is rebuilt with each model version,
+    and the UI fetches it from the server rather than recomputing names. The naming functions remain the
+    rules the table is built from and are called directly only to preview a name for an object not yet saved
+    (maintainer 2026-11-07). (Amended 2026-11-07, THE NAMES TABLE IS A META TABLE WITH A REPORT:) The names
+    table is published as a table of the meta system schema (beside M__RegisteredTables), so every client
+    reads it like any other table: SQL, GraphQL, MCP and Polly can ask what an object is called on any surface.
+    It is governed like the other meta tables: a row is visible only to a caller who may read the object
+    it names. A standard report over it lists every object with its names on each surface, filterable by
+    object kind, surface and domain, and shows the clashes refused at the last build; that report is its
+    UI. The UI reads the names of saved objects from this table rather than computing them (maintainer 2026-11-07).
+    (Amended 2026-11-07, THE NAMES TABLE FINDS NAMING PROBLEMS:) While the names table is built, every name,
+    derived or set by an operator, is checked and each problem is recorded as a warning on the object, shown
+    in the names report and readable by Polly and MCP: a name that must be quoted on some surface (a reserved
+    word there, a leading digit, a character the surface does not take); two physical names that a convention
+    collapses into one (refused as a clash, the warning names both objects and the surface); a conversion
+    that loses information or reads badly (HTTPServer to h_t_t_p_server, a long prefix chain); a name longer
+    than a surface accepts (PostgreSQL''s 63-character identifiers, proto and client limits); and an alias
+    that shadows another object''s name. Each warning names the object, the surface and the fix (for example,
+    set an alias). Only clashes block the build; the rest are warnings (maintainer 2026-11-07). (Amended
+    2026-11-07, THE NAMES TABLE SPANS THE DATA ESTATE:) The names table also records, for each model object,
+    its name where it lives and where it is published: the physical name in each source and each engine
+    it is read through or replicated to; the name each metadata export target gives it (Atlas, Dataplex,
+    Snowflake Horizon and every other export, REQ metadata export); and the glossary terms it realises,
+    so a term resolves to every object and every name that carries it. The table is then one cross-system
+    name map: an operator, a lineage view, an impact question (rename this: what changes, where) and an
+    agent all read the same answer (maintainer 2026-11-07). (Amended 2026-11-07, ONLY ADMITTED OBJECTS:)
+    The source-native names in the names table are those of admitted objects only: the tables, views, columns
+    and commands registered into the model. Objects a source offers but that were never registered are not
+    in it (maintainer 2026-11-07). (Amended 2026-11-07, NOT EVERY NAME HAS A SOURCE NAME:) Not every name
+    has a source-native counterpart: an object defined in the model rather than admitted from a source (a
+    view, a computed or derived column, a relationship, a metric, a model-defined command, a system or meta
+    table) has no source name, and its row records none; it is never given an invented one. Its other names
+    (client surfaces, engines it is built on, export targets, glossary terms) are recorded as for any object
+    (maintainer 2026-11-07). (Amended 2026-11-07, EVERY EXPORTED NAME, ONLY WHERE EXPORTED:) The names table
+    records every name an object is exported under, one per export target that actually carries it (each
+    metadata export: Atlas, Dataplex, Snowflake Horizon, Unity Catalog, OpenLineage and the rest, with the
+    target''s own spelling). Export is opt-in (data-product membership and catalog domains, withholding
+    tags), so most objects are exported to few targets or none; an object not exported to a target has no
+    name for it, and the table never invents one (maintainer 2026-11-07). (Amended 2026-11-07, A COLUMN''S
+    PRIME GROUNDED TERM:) A column''s row in the names table also records its prime grounded term: the glossary
+    Property term that owns the column directly (the term whose column refs name it), with that term''s
+    name and ontology name (REQ-2163), so a business name sits beside every technical one. Only a direct
+    correlation counts: a term reached through inheritance, a relationship or a table''s Class term is not
+    a column''s prime term, and a column no term owns records none (maintainer 2026-11-07). (Amended 2026-11-07,
+    NAME SUGGESTIONS COME FROM THE AUTHORITY:) Every name the product suggests before an object is saved
+    comes from the naming authority too: a reverse relationship''s alias (its By/Of form), a table''s or
+    view''s alias when it is registered, a column alias, a junction or metric name proposed from a fact.
+    The UI and the API ask the authority for the suggestion under the active convention and never build
+    one themselves, so a suggestion is always the name the object will be known by once saved, and the suggestion
+    passes the same name checks as the names table (maintainer 2026-11-07). (Amended 2026-11-07, A CLASH
+    POLICY: REFUSE OR DISAMBIGUATE:) How a name clash is settled is an org setting with two policies: refuse
+    (the default: the clash is refused naming both objects and a steward sets an alias) or disambiguate.
+    Under disambiguate the naming authority derives a distinct name from an attribute that tells the objects
+    apart, by a rule per name kind ({table}_by_{fk_column} for relationships; the source for tables; the
+    target for junctions); a counter suffix is used only when no attribute distinguishes them. A derived
+    name is frozen as the object''s alias when first assigned, so later builds never renumber or rename
+    it, and only a steward changes it. Every automatic disambiguation is shown as a warning in the names
+    report naming the clash, so the operator can keep it or set a better alias (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -5626,10 +5701,20 @@
   feature: connector-catalog-remote-schemas
   priority: SHOULD
   type: behavioral
-  description: Each query-classified gRPC method is exposed as a virtual read-only table. Output message
-    fields become columns using the type mapping in REQ-324. Input message fields become GraphQL query
-    arguments. Server-streaming methods (`Stream*`) collect all streamed response messages into a list
-    before returning rows.
+  description: 'Each query-classified gRPC method is exposed as a virtual read-only table. Output message
+    fields become columns using the type mapping in REQ-324. Input message fields become GraphQL query arguments.
+    Server-streaming methods (`Stream*`) collect all streamed response messages into a list before returning
+    rows. (Amended 2026-11-07, TABLE NAMES IN LOWER SNAKE CASE:) [SUPERSEDED by REQ-325, 2026-11-07 -- the
+    client-facing name is the naming authority''s, not a conversion of its own (maintainer 2026-11-07).
+    Kept here for history; do not implement against it.] A gRPC method''s table registers under a lower
+    snake case name derived from its service and method (AnimalCatalog.ListBreeds offers <namespace>__animal_catalog__list_breeds),
+    as every other source''s tables are named, so SQL names it without quotes (maintainer 2026-11-07). The
+    proto''s own service and method names are kept for the call; only the table name is converted. [END
+    SUPERSEDED BLOCK] (Amended 2026-11-07, NAMED BY THE NAMING AUTHORITY:) A gRPC method''s table gets its
+    client-facing names from the naming authority (REQ-194), as every other source''s tables do: SQL sees
+    it under the configured SQL convention (snake case by default, e.g. <namespace>__animal_catalog__list_breeds),
+    GraphQL under its configured convention, so SQL names it without quotes. The proto''s own service and
+    method names are kept for the call.'
   use_case: Query-classified gRPC methods exposed as virtual tables let clients query remote services
     with GraphQL syntax.
   code:
@@ -83164,17 +83249,47 @@
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and renewals,
-    ServiceNow incidents, Jira issues and Stripe test-mode invoices, built once against real accounts and served
-    from TTL -1 replicas. It shows cross-application relationships (account to incident to issue, account to invoice),
-    lineage to each table''s real origin, and a data product (account health). Its tour follows the settled demo
-    tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships
-    fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries
-    and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client
-    over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, REQ-2012)
-    only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external
-    account at run time: data from real accounts is landed at build as TTL -1 replicas (REQ-2031). Its business
-    question: "Which accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?"'
+  description: 'A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and
+    renewals, ServiceNow incidents, Jira issues and Stripe test-mode invoices, built once against real accounts
+    and served from TTL -1 replicas. It shows cross-application relationships (account to incident to issue,
+    account to invoice), lineage to each table''s real origin, and a data product (account health). Its
+    tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources,
+    tables, commands, views and relationships fit, each step on its real row; then the solution in whatever
+    form best answers the question: predesigned queries and views run over the transports that suit it (SQL,
+    GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly
+    question (answered at template build and served stored, REQ-2012) only where a conversational answer
+    is the natural fit; then a recap. The demo never reaches a live external account at run time: data from
+    real accounts is landed at build as TTL -1 replicas (REQ-2031). Its business question: "Which accounts
+    renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?" (Amended 2026-11-07,
+    A CUSTOMER MASTER HUB AND A RULE-BASED CROSSWALK:) The systems share no account id: each keeps its own
+    (Salesforce account id, ServiceNow company, Jira customer field, Stripe customer), as in real organisations.
+    The demo shows both ways they are linked. A customer master hub, the demo''s own Postgres read live,
+    holds master customers and a crosswalk to each system''s id; each system relates to the hub, not to
+    every other system. Beside it, a crosswalk view defined in the model matches the same records by SQL
+    rules (email or website domain, normalised company name), each row naming the rule that matched, showing
+    Provisa building the hub where a company has none. The differences between the two (a record the hub
+    links and the rules miss, a rule match the hub lacks, a record neither links) are shown as data-quality
+    findings. The business question is answered through the hub (maintainer 2026-11-07). (Amended 2026-11-07,
+    THE CROSSWALK CHECKS THE HUB:) The rule-based crosswalk is the hub''s data quality check, not a rival
+    to it: the hub is the system of record, and the crosswalk re-derives each link independently from evidence
+    in the source records (plain SQL materialized views in one cascade: crosswalk, master with golden attributes
+    and ids derived from each group''s anchor record, findings). Every disagreement is a data-quality finding
+    on the hub: a hub link the evidence contradicts (a likely wrong merge), an evidence link the hub lacks
+    (a duplicate customer), a system record the hub does not hold (a coverage gap), a hub entry pointing
+    at a closed or deleted record (stale), and the hub''s match rate as a trended metric. The tour answers
+    the business question through the hub, then asks how far that answer can be trusted, runs the check,
+    and reveals a renewing account the hub links to the wrong Stripe customer, so its overdue invoice was
+    missing from the first answer; the corrected answer includes it. The demo data is planted so that reveal
+    is real (maintainer 2026-11-07). (Amended 2026-11-07, REPLICAS ARE NOT PART OF THE STORY:) [SUPERSEDED
+    by REQ-2034, 2026-11-07 -- replicas may be shown; only their being built once and never refreshed is
+    kept out (maintainer 2026-11-07). Kept here for history; do not implement against it.] Landing the SaaS
+    data once as replicas is a choice made to keep the demo practical, not something the demo presents:
+    the tour, queries and narration treat Salesforce, ServiceNow, Jira and Stripe as the sources they are
+    and never mention replicas, TTLs or how the data was landed (maintainer 2026-11-07). [END SUPERSEDED
+    BLOCK] (Amended 2026-11-07, WHAT THE TOUR NEVER SAYS ABOUT REPLICAS:) The tour may show replicas as
+    the feature they are (a SaaS source read through its replica, the replica''s build and lineage). It
+    never says that the demo''s replicas were generated in advance or that they do not refresh: landing
+    them once (TTL -1) is the choice that keeps the demo practical, not part of its story (maintainer 2026-11-07).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
@@ -85604,7 +85719,26 @@ And the file is gone when the install ends"
   feature: product-tour-and-demos-sandbox
   priority: MUST
   type: behavioral
-  description: "A configuration may declare a replica's rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv beside its config.yaml, its first line the table's columns in their order, tab separated, each line after one row (\\N is NULL; \\t, \\n, \\r and \\\\ a tab, newline, carriage return and backslash; an integer, floating or boolean column's cells read as that type, every other as its text). When an org's runtime is built, before its replica convergence is wired -- a demo template's from its demo's directory, the deployment org's from its launch config's directory -- each declared table is written into the org's own replica store as a build of it writes it (its columns' types, a stream build's content hash) and recorded as built for that store and the table's definition; convergence then asks for no build and the source is never read, so a demo whose source has no tenant (the insider demo's bank mail in Microsoft 365) is served from its declared rows by the bundle build's setup, its seeding run and every sandbox, and the bundle's seed carries them like any landed replica. A table already landed in that store from those rows is left as it is. Refused, naming the file: a file not named <schema>.<table>.tsv; a table the configuration does not serve from that source; a header that is not the table's columns in their order; a cell not of its column's type; a source whose cache_ttl is not -1 (nothing may refresh the replica from the source); a declared table with no rows."
+  description: 'A configuration may declare a replica''s rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv
+    beside its config.yaml, its first line the table''s columns in their order, tab separated, each line
+    after one row (\N is NULL; \t, \n, \r and \\ a tab, newline, carriage return and backslash; an integer,
+    floating or boolean column''s cells read as that type, every other as its text). When an org''s runtime
+    is built, before its replica convergence is wired -- a demo template''s from its demo''s directory,
+    the deployment org''s from its launch config''s directory -- each declared table is written into the
+    org''s own replica store as a build of it writes it (its columns'' types, a stream build''s content
+    hash) and recorded as built for that store and the table''s definition; convergence then asks for no
+    build and the source is never read, so a demo whose source has no tenant (the insider demo''s bank mail
+    in Microsoft 365) is served from its declared rows by the bundle build''s setup, its seeding run and
+    every sandbox, and the bundle''s seed carries them like any landed replica. A table already landed in
+    that store from those rows is left as it is. Refused, naming the file: a file not named <schema>.<table>.tsv;
+    a table the configuration does not serve from that source; a header that is not the table''s columns
+    in their order; a cell not of its column''s type; a source whose cache_ttl is not -1 (nothing may refresh
+    the replica from the source); a declared table with no rows. (Amended 2026-11-07, DECLARED ROWS COVER
+    API SOURCES:) Declared rows also cover sources read as API endpoints (OpenAPI and the branded SaaS sources
+    built on it, such as Stripe): a cache_ttl -1 API table whose source declares rows is served from those
+    rows and never fetched, exactly as a database-backed replica is, so a demo built from declared rows
+    makes no call to the live service at build or at run time (lead 2026-11-07, applying the settled rule
+    that a demo never reaches a live SaaS account (REQ-2031); found building the customer360 demo).'
   use_case: "A demo reads a bank's mail through a Microsoft 365 source though no sandbox has a tenant: its seeded mailbox ships as the source's canonical mail tables' rows."
   scenario: "Given demo/named/insider/replica_rows/mail/default.messages.tsv holding the bank's 118 messages in the canonical messages columns, and source mail of type microsoft_365 with cache_ttl -1
 
@@ -92674,7 +92808,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     that applied (definition, cited section, last attestation, what is missing), and Polly answers from
     the same. The why is given only for what the refusal already discloses and only as far as the caller
     has the right to read those tags: a column the caller is not told exists is never explained, so explaining
-    never discloses.'
+    never discloses. (Amended 2026-11-07, THE TAGS REPORT:) Tags are published as a meta table with one
+    row per pair of tag instance and object instance (sparse: only pairs that exist, plus required tags
+    that are missing), and a standard report over it. Each row carries the object (kind, id, its name from
+    the names table of REQ-194, domain, owner), the tag (name, template, description, the definition''s
+    citation, required or not) and the tag instance (its citations, evidence and parameters, how it got
+    there: assigned, inherited or derived, when and by whom). Computed per row, when read and by the same
+    code that enforces, never stored: attestations (last attested when, by whom and what was stated; cadence,
+    next due, status current, due soon, overdue or never; days overdue; pending workflow step and who it
+    waits on; returns and rejections); citations (whether each still resolves, whether the cited text drifted
+    since assignment or last attestation, whether the required attesters can read it, required citations
+    or evidence missing); principals (assigner, owner, attesters and required attester; whether each is
+    still a member holding the right they acted with; separation of duties, such as assigner equal to attester
+    or an owner attesting their own object; orphaned principals); and a roll-up status per row (clean, needs
+    attention, blocked) with its reason, including whether the tag blocks a gate now. An as-of date answers
+    what the state was on a past date. Rows are governed by the object''s read rights and readable by Polly
+    and MCP. Grouped by tag it is the tag quality report; by object or domain, what needs attention there;
+    by principal, what each person owes; and anyone may define governed metrics over any subset of it (maintainer
+    2026-11-07).'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -92976,3 +93127,288 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     And on a table with an embedding column each row also carries its similarity score'
+
+- id: REQ-2214
+  value: 'An unquoted name in SQL finds its table or column whatever its case: the naming authority resolves it to
+    the registered name.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Naming Convention
+  feature: semantic-model-naming
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: SQL names are case insensitive. An unquoted identifier in a SQL statement
+    (a schema, table, view, column or function name) is resolved by the naming authority (REQ-194) against the
+    registered client-facing names ignoring case, and the statement then carries the registered spelling, so
+    SELECT * FROM grpc_remote.ns__AnimalCatalog__ListBreeds and ...__animalcatalog__listbreeds name the same
+    table. A quoted identifier matches exactly, as in PostgreSQL. Resolution happens on the parsed statement in
+    the one query pipeline, before governance, for every SQL front end (pgwire, Arrow Flight SQL, HTTP /data/sql,
+    MCP run_sql). Two registered names that differ only by case cannot coexist: the naming authority refuses the
+    second registration naming the first, so an unquoted name always resolves to at most one object. Where
+    PostgreSQL would refuse an unquoted name that matches a mixed-case object only by case, Provisa resolves it;
+    the pgwire conformance lists record that difference. This generalises the dialect case rule of REQ-2212 to
+    every connection.'
+  use_case: A client types a table name in any case without quoting and reaches the registered table.
+  scenario: 'Given a registered table whose SQL name is Orders_Archive
+
+    When a client runs SELECT count(*) FROM orders_archive
+
+    Then the statement reads Orders_Archive
+
+    And registering a second table named orders_archive in the same schema is refused, naming Orders_Archive'
+- id: REQ-2215
+  value: 'Provisa can resolve a role to the principals who hold it, whichever system owns role membership, so work
+    addressed to a role reaches people.'
+  status: proposed
+  target: 2026-Q4
+  group: 2. Authentication & Identity
+  category: Identity
+  feature: sign-in-and-identity-providers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: requests and other work are addressed to roles, and where membership comes
+    from an identity provider Provisa does not know who holds a role. One contract answers "the members of role R
+    in org O" with principals (id, display name, email), by whichever system owns membership: Provisa''s own role
+    assignments are read from its own tables; an external identity provider is reached through a resolver that
+    implements a system-defined contract (read-only, synchronous, a declared time limit), with resolvers for SCIM,
+    LDAP group membership, Microsoft Graph (Entra ID) and Google Directory, and any declared command that implements
+    the contract. Its first users: a request notifies the members of the role it is addressed to and shows who can
+    act on it; tag attestation workflows (REQ-2209) know who owes an attestation; and the tags report''s principal
+    checks (REQ-2208) know whether an attester is still a member and who the required attesters are, including
+    separation of duties across a role. The member list is used by the server to send and to check; showing it to
+    a person requires the user management right. A role whose membership source has no resolver has no resolvable
+    members, and anything addressed to it says so, naming the role, rather than notifying no one silently.'
+  use_case: An access request addressed to the data steward role emails the people who hold that role in the
+    identity provider.
+  scenario: 'Given a role whose members come from an identity provider with a SCIM resolver configured
+
+    When a request is addressed to that role
+
+    Then each member the resolver returns is notified
+
+    And with no resolver configured the request shows that the role has no resolvable members, naming it'
+- id: REQ-2216
+  value: 'External workflow tools run Provisa''s workflows: Provisa emits each workflow moment as an event and accepts
+    each decision through its API, and an org may turn its own email notices off.'
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: Workflow
+  feature: change-events-and-streams-sinks-and-events
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run
+    approvals in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal);
+    Provisa feeds them and stays the system of record for what was decided. Events out: each workflow moment
+    (a request created, an attestation coming due or overdue, a gate refusal, a cited section drifting,
+    a review step waiting) is an event delivered through the existing triggers and webhooks, naming the
+    object, the role it is addressed to, the resolved principals (REQ-2215) and a link back. Decisions in:
+    an API completes each step (approve or deny a request, record an attestation with its statement and
+    evidence, return a step); the acting person authenticates as themselves, Provisa checks their right,
+    and the decision is logged with the tags as they were (REQ-2208). Delivery is an org setting: email
+    (built in, the default), events only (Provisa sends no notice itself), or both. The contract is stable:
+    a versioned event schema, an idempotency key on every event and decision so a retried delivery cannot
+    apply twice, signed deliveries, and replay of missed events. This widens the tags unit''s events step
+    (REQ-2209) to requests and every other workflow. (Amended 2026-11-07, AN ENHANCEMENT OF WHAT EXISTS:)
+    This builds on what exists: requests are already recorded and already have the endpoints that carry
+    them out (creation requests'' approve, environment merge decisions, glossary term approval, profiler
+    constraint decisions), so an external tool can act today. [SUPERSEDED by REQ-2216, 2026-11-07 -- requests
+    become an ops table and events are its row changes, delivered by the existing subscriptions (maintainer
+    2026-11-07). Kept here for history; do not implement against it.] The work is four additions: an event
+    when a request is created or decided, through the existing triggers and webhooks, carrying the role
+    and its resolved members; the org delivery setting (email, events only, both); an idempotency key on
+    the approve and decide calls; and signed deliveries with replay where the existing webhooks lack them.
+    [END SUPERSEDED BLOCK] Attestation and review events stay with the tags unit (REQ-2209) (maintainer
+    2026-11-07). (Amended 2026-11-07, REQUESTS ARE AN OPS TABLE; EVENTS ARE ITS CHANGES:) Requests are published
+    as a table of the ops system schema (ops.requests): one row per request with what was asked, by whom,
+    the role it is addressed to and that role''s resolved members (REQ-2215), its state, the decision, who
+    decided and when; governed like any other table, so a row is visible only to those allowed to see it,
+    and readable by Polly, MCP, reports and metrics. There is no separate event mechanism: a workflow tool
+    subscribes to ops.requests through the subscriptions and change events tables already have, so request
+    created and request decided are an insert and an update, and the event''s schema is the table''s columns.
+    Decisions still enter through the existing approve and decide endpoints. The work left is the ops table,
+    the org delivery setting (email, events only, both) and an idempotency key on the approve and decide
+    calls; delivery, signing and replay are whatever the subscription mechanism provides (maintainer 2026-11-07).
+    (Amended 2026-11-07, PROVISA IS NOT THE WORKFLOW TOOL:) Whatever an enterprise does between a request
+    and its decision (gathering documents, attestations, a chain of approvals, escalations) runs in its
+    own tool and is its own concern; Provisa models no workflow steps or states beyond the request''s own
+    (pending, decided). [SUPERSEDED by REQ-2216, 2026-11-07 -- the trail lives in the enterprise''s own
+    table related to ops.requests (maintainer 2026-11-07). Kept here for history; do not implement against
+    it.] The approve and deny calls may carry the enterprise''s trail as given (a statement, links to evidence,
+    the approvals it collected), which Provisa stores with the decision and shows on the request row without
+    interpreting or validating it (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07, PROCESS
+    EXTENSIONS ARE THE ENTERPRISE''S OWN TABLES:) The decision calls carry no workflow trail. An enterprise
+    that keeps process data (documents gathered, attestations, its approval chain) registers its own table
+    as a governed source and relates it to ops.requests by request id, so the request and its process data
+    join in one query under the same governance, lineage and reports as any relationship, in the enterprise''s
+    own shape. An ops system table can therefore be the target of a relationship from a user''s table (maintainer
+    2026-11-07).'
+  use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
+    Provisa's own email notices off.
+  scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
+
+    When a request is addressed to a role
+
+    Then the tool receives a signed, versioned event naming the request, the role and its members, and no email is sent
+
+    And when the tool approves it through the API as an authorised person, the request is approved once, even if the call is retried'
+- id: REQ-2217
+  value: 'Data access is built in a feature branch and promoted, and a production user who needs a column or a join
+    asks for it, without anyone editing roles in production.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Access requests
+  feature: environments-access
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: two scenarios, and roles and access rights are never edited directly
+    in production. (1) Building access in a lower lane: a developer or analyst authors views, relationships
+    and role access in their feature branch, runs what they built as a target role to see what that role
+    cannot reach (masked or absent columns, relationships it cannot traverse), and from that view grants
+    the role those columns and relationships as an ordinary model change in the branch; the change reaches
+    production by promotion, reviewed at the environment merge request with everything else. [SUPERSEDED
+    by REQ-2217, 2026-11-07 -- a person''s access in any environment can be formally requested; only the
+    model change itself is authored in the branch (maintainer 2026-11-07). Kept here for history; do not
+    implement against it.] No request is raised in a lower lane. [END SUPERSEDED BLOCK] (2) A production
+    request: a production user who can see the metadata (a column exists, two tables could join) but cannot
+    read the values or traverse the join asks for what they need, from the catalog or from a refused query:
+    these columns exposed, or these tables joined, with a purpose and how long it is needed. It is an access
+    request in the request queue (ops.requests, REQ-2216), addressed to the role that can grant it with
+    its members resolved (REQ-2215), and may be run by the enterprise''s workflow tool. [SUPERSEDED by REQ-2218,
+    2026-11-07 -- a personal grant is a time-limited inheritance on the requester''s principal role (maintainer
+    2026-11-07). Kept here for history; do not implement against it.] The steward resolves it as a time-limited
+    grant of an existing role (a production exception that expires), [END SUPERSEDED BLOCK] as a permanent
+    change authored in a lower lane and promoted, or as a refusal with a reason; Provisa suggests the existing
+    roles that would satisfy it within the requester''s domains. The request that a refused governed create
+    (a view or relationship, REQ-434) raises today is one way a production request is made. (Amended 2026-11-07,
+    A BUILDER''S RIGHTS IN A LOWER LANE:) A builder''s own rights in a lower lane may be restricted (which
+    sources, domains or data they may author against or read there), set per environment by its administrators.
+    [SUPERSEDED by REQ-2217, 2026-11-07 -- lower-lane rights may need a formal request too (maintainer 2026-11-07).
+    Kept here for history; do not implement against it.] Changing them is an operational matter between
+    the builder and whoever runs that environment, outside the request flow: no request type exists for
+    it (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07, EVERY REQUEST NAMES ITS ENVIRONMENT:)
+    Every request names the environment it is for. A person''s access in any environment, production or
+    a lower lane, can be formally requested: a builder who needs rights to a lower lane''s features, sources
+    or data asks for them, as regulated organisations require, and that environment''s administrators resolve
+    it. What is never requested is a change to the model itself (a role''s definition, a mask, a relationship):
+    it is authored in a feature branch and promoted. The request queue, its members resolution and its workflow
+    events are the same for every environment, and ops.requests shows each request''s environment (maintainer
+    2026-11-07). (Amended 2026-11-07, FORMAL REQUESTS ARE AN ENVIRONMENT SETTING:) [SUPERSEDED by REQ-2217,
+    2026-11-07 -- there is no setting: both paths are always open (maintainer 2026-11-07). Kept here for
+    history; do not implement against it.] Whether access in an environment goes through formal requests
+    is a setting of that environment: on, every grant of access there is made by resolving a request, so
+    it is recorded with its purpose and decision; off, the environment''s administrators grant access directly,
+    as an operational matter. It is off by default for lower lanes and on by default for production, and
+    each environment''s administrators may change it (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended
+    2026-11-07, A REQUEST IS ONE WAY, NEVER THE ONLY WAY:) A request is optional in every environment: anyone
+    may raise one, and the person with the right to grant access may also grant it directly, after a conversation,
+    without a request. Both paths grant through the same right and are logged the same way; a request adds
+    only its purpose, its trail and its place in the queue. There is no setting that forces either path
+    (maintainer 2026-11-07). (Amended 2026-11-07, A PERSONAL GRANT IS AN INHERITANCE ON THE PRINCIPAL ROLE:)
+    [SUPERSEDED by REQ-2219, 2026-11-07 -- per-principal access is attributes on the role grant, not a principal
+    role (maintainer 2026-11-07). Kept here for history; do not implement against it.] The steward resolves
+    an access request by adding a time-limited inheritance of an existing (or newly promoted purpose) role
+    to the requester''s principal role (REQ-2218), by authoring a permanent change in a lower lane and promoting
+    it, or by refusing with a reason (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07,
+    RESOLVED AS ATTRIBUTES ON THE ROLE GRANT:) A production access request for a person is resolved by setting
+    that person''s entitlement attributes on their role grant in the identity provider (REQ-2219), by authoring
+    a permanent change in a lower lane and promoting it, or by refusing with a reason (maintainer 2026-11-07).'
+  use_case: A production analyst preparing a business decision asks to see a masked revenue column for two weeks;
+    the steward grants an existing role until the date, and the permanent change is promoted from a feature branch.
+  scenario: 'Given a production analyst who can see that a column exists but sees it masked
+
+    When they request it exposed for two weeks with a purpose
+
+    Then a request addressed to the granting role appears in ops.requests with the roles that would satisfy it
+
+    And once the steward grants an existing role until a date, the analyst reads the column until that date and not after'
+- id: REQ-2218
+  value: 'Every principal is a role: a signed-in principal''s stable id is a meta role that inherits the roles its
+    identity provider grants, and a personal grant is one more inheritance on it.'
+  status: rejected
+  rejection_reason: 'Superseded by REQ-2219 (maintainer 2026-11-07): per-principal access is entitlement attributes on a coarse role grant from the identity provider; the principal is never a role and Provisa holds no per-person state.'
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Role Assignments
+  feature: roles-and-capabilities-inheritance
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: as in PostgreSQL, where a user is a role that can sign in, every principal is
+    a role. A signed-in principal''s stable id from the identity provider (its subject id, never an email that can
+    change) is a meta role that inherits every role the identity provider grants it in that sign-in, plus any
+    inheritance Provisa holds for it explicitly. It exists without being created and grants nothing of its own. A
+    personal grant (the resolution of an access request, REQ-2217) is an explicit inheritance edge from the principal
+    role to an existing or purpose role, carrying an expiry and lapsing when unused (REQ-2077); there is no separate
+    assignment table and no role designed per person. Masks, row rules, capabilities and audit apply unchanged
+    because a principal role is a role. Principal roles carry no masks, rules or capabilities of their own, only
+    inheritance, so per-person policy cannot reappear. They are shown in role lists only once they carry an explicit
+    inheritance, or when searched for, under a name from the naming authority with the display name beside it. When
+    the identity provider stops granting a principal, its principal role grants nothing, and its explicit edges lapse
+    by expiry or disuse. Provisa holds no identities: only the edges it was asked to create, keyed by the provider''s
+    stable id.'
+  use_case: A steward resolves a production access request by letting Alice's principal role inherit Finance-Full
+    until the 21st; Alice keeps her identity-provider roles and gains Finance-Full until that date.
+  scenario: 'Given Alice signs in with the analyst role from her identity provider
+
+    When a steward adds an inheritance of Finance-Full to Alice''s principal role until the 21st
+
+    Then Alice reads what analyst and Finance-Full allow until the 21st, and what analyst allows after it
+
+    And the role list shows Alice''s principal role with that one inheritance and its expiry'
+- id: REQ-2219
+  value: 'Per-principal access is entitlement attributes on a coarse role: each role grant from the identity provider
+    carries, per kind of object, a list of semantic SQL identifiers the person is entitled to.'
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Role Assignments
+  feature: roles-and-capabilities-capabilities
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: access to specific tables and columns is often per person, and a
+    role per person explodes. Roles stay coarse (viewer, analyst, steward), and each role grant the identity
+    provider makes carries entitlement attributes: per kind of object (tables, columns, relationships),
+    a list of semantic SQL identifiers, the client-facing SQL names of the names table (REQ-194), that the
+    person is entitled to within that role, [SUPERSEDED by REQ-2219, 2026-11-07 -- masking stays role-based;
+    there is no unmask list (maintainer 2026-11-07). Kept here for history; do not implement against it.]
+    for example viewer with unmask [finance.revenue.amount] and joins [orders_customer]. [END SUPERSEDED
+    BLOCK] The role''s column rules and masks, row rules and relationship traversal read those lists, so
+    one role and one rule set give each person their own access. The identity provider, or the identity
+    governance tool behind it, holds and certifies the attributes per person, with their own expiry; Provisa
+    holds no per-person state. An identifier that names no object in the names table is flagged as a warning
+    in the names report and at sign-in, never silently ignored. A logged decision records the attributes
+    as they were. The ontology is not involved. (Amended 2026-11-07, A MASK OVER THE ROLE''S SCHEMA, WITH
+    WILDCARDS:) The attribute lists are a mask over the role''s schema: the role defines everything its
+    holders could see, and a person''s lists select [SUPERSEDED by REQ-2219, 2026-11-07 -- masking stays
+    role-based; there is no unmask list (maintainer 2026-11-07). Kept here for history; do not implement
+    against it.] (and, under unmask, unmask) [END SUPERSEDED BLOCK] within it, so their effective schema
+    is the role''s cut down by their lists. The role is the ceiling: an attribute never reaches outside
+    the role, and anything wider is a new role, authored and promoted. The mask is applied where the role''s
+    schema is built, so every surface (SQL, the GraphQL schema, the gRPC proto, catalogs, the names report)
+    shows the person exactly their slice; schemas are cached by role and a hash of the lists. An identifier
+    may use * for all instances at its level: * for every object of that kind in the role, finance.* for
+    every table in finance, finance.revenue.* for every column of finance.revenue. A wildcard resolves against
+    the names table at each schema build, so objects added later within it are included (maintainer 2026-11-07).
+    (Amended 2026-11-07, SELECTION ONLY; MASKING STAYS WITH THE ROLE:) Entitlement lists only select: tables,
+    columns and relationships, for example viewer with tables [sales.*, finance.revenue] and relationships
+    [orders_customer]. Masking is the role''s alone: there is no unmask list, and a person who must see
+    a column unmasked holds a role that does not mask it. Defaults: a list that is absent means the role''s
+    full schema, the same as [*], so a plain role grant works exactly as a role does without entitlements;
+    an empty list means nothing of that kind (maintainer 2026-11-07). (Amended 2026-11-07, THE PRINCIPLE:)
+    The role determines capabilities (what its holders may do, and how values are masked); the entitlements
+    tell you where those capabilities apply (which tables, columns and relationships). Neither crosses into
+    the other (maintainer 2026-11-07).'
+  use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
+    viewer can see, while another viewer with no list sees all of it.
+  scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
+
+
+    When both list the tables they can query
+
+
+    Then the first sees only finance.revenue and the second sees every table viewer allows
+
+
+    And a list entry naming no object is reported as a warning naming the identifier'

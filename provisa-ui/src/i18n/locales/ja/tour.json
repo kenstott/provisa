@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL（9つのサーフェスのうち1つ目）",
-        "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルなので、監査ログやリネージをライブデータに直接結合できます。<p>🔌 同じガバナンス済み SQL は、このエクスプローラー以外にも複数のワイヤープロトコル経由で動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong>：Postgres 互換のクライアント全般（psql、DBeaver、Tableau、Power BI）がそのまま接続できます。</li><li><strong>JDBC</strong>：あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong>：ADBC クライアント向けの列指向ストリーミングで、行の再エンコードは不要です。大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong>：DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"
+        "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルなので、監査ログやリネージをライブデータに直接結合できます。<p>🔌 同じガバナンス済みモデルは、このエクスプローラー以外にも複数のプロトコルで提供されます。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong>：Postgres 互換のクライアント全般（psql、DBeaver、Tableau、Power BI）がそのまま接続できます。</li><li><strong>JDBC</strong>：あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong>：ADBC クライアント向けの列指向ストリーミングで、行の再エンコードは不要です。大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong>：DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li><li><strong>OData</strong>：Excel と Power BI は組み込みの OData フィードで接続し、ガバナンス済みテーブルを直接読み取れます。</li></ul>"
       },
       "step7": {
         "title": "GraphQL（9つのサーフェスのうち2つ目）",
