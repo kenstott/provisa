@@ -24,12 +24,13 @@ import datetime as _dt
 from provisa.core import model_change
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, func, select
 
 from provisa.core.models import (
     DERIVED_TAG_IDS,
     DERIVED_TAGS,
     SYSTEM_TAG_IDS,
+    RowRuleRef,
     SYSTEM_TAGS,
     Tag,
     TagAssignment,
@@ -40,6 +41,7 @@ from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, rem
 from provisa.core.schema_org import (
     glossary_terms,
     registered_tables,
+    rls_rules,
     tag_assignments,
     tag_param_values,
     tags,
@@ -186,6 +188,9 @@ async def assign(  # REQ-1377, REQ-1919
             "relationship_id": assignment.relationship_id,
             "command_name": assignment.command_name,
             "term_id": assignment.term_id,  # REQ-2145
+            "rls_rule_id": assignment.rls_rule_id,  # REQ-2208
+            "role_id": assignment.role_id,
+            "metric_name": assignment.metric_name,
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
@@ -339,12 +344,14 @@ async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> boo
 
 
 async def list_assignments(conn: "Connection") -> list[dict]:
-    """All assignments, with the qualified table address joined in for table/column targets and
-    the term's name for a term (REQ-2145).
+    """All assignments, with the qualified table address joined in for table/column targets, the
+    term's name for a term (REQ-2145) and the rule's role, target and rights for a row rule
+    (REQ-2208).
 
-    ``table_ref`` ("source.schema.table") and ``term`` are the config-vocabulary identities the
-    export builder resolves; DB serials never leave the repository layer.
+    ``table_ref`` ("source.schema.table"), ``term`` and ``rls_rule`` are the config-vocabulary
+    identities the export builder resolves; DB serials never leave the repository layer.
     """
+    rule_table = registered_tables.alias("rule_table")
     result = await conn.execute_core(
         select(
             tag_assignments,
@@ -352,6 +359,12 @@ async def list_assignments(conn: "Connection") -> list[dict]:
             registered_tables.c.schema_name.label("ref_schema_name"),
             registered_tables.c.table_name.label("ref_table_name"),
             glossary_terms.c.name.label("term"),
+            rls_rules.c.role_id.label("rule_role_id"),
+            rls_rules.c.domain_id.label("rule_domain_id"),
+            rls_rules.c.action_name.label("rule_action_name"),
+            rls_rules.c.tag_id.label("rule_tag_id"),
+            rls_rules.c.rights.label("rule_rights"),
+            func.coalesce(rule_table.c.alias, rule_table.c.table_name).label("rule_table"),
         )
         .join(
             registered_tables,
@@ -359,6 +372,8 @@ async def list_assignments(conn: "Connection") -> list[dict]:
             isouter=True,
         )
         .join(glossary_terms, tag_assignments.c.term_id == glossary_terms.c.id, isouter=True)
+        .join(rls_rules, tag_assignments.c.rls_rule_id == rls_rules.c.id, isouter=True)
+        .join(rule_table, rls_rules.c.table_id == rule_table.c.id, isouter=True)
         .order_by(tag_assignments.c.tag_id, tag_assignments.c.object_key)
     )
     rows = []
@@ -368,9 +383,67 @@ async def list_assignments(conn: "Connection") -> list[dict]:
         schema = row.pop("ref_schema_name", None)
         table = row.pop("ref_table_name", None)
         row["table_ref"] = f"{src}.{schema}.{table}" if src is not None else None
+        row["rls_rule"] = _rule_ref(row)  # REQ-2208
         row["why"] = why_of(row)  # REQ-2094
         rows.append(row)
     return rows
+
+
+_RULE_COLUMNS = (
+    "rule_role_id",
+    "rule_domain_id",
+    "rule_action_name",
+    "rule_tag_id",
+    "rule_rights",
+    "rule_table",
+)
+
+
+def _rule_ref(row: dict) -> dict | None:
+    """The row rule an assignment row is on, as a configuration names it (models.RowRuleRef), with
+    the joined rule columns taken off the row; None when the assignment is not on a rule."""
+    rule = {k: row.pop(k, None) for k in _RULE_COLUMNS}
+    if row.get("rls_rule_id") is None or rule["rule_role_id"] is None:
+        return None
+    ref = {
+        "role_id": rule["rule_role_id"],
+        "table_id": rule["rule_table"],
+        "domain_id": rule["rule_domain_id"],
+        "action_name": rule["rule_action_name"],
+        "tag_id": rule["rule_tag_id"],
+        "rights": list(rule["rule_rights"]),
+    }
+    return {k: v for k, v in ref.items() if v is not None}
+
+
+async def resolve_rls_rule_id(conn: "Connection", ref: RowRuleRef) -> int | None:  # REQ-2208
+    """The serial of the row rule ``ref`` names in THIS schema, or None when there is none: the
+    role's rule on the target holding exactly those rights (a right is in at most one of a role's
+    rules on a target, REQ-2188)."""
+    from provisa.core.repositories import table as table_repo
+
+    if ref.action_name:
+        target = rls_rules.c.action_name == ref.action_name
+    elif ref.tag_id:
+        target = rls_rules.c.tag_id == ref.tag_id
+    elif ref.domain_id:
+        target = rls_rules.c.domain_id == ref.domain_id
+    elif ref.table_id:
+        table = await table_repo.find_by_table_name(conn, ref.table_id)
+        if table is None:
+            return None
+        target = rls_rules.c.table_id == table["id"]
+    else:
+        raise ValueError(f"row rule of {ref.role_id!r} names no target")
+    rights = "".join(r for r in ("R", "U", "D") if r in ref.rights)
+    row = (
+        await conn.execute_core(
+            select(rls_rules.c.id).where(
+                target, rls_rules.c.role_id == ref.role_id, rls_rules.c.rights == rights
+            )
+        )
+    ).fetchone()
+    return row.id if row is not None else None
 
 
 def why_of(row: dict) -> dict | None:

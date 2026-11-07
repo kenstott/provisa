@@ -40,7 +40,11 @@ jobs:
 
       - name: Install build deps (macOS)
         if: matrix.os == 'darwin'
-        run: brew install cmake ninja mariadb-connector-c lz4 zstd openssl@3
+        run: |
+          brew install cmake ninja mariadb-connector-c lz4 zstd openssl@3
+          # mariadb-connector-c pulls in openssl@4, whose headers Homebrew links into /opt/homebrew/include,
+          # where vcpkg's s2n (OpenSSL 3 API) finds them first. Its own libs reach openssl@4 by opt path.
+          if brew list openssl@4 >/dev/null 2>&1; then brew unlink openssl@4; fi
 
       - name: Install build deps (Linux)
         if: matrix.os == 'linux'

@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Derivato dall'aggregazione quando costruita da una misura di una tabella dei fatti",
     "fieldDescription": "Descrizione",
     "fieldAiContext": "Contesto AI",
+    "fieldTags": "Tag",
     "fieldAiContextPlaceholder": "Suggerimenti per la generazione di query assistita dall'AI",
     "saveFailed": "Salvataggio non riuscito.",
     "editMetric": "Modifica metrica {{name}}",

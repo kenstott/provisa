@@ -17,7 +17,8 @@ column rename would break (REQ-1484), the objects a refused delete is still refe
 (REQ-1918):
 
 - a table, view or materialized view: the acting role is served a column of it;
-- a column, a relationship end, a tag on a column: the acting role is served that column;
+- a column, a relationship end, a tag on a column: the acting role is served that column; a tag
+  on a row rule or a metric: the caller may read that rule or metric (REQ-2208);
 - a metric or a command: it is granted to the acting role;
 - a glossary term: the caller's domains read it.
 
@@ -157,14 +158,22 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
     if kind == "tag_assignment":
         row = (
             await conn.execute_core(
-                select(tag_assignments.c.table_id, tag_assignments.c.column_name).where(
-                    tag_assignments.c.id == key
-                )
+                select(
+                    tag_assignments.c.table_id,
+                    tag_assignments.c.column_name,
+                    tag_assignments.c.rls_rule_id,
+                    tag_assignments.c.metric_name,
+                ).where(tag_assignments.c.id == key)
             )
         ).fetchone()
-        return row is not None and (
-            row.table_id is None or reader.column(row.table_id, row.column_name)
-        )
+        if row is None:
+            return False
+        # REQ-2208: a tag on a row rule or a metric is read by whoever may read that rule or metric.
+        if row.rls_rule_id is not None:
+            return await _readable(conn, reader, _ref_dependent("row_filter", row.rls_rule_id))
+        if row.metric_name is not None:
+            return await _readable(conn, reader, _ref_dependent("metric", row.metric_name))
+        return row.table_id is None or reader.column(row.table_id, row.column_name)
     if kind == "materialized_view":
         # A view's storage row is kept under ``view-<table name>`` (integrity._attributes); any
         # other materialized view is named by the tables it reads.
@@ -180,6 +189,14 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
         tables = await _tables_named(conn, names)
         return bool(tables) and all(reader.column(t, None) for t in tables)
     return True
+
+
+def _ref_dependent(kind: str, key: Any) -> "Dependent":
+    """A bare dependent naming ``kind`` ``key``, to ask :func:`_readable` about an object another
+    one is on."""
+    from provisa.core.repositories.integrity import Dependent, ObjectRef
+
+    return Dependent(ObjectRef(kind, key), via=())
 
 
 async def relationship_readable(conn: "Connection", reader: DependentsReader, rel_id: str) -> bool:

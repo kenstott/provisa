@@ -30,8 +30,9 @@ import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hoo
 import { Tip, TipSurface } from "./Tip";
 import { ColumnPiiForm } from "./ColumnPiiForm";
 
-// REQ-1377: one reusable tag-pill + tag-picker control shared by the five
-// taggable object surfaces (source, table, column, relationship, command).
+// REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable
+// object surface (source, table, column, relationship, command; REQ-2208: row
+// rule, role, metric).
 // REQ-1375: each assignment may carry a reason and a planned-removal date;
 // the tag's reasonPolicy/expiresPolicy drive whether each field is shown
 // (not "hidden") and demanded ("required").
@@ -42,6 +43,10 @@ interface TagControlProps {
   columnName?: string;
   relationshipId?: string;
   commandName?: string;
+  /** REQ-2208: the row rule, role or metric the tags are on. */
+  rlsRuleId?: number;
+  roleId?: string;
+  metricName?: string;
   readOnly?: boolean;
   /** A column's: the glossary term it is pii through (REQ-2145), shown on its pii pill. */
   piiTerm?: string | null;
@@ -67,6 +72,9 @@ export function TagControl({
   columnName,
   relationshipId,
   commandName,
+  rlsRuleId,
+  roleId,
+  metricName,
   readOnly,
   piiTerm,
 }: TagControlProps) {
@@ -96,6 +104,12 @@ export function TagControl({
         return a.relationshipId === relationshipId;
       case "command":
         return a.commandName === commandName;
+      case "rls_rule":
+        return a.rlsRuleId === rlsRuleId;
+      case "role":
+        return a.roleId === roleId;
+      case "metric":
+        return a.metricName === metricName;
     }
   };
 
@@ -108,7 +122,13 @@ export function TagControl({
           ? `${tableId}-${columnName}`
           : objectType === "relationship"
             ? relationshipId
-            : commandName;
+            : objectType === "rls_rule"
+              ? rlsRuleId
+              : objectType === "role"
+                ? roleId
+                : objectType === "metric"
+                  ? metricName
+                  : commandName;
 
   const objectAssignments = tagAssignments.filter(matches);
   // REQ-2145: pii on a column goes through its own flow -- on its term, or on the column alone.
@@ -134,6 +154,9 @@ export function TagControl({
     columnName: objectType === "column" ? columnName : undefined,
     relationshipId: objectType === "relationship" ? relationshipId : undefined,
     commandName: objectType === "command" ? commandName : undefined,
+    rlsRuleId: objectType === "rls_rule" ? rlsRuleId : undefined,
+    roleId: objectType === "role" ? roleId : undefined,
+    metricName: objectType === "metric" ? metricName : undefined,
   });
 
   const closeForm = () => {
