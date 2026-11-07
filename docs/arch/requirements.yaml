@@ -2987,7 +2987,16 @@
     It is governed like the other meta tables: a row is visible only to a caller who may read the object
     it names. A standard report over it lists every object with its names on each surface, filterable by
     object kind, surface and domain, and shows the clashes refused at the last build; that report is its
-    UI. The UI reads the names of saved objects from this table rather than computing them (maintainer 2026-11-07).'
+    UI. The UI reads the names of saved objects from this table rather than computing them (maintainer 2026-11-07).
+    (Amended 2026-11-07, THE NAMES TABLE FINDS NAMING PROBLEMS:) While the names table is built, every name,
+    derived or set by an operator, is checked and each problem is recorded as a warning on the object, shown
+    in the names report and readable by Polly and MCP: a name that must be quoted on some surface (a reserved
+    word there, a leading digit, a character the surface does not take); two physical names that a convention
+    collapses into one (refused as a clash, the warning names both objects and the surface); a conversion
+    that loses information or reads badly (HTTPServer to h_t_t_p_server, a long prefix chain); a name longer
+    than a surface accepts (PostgreSQL''s 63-character identifiers, proto and client limits); and an alias
+    that shadows another object''s name. Each warning names the object, the surface and the fix (for example,
+    set an alias). Only clashes block the build; the rest are warnings (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
