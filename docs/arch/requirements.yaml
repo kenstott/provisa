@@ -93214,9 +93214,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (Amended 2026-11-07, PROVISA IS NOT THE WORKFLOW TOOL:) Whatever an enterprise does between a request
     and its decision (gathering documents, attestations, a chain of approvals, escalations) runs in its
     own tool and is its own concern; Provisa models no workflow steps or states beyond the request''s own
-    (pending, decided). The approve and deny calls may carry the enterprise''s trail as given (a statement,
-    links to evidence, the approvals it collected), which Provisa stores with the decision and shows on
-    the request row without interpreting or validating it (maintainer 2026-11-07).'
+    (pending, decided). [SUPERSEDED by REQ-2216, 2026-11-07 -- the trail lives in the enterprise''s own
+    table related to ops.requests (maintainer 2026-11-07). Kept here for history; do not implement against
+    it.] The approve and deny calls may carry the enterprise''s trail as given (a statement, links to evidence,
+    the approvals it collected), which Provisa stores with the decision and shows on the request row without
+    interpreting or validating it (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07, PROCESS
+    EXTENSIONS ARE THE ENTERPRISE''S OWN TABLES:) The decision calls carry no workflow trail. An enterprise
+    that keeps process data (documents gathered, attestations, its approval chain) registers its own table
+    as a governed source and relates it to ops.requests by request id, so the request and its process data
+    join in one query under the same governance, lineage and reports as any relationship, in the enterprise''s
+    own shape. An ops system table can therefore be the target of a relationship from a user''s table (maintainer
+    2026-11-07).'
   use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
     Provisa's own email notices off.
   scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
