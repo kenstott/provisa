@@ -41,11 +41,12 @@
   - compliance
   - data-engineer
   competitive_position:
-    status: ahead
+    status: parity
     rationale: Provisa expresses governance entirely through data-layer controls (visibility, RLS, masking)
       across all query protocols (GraphQL, SQL, pgwire, Arrow Flight) with no capability gate on querying
-      itself. Competitors like Hasura and Denodo still use protocol-specific access control lists or query
-      whitelists that must be managed per-endpoint.
+      itself. Competitors (Trino, Hasura, Denodo, Dremio, Snowflake) also govern through row filters, masking
+      and role grants, so this is parity on the mechanism; Provisa's edge is one model applied the same way
+      on every protocol it serves (competitive matrix honesty pass, 2026-11-07).
   docs:
   - architecture.md
   - pgwire.md
@@ -32253,9 +32254,10 @@
   integration_test: required
   competitive_position:
     status: parity
-    rationale: Trino natively streams Arrow over Flight; ClickHouse as a standalone system does not expose
-      Arrow Flight. Once implemented, Provisa matches Trino's federated Arrow capability, providing parity
-      with the industry standard for columnar transport in federated query engines.
+    rationale: 'Trino''s client protocol is HTTP, not Arrow Flight; Dremio and Denodo 9.5 serve Flight SQL.
+      ClickHouse standalone does not expose Arrow Flight. Once implemented, Provisa serves the ClickHouse
+      engine''s results over Flight like the Flight SQL engines do (corrected 2026-11-07: an earlier rationale
+      said Trino streams Arrow over Flight).'
   docs:
   - architecture.md
   - deployment.md
