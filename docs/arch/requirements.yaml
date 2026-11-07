@@ -83280,7 +83280,10 @@
     the business question through the hub, then asks how far that answer can be trusted, runs the check,
     and reveals a renewing account the hub links to the wrong Stripe customer, so its overdue invoice was
     missing from the first answer; the corrected answer includes it. The demo data is planted so that reveal
-    is real (maintainer 2026-11-07).'
+    is real (maintainer 2026-11-07). (Amended 2026-11-07, REPLICAS ARE NOT PART OF THE STORY:) Landing the
+    SaaS data once as replicas is a choice made to keep the demo practical, not something the demo presents:
+    the tour, queries and narration treat Salesforce, ServiceNow, Jira and Stripe as the sources they are
+    and never mention replicas, TTLs or how the data was landed (maintainer 2026-11-07).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
