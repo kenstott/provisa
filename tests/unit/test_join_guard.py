@@ -1010,7 +1010,7 @@ def test_branches_of_registered_tables_stay_alternatives():
     )
 
 
-# --- a model reading the same views of a union again and again (#J915) ---------------------------
+# --- a model reading the same views of a union again and again (#329) ---------------------------
 
 _RECORDS = "(SELECT k, n FROM a UNION ALL SELECT k, n FROM b UNION ALL SELECT k, n FROM c " + (
     "UNION ALL SELECT k, n FROM d)"
@@ -1051,7 +1051,7 @@ def _crosswalk_check(sql: str, registered: set[tuple[int, int, str, str]]) -> li
 
 @pytest.mark.timeout(5)
 def test_views_of_a_union_read_again_and_again_are_checked_without_listing_their_product():
-    """#J915: customer360's ``master`` reads a crosswalk view 3 times, which reads a 4-branch
+    """#329: customer360's ``master`` reads a crosswalk view 3 times, which reads a 4-branch
     UNION view 4 times: 4 ** 12 (16.7M) choices of branch. The guard listed every one before
     making them distinct -- 14 GB, the CI runner killed. Each choice is now its connected pieces
     as seen from beyond it, combined as built: the same check in a fraction of a second."""

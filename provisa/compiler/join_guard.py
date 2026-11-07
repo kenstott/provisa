@@ -275,7 +275,7 @@ class _Pieces:
     """Each set a group combines, as the connected pieces the registered pairings make of it.
 
     A group's sets are a product of its unions' branches: reading the same unions again and again
-    (a view reading a view of a UNION, read three times), far too many to list (#J915). Two sets
+    (a view reading a view of a UNION, read three times), far too many to list (#329). Two sets
     of one choice that look the same from beyond it -- the same pieces, by least instance, each
     sharing and related to the same instances beyond -- are combined with anything else to the
     same pieces, so each choice is kept as its distinct pieces, and a combination never holds
@@ -533,7 +533,7 @@ class _Resolver:
         """The sets of instances ``scope`` combines: one set, or one per choice of branch where it
         reads a UNION (the branches of a union are alternatives, never combined with each other),
         unexpanded -- a statement reading the same unions again and again has a product of them
-        far too many to list (#J915: 4 ** 12)."""
+        far too many to list (#329: 4 ** 12)."""
         key = id(scope)
         if key in self._choices:
             return self._choices[key]
