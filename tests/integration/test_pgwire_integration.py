@@ -16,7 +16,7 @@ in unit tests:
   REQ-527  — server disabled by default; starts only when env var set
   REQ-529  — auth type 3 (cleartext); trust and simple modes; other providers rejected
   REQ-530  — TLS via PROVISA_PGWIRE_CERT / PROVISA_PGWIRE_KEY
-  REQ-532  — information_schema / pg_catalog intercepted from in-memory DuckDB
+  REQ-532  — information_schema / pg_catalog answered from the meta domain (REQ-2190)
   REQ-579  — server_version reported as "14.0.provisa"
   REQ-580  — multi-statement simple-query
   REQ-581  — positional parameter substitution ($1/$2) in simple and extended query
@@ -304,116 +304,110 @@ class TestPgwireServerVersion:
 # ---------------------------------------------------------------------------
 
 
+_CATALOG_ORG = "pgwire_catalog_intercept"
+#: The role the catalog is read as: it holds usage, and so its domains (inheritance.held_rights).
+#: No catalog_read: a client's catalog is not gated by meta (REQ-1132).
+_CATALOG_ROLE = "catalog_user"
+
+
+def _catalog_config(tmp_dir) -> str:
+    """sample_config.yaml with :data:`_CATALOG_ROLE` added."""
+    from pathlib import Path
+
+    import yaml
+
+    repo = Path(__file__).parents[2]
+    with open(repo / "tests" / "fixtures" / "sample_config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    cfg["roles"].append(
+        {
+            "id": _CATALOG_ROLE,
+            "parents": [],
+            "description": "Test role.",
+            "capabilities": ["usage"],
+            "domain_access": ["*"],
+        }
+    )
+    path = tmp_dir / "pgwire-catalog-intercept.yaml"
+    path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def catalog_server(tmp_path_factory):
+    """A real Provisa server on a control plane of its own: its meta views installed, its schema
+    built, pgwire listening. A catalog read is a governed read of those views (REQ-2190)."""
+    from tests.integration.isolated_server import IsolatedServer, drop_org_schema
+
+    srv = IsolatedServer(
+        _CATALOG_ORG,
+        engine="duckdb",
+        enable_pgwire=True,
+        config=_catalog_config(tmp_path_factory.mktemp("pgwire-catalog-intercept")),
+        control_plane="own",
+    )
+    srv.start(timeout=240)
+    try:
+        yield srv
+    finally:
+        srv.stop_process()
+        asyncio.run(drop_org_schema(_CATALOG_ORG))
+
+
+async def _catalog_fetch(srv, sql: str) -> list:
+    conn = await asyncpg.connect(
+        host="127.0.0.1",
+        port=srv.pgwire_port,
+        user=_CATALOG_ROLE,
+        password="provisa",
+        database="provisa",
+    )
+    try:
+        return await conn.fetch(sql)
+    finally:
+        await conn.close()
+
+
+@pytest.mark.local_platform
 class TestPgwireCatalogIntercept:
-    """REQ-532: information_schema and pg_catalog served from in-memory DuckDB."""
+    """REQ-532, REQ-2190: information_schema and pg_catalog answered as governed reads of the meta
+    domain's views, on a real server's control plane."""
 
-    async def test_pg_namespace_public_present(self, pgwire_srv):
+    async def test_pg_namespace_public_present(self, catalog_server):
         """pg_catalog.pg_namespace contains 'public' and 'pg_catalog'."""
-        port, _ = pgwire_srv
-        provider = _stub_auth_provider("admin", "secret")
-        state = _make_mock_state("admin", "simple")
-
-        with (
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
-            patch("provisa.api.app.state", state),
-        ):
-            conn = await asyncpg.connect(
-                host="127.0.0.1",
-                port=port,
-                user="admin",
-                password="secret",
-                database="provisa",
-            )
-            rows = await conn.fetch("SELECT nspname FROM pg_catalog.pg_namespace")
-            await conn.close()
+        rows = await _catalog_fetch(catalog_server, "SELECT nspname FROM pg_catalog.pg_namespace")
         names = {r["nspname"] for r in rows}
         assert "public" in names
         assert "pg_catalog" in names
 
-    async def test_information_schema_tables_queryable(self, pgwire_srv):
+    async def test_information_schema_tables_queryable(self, catalog_server):
         """information_schema.tables is intercepted and returns rows."""
-        port, _ = pgwire_srv
-        provider = _stub_auth_provider("admin", "secret")
-        state = _make_mock_state("admin", "simple")
-
-        with (
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
-            patch("provisa.api.app.state", state),
-        ):
-            conn = await asyncpg.connect(
-                host="127.0.0.1",
-                port=port,
-                user="admin",
-                password="secret",
-                database="provisa",
-            )
-            rows = await conn.fetch("SELECT table_name FROM information_schema.tables LIMIT 5")
-            await conn.close()
+        rows = await _catalog_fetch(
+            catalog_server, "SELECT table_name FROM information_schema.tables LIMIT 5"
+        )
         # Intercept must return a list (may be empty for no registered tables)
         assert isinstance(rows, list)
 
-    async def test_information_schema_schemata_contains_public(self, pgwire_srv):
+    async def test_information_schema_schemata_contains_public(self, catalog_server):
         """information_schema.schemata includes 'public'."""
-        port, _ = pgwire_srv
-        provider = _stub_auth_provider("admin", "secret")
-        state = _make_mock_state("admin", "simple")
-
-        with (
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
-            patch("provisa.api.app.state", state),
-        ):
-            conn = await asyncpg.connect(
-                host="127.0.0.1",
-                port=port,
-                user="admin",
-                password="secret",
-                database="provisa",
-            )
-            rows = await conn.fetch("SELECT schema_name FROM information_schema.schemata")
-            await conn.close()
+        rows = await _catalog_fetch(
+            catalog_server, "SELECT schema_name FROM information_schema.schemata"
+        )
         schema_names = {r["schema_name"] for r in rows}
         assert "public" in schema_names
 
-    async def test_pg_type_returns_rows(self, pgwire_srv):
+    async def test_pg_type_returns_rows(self, catalog_server):
         """pg_catalog.pg_type is intercepted and returns type rows."""
-        port, _ = pgwire_srv
-        provider = _stub_auth_provider("admin", "secret")
-        state = _make_mock_state("admin", "simple")
-
-        with (
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
-            patch("provisa.api.app.state", state),
-        ):
-            conn = await asyncpg.connect(
-                host="127.0.0.1",
-                port=port,
-                user="admin",
-                password="secret",
-                database="provisa",
-            )
-            rows = await conn.fetch("SELECT typname FROM pg_catalog.pg_type LIMIT 10")
-            await conn.close()
+        rows = await _catalog_fetch(
+            catalog_server, "SELECT typname FROM pg_catalog.pg_type LIMIT 10"
+        )
         assert isinstance(rows, list)
 
-    async def test_pg_settings_queryable(self, pgwire_srv):
+    async def test_pg_settings_queryable(self, catalog_server):
         """pg_catalog.pg_settings is intercepted and returns rows."""
-        port, _ = pgwire_srv
-        provider = _stub_auth_provider("admin", "secret")
-        state = _make_mock_state("admin", "simple")
-
-        with (
-            patch("provisa.auth.wiring.build_auth_provider", return_value=provider),
-            patch("provisa.api.app.state", state),
-        ):
-            conn = await asyncpg.connect(
-                host="127.0.0.1",
-                port=port,
-                user="admin",
-                password="secret",
-                database="provisa",
-            )
-            rows = await conn.fetch("SELECT name, setting FROM pg_catalog.pg_settings LIMIT 5")
-            await conn.close()
+        rows = await _catalog_fetch(
+            catalog_server, "SELECT name, setting FROM pg_catalog.pg_settings LIMIT 5"
+        )
         assert isinstance(rows, list)
 
 

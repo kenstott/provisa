@@ -22,6 +22,7 @@ happened to coalesce."""
 from __future__ import annotations
 
 import base64
+import select
 import socket
 import threading
 import time
@@ -111,10 +112,33 @@ def recorded():
     server.server_close()
 
 
-def _drain(pgconn) -> None:
-    """Read the reply's results, so the connection closes idle."""
-    while pgconn.get_result() is not None:
-        pass
+def _drain(pgconn, timeout: float = 10) -> list[psycopg.pq.abc.PGresult]:
+    """Read the reply's results, so the connection closes idle.
+
+    The wait is select()'s, which lets the GIL go: libpq's blocking PQgetResult holds it, and the
+    server writing the reply is a thread of this process, so a get_result() that waits on the
+    reply waits for ever. get_result() is called only once the result is in (``is_busy()`` false)."""
+    deadline = time.monotonic() + timeout
+    results = []
+    while True:
+        while pgconn.is_busy():
+            left = deadline - time.monotonic()
+            assert left > 0, f"no whole reply in {timeout}s: {results!r}"
+            select.select([pgconn.socket], [], [], left)
+            pgconn.consume_input()
+        result = pgconn.get_result()
+        if result is None:
+            return results
+        results.append(result)
+
+
+def _idle_sends(sockets: list[_RecordingSocket]) -> int:
+    """How many sends the connection has made once it is idle: its last ends with ReadyForQuery.
+
+    A send is recorded once it returns, after its bytes have left: the client can have read the
+    ReadyForQuery that ends connecting before its send is recorded, and a count read then puts that
+    send in the next reply's."""
+    return len(_reply_sends(sockets, 0))
 
 
 def _reply_sends(sockets: list[_RecordingSocket], before: int) -> list[bytes]:
@@ -133,7 +157,7 @@ def test_a_simple_query_reply_is_one_send(recorded):
         host="127.0.0.1", port=port, user="alice", password="secret", dbname="provisa",
         connect_timeout=10, autocommit=True,
     ) as conn:  # fmt: skip
-        before = len(sockets[0].sends)
+        before = _idle_sends(sockets)
         conn.pgconn.send_query(b"SELECT pg_sleep(0.01)")
         sends = _reply_sends(sockets, before)
         _drain(conn.pgconn)
@@ -148,10 +172,21 @@ def test_an_extended_query_reply_is_one_send_at_sync(recorded):
         host="127.0.0.1", port=port, user="alice", password="secret", dbname="provisa",
         connect_timeout=10, autocommit=True,
     ) as conn:  # fmt: skip
-        before = len(sockets[0].sends)
+        before = _idle_sends(sockets)
         conn.pgconn.send_query_params(b"SELECT pg_sleep(0.01)", [], result_format=0)
         sends = _reply_sends(sockets, before)
         _drain(conn.pgconn)
     reply = b"".join(sends)
     assert [reply[:1], reply[-6:]] == [b"1", b"Z\x00\x00\x00\x05I"]
     assert len(sends) == 1, [s[:1] for s in sends]
+
+
+def test_a_reply_read_while_the_server_is_on_it_arrives_whole(recorded):
+    port, _ = recorded
+    with psycopg.connect(
+        host="127.0.0.1", port=port, user="alice", password="secret", dbname="provisa",
+        connect_timeout=10, autocommit=True,
+    ) as conn:  # fmt: skip
+        conn.pgconn.send_query_params(b"SELECT pg_sleep(0.2)", [], result_format=0)
+        results = _drain(conn.pgconn)
+    assert [r.status for r in results] == [psycopg.pq.ExecStatus.TUPLES_OK]
