@@ -3,6 +3,48 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.506
+
+Released 2026-11-07.
+
+### Changes
+
+#### conformance
+
+- Keep psycopg's brace-form UUID parameter failures listed
+
+#### demo
+
+- setup_pulls waits for the view's read window to open
+
+#### naming
+
+- Name client-facing names through the naming authority
+- naming.ts answers as naming.py, takes presets; B16 alias follows the convention (D18, B16)
+- Type attach_catalog's source as Source | SimpleNamespace
+
+#### pgwire
+
+- Read a text Bind value as an array only for an array-typed parameter
+
+#### reference-library
+
+- read.xlsx workbooks, a sheet a section and a row a paragraph
+
+#### schema
+
+- Refuse a computed relationship's field another relationship holds
+- Add the row rule, role and metric tag columns to a tag_assignments that predates them
+
+#### ui
+
+- metaGraph rowKey and ServiceNow schema name use naming.ts (D15, D17)
+- Filter box on the Admin Reports list
+
+#### General
+
+- J856 /data/sql column_types lists a registered integer as integer
+
 ## v0.1.0-alpha.505
 
 Released 2026-11-06.

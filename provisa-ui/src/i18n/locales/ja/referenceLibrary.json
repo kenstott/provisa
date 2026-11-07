@@ -27,6 +27,7 @@
     "domainsHelp": "これらのドメインを読むロールがこのドキュメントを参照します。「組織全体」は単独で指定します。",
     "fieldSource": "ソース",
     "fieldStatus": "ステータス",
+    "fieldTags": "タグ",
     "fieldPassages": "パッセージ",
     "fieldModel": "埋め込みモデル",
     "fieldAdded": "追加日時",

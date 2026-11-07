@@ -43,6 +43,7 @@ const NOT_DATA = [
   "onStatusFailed",
   "openProduct",
   "statusActions",
+  "onTagsChanged", // REQ-1634: the tag chip changed the product's tags; the page reads its core again
 ];
 /** Its lifecycle: the products a successor is chosen from, the members a retirement moves, and
  * its findings, read by the page for the list's own To review. */

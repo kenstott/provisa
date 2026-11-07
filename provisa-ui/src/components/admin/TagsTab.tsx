@@ -49,15 +49,21 @@ import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
+// REQ-1634, REQ-2145, REQ-2208: a data product, a glossary term, a row rule, a role, a metric, and a
+// reference library document and its sections are tagged as the other objects are.
 const SCOPES: TagObjectType[] = [
   "source",
   "table",
   "column",
   "relationship",
   "command",
+  "product",
+  "term",
   "rls_rule",
   "role",
   "metric",
+  "document",
+  "section",
 ];
 
 const POLICIES: TagFieldPolicy[] = ["hidden", "optional", "required"];
@@ -274,6 +280,10 @@ export function TagsTab() {
         }}
         data={SCOPES.map((s) => ({ label: scopeLabel(s), value: s }))}
         data-testid="tags-scope-bar"
+        // REQ-2208: twelve object kinds do not fit one row, in German not even at 1900px; the bar
+        // wraps onto further rows instead of clipping its labels, each row filled edge to edge.
+        fullWidth
+        styles={{ root: { flexWrap: "wrap" }, control: { flex: "1 0 auto" } }}
       />
 
       {showForm && (

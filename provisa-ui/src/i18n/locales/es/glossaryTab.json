@@ -155,6 +155,7 @@
     "draftUndefined": "Borrador: derivado de los nombres de columnas y tablas. Dele una definición —es lo que leen los agentes y los catálogos— y luego apruébelo. El nombre proviene de las columnas de abajo, y las columnas que se normalizan igual llegan a un mismo término: asigne un alias a una columna en la página Tablas para cambiar a qué término alimenta. Cambie el nombre aquí para cambiar solo la redacción de este término.",
     "draftUngrounded": "Este término no llega a ninguna columna física. Relaciónelo con un término que tenga una para que nombre datos reales.",
     "piiLabel": "PII",
+    "tagsLabel": "Etiquetas",
     "piiHelp": "Cada columna con este significado lleva PII, también las futuras.",
     "piiPropertyOnly": "Solo una propiedad marca columnas: una clase o un concepto no significa ninguna.",
     "piiMarks_one": "Marca {{count}} columna",

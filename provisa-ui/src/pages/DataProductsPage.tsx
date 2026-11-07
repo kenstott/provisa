@@ -689,6 +689,7 @@ export function DataProductsPage() {
                                     lineageMembers={lineageMembers}
                                     describeColumn={describeColumn}
                                     relationLabel={relationLabel}
+                                    onTagsChanged={() => setCoreVersion((v) => v + 1)}
                                     onEdit={(focus) => openEdit(p, focus)}
                                     onDelete={() => handleDelete(p.id)}
                                     products={dataProducts}
