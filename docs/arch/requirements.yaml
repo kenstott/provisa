@@ -93425,13 +93425,111 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     no list: all for viewer, nothing for a deny-by-default role such as auditor); both are authored in a
     branch and promoted. 5. Rows and masks stay with the role (row rules and masking rules); entitlements
     never filter rows or unmask. 6. An identifier that names nothing, or a list for a kind no scoped capability
-    of the role uses, is flagged. 7. Provisa holds no per-person state, so expiring entitlements, certification,
-    separation of duties and joiner, mover and leaver changes are the identity provider''s and the governance
-    tool''s, where enterprises already run them (maintainer 2026-11-07). (Amended 2026-11-07, NEVER THE
-    PHYSICAL LAYER:) Entitlements name semantic objects only, never physical ones: Provisa does not own
-    the physical layer. Physical access stays with each source''s own grants, which Provisa reaches through
-    the credentials its sources are configured with, and a rename or migration underneath changes no one''s
-    entitlements (maintainer 2026-11-07).'
+    of the role uses, is flagged. [SUPERSEDED by REQ-2219, 2026-11-07 -- Provisa may hold entitlements too;
+    the identity provider supersedes (maintainer 2026-11-07). Kept here for history; do not implement against
+    it.] 7. Provisa holds no per-person state, so expiring entitlements, certification, separation of duties
+    and joiner, mover and leaver changes are the identity provider''s and the governance tool''s, where
+    enterprises already run them (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07, NEVER
+    THE PHYSICAL LAYER:) Entitlements name semantic objects only, never physical ones: Provisa does not
+    own the physical layer. Physical access stays with each source''s own grants, which Provisa reaches
+    through the credentials its sources are configured with, and a rename or migration underneath changes
+    no one''s entitlements (maintainer 2026-11-07). (Amended 2026-11-07, KINDS, HIERARCHY, PROVISA-HELD
+    LISTS AND THE MASK:) Kinds and their identifiers: semantic objects (names-table identifiers) in the
+    hierarchy domain, which contains tables (views and reports are views), relationships (owned by their
+    source table''s domain, REQ-1531; traversing one still needs read scope on the target) and commands
+    (domain.command); a table contains columns; data products and metrics follow their domain or table.
+    Sources: source ids, mostly reached through the domains each source is offered to (its domain list);
+    org_admin creates sources, sets their domain lists and lists its own domain to keep editing; org_admin''s
+    default is sources [*]. Environments: git branch names and patterns (environments are always git branches).
+    Roles: role names read through the role hierarchy: roles [*] may create and modify any role; roles [dev]
+    may modify roles with dev as an ancestor and create roles only under dev, never with capabilities dev
+    lacks. Regions: region ids, for platform roles only (platform_admin owns regions and engines and has
+    no data capabilities; a platform operations role may carry regions [eu-*]); never an org entitlement,
+    since residency is row rules and routing is deployment. Each scoped capability reads its kind''s list
+    in its own terms (for environments: build in, create, promote from, decide promotion into); reach that
+    differs per capability is separate role grants. Provisa-held entitlements: a transaction (UI, API, the
+    resolution of an access request) sets a principal''s lists per role grant and kind (time limits by the
+    expiry rule below); the identity provider supersedes: where it sends a list for a role and kind, that
+    list wins outright, Provisa''s applies only where it is silent, and a Provisa-held list never widens
+    an identity-provider decision. Entitlements live in one store whose rows carry their source: idp rows
+    are written at each sign-in from the token''s lists (replacing that person''s previous idp rows, with
+    when they were last seen), and provisa rows are written by the transaction (with expiry, reason and
+    who set it); the role''s defaults and ceiling are rows of the same store with source role and no person,
+    written from the model at each model build (never edited in the store; changing them stays a branch
+    change), so precedence for a person, role and kind is idp, else provisa, else the role''s default, all
+    within the ceiling, as a rule over that one store, and enforcement for a live session uses its token,
+    which the idp rows mirror as of that sign-in. Effective lists show their source and any superseded list;
+    setting them is an assign-entitlements capability scoped by the roles kind. The store also holds one
+    effective row per person, role and capability, computed after precedence and within the ceiling, with
+    its bitmask as a column, the model version its bit positions belong to, and its readable expansion (the
+    identifiers it covers), recomputed only when an input changes (a sign-in with different lists, a provisa
+    update, a model build) and never read against another model version; enforcement reads the bits, and
+    the UI, reports, why-not traces and agents read the expansion. The store is bitemporal and append-only:
+    every row (source and effective) carries its valid time (idp rows from the sign-in that asserted them
+    until a later one replaced them; provisa rows from being set until their expiry or a change; role rows
+    while their model version was promoted; effective rows over the span their inputs held) and its recorded
+    time (when Provisa learned it); a change closes the old row''s valid period and appends a new one, never
+    updating in place; it is readable as of either timeline (as provisa.as_recorded does for views), so
+    what a person could reach on a date, and what Provisa believed then, are both answerable, and a logged
+    decision need only name the effective row it used. The store is published in the ops system schema,
+    beside ops.requests: ops.entitlements (the source rows) and ops.effective_entitlements (the effective
+    rows), governed like the other ops tables (everyone sees their own rows; the user management or assign-entitlements
+    right sees others'' within the roles it administers) and queryable from every surface; expiry rules
+    are a third table, ops.entitlement_expiries, one row per rule, so subscribers see a rule created, changed
+    or removed, coming due and firing (its closed rows appearing in the entitlement tables at the same moment),
+    and workflow tools can run renewals from those changes while Provisa runs no workflow itself; so who
+    can reach an object, what changed for a person, and a request joined to the entitlement it created and
+    what was then read are ordinary queries. Expiry is one rule on a person''s grant: a date and what it
+    ends, written as capability to identifiers ({} ends the whole grant; {read: [finance]} ends read in
+    finance only; {''*'': [finance]} ends every capability in finance; {export: [''*'']} ends export everywhere).
+    It only ever removes bits from the effective rows'' masks at its date, recorded as closed valid periods;
+    it never grants, never applies to a role''s definition, and for identity-provider grants the provider''s
+    own expiry counts. It replaces separate list-level expiry. Expiry is enforced lazily in the session
+    and recorded by a background job: each cached effective mask carries the time of its next expiry, and
+    a request past that time recomputes the mask before using it, so access ends at the expiry moment whatever
+    the job''s timing; a scheduled job closes valid periods at their expiry times, appending the closing
+    rows and recomputing the affected effective rows, so the ops tables and history are right for people
+    who never sign in again, and it emits expired and expiring-soon events as row changes that workflow
+    tools subscribe to. Both apply the same rule over the same timestamps; a late job only records what
+    the session already enforced, its recorded time showing when it noticed and the valid time when access
+    ended. The mask: the role''s schema is built once, and a person''s effective lists are a bitmask over
+    its object ids, computed once per combination of the identity provider''s lists (fixed for the token''s
+    life), the version of the person''s Provisa-held lists and the model version, and cached by those; per
+    request it is a lookup and a bit test. Queries: one rule in governance, every object a statement touches
+    is in the mask. Other surfaces apply the same mask: catalogs and introspection (pg_catalog and information_schema,
+    Flight SQL and JDBC metadata, GraphQL introspection, gRPC reflection), with schemas kept per role and
+    filtered by the mask rather than built per mask; the response and compiled-plan caches, whose keys include
+    the mask''s hash so no answer reaches a narrower mask; MCP, Polly, the UI''s schema browsers and the
+    names report; subscriptions and exports, which use the creator''s mask and re-check when it changes.
+    Model builds and refreshes run as Provisa''s service identity and are not masked. Several roles combine
+    by union per capability: the effective scope of a capability is the OR of the masks of the roles the
+    request acts as that grant that capability, so a role''s mask never extends a capability it lacks; least
+    privilege comes from a request counting only the roles it names (REQ-2060), and the mask cache key includes
+    those roles. The UI: the role editor gains an Entitlements tab showing each capability as unscoped or
+    scoped to its kind, with the role''s ceiling and default entitlements per kind (a model change, saved
+    in the branch and promoted); a person''s role grants on the Team page show each list by kind with its
+    origin (from the identity provider, read-only there, or set in Provisa), superseded lists greyed and
+    expiries, editable with an expiry and reason by the assign-entitlements capability, plus an effective-access
+    view per capability with a preview of acting as one role or several; one shared picker (a tree of semantic
+    objects from the names table where checking a node includes its children and * means all including future
+    objects, a pattern field for branches and sources showing current matches, a role tree), flagging unknown
+    identifiers and unused kinds inline; a request''s Grant opens the person''s entitlement editor pre-filled
+    with the requested objects and expiry beside the suggested roles; from any object a why-not trace through
+    role, capability, entitlement, origin and mask; and preview as a person. The UI offers shortcuts over
+    the full model: granting a role takes an optional until date (the grant plus an expiry rule {} at that
+    date); add access takes only what is new (objects from the picker, optionally limited to certain capabilities,
+    by default every scoped capability of the role, and an optional until), appending those identifiers
+    to the person''s provisa list and an expiry rule {capability: [those identifiers]} at the date, without
+    restating the rest; remove access is the reverse; extend moves an expiry, offered especially on expiring-soon
+    items; and a grant''s additions show as a timeline of what was added, by whom and until when. A grant''s
+    Expiry rules section lists every rule (date, what it ends, reason), including those the shortcuts create,
+    with an editor for any rule (capabilities: a multi-select of the role''s capabilities or all; where:
+    the picker or everywhere; ends on; reason), a plain-language preview of the effect on that date computed
+    from the effective rows, a flag instead of a save for a rule that would remove nothing, and a timeline
+    of upcoming expiries with extend. Where every list comes from the identity provider, these person views
+    are read-only and the shortcuts and rule editor do not appear. On a desktop or dev install with no identity
+    provider and no Provisa-held lists, a role simply gets its default entitlements, so nothing needs configuring
+    there (maintainer 2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
