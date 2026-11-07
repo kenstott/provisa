@@ -130,9 +130,7 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
         role: {
             "description": "Test role.",
             "id": role,
-            # Reads only the catalog's default tier, which holds no capability (J354); with usage the
-            # mock state's catalog statements fail in CI (run 42368432721: 'coroutine' object is not iterable).
-            "capabilities": [],
+            "capabilities": ["usage"],
             "domain_access": ["*"],
         }
     }
