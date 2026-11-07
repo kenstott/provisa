@@ -994,6 +994,33 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
+-- REQ-194: the names table of the last model version built -- every model object's name on every
+-- surface, with the naming problems found in it. Derived state: each build replaces every row.
+CREATE TABLE IF NOT EXISTS model_names (
+    object_kind   TEXT NOT NULL,
+    object_id     TEXT NOT NULL,
+    surface       TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    physical_name TEXT NOT NULL,
+    label         TEXT NOT NULL,
+    domain_id     TEXT NOT NULL DEFAULT '',
+    table_id      INTEGER,
+    is_alias      BOOLEAN NOT NULL DEFAULT FALSE,
+    warnings      JSONB NOT NULL DEFAULT '[]',
+    PRIMARY KEY (object_kind, object_id, surface)
+);
+
+-- REQ-194: the name clashes the last model build refused, each naming both objects. Emptied by a
+-- build that refuses none.
+CREATE TABLE IF NOT EXISTS model_name_clashes (
+    surface  TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    holder   TEXT NOT NULL,
+    newcomer TEXT NOT NULL,
+    message  TEXT NOT NULL,
+    PRIMARY KEY (surface, name, newcomer)
+);
+
 -- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
 -- no row has never run; the dry run writes none.
 CREATE TABLE IF NOT EXISTS checker_latest_runs (

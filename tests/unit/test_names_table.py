@@ -177,22 +177,36 @@ def test_disambiguate_policy_freezes_an_alias():
 
 
 def test_disambiguate_derives_from_the_distinguishing_attribute():
-    def rel(oid: str, fk: str) -> NameRow:
+    def table(oid: str, source: str) -> NameRow:
         return NameRow(
-            "relationship",
+            "table",
             oid,
-            "graphql_field",
-            "customers",
-            "customers",
-            f"relationship {oid}",
-            scope=("graphql_type_field", "Orders"),
-            attribute=fk,
+            "sql",
+            "orders",
+            "orders",
+            f"{source}.public.orders",
+            scope=("sql", "sales"),
+            attribute=source,
         )
 
-    table = build_names_table([rel("a", "customer_id"), rel("b", "buyer_id")], "disambiguate")
-    assert table.frozen_aliases == (
-        FrozenAlias("relationship", "b", "graphql_field", "customers_by_buyer_id"),
-    )
+    names = build_names_table([table("1", "pg-a"), table("2", "pg-b")], "disambiguate")
+    assert names.frozen_aliases == (FrozenAlias("table", "2", "sql", "pg_b_orders"),)
+
+
+def test_disambiguate_refuses_a_kind_with_no_alias_to_freeze():
+    def command(name: str) -> NameRow:
+        return NameRow(
+            "command",
+            name,
+            "graphql_field",
+            "topPets",
+            name,
+            f"command {name}",
+            scope=("graphql_query",),
+        )
+
+    with pytest.raises(NamesClashRefused, match="command b and command a"):
+        build_names_table([command("a"), command("b")], "disambiguate")
 
 
 def test_cross_surface_clash_column_and_relationship_on_one_type():

@@ -51,6 +51,11 @@ def clash_policy(org_overrides: Mapping) -> str:  # REQ-194
     return policy
 
 
+#: REQ-194 (CLASH POLICY): the kinds whose derived name can be frozen as a stored alias (a
+#: table's or view's ``registered_tables.alias``, a column's ``table_columns.alias``). A clash of
+#: any other kind is refused under either policy: there is nowhere to keep its new name.
+FREEZABLE_KINDS: frozenset[str] = frozenset({"table", "view", "column"})
+
 #: The object kinds the table names (REQ-194, ONE NAMES TABLE PER MODEL VERSION).
 OBJECT_KINDS: tuple[str, ...] = (
     "source",
@@ -241,7 +246,7 @@ def build_names_table(
                 row.object_id,
             ):
                 clash = NameClash(row.surface, row.name, holder.label, row.label)
-                if policy == "refuse":
+                if policy == "refuse" or row.object_kind not in FREEZABLE_KINDS:
                     clashes.append(clash)
                     continue
                 scope = row.scope

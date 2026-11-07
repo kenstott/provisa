@@ -25,7 +25,7 @@ import logging
 
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import apply_convention, source_to_catalog
+from provisa.compiler.naming import apply_convention, prefixed_field_name, source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
@@ -73,6 +73,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
     "sources": "sources_meta",  # REQ-1443: identity and type only
+    "model_names": "model_names_meta",  # REQ-194
 }
 
 
@@ -1670,7 +1671,9 @@ async def _load_tracked_functions_and_webhooks(  # REQ-042
             return
         gql = _apply_conv(called, _conv)
         key = (
-            f"{_domain_prefix(item['domain_id'])}__{gql}" if _dp and item.get("domain_id") else gql
+            prefixed_field_name(_domain_prefix(item["domain_id"]), gql)
+            if _dp and item.get("domain_id")
+            else gql
         )
         if key != item["name"]:
             target[key] = item  # GraphQL field name (convention-cased, maybe domain-prefixed)
@@ -2113,6 +2116,7 @@ _META_TABLES = [
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only
     "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
+    "model_names",  # REQ-194: the names table of the last model version built
     # REQ-2190: what a SQL catalog reads: view-only, served to SQL alone.
     *NEUTRAL_VIEW_NAMES,
     *CATALOG_VIEW_NAMES,
