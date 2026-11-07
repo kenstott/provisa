@@ -16,7 +16,12 @@ from __future__ import annotations
 import logging
 from datetime import date
 from provisa.codesource.languages import CODE_SOURCE_TYPES
-from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
+from provisa.compiler.naming import (
+    LabelClash,
+    SqlAddressTaken,
+    apply_convention,
+    stored_convention,
+)
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -1423,6 +1428,11 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
         "relationship": model.relationship_id,
         "command": model.command_name,
         "term": model.term_id,  # REQ-2145
+        "product": model.product_id,  # REQ-1634
+        "document": model.document_id,  # REQ-2208
+        # REQ-2208: a section is named by its heading, or by its page when it has none.
+        "section": model.document_id is not None
+        and (bool(model.section_heading) or model.section_page is not None),
         "rls_rule": model.rls_rule_id,  # REQ-2208
         "role": model.role_id,
         "metric": model.metric_name,
@@ -1444,29 +1454,31 @@ def _assignment_target_problem(model) -> "MutationResult | None":  # REQ-1377
     return None
 
 
-def _require_tag_editor(info: StrawberryInfo) -> None:  # REQ-1944
+#: REQ-1634, REQ-2145, REQ-2208: the right that edits each object curated outside the table
+#: registry, so the one who may change it tags it: a data product, a glossary term, a library
+#: document and its sections, a row rule and a role.
+_CURATING_RIGHT = {
+    "product": "data_product_rw",
+    "term": "glossary_rw",
+    "document": "glossary_rw",
+    "section": "glossary_rw",
+    "rls_rule": "masking_config",
+    "role": "user_management",
+}
+
+
+def _require_tag_editor(info: StrawberryInfo, object_type: str | None = None) -> None:  # REQ-1944
     """The surface gate for tag definitions and assignments: a table editor, or a holder of
-    sensitive_data (whose reach the per-tag checks then narrow). Admits the caller to ask; what
-    the edit then needs is decided once the tag is known."""
+    sensitive_data (whose reach the per-tag checks then narrow); for an assignment on a data
+    product, a term, a library document or section, a row rule or a role, the right that curates
+    it. Admits the caller to ask; what the edit then needs is decided once the tag is known."""
     from provisa.api.admin.capabilities import has_capability
 
+    if object_type in _CURATING_RIGHT:
+        require_capability(info, _CURATING_RIGHT[object_type])
+        return
     if not has_capability(info, SENSITIVE_DATA):
         require_capability(info, "table_registration")
-
-
-#: REQ-2208: the right that edits each governed object a tag may be on beside the model's own --
-#: tagging a row rule, a role is an act on it, by whoever may change it.
-_TAGGED_OBJECT_RIGHT = {"rls_rule": "masking_config", "role": "user_management"}
-
-
-def _require_tag_assigner(info: StrawberryInfo, object_type: str) -> None:  # REQ-1944, REQ-2208
-    """The surface gate for putting a tag on, or taking it off, an object of ``object_type``: the
-    right that edits a row rule or a role for those, else :func:`_require_tag_editor`'s."""
-    right = _TAGGED_OBJECT_RIGHT.get(object_type)
-    if right is None:
-        _require_tag_editor(info)
-    else:
-        require_capability(info, right)
 
 
 def _require_sensitive_tag_definer(info: StrawberryInfo) -> None:  # REQ-1944
@@ -1487,12 +1499,15 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     object_type: str,
     table_id: int | None,
     term_id: int | None = None,
+    product_id: str | None = None,
     rule_domains: set[str] | None = None,
 ) -> None:
     """A sensitive tag on a column decides how its values are hidden: sensitive_data in the
     domain of the column's table (REQ-1944), and on a term in the domains of the columns it holds
-    (REQ-2145). A tag on a row rule is masking_config's in the domains the rule decides rows in,
-    one on a role user_management's (REQ-2208). Any other assignment is a table editor's act."""
+    (REQ-2145). A tag on a data product is its editor's act in its domain (REQ-1634), and on a
+    library document or section its curator's (REQ-2208). A tag on a row rule is masking_config's
+    in the domains the rule decides rows in, one on a role user_management's (REQ-2208). Any other
+    assignment is a table editor's act."""
     if object_type == "rls_rule":  # REQ-2208
         assert rule_domains is not None  # the caller resolved the rule's domains
         require_right_in_domains(info, "masking_config", rule_domains)
@@ -1503,12 +1518,27 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
     if object_type == "term":  # REQ-2145: what the term's columns are hidden by
         from provisa.core.repositories import glossary as glossary_repo
 
+        from provisa.core.term_tags import FLOWING_TAGS
+
         assert term_id is not None  # _assignment_target_problem: a term assignment names it
-        if tag_row["sensitive"]:
+        if tag_row["sensitive"] and tag_row["id"] in FLOWING_TAGS:
             domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
             require_right_in_domains(info, SENSITIVE_DATA, domains)
-        else:
-            require_capability(info, "table_registration")
+        # Any other tag on a term stays on the term (REQ-2145, TERMS TAKE ANY TAG): curation of
+        # the term, which _require_term_tagger asked.
+        return
+    if object_type == "product":  # REQ-1634: the product's editor, in the product's domain
+        from provisa.core.repositories import data_product as data_product_repo
+
+        assert product_id is not None  # _assignment_target_problem: a product assignment names it
+        product = await data_product_repo.get(conn, product_id)
+        assert product is not None  # tag_target_domains refused a product that is not there
+        require_right_in_domains(info, "data_product_rw", {product["domain_id"]})
+        return
+    if object_type in ("document", "section"):
+        # REQ-2208: the library's curator; tag_target_domains placed it in the document's domains.
+        # A sensitive tag hides nothing on a document: no value of it is served by a column.
+        require_capability(info, "glossary_rw")
         return
     if not (tag_row["sensitive"] and object_type == "column"):
         require_capability(info, "table_registration")
@@ -1761,6 +1791,7 @@ async def _refresh_config_tags() -> None:  # REQ-1373/1377
             table_ref=r["table_ref"],
             term_id=r["term_id"],  # REQ-2145
             term=r["term"],
+            product_id=r["product_id"],  # REQ-1634
             rls_rule_id=r["rls_rule_id"],  # REQ-2208
             rls_rule=r["rls_rule"],
             role_id=r["role_id"],
@@ -2180,6 +2211,13 @@ async def _publish_new_source(
     return said
 
 
+def _column_alias(column: str) -> str | None:  # REQ-194
+    """The alias the Register Table form gives a new table's column by default: its snake-case
+    name (naming.ts toSnakeCase), or None where the column is already named so."""
+    alias = apply_convention(column, "snake")
+    return alias if alias != column else None
+
+
 async def _register_draft_table(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
@@ -2206,13 +2244,6 @@ async def _register_draft_table(
     columns = await resolve_available_columns_metadata(input.id, "main", input.id)
     if not columns:
         return _without("its file has no columns")
-    import re
-
-    def _snake(name: str) -> str:
-        # As the Register Table form names a column's alias (naming.ts toSnakeCase).
-        name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-        return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
-
     # What the Register Table form gives a new table by default: every role sees each column,
     # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
     roles = sorted(state.roles or {})
@@ -2225,7 +2256,7 @@ async def _register_draft_table(
             ColumnInput(
                 name=c.name,
                 visible_to=roles,
-                alias=_snake(c.name) if _snake(c.name) != c.name else None,
+                alias=_column_alias(c.name),
                 data_type=c.data_type,
                 description=c.comment,
             )
@@ -3539,7 +3570,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def assign_tag(
         self, info: StrawberryInfo, input: TagAssignmentInput
     ) -> MutationResult:  # REQ-1376/1377, REQ-1944
-        _require_tag_assigner(info, input.object_type)
+        _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -3552,6 +3583,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             relationship_id=input.relationship_id,
             command_name=input.command_name,
             term_id=input.term_id,  # REQ-2145
+            product_id=input.product_id,  # REQ-1634
+            document_id=input.document_id,  # REQ-2208
+            section_heading=input.section_heading,
+            section_page=input.section_page,
             rls_rule_id=input.rls_rule_id,  # REQ-2208
             role_id=input.role_id,
             metric_name=input.metric_name,
@@ -3622,6 +3657,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.object_type,
                 model.table_id,
                 model.term_id,
+                model.product_id,
                 await _rule_domains_of(cast("Connection", conn), model),
             )
             refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
@@ -3642,7 +3678,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def unassign_tag(
         self, info: StrawberryInfo, input: TagAssignmentInput
     ) -> MutationResult:  # REQ-1377, REQ-1944
-        _require_tag_assigner(info, input.object_type)
+        _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
 
@@ -3655,6 +3691,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             relationship_id=input.relationship_id,
             command_name=input.command_name,
             term_id=input.term_id,  # REQ-2145
+            product_id=input.product_id,  # REQ-1634
+            document_id=input.document_id,  # REQ-2208
+            section_heading=input.section_heading,
+            section_page=input.section_page,
             rls_rule_id=input.rls_rule_id,  # REQ-2208
             role_id=input.role_id,
             metric_name=input.metric_name,
@@ -3673,7 +3713,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)
             if tag_row is None:
                 require_capability(
-                    info, _TAGGED_OBJECT_RIGHT.get(model.object_type, "table_registration")
+                    info, _CURATING_RIGHT.get(model.object_type, "table_registration")
                 )
             else:
                 # REQ-1943: removing a sensitive tag from a column stops it being sensitive.
@@ -3684,6 +3724,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     input.object_type,
                     input.table_id,
                     input.term_id,
+                    input.product_id,
                     await _rule_domains_of(cast("Connection", conn), model),
                 )
             if model.object_type == "column":  # REQ-2145
@@ -3711,7 +3752,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         },
                     )
             removed = await tag_repo.unassign(
-                cast("Connection", conn), input.tag_id, model.object_key()
+                cast("Connection", conn), input.tag_id, model.object_key(), model.object_type
             )
         if not removed:
             return MutationResult(

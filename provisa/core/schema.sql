@@ -900,7 +900,11 @@ CREATE TABLE IF NOT EXISTS metrics (
     from_fact   TEXT
 );
 
--- REQ-2208: a tag on a metric goes with the metric.
+-- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
+-- metric goes with the metric.
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS rls_rule_id INTEGER REFERENCES rls_rules(id) ON DELETE CASCADE;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS role_id TEXT REFERENCES roles(id) ON DELETE CASCADE;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS metric_name TEXT;
 DO $$ BEGIN
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_metric_name_fkey
         FOREIGN KEY (metric_name) REFERENCES metrics(name) ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1940,6 +1944,33 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     vector      public.vector NOT NULL,
     tenant_id   UUID,
     UNIQUE (document_id, ordinal)
+);
+
+-- REQ-2208: the registry's tags on library documents and their sections. They live with the library,
+-- the environment's own as the documents are (env_classes), never in tag_assignments, which travels
+-- with the model: a tag follows its object's environment class. The columns are a tag assignment's
+-- (tag_assignments): the section is named by its heading, or by its page when it has none (a PDF's
+-- pages). Mirrors schema_org.reference_document_tags.
+CREATE TABLE IF NOT EXISTS reference_document_tags (
+    id              SERIAL PRIMARY KEY,
+    tag_id          TEXT NOT NULL,
+    base_tag_id     TEXT NOT NULL,
+    object_type     TEXT NOT NULL CONSTRAINT reference_document_tags_object_type_check
+                        CHECK (object_type IN ('document', 'section')),
+    document_id     INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    section_heading TEXT,
+    section_page    INTEGER,
+    object_key      TEXT NOT NULL,
+    reason          TEXT,
+    expires_on      TEXT,
+    purpose         TEXT,
+    bases           JSONB,
+    review_on       TEXT,
+    decided_by      TEXT,
+    decided_at      TIMESTAMPTZ,
+    evidence        JSONB,
+    tenant_id       UUID,
+    UNIQUE (base_tag_id, object_key)
 );
 
 -- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by

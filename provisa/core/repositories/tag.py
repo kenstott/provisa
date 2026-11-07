@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete as _delete, func, select
 
 from provisa.core.models import (
+    LIBRARY_TAG_OBJECT_TYPES,
     DERIVED_TAG_IDS,
     DERIVED_TAGS,
     SYSTEM_TAG_IDS,
@@ -40,6 +41,7 @@ from provisa.core.models import (
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
     glossary_terms,
+    reference_document_tags,
     registered_tables,
     rls_rules,
     tag_assignments,
@@ -162,11 +164,44 @@ async def delete(conn: "Connection", tag_id: str) -> bool:  # REQ-1918, REQ-1384
 
 
 async def assignment_count(conn: "Connection", tag_id: str) -> int:
-    """How many objects carry this tag, counting every parameter value (REQ-1467)."""
-    result = await conn.execute_core(
-        select(tag_assignments.c.id).where(tag_assignments.c.base_tag_id == base_tag_id(tag_id))
-    )
-    return len(result.fetchall())
+    """How many objects carry this tag, counting every parameter value (REQ-1467), the library's
+    documents and sections included (REQ-2208)."""
+    count = 0
+    for held_in in (tag_assignments, reference_document_tags):
+        result = await conn.execute_core(
+            select(held_in.c.id).where(held_in.c.base_tag_id == base_tag_id(tag_id))
+        )
+        count += len(result.fetchall())
+    return count
+
+
+def _held_in(object_type: str):  # REQ-2208
+    """The table that holds a tag on an object of ``object_type``: the library's for a document or
+    a section, the environment's own as the documents are; tag_assignments, with the model, for
+    every other object. A tag follows its object's environment class."""
+    return reference_document_tags if object_type in LIBRARY_TAG_OBJECT_TYPES else tag_assignments
+
+
+def _target(assignment: TagAssignment) -> dict:
+    """The columns that name the tagged object, in the table that holds the tag."""
+    if assignment.object_type in LIBRARY_TAG_OBJECT_TYPES:  # REQ-2208
+        return {
+            "document_id": assignment.document_id,
+            "section_heading": assignment.section_heading,
+            "section_page": assignment.section_page,
+        }
+    return {
+        "source_id": assignment.source_id,
+        "table_id": assignment.table_id,
+        "column_name": assignment.column_name,
+        "relationship_id": assignment.relationship_id,
+        "command_name": assignment.command_name,
+        "term_id": assignment.term_id,  # REQ-2145
+        "product_id": assignment.product_id,  # REQ-1634
+        "rls_rule_id": assignment.rls_rule_id,  # REQ-2208
+        "role_id": assignment.role_id,
+        "metric_name": assignment.metric_name,
+    }
 
 
 async def assign(  # REQ-1377, REQ-1919
@@ -177,20 +212,12 @@ async def assign(  # REQ-1377, REQ-1919
     model_change.name("assign", "tag", assignment.tag_id)  # REQ-1524
     why = await _stamped_why(conn, assignment)
     await conn.upsert(
-        tag_assignments,
+        _held_in(assignment.object_type),
         {
             "tag_id": assignment.tag_id,
             "base_tag_id": assignment.base_tag_id(),
             "object_type": assignment.object_type,
-            "source_id": assignment.source_id,
-            "table_id": assignment.table_id,
-            "column_name": assignment.column_name,
-            "relationship_id": assignment.relationship_id,
-            "command_name": assignment.command_name,
-            "term_id": assignment.term_id,  # REQ-2145
-            "rls_rule_id": assignment.rls_rule_id,  # REQ-2208
-            "role_id": assignment.role_id,
-            "metric_name": assignment.metric_name,
+            **_target(assignment),
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
@@ -229,11 +256,12 @@ async def _stamped_why(conn: "Connection", assignment: TagAssignment) -> dict:
     from provisa.judgments.evidence import evidence
     from provisa.judgments.why import given_part, parse, stamp_for
 
+    held_in = _held_in(assignment.object_type)
     held = (
         await conn.execute_core(
-            select(tag_assignments).where(
-                (tag_assignments.c.base_tag_id == assignment.base_tag_id())
-                & (tag_assignments.c.object_key == assignment.object_key())
+            select(held_in).where(
+                (held_in.c.base_tag_id == assignment.base_tag_id())
+                & (held_in.c.object_key == assignment.object_key())
             )
         )
     ).fetchone()
@@ -278,14 +306,18 @@ async def _stamped_why(conn: "Connection", assignment: TagAssignment) -> dict:
     )
 
 
-async def unassign(conn: "Connection", tag_id: str, object_key: str) -> bool:
+async def unassign(
+    conn: "Connection", tag_id: str, object_key: str, object_type: str | None = None
+) -> bool:
+    """Take the tag off the object keyed ``object_key``. ``object_type`` says which table holds
+    it (:func:`_held_in`); left out, the model's."""
     # Matched on the base id so removing "the entity tag" from a column succeeds whether the
     # caller names the parameter or not; (base_tag_id, object_key) is unique, so it is exact.
     model_change.name("unassign", "tag", tag_id)  # REQ-1524
+    held_in = _held_in(object_type or "")
     result = await conn.execute_core(
-        _delete(tag_assignments).where(
-            (tag_assignments.c.base_tag_id == base_tag_id(tag_id))
-            & (tag_assignments.c.object_key == object_key)
+        _delete(held_in).where(
+            (held_in.c.base_tag_id == base_tag_id(tag_id)) & (held_in.c.object_key == object_key)
         )
     )
     return (result.rowcount or 0) > 0
@@ -328,10 +360,13 @@ async def upsert_param_value(conn: "Connection", param: TagParamValue) -> None:
 async def param_value_assignment_count(conn: "Connection", tag_id: str, value: str) -> int:
     """Assignments carrying exactly this parameter value — the delete guard (REQ-1467)."""
     base = base_tag_id(tag_id)
-    result = await conn.execute_core(
-        select(tag_assignments.c.id).where(tag_assignments.c.tag_id == f"{base}:{value}")
-    )
-    return len(result.fetchall())
+    count = 0
+    for held_in in (tag_assignments, reference_document_tags):  # REQ-2208: the library's too
+        result = await conn.execute_core(
+            select(held_in.c.id).where(held_in.c.tag_id == f"{base}:{value}")
+        )
+        count += len(result.fetchall())
+    return count
 
 
 async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> bool:
@@ -385,6 +420,37 @@ async def list_assignments(conn: "Connection") -> list[dict]:
         row["table_ref"] = f"{src}.{schema}.{table}" if src is not None else None
         row["rls_rule"] = _rule_ref(row)  # REQ-2208
         row["why"] = why_of(row)  # REQ-2094
+        rows.append(row)
+    return rows
+
+
+async def list_library_assignments(conn: "Connection") -> list[dict]:  # REQ-2208
+    """The tags on reference library documents and their sections, kept with the library, as
+    :func:`list_assignments` answers rows: every other object's column None."""
+    result = await conn.execute_core(
+        select(reference_document_tags).order_by(
+            reference_document_tags.c.tag_id, reference_document_tags.c.object_key
+        )
+    )
+    model = (
+        "source_id",
+        "table_id",
+        "column_name",
+        "relationship_id",
+        "command_name",
+        "product_id",
+        "term_id",
+        "term",
+        "table_ref",
+        "rls_rule_id",
+        "rls_rule",
+        "role_id",
+        "metric_name",
+    )
+    rows = []
+    for r in result.fetchall():
+        row = {**dict.fromkeys(model), **dict(r._mapping)}
+        row["why"] = why_of(row)
         rows.append(row)
     return rows
 

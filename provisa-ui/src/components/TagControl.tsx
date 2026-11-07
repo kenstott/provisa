@@ -30,9 +30,10 @@ import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hoo
 import { Tip, TipSurface } from "./Tip";
 import { ColumnPiiForm } from "./ColumnPiiForm";
 
-// REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable
-// object surface (source, table, column, relationship, command; REQ-2208: row
-// rule, role, metric).
+// REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable object surface
+// (source, table, column, relationship, command; a data product, REQ-1634; a glossary term,
+// REQ-2145; a row rule, a role, a metric, and a reference library document and each of its
+// sections, REQ-2208).
 // REQ-1375: each assignment may carry a reason and a planned-removal date;
 // the tag's reasonPolicy/expiresPolicy drive whether each field is shown
 // (not "hidden") and demanded ("required").
@@ -43,11 +44,19 @@ interface TagControlProps {
   columnName?: string;
   relationshipId?: string;
   commandName?: string;
+  productId?: string;
+  termId?: number;
+  documentId?: number;
+  /** A section: its heading, or its page when it has none. */
+  sectionHeading?: string | null;
+  sectionPage?: number | null;
   /** REQ-2208: the row rule, role or metric the tags are on. */
   rlsRuleId?: number;
   roleId?: string;
   metricName?: string;
   readOnly?: boolean;
+  /** Called after a tag is put on or taken off the object, for a surface that also reads them. */
+  onChanged?: () => void;
   /** A column's: the glossary term it is pii through (REQ-2145), shown on its pii pill. */
   piiTerm?: string | null;
 }
@@ -72,10 +81,16 @@ export function TagControl({
   columnName,
   relationshipId,
   commandName,
+  productId,
+  termId,
+  documentId,
+  sectionHeading,
+  sectionPage,
   rlsRuleId,
   roleId,
   metricName,
   readOnly,
+  onChanged,
   piiTerm,
 }: TagControlProps) {
   const { t } = useTranslation();
@@ -104,31 +119,41 @@ export function TagControl({
         return a.relationshipId === relationshipId;
       case "command":
         return a.commandName === commandName;
+      case "product":
+        return a.productId === productId;
+      case "term":
+        return a.termId === termId;
       case "rls_rule":
         return a.rlsRuleId === rlsRuleId;
       case "role":
         return a.roleId === roleId;
       case "metric":
         return a.metricName === metricName;
+      case "document":
+        return a.documentId === documentId;
+      case "section":
+        return (
+          a.documentId === documentId &&
+          (a.sectionHeading ?? null) === (sectionHeading ?? null) &&
+          (a.sectionPage ?? null) === (sectionPage ?? null)
+        );
     }
   };
 
-  const identifier =
-    objectType === "source"
-      ? sourceId
-      : objectType === "table"
-        ? tableId
-        : objectType === "column"
-          ? `${tableId}-${columnName}`
-          : objectType === "relationship"
-            ? relationshipId
-            : objectType === "rls_rule"
-              ? rlsRuleId
-              : objectType === "role"
-                ? roleId
-                : objectType === "metric"
-                  ? metricName
-                  : commandName;
+  const identifier = {
+    source: sourceId,
+    table: tableId,
+    column: `${tableId}-${columnName}`,
+    relationship: relationshipId,
+    command: commandName,
+    product: productId,
+    term: termId,
+    rls_rule: rlsRuleId,
+    role: roleId,
+    metric: metricName,
+    document: documentId,
+    section: `${documentId}-${sectionHeading ?? `p${sectionPage}`}`,
+  }[objectType];
 
   const objectAssignments = tagAssignments.filter(matches);
   // REQ-2145: pii on a column goes through its own flow -- on its term, or on the column alone.
@@ -154,6 +179,11 @@ export function TagControl({
     columnName: objectType === "column" ? columnName : undefined,
     relationshipId: objectType === "relationship" ? relationshipId : undefined,
     commandName: objectType === "command" ? commandName : undefined,
+    productId: objectType === "product" ? productId : undefined,
+    termId: objectType === "term" ? termId : undefined,
+    documentId: objectType === "document" || objectType === "section" ? documentId : undefined,
+    sectionHeading: objectType === "section" ? sectionHeading : undefined,
+    sectionPage: objectType === "section" ? sectionPage : undefined,
     rlsRuleId: objectType === "rls_rule" ? rlsRuleId : undefined,
     roleId: objectType === "role" ? roleId : undefined,
     metricName: objectType === "metric" ? metricName : undefined,
@@ -177,7 +207,9 @@ export function TagControl({
     const result = await unassignTag(buildInput(tagId));
     if (!result.success) {
       notifications.show({ color: "red", message: result.message });
+      return;
     }
+    onChanged?.();
   };
 
   const handleCheck = (tag: Tag, checked: boolean) => {
@@ -209,6 +241,7 @@ export function TagControl({
       return;
     }
     closeForm();
+    onChanged?.();
   };
 
   return (

@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL（九种界面之一）",
-        "description": "SQL 位于 SQL 浏览器中。标准 SQL 可跨所有数据源联邦查询：在一条语句里把 Postgres、Mongo 和一个 CSV 连接起来。模型自身的元数据以及每一条活动追踪记录在这里也是可查询的表，所以可以直接把审计日志或血缘信息与实时数据连接起来。<p>🔌 除了这个浏览器，同一套治理下的 SQL 还通过多种线路协议运行；你的工具用哪种协议就用哪种：</p><ul><li><strong>pgwire</strong>：所有兼容 Postgres 的客户端（psql、DBeaver、Tableau、Power BI）开箱即用地连接。</li><li><strong>JDBC</strong>：可直接接入任何 Java/JVM 应用、ETL 管道，或支持 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：面向 ADBC 客户端的列式流式传输，无需行重编码，专为大型结果集设计。</li><li><strong>DuckDB · airport</strong>：从 DuckDB 中 ATTACH Provisa，直接在原地查询受治理的联邦数据。</li></ul>"
+        "description": "SQL 位于 SQL 浏览器中。标准 SQL 可跨所有数据源联邦查询：在一条语句里把 Postgres、Mongo 和一个 CSV 连接起来。模型自身的元数据以及每一条活动追踪记录在这里也是可查询的表，所以可以直接把审计日志或血缘信息与实时数据连接起来。<p>🔌 除了这个浏览器，同一套受治理的模型还通过多种协议提供服务；你的工具用哪种协议就用哪种：</p><ul><li><strong>pgwire</strong>：所有兼容 Postgres 的客户端（psql、DBeaver、Tableau、Power BI）开箱即用地连接。</li><li><strong>JDBC</strong>：可直接接入任何 Java/JVM 应用、ETL 管道，或支持 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：面向 ADBC 客户端的列式流式传输，无需行重编码，专为大型结果集设计。</li><li><strong>DuckDB · airport</strong>：从 DuckDB 中 ATTACH Provisa，直接在原地查询受治理的联邦数据。</li><li><strong>OData</strong>：Excel 和 Power BI 通过内置的 OData 数据源连接，直接读取受治理的表。</li></ul>"
       },
       "step7": {
         "title": "GraphQL（九种界面之二）",

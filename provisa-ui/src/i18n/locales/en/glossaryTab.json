@@ -155,6 +155,7 @@
     "draftUndefined": "Draft: derived from the column and table names. Give it a definition, which agents and catalogs read, then approve it. The name comes from the columns below, and columns that normalize alike land on one term. Alias a column on the Tables page to change which term it feeds. Rename here to change only this term's wording.",
     "draftUngrounded": "This term reaches no physical column. Relate it to a term that has one so it names real data.",
     "piiLabel": "PII",
+    "tagsLabel": "Tags",
     "piiHelp": "Every column this term means carries PII, those to come too.",
     "piiPropertyOnly": "Only a property marks columns. A class or a concept means none.",
     "piiMarks_one": "Marks {{count}} column",

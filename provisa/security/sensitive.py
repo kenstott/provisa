@@ -186,6 +186,7 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
     from provisa.core.repositories.table import load_columns
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import tag_assignments as ta
+    from provisa.core.term_tags import FLOWING_TAGS
 
     out: list[str] = []
     ids = set(await sensitive_tag_ids(conn))
@@ -210,6 +211,8 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
 
     for a in config.tag_assignments:
         if a.object_type == "term" and base_tag_id(a.tag_id) in ids:  # REQ-2145
+            if base_tag_id(a.tag_id) not in FLOWING_TAGS:
+                continue  # stays on the term: no column it holds is hidden by it
             if not await _term_holds(conn, a.term, base_tag_id(a.tag_id)):
                 out.append(f"term {a.term} (tag {a.tag_id})")
             continue
