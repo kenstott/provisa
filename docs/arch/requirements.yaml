@@ -2971,7 +2971,17 @@
     Code outside the authority never shapes a client-facing name by string manipulation (case conversion,
     capitalisation, inflection, sanitising, prefix composition); where a rule is missing it is added to
     the authority first, then called (maintainer 2026-11-07, after the naming audit found 18 bypasses).
-    A check refuses new name shaping outside the authority.'
+    A check refuses new name shaping outside the authority. (Amended 2026-11-07, ONE NAMES TABLE PER MODEL
+    VERSION:) The naming authority runs once per model version, where the schema is built, and produces
+    one names table: for every model object (source, table, view, column, relationship, command, enum, metric)
+    every surface''s name (physical, SQL, GraphQL field and type, Cypher label and relationship type, proto
+    message, field and RPC, pg constraint), plus an index of SQL names ignoring case (REQ-2214). Every clash
+    (case-only, cross-surface, a taken address) is refused while the table is built, naming both objects.
+    Every consumer (compiler, protocols, catalogs, metadata export, the UI) reads names from this table
+    and never computes one; a name not in it does not exist. The table is rebuilt with each model version,
+    and the UI fetches it from the server rather than recomputing names. The naming functions remain the
+    rules the table is built from and are called directly only to preview a name for an object not yet saved
+    (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
