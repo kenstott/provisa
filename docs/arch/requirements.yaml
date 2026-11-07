@@ -93434,3 +93434,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     And a list entry naming no object is reported as a warning naming the identifier'
+- id: REQ-2220
+  value: 'A named demo shows a governed access request end to end: a masked column, a request, the enterprise''s own
+    approval workflow, a time-limited grant, the work it enabled, and the audit as one query.'
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: an analyst queries a data product and sees a column masked, and the why-not
+    trace shows the role and its mask. They request the column (building a view that needs it); the request lands in
+    ops.requests addressed to the data owner role with its members resolved (REQ-2215, REQ-2216). The enterprise''s
+    approval chain runs in a small workflow service in the demo''s own container (read live, nothing external), which
+    subscribes to ops.requests and keeps its process data in its own Postgres, registered and related to the request
+    by request id. On approval the steward grants it (a role that unmasks the column, or an entitlement adding it
+    with an expiry, written to ops.entitlements with source provisa, REQ-2219), and the analyst''s view now runs.
+    The audit is one query joining ops.requests, the workflow''s process table, ops.entitlements as of any date and
+    the access log: who asked, every approval step, what was granted and until when, and what was then read. The
+    grant expires, and the same query as of the next day shows the access gone. It follows the settled demo tour
+    shape and is built after REQ-2216''s ops.requests and REQ-2219''s entitlements.'
+  use_case: A visitor watches an access request go from a masked column to an approved, time-limited grant and back,
+    and audits it all with one query.
+  scenario: 'Given the access request demo started from its template
+
+    When a visitor walks its tour to the end
+
+    Then the masked column, the request row, each workflow step, the grant with its expiry and the audit query all
+    show their real rows
+
+    And the audit query as of the day after the expiry shows the access gone'

@@ -26711,3 +26711,17 @@ Maintainer 2026-11-07: access to specific tables and columns is often per person
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2220 · UI {#REQ-2220}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-07: an analyst queries a data product and sees a column masked, and the why-not trace shows the role and its mask. They request the column (building a view that needs it); the request lands in ops.requests addressed to the data owner role with its members resolved ([REQ-2215](#REQ-2215), [REQ-2216](#REQ-2216)). The enterprise's approval chain runs in a small workflow service in the demo's own container (read live, nothing external), which subscribes to ops.requests and keeps its process data in its own Postgres, registered and related to the request by request id. On approval the steward grants it (a role that unmasks the column, or an entitlement adding it with an expiry, written to ops.entitlements with source provisa, [REQ-2219](#REQ-2219)), and the analyst's view now runs. The audit is one query joining ops.requests, the workflow's process table, ops.entitlements as of any date and the access log: who asked, every approval step, what was granted and until when, and what was then read. The grant expires, and the same query as of the next day shows the access gone. It follows the settled demo tour shape and is built after [REQ-2216](#REQ-2216)'s ops.requests and [REQ-2219](#REQ-2219)'s entitlements.
+
+**Use case:** A visitor watches an access request go from a masked column to an approved, time-limited grant and back, and audits it all with one query.
+
+**Code:** —
+
+**Tests:** —
