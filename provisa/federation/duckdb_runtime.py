@@ -308,6 +308,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             set()
         )  # community/extension connectors LOADed on this connection
         self._control_plane_attached = False  # provisa_admin catalog (native path only)
+        self._cp_trace: list[str] = []  # DIAG(J939): temporary, removed before merge
         # A region's own stores, attached read-only for the ops views over them, by alias.
         self._region_stores_attached: set[str] = set()
         # A held file's pause is invisible to concurrent queries only if they are excluded from it
@@ -341,6 +342,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def _phys_name(self, source: Any) -> str:
         """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``."""
         catalog = self._catalog_of(source)
+        if catalog == "provisa_admin":  # DIAG(J939)
+            self._cp_diag(f"_phys_name source={source.id} new={catalog not in self._phys_catalogs}")
         if catalog not in self._phys_catalogs:
             # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
             # DB is read-only and cannot host the schema/view the compiler references).
@@ -433,6 +436,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         attach left behind to a server that has gone fails those listings for every other
         source. Under the catalogue gate: a statement in flight finishes first."""
         aliases = [a for a, sid in self._attach_source.items() if sid == source_id]
+        self._cp_diag(f"drop_source {source_id} aliases={aliases}")  # DIAG(J939)
         with self._catalog_gate.write():
             for alias in aliases:
                 self._con.execute(f'DETACH "{alias}"')
@@ -914,6 +918,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         ``org_<id>`` and the meta views it holds -- 1:1 under the catalog, so a row it commits is
         read by the next statement. Trino parity: there ``provisa_admin`` is a real catalog over
         the same database. Called from NativeEngineBackend's registry walk."""
+        self._cp_diag(  # DIAG(J939)
+            f"attach_control_plane flag={self._control_plane_attached} "
+            f"in_phys={self._CONTROL_PLANE in self._phys_catalogs} "
+            f"attach_source={self._attach_source.get(self._CONTROL_PLANE)}"
+        )
         if self._control_plane_attached:
             return
         catalog = self._CONTROL_PLANE
@@ -922,6 +931,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._con.execute(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
             self._phys_catalogs.add(catalog)
         self._control_plane_attached = True
+
+    def _cp_diag(self, what: str) -> None:  # DIAG(J939): temporary
+        import traceback
+
+        stack = "".join(traceback.format_stack(limit=12)[:-1])
+        self._cp_trace.append(f"{what}\n{stack}")
 
     def attach_region_ops(
         self, catalog: str, schema: str, stores: dict[str, str], views: dict[str, str]
