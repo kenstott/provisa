@@ -165,6 +165,7 @@ describe("ReferenceLibraryTab", () => {
     const pickers = document.querySelectorAll<HTMLInputElement>('input[type="file"]');
     expect(pickers.length).toBeGreaterThan(0);
     pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xml"));
+    pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xlsx"));
     expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
   });
 

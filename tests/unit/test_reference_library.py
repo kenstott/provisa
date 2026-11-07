@@ -196,6 +196,40 @@ def test_a_pdf_or_word_file_that_is_not_one_is_refused_by_name(media, name, says
         extract.read(b"not a document", media, name)
 
 
+def _workbook() -> bytes:
+    import io
+
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    limits = book.active
+    assert limits is not None
+    limits.title = "Limits"
+    limits.append(["Region", "Limit"])
+    limits.append(["EU", 500])
+    limits.append(["US", 250])
+    plain = book.create_sheet("Notes")
+    plain.append(["Review annually", 2026])
+    plain.append([None, "Owner: Risk"])
+    data = io.BytesIO()
+    book.save(data)
+    return data.getvalue()
+
+
+def test_an_excel_workbook_is_read_a_sheet_to_a_section_and_a_row_to_a_paragraph():
+    assert extract.media_type_of_name("limits.xlsx") == extract.EXCEL
+    document = extract.read(_workbook(), extract.EXCEL, "limits.xlsx")
+    assert [(s.heading, s.paragraphs) for s in document.sections] == [
+        ("Limits", ["Region: EU · Limit: 500", "Region: US · Limit: 250"]),
+        ("Notes", ["A: Review annually · B: 2026", "B: Owner: Risk"]),
+    ]
+
+
+def test_an_excel_file_that_is_not_one_is_refused_by_name():
+    with pytest.raises(extract.UnreadableDocument, match="'x.xlsx' is not an Excel workbook"):
+        extract.read(b"not a workbook", extract.EXCEL, "x.xlsx")
+
+
 ECFR = Path(__file__).resolve().parents[1] / "fixtures" / "ecfr"
 
 
