@@ -370,6 +370,22 @@ def _snowflake_driver() -> dict[str, str]:
 _EXTENSION_ENV: dict[str, Callable[[], dict[str, str]]] = {"snowflake": _snowflake_driver}
 
 
+def bring_up_statements(extension: str, *, from_community: bool) -> list[str]:
+    """The INSTALL and LOAD statements that bring ``extension`` up: from its named repository for
+    an extension of EXTENSION_REPOSITORIES (created where the connection does not know it), else
+    from community or the core registry."""
+    if extension in EXTENSION_REPOSITORIES:
+        repository, prefix = EXTENSION_REPOSITORIES[extension]
+        return [
+            "SET allow_extension_repositories = 'allowed'",
+            f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repository} WITH PREFIX '{prefix}'",
+            f"INSTALL {extension} FROM {repository}",
+            f"LOAD {extension} FROM {repository}",
+        ]
+    install = f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"
+    return [install, f"LOAD {extension}"]
+
+
 def install_and_load(
     con: duckdb.DuckDBPyConnection, extension: str, *, from_community: bool = True
 ) -> None:
@@ -385,19 +401,8 @@ def install_and_load(
     it."""
     if extension in _EXTENSION_ENV:
         os.environ.update(_EXTENSION_ENV[extension]())
-    if extension in EXTENSION_REPOSITORIES:
-        repository, prefix = EXTENSION_REPOSITORIES[extension]
-        con.execute("SET allow_extension_repositories = 'allowed'")
-        con.execute(
-            f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repository} WITH PREFIX '{prefix}'"
-        )
-        con.execute(f"INSTALL {extension} FROM {repository}")
-        con.execute(f"LOAD {extension} FROM {repository}")
-    else:
-        con.execute(
-            f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"
-        )
-        con.execute(f"LOAD {extension}")
+    for statement in bring_up_statements(extension, from_community=from_community):
+        con.execute(statement)
     for statement in _EXTENSION_SETTINGS.get(extension, ()):
         con.execute(statement)
 

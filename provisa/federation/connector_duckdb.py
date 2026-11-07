@@ -34,6 +34,7 @@ from provisa.federation.connector_base import (
     RuntimeDep,
     probe_pg_extension,
 )
+from provisa.federation.duckdb_extensions import bring_up_statements
 from provisa.federation.duckdb_extensions import connect as _duckdb_connect
 
 if TYPE_CHECKING:
@@ -367,22 +368,20 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
 
-    def _install_sql(self) -> str:
-        return (
-            f"INSTALL {self.extension} FROM community"
-            if self.install_from_community
-            else f"INSTALL {self.extension}"
-        )
+    def _bring_up(self) -> list[str]:
+        if self.extension is None:  # every extension connector names its extension
+            raise TypeError(f"{type(self).__name__} names no extension")
+        return bring_up_statements(self.extension, from_community=self.install_from_community)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904 / REQ-899 — load-only, no live source
         try:
-            await fetch(self._install_sql())
-            await fetch(f"LOAD {self.extension}")
+            for statement in self._bring_up():
+                await fetch(statement)
         except Exception as e:
             return ProbeResult(
                 False,
                 f"{self.extension} did not load: {type(e).__name__}",
-                f"stage it: {self._install_sql()}",
+                f"stage it: {'; '.join(self._bring_up())}",
             )
         rows = await fetch(self._registered_query())
         if rows and rows[0]["n"]:

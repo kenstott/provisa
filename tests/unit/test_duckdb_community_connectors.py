@@ -90,7 +90,13 @@ def test_connector_identity_and_community_install(cls, stype, key, ext, sym):
     assert c.mechanism is expected
     assert c.reads_in_place is True
     assert c.install_from_community is True  # community registry
-    assert c._install_sql() == f"INSTALL {ext} FROM community"
+    if ext == "airport":  # DuckDB 2.0: Query.Farm's repository, not community
+        assert c._bring_up()[-2:] == [
+            "INSTALL airport FROM query_farm",
+            "LOAD airport FROM query_farm",
+        ]
+    else:
+        assert c._bring_up() == [f"INSTALL {ext} FROM community", f"LOAD {ext}"]
 
 
 def test_all_seven_community_connectors_are_present():
@@ -116,7 +122,9 @@ async def test_probe_available_when_extension_loads_and_symbol_registers(spec):
     fetch = _FakeDuckDB(registered={sym})
     result = await cls().probe(fetch)
     assert result.available is True
-    assert fetch.installs == [f"INSTALL {ext} FROM community"]  # staged from community, not core
+    # staged from community, not core; airport from Query.Farm's repository on DuckDB 2.0
+    source = "query_farm" if ext == "airport" else "community"
+    assert fetch.installs == [f"INSTALL {ext} FROM {source}"]
 
 
 @pytest.mark.asyncio
