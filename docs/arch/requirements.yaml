@@ -93567,7 +93567,32 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     of upcoming expiries with extend. Where every list comes from the identity provider, these person views
     are read-only and the shortcuts and rule editor do not appear. On a desktop or dev install with no identity
     provider and no Provisa-held lists, a role simply gets its default entitlements, so nothing needs configuring
-    there (maintainer 2026-11-07).'
+    there (maintainer 2026-11-07). (Amended 2026-11-07, OWNERSHIP IS AN ENTITLEMENT:) Data products are
+    an entitlement kind of their own, under their domain (domain contains products as it contains tables).
+    Owning is a capability of its own, distinct from read-write: data_product_owner on data products, relationship_owner
+    on relationships and judgment_basis_owner on judgment bases (judgment bases being an entitlement kind
+    too). An owner answers for the object: sees a product''s consumers, approves access requests to it,
+    grants read-write on it and hands ownership over, changes its status, and is the owner shown on its
+    page and in catalog exports. domain_steward on domains: it replaces domains.steward, a domain serves
+    governed data only while some role holds domain_steward on it (the REQ-609 gate, now read from entitlements),
+    and the built-in ops domain is seeded with org_admin holding it (REQ-1386); and term_owner on glossary
+    terms: questions about a term and proposed changes to its definition go to the holders of term_owner
+    on it (routed as REQ-2216 addresses requests to every holder of a capability), and they approve those
+    changes; it replaces the term''s expert list (glossary_term_experts kind expert), whose author rows
+    stay as a record of who wrote the definition and grant nothing. Creating a product, a relationship,
+    a judgment basis or a term records, in the entitlement store with source provisa, the owner capability
+    and the matching read-write on that object for the creator; that is all product ownership means, and
+    it is granted, changed and expired like any other entitlement. The creator is also kept on the product
+    itself (data_products.created_by, set on insert only, beside created_at) and shown on the product, whatever
+    later happens to that entitlement; it grants nothing, and an erased creator is tombstoned there as in
+    the audit logs (REQ-1312). The entitlement is the authority: data_products.owner_role is removed, a
+    team that owns a product being that role holding the entitlement. The same holds everywhere an owner,
+    owner role or steward field stands in for an entitlement (a product''s owner_role, a relationship''s
+    owner, a judgment basis''s owner, a domain''s steward, and any other found): the field is removed, who
+    may act is decided by entitlements, and what exports or shows an owner (catalog exports'' owners, a
+    product''s or domain''s page) reads it from the entitlements of the right capability on that object.
+    A field that only records a fact (who created, who changed) stays as a record and grants nothing (maintainer
+    2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
