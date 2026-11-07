@@ -347,7 +347,7 @@ views:
   description: 'Each system record matched by its evidence to a customer''s anchor account in Salesforce,
     naming the rule that matched it'
   sql: >-
-    SELECT s.system, s.system_key, s.record_name, COALESCE(dm.anchor_account_id, nm.anchor_account_id) AS anchor_account_id,
+    SELECT s.system, s.system_key, s.record_name, s.recorded_at, COALESCE(dm.anchor_account_id, nm.anchor_account_id) AS anchor_account_id,
       CASE
         WHEN s.system = 'salesforce' AND dm.anchor_account_id = s.system_key THEN 'anchor account'
         WHEN dm.anchor_account_id IS NOT NULL AND s.system = 'stripe' THEN 'email domain'
@@ -376,6 +376,7 @@ views:
   - {name: system, data_type: varchar, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
   - {name: system_key, data_type: varchar, description: 'The system''s own id for the record', visible_to: [data_steward, customer_success]}
   - {name: record_name, data_type: varchar, description: The customer's name as the system wrote it, visible_to: [data_steward, customer_success]}
+  - {name: recorded_at, data_type: timestamp, description: When the system created the record, visible_to: [data_steward, customer_success]}
   - {name: anchor_account_id, data_type: varchar, description: 'The Salesforce account the evidence matches it to; empty when no rule does', visible_to: [data_steward, customer_success]}
   - {name: rule, data_type: varchar, description: 'The rule that matched it: anchor account, website domain, email domain, normalised name or no match', visible_to: [data_steward, customer_success]}
   - {name: matched_on, data_type: varchar, description: The domain or normalised name the rule compared, visible_to: [data_steward, customer_success]}
@@ -401,7 +402,7 @@ views:
     JOIN "customer360"."accounts" AS a ON a."Id" = g.anchor_account_id
     LEFT JOIN (
       SELECT c.anchor_account_id, s.email AS billing_email,
-        ROW_NUMBER() OVER (PARTITION BY c.anchor_account_id ORDER BY s.created DESC) AS n
+        ROW_NUMBER() OVER (PARTITION BY c.anchor_account_id ORDER BY c.recorded_at DESC, c.system_key) AS n
       FROM "customer360"."view_crosswalk" AS c JOIN "customer360"."stripe_customers" AS s ON s.id = c.system_key
       WHERE c.system = 'stripe'
     ) AS e ON e.anchor_account_id = g.anchor_account_id AND e.n = 1
@@ -442,7 +443,12 @@ views:
     JOIN "customer360"."master_customer" AS em ON em.master_id = xa.master_id
     LEFT JOIN (SELECT DISTINCT master_id FROM "customer360"."xref" WHERE system = 'salesforce') AS hs
       ON hs.master_id = x.master_id
-    WHERE xa.master_id <> x.master_id
+    WHERE x.system_key NOT IN (
+      SELECT k.system_key FROM "customer360"."xref" AS k
+      JOIN "customer360"."view_crosswalk" AS kc ON k.system_key = kc.system_key
+      JOIN "customer360"."xref" AS ka ON ka.system = 'salesforce' AND ka.system_key = kc.anchor_account_id
+        AND ka.master_id = k.master_id
+    )
     UNION ALL
     SELECT 'coverage gap', c.system, c.system_key, c.record_name, CAST(NULL AS VARCHAR), CAST(NULL AS VARCHAR),
       xa.master_id, em.name, c.rule, CAST(NULL AS VARCHAR), CAST(NULL AS TIMESTAMP)
@@ -507,12 +513,16 @@ views:
     master its evidence names'
   sql: >-
     SELECT c.system, c.system_key, c.record_name, COALESCE(xa.master_id, x.master_id) AS master_id,
-      CASE WHEN x.master_id IS NULL THEN 'added' WHEN xa.master_id IS NOT NULL AND xa.master_id <> x.master_id THEN 'moved'
-        ELSE 'kept' END AS correction
+      CASE WHEN xa.master_id IS NOT NULL AND xa.master_id <> x.master_id THEN 'moved' ELSE 'kept' END AS correction
+    FROM "customer360"."view_crosswalk" AS c
+    JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
+    LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+    UNION ALL
+    SELECT c.system, c.system_key, c.record_name, xa.master_id, 'added'
     FROM "customer360"."view_crosswalk" AS c
     LEFT JOIN "customer360"."xref" AS x ON x.system_key = c.system_key
-    LEFT JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
-    WHERE COALESCE(xa.master_id, x.master_id) IS NOT NULL
+    JOIN "customer360"."xref" AS xa ON xa.system = 'salesforce' AND xa.system_key = c.anchor_account_id
+    WHERE x.system_key IS NULL
   columns:
   - {name: system, data_type: varchar, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
   - {name: system_key, data_type: varchar, description: 'The system''s own id for the record', visible_to: [data_steward, customer_success]}
