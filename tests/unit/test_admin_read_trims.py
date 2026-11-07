@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 import provisa.api.app as appmod
 from provisa.api.admin.schema_query import Query
+from provisa.core.schema_org import reference_document_tags, tag_assignments
 from tests.unit.gate_identity import grant
 
 
@@ -277,9 +278,20 @@ _LIBRARY_ASSIGNMENTS = [
 _LIBRARY_DOMAINS = {10: ["sales"], 20: ["hr"], 30: ["*"]}
 
 
+def _model_row(row):
+    """An assignment as list_assignments answers it: every tag_assignments column, then the
+    joined table_ref."""
+    return {**dict.fromkeys(tag_assignments.c.keys()), "table_ref": None, **row}
+
+
 def _library_row(row):
-    model = dict.fromkeys(_ASSIGNMENTS[0])
-    return {**model, "product_id": None, "term_id": None, "section_page": None, **row}
+    """A library tag as list_library_assignments answers it: every model object's column None."""
+    return {
+        **dict.fromkeys(tag_assignments.c.keys()),
+        **dict.fromkeys(reference_document_tags.c.keys()),
+        "table_ref": None,
+        **row,
+    }
 
 
 class _TagConn(_Conn):
@@ -334,7 +346,7 @@ async def _assignments(monkeypatch, domain_access):
         patch("provisa.api.admin.schema_query._get_pool", return_value=_TagPool()),
         patch(
             "provisa.core.repositories.tag.list_assignments",
-            new=AsyncMock(return_value=[dict(r) for r in _ASSIGNMENTS]),
+            new=AsyncMock(return_value=[_model_row(r) for r in _ASSIGNMENTS]),
         ),
         patch(
             "provisa.core.repositories.tag.list_library_assignments",
