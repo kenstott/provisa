@@ -348,6 +348,8 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_param_values", "tag_id", "tag"),
     # A tag takes its assignments with it.
     _part("tag_assignments", "base_tag_id", "tag"),
+    # REQ-2208: and its assignments on library documents and their sections.
+    _part("reference_document_tags", "base_tag_id", "tag"),
     # REQ-1384: a row filter on the tag blocks it. Removing the filter with the tag would widen
     # what the filter's role reads; the operator removes the filter first, and says so.
     _dep("rls_rules", "tag_id", "tag", "row_filter", "id"),
@@ -359,6 +361,8 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2185: a document's domains and its embedded passages go with the document.
     _part("reference_document_domains", "document_id", "reference_document"),
     _part("reference_passages", "document_id", "reference_document"),
+    # REQ-2208: the tags on the document and its sections go with it.
+    _part("reference_document_tags", "document_id", "reference_document"),
     # REQ-2179: a scan keeps the document's title and source, so it outlives the document.
     _link("glossary_term_scans", "document_id", "reference_document"),
     # --- to a term scan, and the terms its drafts touch ----------------------------------------
