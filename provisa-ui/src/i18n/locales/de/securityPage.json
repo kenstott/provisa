@@ -94,6 +94,7 @@
     "ruleDescription": "Beschreibung",
     "ruleDescriptionHelp": "Wofür die Regel da ist, so wie eine Zugriffsprüfung sie liest.",
     "ruleRight": "Recht",
+    "tags": "Tags",
     "ruleRightRead": "Lesen",
     "ruleRightUpdate": "Aktualisieren",
     "ruleRightDelete": "Löschen",

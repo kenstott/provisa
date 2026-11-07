@@ -818,7 +818,18 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
         return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
+TAG_OBJECT_TYPES = (
+    "source",
+    "table",
+    "column",
+    "relationship",
+    "command",
+    "product",
+    "term",
+    "rls_rule",  # REQ-2208
+    "role",  # REQ-2208
+    "metric",  # REQ-2208
+)
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -1052,6 +1063,20 @@ class TagParamValue(BaseModel):  # REQ-1467
     description: str = ""
 
 
+class RowRuleRef(BaseModel):  # REQ-2208
+    """A row rule as a configuration names it: its role, its target (a table by name, a domain,
+    an action or a tag, as :class:`RLSRule` names it) and its rights. A role holds a right in at
+    most one rule on a target (REQ-2188), so the three name one rule in every environment, where
+    the rule's serial names it in one."""
+
+    role_id: str
+    table_id: str | None = None
+    domain_id: str | None = None
+    action_name: str | None = None
+    tag_id: str | None = None
+    rights: list[str] = Field(default_factory=lambda: ["R"])
+
+
 class TagAssignment(BaseModel):  # REQ-1377
     tag_id: str
     object_type: str  # one of TAG_OBJECT_TYPES
@@ -1080,6 +1105,13 @@ class TagAssignment(BaseModel):  # REQ-1377
     # loader as table_ref is.
     term_id: int | None = None
     term: str | None = None
+    # REQ-2208: a row rule (its serial, and its config-vocabulary identity ``rls_rule``: the rule's
+    # role, target and rights, which a load resolves as it resolves table_ref), a role (its id) or
+    # a governed metric (its name) the tag is on.
+    rls_rule_id: int | None = None
+    rls_rule: RowRuleRef | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -1101,6 +1133,12 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"command:{self.command_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
+        if self.object_type == "rls_rule":  # REQ-2208
+            return f"rls_rule:{self.rls_rule_id}"
+        if self.object_type == "role":
+            return f"role:{self.role_id}"
+        if self.object_type == "metric":
+            return f"metric:{self.metric_name}"
         return f"relationship:{self.relationship_id}"
 
 

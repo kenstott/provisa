@@ -94,6 +94,7 @@
     "ruleDescription": "Descrizione",
     "ruleDescriptionHelp": "A cosa serve la regola, come la legge una revisione degli accessi.",
     "ruleRight": "Diritto",
+    "tags": "Tag",
     "ruleRightRead": "Lettura",
     "ruleRightUpdate": "Aggiornamento",
     "ruleRightDelete": "Eliminazione",

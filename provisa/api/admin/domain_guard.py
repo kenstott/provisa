@@ -127,7 +127,8 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
     the edge STARTS at -- relationships are owned by direction. A command's is the domain it sits
     in (none, for a stored row that names none). A source belongs to every domain it is open to,
     and one that names none is open to all of them. A glossary term's are its columns' (REQ-2145).
-    Raises :class:`DomainLookupError` when the
+    A row rule's are the domains it decides rows in, a metric's those its expression reads, and a
+    role is in none (REQ-2208). Raises :class:`DomainLookupError` when the
     target does not exist.
     """
     from sqlalchemy import select
@@ -169,7 +170,61 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
         if not await glossary_repo.term_exists(conn, assignment.term_id):
             raise DomainLookupError(f"no term {assignment.term_id!r}")
         return (await glossary_repo.term_domains(conn)).get(assignment.term_id, set())
+    if kind == "rls_rule":  # REQ-2208
+        return await rule_domains(conn, assignment.rls_rule_id)
+    if kind == "role":  # REQ-2208: a role is the organization's, in no domain
+        from provisa.core.schema_org import roles
+
+        found = await conn.execute_core(select(roles.c.id).where(roles.c.id == assignment.role_id))
+        if found.fetchone() is None:
+            raise DomainLookupError(f"no role {assignment.role_id!r}")
+        return set()
+    if kind == "metric":  # REQ-2208: the domains its expression reads (REQ-1531)
+        metric_reads = await metric_domains(conn, assignment.metric_name)
+        if metric_reads is None:
+            raise DomainLookupError(f"no metric {assignment.metric_name!r}")
+        return metric_reads
     raise DomainLookupError(f"a {kind!r} tag assignment has no target this gate can place")
+
+
+async def rule_domains(conn: "Connection", rule_id: int) -> set[str]:  # REQ-2208
+    """The domains a row rule decides rows in, as saving it is gated: a table rule's table's, a
+    domain rule's domain, an action rule's command's, and a tag rule's every table carrying the
+    tag. Raises :class:`DomainLookupError` when there is no such rule."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import (
+        registered_tables,
+        rls_rules,
+        tag_assignments,
+        tracked_functions,
+        tracked_webhooks,
+    )
+
+    rule = (await conn.execute_core(select(rls_rules).where(rls_rules.c.id == rule_id))).fetchone()
+    if rule is None:
+        raise DomainLookupError(f"no row rule {rule_id!r}")
+    if rule.table_id is not None:
+        return {await table_domain(conn, rule.table_id)}
+    if rule.domain_id is not None:
+        return {rule.domain_id}
+    if rule.action_name is not None:
+        domains: set[str] = set()
+        for table in (tracked_functions, tracked_webhooks):
+            result = await conn.execute_core(
+                select(table.c.domain_id).where(table.c.name == rule.action_name)
+            )
+            domains |= {d for (d,) in result.fetchall() if d}
+        return domains
+    result = await conn.execute_core(
+        select(registered_tables.c.domain_id)
+        .join(tag_assignments, tag_assignments.c.table_id == registered_tables.c.id)
+        .where(
+            tag_assignments.c.object_type == "table",
+            tag_assignments.c.base_tag_id == rule.tag_id,
+        )
+    )
+    return {d for (d,) in result.fetchall()}
 
 
 def require_domains(info: "StrawberryInfo", domain_ids: Iterable[str]) -> None:
