@@ -3027,7 +3027,15 @@
     view''s alias when it is registered, a column alias, a junction or metric name proposed from a fact.
     The UI and the API ask the authority for the suggestion under the active convention and never build
     one themselves, so a suggestion is always the name the object will be known by once saved, and the suggestion
-    passes the same name checks as the names table (maintainer 2026-11-07).'
+    passes the same name checks as the names table (maintainer 2026-11-07). (Amended 2026-11-07, A CLASH
+    POLICY: REFUSE OR DISAMBIGUATE:) How a name clash is settled is an org setting with two policies: refuse
+    (the default: the clash is refused naming both objects and a steward sets an alias) or disambiguate.
+    Under disambiguate the naming authority derives a distinct name from an attribute that tells the objects
+    apart, by a rule per name kind ({table}_by_{fk_column} for relationships; the source for tables; the
+    target for junctions); a counter suffix is used only when no attribute distinguishes them. A derived
+    name is frozen as the object''s alias when first assigned, so later builds never renumber or rename
+    it, and only a steward changes it. Every automatic disambiguation is shown as a warning in the names
+    report naming the clash, so the operator can keep it or set a better alias (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
