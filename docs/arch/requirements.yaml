@@ -3003,7 +3003,10 @@
     Snowflake Horizon and every other export, REQ metadata export); and the glossary terms it realises,
     so a term resolves to every object and every name that carries it. The table is then one cross-system
     name map: an operator, a lineage view, an impact question (rename this: what changes, where) and an
-    agent all read the same answer (maintainer 2026-11-07).'
+    agent all read the same answer (maintainer 2026-11-07). (Amended 2026-11-07, ONLY ADMITTED OBJECTS:)
+    The source-native names in the names table are those of admitted objects only: the tables, views, columns
+    and commands registered into the model. Objects a source offers but that were never registered are not
+    in it (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
