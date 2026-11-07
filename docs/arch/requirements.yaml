@@ -93258,7 +93258,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     as a governed source and relates it to ops.requests by request id, so the request and its process data
     join in one query under the same governance, lineage and reports as any relationship, in the enterprise''s
     own shape. An ops system table can therefore be the target of a relationship from a user''s table (maintainer
-    2026-11-07).'
+    2026-11-07). (Amended 2026-11-07, WHO A REQUEST IS ADDRESSED TO:) A request is addressed to every role
+    whose capabilities include the capability the request needs, which is exactly who can decide it; their
+    members are resolved and recorded as a snapshot when the request is raised, a true record of who was
+    asked, and are not refreshed later. The email, events-only or both delivery setting is one org-wide
+    setting (maintainer 2026-11-07).'
   use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
     Provisa's own email notices off.
   scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
