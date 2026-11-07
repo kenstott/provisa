@@ -116,13 +116,12 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     # config at startup, not a docker-compose service.
     """
     from provisa.compiler.rls import RLSContext
+    from provisa.compiler.sql_types import CompilationContext
 
-    ctx = MagicMock()
-    ctx.tables = {}
-    ctx.joins = {}
-    # REQ-1942: the context of an environment whose data is served. Left to the mock, the field
-    # is a truthy attribute and governance refuses every statement with it.
-    ctx.refusal = None
+    # A role with no registered tables, in an environment whose data is served (REQ-1942). A
+    # real context, not a mock: a catalog read is governed (REQ-2190), and a mock's fields
+    # (``refusal``, ``listed_only``, ...) read as truthy and refuse every statement.
+    ctx = CompilationContext(role_id=role)
     state = no_replica_routes(MagicMock())
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
@@ -139,6 +138,18 @@ def _make_mock_state(role: str = "admin", provider: str = "simple") -> MagicMock
     state.source_pools = MagicMock()
     state.server_limits = {}
     state.engine_conn = None
+    # REQ-1910: every governed request — a catalog read too (REQ-2190) — resolves its debug-trace
+    # scope against the control plane. This process has none; left to the mock, the field is a
+    # control plane whose reads answer coroutines, and every catalog read fails iterating one.
+    state.admin_db = None
+    # The governed pipeline keys its compile/routing caches on the schema identity; bare
+    # MagicMocks there read as a non-string cache key.
+    from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
+    state.schema_boot_id = "pgw-itest"
+    state.schema_version = 1
+    state.compiled_query_cache = CompiledQueryCache()
+    state.routing_cache = CompiledQueryCache()
     serve_surfaces(state)
     return state
 
