@@ -24,13 +24,33 @@ notary_log_check() {
   fi
   printf '%s\n' "$log_json"
   local issue_count
-  # Apple's log JSON carries "issues": null when there are none, a list otherwise.
-  issue_count=$(printf '%s' "$log_json" | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('issues') or []))")
+  # Apple's log JSON carries "issues": null when there are none, a list otherwise. One class is
+  # allowed (maintainer 2026-11-07): a WARNING that an archive inside a bundled Linux container image
+  # (<dmg>/images/<image>.tar.gz/...) could not be unpacked. Those files run inside Docker, never on
+  # macOS, so notarization does not apply to them. Each allowed warning is printed with that reason;
+  # every other issue, and any error, fails the build.
+  issue_count=$(printf '%s' "$log_json" | python3 -c "
+import json, re, sys
+issues = json.load(sys.stdin).get('issues') or []
+image_archive = re.compile(r'\.dmg/images/[^/]+\.tar\.gz/')
+blocking = 0
+for issue in issues:
+    allowed = (
+        issue.get('severity') == 'warning'
+        and image_archive.search(issue.get('path') or '')
+        and 'could not be unpacked' in (issue.get('message') or '')
+    )
+    if allowed:
+        print('allowed (Linux container image content, not executed on macOS): ' + issue['path'], file=sys.stderr)
+    else:
+        blocking += 1
+print(blocking)
+")
   if [ "$issue_count" -ne 0 ]; then
-    err "Apple's notarization log for ${submission_id} lists ${issue_count} issue(s) (above)."
+    err "Apple's notarization log for ${submission_id} lists ${issue_count} blocking issue(s) (above)."
     exit 1
   fi
-  ok "Apple's notarization log for ${submission_id} lists no issues."
+  ok "Apple's notarization log for ${submission_id} lists no blocking issues."
 }
 
 # `stapler staple` fetches the ticket from Apple's CloudKit ticket-delivery service

@@ -119,5 +119,39 @@ def test_a_log_listing_any_issue_fails_the_build_even_when_accepted(tmp_path):
     result = _run(tmp_path, "notary_log_check sub-1 --team-id T", [], log)
     assert result.returncode == 1
     assert "no secure timestamp" in result.stdout
-    assert "lists 1 issue(s)" in result.stderr
+    assert "lists 1 blocking issue(s)" in result.stderr
     assert "returned" not in result.stdout
+
+
+_IMAGE_WARNING = (
+    '{"severity": "warning", "path": "Provisa-Demo.dmg/images/petstore-demo-local.tar.gz/'
+    'petstore-demo-local.tar/blobs/sha256/acd4/acd4/var/lib/dpkg/alternatives/builtins.7.gz", '
+    '"message": "The archive at Provisa-Demo.dmg/images/petstore-demo-local.tar.gz/x could not be '
+    'unpacked. Any executables contained in the archive will not be notarized."}'
+)
+
+
+def test_an_unpackable_archive_inside_a_bundled_container_image_is_allowed_and_logged(tmp_path):
+    log = '{"status": "Accepted", "issues": [' + _IMAGE_WARNING + "]}"
+    result = _run(tmp_path, "notary_log_check sub-1 --team-id T", [], log)
+    assert result.returncode == 0, result.stderr
+    assert "allowed (Linux container image content, not executed on macOS)" in result.stderr
+    assert "lists no blocking issues" in result.stdout
+    assert "returned" in result.stdout
+
+
+def test_any_other_issue_beside_an_allowed_one_still_fails(tmp_path):
+    other = '{"severity": "warning", "path": "Provisa.app/Contents/MacOS/x", "message": "no secure timestamp"}'
+    log = '{"status": "Accepted", "issues": [' + _IMAGE_WARNING + ", " + other + "]}"
+    result = _run(tmp_path, "notary_log_check sub-1 --team-id T", [], log)
+    assert result.returncode == 1
+    assert "lists 1 blocking issue(s)" in result.stderr
+
+
+def test_an_error_inside_a_container_image_is_never_allowed(tmp_path):
+    log = (
+        '{"status": "Accepted", "issues": [' + _IMAGE_WARNING.replace('"warning"', '"error"') + "]}"
+    )
+    result = _run(tmp_path, "notary_log_check sub-1 --team-id T", [], log)
+    assert result.returncode == 1
+    assert "lists 1 blocking issue(s)" in result.stderr
