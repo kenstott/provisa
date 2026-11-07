@@ -261,6 +261,16 @@ class _Piece:
     partners: frozenset[int]  # ``least``'s never-true partners beyond it, while not ``named``
 
 
+def _kept(pieces: list[_Piece]) -> tuple[_Piece, ...]:
+    """``pieces`` by least instance, all that can decide a refusal kept: a piece nothing beyond
+    can be or be related to is final, and of those only the two least can be the two a refusal
+    names -- the first piece of a set and the least apart from it. Kept whole, each disconnected
+    choice was its own pieces, and a refused statement multiplied them as before."""
+    ordered = sorted(pieces, key=lambda p: p.least)
+    final = [p for p in ordered if not p.seen][:2]
+    return tuple(p for p in ordered if p.seen or any(p is f for f in final))
+
+
 class _Pieces:
     """Each set a group combines, as the connected pieces the registered pairings make of it.
 
@@ -323,7 +333,7 @@ class _Pieces:
                     else frozenset(p for p in self._partners[least] if p not in private),
                 )
             )
-        return tuple(sorted(pieces, key=lambda p: p.least))
+        return _kept(pieces)
 
     def _join(self, pieces: tuple[_Piece, ...], private: frozenset[int]) -> tuple[_Piece, ...]:
         """``pieces`` of sets combined, connected where they share or are related to an
@@ -336,19 +346,29 @@ class _Pieces:
                 i = top[i]
             return i
 
-        for i, a in enumerate(pieces):
-            for j in range(i + 1, len(pieces)):
-                b = pieces[j]
-                if a.seen & b.seen or a.reaches & b.seen or b.reaches & a.seen:
-                    top[root(i)] = root(j)
-        seen_all = frozenset().union(*(p.seen for p in pieces))
+        # Each instance something beyond can see, to the piece holding it: two pieces holding
+        # the same one, or one related to an instance the other holds, are connected.
+        holder: dict[int, int] = {}
+        for i, piece in enumerate(pieces):
+            for instance in piece.seen:
+                other = holder.setdefault(instance, i)
+                if other != i:
+                    top[root(i)] = root(other)
+        for i, piece in enumerate(pieces):
+            for instance in piece.reaches:
+                other = holder.get(instance)
+                if other is not None:
+                    top[root(i)] = root(other)
         grouped: dict[int, list[_Piece]] = {}
         for i, piece in enumerate(pieces):
             grouped.setdefault(root(i), []).append(piece)
         out: list[_Piece] = []
         for together in grouped.values():
             lead = min(together, key=lambda p: p.least)
-            named = lead.named or bool(lead.partners & seen_all)
+            if len(together) == 1 and not lead.seen:
+                out.append(lead)  # final: nothing beyond it can change it
+                continue
+            named = lead.named or any(p in holder for p in lead.partners)
             seen = frozenset().union(*(p.seen for p in together))
             reaches = frozenset().union(*(p.reaches for p in together)) - seen
             out.append(
@@ -362,7 +382,7 @@ class _Pieces:
                     else frozenset(p for p in lead.partners if p not in private),
                 )
             )
-        return tuple(sorted(out, key=lambda p: p.least))
+        return _kept(out)
 
     def of(self, choice: _Choice) -> list[tuple[_Piece, ...]]:
         """Each distinct way ``choice``'s sets look from beyond it, in the order each first

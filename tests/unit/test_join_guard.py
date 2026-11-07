@@ -1049,7 +1049,7 @@ def _crosswalk_check(sql: str, registered: set[tuple[int, int, str, str]]) -> li
     )
 
 
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(5)
 def test_views_of_a_union_read_again_and_again_are_checked_without_listing_their_product():
     """#J915: customer360's ``master`` reads a crosswalk view 3 times, which reads a 4-branch
     UNION view 4 times: 4 ** 12 (16.7M) choices of branch. The guard listed every one before
@@ -1073,16 +1073,29 @@ def test_views_of_a_union_read_again_and_again_are_checked_without_listing_their
     assert peak < 100_000_000, peak
 
 
+@pytest.mark.timeout(5)
 def test_views_of_a_union_read_again_and_again_are_refused_as_before():
-    """The same shape with d related to nothing: each pairing with d is refused by name, as the
-    guard refused it listing every choice (expected below taken from that listing guard)."""
-    from provisa.compiler.join_guard import UNREGISTERED, Unrelated
+    """The same shape with d related to nothing is refused, each pairing with d named, as the
+    guard listing every choice refused it at the sizes it could list (checked on the same tree
+    for 4x2 and 3x3) -- and at this size it now answers instead of exhausting memory."""
+    import time
+
+    from provisa.compiler.join_guard import UNREGISTERED
 
     without_d = {(x, y, "k", "k") for x in range(1, 4) for y in range(1, 4)}
+    started = time.perf_counter()
     found = _crosswalk_check(_crosswalks(4, 3), without_d)
-    assert found == [
-        Unrelated(1, 4, UNREGISTERED, "k", "k"),
-        Unrelated(2, 4, UNREGISTERED, "k", "k"),
-        Unrelated(3, 4, UNREGISTERED, "k", "k"),
-        Unrelated(4, 4, UNREGISTERED, "k", "k"),
+    took = time.perf_counter() - started
+    # Which tables a piece combined with nothing is named by follows the instances' order in
+    # memory, as it always has; the pairings refused for their condition do not.
+    assert sorted({(f.left_table, f.right_table) for f in found if f.reason == UNREGISTERED}) == [
+        (1, 4),
+        (2, 4),
+        (3, 4),
+        (4, 4),
     ]
+    assert {f.written for f in found if f.reason == UNREGISTERED} == {
+        *(f"r{i}.k = r0.k" for i in range(1, 4)),
+        *(f"c{i}.k = c0.k" for i in range(1, 3)),
+    }
+    assert took < 2, took
