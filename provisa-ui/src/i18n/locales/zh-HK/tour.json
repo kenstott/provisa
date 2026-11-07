@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL（九種介面之一）",
-        "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的 SQL 還可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"
+        "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的模型還可透過多種協定提供服務；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li><li><strong>OData</strong>：Excel 和 Power BI 透過內置的 OData 摘要連接，直接讀取受管治的表格。</li></ul>"
       },
       "step7": {
         "title": "GraphQL（九種介面之二）",
