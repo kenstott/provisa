@@ -93,7 +93,7 @@ async def test_a_source_with_nothing_registered_writes_no_table(written):
 
 async def test_only_registered_tables_are_brought_up_to_date(written):
     registered = {
-        "ns__OrderService__ListOrders": (
+        "ns__order_service__list_orders": (
             "sales",
             {"id", "_nf_customer_id"},
             {"_nf_customer_id"},
@@ -105,7 +105,7 @@ async def test_only_registered_tables_are_brought_up_to_date(written):
     )
     assert n_tables == 1
     (table,) = written
-    assert table.table_name == "ns__OrderService__ListOrders"
+    assert table.table_name == "ns__order_service__list_orders"
     assert table.schema_name == "grpc_remote"
     assert table.domain_id == "sales"  # the domain it was registered into, not the source's
     # The columns it was registered with: total and items were not chosen and are not added.
@@ -126,20 +126,20 @@ async def test_only_registered_tables_are_brought_up_to_date(written):
 async def test_the_registered_set_is_read_from_the_registry():
     conn = _Conn(
         [
-            _row("ns__OrderService__ListOrders", "sales", "id", grant=["analyst", "viewer"]),
-            _row("ns__OrderService__ListOrders", "sales", "total"),
-            _row("ns__OrderService__ListOrders", "sales", "_nf_customer_id", steward=True),
-            _row("ns__OrderService__GetOrder", "", "id"),
+            _row("ns__order_service__list_orders", "sales", "id", grant=["analyst", "viewer"]),
+            _row("ns__order_service__list_orders", "sales", "total"),
+            _row("ns__order_service__list_orders", "sales", "_nf_customer_id", steward=True),
+            _row("ns__order_service__get_order", "", "id"),
         ]
     )
     assert await router.registered_query_tables(conn, "g") == {
-        "ns__OrderService__ListOrders": (
+        "ns__order_service__list_orders": (
             "sales",
             {"id", "total", "_nf_customer_id"},
             {"_nf_customer_id"},
             {"id": ["analyst", "viewer"], "total": [], "_nf_customer_id": []},
         ),
-        "ns__OrderService__GetOrder": ("", {"id"}, set(), {"id": []}),
+        "ns__order_service__get_order": ("", {"id"}, set(), {"id": []}),
     }
 
 
@@ -174,7 +174,7 @@ async def test_registering_a_table_takes_the_columns_chosen_and_every_filter(mon
     _state(conn, monkeypatch)
     chosen = [Column(name="id", visible_to=["analyst"]), Column(name="total", visible_to=[])]
     columns, error = await _table_ops._grpc_columns_for_input(
-        _input("ns__OrderService__ListOrders"), chosen
+        _input("ns__order_service__list_orders"), chosen
     )
     assert error is None
     by_name = {c.name: c for c in columns}
@@ -185,13 +185,13 @@ async def test_registering_a_table_takes_the_columns_chosen_and_every_filter(mon
     assert by_name["_nf_customer_id"].native_filter_required is False
     # The registration is recorded for the table, in the domain it is registered into.
     args = conn.execute.await_args.args
-    assert args[1:3] == ("g", "ns__OrderService__ListOrders") and args[5] == "sales"
+    assert args[1:3] == ("g", "ns__order_service__list_orders") and args[5] == "sales"
 
 
 async def test_registering_with_no_columns_named_takes_them_all(monkeypatch):
     _state(_Conn(), monkeypatch)
     columns, error = await _table_ops._grpc_columns_for_input(
-        _input("ns__OrderService__GetOrder"), []
+        _input("ns__order_service__get_order"), []
     )
     assert error is None
     assert {c.name for c in columns} == {"id", "total", "items", "_nf_customer_id"}
@@ -199,16 +199,16 @@ async def test_registering_with_no_columns_named_takes_them_all(monkeypatch):
 
 async def test_a_table_the_proto_does_not_offer_is_refused(monkeypatch):
     _state(_Conn(), monkeypatch)
-    columns, error = await _table_ops._grpc_columns_for_input(_input("ns__OrderService__Nope"), [])
+    columns, error = await _table_ops._grpc_columns_for_input(_input("ns__order_service__nope"), [])
     assert columns == [] and error is not None and not error.success
-    assert "offers no table 'ns__OrderService__Nope'" in error.message
+    assert "offers no table 'ns__order_service__nope'" in error.message
 
 
 async def test_a_change_to_who_may_see_registered_columns_does_not_reread_the_proto(monkeypatch):
-    conn = _Conn([_row("ns__OrderService__ListOrders", "sales", "id")])
+    conn = _Conn([_row("ns__order_service__list_orders", "sales", "id")])
     _state(conn, monkeypatch)
     result = await _table_ops._grpc_columns_for_input(
-        _input("ns__OrderService__ListOrders"), [Column(name="id", visible_to=["*"])]
+        _input("ns__order_service__list_orders"), [Column(name="id", visible_to=["*"])]
     )
     assert result is None  # answered from what is stored, by the ordinary path
     conn.execute.assert_not_awaited()
@@ -244,7 +244,7 @@ async def test_a_registered_table_is_read_by_calling_its_method(monkeypatch):
     )
     load = make_grpc_remote_loader({"g": {"namespace": "ns", "pb2": object(), "queries": [query]}})
     table = SimpleNamespace(
-        table_name="ns__OrderService__ListOrders",
+        table_name="ns__order_service__list_orders",
         columns=[
             SimpleNamespace(name="id"),
             SimpleNamespace(name="total"),

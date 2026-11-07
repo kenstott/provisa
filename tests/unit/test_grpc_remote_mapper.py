@@ -10,8 +10,11 @@
 
 """Unit tests for provisa/grpc_remote/mapper.py — pure business logic, no I/O."""
 
+from types import SimpleNamespace
+
 from provisa.grpc_remote.mapper import (
     map_proto,
+    query_table_name,
 )
 
 # Methods (REQ-323 name-prefix classification; structural heuristics are the fallback):
@@ -314,3 +317,29 @@ def test_enum_repeated_field_does_not_trigger_query():
     queries, mutations = map_proto(d, "", "src", "dom")
     assert len(queries) == 0
     assert len(mutations) == 1
+
+
+def _q(service: str, method: str) -> SimpleNamespace:
+    return SimpleNamespace(service=service, method=method)
+
+
+def test_query_table_name_is_lower_snake_with_namespace_prefix():  # REQ-325
+    assert (
+        query_table_name("ns", _q("AnimalCatalog", "ListBreeds"))
+        == "ns__animal_catalog__list_breeds"
+    )
+
+
+def test_query_table_name_without_namespace_has_no_prefix():  # REQ-325
+    assert query_table_name("", _q("OrderService", "ListOrders")) == "order_service__list_orders"
+
+
+def test_query_table_name_keeps_acronyms_and_digits_as_naming_helper_does():  # REQ-325
+    assert query_table_name("ns", _q("HTTPServer", "GetV2Items")) == "ns__http_server__get_v2_items"
+
+
+def test_query_table_name_leaves_the_proto_method_path_unchanged():  # REQ-325
+    queries, _ = map_proto(PROTO_DICT, "ns", "src", "dom")
+    query = next(q for q in queries if q.method == "ListOrders")
+    assert query_table_name("ns", query) == "ns__order_service__list_orders"
+    assert query.method == "ListOrders" and query.full_method_path.endswith("/ListOrders")

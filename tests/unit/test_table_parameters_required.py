@@ -102,7 +102,7 @@ def _grpc_state(*params: dict) -> SimpleNamespace:
         api_endpoints={},
         graphql_remote_sources={},
         grpc_remote_sources={"src": {"namespace": "", "queries": [query]}},
-        tables=[_table("Accounts__List", *params)],
+        tables=[_table("accounts__list", *params)],
     )
 
 
@@ -121,7 +121,7 @@ _STEPS = {
     ("kind", "state", "table", "parameter"),
     [
         ("openapi", _openapi_state(_param("region", "query_param", True)), "orders", "region"),
-        ("grpc", _grpc_state(_param("account", "grpc_input", True)), "Accounts__List", "account"),
+        ("grpc", _grpc_state(_param("account", "grpc_input", True)), "accounts__list", "account"),
     ],
 )
 async def test_a_read_without_a_parameter_the_source_requires_is_refused_before_any_call(
@@ -152,7 +152,7 @@ async def test_a_read_without_a_parameter_the_source_requires_is_refused_before_
         (
             "grpc",
             _grpc_state(_param("account", "grpc_input", False, by_steward=True)),
-            "Accounts__List",
+            "accounts__list",
             "account",
         ),
     ],
@@ -185,7 +185,7 @@ async def test_a_read_without_a_parameter_a_steward_made_required_is_refused_bef
         (
             "grpc",
             _grpc_state(_param("account", "grpc_input", True)),
-            "Accounts__List",
+            "accounts__list",
             {"account": "a1"},
         ),
     ],
