@@ -43918,14 +43918,18 @@
   since: 2026-07
   description: Deletion scrubs personal data while preserving the record that the deletion happened. Deleting
     an org (REQ-1300) drops every tenant-scoped row and cascades the control-plane rows keyed to it; what
-    survives is the billing and usage record needed to invoice, which names the org and not a person,
-    and the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces every
-    reference to that user id - orgs.created_by, org_invites.created_by and used_by, audit attributions
-    - with an opaque tombstone token, and erases the personal attributes on user_profile (name, email,
-    avatar). References are tombstoned rather than nulled because org_invites.created_by is NOT NULL and
-    because a dangling id is worse than an explicit one - the record stays referentially intact and stops
-    identifying anyone. Audit entries are never deleted by either operation; an audit trail that erases
-    on request is not one.
+    survives is the billing and usage record needed to invoice, which names the org and not a person, and
+    the platform audit entry recording the deletion. Deleting an account (REQ-1307) replaces every reference
+    to that user id - orgs.created_by, org_invites.created_by and used_by, audit attributions - with an
+    opaque tombstone token, and erases the personal attributes on user_profile (name, email, avatar). References
+    are tombstoned rather than nulled because org_invites.created_by is NOT NULL and because a dangling
+    id is worse than an explicit one - the record stays referentially intact and stops identifying anyone.
+    Audit entries are never deleted by either operation; an audit trail that erases on request is not one.
+    (Amended 2026-11-07, THE USER DIRECTORY IS A CACHE:) user_directory (each user's display name and email,
+    copied from the identity provider) is a cache, used to send communications and show names. Deleting
+    a user removes that user's user_directory row, with their profile and local sign-in, and tombstones
+    their id in the query and admin audit logs; an erasure that leaves the name, the email or the identity
+    link behind in any of them is a defect (maintainer 2026-11-07).
   use_case: This is the shape every SaaS platform converges on under GDPR and CCPA. Article 17(3) permits
     retention for legal obligation and for establishing or defending legal claims, which is what keeps
     billing records and audit trails out of the erasure - and platforms that delete audit records on request
@@ -93258,7 +93262,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     as a governed source and relates it to ops.requests by request id, so the request and its process data
     join in one query under the same governance, lineage and reports as any relationship, in the enterprise''s
     own shape. An ops system table can therefore be the target of a relationship from a user''s table (maintainer
-    2026-11-07).'
+    2026-11-07). (Amended 2026-11-07, WHO A REQUEST IS ADDRESSED TO:) A request is addressed to every role
+    whose capabilities include the capability the request needs, which is exactly who can decide it; their
+    members are resolved and recorded as a snapshot when the request is raised, a true record of who was
+    asked, and are not refreshed later. The email, events-only or both delivery setting is one org-wide
+    setting (maintainer 2026-11-07).'
   use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
     Provisa's own email notices off.
   scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
