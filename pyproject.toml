@@ -216,7 +216,7 @@ provisa = "provisa.cli:main"
 # EXTENSION SOURCES FOR DUCKDB 2.0, maintainer decision 2026-11-06): the core extensions come from the
 # third-party per-extension, per-platform wheels duckdb-extension-* (santosh-d3vpl3x/duckdb_extensions,
 # MIT; each holds the official signed binary, DuckDB loads it signature-checked), pinned to the DuckDB
-# version (avro too: iceberg loads it); provisa-duckdb-ext carries the rest (crypto, community). Dropped for Provisa's own
+# version (avro too: iceberg loads it); provisa-duckdb-ext carries the rest (crypto and airport from Query.Farm, community). Dropped for Provisa's own
 # per-extension projects once PyPI is available again.
 embedded = [
     "duckdb",
@@ -228,7 +228,7 @@ embedded = [
     "duckdb-extension-azure==2.0.0",
     "duckdb-extension-delta==2.0.0",
     "duckdb-extension-avro==2.0.0",  # iceberg loads it
-    "provisa-duckdb-ext>=0.2.1",
+    "provisa-duckdb-ext>=0.2.2",  # 0.2.2: Query.Farm's airport
 ]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the

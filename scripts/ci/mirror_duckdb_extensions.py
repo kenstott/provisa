@@ -18,7 +18,7 @@ extensions come from third-party per-extension PyPI wheels (REQ-1142 amendment, 
 SOURCES FOR DUCKDB 2.0; provisa.federation.duckdb_extensions.CORE_EXTENSION_WHEELS), so this mirrors
 only what those wheels lack: the community extensions the connector definitions declare (single
 source of truth) and the extensions DuckDB's own repositories do not carry
-(provisa.federation.duckdb_extensions.EXTENSION_REPOSITORIES: crypto, from Query.Farm's repository),
+(provisa.federation.duckdb_extensions.EXTENSION_REPOSITORIES: crypto and airport, from Query.Farm's repository),
 installed from the named repository their publisher documents. packaging/duckdb-ext/collect.py then
 fills each platform's wheel from this mirror in priority order, under PyPI's size limit.
 
@@ -29,7 +29,7 @@ Output (into $OUT, default dist/duckdb-ext/<platform>):
   manifest.json    {duckdb_version, platform, extensions:[{name,repo:community|<repo>,file,
                                                             sha256,loaded,required}]}
 
-Required members (crypto) must load; community members are best-effort (availability varies per version/
+Required members (crypto, airport) must load; community members are best-effort (availability varies per version/
 platform) and recorded but non-fatal. Usage: python mirror_duckdb_extensions.py [out-dir]
 """
 
@@ -44,7 +44,8 @@ from pathlib import Path
 import duckdb
 
 # crypto: sha224/sha384/sha512 (REQ-2171) -- the maintainer's decision (2026-11-05) is that it ships.
-_REQUIRED = {"crypto"}
+# airport: Query.Farm's build, the only one DuckDB 2.0 loads (maintainer decision 2026-11-07).
+_REQUIRED = {"crypto", "airport"}
 
 
 def _extension_list() -> list[str]:

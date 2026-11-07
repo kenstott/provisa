@@ -13,7 +13,7 @@ third-party core-extension wheels lack (REQ-1142 amendment, TEMPORARY EXTENSION 
 crypto and the community extensions, filled in PRIORITY order while the wheel stays under PyPI's
 100 MB limit; any extension that does not fit is left out, by name, in the output. CI runs scripts/ci/mirror_duckdb_extensions.py
 on each platform of the matrix; each mirror is extracted as ``<label>/<version>/<duckdb_platform>/``
-(a named repository's extension, crypto's, under ``repositories/<repo>/`` with its ``.info``).
+(a named repository's extension, crypto's or airport's, under ``repositories/<repo>/`` with its ``.info``).
 
 Usage:
   python collect.py collect <artifacts_root> <label>   # _ext := that label's mirror, nothing else

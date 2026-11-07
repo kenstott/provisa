@@ -2,7 +2,7 @@ name: Build DuckDB Extensions
 
 # Family A: mirror the DuckDB extensions provisa-duckdb-ext carries (derived from the connector defs)
 # for the pinned DuckDB version, per platform, and prove each LOADs. No compilation — these are the
-# official community builds and Query.Farm's crypto, pinned + collected into a self-hostable repo
+# official community builds and Query.Farm's crypto and airport, pinned + collected into a self-hostable repo
 # layout for offline installs. Contrast build-pg-extensions.yml (Family B: native PG .so/.dylib we
 # compile). TEMPORARY for DuckDB 2.0 (REQ-1142 amendment, TEMPORARY EXTENSION SOURCES FOR DUCKDB 2.0):
 # the core extensions (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta, avro) come from the
@@ -53,8 +53,8 @@ jobs:
           PIN=$(uv run --no-sync python -c "import tomllib;d=tomllib.load(open('packaging/duckdb-ext/pyproject.toml','rb'));print([x for x in d['project']['dependencies'] if x.startswith('duckdb==')][0])")
           uv pip install "$PIN"
 
-      # Community from DuckDB's community repository; crypto from Query.Farm's (query_farm,
-      # https://duckdb-extensions.query.farm -- DuckDB 2.0 has it nowhere else), kept in DuckDB's
+      # Community from DuckDB's community repository; crypto and airport from Query.Farm's (query_farm,
+      # https://duckdb-extensions.query.farm -- DuckDB 2.0 loads them from nowhere else), kept in DuckDB's
       # repositories/query_farm/ layout so the runtime LOADs it offline from the staged copy.
       - name: Mirror + prove-load DuckDB extensions
         run: uv run --no-sync python scripts/ci/mirror_duckdb_extensions.py dist/duckdb-ext/${{ matrix.label }}

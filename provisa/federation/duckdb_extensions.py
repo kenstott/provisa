@@ -50,6 +50,10 @@ EXTENSION_REPOSITORIES: dict[str, tuple[str, str]] = {
     # https://query.farm/duckdb_extension_crypto.html (DuckDB 2.0) and
     # https://query.farm/blog/duckdb-2-query-farm-repository/
     "crypto": ("query_farm", "https://duckdb-extensions.query.farm"),
+    # DuckDB 2.0's community airport refuses to load ("The airport extension for DuckDB 2.0 and
+    # later is distributed from the Query.Farm extension repository");
+    # https://query.farm/products/extensions/airport/ (maintainer decision 2026-11-07).
+    "airport": ("query_farm", "https://duckdb-extensions.query.farm"),
 }
 
 
@@ -372,11 +376,28 @@ def install_and_load(
     """INSTALL then LOAD ``extension`` on ``con`` — the one place that spells the two-step DuckDB
     extension bring-up, so callers never write a bare ``INSTALL``/``LOAD`` string themselves —
     with the environment (``_EXTENSION_ENV``) and settings (``_EXTENSION_SETTINGS``) the extension
-    is always loaded with."""
+    is always loaded with.
+
+    An extension of EXTENSION_REPOSITORIES comes from its named repository whatever
+    ``from_community`` says: DuckDB 2.0 keeps it under ``repositories/<repository>/`` and finds it
+    only with ``LOAD <name> FROM <repository>``. The repository is created where the connection
+    does not know it (a server or a dev checkout); a staged directory's trust anchor already names
+    it."""
     if extension in _EXTENSION_ENV:
         os.environ.update(_EXTENSION_ENV[extension]())
-    con.execute(f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}")
-    con.execute(f"LOAD {extension}")
+    if extension in EXTENSION_REPOSITORIES:
+        repository, prefix = EXTENSION_REPOSITORIES[extension]
+        con.execute("SET allow_extension_repositories = 'allowed'")
+        con.execute(
+            f"CREATE EXTENSION REPOSITORY IF NOT EXISTS {repository} WITH PREFIX '{prefix}'"
+        )
+        con.execute(f"INSTALL {extension} FROM {repository}")
+        con.execute(f"LOAD {extension} FROM {repository}")
+    else:
+        con.execute(
+            f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"
+        )
+        con.execute(f"LOAD {extension}")
     for statement in _EXTENSION_SETTINGS.get(extension, ()):
         con.execute(statement)
 

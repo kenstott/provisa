@@ -302,3 +302,43 @@ def test_a_staged_directory_is_connected_to_with_its_trust_anchors(tmp_path, mon
     }
     monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR")
     assert extension_config() == {}
+
+
+def test_install_and_load_brings_airport_from_query_farms_repository():
+    # DuckDB 2.0's community airport throws at LOAD, and a copy installed from query_farm loads
+    # only with LOAD airport FROM query_farm (a plain LOAD looks for the community copy). The
+    # repository is created where the connection does not know it yet (a server or a dev
+    # checkout); a staged directory's anchor already names it, so IF NOT EXISTS leaves it be.
+    from provisa.federation.duckdb_extensions import install_and_load
+
+    class _Con:
+        def __init__(self):
+            self.statements: list[str] = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+
+    con = _Con()
+    install_and_load(con, "airport")  # type: ignore[arg-type]
+    assert con.statements == [
+        "SET allow_extension_repositories = 'allowed'",
+        "CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm "
+        "WITH PREFIX 'https://duckdb-extensions.query.farm'",
+        "INSTALL airport FROM query_farm",
+        "LOAD airport FROM query_farm",
+    ]
+
+
+def test_a_community_extension_is_still_installed_from_community():
+    from provisa.federation.duckdb_extensions import install_and_load
+
+    class _Con:
+        def __init__(self):
+            self.statements: list[str] = []
+
+        def execute(self, statement):
+            self.statements.append(statement)
+
+    con = _Con()
+    install_and_load(con, "mssql")  # type: ignore[arg-type]
+    assert con.statements == ["INSTALL mssql FROM community", "LOAD mssql"]

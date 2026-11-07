@@ -58,8 +58,23 @@ def test_crypto_is_mirrored_from_query_farms_repository_and_required():
         "https://duckdb-extensions.query.farm",
     )
     assert mirror._sources()["crypto"] == "query_farm"
-    assert mirror._REQUIRED == {"crypto"}
+    assert "crypto" in mirror._REQUIRED
     assert set(mirror._sources().values()) == {"community", "query_farm"}
+
+
+def test_airport_is_mirrored_from_query_farms_repository_and_required():
+    # DuckDB 2.0's community airport refuses to load ("The airport extension for DuckDB 2.0 and
+    # later is distributed from the Query.Farm extension repository"); the maintainer's decision
+    # (2026-11-07) is that provisa-duckdb-ext ships Query.Farm's build.
+    mirror = _mirror()
+    from provisa.federation.duckdb_extensions import EXTENSION_REPOSITORIES
+
+    assert EXTENSION_REPOSITORIES["airport"] == (
+        "query_farm",
+        "https://duckdb-extensions.query.farm",
+    )
+    assert mirror._sources()["airport"] == "query_farm"
+    assert mirror._REQUIRED == {"crypto", "airport"}
 
 
 def test_the_wheel_fill_order_names_crypto_and_every_mirrored_community_extension():

@@ -97,3 +97,17 @@ def test_the_mirror_carries_crypto_and_community_only():
     assert run.startswith("uv run --no-sync python scripts/ci/mirror_duckdb_extensions.py ")
     assert "duckdb-extension-" not in WORKFLOW.read_text()
     assert _collect().PRIORITY[0] == "crypto" and _collect().PRIORITY[-1] == "firebird"
+
+
+def test_provisa_duckdb_ext_0_2_2_carries_airport_and_is_the_floor():
+    # 0.2.2 is the first build with Query.Farm's airport (maintainer decision 2026-11-07): the
+    # package, its locator and the embedded extra's floor name the same release.
+    import re
+    import tomllib
+
+    package = tomllib.loads((REPO / "packaging/duckdb-ext/pyproject.toml").read_text())
+    assert package["project"]["version"] == "0.2.2"
+    init = (REPO / "packaging/duckdb-ext/provisa_duckdb_ext/__init__.py").read_text()
+    assert re.search(r'^__version__ = "0\.2\.2"$', init, re.MULTILINE)
+    root = (REPO / "pyproject.toml").read_text()
+    assert '"provisa-duckdb-ext>=0.2.2",' in root
