@@ -83249,17 +83249,27 @@
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and renewals,
-    ServiceNow incidents, Jira issues and Stripe test-mode invoices, built once against real accounts and served
-    from TTL -1 replicas. It shows cross-application relationships (account to incident to issue, account to invoice),
-    lineage to each table''s real origin, and a data product (account health). Its tour follows the settled demo
-    tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships
-    fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries
-    and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client
-    over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, REQ-2012)
-    only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external
-    account at run time: data from real accounts is landed at build as TTL -1 replicas (REQ-2031). Its business
-    question: "Which accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?"'
+  description: 'A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and
+    renewals, ServiceNow incidents, Jira issues and Stripe test-mode invoices, built once against real accounts
+    and served from TTL -1 replicas. It shows cross-application relationships (account to incident to issue,
+    account to invoice), lineage to each table''s real origin, and a data product (account health). Its
+    tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources,
+    tables, commands, views and relationships fit, each step on its real row; then the solution in whatever
+    form best answers the question: predesigned queries and views run over the transports that suit it (SQL,
+    GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly
+    question (answered at template build and served stored, REQ-2012) only where a conversational answer
+    is the natural fit; then a recap. The demo never reaches a live external account at run time: data from
+    real accounts is landed at build as TTL -1 replicas (REQ-2031). Its business question: "Which accounts
+    renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?" (Amended 2026-11-07,
+    A CUSTOMER MASTER HUB AND A RULE-BASED CROSSWALK:) The systems share no account id: each keeps its own
+    (Salesforce account id, ServiceNow company, Jira customer field, Stripe customer), as in real organisations.
+    The demo shows both ways they are linked. A customer master hub, the demo''s own Postgres read live,
+    holds master customers and a crosswalk to each system''s id; each system relates to the hub, not to
+    every other system. Beside it, a crosswalk view defined in the model matches the same records by SQL
+    rules (email or website domain, normalised company name), each row naming the rule that matched, showing
+    Provisa building the hub where a company has none. The differences between the two (a record the hub
+    links and the rules miss, a rule match the hub lacks, a record neither links) are shown as data-quality
+    findings. The business question is answered through the hub (maintainer 2026-11-07).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
