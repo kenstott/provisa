@@ -180,6 +180,12 @@ def _to_pascal_case(name: str) -> str:
     return "".join(result)
 
 
+def to_pascal_case(name: str) -> str:  # REQ-194
+    """A name in pascal case (``active_users`` and ``activeUsers`` are ``ActiveUsers``), for a
+    client-facing name outside the convention presets: a gRPC RPC, a GraphQL type name."""
+    return _to_pascal_case(name)
+
+
 def _to_camel_case(name: str) -> str:
     """Convert snake_case or kebab-case to camelCase."""
     pascal = _to_pascal_case(name)
