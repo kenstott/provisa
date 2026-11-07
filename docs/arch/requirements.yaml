@@ -2996,7 +2996,14 @@
     that loses information or reads badly (HTTPServer to h_t_t_p_server, a long prefix chain); a name longer
     than a surface accepts (PostgreSQL''s 63-character identifiers, proto and client limits); and an alias
     that shadows another object''s name. Each warning names the object, the surface and the fix (for example,
-    set an alias). Only clashes block the build; the rest are warnings (maintainer 2026-11-07).'
+    set an alias). Only clashes block the build; the rest are warnings (maintainer 2026-11-07). (Amended
+    2026-11-07, THE NAMES TABLE SPANS THE DATA ESTATE:) The names table also records, for each model object,
+    its name where it lives and where it is published: the physical name in each source and each engine
+    it is read through or replicated to; the name each metadata export target gives it (Atlas, Dataplex,
+    Snowflake Horizon and every other export, REQ metadata export); and the glossary terms it realises,
+    so a term resolves to every object and every name that carries it. The table is then one cross-system
+    name map: an operator, a lineage view, an impact question (rename this: what changes, where) and an
+    agent all read the same answer (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
