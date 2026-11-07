@@ -13,6 +13,7 @@
 // Observability page paints the caller's own trace feed but not the debug-tracing tab.
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { screen } from "@testing-library/react";
 import { render } from "../test-utils/render";
 import { stepPageReady, stepRoute, walkTourStep } from "../test-utils/tourAnchor";
 
@@ -21,6 +22,7 @@ const hooks = vi.hoisted(() => {
   const refetch = async () => undefined;
   const none: never[] = [];
   return {
+    refetch,
     list: (key: string) => ({ loading: false, [key]: none, refetch }),
     auth: {
       role: { id: "visitor", capabilities: [] as string[], domain_access: ["*"] },
@@ -39,6 +41,7 @@ const TABLES = hooks.list("tables");
 const RELATIONSHIPS = hooks.list("relationships");
 const RLS = hooks.list("rlsRules");
 const ROLES = hooks.list("roles");
+const HEALTH = { systemHealth: null, loading: false, error: undefined, refetch: hooks.refetch };
 
 vi.mock("../hooks/useAdminQueries", async (orig) => ({
   ...(await orig<typeof import("../hooks/useAdminQueries")>()),
@@ -47,8 +50,16 @@ vi.mock("../hooks/useAdminQueries", async (orig) => ({
   useTables: () => TABLES,
   useRelationships: () => RELATIONSHIPS,
   useAllRelationships: () => RELATIONSHIPS,
-  useRLSRules: () => RLS,
   useRoles: () => ROLES,
+}));
+// AdminPage reads its RLS rules from the Security page's hooks, not useAdminQueries.
+vi.mock("../hooks/useSecurityQueries", async (orig) => ({
+  ...(await orig<typeof import("../hooks/useSecurityQueries")>()),
+  useRLSRules: () => RLS,
+}));
+vi.mock("../hooks/useAdminOpsQueries", async (orig) => ({
+  ...(await orig<typeof import("../hooks/useAdminOpsQueries")>()),
+  useSystemHealth: () => HEALTH,
 }));
 vi.mock("../context/AuthContext", () => ({ useAuth: () => hooks.auth }));
 vi.mock("../api/admin", async (orig) => ({
@@ -60,13 +71,33 @@ vi.mock("../api/admin", async (orig) => ({
 }));
 
 import { AdminPage } from "../pages/AdminPage";
+import type { McpServerStatus } from "../api/admin";
+
+// GET /admin/mcp-server as it answers a caller holding observability: the full status, tool list
+// included (provisa/api/mcp/status.py). step23's Dashboard lists those tools.
+const MCP_SERVER: McpServerStatus = {
+  enabled: false,
+  port: null,
+  transport: null,
+  stdio_role: null,
+  max_rows: 1000,
+  tools: [],
+  enable_env_var: "PROVISA_MCP_PORT",
+  role_env_var: "PROVISA_MCP_ROLE",
+};
+
+function answer(url: string): object {
+  if (url.includes("/traces/")) return { traces: [] };
+  if (url.endsWith("/admin/mcp-server")) return MCP_SERVER;
+  return {};
+}
 
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(
       async (url: string) =>
-        new Response(JSON.stringify(String(url).includes("/traces/") ? { traces: [] } : {}), {
+        new Response(JSON.stringify(answer(String(url))), {
           headers: { "Content-Type": "application/json" },
         }),
     ),
@@ -88,6 +119,11 @@ describe("the observability steps for a role holding only observability, setting
   });
   it("is ready for step23", async () => {
     render(<AdminPage />, { initialEntries: [stepRoute("step23")] });
+    expect(await stepPageReady("step23")).toBeInTheDocument();
+  });
+  it("paints step23's Dashboard through to its MCP tool list", async () => {
+    render(<AdminPage />, { initialEntries: [stepRoute("step23")] });
+    expect(await screen.findByTestId("mcp-tools")).toBeInTheDocument();
     expect(await stepPageReady("step23")).toBeInTheDocument();
   });
 });
