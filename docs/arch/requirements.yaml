@@ -2981,7 +2981,13 @@
     and never computes one; a name not in it does not exist. The table is rebuilt with each model version,
     and the UI fetches it from the server rather than recomputing names. The naming functions remain the
     rules the table is built from and are called directly only to preview a name for an object not yet saved
-    (maintainer 2026-11-07).'
+    (maintainer 2026-11-07). (Amended 2026-11-07, THE NAMES TABLE IS A META TABLE WITH A REPORT:) The names
+    table is published as a table of the meta system schema (beside M__RegisteredTables), so every client
+    reads it like any other table: SQL, GraphQL, MCP and Polly can ask what an object is called on any surface.
+    It is governed like the other meta tables: a row is visible only to a caller who may read the object
+    it names. A standard report over it lists every object with its names on each surface, filterable by
+    object kind, surface and domain, and shows the clashes refused at the last build; that report is its
+    UI. The UI reads the names of saved objects from this table rather than computing them (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
