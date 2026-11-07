@@ -229,11 +229,16 @@ def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
     return OrjsonResponse(payload, headers=cache_headers)
 
 
-def _column_types(result) -> list[str] | None:
+async def _column_types(result) -> list[str] | None:  # REQ-1961
     """The result's column types, parallel to its columns, as text; ``None`` when the engine reported
-    none. The UI types a column's filter from them (REQ-1937)."""
+    none. The UI types a column's filter from them (REQ-1937). A registered integer column is
+    listed as the ``integer`` its values are written as (:func:`_typed_rows`), not the engine's
+    decimal(10,0); any other column keeps the engine's type."""
     types = result.column_types
-    return None if types is None else [str(t) for t in types]
+    if types is None:
+        return None
+    integers = await _registered_integers(result)
+    return ["integer" if integer else str(t) for t, integer in zip(types, integers, strict=True)]
 
 
 async def _registered_integers(result) -> list[bool]:  # REQ-1961
@@ -346,7 +351,7 @@ async def _each_body(
         else:
             entry["data"] = await _typed_rows(o.result)
             entry["columns"] = list(o.result.column_names)
-            entry["column_types"] = _column_types(o.result)
+            entry["column_types"] = await _column_types(o.result)
         entries.append(entry)
     body: dict[str, Any] = {"results": entries}
     if stats_enabled:
@@ -425,7 +430,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                         {
                             "data": {"sql": rows_as_dicts},
                             "columns": list(result.column_names),
-                            "column_types": _column_types(result),
+                            "column_types": await _column_types(result),
                             "provisa_stats": qs.to_dict(),
                         }
                     ),
@@ -443,7 +448,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                     {
                         "data": {"sql": rows_as_dicts},
                         "columns": list(result.column_names),
-                        "column_types": _column_types(result),
+                        "column_types": await _column_types(result),
                     }
                 ),
                 cache_headers,
