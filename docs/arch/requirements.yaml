@@ -83269,7 +83269,18 @@
     rules (email or website domain, normalised company name), each row naming the rule that matched, showing
     Provisa building the hub where a company has none. The differences between the two (a record the hub
     links and the rules miss, a rule match the hub lacks, a record neither links) are shown as data-quality
-    findings. The business question is answered through the hub (maintainer 2026-11-07).'
+    findings. The business question is answered through the hub (maintainer 2026-11-07). (Amended 2026-11-07,
+    THE CROSSWALK CHECKS THE HUB:) The rule-based crosswalk is the hub''s data quality check, not a rival
+    to it: the hub is the system of record, and the crosswalk re-derives each link independently from evidence
+    in the source records (plain SQL materialized views in one cascade: crosswalk, master with golden attributes
+    and ids derived from each group''s anchor record, findings). Every disagreement is a data-quality finding
+    on the hub: a hub link the evidence contradicts (a likely wrong merge), an evidence link the hub lacks
+    (a duplicate customer), a system record the hub does not hold (a coverage gap), a hub entry pointing
+    at a closed or deleted record (stale), and the hub''s match rate as a trended metric. The tour answers
+    the business question through the hub, then asks how far that answer can be trusted, runs the check,
+    and reveals a renewing account the hub links to the wrong Stripe customer, so its overdue invoice was
+    missing from the first answer; the corrected answer includes it. The demo data is planted so that reveal
+    is real (maintainer 2026-11-07).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
