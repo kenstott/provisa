@@ -28,7 +28,7 @@ import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
@@ -245,6 +245,7 @@ const panel = (lineage: ProductLineage | null, owner = true) =>
       canEdit={false}
       canDelete={false}
       owner={owner}
+      seesConsumers={owner}
       lineageLoading={false}
       lineageError=""
       lineageGraph={lineage}

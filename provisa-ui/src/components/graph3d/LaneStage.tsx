@@ -8,9 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-10-28): the graph's 2D view, the lane diagram (laneDiagram.ts) drawn by
-// cytoscape and laid out by ELK's layered algorithm in fixed lane partitions, left to right; the
-// term lane is one compound laid out top-down. A click picks a node (the detail panel), a hover
+// REQ-2174 (amended 2026-10-28; 2026-11-07): the graph's 2D view, the lane diagram (laneDiagram.ts)
+// drawn by cytoscape and laid out by ELK's layered algorithm in fixed lane partitions, products to
+// terms left to right; the term lane is one compound laid out top-down by its rank edges, its other
+// links arcs drawn over it once placed. A term link is dashed and named by its type. A click picks a node (the detail panel), a hover
 // shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A
 // card holds the node's facts with links to their pages, and stays while the pointer is on it.
 
@@ -185,10 +186,20 @@ export function LaneStage({
             },
           };
         }),
-        ...diagram.links.map((k) => ({
-          group: "edges" as const,
-          data: { id: k.id, source: k.from, target: k.to },
-        })),
+        // A line between lanes runs left to right, from the product side; inside the term lane
+        // from the broader term down.
+        ...diagram.links.map((k) => {
+          const inTerms = diagram.lane.get(k.from) === "term" && diagram.lane.get(k.to) === "term";
+          return {
+            group: "edges" as const,
+            data: {
+              id: k.id,
+              source: inTerms ? k.from : k.to,
+              target: inTerms ? k.to : k.from,
+              ...(inTerms ? { term: "yes", label: k.label ?? "" } : {}),
+            },
+          };
+        }),
       ],
       layout: { name: "preset" },
       style: [
@@ -254,6 +265,27 @@ export function LaneStage({
             "target-arrow-shape": "triangle",
             "arrow-scale": 0.8,
             "curve-style": "bezier",
+          },
+        },
+        {
+          // A term link: dashed and named by its type, as the 3D view draws it.
+          selector: 'edge[term = "yes"]',
+          style: {
+            "line-style": "dashed",
+            label: "data(label)",
+            "font-size": "9px",
+            color: ink,
+            "text-rotation": "autorotate",
+            "text-background-color": token(wrap, "canvas"),
+            "text-background-opacity": 0.8,
+          },
+        },
+        {
+          selector: 'edge[arc = "yes"]',
+          style: {
+            "curve-style": "unbundled-bezier",
+            "control-point-distances": 36,
+            "control-point-weights": 0.5,
           },
         },
         { selector: ".picked", style: { "border-width": 3, "border-color": hl } },
@@ -370,10 +402,26 @@ export function LaneStage({
           cy.destroy();
           return;
         }
+        drawArcs();
         labelLanes();
       });
       second.run();
     });
+    // The term links that are not rank edges, laid over the placed term lane: they move no node.
+    const drawArcs = () =>
+      cy.add(
+        diagram.arcs.map((k) => ({
+          group: "edges" as const,
+          data: {
+            id: k.id,
+            source: k.from,
+            target: k.to,
+            term: "yes",
+            arc: "yes",
+            label: k.label ?? "",
+          },
+        })),
+      );
     const labelLanes = () => {
       const placed = cy.nodes('[kind = "node"], [kind = "more"]');
       if (placed.empty()) return;
@@ -417,7 +465,7 @@ export function LaneStage({
     const lit = new Set<string>();
     const near = new Set<string>();
     if (hover) {
-      for (const k of diagram.links)
+      for (const k of [...diagram.links, ...diagram.arcs])
         if (hover.kind === "node" ? k.from === hover.id || k.to === hover.id : k.id === hover.id) {
           lit.add(k.id);
           near.add(k.id).add(k.from).add(k.to);

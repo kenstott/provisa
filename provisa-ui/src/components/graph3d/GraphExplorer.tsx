@@ -13,10 +13,13 @@
 // user turns on and off, filtered by domain, tag and a focus with its depth, under named presets
 // that set the layers and the layout. A layer the data has nothing in is not offered. A snippet
 // (a term's page, a product's panel) is the same view with only its 2D/3D and depth controls.
+// (Amended 2026-11-07, WHAT THE GRAPH DRAWS:) the depth control is "Hops from <focus>", counted
+// from the focus alone; Related tables draws the tables related to those drawn, one step, in 3D;
+// a table's columns tied to no term drawn fold into one node; Reset view folds every table back.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Anchor, Button, Checkbox, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
@@ -39,6 +42,7 @@ import {
   edgeClass,
   edgesOf,
   filterChoices,
+  foldUnbound,
   chosenLayout,
   layoutGraph,
   openingLayout,
@@ -59,7 +63,7 @@ import {
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { LaneStage } from "./LaneStage";
-import { laneDiagram } from "./laneDiagram";
+import { laneDiagram, type LanePath } from "./laneDiagram";
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
@@ -74,8 +78,13 @@ import "./graph3d.css";
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
 const STATUSES: TermStatus[] = ["draft", "deprecated", "retired"];
 
-/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns. */
-const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns"]);
+/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns,
+ * and Related tables (REQ-2174, amended 2026-11-07). */
+const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "related"]);
+
+/** Layers the 2D view never draws: it is products, tables, columns and terms alone (REQ-2174,
+ * amended 2026-11-07), so neither is read for it. */
+const NOT_IN_2D: ReadonlySet<LayerId> = new Set(["related", "lineage"]);
 
 /** The depths a focus can be read to, in hops. */
 const DEPTHS = [1, 2, 3, 4];
@@ -298,9 +307,14 @@ export function GraphExplorer({
   const on = useMemo(
     () =>
       new Set(
-        [...layers].filter((l) => offered.has(l) && (l !== "ownerTables" || layers.has("columns"))),
+        [...layers].filter(
+          (l) =>
+            offered.has(l) &&
+            (l !== "ownerTables" || layers.has("columns")) &&
+            !(flat && NOT_IN_2D.has(l)),
+        ),
       ),
-    [layers, offered],
+    [layers, offered, flat],
   );
   // Every choice chosen is no narrowing at all: the graph is drawn as if unfiltered, nodes that
   // carry no domain included.
@@ -365,6 +379,16 @@ export function GraphExplorer({
   // REQ-2143: the page's search is the query's own (its root filter and its neighbourhood); a node
   // focused by the focus field (the product graph's) is a neighbourhood no query states yet.
   const focused = filters.focus.some((f) => f !== query?.own);
+  // The one node the graph is focused on (not a search): what its hops are counted from.
+  const focusNode = useMemo(() => {
+    const id = search === undefined && filters.focus.length === 1 ? filters.focus[0] : null;
+    return id === null ? null : (data.nodes.find((n) => n.id === id) ?? null);
+  }, [search, filters.focus, data]);
+  // REQ-2174 (amended 2026-11-07): in 2D a product's hops run along the lanes (laneDiagram).
+  const lanePath: LanePath | null = useMemo(
+    () => (flat && focusNode?.type === "product" ? { focus: focusNode.id, depth } : null),
+    [flat, focusNode, depth],
+  );
 
   const shown = useMemo(() => {
     // The page's search, when it drives the focus: what it matches, by title or definition.
@@ -381,11 +405,13 @@ export function GraphExplorer({
       return { nodes: [], edges: [] };
     // Under a query the domains, edge types and statuses are its own: ``data`` is what they keep.
     // Tags are judged here: a column or a table carries its own.
-    // The focus the query itself states (a snippet's) is read as its neighbourhood: it prunes
-    // nothing more here.
+    // The focus the query itself states (a term's snippet's) is read as its neighbourhood: it
+    // prunes nothing more here. A product's query reads all of its tables, so its hops are counted
+    // here (REQ-2174, amended 2026-11-07); in 2D along the lanes, so nothing is pruned before them.
+    const own = (f: string) => f === query?.own && !f.startsWith("p:");
     const narrowing = {
       ...filters,
-      focus: matched ?? filters.focus.filter((f) => f !== query?.own),
+      focus: matched ?? (lanePath ? [] : filters.focus.filter((f) => !own(f))),
       ...(query
         ? { domains: [], edgeTypes: [], hiddenStatuses: [], tags: narrowed.tags, sensitivities: [] }
         : narrowed),
@@ -408,22 +434,27 @@ export function GraphExplorer({
     const kept = new Set(nodes.map((n) => n.id));
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
-  }, [data, on, filters, narrowed, query, expanded, reachScope, orphans, search, lateral]);
+  }, [data, on, filters, narrowed, query, expanded, reachScope, orphans, search, lateral, lanePath]);
+  // REQ-2174 (amended 2026-11-07): in 3D a table's columns tied to no term drawn are one node.
+  const folded = useMemo(
+    () => foldUnbound(shown, expanded, (count) => t("graph3d.moreColumns", { count })),
+    [shown, expanded, t],
+  );
   const layout = chosenLayout(
-    shown,
+    folded,
     savedLayout(saved.layout as string) ?? presetOf(preset).layout ?? null,
   );
-  const layeredPossible = useMemo(() => openingLayout(shown).layeredPossible, [shown]);
+  const layeredPossible = useMemo(() => openingLayout(folded).layeredPossible, [folded]);
   // REQ-2174: in 2D the graph is a lane diagram (laneDiagram.ts), laid out by ELK as it is drawn.
   const lanes = useMemo(
-    () => (flat ? laneDiagram(shown, data, expanded) : null),
-    [flat, shown, data, expanded],
+    () => (flat ? laneDiagram(shown, data, expanded, lanePath) : null),
+    [flat, shown, data, expanded, lanePath],
   );
-  const drawn = lanes?.graph ?? shown;
+  const drawn = lanes?.graph ?? folded;
   const at = useMemo(
     () =>
-      flat ? new Map<string, [number, number, number]>() : layoutGraph(shown, layout, attraction),
-    [shown, layout, attraction, flat],
+      flat ? new Map<string, [number, number, number]>() : layoutGraph(folded, layout, attraction),
+    [folded, layout, attraction, flat],
   );
   const focusable = useMemo(
     () =>
@@ -450,6 +481,12 @@ export function GraphExplorer({
   // In the overview a domain picked is the domain the graph is narrowed to. A snippet has no
   // detail panel: a node clicked in it opens on its own page.
   const select = (id: string | null) => {
+    // A table's folded columns open in place, as a lane's fold node does.
+    const fold = id === null ? undefined : drawn.nodes.find((n) => n.id === id && n.folded);
+    if (fold?.parent) {
+      toggleExpanded(fold.parent);
+      return;
+    }
     const node = snippet && id !== null ? drawn.nodes.find((n) => n.id === id) : undefined;
     if (node) {
       navigate(nodeHref(node));
@@ -465,7 +502,7 @@ export function GraphExplorer({
   // stops the turning, as it does anywhere.
   const [glanceTurn, setGlanceTurn] = useState(true);
   const s: StageState = {
-    graph: shown,
+    graph: folded,
     at,
     frame,
     flat,
@@ -479,16 +516,34 @@ export function GraphExplorer({
     grid: snippet ? false : grid,
   };
 
-  // A focus or a search draws a neighbourhood, to the depth chosen.
+  // A focus or a search draws a neighbourhood, to the depth chosen: "Hops from <focus>".
   const hasFocus = filters.focus.length > 0 || searchItems(search ?? "").length > 0;
+  const hopsLabel = focusNode
+    ? t("graph3d.hopsFrom", { focus: focusNode.label })
+    : t("graph3d.hopsFromMatches");
   const depthControl = hasFocus && (
-    <SegmentedControl
+    <Group gap={4} wrap="nowrap">
+      <Text size="xs" c="dimmed" data-testid={`${testId}-depth-label`}>
+        {hopsLabel}
+      </Text>
+      <SegmentedControl
+        size="xs"
+        value={String(depth)}
+        onChange={(v) => setDepth(Number(v))}
+        data={DEPTHS.map((d) => ({ value: String(d), label: String(d) }))}
+        aria-label={hopsLabel}
+        data-testid={`${testId}-depth`}
+      />
+    </Group>
+  );
+  // REQ-2174 (amended 2026-11-07): the tables related to those drawn, one step; the 3D view's.
+  const relatedControl = !flat && offered.has("related") && (
+    <Checkbox
       size="xs"
-      value={String(depth)}
-      onChange={(v) => setDepth(Number(v))}
-      data={DEPTHS.map((d) => ({ value: String(d), label: String(d) }))}
-      aria-label={t("graph3d.depth")}
-      data-testid={`${testId}-depth`}
+      label={t("graph3d.relatedTables")}
+      checked={layers.has("related")}
+      onChange={(e) => toggleLayer("related", e.currentTarget.checked)}
+      data-testid={`${testId}-related`}
     />
   );
   const stage = query?.notice ? (
@@ -530,6 +585,7 @@ export function GraphExplorer({
       <div className="g3d-panel" data-testid={testId}>
         <Group justify="flex-end" gap="xs" className="g3d-panel-bar">
           {depthControl}
+          {relatedControl}
           <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
           {onExpand && <ExpandButton onClick={onExpand} testId={`${testId}-expand`} />}
         </Group>
@@ -550,6 +606,7 @@ export function GraphExplorer({
         />
         <DimensionToggle flat={flat} onChange={setFlat} testId={testId} />
         {depthControl}
+        {relatedControl}
         {/* A 2D graph is a lane diagram: it has one layout, no floor, never turns, and draws no
             lateral edge. */}
         {!flat && (
@@ -577,7 +634,10 @@ export function GraphExplorer({
         <Button
           size="xs"
           variant="default"
-          onClick={() => move("reset", null)}
+          onClick={() => {
+            move("reset", null);
+            setExpanded(new Set());
+          }}
           data-testid={`${testId}-reset`}
         >
           {t("profile3d.resetView")}
@@ -613,7 +673,7 @@ export function GraphExplorer({
         {scope.menus && !flat && (
           <LayersMenu
             offered={scope.layerOrder.filter(
-              (l) => offered.has(l) && !scope.implicitLayers.includes(l),
+              (l) => offered.has(l) && !scope.implicitLayers.includes(l) && l !== "related",
             )}
             layers={layers}
             onChange={(chosen) => save("layers", [...scope.implicitLayers, ...chosen])}
@@ -775,10 +835,13 @@ function GraphDetail({
   const node = graph.nodes.find((n) => n.id === selected);
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.label ?? id;
   const links = node ? edgesOf(graph, node.id) : [];
+  // A table whose columns fold into it, or whose columns tied to no term are one node (REQ-2174,
+  // amended 2026-11-07), shows them on asking.
   const hasColumns =
-    folds &&
     node?.type === "table" &&
-    data.nodes.some((n) => n.type === "column" && n.parent === node.id);
+    (folds
+      ? data.nodes.some((n) => n.type === "column" && n.parent === node.id)
+      : expanded.has(node.id) || graph.nodes.some((n) => n.folded && n.parent === node.id));
   // Each kind drawn, named as its look shows it, with how many.
   const counts = useMemo(() => {
     const by = new Map<string, { key: string; type: string; count: number }>();

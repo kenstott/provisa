@@ -126,18 +126,60 @@ function snippet(preset: SnippetPreset, name: string) {
 }
 
 describe("a product's panel", () => {
-  it("reads the ontology focused on the product, to the neighbourhood's depth, once in view", async () => {
+  it("reads the ontology focused on the product, at 1 hop, once in view", async () => {
     render(<OntologySnippet preset={productPreset("c360")} name="customer_360" testId="snip" />);
     expect(reads.scopes).toEqual([]);
     act(() => observed.fire.forEach((f) => f()));
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(new Set(focuses().map(String))).toEqual(new Set(["p:c360,2"]));
-    // Its snippet draws the product, its tables, their columns and the terms bound to them.
+    // REQ-2174 (amended 2026-11-07): it opens at 1 hop with Related tables on.
+    expect(new Set(focuses().map(String))).toEqual(new Set(["p:c360,1"]));
+    expect(reads.scopes.at(-1)?.layers).toContain("related");
+    // Its snippet draws the product and its tables, counted from the product alone.
     await waitFor(() =>
       expect(nodeIds(drawn())).toEqual(
-        expect.arrayContaining(["p:c360", "t:customers", "c:customers.email", "term:customer"]),
+        expect.arrayContaining(["p:c360", "t:customers", "t:orders"]),
       ),
     );
+    expect(nodeIds(drawn())).not.toContain("c:customers.email");
+    expect(nodeIds(drawn())).not.toContain("term:customer");
+  });
+
+  it("names its depth control by its focus: Hops from the product", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(screen.getByTestId("snip-depth-label")).toHaveTextContent("Hops from customer_360");
+  });
+
+  it("counts its hops from the product: columns at 2, the terms tied to them at 3", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "2" }));
+    // At 2 no term is drawn, so each table's columns are one node.
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:customers"));
+    expect(drawn().nodes.find((n) => n.id === "fold:t:customers")?.label).toBe(
+      "1 column with no term in this view",
+    );
+    expect(nodeIds(drawn())).not.toContain("term:customer");
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(
+        expect.arrayContaining(["term:customer", "c:customers.email", "fold:t:orders"]),
+      ),
+    );
+    expect(nodeIds(drawn())).not.toContain("fold:t:customers");
+  });
+
+  it("offers Related tables in 3D, on, and not in 2D", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    const related = screen.getByTestId("snip-related");
+    expect(related).toBeChecked();
+    // The relationship between its tables, named.
+    await waitFor(() => expect(drawn().edges.some((e) => e.kind === "relationship")).toBe(true));
+    fireEvent.click(related);
+    await waitFor(() => expect(drawn().edges.some((e) => e.kind === "relationship")).toBe(false));
+    fireEvent.click(within(screen.getByTestId("snip")).getByRole("radio", { name: "2D" }));
+    await waitFor(() => expect(screen.queryByTestId("snip-related")).not.toBeInTheDocument());
   });
 
   it("is a glance: its stage at the card's height, its depth, 2D/3D and expand alone", async () => {
@@ -174,6 +216,7 @@ describe("a product's panel", () => {
   it("opens a node clicked in it on that node's own page", async () => {
     snippet(productPreset("c360"), "customer_360");
     await waitFor(() => expect(made.callbacks).toHaveLength(1));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:customer"));
     act(() => made.callbacks[0].onSelect({ kind: "node", id: "term:customer" }));
     expect(nav.to).toEqual(["/admin/ontology?term=customer"]);
@@ -268,6 +311,23 @@ describe("Open in ERD", () => {
     expect(screen.queryByTestId("graph3d-open-in-erd")).toBeNull();
     act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "g:gold" }));
     expect(screen.queryByTestId("graph3d-open-in-erd")).toBeNull();
+  });
+});
+
+describe("Reset view", () => {
+  it("folds every table back as well as resetting the camera", async () => {
+    render(<ProductMapButton />);
+    fireEvent.click(screen.getByTestId("product-map-open"));
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // orders' total is tied to no term: one node, opened in place by a click.
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:orders"));
+    act(() => made.callbacks[0].onSelect({ kind: "node", id: "fold:t:orders" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("c:orders.total"));
+    expect(nodeIds(drawn())).not.toContain("fold:t:orders");
+    fireEvent.click(screen.getByTestId("graph3d-reset"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:orders"));
+    expect(nodeIds(drawn())).not.toContain("c:orders.total");
+    await waitFor(() => expect(last().resetView).toHaveBeenCalled());
   });
 });
 
