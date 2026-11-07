@@ -91,10 +91,20 @@ _TENANT_TABLES = [
     roles,
     user_role_assignments,
     admin_audit_log,
-    query_audit_log,
     user_directory,
     user_idp_attributes,
 ]
+
+
+def _lay_out_query_audit_log(conn) -> None:
+    """query_audit_log as production lays it out (init_audit_schema's AUDIT_SCHEMA_SQL), in the
+    schema on the search path: with its append-only rules. Built by create_all instead it had none,
+    and an erasure the rules swallowed passed here (REQ-1312)."""
+    from provisa.audit.query_log import AUDIT_SCHEMA_SQL
+
+    # One multi-statement script without parameters, as init_audit_schema runs it.
+    conn.connection.driver_connection.execute(AUDIT_SCHEMA_SQL)
+
 
 # REQ-1301: the root org additionally carries the dataset catalog, because creating or deleting an
 # org rebuilds root's org-registry view and re-registers it as a meta-domain table. data_products
@@ -169,6 +179,7 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['root']}"))
         org_metadata.create_all(conn, tables=[*_TENANT_TABLES, *_ROOT_EXTRA_TABLES])
+        _lay_out_query_audit_log(conn)
         conn.execute(insert(sources).values(id="provisa-admin", type="postgres"))
         conn.execute(insert(domains).values(id="meta"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
@@ -185,7 +196,10 @@ def _prepare_sync():
         # REQ-1304: acme carries the whole tenant schema, because the config export offered before
         # deletion walks every catalog table the org could have configured — anything missing reads
         # as a 500 and would abort a deletion the org actually asked for.
-        org_metadata.create_all(conn)
+        org_metadata.create_all(
+            conn, tables=[t for t in org_metadata.sorted_tables if t is not query_audit_log]
+        )
+        _lay_out_query_audit_log(conn)
         conn.execute(insert(domains).values(id="acmeonlydomain"))
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
             conn.execute(
@@ -202,6 +216,7 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['sandbox']}"))
         org_metadata.create_all(conn, tables=_TENANT_TABLES)
+        _lay_out_query_audit_log(conn)
         for role_id, caps in _SEEDED_ROLE_CAPS.items():
             conn.execute(
                 insert(roles).values(id=role_id, capabilities=caps, description="Test role.")
