@@ -900,7 +900,11 @@ CREATE TABLE IF NOT EXISTS metrics (
     from_fact   TEXT
 );
 
--- REQ-2208: a tag on a metric goes with the metric.
+-- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
+-- metric goes with the metric.
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS rls_rule_id INTEGER REFERENCES rls_rules(id) ON DELETE CASCADE;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS role_id TEXT REFERENCES roles(id) ON DELETE CASCADE;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS metric_name TEXT;
 DO $$ BEGIN
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_metric_name_fkey
         FOREIGN KEY (metric_name) REFERENCES metrics(name) ON DELETE CASCADE ON UPDATE CASCADE;

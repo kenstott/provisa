@@ -14,6 +14,8 @@
     "deleteConfirm": "确定删除报表 {{name}} 吗？",
     "deleted": "已删除报表 {{name}}。",
     "empty": "ops 域中未注册任何报表。",
+    "filterPlaceholder": "筛选报表…",
+    "noMatch": "没有匹配的报表",
     "resize": "调整报表列表大小",
     "drift": {
       "title": "自上一周期以来的漂移",
