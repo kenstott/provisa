@@ -430,6 +430,7 @@ class TestScopedMerge:
         refused by the apply's validation and the target is left exactly as it was."""
         from provisa.core.env_deploy import DeployError
 
+        # Reads nothing on purpose: no capability, no domain (J354).
         await seeded.insert(roles, ENV, id="lab_reviewer", capabilities=[])
         await seeded.insert(
             registered_tables,
