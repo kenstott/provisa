@@ -93210,7 +93210,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     created and request decided are an insert and an update, and the event''s schema is the table''s columns.
     Decisions still enter through the existing approve and decide endpoints. The work left is the ops table,
     the org delivery setting (email, events only, both) and an idempotency key on the approve and decide
-    calls; delivery, signing and replay are whatever the subscription mechanism provides (maintainer 2026-11-07).'
+    calls; delivery, signing and replay are whatever the subscription mechanism provides (maintainer 2026-11-07).
+    (Amended 2026-11-07, PROVISA IS NOT THE WORKFLOW TOOL:) Whatever an enterprise does between a request
+    and its decision (gathering documents, attestations, a chain of approvals, escalations) runs in its
+    own tool and is its own concern; Provisa models no workflow steps or states beyond the request''s own
+    (pending, decided). The approve and deny calls may carry the enterprise''s trail as given (a statement,
+    links to evidence, the approvals it collected), which Provisa stores with the decision and shows on
+    the request row without interpreting or validating it (maintainer 2026-11-07).'
   use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
     Provisa's own email notices off.
   scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
