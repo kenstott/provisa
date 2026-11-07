@@ -593,6 +593,15 @@ def answer_reads(
             if named is exc:
                 raise
             raise named from None
+        except OSError as streamed:
+            # DuckDB's error met in a later batch, as its Arrow reader raises it: carrying only
+            # DuckDB's message, raised as the exception DuckDB raises for it.
+            if failed:
+                raise failed[0] from None
+            engine = duckdb_sql.engine_error(streamed)
+            if not isinstance(engine, duckdb.Error):
+                raise
+            raise _named(engine) from None
         except pa.ArrowException:
             if failed:
                 raise failed[0] from None
