@@ -85737,8 +85737,8 @@ And the file is gone when the install ends"
     API SOURCES:) Declared rows also cover sources read as API endpoints (OpenAPI and the branded SaaS sources
     built on it, such as Stripe): a cache_ttl -1 API table whose source declares rows is served from those
     rows and never fetched, exactly as a database-backed replica is, so a demo built from declared rows
-    makes no call to the live service at build or at run time (maintainer decision 2026-11-07, found building
-    the customer360 demo).'
+    makes no call to the live service at build or at run time (lead 2026-11-07, applying the settled rule
+    that a demo never reaches a live SaaS account (REQ-2031); found building the customer360 demo).'
   use_case: "A demo reads a bank's mail through a Microsoft 365 source though no sandbox has a tenant: its seeded mailbox ships as the source's canonical mail tables' rows."
   scenario: "Given demo/named/insider/replica_rows/mail/default.messages.tsv holding the bank's 118 messages in the canonical messages columns, and source mail of type microsoft_365 with cache_ttl -1
 
