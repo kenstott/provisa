@@ -94,6 +94,7 @@
     "ruleDescription": "תיאור",
     "ruleDescriptionHelp": "למה החוק נועד, כפי שסקירת גישה קוראת אותו.",
     "ruleRight": "הרשאה",
+    "tags": "תגיות",
     "ruleRightRead": "קריאה",
     "ruleRightUpdate": "עדכון",
     "ruleRightDelete": "מחיקה",

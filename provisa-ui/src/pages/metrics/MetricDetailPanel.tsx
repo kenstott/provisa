@@ -16,6 +16,7 @@ import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { Tip } from "../../components/Tip";
 import { DetailFields } from "../../components/detail/DetailFields";
+import { TagControl } from "../../components/TagControl";
 
 interface MetricDetailPanelProps {
   m: Metric;
@@ -93,6 +94,11 @@ export function MetricDetailPanel({ m, dependentViews, onEdit, onDelete }: Metri
           { label: t("metricsPage.fieldDatatype"), value: m.datatype },
           { label: t("metricsPage.fieldDescription"), value: m.description },
           { label: t("metricsPage.fieldAiContext"), value: m.aiContext },
+          // REQ-2208: a metric carries tags as the model's objects do.
+          {
+            label: t("metricsPage.fieldTags"),
+            value: <TagControl objectType="metric" metricName={m.name} />,
+          },
           {
             label: t("metricsPage.builderFact"),
             value: m.fromFact ?? t("metricsPage.detail.handAuthored"),

@@ -188,7 +188,16 @@ export interface UserSummary {
 }
 
 // REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
-export type TagObjectType = "source" | "table" | "column" | "relationship" | "command";
+// REQ-2208: row rules, roles and metrics carry tags as the model's objects do.
+export type TagObjectType =
+  | "source"
+  | "table"
+  | "column"
+  | "relationship"
+  | "command"
+  | "rls_rule"
+  | "role"
+  | "metric";
 
 export type TagFieldPolicy = "hidden" | "optional" | "required";
 
@@ -247,6 +256,10 @@ export interface TagAssignment {
   commandName?: string | null;
   // REQ-2145: the glossary term an objectType "term" assignment is on.
   termId?: number | null;
+  // REQ-2208: the row rule (its id), role or metric an assignment is on.
+  rlsRuleId?: number | null;
+  roleId?: string | null;
+  metricName?: string | null;
   // REQ-2145: on a column, put the tag on the column's term instead.
   alsoTerm?: boolean;
   tableRef?: string | null;

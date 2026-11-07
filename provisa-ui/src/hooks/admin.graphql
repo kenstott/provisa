@@ -243,6 +243,9 @@ query TagAssignmentsQuery {
     columnName
     relationshipId
     commandName
+    rlsRuleId
+    roleId
+    metricName
     tableRef
     reason
     expiresOn
