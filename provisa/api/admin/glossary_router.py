@@ -1607,14 +1607,15 @@ async def tag_term(  # REQ-2145
     from provisa.api.admin.schema_mutation import store_tag_assignment
     from provisa.core.models import TagAssignment
     from provisa.core.repositories import tag as tag_repo
-    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+    from provisa.core.term_tags import FLOWING_TAGS, TermTagRefused, refuse_term_tag
     from provisa.security.sensitive import SENSITIVE_DATA
 
     await _require_term_curatable(conn, term_id, request)
     tag_row = await tag_repo.get(conn, tag_id)
     if tag_row is None:
         raise ApiError(404, "schema.tag_not_found", f"Tag {tag_id!r} not found", tag=tag_id)
-    if tag_row["sensitive"]:
+    # A sensitive tag hides the term's columns only when it flows to them (REQ-2145).
+    if tag_row["sensitive"] and tag_row["id"] in FLOWING_TAGS:
         domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
         require_right_in_domains_request(request, SENSITIVE_DATA, domains)
     else:

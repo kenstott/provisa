@@ -27,6 +27,7 @@
     "domainsHelp": "Rollen die deze domeinen lezen, baseren zich op het document. Hele organisatie staat alleen.",
     "fieldSource": "Bron",
     "fieldStatus": "Status",
+    "fieldTags": "Tags",
     "fieldPassages": "Passages",
     "fieldModel": "Embeddingmodel",
     "fieldAdded": "Toegevoegd",
