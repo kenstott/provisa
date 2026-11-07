@@ -154,6 +154,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "federation",
         # REQ-2185: the reference library's retrieval setting, passage or graph.
         "reference_library",
+        # REQ-194: how the org's names table settles a name clash.
+        "names",
     }
     for deployment_wide in (
         "federation_engine",

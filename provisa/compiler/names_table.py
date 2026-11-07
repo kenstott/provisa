@@ -33,11 +33,23 @@ from typing import TYPE_CHECKING
 from provisa.compiler import naming
 
 if TYPE_CHECKING:
+    from provisa.compiler.schema_types import SchemaInput
     from provisa.compiler.sql_types import CompilationContext, TableMeta
 
 #: REQ-194 (CLASH POLICY): how a name clash is settled. Refuse is the default.
 CLASH_POLICIES: tuple[str, ...] = ("refuse", "disambiguate")
 DEFAULT_CLASH_POLICY = "refuse"
+
+
+def clash_policy(org_overrides: Mapping) -> str:  # REQ-194
+    """The org's clash policy, from its ``names`` settings override (``org_settings``). An org
+    that set none has refuse: REQ-194 (CLASH POLICY) makes refuse the default."""
+    names = org_overrides.get("names") or {}
+    policy = names.get("clash_policy", DEFAULT_CLASH_POLICY)
+    if policy not in CLASH_POLICIES:
+        raise ValueError(f"unknown clash policy {policy!r}; expected one of {CLASH_POLICIES}")
+    return policy
+
 
 #: The object kinds the table names (REQ-194, ONE NAMES TABLE PER MODEL VERSION).
 OBJECT_KINDS: tuple[str, ...] = (
@@ -573,3 +585,31 @@ def _enum_rows(enums: Mapping[str, Iterable[str]]) -> list[NameRow]:
                 )
             )
     return out
+
+
+def build_model_names(
+    ctx: CompilationContext, si: SchemaInput, policy: str
+) -> NamesTable:  # REQ-194
+    """The names table of the model version whose whole-model context is ``ctx``, built from
+    ``si`` (that context's input): its tables, commands and source enums, under the org's clash
+    ``policy``. Raises :class:`NamesClashRefused` under refuse when any names clash."""
+    from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.core.command_bindings import binding_name
+
+    commands = []
+    for c in [*si.functions, *si.webhooks]:
+        field_name = binding_name(c, "graphql")
+        if field_name is not None:
+            commands.append({"name": c["name"], "kind": c.get("kind"), "field": field_name})
+    enums = {
+        pg_name: [v.value for v in enum_type.values.values()]
+        for pg_name, enum_type in si.enum_types.items()
+    }
+    rows = model_name_rows(
+        ctx,
+        si.tables,
+        commands=commands,
+        enums=enums,
+        sql_name_of={tm.table_id: semantic_table_name(tm) for tm in ctx.tables.values()},
+    )
+    return build_names_table(rows, policy)

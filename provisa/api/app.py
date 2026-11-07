@@ -145,6 +145,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, NamedTuple, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from provisa.compiler.names_table import NamesTable
     from provisa.compiler.compiled_query_cache import CompiledQueryCache
     from provisa.cache.hot_tables import HotTableManager
     from provisa.core.tenant_context import TenantContextCache
@@ -1120,6 +1121,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def names_table(self) -> "NamesTable | None":
+        """This model version's names table (OrgRuntime.names_table, REQ-194)."""
+        return self._active_runtime().names_table
+
+    @names_table.setter
+    def names_table(self, value: "NamesTable | None") -> None:
+        self._active_runtime().names_table = value
 
     @property
     def view_path_map(self) -> dict | None:

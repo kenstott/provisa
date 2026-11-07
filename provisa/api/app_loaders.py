@@ -1908,6 +1908,40 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     def _schema_input(role: dict, tbls: list[dict], mtrcs: list[dict]) -> SchemaInput:
         return schema_input_for(state, role, tbls, mtrcs)
 
+    # A view's SQL is a model object: it is lowered to physical against the WHOLE model, not
+    # against whichever role's context came first (which named only the tables THAT role could
+    # see, and left a view over any other table unresolved — its refresh failed "schema does not
+    # exist", and an inline view's meaning depended on role-id order). This context belongs to no
+    # role and never answers a request; a view's rows are governed when the view is read.
+    _model_role = {
+        "id": "__model__",
+        "domain_access": ["*", *SYSTEM_DOMAINS],
+        # The catalog's governance columns are part of the model a view may read.
+        "capabilities": [Capability.VIEW_GOVERNANCE.value],
+    }
+    # REQ-2154: every column and metric granted to this one role, by name -- the whole model.
+    _model_tables = [
+        {**t, "columns": [{**c, "visible_to": [_model_role["id"]]} for c in t["columns"]]}
+        for t in tables
+    ]
+    _model_input = _schema_input(
+        _model_role, _model_tables, [{**m, "visible_to": [_model_role["id"]]} for m in metrics]
+    )
+    _view_context = build_context(_model_input)
+    # REQ-194: this model version's names table, from the whole model's context. Built before any
+    # role's surface is registered or the model context replaced: under the refuse policy a clash
+    # stops the build here, naming both objects, and the roles keep the surfaces they had.
+    from provisa.compiler.names_table import build_model_names, clash_policy
+
+    _names_table = build_model_names(
+        _view_context, _model_input, clash_policy(state.settings_overrides)
+    )
+    state.view_context = _view_context
+    state.names_table = _names_table
+    from provisa.compiler.schema_gen import build_table_path_map
+
+    state.view_path_map = build_table_path_map(_model_input)
+
     # ``roles`` is every role the control plane holds now. The registry and the per-role maps
     # are built up across rebuilds of a live runtime, so a role deleted since the last build is
     # still in them: without this it keeps its rights (capability resolution reads state.roles)
@@ -1979,30 +2013,6 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     # projects through state.contexts[role] (grpc/server.py _handle_query_bound) and is governed by
     # _govern_and_route_compiled, so a column the role cannot see is never SELECTed and its proto
     # field is left unset. Per-role client stubs still come from GET /data/proto/{role}.
-    # A view's SQL is a model object: it is lowered to physical against the WHOLE model, not
-    # against whichever role's context came first (which named only the tables THAT role could
-    # see, and left a view over any other table unresolved — its refresh failed "schema does not
-    # exist", and an inline view's meaning depended on role-id order). This context belongs to no
-    # role and never answers a request; a view's rows are governed when the view is read.
-    _model_role = {
-        "id": "__model__",
-        "domain_access": ["*", *SYSTEM_DOMAINS],
-        # The catalog's governance columns are part of the model a view may read.
-        "capabilities": [Capability.VIEW_GOVERNANCE.value],
-    }
-    # REQ-2154: every column and metric granted to this one role, by name -- the whole model.
-    _model_tables = [
-        {**t, "columns": [{**c, "visible_to": [_model_role["id"]]} for c in t["columns"]]}
-        for t in tables
-    ]
-    _model_input = _schema_input(
-        _model_role, _model_tables, [{**m, "visible_to": [_model_role["id"]]} for m in metrics]
-    )
-    state.view_context = build_context(_model_input)
-    from provisa.compiler.schema_gen import build_table_path_map
-
-    state.view_path_map = build_table_path_map(_model_input)
-
     _wire_role = {
         "id": "__wire__",
         "domain_access": ["*", *SYSTEM_DOMAINS],
