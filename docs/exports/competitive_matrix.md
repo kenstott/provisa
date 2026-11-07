@@ -49,11 +49,8 @@ In the Snowflake/BigQuery column, the verdict is against whichever of the two is
 | Client-controlled redirect headers | P | **A** | **A** | **A** | **A** | N26 |
 | pgwire PostgreSQL wire protocol | **A** | **A** | P | **A** | **A** | N27 |
 | pg_catalog role-scoped intercept | — | — | P | — | — | N28 |
-| DDL dispatch (Trino vs. direct path) | **G** | **G** | **G** | **G** | **G** | N29 |
-| DDL capability gating over pgwire | — | — | — | — | — | N30 |
+| Client DDL (temporary tables on every surface; persistent objects defined in the model) | — | — | — | — | — | N29 |
 | COPY TO/FROM STDIN with RLS | **A** | **A** | **A** | P | P | N31 |
-| Domain-driven DDL target resolution | — | — | — | — | — | N30 |
-| Immediate post-DDL schema registration | — | — | — | — | — | N30 |
 | ADBC client over Arrow Flight | **A** | **A** | P | P | P | N32 |
 | Governed JDBC (no ungoverned path) | P | — | P | P | P | N33 |
 | JDBC transport via Arrow Flight | **A** | — | P | P | P | N34 |
@@ -84,14 +81,14 @@ In the Snowflake/BigQuery column, the verdict is against whichever of the two is
 | Cypher write mutations | **A** | **A** | **A** | **A** | **A** | N58 |
 | ADBC Flight port configurability | — | — | P | P | — | N59 |
 
-Counts across the 310 cells:
+Counts across the 295 cells:
 
 | Mark | Before 2026-11-07 | After |
 | --- | --- | --- |
 | A | 294 | 135 |
 | P | 2 | 106 |
-| G | 9 | 5 |
-| — | 5 | 64 |
+| G | 9 | 0 |
+| — | 5 | 54 |
 
 ---
 
@@ -241,16 +238,9 @@ Every non-A cell gets a line of reason, and so does the basis for each **A**. So
 - — wherever there is no PostgreSQL-protocol endpoint. With no pg_catalog, there is nothing to scope.
 - Denodo P: its PostgreSQL-protocol interface answers catalog queries within the user's privileges. [inferred]
 
-**N29. DDL dispatch.** Provisa no longer accepts DDL. REQ-1926 says "CREATE, DROP and ALTER are refused on every surface", and pgwire answers with SQLSTATE 0A000. The requirements this row once described, REQ-582 to REQ-584, are superseded. [tool-verified]
-- Trino G: `CREATE TABLE` through connectors [T8]. [tool-verified]
-- Hasura G: admins can run arbitrary SQL, DDL included, through `run_sql` [H14]. [tool-verified]
-- Denodo G: remote tables create tables in an external database [D6]. [tool-verified]
-- Dremio G: `CREATE TABLE` [R7]. [tool-verified]
-- Snowflake/BigQuery G: native DDL. [inferred]
+**N29. Client DDL.** Every surface lets a session create its own temporary tables. Persistent objects are defined in the model, or defined in their source and admitted into the model, and reach production by promotion through branches (REQ-1926). CREATE, ALTER and DROP of persistent objects are refused on every surface, and pgwire answers with SQLSTATE 0A000. REQ-582 to REQ-584, the client DDL dispatch this row once described, are superseded. [tool-verified]
 
-The refusal is deliberate. Provisa defines objects in the model and does not create them through a query protocol. Expect buyers to notice this gap first.
-
-**N30. DDL capability gating, domain-driven DDL target, post-DDL registration.** Every cell on these three rows is —, because the features left with client DDL. REQ-1926: "There is no `ddl` capability, no `ddl_catalog` and no `ddl_schema`". See N29. [tool-verified]
+The cells are — because the approaches differ by design. Trino [T8], Dremio [R7] and the warehouses create tables from a client, Hasura admins can send DDL through `run_sql` [H14], and Denodo creates tables in external databases through remote tables [D6]. Provisa keeps definitions in the versioned model. The three rows that once described client DDL routing and registration are removed, since that feature no longer exists.
 
 **N31. COPY TO/FROM STDIN with RLS.** [tool-verified: REQ-585; `provisa/pgwire/copy_handler.py`]
 - A basis (Trino, Hasura, Denodo): none offers bulk COPY over a client connection. [inferred]
@@ -393,11 +383,9 @@ The leads below hold against every competitor, or nearly every one. Evidence is 
 
 ## 4. Honest Gaps
 
-### Client DDL is refused [tool-verified]
+### By design: objects are defined in the model [tool-verified]
 
-Provisa refuses CREATE, ALTER and DROP on every surface (REQ-1926). All five competitors accept DDL from a client in some form. Trino and Dremio take `CREATE TABLE`. Hasura admins can send DDL through `run_sql`, and Denodo creates tables in external databases through remote tables. The warehouses have native DDL.
-
-Provisa defines objects in the model and admits them from sources. A team that wants to create tables from a SQL client will need another tool. See N29.
+A session can create temporary tables on every surface. Persistent tables, views and other objects are defined in the model and promoted through branches (REQ-1926), so a team used to creating tables from a SQL client works in the model instead. See N29.
 
 ### Governance is parity [tool-verified]
 
@@ -429,8 +417,6 @@ Its governance is real. File-based rules carry row filters and column masks [T1]
 
 Trino speaks only its own HTTP client protocol [T9]. An optional spooling mode parks large results in object storage, which matches Provisa's large-result redirect. The `@provisa` hint vocabulary hides Trino session property names from query authors. [tool-verified: REQ-279]
 
-On DDL, Trino leads. `CREATE TABLE` works through any connector that supports it [T8].
-
 ### Hasura
 
 Hasura is the closest architectural neighbour. Both put a GraphQL layer with role-based permissions over data sources.
@@ -449,7 +435,7 @@ Denodo enforces row restrictions and tag-driven global security policies, maskin
 
 The parity list is long. Denodo's ODBC interface follows the PostgreSQL protocol [D2]. Version 9.5 adds Arrow Flight SQL with JDBC and Python ADBC drivers [D3]. It builds base views from OpenAPI 3 documents [D4], has vector types with `EMBED_AI()` [D5], suggests joins with an LLM [D8], and runs Kafka listeners that can publish query results [D7].
 
-Provisa leads on Neo4j, SPARQL and gRPC sources, SSE subscriptions, normalized output and the governance-transparent test endpoint. Denodo leads on DDL, through remote tables [D6].
+Provisa leads on Neo4j, SPARQL and gRPC sources, SSE subscriptions, normalized output and the governance-transparent test endpoint.
 
 ### Dremio
 
@@ -457,7 +443,7 @@ Dremio is a lakehouse query engine that also federates relational and NoSQL sour
 
 Across all its sources, Dremio exposes Arrow Flight on port 32010 and Flight SQL [R1][R2], with an Arrow Flight SQL JDBC driver [R3]. So Flight, ADBC and JDBC over Flight are parity. Row-access and column-masking policies are UDFs, and Apache Ranger can take over as policy manager [R4]. The results cache declines queries that call `QUERY_USER` or `IS_MEMBER` [R6].
 
-Provisa leads on the PostgreSQL protocol, non-SQL sources, subscriptions and AI relationship suggestion, which Dremio's AI agent does not list [R8]. Dremio leads on DDL [R7].
+Provisa leads on the PostgreSQL protocol, non-SQL sources, subscriptions and AI relationship suggestion, which Dremio's AI agent does not list [R8].
 
 ### Snowflake / BigQuery
 
