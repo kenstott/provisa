@@ -94,6 +94,7 @@
     "ruleDescription": "Beschrijving",
     "ruleDescriptionHelp": "Waar de regel voor is, zoals een toegangsreview hem leest.",
     "ruleRight": "Recht",
+    "tags": "Tags",
     "ruleRightRead": "Lezen",
     "ruleRightUpdate": "Bijwerken",
     "ruleRightDelete": "Verwijderen",

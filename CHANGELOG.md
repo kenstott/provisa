@@ -3,6 +3,20 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.505
+
+Released 2026-11-06.
+
+### Changes
+
+#### release
+
+- Oauthlib 4.0.1 (CVE-2026-49272); keep openssl@4 headers out of the macOS PG build
+
+#### tags
+
+- Row rules, roles and metrics carry tags
+
 ## v0.1.0-alpha.504
 
 Released 2026-11-06.

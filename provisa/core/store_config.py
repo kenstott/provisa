@@ -350,6 +350,8 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
         fields = _fields(TagAssignment, row)
         fields.pop("table_id", None)  # a serial: the configuration names the table by table_ref
         fields.pop("term_id", None)  # a serial: the configuration names the term (REQ-2145)
+        # REQ-2208: a serial: the configuration names the rule by its role, target and rights.
+        fields.pop("rls_rule_id", None)
         tag_assignments.append(_written(TagAssignment.model_validate(fields)))
 
     class_terms = await _class_terms(conn)

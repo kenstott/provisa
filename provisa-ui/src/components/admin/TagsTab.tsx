@@ -49,7 +49,16 @@ import { matchesQuery } from "../../lib/searchItems";
 
 const PAGE_SIZE = 50;
 
-const SCOPES: TagObjectType[] = ["source", "table", "column", "relationship", "command"];
+const SCOPES: TagObjectType[] = [
+  "source",
+  "table",
+  "column",
+  "relationship",
+  "command",
+  "rls_rule",
+  "role",
+  "metric",
+];
 
 const POLICIES: TagFieldPolicy[] = ["hidden", "optional", "required"];
 

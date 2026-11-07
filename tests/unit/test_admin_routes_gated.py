@@ -123,20 +123,15 @@ EXEMPT: dict[tuple[str, str], str] = {
 
 # The tag registry: the org's vocabulary of tags and their policies. It names no table, column,
 # source or role, so it is read by every member's pages; which objects carry a tag is
-# tagAssignments, trimmed below. (tables, relationships, allRelationships, domains, sources and
+# tagAssignments, gated per object. (tables, relationships, allRelationships, domains, sources and
 # metrics are answered by the caller's rights and reach — admin/catalog_scope.py, REQ-1958 — so
 # they count as gated and need no entry.)
 EXEMPT[("graphql:query", "tags")] = (
     "org tag vocabulary read by every role's pages; names no table, column, source or role"
 )
 # resolveOwners is answered per right (has_capability("user_management") decides whether the user id
-# and e-mail come back), so it counts as gated and needs no entry. tagAssignments is trimmed to the
-# caller's reachable domains (allowed_domains_request) rather than refused.
-EXEMPT[("graphql:query", "tagAssignments")] = (
-    "returns only assignments on objects in the caller's reachable domains (table/column by the "
-    "table's domain, relationship by both its tables, command by its domain, source by "
-    "allowed_domains); unrestricted scope sees all"
-)
+# and e-mail come back), and tagAssignments by the right to read each tagged object, so both count
+# as gated and need no entry.
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
 # REQ-1921: the org's region ids and the node's region, read by every admin form with a region field
 # (tables, views, sources, roles); holds no store, connection or security detail.
