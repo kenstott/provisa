@@ -415,7 +415,9 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   return {
     label: "grpc_remote",
     sourceId,
-    sql: `SELECT name, species FROM grpc_remote.${breedTable} ORDER BY name`,
+    // Mixed case (…__AnimalCatalog__ListBreeds), so quoted: unquoted it folds to lower case and
+    // names no table (V006), as J855 found for the SQL-page spec.
+    sql: `SELECT name, species FROM grpc_remote."${breedTable}" ORDER BY name`,
     assertRows: (rows) => {
       expect(rows).toHaveLength(3);
       expect(rows.map((r) => r[0])).toEqual(["Holland Lop", "Labrador Retriever", "Siamese"]);
