@@ -93138,3 +93138,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the statement reads Orders_Archive
 
     And registering a second table named orders_archive in the same schema is refused, naming Orders_Archive'
+- id: REQ-2215
+  value: 'Provisa can resolve a role to the principals who hold it, whichever system owns role membership, so work
+    addressed to a role reaches people.'
+  status: proposed
+  target: 2026-Q4
+  group: 2. Authentication & Identity
+  category: Identity
+  feature: sign-in-and-identity-providers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: requests and other work are addressed to roles, and where membership comes
+    from an identity provider Provisa does not know who holds a role. One contract answers "the members of role R
+    in org O" with principals (id, display name, email), by whichever system owns membership: Provisa''s own role
+    assignments are read from its own tables; an external identity provider is reached through a resolver that
+    implements a system-defined contract (read-only, synchronous, a declared time limit), with resolvers for SCIM,
+    LDAP group membership, Microsoft Graph (Entra ID) and Google Directory, and any declared command that implements
+    the contract. Its first users: a request notifies the members of the role it is addressed to and shows who can
+    act on it; tag attestation workflows (REQ-2209) know who owes an attestation; and the tags report''s principal
+    checks (REQ-2208) know whether an attester is still a member and who the required attesters are, including
+    separation of duties across a role. The member list is used by the server to send and to check; showing it to
+    a person requires the user management right. A role whose membership source has no resolver has no resolvable
+    members, and anything addressed to it says so, naming the role, rather than notifying no one silently.'
+  use_case: An access request addressed to the data steward role emails the people who hold that role in the
+    identity provider.
+  scenario: 'Given a role whose members come from an identity provider with a SCIM resolver configured
+
+    When a request is addressed to that role
+
+    Then each member the resolver returns is notified
+
+    And with no resolver configured the request shows that the role has no resolvable members, naming it'

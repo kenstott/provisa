@@ -26645,3 +26645,17 @@ Maintainer 2026-11-07: SQL names are case insensitive. An unquoted identifier in
 **Code:** —
 
 **Tests:** —
+
+## 2. Authentication & Identity
+
+### REQ-2215 · Identity {#REQ-2215}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-07: requests and other work are addressed to roles, and where membership comes from an identity provider Provisa does not know who holds a role. One contract answers "the members of role R in org O" with principals (id, display name, email), by whichever system owns membership: Provisa's own role assignments are read from its own tables; an external identity provider is reached through a resolver that implements a system-defined contract (read-only, synchronous, a declared time limit), with resolvers for SCIM, LDAP group membership, Microsoft Graph (Entra ID) and Google Directory, and any declared command that implements the contract. Its first users: a request notifies the members of the role it is addressed to and shows who can act on it; tag attestation workflows ([REQ-2209](#REQ-2209)) know who owes an attestation; and the tags report's principal checks ([REQ-2208](#REQ-2208)) know whether an attester is still a member and who the required attesters are, including separation of duties across a role. The member list is used by the server to send and to check; showing it to a person requires the user management right. A role whose membership source has no resolver has no resolvable members, and anything addressed to it says so, naming the role, rather than notifying no one silently.
+
+**Use case:** An access request addressed to the data steward role emails the people who hold that role in the identity provider.
+
+**Code:** —
+
+**Tests:** —
