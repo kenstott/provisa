@@ -93417,7 +93417,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     never filter rows or unmask. 6. An identifier that names nothing, or a list for a kind no scoped capability
     of the role uses, is flagged. 7. Provisa holds no per-person state, so expiring entitlements, certification,
     separation of duties and joiner, mover and leaver changes are the identity provider''s and the governance
-    tool''s, where enterprises already run them (maintainer 2026-11-07).'
+    tool''s, where enterprises already run them (maintainer 2026-11-07). (Amended 2026-11-07, NEVER THE
+    PHYSICAL LAYER:) Entitlements name semantic objects only, never physical ones: Provisa does not own
+    the physical layer. Physical access stays with each source''s own grants, which Provisa reaches through
+    the credentials its sources are configured with, and a rename or migration underneath changes no one''s
+    entitlements (maintainer 2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
