@@ -68,7 +68,7 @@ import { scopeChange, WHOLE_ORG } from "./referenceScope";
 import { documentMark } from "../../lib/documentMark";
 
 /** The files the library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xlsx,.xml";
 
 function when(value: string | null, language: string): string {
   return value ? new Date(value).toLocaleString(language) : "";
