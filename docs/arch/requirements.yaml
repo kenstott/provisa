@@ -93592,6 +93592,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     may act is decided by entitlements, and what exports or shows an owner (catalog exports'' owners, a
     product''s or domain''s page) reads it from the entitlements of the right capability on that object.
     A field that only records a fact (who created, who changed) stays as a record and grants nothing (maintainer
+    2026-11-07). (Amended 2026-11-07, A ROLE IS OFFERED TO DOMAINS:) A role''s domains (the role form''s
+    ''Offered to domains'', formerly Domain Access) say which domains the role is offered to, as a source''s
+    allowed_domains say which domains a source is offered to: the role''s capabilities are never used outside
+    them, whoever holds the role and whatever the identity provider sends; ''*'' offers it everywhere. They
+    are the role author''s permanent statement of where the role is meant to be used, changed only by editing
+    the role. They are the role''s ceiling: defaults, grants and identity-provider lists all stay inside
+    them, and there is no separate ceiling. As a shortcut, setting them also writes the role''s default
+    entitlements, every capability the role holds scoped to those domains, which can then be narrowed (maintainer
     2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
