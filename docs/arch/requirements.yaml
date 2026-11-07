@@ -3021,7 +3021,13 @@
     Property term that owns the column directly (the term whose column refs name it), with that term''s
     name and ontology name (REQ-2163), so a business name sits beside every technical one. Only a direct
     correlation counts: a term reached through inheritance, a relationship or a table''s Class term is not
-    a column''s prime term, and a column no term owns records none (maintainer 2026-11-07).'
+    a column''s prime term, and a column no term owns records none (maintainer 2026-11-07). (Amended 2026-11-07,
+    NAME SUGGESTIONS COME FROM THE AUTHORITY:) Every name the product suggests before an object is saved
+    comes from the naming authority too: a reverse relationship''s alias (its By/Of form), a table''s or
+    view''s alias when it is registered, a column alias, a junction or metric name proposed from a fact.
+    The UI and the API ask the authority for the suggestion under the active convention and never build
+    one themselves, so a suggestion is always the name the object will be known by once saved, and the suggestion
+    passes the same name checks as the names table (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
