@@ -59,7 +59,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
--- REQ-1312: an UPDATE does nothing, except the one an account's erasure makes: user_id, and only
+-- An UPDATE does nothing, except the one an account's erasure makes: user_id, and only
 -- user_id, goes from a person's id to that id's tombstone (org_membership.tombstone_id, computed
 -- here the same way), so the entry stays and stops naming anyone. A tombstone is never rewritten.
 -- CREATE OR REPLACE, never only on create: a database made under the unconditional rule gets this
