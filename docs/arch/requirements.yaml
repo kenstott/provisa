@@ -3016,7 +3016,12 @@
     metadata export: Atlas, Dataplex, Snowflake Horizon, Unity Catalog, OpenLineage and the rest, with the
     target''s own spelling). Export is opt-in (data-product membership and catalog domains, withholding
     tags), so most objects are exported to few targets or none; an object not exported to a target has no
-    name for it, and the table never invents one (maintainer 2026-11-07).'
+    name for it, and the table never invents one (maintainer 2026-11-07). (Amended 2026-11-07, A COLUMN''S
+    PRIME GROUNDED TERM:) A column''s row in the names table also records its prime grounded term: the glossary
+    Property term that owns the column directly (the term whose column refs name it), with that term''s
+    name and ontology name (REQ-2163), so a business name sits beside every technical one. Only a direct
+    correlation counts: a term reached through inheritance, a relationship or a table''s Class term is not
+    a column''s prime term, and a column no term owns records none (maintainer 2026-11-07).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
