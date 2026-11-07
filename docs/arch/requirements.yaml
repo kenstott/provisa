@@ -61472,8 +61472,9 @@
     on the absent secret — and carries an ABSOLUTE `certificatePath`, because the server runs with its
     bundle directory as its working directory. `certificatePassword` is always emitted, the empty string
     for a password-less PFX, since the adapter rejects a null password; a `mapping` with no `certificate_password`
-    key, or a relative `certificate_path`, raises `MissingConnectorConfig` naming the field rather than
-    being defaulted. The connection-resolved source view a native engine introspects from carries `base_url`,
+    key, a relative `certificate_path`, or one that does not exist on the host the server runs on (a path
+    only an engine's container resolves), raises `MissingConnectorConfig` naming the field rather than
+    being defaulted or started into a FileNotFoundException. The connection-resolved source view a native engine introspects from carries `base_url`,
     which the endpoint-style connectors (sharepoint''s siteUrl, splunk''s url) read before falling back
     to `host`; omitting it raised AttributeError inside the connector and surfaced as an empty Register
     Table schema list. The Sources form carries auth_type, certificate_path and certificate_password into
@@ -61488,6 +61489,7 @@
   - tests/unit/test_replica_strategy.py
   - tests/integration/test_sharepoint_duckdb_attach.py
   - provisa-ui/e2e/source-to-query.spec.ts
+  - provisa-ui/e2e/sharepoint-connector.spec.ts
   use_case: A SharePoint site registered with certificate auth returned "CLIENT_CREDENTIALS auth requires
     clientId, clientSecret, and tenantId" on every query, because the operand named neither the auth type
     nor the adapter's real schema factory.
