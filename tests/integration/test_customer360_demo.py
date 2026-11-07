@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 7f7c0d5c-1204-48b6-bff2-b18f0b2891ba
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -57,8 +58,10 @@ _SAAS_TABLES = {
 
 
 class RecordingProxy:
-    """An HTTP(S) proxy on a leased loopback port that forwards nothing: each request's first line
-    (``CONNECT api.stripe.com:443 HTTP/1.1``, ``GET http://...``) is recorded and answered 403."""
+    """An HTTP(S) proxy on a leased loopback port that records the first line of every request
+    (``CONNECT api.stripe.com:443 HTTP/1.1``, ``GET http://...``). A request for one of the four
+    systems' hosts is refused (403); any other is passed through, so what the server fetches for
+    itself (DuckDB's extensions) still arrives."""
 
     def __init__(self) -> None:
         from tests.port_lease import lease_ports
@@ -75,16 +78,50 @@ class RecordingProxy:
                 conn, _ = self._sock.accept()
             except OSError:
                 return
-            with conn:
-                conn.settimeout(5)
-                try:
-                    first = conn.recv(4096).split(b"\r\n", 1)[0].decode("latin-1")
-                except OSError:
-                    continue
-                self.requests.append(first)
+            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+
+    def _handle(self, conn: socket.socket) -> None:
+        with conn:
+            conn.settimeout(30)
+            try:
+                head = conn.recv(65536)
+            except OSError:
+                return
+            first = head.split(b"\r\n", 1)[0].decode("latin-1")
+            self.requests.append(first)
+            parts = first.split()
+            if len(parts) < 2 or any(host in parts[1] for host in _SAAS_HOSTS):
                 conn.sendall(
                     b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                 )
+                return
+            method, target = parts[0], parts[1]
+            if method == "CONNECT":
+                host, _, port = target.rpartition(":")
+                upstream_addr, preface = (host, int(port)), b""
+            else:
+                rest = target.split("://", 1)[-1]
+                hostport = rest.split("/", 1)[0]
+                host, _, port = hostport.partition(":")
+                upstream_addr, preface = (host, int(port or 80)), head
+            try:
+                upstream = socket.create_connection(upstream_addr, timeout=30)
+            except OSError:
+                conn.sendall(
+                    b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                )
+                return
+            with upstream:
+                if method == "CONNECT":
+                    conn.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                else:
+                    upstream.sendall(preface)
+                conn.settimeout(None)
+                upstream.settimeout(None)
+                back = threading.Thread(target=_pipe, args=(upstream, conn), daemon=True)
+                back.start()
+                _pipe(conn, upstream)
+                back.join(timeout=60)
 
     @property
     def env(self) -> dict[str, str]:
@@ -102,6 +139,19 @@ class RecordingProxy:
 
     def close(self) -> None:
         self._sock.close()
+
+
+def _pipe(src: socket.socket, dst: socket.socket) -> None:
+    try:
+        while chunk := src.recv(65536):
+            dst.sendall(chunk)
+    except OSError:
+        pass
+    finally:
+        try:
+            dst.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
 
 
 class Hub:
