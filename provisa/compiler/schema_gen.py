@@ -633,26 +633,27 @@ def _add_computed_relationship_field(
     functions: list[dict],
     tables: list[_TableInfo],
     gql_types: dict[int, GraphQLObjectType],
-) -> None:
+) -> str | None:
     func = next((f for f in functions if f["name"] == fn_name), None)
     if not func:
-        return
+        return None
     returns_str = func.get("returns", "")
     parts = returns_str.split(".", 1) if returns_str else []
     if len(parts) != 2:
-        return
+        return None
     ret_table = next(
         (t for t in tables if t.schema_name == parts[0] and t.table_name == parts[1]),
         None,
     )
     if ret_table is None:
-        return
+        return None
     # REQ-194: named as a table relationship is — its GraphQL alias, else for the table it
     # reaches (here the one the function returns) and its cardinality.
     field_key = rel.get("graphql_alias") or rel_field_name(
         unprefixed_field_name(ret_table.field_name, ret_table.domain_id), rel["cardinality"]
     )
     fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(gql_types[ret_table.table_id])))
+    return field_key
 
 
 def _where_relationships(  # REQ-2136
@@ -692,10 +693,10 @@ def _add_standard_relationship_field(
     where_types: dict[int, GraphQLInputObjectType | None],
     order_by_types: dict[int, GraphQLInputObjectType],
     distinct_enums: dict[int, GraphQLEnumType | None],
-) -> None:
+) -> str | None:
     target = table_lookup.get(rel["target_table_id"])
     if not target:
-        return
+        return None
     target_type = gql_types[target.table_id]
     cardinality = rel["cardinality"]
     # REQ-1586: a junction-backed edge is named for its nomination, not for the table it reaches —
@@ -705,7 +706,7 @@ def _add_standard_relationship_field(
     elif rel.get("via_table_id"):
         via = table_lookup.get(rel["via_table_id"])
         if not via:
-            return
+            return None
         field_name = junction_field_name(
             rel["via_label_source"],
             cardinality,
@@ -740,6 +741,7 @@ def _add_standard_relationship_field(
         )
     else:
         raise ValueError(f"unhandled relationship cardinality {cardinality!r} for {rel['id']!r}")
+    return field_name
 
 
 def _make_object_type_fields(
@@ -774,16 +776,32 @@ def _make_object_type_fields(
             fields, ops_traversal_targets, gql_types, where_types, order_by_types, distinct_enums
         )
 
+    # field -> (relationship id, computed?) for the relationships of this type.
+    held: dict[str, tuple[str, bool]] = {}
     for rel in visible_rels:
         if rel["source_table_id"] != tid:
             continue
         fn_name = rel.get("target_function_name")
         if fn_name:
-            _add_computed_relationship_field(fields, rel, fn_name, functions, tables, gql_types)
+            name = _add_computed_relationship_field(
+                fields, rel, fn_name, functions, tables, gql_types
+            )
         else:
-            _add_standard_relationship_field(
+            name = _add_standard_relationship_field(
                 fields, rel, table_lookup, gql_types, where_types, order_by_types, distinct_enums
             )
+        if name is None:
+            continue
+        computed = bool(fn_name)
+        holder = held.get(name)
+        if holder is not None and (computed or holder[1]):
+            # REQ-194: a computed relationship and another named for one field would leave one
+            # replacing the other. Refused, naming both; a GraphQL alias on either resolves it.
+            # (Two table relationships are refused where their joins register, context.py.)
+            from provisa.compiler.context import RelationshipFieldTaken
+
+            raise RelationshipFieldTaken(info.type_name, name, holder[0], rel["id"])
+        held[name] = (rel["id"], computed)
 
     return fields
 

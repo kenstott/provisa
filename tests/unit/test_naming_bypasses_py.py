@@ -293,3 +293,102 @@ def test_openapi_register_has_no_private_alias_derivation():
 
     assert not hasattr(register, "_operation_id_to_alias")
     assert not hasattr(register, "_singularize")
+
+
+def test_computed_relationship_field_taken_by_a_table_relationship_is_refused():
+    """REQ-194: a computed relationship named for the field a table relationship holds is refused,
+    naming both; neither replaces the other in the schema."""
+    from provisa.compiler.context import RelationshipFieldTaken
+    from provisa.compiler.schema_gen import _make_object_type_fields
+
+    orders = _table(1, "orders", "orders")
+    line_items = _table(2, "line_items", "lineItems")
+    gql_types = {
+        t.table_id: cast(
+            GraphQLObjectType,
+            GraphQLObjectType(
+                t.type_name, {"id": GraphQLField(cast(GraphQLScalarType, GraphQLString))}
+            ),
+        )
+        for t in (orders, line_items)
+    }
+    fk = {
+        "id": "orders-line_items",
+        "source_table_id": 1,
+        "target_table_id": 2,
+        "source_column": "id",
+        "target_column": "order_id",
+        "cardinality": "one-to-many",
+    }
+    computed = {
+        "id": "orders-order_lines",
+        "source_table_id": 1,
+        "target_function_name": "order_lines",
+        "source_column": "id",
+        "cardinality": "one-to-many",
+    }
+    for rels in ([fk, computed], [computed, fk]):
+        with pytest.raises(RelationshipFieldTaken) as err:
+            _make_object_type_fields(
+                1,
+                {1: orders, 2: line_items},
+                gql_types,
+                None,
+                [],
+                rels,
+                [{"name": "order_lines", "returns": "public.line_items"}],
+                [orders, line_items],
+                {},
+                {},
+                {},
+            )
+        assert err.value.field == "lineItems"
+        assert {err.value.held_by, err.value.refused} == {"orders-line_items", "orders-order_lines"}
+
+
+def test_computed_relationship_with_its_own_alias_beside_a_table_relationship():
+    from provisa.compiler.schema_gen import _make_object_type_fields
+
+    orders = _table(1, "orders", "orders")
+    line_items = _table(2, "line_items", "lineItems")
+    gql_types = {
+        t.table_id: cast(
+            GraphQLObjectType,
+            GraphQLObjectType(
+                t.type_name, {"id": GraphQLField(cast(GraphQLScalarType, GraphQLString))}
+            ),
+        )
+        for t in (orders, line_items)
+    }
+    rels = [
+        {
+            "id": "orders-line_items",
+            "source_table_id": 1,
+            "target_table_id": 2,
+            "source_column": "id",
+            "target_column": "order_id",
+            "cardinality": "one-to-many",
+        },
+        {
+            "id": "orders-order_lines",
+            "source_table_id": 1,
+            "target_function_name": "order_lines",
+            "source_column": "id",
+            "cardinality": "one-to-many",
+            "graphql_alias": "orderLines",
+        },
+    ]
+    fields = _make_object_type_fields(
+        1,
+        {1: orders, 2: line_items},
+        gql_types,
+        None,
+        [],
+        rels,
+        [{"name": "order_lines", "returns": "public.line_items"}],
+        [orders, line_items],
+        {},
+        {},
+        {},
+    )
+    assert {"lineItems", "orderLines"} <= set(fields)
