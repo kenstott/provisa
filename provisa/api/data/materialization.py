@@ -544,7 +544,9 @@ async def _answer_live(
 
     read = await answer()
     if len(read.rows) <= RedirectConfig.from_env().threshold:
-        values_cte_entries[tn] = InlineRows(read.rows, [name for name, _ in read.columns])
+        values_cte_entries[tn] = InlineRows(
+            read.rows, [name for name, _ in read.columns], column_types=dict(read.columns)
+        )
         log.warning("[MAT] live %s: %d rows inline", tn, len(read.rows))
         return
     scratch = _STATEMENT_SCRATCH.get()
