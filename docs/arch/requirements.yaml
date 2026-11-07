@@ -92759,7 +92759,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     that applied (definition, cited section, last attestation, what is missing), and Polly answers from
     the same. The why is given only for what the refusal already discloses and only as far as the caller
     has the right to read those tags: a column the caller is not told exists is never explained, so explaining
-    never discloses.'
+    never discloses. (Amended 2026-11-07, THE TAGS REPORT:) Tags are published as a meta table with one
+    row per pair of tag instance and object instance (sparse: only pairs that exist, plus required tags
+    that are missing), and a standard report over it. Each row carries the object (kind, id, its name from
+    the names table of REQ-194, domain, owner), the tag (name, template, description, the definition''s
+    citation, required or not) and the tag instance (its citations, evidence and parameters, how it got
+    there: assigned, inherited or derived, when and by whom). Computed per row, when read and by the same
+    code that enforces, never stored: attestations (last attested when, by whom and what was stated; cadence,
+    next due, status current, due soon, overdue or never; days overdue; pending workflow step and who it
+    waits on; returns and rejections); citations (whether each still resolves, whether the cited text drifted
+    since assignment or last attestation, whether the required attesters can read it, required citations
+    or evidence missing); principals (assigner, owner, attesters and required attester; whether each is
+    still a member holding the right they acted with; separation of duties, such as assigner equal to attester
+    or an owner attesting their own object; orphaned principals); and a roll-up status per row (clean, needs
+    attention, blocked) with its reason, including whether the tag blocks a gate now. An as-of date answers
+    what the state was on a past date. Rows are governed by the object''s read rights and readable by Polly
+    and MCP. Grouped by tag it is the tag quality report; by object or domain, what needs attention there;
+    by principal, what each person owes; and anyone may define governed metrics over any subset of it (maintainer
+    2026-11-07).'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
