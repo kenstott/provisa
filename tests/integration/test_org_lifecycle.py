@@ -67,6 +67,7 @@ from provisa.core.schema_org import (
 )
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 from tests.served_config import served_config
 
@@ -153,6 +154,15 @@ def _prepare_sync():
         for schema in (_ADMIN_SCHEMA, *_ORG_SCHEMAS.values()):
             conn.execute(text(f"DROP SCHEMA IF EXISTS {schema} CASCADE"))
             conn.execute(text(f"CREATE SCHEMA {schema}"))
+        # REQ-2190: a node start creates the admin terminal's client role once per database
+        # (startup_seed._seed_catalog_client); org deletion rebuilds root's org-registry view,
+        # which grants it.
+        conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
 
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
