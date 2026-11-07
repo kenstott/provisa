@@ -265,7 +265,21 @@ def _watch(
             ["ps", "-eo", "rss,nlwp,etimes,args", "--sort=-rss"], capture_output=True, text=True
         ).stdout.splitlines()[:6]
         disk = subprocess.run(["df", "-h", "/", "/tmp"], capture_output=True, text=True).stdout
-        tail = log.read_text(errors="replace").splitlines()[-8:] if log.exists() else []
+        proc = getattr(server, "_proc", None)
+        rss_kb = 0
+        if proc is not None and Path(f"/proc/{proc.pid}/status").exists():
+            for row in Path(f"/proc/{proc.pid}/status").read_text().splitlines():
+                if row.startswith("VmRSS:"):
+                    rss_kb = int(row.split()[1])
+        keep = 8
+        if rss_kb > 4_000_000:
+            # The server dumps every thread's stack to its stderr on SIGUSR1 (main.py).
+            import signal
+
+            os.kill(proc.pid, signal.SIGUSR1)
+            time.sleep(2)
+            keep = 250
+        tail = log.read_text(errors="replace").splitlines()[-keep:] if log.exists() else []
         _say(
             f"\n[c360-watch {time.monotonic() - start:.0f}s]\n{mem}{disk}"
             + "\n".join(row[:240] for row in top)
