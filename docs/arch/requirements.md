@@ -1782,7 +1782,7 @@ Proto scalar types are mapped to SQL/GraphQL types as follows: `string`/`bytes` 
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Each query-classified gRPC method is exposed as a virtual read-only table. Output message fields become columns using the type mapping in [REQ-324](#REQ-324). Input message fields become GraphQL query arguments. Server-streaming methods (`Stream*`) collect all streamed response messages into a list before returning rows.
+Each query-classified gRPC method is exposed as a virtual read-only table. Output message fields become columns using the type mapping in [REQ-324](#REQ-324). Input message fields become GraphQL query arguments. Server-streaming methods (`Stream*`) collect all streamed response messages into a list before returning rows. (Amended 2026-11-07, TABLE NAMES IN LOWER SNAKE CASE:) A gRPC method's table registers under a lower snake case name derived from its service and method (AnimalCatalog.ListBreeds offers <namespace>__animal_catalog__list_breeds), as every other source's tables are named, so SQL names it without quotes (maintainer 2026-11-07). The proto's own service and method names are kept for the call; only the table name is converted.
 
 **Use case:** Query-classified gRPC methods exposed as virtual tables let clients query remote services with GraphQL syntax.
 
