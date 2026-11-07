@@ -91585,7 +91585,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
     the first row holds no labels, so a quoted row reads on its own. Rows move when others are inserted:
     a cited row found again by its hash at another row follows silently, and one whose hash is gone is flagged
-    for review, as any drifted citation is.'
+    for review, as any drifted citation is. (Amended 2026-11-07, A TOP-LEVEL LIBRARY; ADD NOW, INDEX IN
+    THE BACKGROUND:) The reference library is a top-level Library page (not in Admin, not under Ontology;
+    not named Documents, beside the product''s Docs), shaped like every other top-level page: a list (title,
+    source, index status, readers, added or refreshed), the shared filter and a detail panel with the same
+    section tabs for viewing and editing (overview and status; sections and passages; cited by: the xtags,
+    terms and security items citing it, drifted citations flagged; readers). Everyone browses and searches
+    what they may read; the library-editing right adds, refreshes and removes on the same page. Adding is
+    one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
+    term finding run in a background job; its index status is a property (indexing with progress where known,
+    ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
+    citing one still indexing says so (maintainer 2026-11-07).'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
