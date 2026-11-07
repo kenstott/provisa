@@ -83249,17 +83249,47 @@
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and renewals,
-    ServiceNow incidents, Jira issues and Stripe test-mode invoices, built once against real accounts and served
-    from TTL -1 replicas. It shows cross-application relationships (account to incident to issue, account to invoice),
-    lineage to each table''s real origin, and a data product (account health). Its tour follows the settled demo
-    tour shape: the scenario and the features it exercises; how its sources, tables, commands, views and relationships
-    fit, each step on its real row; then the solution in whatever form best answers the question: predesigned queries
-    and views run over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client
-    over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, REQ-2012)
-    only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external
-    account at run time: data from real accounts is landed at build as TTL -1 replicas (REQ-2031). Its business
-    question: "Which accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?"'
+  description: 'A named demo, customer-360 (Customer 360 across enterprise SaaS): Salesforce accounts and
+    renewals, ServiceNow incidents, Jira issues and Stripe test-mode invoices, built once against real accounts
+    and served from TTL -1 replicas. It shows cross-application relationships (account to incident to issue,
+    account to invoice), lineage to each table''s real origin, and a data product (account health). Its
+    tour follows the settled demo tour shape: the scenario and the features it exercises; how its sources,
+    tables, commands, views and relationships fit, each step on its real row; then the solution in whatever
+    form best answers the question: predesigned queries and views run over the transports that suit it (SQL,
+    GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow Flight), with a Polly
+    question (answered at template build and served stored, REQ-2012) only where a conversational answer
+    is the natural fit; then a recap. The demo never reaches a live external account at run time: data from
+    real accounts is landed at build as TTL -1 replicas (REQ-2031). Its business question: "Which accounts
+    renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?" (Amended 2026-11-07,
+    A CUSTOMER MASTER HUB AND A RULE-BASED CROSSWALK:) The systems share no account id: each keeps its own
+    (Salesforce account id, ServiceNow company, Jira customer field, Stripe customer), as in real organisations.
+    The demo shows both ways they are linked. A customer master hub, the demo''s own Postgres read live,
+    holds master customers and a crosswalk to each system''s id; each system relates to the hub, not to
+    every other system. Beside it, a crosswalk view defined in the model matches the same records by SQL
+    rules (email or website domain, normalised company name), each row naming the rule that matched, showing
+    Provisa building the hub where a company has none. The differences between the two (a record the hub
+    links and the rules miss, a rule match the hub lacks, a record neither links) are shown as data-quality
+    findings. The business question is answered through the hub (maintainer 2026-11-07). (Amended 2026-11-07,
+    THE CROSSWALK CHECKS THE HUB:) The rule-based crosswalk is the hub''s data quality check, not a rival
+    to it: the hub is the system of record, and the crosswalk re-derives each link independently from evidence
+    in the source records (plain SQL materialized views in one cascade: crosswalk, master with golden attributes
+    and ids derived from each group''s anchor record, findings). Every disagreement is a data-quality finding
+    on the hub: a hub link the evidence contradicts (a likely wrong merge), an evidence link the hub lacks
+    (a duplicate customer), a system record the hub does not hold (a coverage gap), a hub entry pointing
+    at a closed or deleted record (stale), and the hub''s match rate as a trended metric. The tour answers
+    the business question through the hub, then asks how far that answer can be trusted, runs the check,
+    and reveals a renewing account the hub links to the wrong Stripe customer, so its overdue invoice was
+    missing from the first answer; the corrected answer includes it. The demo data is planted so that reveal
+    is real (maintainer 2026-11-07). (Amended 2026-11-07, REPLICAS ARE NOT PART OF THE STORY:) [SUPERSEDED
+    by REQ-2034, 2026-11-07 -- replicas may be shown; only their being built once and never refreshed is
+    kept out (maintainer 2026-11-07). Kept here for history; do not implement against it.] Landing the SaaS
+    data once as replicas is a choice made to keep the demo practical, not something the demo presents:
+    the tour, queries and narration treat Salesforce, ServiceNow, Jira and Stripe as the sources they are
+    and never mention replicas, TTLs or how the data was landed (maintainer 2026-11-07). [END SUPERSEDED
+    BLOCK] (Amended 2026-11-07, WHAT THE TOUR NEVER SAYS ABOUT REPLICAS:) The tour may show replicas as
+    the feature they are (a SaaS source read through its replica, the replica''s build and lineage). It
+    never says that the demo''s replicas were generated in advance or that they do not refresh: landing
+    them once (TTL -1) is the choice that keeps the demo practical, not part of its story (maintainer 2026-11-07).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
@@ -92759,7 +92789,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     that applied (definition, cited section, last attestation, what is missing), and Polly answers from
     the same. The why is given only for what the refusal already discloses and only as far as the caller
     has the right to read those tags: a column the caller is not told exists is never explained, so explaining
-    never discloses.'
+    never discloses. (Amended 2026-11-07, THE TAGS REPORT:) Tags are published as a meta table with one
+    row per pair of tag instance and object instance (sparse: only pairs that exist, plus required tags
+    that are missing), and a standard report over it. Each row carries the object (kind, id, its name from
+    the names table of REQ-194, domain, owner), the tag (name, template, description, the definition''s
+    citation, required or not) and the tag instance (its citations, evidence and parameters, how it got
+    there: assigned, inherited or derived, when and by whom). Computed per row, when read and by the same
+    code that enforces, never stored: attestations (last attested when, by whom and what was stated; cadence,
+    next due, status current, due soon, overdue or never; days overdue; pending workflow step and who it
+    waits on; returns and rejections); citations (whether each still resolves, whether the cited text drifted
+    since assignment or last attestation, whether the required attesters can read it, required citations
+    or evidence missing); principals (assigner, owner, attesters and required attester; whether each is
+    still a member holding the right they acted with; separation of duties, such as assigner equal to attester
+    or an owner attesting their own object; orphaned principals); and a roll-up status per row (clean, needs
+    attention, blocked) with its reason, including whether the tag blocks a gate now. An as-of date answers
+    what the state was on a past date. Rows are governed by the object''s read rights and readable by Polly
+    and MCP. Grouped by tag it is the tag quality report; by object or domain, what needs attention there;
+    by principal, what each person owes; and anyone may define governed metrics over any subset of it (maintainer
+    2026-11-07).'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -93091,3 +93138,99 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the statement reads Orders_Archive
 
     And registering a second table named orders_archive in the same schema is refused, naming Orders_Archive'
+- id: REQ-2215
+  value: 'Provisa can resolve a role to the principals who hold it, whichever system owns role membership, so work
+    addressed to a role reaches people.'
+  status: proposed
+  target: 2026-Q4
+  group: 2. Authentication & Identity
+  category: Identity
+  feature: sign-in-and-identity-providers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: requests and other work are addressed to roles, and where membership comes
+    from an identity provider Provisa does not know who holds a role. One contract answers "the members of role R
+    in org O" with principals (id, display name, email), by whichever system owns membership: Provisa''s own role
+    assignments are read from its own tables; an external identity provider is reached through a resolver that
+    implements a system-defined contract (read-only, synchronous, a declared time limit), with resolvers for SCIM,
+    LDAP group membership, Microsoft Graph (Entra ID) and Google Directory, and any declared command that implements
+    the contract. Its first users: a request notifies the members of the role it is addressed to and shows who can
+    act on it; tag attestation workflows (REQ-2209) know who owes an attestation; and the tags report''s principal
+    checks (REQ-2208) know whether an attester is still a member and who the required attesters are, including
+    separation of duties across a role. The member list is used by the server to send and to check; showing it to
+    a person requires the user management right. A role whose membership source has no resolver has no resolvable
+    members, and anything addressed to it says so, naming the role, rather than notifying no one silently.'
+  use_case: An access request addressed to the data steward role emails the people who hold that role in the
+    identity provider.
+  scenario: 'Given a role whose members come from an identity provider with a SCIM resolver configured
+
+    When a request is addressed to that role
+
+    Then each member the resolver returns is notified
+
+    And with no resolver configured the request shows that the role has no resolvable members, naming it'
+- id: REQ-2216
+  value: 'External workflow tools run Provisa''s workflows: Provisa emits each workflow moment as an event and accepts
+    each decision through its API, and an org may turn its own email notices off.'
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: Workflow
+  feature: change-events-and-streams-sinks-and-events
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: rather than Provisa sending email notices, larger organisations run
+    approvals in their own workflow tools (ServiceNow, Jira, Slack workflows, Power Automate, Camunda, Temporal);
+    Provisa feeds them and stays the system of record for what was decided. Events out: each workflow moment
+    (a request created, an attestation coming due or overdue, a gate refusal, a cited section drifting,
+    a review step waiting) is an event delivered through the existing triggers and webhooks, naming the
+    object, the role it is addressed to, the resolved principals (REQ-2215) and a link back. Decisions in:
+    an API completes each step (approve or deny a request, record an attestation with its statement and
+    evidence, return a step); the acting person authenticates as themselves, Provisa checks their right,
+    and the decision is logged with the tags as they were (REQ-2208). Delivery is an org setting: email
+    (built in, the default), events only (Provisa sends no notice itself), or both. The contract is stable:
+    a versioned event schema, an idempotency key on every event and decision so a retried delivery cannot
+    apply twice, signed deliveries, and replay of missed events. This widens the tags unit''s events step
+    (REQ-2209) to requests and every other workflow. (Amended 2026-11-07, AN ENHANCEMENT OF WHAT EXISTS:)
+    This builds on what exists: requests are already recorded and already have the endpoints that carry
+    them out (creation requests'' approve, environment merge decisions, glossary term approval, profiler
+    constraint decisions), so an external tool can act today. [SUPERSEDED by REQ-2216, 2026-11-07 -- requests
+    become an ops table and events are its row changes, delivered by the existing subscriptions (maintainer
+    2026-11-07). Kept here for history; do not implement against it.] The work is four additions: an event
+    when a request is created or decided, through the existing triggers and webhooks, carrying the role
+    and its resolved members; the org delivery setting (email, events only, both); an idempotency key on
+    the approve and decide calls; and signed deliveries with replay where the existing webhooks lack them.
+    [END SUPERSEDED BLOCK] Attestation and review events stay with the tags unit (REQ-2209) (maintainer
+    2026-11-07). (Amended 2026-11-07, REQUESTS ARE AN OPS TABLE; EVENTS ARE ITS CHANGES:) Requests are published
+    as a table of the ops system schema (ops.requests): one row per request with what was asked, by whom,
+    the role it is addressed to and that role''s resolved members (REQ-2215), its state, the decision, who
+    decided and when; governed like any other table, so a row is visible only to those allowed to see it,
+    and readable by Polly, MCP, reports and metrics. There is no separate event mechanism: a workflow tool
+    subscribes to ops.requests through the subscriptions and change events tables already have, so request
+    created and request decided are an insert and an update, and the event''s schema is the table''s columns.
+    Decisions still enter through the existing approve and decide endpoints. The work left is the ops table,
+    the org delivery setting (email, events only, both) and an idempotency key on the approve and decide
+    calls; delivery, signing and replay are whatever the subscription mechanism provides (maintainer 2026-11-07).
+    (Amended 2026-11-07, PROVISA IS NOT THE WORKFLOW TOOL:) Whatever an enterprise does between a request
+    and its decision (gathering documents, attestations, a chain of approvals, escalations) runs in its
+    own tool and is its own concern; Provisa models no workflow steps or states beyond the request''s own
+    (pending, decided). [SUPERSEDED by REQ-2216, 2026-11-07 -- the trail lives in the enterprise''s own
+    table related to ops.requests (maintainer 2026-11-07). Kept here for history; do not implement against
+    it.] The approve and deny calls may carry the enterprise''s trail as given (a statement, links to evidence,
+    the approvals it collected), which Provisa stores with the decision and shows on the request row without
+    interpreting or validating it (maintainer 2026-11-07). [END SUPERSEDED BLOCK] (Amended 2026-11-07, PROCESS
+    EXTENSIONS ARE THE ENTERPRISE''S OWN TABLES:) The decision calls carry no workflow trail. An enterprise
+    that keeps process data (documents gathered, attestations, its approval chain) registers its own table
+    as a governed source and relates it to ops.requests by request id, so the request and its process data
+    join in one query under the same governance, lineage and reports as any relationship, in the enterprise''s
+    own shape. An ops system table can therefore be the target of a relationship from a user''s table (maintainer
+    2026-11-07).'
+  use_case: An organisation routes Provisa access requests and attestations through ServiceNow approvals and turns
+    Provisa's own email notices off.
+  scenario: 'Given an org whose workflow delivery is events only, with a webhook to its workflow tool
+
+    When a request is addressed to a role
+
+    Then the tool receives a signed, versioned event naming the request, the role and its members, and no email is sent
+
+    And when the tool approves it through the API as an authorised person, the request is approved once, even if the call is retried'

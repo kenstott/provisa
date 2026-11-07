@@ -140,9 +140,27 @@ class TestGetSettingsScope:
         for block in _PLATFORM_BLOCKS:
             assert block not in body
         assert body["features"]["platform_settings"] is False
-        # The domain mode stays — ordinary pages read it to decide whether domain UI exists.
-        assert set(body["naming"]) == {"use_domains", "default_domain"}
+        # The domain mode stays — ordinary pages read it to decide whether domain UI exists — and
+        # so does the GraphQL convention, which the relationships page names its aliases by.
+        assert set(body["naming"]) == {"use_domains", "default_domain", "convention"}
         assert "redirect" in body and "cache" in body
+
+    @pytest.mark.parametrize("rights", [("org_settings",), ("platform_settings", "org_settings")])
+    async def test_an_org_administrator_reads_the_graphql_convention(
+        self, caller, app_state, monkeypatch, rights
+    ):
+        """REQ-194, REQ-416: the GraphQL naming convention shapes every name the org's schema
+        serves, so it is no secret, and the relationships page suggests an alias by it. The org
+        administrator reads the deployment's stored value; writing it stays the platform's."""
+        from provisa.api.admin import settings_router
+
+        monkeypatch.setattr(
+            settings_router, "read_config", lambda: {"naming": {"convention": "hasura_graphql"}}
+        )
+        body = await settings_router.get_settings(caller(*rights))
+        assert body["naming"]["convention"] == "hasura_graphql"
+        assert "sql_convention" not in body["naming"]
+        assert "domain_prefix" not in body["naming"]
 
     async def test_org_overrides_resolve_on_the_read(self, caller, app_state):
         from provisa.api.admin.settings_router import get_settings
@@ -238,7 +256,7 @@ class TestDeploymentSettingsArePlatformAdminsEverywhere:
         assert body["features"]["deployment_settings"] is False
         # The right itself is unchanged: it still opens the other platform surfaces.
         assert body["features"]["platform_settings"] is True
-        assert set(body["naming"]) == {"use_domains", "default_domain"}
+        assert set(body["naming"]) == {"use_domains", "default_domain", "convention"}
         assert "redirect" in body and "cache" in body
 
     async def test_platform_admin_reads_every_block(self, caller, app_state):

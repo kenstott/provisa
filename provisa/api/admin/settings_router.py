@@ -233,8 +233,10 @@ _PLATFORM_BLOCKS = (
 )
 
 # `naming` is split rather than dropped: the domain mode is the org's (REQ-1266), the conventions
-# configure the process-global naming module and are the deployment's.
-_NAMING_ORG_SUBKEYS = ("use_domains", "default_domain")
+# configure the process-global naming module and are the deployment's. The GraphQL convention is
+# still read by the org: it shapes every name the org's schema serves, so it is no secret, and the
+# relationships page suggests a GraphQL alias by it (REQ-194). Writing it stays the platform's.
+_NAMING_ORG_SUBKEYS = ("use_domains", "default_domain", "convention")
 
 # The PUT blocks an org administrator may write with ``org_settings`` alone. A body touching
 # anything else is checked against ``platform_settings`` as well.
