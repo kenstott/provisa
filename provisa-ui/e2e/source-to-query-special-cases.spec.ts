@@ -292,7 +292,7 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register the one table wanted, with the columns wanted.
-    const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "list_breeds", [
+    const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
       "name",
       "species",
       "avg_lifespan_years",

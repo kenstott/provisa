@@ -766,19 +766,17 @@ def _lookup_gql_remote_table(state, table_name: str):
 
 
 def _lookup_grpc_remote_table(state, table_name: str):
-    """Find a grpc_remote query registration by its landed table name (`query_table_name`: the
-    namespace, then the service and method in lower snake case, REQ-325).
+    """Find a grpc_remote query registration by its landed table name (<ns__>service__method).
 
     Returns (source_id, reg, query) — the registration dict (see grpc_remote_router.py) carries
     no "source_id" key of its own, only its channel/queries/etc., so the source_id must come from
     the state.grpc_remote_sources mapping key itself.
     """
-    from provisa.grpc_remote.mapper import query_table_name
-
     grpc_srcs = getattr(state, "grpc_remote_sources", {})
     for source_id, reg in grpc_srcs.items():
+        prefix = f"{reg.get('namespace', '')}__" if reg.get("namespace") else ""
         for q in reg.get("queries", []):
-            if query_table_name(reg.get("namespace", ""), q) == table_name:
+            if f"{prefix}{q.service}__{q.method}" == table_name:
                 return source_id, reg, q
     return None, None, None
 

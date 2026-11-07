@@ -19,8 +19,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from provisa.compiler.naming import _to_snake_case
-
 # ---------------------------------------------------------------------------
 # Proto → SQL type map (REQ-324)
 # ---------------------------------------------------------------------------
@@ -90,12 +88,9 @@ class GrpcMutation:  # REQ-326
 
 
 def query_table_name(namespace: str, query) -> str:  # REQ-322, REQ-325
-    """The name a gRPC query method's table registers under: the service and method in lower snake
-    case (AnimalCatalog.ListBreeds -> ``<namespace>__animal_catalog__list_breeds``), so SQL names
-    it without quotes. Only the table name is converted; the call keeps the proto's own names
-    (``full_method_path``)."""
+    """The name a gRPC query method's table registers under."""
     prefix = f"{namespace}__" if namespace else ""
-    return f"{prefix}{_to_snake_case(query.service)}__{_to_snake_case(query.method)}"
+    return f"{prefix}{query.service}__{query.method}"
 
 
 # ---------------------------------------------------------------------------

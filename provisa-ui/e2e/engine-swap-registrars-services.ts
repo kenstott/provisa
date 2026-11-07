@@ -406,7 +406,7 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   await submitSwapSource(page, sourceId);
 
   // REQ-322: adding the source registers nothing; the table is registered on its own.
-  const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "list_breeds", [
+  const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
     "name",
     "species",
     "avg_lifespan_years",
