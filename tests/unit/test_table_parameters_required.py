@@ -345,3 +345,13 @@ async def test_a_save_cannot_change_how_a_parameter_reaches_the_source():
     )
     refusal = await source_parameter_refusal(_Conn(True), _save(moved))
     assert refusal is not None and "reaches the source as query_param" in refusal
+
+
+def test_a_grpc_table_is_found_by_its_registered_name_and_by_its_sql_name():  # REQ-325, REQ-194
+    from provisa.api.data.materialization import _lookup_grpc_remote_table
+
+    state = _grpc_state()
+    for name in ("Accounts__List", "accounts__list"):
+        source_id, _reg, query = _lookup_grpc_remote_table(state, name)
+        assert (source_id, query.method) == ("src", "List")
+    assert _lookup_grpc_remote_table(state, "accounts__other") == (None, None, None)
