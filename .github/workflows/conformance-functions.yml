@@ -152,6 +152,9 @@ jobs:
                 "$(df -m / | awk 'NR == 2 {print "disk_available_mb=" $4}')"
               ps -eo rss=,args= --sort=-rss | head -n 6 | awk '{rss = $1; $1 = ""; printf "RESOURCES   rss_mb=%d%s\n", rss / 1024, substr($0, 1, 120)}'
               docker stats --no-stream --format 'RESOURCES   {{.Name}} {{.MemUsage}} cpu={{.CPUPerc}}' 2>/dev/null || true
+              # The Trino leg's control plane: what each busy connection to it is running, and for how long.
+              docker exec provisa-postgres-1 psql -U provisa -d provisa -AtF ' ' -c \
+                "SELECT 'RESOURCES   pg', pid, client_addr, state, date_trunc('second', now() - query_start), left(regexp_replace(query, '\s+', ' ', 'g'), 300) FROM pg_stat_activity WHERE state <> 'idle' AND pid <> pg_backend_pid() AND backend_type = 'client backend'" 2>/dev/null || true
             done
           ) &
           monitor=$!
