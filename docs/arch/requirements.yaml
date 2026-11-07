@@ -92997,3 +92997,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 
     And on a table with an embedding column each row also carries its similarity score'
+
+- id: REQ-2214
+  value: 'An unquoted name in SQL finds its table or column whatever its case: the naming authority resolves it to
+    the registered name.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Naming Convention
+  feature: semantic-model-naming
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-07: SQL names are case insensitive. An unquoted identifier in a SQL statement
+    (a schema, table, view, column or function name) is resolved by the naming authority (REQ-194) against the
+    registered client-facing names ignoring case, and the statement then carries the registered spelling, so
+    SELECT * FROM grpc_remote.ns__AnimalCatalog__ListBreeds and ...__animalcatalog__listbreeds name the same
+    table. A quoted identifier matches exactly, as in PostgreSQL. Resolution happens on the parsed statement in
+    the one query pipeline, before governance, for every SQL front end (pgwire, Arrow Flight SQL, HTTP /data/sql,
+    MCP run_sql). Two registered names that differ only by case cannot coexist: the naming authority refuses the
+    second registration naming the first, so an unquoted name always resolves to at most one object. Where
+    PostgreSQL would refuse an unquoted name that matches a mixed-case object only by case, Provisa resolves it;
+    the pgwire conformance lists record that difference. This generalises the dialect case rule of REQ-2212 to
+    every connection.'
+  use_case: A client types a table name in any case without quoting and reaches the registered table.
+  scenario: 'Given a registered table whose SQL name is Orders_Archive
+
+    When a client runs SELECT count(*) FROM orders_archive
+
+    Then the statement reads Orders_Archive
+
+    And registering a second table named orders_archive in the same schema is refused, naming Orders_Archive'

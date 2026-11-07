@@ -26631,3 +26631,17 @@ Maintainer 2026-11-05: search is an API query pattern offered from the table's A
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2214 · Naming Convention {#REQ-2214}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-07: SQL names are case insensitive. An unquoted identifier in a SQL statement (a schema, table, view, column or function name) is resolved by the naming authority ([REQ-194](#REQ-194)) against the registered client-facing names ignoring case, and the statement then carries the registered spelling, so SELECT * FROM grpc_remote.ns__AnimalCatalog__ListBreeds and ...__animalcatalog__listbreeds name the same table. A quoted identifier matches exactly, as in PostgreSQL. Resolution happens on the parsed statement in the one query pipeline, before governance, for every SQL front end (pgwire, Arrow Flight SQL, HTTP /data/sql, MCP run_sql). Two registered names that differ only by case cannot coexist: the naming authority refuses the second registration naming the first, so an unquoted name always resolves to at most one object. Where PostgreSQL would refuse an unquoted name that matches a mixed-case object only by case, Provisa resolves it; the pgwire conformance lists record that difference. This generalises the dialect case rule of [REQ-2212](#REQ-2212) to every connection.
+
+**Use case:** A client types a table name in any case without quoting and reaches the registered table.
+
+**Code:** —
+
+**Tests:** —
