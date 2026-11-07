@@ -35,7 +35,7 @@ from provisa.core.role_members import (
 )
 
 if TYPE_CHECKING:
-    from provisa.core.database import Connection, Database
+    from provisa.core.database import Connection
 
 log = logging.getLogger(__name__)
 
@@ -98,11 +98,15 @@ async def raise_request(  # REQ-2215, REQ-2216, REQ-2217
     capability: str,
     payload: dict,
     requested_by: str | None,
+    *,
+    state: Any,
 ) -> int:
     """Persist a pending request for the environment this call is bound to, addressed to the roles
     holding ``capability`` with their members resolved, and tell those members by email when the
-    org's delivery setting says Provisa sends notices. Returns the request id."""
-    from provisa.api.app import state
+    org's delivery setting says Provisa sends notices. Returns the request id.
+
+    ``state`` is the app state of the org the request is raised in: its roles, model store,
+    configuration and admin store."""
     from provisa.core.repositories import creation_request as cr_repo
     from provisa.core.request_context import active_env, require_current_org
 
@@ -134,7 +138,7 @@ async def raise_request(  # REQ-2215, REQ-2216, REQ-2217
             role_id,
         )
     await _notify(
-        state.model_db,
+        state,
         org_id,
         rid,
         request_type=request_type,
@@ -167,7 +171,7 @@ def notice_text(
 
 
 async def _notify(
-    model_db: "Database",
+    state: Any,
     org_id: str,
     rid: int,
     *,
@@ -179,10 +183,9 @@ async def _notify(
 ) -> None:
     """Email each member with an address, unless the org's delivery is events only or the
     deployment has no mail provider (the request row is then the record, as for every notice)."""
-    from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
 
-    mode = delivery_of(await resolve_org_config(model_db))
+    mode = delivery_of(await resolve_org_config(state.model_db))
     if not sends_email(mode):
         return
     assert state.config is not None, "the deployment's configuration is loaded"
@@ -199,13 +202,12 @@ async def _notify(
     for member in members:
         to = member["email"]
         if to and member["id"] != requested_by:
-            await _send(org_id, to, subject, body)
+            await _send(state, org_id, to, subject, body)
 
 
-async def _send(org_id: str, to: str, subject: str, body: str) -> None:
+async def _send(state: Any, org_id: str, to: str, subject: str, body: str) -> None:
     """One message through the org mail channel, recorded as every send is (REQ-1576). A failed
     send is logged and recorded, never raised: the request is already stored and listed."""
-    from provisa.api.app import state
     from provisa.core.mail import MailMessage, email_sender
     from provisa.core.mail_stats import MailAttempt, record
 

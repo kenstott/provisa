@@ -733,6 +733,7 @@ async def create_webhook(
             {"name": body.name},
             # The user who registered or edited it, so the request is not theirs to approve.
             getattr(getattr(request.state, "identity", None), "user_id", None),
+            state=state,
         )
 
     log.info("Saved tracked webhook %s (pending approval, request #%s)", body.name, request_id)

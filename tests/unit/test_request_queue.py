@@ -109,7 +109,7 @@ def raised(monkeypatch):
         )
         return 17
 
-    async def _send(org_id, to, subject, body):
+    async def _send(_state, org_id, to, subject, body):
         sent.append((to, subject, body))
 
     async def _resolve(_db):
@@ -120,7 +120,6 @@ def raised(monkeypatch):
         roles=ROLES,
         config=types.SimpleNamespace(mail=types.SimpleNamespace(provider="smtp")),
     )
-    monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     monkeypatch.setattr(cr_repo, "create", _create)
     monkeypatch.setattr(rq, "_send", _send)
     monkeypatch.setattr(rq, "ProvisaAssignmentsResolver", lambda _db: _Resolver())
@@ -133,7 +132,9 @@ def raised(monkeypatch):
 
 
 async def test_a_request_records_its_environment_roles_members_and_unresolved_roles(raised):
-    rid = await rq.raise_request(AsyncMock(), "view", "create_view", {"name": "v"}, "alice")
+    rid = await rq.raise_request(
+        AsyncMock(), "view", "create_view", {"name": "v"}, "alice", state=raised.state
+    )
     assert rid == 17
     assert raised.stored["environment"] == "dev"
     assert raised.stored["addressed_roles"] == ["auditor", "org_admin", "steward"]
@@ -142,7 +143,9 @@ async def test_a_request_records_its_environment_roles_members_and_unresolved_ro
 
 
 async def test_email_delivery_tells_each_member_with_an_address_but_the_requester(raised):
-    await rq.raise_request(AsyncMock(), "view", "create_view", {"name": "v"}, "alice")
+    await rq.raise_request(
+        AsyncMock(), "view", "create_view", {"name": "v"}, "alice", state=raised.state
+    )
     assert [to for to, _, _ in raised.sent] == ["root@x.test"]
     _, subject, body = raised.sent[0]
     assert "#17" in subject
@@ -152,18 +155,24 @@ async def test_email_delivery_tells_each_member_with_an_address_but_the_requeste
 
 async def test_events_only_sends_no_email(raised):
     raised.settings["requests"] = {"delivery": "events"}
-    await rq.raise_request(AsyncMock(), "view", "create_view", {"name": "v"}, "bob")
+    await rq.raise_request(
+        AsyncMock(), "view", "create_view", {"name": "v"}, "bob", state=raised.state
+    )
     assert raised.sent == []
     assert raised.stored["addressed_members"]  # the row still names who may decide
 
 
 async def test_both_sends_email(raised):
     raised.settings["requests"] = {"delivery": "both"}
-    await rq.raise_request(AsyncMock(), "view", "create_view", {"name": "v"}, "bob")
+    await rq.raise_request(
+        AsyncMock(), "view", "create_view", {"name": "v"}, "bob", state=raised.state
+    )
     assert sorted(to for to, _, _ in raised.sent) == ["alice@x.test", "root@x.test"]
 
 
 async def test_no_mail_provider_sends_nothing(raised):
     raised.state.config.mail.provider = ""
-    await rq.raise_request(AsyncMock(), "view", "create_view", {"name": "v"}, "bob")
+    await rq.raise_request(
+        AsyncMock(), "view", "create_view", {"name": "v"}, "bob", state=raised.state
+    )
     assert raised.sent == []

@@ -86,9 +86,14 @@ _REJECTION_REASONS: dict[str, list[str]] = {
 }
 
 
-def _get_pool() -> "Database":
+def _state():
     from provisa.api.app import state
 
+    return state
+
+
+def _get_pool() -> "Database":
+    state = _state()
     assert state.model_db is not None
     return state.model_db
 
@@ -263,7 +268,7 @@ async def submit_request(body: SubmitBody, request: Request):  # REQ-063, REQ-43
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         rid = await raise_request(
-            conn, body.request_type, body.capability, payload, _user_id(request)
+            conn, body.request_type, body.capability, payload, _user_id(request), state=_state()
         )
     return {"id": rid, "status": "pending"}
 
