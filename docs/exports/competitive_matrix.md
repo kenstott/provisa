@@ -381,7 +381,7 @@ The leads below hold against every competitor, or nearly every one. Evidence is 
 
 ---
 
-## Governed from birth: objects are defined in the model [tool-verified]
+### Governed from birth: objects are defined in the model [tool-verified]
 
 A session can create temporary tables on every surface. Persistent tables, views and other objects are defined in the model and promoted through branches (REQ-1926), so a team used to creating tables from a SQL client works in the model instead. See N29.
 
