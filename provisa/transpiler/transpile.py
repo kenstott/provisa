@@ -732,22 +732,6 @@ _DIVISION_REFUSED = sqlglot.parse_one(
 )
 
 
-_UUID_INPUT = re.compile(r"\{?([0-9a-fA-F]{4}(?:-?[0-9a-fA-F]{4}){7})\}?")
-
-
-def _canonical_uuid(text: str) -> str | None:
-    """``text`` as the canonical UUID PostgreSQL's input reads it as, or None when it is not one.
-    PostgreSQL takes the digits in upper or lower case, optionally in one pair of braces, with a
-    hyphen after any group of four digits."""
-    braced = text.startswith("{") or text.endswith("}")
-    if braced and not (text.startswith("{") and text.endswith("}")):
-        return None
-    if not _UUID_INPUT.fullmatch(text):
-        return None
-    digits = text.strip("{}").replace("-", "").lower()
-    return f"{digits[:8]}-{digits[8:12]}-{digits[12:16]}-{digits[16:20]}-{digits[20:]}"
-
-
 def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
     """What PostgreSQL says, said on DuckDB where the two differ. A division or remainder by zero
     is PostgreSQL's error: DuckDB answers infinity or NULL, so each divisor is read through a CASE
@@ -772,14 +756,7 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
         )
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.UUID):
-            # DuckDB reads a brace-form literal as a list; the canonical form it reads as a UUID.
-            operand = node.this
-            if isinstance(operand, exp.Literal) and operand.is_string:
-                canonical = _canonical_uuid(operand.name)
-                if canonical is not None:
-                    node.set("this", exp.Literal.string(canonical))
-        elif isinstance(node, (exp.Div, exp.IntDiv, exp.Mod)):
+        if isinstance(node, (exp.Div, exp.IntDiv, exp.Mod)):
             node.set("expression", _guarded(node.expression))
         elif isinstance(node, exp.TableAlias) and not node.columns and node.this is not None:
             parent = node.parent
