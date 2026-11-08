@@ -352,12 +352,9 @@ def _for_save(**kw) -> DataContract | None:
     args = {
         "product_id": "p",
         "is_checker": False,
-        "schema_name": "s",
-        "table_name": "t",
         "declared": None,
         "stored": None,
         "stored_product_id": None,
-        "column_types": {"id": "integer"},
     }
     return data_contracts.for_save(**{**args, **kw})
 
@@ -466,8 +463,8 @@ async def test_a_table_save_keeps_the_versions_save_contract_made(plane):
 async def test_a_refused_save_records_no_version(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
-        with pytest.raises(data_contracts.ContractRefused):
-            await data_product_repo.save_contract(conn, table_id, _contract("1.0.0", _col("nope")))
+        with pytest.raises(data_contracts.ContractRefused, match="no data product's output port"):
+            await data_product_repo.save_contract(conn, table_id + 1, _contract("1.0.0"))
         stored = await _stored(conn)
     assert [v.contract.version for v in stored.versions] == ["0.1.0"]
 
