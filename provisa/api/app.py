@@ -145,6 +145,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, NamedTuple, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from provisa.compiler.names_table import NamesTable
     from provisa.compiler.compiled_query_cache import CompiledQueryCache
     from provisa.cache.hot_tables import HotTableManager
     from provisa.core.tenant_context import TenantContextCache
@@ -1120,6 +1121,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def names_table(self) -> "NamesTable | None":
+        """This model version's names table (OrgRuntime.names_table, REQ-194)."""
+        return self._active_runtime().names_table
+
+    @names_table.setter
+    def names_table(self, value: "NamesTable | None") -> None:
+        self._active_runtime().names_table = value
 
     @property
     def view_path_map(self) -> dict | None:
@@ -3591,23 +3601,32 @@ async def _rebuild_schemas_impl(
     # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
     # phase: it runs with this rebuild's connection given back, so concurrent requests and the
     # health probe are not kept waiting at the connection gate for all of it.
-    _checked = _build_and_register_schemas(
-        roles=roles,
-        tables=tables,
-        relationships=relationships,
-        col_types_converted=col_types_converted,
-        naming_rules=naming_rules,
-        domains=domains,
-        domain_prefix=domain_prefix,
-        kafka_physical=kafka_physical,
-        tracked_functions=tracked_functions,
-        tracked_webhooks=tracked_webhooks,
-        gql_object_cols=_gql_object_cols,
-        rls_rules=rls_rules,
-        metrics=_metric_dicts,  # REQ-1319
-        field_numbers=_field_numbers,
-        draft_tables=draft_tables,  # REQ-1921
-    )
+    from provisa.compiler.names_table import NamesClashRefused
+    from provisa.core.repositories import model_names as _model_names
+
+    try:
+        _checked = _build_and_register_schemas(
+            roles=roles,
+            tables=tables,
+            relationships=relationships,
+            col_types_converted=col_types_converted,
+            naming_rules=naming_rules,
+            domains=domains,
+            domain_prefix=domain_prefix,
+            kafka_physical=kafka_physical,
+            tracked_functions=tracked_functions,
+            tracked_webhooks=tracked_webhooks,
+            gql_object_cols=_gql_object_cols,
+            rls_rules=rls_rules,
+            metrics=_metric_dicts,  # REQ-1319
+            field_numbers=_field_numbers,
+            draft_tables=draft_tables,  # REQ-1921
+        )
+    except NamesClashRefused as refused:
+        # REQ-194: the clashes are kept for the names report, each naming both objects.
+        async with state.model_db.acquire() as conn:
+            await _model_names.write_refused_clashes(conn, refused.clashes)
+        raise
 
     async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
@@ -3621,6 +3640,12 @@ async def _rebuild_schemas_impl(
         from provisa.dq.registration import write_checker_targets
 
         await write_checker_targets(conn, _checked)
+
+        # REQ-194: this build's names table, for the meta domain and the names report, and each
+        # name the disambiguate policy derived kept as its object's alias.
+        assert state.names_table is not None, "the build stores the names table it built"
+        await _model_names.write_names_table(conn, state.names_table.rows)
+        await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
 
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
     # its roles) is ended.
