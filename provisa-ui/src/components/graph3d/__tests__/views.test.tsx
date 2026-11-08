@@ -169,7 +169,7 @@ describe("a product's panel", () => {
     expect(nodeIds(drawn())).not.toContain("fold:t:customers");
   });
 
-  it("offers Related tables in 3D, on, and not in 2D", async () => {
+  it("offers Related tables in 3D, on", async () => {
     snippet(productPreset("c360"), "customer_360");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const related = screen.getByTestId("snip-related");
@@ -178,8 +178,6 @@ describe("a product's panel", () => {
     await waitFor(() => expect(drawn().edges.some((e) => e.kind === "relationship")).toBe(true));
     fireEvent.click(related);
     await waitFor(() => expect(drawn().edges.some((e) => e.kind === "relationship")).toBe(false));
-    fireEvent.click(within(screen.getByTestId("snip")).getByRole("radio", { name: "2D" }));
-    await waitFor(() => expect(screen.queryByTestId("snip-related")).not.toBeInTheDocument());
   });
 
   it("is a glance: its stage at the card's height, its depth, 2D/3D and expand alone", async () => {

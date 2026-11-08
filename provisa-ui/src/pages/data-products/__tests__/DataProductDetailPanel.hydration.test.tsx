@@ -36,6 +36,8 @@ const NOT_DATA = [
   "canEdit",
   "canDelete",
   "owner",
+  // REQ-2174 (amended 2026-11-07), REQ-2219: whether the reader owns the product (its Consumers).
+  "seesConsumers",
   "viewer",
   "onEdit",
   "onDelete",

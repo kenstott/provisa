@@ -19,7 +19,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Anchor, Button, Checkbox, Chip, Group, SegmentedControl, Text } from "@mantine/core";
+import { Anchor, Button, Chip, Group, SegmentedControl, Text } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
@@ -390,6 +390,10 @@ export function GraphExplorer({
     [flat, focusNode, depth],
   );
 
+  // What the drawing reads of ``query``: the page rebuilds the object on each render, and a drawing
+  // redrawn on every render of the page loses its layout (the 2D lanes are laid out anew).
+  const queried = query !== undefined;
+  const queryOwn = query?.own;
   const shown = useMemo(() => {
     // The page's search, when it drives the focus: what it matches, by title or definition.
     const items = search === undefined ? null : searchItems(search);
@@ -408,11 +412,11 @@ export function GraphExplorer({
     // The focus the query itself states (a term's snippet's) is read as its neighbourhood: it
     // prunes nothing more here. A product's query reads all of its tables, so its hops are counted
     // here (REQ-2174, amended 2026-11-07); in 2D along the lanes, so nothing is pruned before them.
-    const own = (f: string) => f === query?.own && !f.startsWith("p:");
+    const own = (f: string) => f === queryOwn && !f.startsWith("p:");
     const narrowing = {
       ...filters,
       focus: matched ?? (lanePath ? [] : filters.focus.filter((f) => !own(f))),
-      ...(query
+      ...(queried
         ? { domains: [], edgeTypes: [], hiddenStatuses: [], tags: narrowed.tags, sensitivities: [] }
         : narrowed),
     };
@@ -425,7 +429,7 @@ export function GraphExplorer({
           edges: all.edges.filter((e) => e.kind !== "term_edge" || edgeClass(e) !== "lateral"),
         };
     // Under a query its Orphans is its own too.
-    if (orphans || query) return g;
+    if (orphans || queried) return g;
     // An orphan has no term relationship drawn, and no column it IS while Columns is on; its
     // domain does not count.
     const related = (e: GraphEdge) => e.kind === "term_edge" || e.kind === "term_binding";
@@ -434,7 +438,20 @@ export function GraphExplorer({
     const kept = new Set(nodes.map((n) => n.id));
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
-  }, [data, on, filters, narrowed, query, expanded, reachScope, orphans, search, lateral, lanePath]);
+  }, [
+    data,
+    on,
+    filters,
+    narrowed,
+    queried,
+    queryOwn,
+    expanded,
+    reachScope,
+    orphans,
+    search,
+    lateral,
+    lanePath,
+  ]);
   // REQ-2174 (amended 2026-11-07): in 3D a table's columns tied to no term drawn are one node.
   const folded = useMemo(
     () => foldUnbound(shown, expanded, (count) => t("graph3d.moreColumns", { count })),
@@ -538,13 +555,14 @@ export function GraphExplorer({
   );
   // REQ-2174 (amended 2026-11-07): the tables related to those drawn, one step; the 3D view's.
   const relatedControl = !flat && offered.has("related") && (
-    <Checkbox
+    <Chip
       size="xs"
-      label={t("graph3d.relatedTables")}
       checked={layers.has("related")}
-      onChange={(e) => toggleLayer("related", e.currentTarget.checked)}
+      onChange={(on) => toggleLayer("related", on)}
       data-testid={`${testId}-related`}
-    />
+    >
+      {t("graph3d.relatedTables")}
+    </Chip>
   );
   const stage = query?.notice ? (
     <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>

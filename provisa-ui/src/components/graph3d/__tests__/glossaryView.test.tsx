@@ -290,7 +290,7 @@ describe("the Glossary page's Ontology View", () => {
     await waitFor(() => expect(made.scenes.length).toBeGreaterThan(0));
     await waitFor(() => expect(drawn()).toBeDefined());
     // Both of the graph's edge types (KIND_OF, REPLACES) and both of its domains (sales, finance).
-    expect(screen.getByTestId("ontology-filter-edge-type")).toHaveTextContent("All edge types");
+    expect(screen.getByTestId("ontology-filter-edge-type")).toHaveTextContent("All term relationships");
     expect(screen.getByTestId("ontology-filter-domain")).toHaveTextContent("All domains");
     expect(ids(drawn())).toEqual(expect.arrayContaining(["term:1", "term:2", "term:3", "term:5"]));
   });

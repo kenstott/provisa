@@ -124,9 +124,10 @@ describe("the product's Lineage panel", () => {
   it("opens from the Input Ports card's link, drawing nothing downstream of the product", async () => {
     window.localStorage.clear();
     panel();
-    expect(screen.queryByTestId("lineage-dag")).toBeNull();
+    const toggle = screen.getByTestId("data-product-detail-lineage-toggle-pet_health");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(screen.getByTestId("data-product-detail-inputs-lineage-link-pet_health"));
-    await waitFor(() => expect(screen.getByTestId("lineage-dag")).toBeInTheDocument());
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-expanded", "true"));
     const drawn = dag.last?.graph as ProductLineage;
     expect(drawn.nodes.map((n) => n.id).sort()).toEqual([
       "pet_store.visits.id",

@@ -156,6 +156,7 @@ function panel() {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}
@@ -231,6 +232,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         canEdit={false}
         canDelete={false}
         owner
+        seesConsumers
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}
@@ -431,6 +433,7 @@ describe("Related Tables (REQ-2126)", () => {
         canEdit={false}
         canDelete={false}
         owner
+        seesConsumers
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         {...lifecycleProps()}

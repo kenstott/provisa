@@ -196,7 +196,7 @@ export function LaneStage({
               id: k.id,
               source: inTerms ? k.from : k.to,
               target: inTerms ? k.to : k.from,
-              ...(inTerms ? { term: "yes", label: k.label ?? "" } : {}),
+              ...(inTerms ? { term: "yes", rank: "yes", label: k.label ?? "" } : {}),
             },
           };
         }),
@@ -279,6 +279,12 @@ export function LaneStage({
             "text-background-color": token(wrap, "canvas"),
             "text-background-opacity": 0.8,
           },
+        },
+        {
+          // A rank link is laid out broader term first (above); its arrow points the link's own
+          // way, from the narrower term to the broader.
+          selector: 'edge[rank = "yes"]',
+          style: { "target-arrow-shape": "none", "source-arrow-shape": "triangle", "source-arrow-color": line },
         },
         {
           selector: 'edge[arc = "yes"]',

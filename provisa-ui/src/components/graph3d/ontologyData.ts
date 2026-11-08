@@ -1161,7 +1161,7 @@ export function withProductLineage(
     const id = tid === undefined ? `lc:${n.id}` : `c:${tid}:${n.column}`;
     columnOf.set(n.id, id);
     // A column the ontology's read did not draw stands alone, named by where it is read from,
-    // drawn by Lineage alone.
+    // drawn only as the end of a column lineage edge (on an unfolded table).
     if (!nodes.has(id))
       nodes.set(id, {
         id,
@@ -1171,7 +1171,7 @@ export function withProductLineage(
             ? `${sourceObject(n)}.${n.column}`
             : `${n.relation === null ? "" : `${n.relation}.`}${n.column}`,
         inProduct: false,
-        layers: ["lineage"],
+        layers: [],
       });
   }
   for (const e of lineage.edges) {

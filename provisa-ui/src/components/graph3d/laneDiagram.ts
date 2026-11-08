@@ -585,12 +585,13 @@ export function laneMermaid(
     out.push("  end");
   }
   const inTerms = (k: LaneLink) => d.lane.get(k.from) === "term" && d.lane.get(k.to) === "term";
-  const dotted = (k: LaneLink) =>
-    `  ${idOf(k.from)} -.->${k.label ? `|${quote(k.label)}|` : ""} ${idOf(k.to)}`;
+  // A term link runs in its own direction: the narrower term KIND_OF the broader one.
+  const dotted = (from: string, to: string, label?: string) =>
+    `  ${idOf(from)} -.->${label ? `|${quote(label)}|` : ""} ${idOf(to)}`;
   for (const k of d.links)
     out.push(
-inTerms(k) ? dotted(k) : `  ${idOf(k.to)} --> ${idOf(k.from)}`
+inTerms(k) ? dotted(k.to, k.from, k.label) : `  ${idOf(k.to)} --> ${idOf(k.from)}`
     );
-  for (const k of d.arcs) out.push(dotted(k));
+  for (const k of d.arcs) out.push(dotted(k.from, k.to, k.label));
   return out.join("\n");
 }
