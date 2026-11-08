@@ -89622,7 +89622,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
     specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
     generated description takes a table filter beside role and domains, and the contract''s address uses
-    it.'
+    it. (Amended 2026-11-08, A VERSION SNAPSHOTS ITS MEMBER''S COLUMNS:) A contract holds no columns of
+    its own and its editor has no column selection, superseding the 2026-10-30 text that a contract declares
+    its columns. Each saved version snapshots its member table''s columns, and a version''s field differences
+    compare snapshots, so a field removed or renamed, a type changed incompatibly or a field made required
+    is still marked breaking (maintainer 2026-11-08).'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
