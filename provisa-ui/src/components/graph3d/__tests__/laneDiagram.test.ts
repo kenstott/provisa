@@ -8,14 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-10-28): the 2D view's lane diagram -- terms, the columns they bind, their
-// tables, the products those belong to; rank edges alone inside the term lane; a table's unbound
-// columns one "+N columns" node until expanded; the product lane optional; Mermaid text.
+// REQ-2174 (amended 2026-10-28; 2026-11-07, WHAT THE GRAPH DRAWS): the 2D view's lane diagram --
+// products, their tables, those tables' columns and the terms tied to them, left to right; rank
+// edges set the term lane's levels and every other term link is an arc over it; a table's columns
+// tied to no term one node until expanded; a product's hops counted along the lanes; Mermaid text.
 
 import { describe, expect, it } from "vitest";
 import mermaid from "mermaid";
 import { NO_FILTERS, visibleGraph, type GraphData, type LayerId } from "../graphModel";
-import { laneDiagram, laneMermaid, moreId, type Lane } from "../laneDiagram";
+import { LANES, laneDiagram, laneMermaid, moreId, type Lane } from "../laneDiagram";
 import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
@@ -59,18 +60,16 @@ describe("the lane diagram's lanes", () => {
     expect(linked(d)).toContain("t:customers>p:c360");
   });
 
-  it("lays out a product's snippet -- the graph focused on the product -- in the same lanes", () => {
-    const panel = visibleGraph(
-      DATA,
-      new Set<LayerId>(PRESETS.all.layers),
-      { ...NO_FILTERS, focus: ["p:c360"] },
-      new Set(),
-      ENGINE_SCOPE,
-    );
-    const d = laneDiagram(panel, DATA, new Set());
+  it("lays out a product's snippet -- its hops counted along the lanes -- in the same lanes", () => {
+    const d = laneDiagram(shownBy(DATA, "all"), DATA, new Set(), { focus: "p:c360", depth: 3 });
     expect(lanesOf(d).product).toEqual(["p:c360"]);
     expect(lanesOf(d).column).toEqual(["c:customers.email"]);
     expect(lanesOf(d).table).toEqual(["t:customers", "t:orders"]);
+    expect(lanesOf(d).term).toEqual(["term:customer"]);
+  });
+
+  it("are drawn products to terms, left to right", () => {
+    expect(LANES).toEqual(["product", "table", "column", "term"]);
   });
 });
 
@@ -91,19 +90,44 @@ describe("the lane diagram's edges", () => {
     ],
   };
 
-  it("keeps rank edges alone in the term lane, the broader term above", () => {
+  it("lays rank edges out in the term lane, the broader term above, every other link an arc", () => {
     const d = laneDiagram(shownBy(withEdges, "all"), withEdges, new Set());
     const termLinks = d.links.filter(
       (k) => d.lane.get(k.from) === "term" && d.lane.get(k.to) === "term",
     );
-    expect(termLinks.map((k) => `${k.from}>${k.to}`).sort()).toEqual([
-      "term:party>term:client",
-      "term:party>term:customer",
+    expect(termLinks.map((k) => `${k.from}>${k.to}:${k.label}`).sort()).toEqual([
+      "term:party>term:client:PART_OF",
+      "term:party>term:customer:KIND_OF",
     ]);
-    expect(d.graph.edges.filter((e) => e.kind === "term_edge").map((e) => e.label)).toEqual([
-      "KIND_OF",
-      "PART_OF",
+    // Lateral and flow links are drawn over the lane, each named by its type; they place nothing.
+    expect(d.arcs.map((k) => `${k.from}>${k.to}:${k.label}`).sort()).toEqual([
+      "term:buyer>term:customer:SYNONYM_OF",
+      "term:buyer>term:party:RELATED_TO",
+      "term:client>term:customer:DERIVED_FROM",
     ]);
+    expect(
+      d.graph.edges
+        .filter((e) => e.kind === "term_edge")
+        .map((e) => e.label)
+        .sort(),
+    ).toEqual(["DERIVED_FROM", "KIND_OF", "PART_OF", "RELATED_TO", "SYNONYM_OF"]);
+  });
+
+  it("draws the term links the Term relationships filter keeps, and no other", () => {
+    const shown = visibleGraph(
+      withEdges,
+      new Set<LayerId>(PRESETS.all.layers),
+      { ...NO_FILTERS, edgeTypes: ["KIND_OF", "SYNONYM_OF"] },
+      new Set(),
+      ENGINE_SCOPE,
+    );
+    const d = laneDiagram(shown, withEdges, new Set());
+    expect(
+      d.graph.edges
+        .filter((e) => e.kind === "term_edge")
+        .map((e) => e.label)
+        .sort(),
+    ).toEqual(["KIND_OF", "SYNONYM_OF"]);
   });
 
   it("ends a chain at its columns, links columns to their table and tables to their products", () => {
@@ -118,7 +142,7 @@ describe("the lane diagram's edges", () => {
     ]);
   });
 
-  it("draws no lateral, flow, lineage or relationship edge", () => {
+  it("draws no lineage or relationship edge", () => {
     const d = laneDiagram(shownBy(withEdges, "all"), withEdges, new Set());
     const kinds = new Set(d.graph.edges.map((e) => e.kind));
     expect([...kinds].sort()).toEqual(["has_column", "member", "term_binding", "term_edge"]);
@@ -216,10 +240,10 @@ describe("the diagram as Mermaid", () => {
     const lines = text.split("\n");
     expect(lines[0]).toBe("flowchart LR");
     expect(lines.filter((l) => l.trim().startsWith("subgraph"))).toEqual([
-      '  subgraph lane_term["Terms"]',
-      '  subgraph lane_column["Columns"]',
-      '  subgraph lane_table["Tables"]',
       '  subgraph lane_product["Products"]',
+      '  subgraph lane_table["Tables"]',
+      '  subgraph lane_column["Columns"]',
+      '  subgraph lane_term["Terms"]',
     ]);
     expect(text).toContain('["+1 columns"]');
     expect(text).toContain('["customer_360"]');
@@ -268,20 +292,24 @@ describe("two term edges of different types between the same two terms", () => {
     ).toEqual(["KIND_OF", "RELATED_TO"]);
   });
 
-  it("keep the rank edge in the lane diagram, whichever edge comes first", () => {
+  it("keep the rank edge laid out and the lateral one an arc, whichever edge comes first", () => {
     for (const edges of [both.edges, [...both.edges].reverse()]) {
       const g = { nodes: both.nodes, edges };
       const d = laneDiagram(shownBy(g, "all"), g, new Set());
-      expect(d.graph.edges.filter((e) => e.kind === "term_edge").map((e) => e.label)).toEqual([
-        "KIND_OF",
-      ]);
+      expect(
+        d.graph.edges
+          .filter((e) => e.kind === "term_edge")
+          .map((e) => e.label)
+          .sort(),
+      ).toEqual(["KIND_OF", "RELATED_TO"]);
       expect(linked(d)).toContain("term:party>term:customer");
+      expect(d.arcs.map((k) => k.label)).toEqual(["RELATED_TO"]);
     }
   });
 });
 
-describe("the term lane's hierarchy", () => {
-  // Customer is bound; Party above it, Agent above Party. The product's focus draws Customer alone.
+describe("a product's hops in 2D, counted along the lanes", () => {
+  // Customer is tied to customers.email; Party is a step from it, Agent a step from Party.
   const chain: GraphData = {
     nodes: [...DATA.nodes, { id: "term:agent", type: "term", label: "Agent" }],
     edges: [
@@ -290,24 +318,46 @@ describe("the term lane's hierarchy", () => {
       { id: "41", a: "term:party", b: "term:customer", kind: "term_edge", label: "RELATED_TO" },
     ],
   };
+  const at = (depth: number) =>
+    laneDiagram(shownBy(chain, "all"), chain, new Set(), { focus: "p:c360", depth });
 
-  it("climbs each drawn term's rank edges to the top of its chain, whatever the focus kept", () => {
-    const shown = visibleGraph(
-      chain,
-      new Set<LayerId>(PRESETS.all.layers),
-      { ...NO_FILTERS, focus: ["p:c360"] },
-      new Set(),
-      ENGINE_SCOPE,
-    );
-    expect(shown.nodes.some((n) => n.id === "term:agent")).toBe(false);
-    const d = laneDiagram(shown, chain, new Set());
-    expect(lanesOf(d).term).toEqual(["term:agent", "term:customer", "term:party"]);
-    const termLinks = d.links
-      .filter((k) => d.lane.get(k.from) === "term" && d.lane.get(k.to) === "term")
-      .map((k) => `${k.from}>${k.to}`)
-      .sort();
-    // Rank edges alone: the lateral edge between Party and Customer is not drawn.
-    expect(termLinks).toEqual(["term:agent>term:party", "term:party>term:customer"]);
+  it("draws the product's tables at 1 hop, and no column", () => {
+    const d = at(1);
+    expect(lanesOf(d)).toEqual({
+      product: ["p:c360"],
+      table: ["t:customers", "t:orders"],
+      column: [],
+      term: [],
+    });
+    expect(d.more).toEqual([]);
+  });
+
+  it("draws their columns at 2, each table's folded into one node with no term in view", () => {
+    const d = at(2);
+    expect(lanesOf(d).term).toEqual([]);
+    expect(lanesOf(d).column).toEqual([]);
+    expect(d.more.map((m) => [m.table, m.count])).toEqual([
+      ["t:customers", 1],
+      ["t:orders", 1],
+    ]);
+  });
+
+  it("draws the terms tied to the columns at 3, the tied columns as themselves", () => {
+    const d = at(3);
+    expect(lanesOf(d).term).toEqual(["term:customer"]);
+    expect(lanesOf(d).column).toEqual(["c:customers.email"]);
+    expect(d.more.map((m) => m.table)).toEqual(["t:orders"]);
+  });
+
+  it("steps once across the term links for each hop past 3", () => {
+    expect(lanesOf(at(4)).term).toEqual(["term:customer", "term:party"]);
+    expect(lanesOf(at(5)).term).toEqual(["term:agent", "term:customer", "term:party"]);
+  });
+
+  it("draws the focused product alone in the product lane, and no other product's tables", () => {
+    const d = at(5);
+    expect(lanesOf(d).product).toEqual(["p:c360"]);
+    expect(d.graph.nodes.some((n) => n.type === "relation" || n.type === "command")).toBe(false);
   });
 });
 

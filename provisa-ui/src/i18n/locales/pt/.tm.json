@@ -9744,5 +9744,18 @@
   "pt/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
   "pt/requestsPage.json::requestsPage.deliveryEmail": "Email",
   "pt/requestsPage.json::requestsPage.deliveryEvents": "Events only",
-  "pt/requestsPage.json::requestsPage.deliveryBoth": "Both"
+  "pt/requestsPage.json::requestsPage.deliveryBoth": "Both",
+  "pt/adminPage.json::adminPage.nameClashPolicy": "When two objects would take one name",
+  "pt/adminPage.json::adminPage.nameClashPolicyDisambiguate": "Disambiguate and keep as alias",
+  "pt/adminPage.json::adminPage.nameClashPolicyHint": "Refuse stops the model build and names both objects, so a steward sets an alias. Disambiguate renames the later object from what tells them apart (its source, its foreign-key column) and keeps that name as its alias; each rename is listed in the Names report.",
+  "pt/adminPage.json::adminPage.nameClashPolicyRefuse": "Refuse, naming both objects",
+  "pt/adminPage.json::adminPage.nameClashPolicyTitle": "Name clashes",
+  "pt/dataProductsTab.json::dataProductsTab.detail.inputsLineageLink": "See column lineage",
+  "pt/dataProductsTab.json::dataProductsTab.detail.lineageLaneInputs": "Inputs",
+  "pt/dataProductsTab.json::dataProductsTab.detail.lineageLaneTables": "This product's tables",
+  "pt/dataProductsTab.json::dataProductsTab.detail.lineageTitle": "Column lineage: where this product comes from",
+  "pt/graph3d.json::graph3d.hopsFrom": "Hops from {{focus}}",
+  "pt/graph3d.json::graph3d.hopsFromMatches": "Hops from the matches",
+  "pt/graph3d.json::graph3d.relatedTables": "Related tables",
+  "pt/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}"
 }

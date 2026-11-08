@@ -97,7 +97,6 @@
         "customProperties": "Proprietà personalizzate",
         "relatedTables": "Tabelle correlate",
         "relationships": "Relazioni",
-        "lineage": "Derivazione",
         "inputPorts": "Input port",
         "dataQuality": "Qualità dei dati"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "Nessuna relazione tra le tabelle di questo prodotto",
       "lineageEmpty": "Nessuna derivazione",
       "lineageLoading": "Caricamento derivazione…",
-      "lineageHint": "Grafo di derivazione delle colonne che mostra le tabelle di questo prodotto come endpoint pubblicato, più ogni tabella a monte usata per derivarle. Solo informativo — richiede la capability view_governance.",
+      "lineageTitle": "Derivazione delle colonne: da dove proviene questo prodotto",
+      "lineageHint": "Ogni colonna pubblicata da questo prodotto e la colonna di input da cui proviene, con tutti i passaggi intermedi. Richiede la capacità view_governance.",
       "outputPortsHint": "La superficie interrogabile di questo prodotto: le sue tabelle membro e i suoi comandi. Le query di esempio per ciascuna sono in Modelli di accesso.",
       "customPropertiesEmpty": "Nessuna proprietà personalizzata",
-      "lineageLaneUpstream": "A monte, passo {{n}}",
-      "lineageLaneDownstream": "A valle, passo {{n}}"
+      "lineageLaneTables": "Tabelle di questo prodotto",
+      "lineageLaneInputs": "Input",
+      "lineageLaneUpstream": "A monte, passo {{n}} oltre gli input",
+      "inputsLineageLink": "Vedi la derivazione delle colonne"
     },
     "readOnly": "Sola lettura",
     "readOnlyHint": "Hai solo data_product_read — un org_admin può concedere data_product_rw per modificare.",
@@ -213,6 +215,46 @@
         "description_changed": "Descrizione modificata",
         "terms_changed": "Termini modificati: {{subject}}"
       },
+      "howToUse": {
+        "column": {
+          "surface": "Interfaccia",
+          "address": "Indirizzo",
+          "how": "Come si usa",
+          "link": "Esempio"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Qualsiasi client PostgreSQL, come psql o DBeaver. Database {{database}}, schema {{schema}}.",
+          "flight-sql": "Qualsiasi client Arrow Flight SQL, come il driver ADBC. Database {{database}}, schema {{schema}}.",
+          "grpc": "Qualsiasi client gRPC, sul servizio {{service}}, con i metadati authorization: Bearer <token>.",
+          "graphql": "Qualsiasi client GraphQL: invii una query in POST su questa tabella, con l'intestazione Authorization: Bearer <token>.",
+          "rest": "Qualsiasi client HTTP: GET a questo indirizzo, con l'intestazione Authorization: Bearer <token>.",
+          "openapi": "La sola descrizione di questa tabella: la carichi in Swagger UI, Postman o in un generatore di client.",
+          "jsonapi": "Qualsiasi client JSON:API: GET a questo indirizzo, con l'intestazione Authorization: Bearer <token>.",
+          "sparql": "Qualsiasi client SPARQL 1.1: invii una query in POST sulla classe di questa tabella, con l'intestazione Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Funziona solo dopo la concessione dell'accesso, da parte di {{approvers}}.",
+          "noApprover": "Funziona solo dopo la concessione dell'accesso, da parte di un titolare di {{roles}}. Questo contratto non indica alcun approvatore.",
+          "undeclared": "Funziona solo dopo la concessione dell'accesso. Questo contratto non indica alcun ruolo né approvatore."
+        },
+        "ask": {
+          "approvers": "Chiedere l'accesso a {{approvers}}",
+          "roles": "Chiedere l'accesso a un titolare di {{roles}}",
+          "nobody": "Questo contratto non indica a chi rivolgersi"
+        },
+        "open": "Apri esempio",
+        "openAria": "Apri l'esempio {{surface}} per {{table}}"
+      },
       "loadError": "Impossibile leggere i contratti: {{error}}",
       "notExported": "{{member}} non ha un contratto esportato",
       "section": {
@@ -259,46 +301,6 @@
         "versions": "Versioni e modifiche",
         "roles": "Ruoli",
         "history": "Cronologia delle versioni"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "Interfaccia",
-          "address": "Indirizzo",
-          "how": "Come si usa",
-          "link": "Esempio"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "Qualsiasi client PostgreSQL, come psql o DBeaver. Database {{database}}, schema {{schema}}.",
-          "flight-sql": "Qualsiasi client Arrow Flight SQL, come il driver ADBC. Database {{database}}, schema {{schema}}.",
-          "grpc": "Qualsiasi client gRPC, sul servizio {{service}}, con i metadati authorization: Bearer <token>.",
-          "graphql": "Qualsiasi client GraphQL: invii una query in POST su questa tabella, con l'intestazione Authorization: Bearer <token>.",
-          "rest": "Qualsiasi client HTTP: GET a questo indirizzo, con l'intestazione Authorization: Bearer <token>.",
-          "openapi": "La sola descrizione di questa tabella: la carichi in Swagger UI, Postman o in un generatore di client.",
-          "jsonapi": "Qualsiasi client JSON:API: GET a questo indirizzo, con l'intestazione Authorization: Bearer <token>.",
-          "sparql": "Qualsiasi client SPARQL 1.1: invii una query in POST sulla classe di questa tabella, con l'intestazione Authorization: Bearer <token>."
-        },
-        "access": {
-          "granted": "Funziona solo dopo la concessione dell'accesso, da parte di {{approvers}}.",
-          "noApprover": "Funziona solo dopo la concessione dell'accesso, da parte di un titolare di {{roles}}. Questo contratto non indica alcun approvatore.",
-          "undeclared": "Funziona solo dopo la concessione dell'accesso. Questo contratto non indica alcun ruolo né approvatore."
-        },
-        "ask": {
-          "approvers": "Chiedere l'accesso a {{approvers}}",
-          "roles": "Chiedere l'accesso a un titolare di {{roles}}",
-          "nobody": "Questo contratto non indica a chi rivolgersi"
-        },
-        "open": "Apri esempio",
-        "openAria": "Apri l'esempio {{surface}} per {{table}}"
       }
     }
   }

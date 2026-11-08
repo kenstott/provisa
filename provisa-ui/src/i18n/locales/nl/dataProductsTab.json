@@ -97,7 +97,6 @@
         "customProperties": "Aangepaste eigenschappen",
         "relatedTables": "Gerelateerde tabellen",
         "relationships": "Relaties",
-        "lineage": "Lineage",
         "inputPorts": "Invoerpoorten",
         "dataQuality": "Datakwaliteit"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "Geen relaties tussen de tabellen van dit product",
       "lineageEmpty": "Geen lineage",
       "lineageLoading": "Lineage laden…",
-      "lineageHint": "Kolomlineagegrafiek met de tabellen van dit product als gepubliceerd endpoint, plus elke upstreamtabel waaruit ze zijn afgeleid. Alleen ter informatie — vereist de capability view_governance.",
+      "lineageTitle": "Kolom-lineage: waar dit product vandaan komt",
+      "lineageHint": "Elke kolom die dit product publiceert en de invoerkolom waar die vandaan komt, met elke stap ertussen. Vereist de bevoegdheid view_governance.",
       "outputPortsHint": "Het bevraagbare oppervlak van dit product: de lidtabellen en opdrachten. Voorbeeldquery's voor elk staan onder Toegangspatronen.",
       "customPropertiesEmpty": "Geen aangepaste eigenschappen",
-      "lineageLaneUpstream": "Stroomopwaarts, stap {{n}}",
-      "lineageLaneDownstream": "Stroomafwaarts, stap {{n}}"
+      "lineageLaneTables": "Tabellen van dit product",
+      "lineageLaneInputs": "Invoer",
+      "lineageLaneUpstream": "Stroomopwaarts, stap {{n}} voorbij de invoer",
+      "inputsLineageLink": "Kolom-lineage bekijken"
     },
     "readOnly": "Alleen-lezen",
     "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken.",
@@ -213,6 +215,46 @@
         "description_changed": "Beschrijving gewijzigd",
         "terms_changed": "Voorwaarden gewijzigd: {{subject}}"
       },
+      "howToUse": {
+        "column": {
+          "surface": "Interface",
+          "address": "Adres",
+          "how": "Hoe het wordt gebruikt",
+          "link": "Voorbeeld"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Elke PostgreSQL-client, zoals psql of DBeaver. Database {{database}}, schema {{schema}}.",
+          "flight-sql": "Elke Arrow Flight SQL-client, zoals het ADBC-stuurprogramma. Database {{database}}, schema {{schema}}.",
+          "grpc": "Elke gRPC-client, op de service {{service}}, met de metadata authorization: Bearer <token>.",
+          "graphql": "Elke GraphQL-client: POST een query op deze tabel, met de header Authorization: Bearer <token>.",
+          "rest": "Elke HTTP-client: GET dit adres, met de header Authorization: Bearer <token>.",
+          "openapi": "Alleen de beschrijving van deze tabel: laad die in Swagger UI, Postman of een clientgenerator.",
+          "jsonapi": "Elke JSON:API-client: GET dit adres, met de header Authorization: Bearer <token>.",
+          "sparql": "Elke SPARQL 1.1-client: POST een query op de klasse van deze tabel, met de header Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Werkt pas nadat toegang is verleend, door {{approvers}}.",
+          "noApprover": "Werkt pas nadat toegang is verleend, door een houder van {{roles}}. Dit contract noemt geen goedkeurder.",
+          "undeclared": "Werkt pas nadat toegang is verleend. Dit contract noemt geen rol of goedkeurder."
+        },
+        "ask": {
+          "approvers": "Vraag {{approvers}} om toegang",
+          "roles": "Vraag een houder van {{roles}} om toegang",
+          "nobody": "Dit contract noemt niemand die u kunt vragen"
+        },
+        "open": "Voorbeeld openen",
+        "openAria": "Het voorbeeld {{surface}} voor {{table}} openen"
+      },
       "loadError": "De contracten konden niet worden gelezen: {{error}}",
       "notExported": "{{member}} heeft geen geëxporteerd contract",
       "section": {
@@ -259,46 +301,6 @@
         "versions": "Versies & wijzigingen",
         "roles": "Rollen",
         "history": "Versiegeschiedenis"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "Interface",
-          "address": "Adres",
-          "how": "Hoe het wordt gebruikt",
-          "link": "Voorbeeld"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "Elke PostgreSQL-client, zoals psql of DBeaver. Database {{database}}, schema {{schema}}.",
-          "flight-sql": "Elke Arrow Flight SQL-client, zoals het ADBC-stuurprogramma. Database {{database}}, schema {{schema}}.",
-          "grpc": "Elke gRPC-client, op de service {{service}}, met de metadata authorization: Bearer <token>.",
-          "graphql": "Elke GraphQL-client: POST een query op deze tabel, met de header Authorization: Bearer <token>.",
-          "rest": "Elke HTTP-client: GET dit adres, met de header Authorization: Bearer <token>.",
-          "openapi": "Alleen de beschrijving van deze tabel: laad die in Swagger UI, Postman of een clientgenerator.",
-          "jsonapi": "Elke JSON:API-client: GET dit adres, met de header Authorization: Bearer <token>.",
-          "sparql": "Elke SPARQL 1.1-client: POST een query op de klasse van deze tabel, met de header Authorization: Bearer <token>."
-        },
-        "access": {
-          "granted": "Werkt pas nadat toegang is verleend, door {{approvers}}.",
-          "noApprover": "Werkt pas nadat toegang is verleend, door een houder van {{roles}}. Dit contract noemt geen goedkeurder.",
-          "undeclared": "Werkt pas nadat toegang is verleend. Dit contract noemt geen rol of goedkeurder."
-        },
-        "ask": {
-          "approvers": "Vraag {{approvers}} om toegang",
-          "roles": "Vraag een houder van {{roles}} om toegang",
-          "nobody": "Dit contract noemt niemand die u kunt vragen"
-        },
-        "open": "Voorbeeld openen",
-        "openAria": "Het voorbeeld {{surface}} voor {{table}} openen"
       }
     }
   }
