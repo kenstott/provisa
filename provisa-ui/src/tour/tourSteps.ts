@@ -25,6 +25,7 @@
  * i18n namespace (src/i18n/locales/<lng>/tour.json), keyed by `key`, so the
  * narration is translatable. This file only carries the layout/navigation data.
  */
+import type { ClearOf } from "./clearOfGraph";
 import type { Capability } from "../types/auth";
 import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
 import type { UiAction } from "../mcp/uiActions";
@@ -61,6 +62,8 @@ export interface TourStep {
    * torn down on leaving the step, so no restore is needed.
    */
   expandSelect?: boolean;
+  /** A graph on the page the step's text must not cover (clearOfGraph). */
+  clearOf?: ClearOf;
   /**
    * Carry the NL-generated query for this branch into the explorer on navigate
    * and auto-run it — mirrors the NL page's "Open in X" buttons. The runner maps
@@ -795,7 +798,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/overview",
     capability: "observability",
-    element: '[data-tour="nav-admin"]',
+    // Admin is in the user menu, closed on every page, so the step points at the page it opens.
+    element: '[data-tour="admin-content"]',
     readySelector: '[data-tour="admin-content"]',
     key: "step23",
   },

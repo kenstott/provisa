@@ -81,6 +81,7 @@
     "itemContainerRegistries": "容器注册表",
     "itemSparql": "SPARQL",
     "itemCatalogs": "目录",
-    "itemReferenceLibrary": "参考资料库"
+    "itemReferenceLibrary": "参考资料库",
+    "itemPlatformObservability": "平台可观测性"
   }
 }

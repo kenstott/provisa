@@ -32,12 +32,6 @@ export function contractDraft(contract: DataContract): DataContractInput {
       unit: s.unit ?? null,
       description: s.description ?? null,
     })),
-    columns: contract.columns.map((c) => ({
-      name: c.name,
-      type: c.type,
-      description: c.description ?? null,
-      required: c.required,
-    })),
   };
 }
 

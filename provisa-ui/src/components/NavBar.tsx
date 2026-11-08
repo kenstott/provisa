@@ -32,7 +32,7 @@ import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
 import { deleteSandboxAccount } from "../api/admin";
 import { notifications } from "@mantine/notifications";
-import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, entryItem, writeLastSubnav } from "./navGroups";
 import { Tip } from "./Tip";
 
 export function NavBar() {
@@ -204,7 +204,9 @@ export function NavBar() {
           </CapabilityGate>
           {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
               rendering it left a tab that swallowed the click and never navigated. */}
-          {NAV_GROUPS.filter((group) => entryItem(group, capabilities, billing)).map((group) => {
+          {NAV_GROUPS.filter(
+            (group) => group.id !== "admin" && entryItem(group, capabilities, billing),
+          ).map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
               <React.Fragment key={group.id}>
@@ -233,10 +235,6 @@ export function NavBar() {
               </React.Fragment>
             );
           })}
-          {/* Docs — ungated, available to everyone */}
-          <NavLink to="/docs" data-tour="nav-docs">
-            {t("navBar.docs")}
-          </NavLink>
         </div>
         <OrgSwitcher />
         <div className="navbar-role">
@@ -358,6 +356,18 @@ export function NavBar() {
                     {t("navBar.whatsNew")}
                   </Menu.Item>
                 )}
+                {/* Admin and Docs sit below a divider, not in the top navigation. Admin is offered
+                    to a caller holding an admin surface and opens the first one they hold; Docs is
+                    open to everyone. */}
+                <Menu.Divider data-testid="navbar-menu-divider" />
+                {adminEntry && (
+                  <Menu.Item onClick={() => navigate(adminEntry.to)} data-testid="navbar-admin">
+                    {t("navBar.groupAdmin")}
+                  </Menu.Item>
+                )}
+                <Menu.Item component={NavLink} to="/docs" data-testid="navbar-docs">
+                  {t("navBar.docs")}
+                </Menu.Item>
                 {authEnabled && (
                   <Menu.Item color="red" onClick={handleLogout}>
                     {t("navBar.logout")}
@@ -386,9 +396,10 @@ export function NavBar() {
                     capability={item.capability}
                     orCapability={item.orCapability}
                     anyOf={item.anyOf}
+                    andCapability={item.andCapability}
                     navigable
                   >
-                    <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+                    <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
                   </CapabilityGate>
                 )}
               </span>

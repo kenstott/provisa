@@ -97,7 +97,6 @@
         "customProperties": "कस्टम प्रॉपर्टी",
         "relatedTables": "संबंधित टेबल",
         "relationships": "संबंध",
-        "lineage": "लिनिएज",
         "inputPorts": "इनपुट पोर्ट",
         "dataQuality": "डेटा क्वालिटी"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "इस प्रोडक्ट की टेबल के बीच कोई संबंध नहीं",
       "lineageEmpty": "कोई लिनिएज नहीं",
       "lineageLoading": "लिनिएज लोड हो रहा है…",
-      "lineageHint": "कॉलम लिनिएज ग्राफ़ जो इस प्रोडक्ट की टेबल को प्रकाशित एंडपॉइंट के रूप में दिखाता है, साथ ही उन्हें व्युत्पन्न करने में उपयोग हुई हर अपस्ट्रीम टेबल। केवल जानकारी के लिए — view_governance क्षमता आवश्यक है।",
+      "lineageTitle": "कॉलम लिनिएज: यह प्रोडक्ट कहाँ से आता है",
+      "lineageHint": "यह प्रोडक्ट जो भी कॉलम प्रकाशित करता है और वह इनपुट कॉलम जिससे वह आता है, बीच के हर चरण के साथ। view_governance क्षमता आवश्यक है।",
       "outputPortsHint": "इस प्रोडक्ट की क्वेरी योग्य सतह: इसकी सदस्य तालिकाएँ और कमांड। हर एक के उदाहरण क्वेरी एक्सेस पैटर्न में हैं।",
       "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं",
-      "lineageLaneUpstream": "अपस्ट्रीम, चरण {{n}}",
-      "lineageLaneDownstream": "डाउनस्ट्रीम, चरण {{n}}"
+      "lineageLaneTables": "इस प्रोडक्ट की टेबल",
+      "lineageLaneInputs": "इनपुट",
+      "lineageLaneUpstream": "अपस्ट्रीम, इनपुट से आगे चरण {{n}}",
+      "inputsLineageLink": "कॉलम लिनिएज देखें"
     },
     "readOnly": "केवल-पठन",
     "readOnlyHint": "आपके पास केवल data_product_read है — संपादित करने के लिए org_admin data_product_rw दे सकता है।",
@@ -177,9 +179,6 @@
       "versionLabel": "अनुबंध संस्करण",
       "statusLabel": "अनुबंध स्थिति",
       "descriptionLabel": "यह किसलिए है",
-      "columnsLabel": "कॉलम",
-      "columnsHelp": "किसी कॉलम को हटाने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
-      "requiredLabel": "कभी null नहीं",
       "slaLabel": "सेवा स्तर",
       "slaProperty": "गुण",
       "slaValue": "मान",
@@ -212,6 +211,46 @@
         "check_changed": "गुणवत्ता जाँच {{subject}} बदली गई",
         "description_changed": "विवरण बदला गया",
         "terms_changed": "शर्तें बदली गईं: {{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "सतह",
+          "address": "पता",
+          "how": "उपयोग कैसे करें",
+          "link": "उदाहरण"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "कोई भी PostgreSQL क्लाइंट, जैसे psql या DBeaver। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "flight-sql": "कोई भी Arrow Flight SQL क्लाइंट, जैसे ADBC ड्राइवर। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "grpc": "कोई भी gRPC क्लाइंट, सेवा {{service}} पर, मेटाडेटा authorization: Bearer <token> के साथ।",
+          "graphql": "कोई भी GraphQL क्लाइंट: इस तालिका पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।",
+          "rest": "कोई भी HTTP क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "openapi": "केवल इस तालिका का विवरण: इसे Swagger UI, Postman या क्लाइंट जनरेटर में लोड करें।",
+          "jsonapi": "कोई भी JSON:API क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "sparql": "कोई भी SPARQL 1.1 क्लाइंट: इस तालिका की क्लास पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।"
+        },
+        "access": {
+          "granted": "केवल तब काम करता है जब {{approvers}} द्वारा पहुँच प्रदान कर दी जाए।",
+          "noApprover": "केवल तब काम करता है जब {{roles}} के धारक द्वारा पहुँच प्रदान कर दी जाए। यह अनुबंध किसी अनुमोदक का नाम नहीं देता।",
+          "undeclared": "केवल तब काम करता है जब पहुँच प्रदान कर दी जाए। यह अनुबंध किसी भूमिका या अनुमोदक का नाम नहीं देता।"
+        },
+        "ask": {
+          "approvers": "{{approvers}} से पहुँच माँगें",
+          "roles": "{{roles}} के धारक से पहुँच माँगें",
+          "nobody": "यह अनुबंध किसी ऐसे व्यक्ति का नाम नहीं देता जिससे पूछा जाए"
+        },
+        "open": "उदाहरण खोलें",
+        "openAria": "{{table}} के लिए {{surface}} उदाहरण खोलें"
       },
       "loadError": "अनुबंध पढ़े नहीं जा सके: {{error}}",
       "notExported": "{{member}} का कोई निर्यातित अनुबंध नहीं है",
@@ -259,46 +298,6 @@
         "versions": "संस्करण और परिवर्तन",
         "roles": "भूमिकाएँ",
         "history": "संस्करण इतिहास"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "सतह",
-          "address": "पता",
-          "how": "उपयोग कैसे करें",
-          "link": "उदाहरण"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "कोई भी PostgreSQL क्लाइंट, जैसे psql या DBeaver। डेटाबेस {{database}}, स्कीमा {{schema}}।",
-          "flight-sql": "कोई भी Arrow Flight SQL क्लाइंट, जैसे ADBC ड्राइवर। डेटाबेस {{database}}, स्कीमा {{schema}}।",
-          "grpc": "कोई भी gRPC क्लाइंट, सेवा {{service}} पर, मेटाडेटा authorization: Bearer <token> के साथ।",
-          "graphql": "कोई भी GraphQL क्लाइंट: इस तालिका पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।",
-          "rest": "कोई भी HTTP क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
-          "openapi": "केवल इस तालिका का विवरण: इसे Swagger UI, Postman या क्लाइंट जनरेटर में लोड करें।",
-          "jsonapi": "कोई भी JSON:API क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
-          "sparql": "कोई भी SPARQL 1.1 क्लाइंट: इस तालिका की क्लास पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।"
-        },
-        "access": {
-          "granted": "केवल तब काम करता है जब {{approvers}} द्वारा पहुँच प्रदान कर दी जाए।",
-          "noApprover": "केवल तब काम करता है जब {{roles}} के धारक द्वारा पहुँच प्रदान कर दी जाए। यह अनुबंध किसी अनुमोदक का नाम नहीं देता।",
-          "undeclared": "केवल तब काम करता है जब पहुँच प्रदान कर दी जाए। यह अनुबंध किसी भूमिका या अनुमोदक का नाम नहीं देता।"
-        },
-        "ask": {
-          "approvers": "{{approvers}} से पहुँच माँगें",
-          "roles": "{{roles}} के धारक से पहुँच माँगें",
-          "nobody": "यह अनुबंध किसी ऐसे व्यक्ति का नाम नहीं देता जिससे पूछा जाए"
-        },
-        "open": "उदाहरण खोलें",
-        "openAria": "{{table}} के लिए {{surface}} उदाहरण खोलें"
       }
     }
   }

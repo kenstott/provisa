@@ -22,7 +22,7 @@ import { notifications } from "@mantine/notifications";
 // the call rather than out of the DOM (REQ-1556).
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
-const auth = { activeOrgId: "acme" as string | null, capabilities: ["org_settings"] };
+const auth = { activeOrgId: "acme" as string | null, capabilities: ["environment_management"] };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../api/environments", () => ({
   // isBase is a pure derivation over a row, not a call — the component reads it the way it reads
@@ -142,7 +142,7 @@ function env(name: string, overrides: Partial<Environment> = {}): Environment {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.activeOrgId = "acme";
-  auth.capabilities = ["org_settings"];
+  auth.capabilities = ["environment_management"];
   mockList.mockResolvedValue([env("prod", { protected: true }), env("dev")]);
   // Mantine keeps every tab panel mounted, so the three sibling panels load with this one.
   vi.mocked(fetchMergeRequests).mockResolvedValue([]);
@@ -164,6 +164,19 @@ beforeEach(() => {
 });
 
 describe("EnvironmentsTab", () => {
+  it("offers the org's environment controls on environment_management, as its API asks", async () => {
+    // REQ-1573, REQ-1327: _guard asks environment_management; org_settings opens none of these.
+    render(<EnvironmentsTab />);
+    expect(await screen.findByTestId("env-delete-dev")).toBeInTheDocument();
+  });
+
+  it("offers none of them on org_settings alone", async () => {
+    auth.capabilities = ["org_settings"];
+    render(<EnvironmentsTab />);
+    expect(await screen.findByTestId("env-merge-dev")).toBeInTheDocument();
+    expect(screen.queryByTestId("env-delete-dev")).toBeNull();
+  });
+
   it("withholds delete from prod, which the server refuses", async () => {
     render(<EnvironmentsTab />);
     expect(await screen.findByTestId("env-delete-dev")).toBeInTheDocument();
@@ -712,7 +725,7 @@ describe("EnvironmentsTab", () => {
     expect(mode.disabled).toBe(true);
   });
 
-  it("creates an inheriting environment when a member without org_settings creates one", async () => {
+  it("creates an inheriting environment when a member without environment_management creates one", async () => {
     auth.capabilities = [];
     mockCreate.mockResolvedValue({
       environment: env("feature"),

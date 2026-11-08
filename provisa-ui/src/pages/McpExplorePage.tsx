@@ -11,6 +11,8 @@
 import { PageTitle } from "../components/PageTitle";
 import { useEffect, useRef, useState } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
+import { artifactFromEvent, type ChatMsg as ChatMsgBase } from "../hooks/useMcpChat";
+import { ChatArtifact } from "../components/ChatArtifact";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Button, Code, Group, Loader, Modal, Text, TextInput } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
@@ -189,10 +191,7 @@ function ConnectClaudeDesktop({ roleId, reveal }: { roleId: string; reveal: stri
   );
 }
 
-interface ChatMsg {
-  role: "user" | "assistant";
-  text: string;
-}
+type ChatMsg = ChatMsgBase;
 
 interface ToolEvent {
   name: string;
@@ -345,7 +344,16 @@ export function McpExplorePage() {
       const current = assistantRef.current;
       setMessages((prev) => {
         const next = [...prev];
-        next[next.length - 1] = { role: "assistant", text: current };
+        next[next.length - 1] = { ...next[next.length - 1], role: "assistant", text: current };
+        return next;
+      });
+    };
+    const appendArtifact = (ev: { type: string }) => {
+      const artifact = artifactFromEvent(ev);
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        next[next.length - 1] = { ...last, artifacts: [...(last.artifacts ?? []), artifact] };
         return next;
       });
     };
@@ -374,6 +382,7 @@ export function McpExplorePage() {
           if (!line.startsWith("data:")) continue;
           const ev = JSON.parse(line.slice(5).trim());
           if (ev.type === "text") appendAssistant(ev.text);
+          else if (ev.type === "artifact") appendArtifact(ev);
           else if (ev.type === "tool_use")
             setTools((p) => [...p, { name: ev.name, input: ev.input, running: true }]);
           else if (ev.type === "tool_result")
@@ -538,9 +547,12 @@ export function McpExplorePage() {
                       <div className="mcp-bubble">
                         <div className="mcp-md">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {m.text || (busy && i === messages.length - 1 ? "…" : "")}
+                            {m.text || (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
                           </ReactMarkdown>
                         </div>
+                        {m.artifacts?.map((a, j) => (
+                          <ChatArtifact key={j} artifact={a} />
+                        ))}
                         {m.text && <CopyButton text={m.text} />}
                       </div>
                     </Message.CustomContent>

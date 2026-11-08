@@ -270,6 +270,8 @@ _REPORT_VIEW_NAMES = {
     "ontology_quality",
     # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT)
     "sensitive_column_coverage",
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT)
+    "names_report",
 }
 
 
