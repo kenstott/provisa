@@ -450,10 +450,30 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 table="tag_assignments",
             ),
         )
+    # REQ-1634: a product's members, written in its file -- a table as its path, since a table's
+    # serial means nothing in another environment, and a command by its name.
+    product_tables = await _rows(conn, org.data_product_tables, schema)
+    product_commands = await _rows(conn, org.data_product_commands, schema)
     for row in await _rows(conn, org.data_products, schema):
         tree[kind_path(KIND_DIRS["data_products"], row["id"])] = entity(
             "data_products",
             row,
+            tables=Child(
+                "table",
+                "product_id",
+                [
+                    {"table": paths[m["table_id"]]}
+                    for m in product_tables
+                    if m["product_id"] == row["id"]
+                ],
+                table="data_product_tables",
+            ),
+            commands=Child(
+                "command_name",
+                "product_id",
+                [m for m in product_commands if m["product_id"] == row["id"]],
+                table="data_product_commands",
+            ),
             tags=Child(
                 "at",
                 OWNER_KEYS,

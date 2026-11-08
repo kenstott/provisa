@@ -23,6 +23,7 @@ import {
   ontologyGraph,
   ontologyQuery,
   overviewGraph,
+  memberTablesOf,
   withProductLineage,
   type CountRow,
   type OntologyRows,
@@ -61,7 +62,7 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   const lineages = await Promise.all(products.map((p) => fetchProductLineage(p.id)));
   return {
     data: products.reduce(
-      (g, p, i) => withProductLineage(g, p.id, lineages[i], p.memberTables ?? []),
+      (g, p, i) => withProductLineage(g, p.id, lineages[i], memberTablesOf(p)),
       data,
     ),
     query,

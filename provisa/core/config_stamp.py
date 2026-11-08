@@ -62,6 +62,8 @@ TENANT_TABLES: dict[str, str] = {
     "sources": MODEL,
     "domains": MODEL,
     "data_products": MODEL,
+    "data_product_tables": MODEL,  # REQ-1634
+    "data_product_commands": MODEL,  # REQ-1634
     "naming_rules": MODEL,
     "registered_tables": MODEL,
     "table_columns": MODEL,

@@ -72,6 +72,8 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
     "data_products": "data_products_meta",  # REQ-2125
+    "data_product_tables": "data_product_tables_meta",  # REQ-1634
+    "data_product_commands": "data_product_commands_meta",  # REQ-1634
     "sources": "sources_meta",  # REQ-1443: identity and type only
     "model_names": "model_names_meta",  # REQ-194
 }
@@ -2141,6 +2143,9 @@ _META_TABLES = [
     "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
     "effective_column_tags",  # REQ-2145: each column's tags with their provenance; view-only
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
+    # REQ-1634: data-product membership, one row per product and member; view-only
+    "data_product_tables",
+    "data_product_commands",
     "sources",  # REQ-1443: each source's id and type (the checker dialect); view-only columns
     "dq_rules",  # REQ-1443 clause 10: a checker table's parsed rules, one row per check; view-only
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only

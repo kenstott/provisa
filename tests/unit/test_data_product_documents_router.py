@@ -23,13 +23,15 @@ from provisa.api.metadata_export import build_snapshot
 from provisa.control_plane.entitlements import EntitlementError, Tier
 from provisa.core.contract_versions import recorded
 from provisa.core.models import DataContract, DataProduct, VersionColumn
-from tests.integration.metadata_export_fixture import ORG_ID, governed_config
+from tests.integration.metadata_export_fixture import ORG_ID, PROD, governed_config
 
 
 @pytest.fixture
 def org(monkeypatch):
     config = governed_config()
-    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     asked: list[str] = []
 

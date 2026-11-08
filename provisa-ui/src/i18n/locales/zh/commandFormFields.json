@@ -29,7 +29,7 @@
     "query": "查询",
     "domain": "域",
     "selectDomain": "选择域...",
-    "dataProduct": "数据产品（可选）",
+    "dataProduct": "数据产品",
     "dataProductPlaceholder": "选择数据产品...",
     "description": "描述",
     "descriptionPlaceholder": "可选",

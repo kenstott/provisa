@@ -254,7 +254,6 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
-  product_id: pet_health
   schema: pet_store
   profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
@@ -329,7 +328,6 @@ tables:
     - data_steward
   description: Veterinarians the store refers pets to
   domain_id: pet-store
-  product_id: pet_health
   schema: pet_store
   profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
@@ -458,7 +456,6 @@ tables:
     \    kwargs:\n      column: name\n  - type: expect_column_values_to_be_between\n    kwargs:\n    \
     \  column: price\n      min_value: 0\n  - type: expect_column_values_to_not_be_null\n    kwargs:\n\
     \      column: species\n"
-  product_id: pet_health
   source_id: dq-checker
   table: pets_quality
 - columns:
@@ -475,7 +472,6 @@ tables:
   dq_contract: "dataset: provisa/pet_store/vets\ncolumns:\n  - name: name\n    checks:\n      - missing:\n\
     \      - duplicate:\n  - name: clinic\n    checks:\n      - missing:\n  - name: specialty\n    checks:\n\
     \      - missing:\nchecks:\n  - row_count:\n      must_be_greater_than: 0\n"
-  product_id: pet_health
   source_id: dq-soda
   table: vets_quality
 - columns:
@@ -637,6 +633,7 @@ data_products:
 - purpose: Pet health records — inventory and referral vets for care history
   domain_id: pet-store
   id: pet_health
+  tables: [pets, pets_quality, vets, vets_quality]
   name: Pet Health
   owner: org_admin
   support_contact: kennethstott@gmail.com

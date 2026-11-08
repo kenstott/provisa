@@ -543,13 +543,27 @@ def test_verification_is_dispatched_for_a_surface_and_is_never_cancelled():
     trigger = workflow[True]
     assert set(trigger) == {"workflow_dispatch"}
     inputs = trigger["workflow_dispatch"]["inputs"]
-    assert set(inputs) == {"surface", "full"}
+    assert set(inputs) == {"surface", "full", "sha"}
     assert inputs["surface"]["required"] is True
     assert (inputs["full"]["type"], inputs["full"]["default"]) == ("boolean", False)
+    assert (inputs["sha"]["required"], inputs["sha"]["default"]) == (False, "")
     assert workflow["concurrency"] == {
         "group": "verify-surface-${{ inputs.surface }}",
         "cancel-in-progress": False,
     }
+
+
+def test_verification_refuses_a_ref_that_is_not_at_the_commit_asked_for():
+    """Every suite tests the ref's commit; the check runs first, and everything else needs plan."""
+    _text, workflow = _verify()
+    jobs = workflow["jobs"]
+    first = jobs["plan"]["steps"][0]
+    assert first["if"] == "inputs.sha != ''"
+    assert first["env"] == {"SHA": "${{ inputs.sha }}"}
+    assert '[ "$SHA" != "$GITHUB_SHA" ]' in first["run"] and "exit 1" in first["run"]
+    for job, body in jobs.items():
+        if job != "plan":
+            assert "plan" in ([body["needs"]] if isinstance(body["needs"], str) else body["needs"])
 
 
 def test_verification_calls_every_suite_and_copies_none():
@@ -621,6 +635,19 @@ def test_verification_summarises_whatever_every_job_did():
     assert {"name": "unit-junit-${{ matrix.shard }}", "path": "unit-junit.xml"}.items() <= next(
         u for u in uploads if u["path"] == "unit-junit.xml"
     ).items()
+
+
+def test_verification_names_no_private_tooling():
+    sources = (
+        REPO / ".github/workflows" / _VERIFY,
+        REPO / "scripts/ci/surfaces.toml",
+        REPO / "scripts/ci/surface_map.py",
+        REPO / "scripts/ci/verify_summary.py",
+    )
+    for path in sources:
+        text = path.read_text()
+        for private in (".claude/", ".provisa-agent", "land3.sh"):
+            assert private not in text, f"{path.name}: {private}"
 
 
 def test_verifications_wording_stays_with_the_product():
