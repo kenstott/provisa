@@ -31,6 +31,7 @@ import dataclasses
 import re
 from itertools import groupby
 from collections.abc import Callable
+from collections.abc import Sequence as SequenceOf
 from dataclasses import dataclass
 
 import sqlglot
@@ -109,34 +110,73 @@ _INTEGER_BOUND = {
 }
 
 
-def seed_sql(digest: str, def_hash: int) -> str:
-    """SQL for a value's seed: its digest mixed with the definition hash (digest.seed)."""
-    return f"provisa_seed({digest}, {_bigint(def_hash)})"
+def _num(value: float | int) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """A numeric literal as the parser reads one: a negative number is a negated literal."""
+    text = repr(value)
+    if text.startswith("-"):
+        return exp.Neg(this=exp.Literal.number(text[1:]))
+    return exp.Literal.number(text)
 
 
-def _bigint(n: int) -> str:
-    # As text cast: the least BIGINT has no literal (its magnitude is out of range).
-    return f"CAST('{n}' AS BIGINT)"
-
-
-def _lit(text: str) -> str:
-    return "'" + text.replace("'", "''") + "'"
+def _lit(text: str) -> exp.Literal:
+    return exp.Literal.string(text)
 
 
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def digest_sql(fingerprint: str, value_sql: str, salt: str = "") -> str:
-    text = f"CAST({value_sql} AS VARCHAR)"
+def column(name: str) -> exp.Column:
+    """A reference to the column ``name`` of the level being read (quoted, unqualified)."""
+    return exp.Column(this=exp.to_identifier(name, quoted=True))
+
+
+def _cast(value: exp.Expr, data_type: str) -> exp.Cast:  # pyright: ignore[reportPrivateImportUsage]
+    return exp.Cast(this=value, to=exp.DataType.build(data_type, dialect="postgres"))
+
+
+def _f(name: str, *args: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    return exp.func(name, *args, dialect="postgres")
+
+
+def _div(this: exp.Expr, by: exp.Expr) -> exp.Div:  # pyright: ignore[reportPrivateImportUsage]
+    """``this / by`` as PostgreSQL divides: integer by integer is integer division."""
+    return exp.Div(this=this, expression=by, typed=True, safe=False)
+
+
+def _p(value: exp.Expr) -> exp.Paren:  # pyright: ignore[reportPrivateImportUsage]
+    return exp.Paren(this=value)
+
+
+def _case(
+    whens: SequenceOf[tuple[exp.Expr, exp.Expr]],  # pyright: ignore[reportPrivateImportUsage]
+    default: exp.Expr | None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Case:
+    return exp.Case(ifs=[exp.If(this=c, true=v) for c, v in whens], default=default)
+
+
+def seed(digest: exp.Expr, def_hash: int) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """A value's seed: its digest mixed with the definition hash (digest.seed)."""
+    return _f("provisa_seed", digest, _bigint(def_hash))
+
+
+def _bigint(n: int) -> exp.Cast:
+    # As text cast: the least BIGINT has no literal (its magnitude is out of range).
+    return _cast(_lit(str(n)), "BIGINT")
+
+
+def digest(fingerprint: str, value: exp.Expr, salt: str = "") -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """The keyed digest of ``value`` under the platform key's ``fingerprint``."""
+    text: exp.Expr = _cast(value, "VARCHAR")  # pyright: ignore[reportPrivateImportUsage]
     if salt:
-        text = f"({text} || {_lit(':' + salt)})"
-    return f"provisa_digest({_lit(fingerprint)}, {text})"
+        text = _p(exp.DPipe(this=text, expression=_lit(":" + salt)))
+    return _f("provisa_digest", _lit(fingerprint), text)
 
 
-def uniform_sql(digest: str) -> str:
+def uniform(value: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """[0, 1) from a signed 64-bit digest."""
-    return f"(CAST({digest} AS DOUBLE PRECISION) / 18446744073709551616.0 + 0.5)"
+    scaled = _div(_cast(value, "DOUBLE PRECISION"), exp.Literal.number("18446744073709551616.0"))
+    return _p(exp.Add(this=scaled, expression=exp.Literal.number("0.5")))
 
 
 # Acklam's rational approximation to the inverse standard normal CDF (relative error < 1.2e-9).
@@ -150,71 +190,103 @@ _D = (0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.75440866190
 _P_LOW = 0.02425
 
 
-def _poly(coeffs: tuple[float, ...], x: str) -> str:
-    out = repr(coeffs[0])
+def _poly(coeffs: tuple[float, ...], x: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    out = _num(coeffs[0])
     for c in coeffs[1:]:
-        out = f"(({out}) * {x} + {c!r})"
+        out = _p(exp.Add(this=exp.Mul(this=_p(out), expression=x.copy()), expression=_num(c)))
     return out
 
 
-def inverse_normal_sql(u: str) -> str:
+def _ratio(top: exp.Expr, bottom: exp.Expr, x: exp.Expr, times: exp.Expr | None = None) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """``top [* times] / (bottom * x + 1.0)``."""
+    numerator = top if times is None else exp.Mul(this=top, expression=times.copy())
+    denominator = _p(
+        exp.Add(
+            this=exp.Mul(this=bottom, expression=x.copy()), expression=exp.Literal.number("1.0")
+        )
+    )
+    return _div(numerator, denominator)
+
+
+def inverse_normal(u: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """The standard normal quantile of ``u`` (a column, so read many times at no cost)."""
-    q_mid = f"({u} - 0.5)"
-    r_mid = f"({q_mid} * {q_mid})"
-    central = f"({_poly(_A, r_mid)} * {q_mid} / ({_poly(_B, r_mid)} * {r_mid} + 1.0))"
-    q_lo = f"SQRT(-2.0 * LN(GREATEST({u}, 1e-300)))"
-    low = f"({_poly(_C, q_lo)} / ({_poly(_D, q_lo)} * {q_lo} + 1.0))"
-    q_hi = f"SQRT(-2.0 * LN(GREATEST(1.0 - {u}, 1e-300)))"
-    high = f"(-({_poly(_C, q_hi)}) / ({_poly(_D, q_hi)} * {q_hi} + 1.0))"
-    return (
-        f"(CASE WHEN {u} < {_P_LOW} THEN {low} WHEN {u} > {1 - _P_LOW!r} THEN {high} "
-        f"ELSE {central} END)"
+    q_mid = _p(exp.Sub(this=u.copy(), expression=exp.Literal.number("0.5")))
+    r_mid = _p(exp.Mul(this=q_mid.copy(), expression=q_mid.copy()))
+    central = _p(_ratio(_poly(_A, r_mid), _poly(_B, r_mid), r_mid, times=q_mid))
+
+    def tail(of: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+        floor = _f("GREATEST", of, exp.Literal.number("1e-300"))
+        return _f(
+            "SQRT",
+            exp.Mul(this=exp.Neg(this=exp.Literal.number("2.0")), expression=_f("LN", floor)),
+        )
+
+    q_lo = tail(u.copy())
+    low = _p(_ratio(_poly(_C, q_lo), _poly(_D, q_lo), q_lo))
+    q_hi = tail(exp.Sub(this=exp.Literal.number("1.0"), expression=u.copy()))
+    high = _p(_ratio(exp.Neg(this=_p(_poly(_C, q_hi))), _poly(_D, q_hi), q_hi))
+    return _p(
+        _case(
+            [
+                (exp.LT(this=u.copy(), expression=_num(_P_LOW)), low),
+                (exp.GT(this=u.copy(), expression=_num(1 - _P_LOW)), high),
+            ],
+            central,
+        )
     )
 
 
-def _pick(u: str, values: list[str], shares: list[float]) -> str:
+def inverse_normal_sql(u: str) -> str:
+    """:func:`inverse_normal` as text, for synthetic generation, which builds its statements as
+    text (provisa.synthetic.generate)."""
+    return inverse_normal(sqlglot.parse_one(u, read="postgres")).sql(dialect="postgres")
+
+
+def _pick(u: exp.Expr, values: list[exp.Expr], shares: list[float]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """The value whose cumulative share first exceeds ``u``."""
     total = 0.0
     whens = []
     for v, s in zip(values[:-1], shares[:-1]):
         total += s
-        whens.append(f"WHEN {u} < {total!r} THEN {v}")
-    return f"(CASE {' '.join(whens)} ELSE {values[-1]} END)" if whens else values[-1]
+        whens.append((exp.LT(this=u.copy(), expression=_num(total)), v))
+    return _p(_case(whens, values[-1])) if whens else values[-1]
 
 
-def _clamp(x: str, lo: float | None, hi: float | None) -> str:
+def _clamp(x: exp.Expr, lo: float | None, hi: float | None) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     if lo is not None:
-        x = f"GREATEST({x}, {lo!r})"
+        x = _f("GREATEST", x, _num(lo))
     if hi is not None:
-        x = f"LEAST({x}, {hi!r})"
+        x = _f("LEAST", x, _num(hi))
     return x
 
 
-def _poisson_table(mean: float) -> tuple[list[str], list[float]]:
+def _poisson_table(mean: float) -> tuple[list[exp.Expr], list[float]]:  # pyright: ignore[reportPrivateImportUsage]
     top = int(mean + 12 * math.sqrt(mean) + 12)
     p = math.exp(-mean)
-    values, shares = [], []
+    values: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
+    shares: list[float] = []
     for k in range(top + 1):
-        values.append(str(k))
+        values.append(exp.Literal.number(str(k)))
         shares.append(p)
         p *= mean / (k + 1)
     return values, shares
 
 
-def _numeric_out(x: str, col: Column, temporal: bool) -> str:
+def _numeric_out(x: exp.Expr, col: Column, temporal: bool) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """A number (seconds since the epoch for a temporal kind) cast to the column's type."""
     if col.family == "integer":
-        return f"CAST(ROUND({x}) AS {col.data_type})"
+        return _cast(_f("ROUND", x), col.data_type)
     if temporal:
         # At UTC, as _epoch reads a timestamp: a cast of the zoned value would read local time.
-        stamp = f"CAST(TO_TIMESTAMP({x}) AT TIME ZONE 'UTC' AS TIMESTAMP)"
-        return f"CAST({stamp} AS DATE)" if col.family == "date" else stamp
-    return f"CAST({x} AS {col.data_type})"
+        zoned = exp.AtTimeZone(this=_f("TO_TIMESTAMP", x), zone=_lit("UTC"))
+        stamp = _cast(zoned, "TIMESTAMP")
+        return _cast(stamp, "DATE") if col.family == "date" else stamp
+    return _cast(x, col.data_type)
 
 
-def _epoch(x: str, family: str) -> str:
+def _epoch(x: exp.Expr, family: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     if family in ("date", "timestamp"):
-        return f"EXTRACT(EPOCH FROM CAST({x} AS TIMESTAMP))"
+        return exp.Extract(this=exp.var("EPOCH"), expression=_cast(x, "TIMESTAMP"))
     return x
 
 
@@ -229,24 +301,33 @@ _SECONDS = {
 }
 
 
-def _tag(digest: str) -> str:
-    return f"provisa_digest_tag({digest})"
+def _tag(value: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    return _f("provisa_digest_tag", value)
+
+
+def _concat(*parts: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """``a || b || ...``, left to right as the parser reads it."""
+    out = parts[0]
+    for part in parts[1:]:
+        out = exp.DPipe(this=out, expression=part)
+    return out
 
 
 def expression(
     col: Column,
     *,
-    real: str,
-    u: str,
-    digest: str,
-    faked: Callable[[str], str],
+    real: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    u: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    digest: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    faked: Callable[[str], exp.Expr],  # pyright: ignore[reportPrivateImportUsage]
     family_of: Callable[[str], str],
-) -> str:
-    """The faked value of ``col``. ``real`` and ``u`` are SQL for its real value and uniform point;
-    ``digest`` SQL for its digest; ``faked(name)`` the faked form of another column, and
-    ``family_of(name)`` that column's family."""
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # REQ-1494, REQ-913
+    """The faked value of ``col``, built on the AST. ``real`` and ``u`` are its real value and
+    uniform point; ``digest`` its digest; ``faked(name)`` the faked form of another column, and
+    ``family_of(name)`` that column's family. Each is copied in where it is read."""
     k = col.kind
     guarded = True
+    out: exp.Expr  # pyright: ignore[reportPrivateImportUsage]
     if isinstance(k, Method):
         if col.stable:
             # The portable definition, the same on every engine (provisa.fakes.portable).
@@ -255,22 +336,35 @@ def expression(
                     f"{col.name}: a stable fake names the portable definition version it is "
                     f"computed by, and none is recorded"
                 )
-            h = _bigint(definition_of(col))
-            value = f"provisa_stable_fake({_lit(k.name)}, {col.stable_version}, {digest}, {h})"
+            value = _f(
+                "provisa_stable_fake",
+                _lit(k.name),
+                exp.Literal.number(str(col.stable_version)),
+                digest.copy(),
+                _bigint(definition_of(col)),
+            )
         else:
             args = json.dumps(dict(k.args), sort_keys=True, separators=(",", ":"))
-            h = _bigint(definition_of(col))
-            value = f"provisa_fake_method({_lit(k.name)}, {_lit(args)}, {digest}, {h})"
+            value = _f(
+                "provisa_fake_method",
+                _lit(k.name),
+                _lit(args),
+                digest.copy(),
+                _bigint(definition_of(col)),
+            )
         if k.name in TAGGED_EMAIL:
-            value = f"REPLACE({value}, '@', '.' || {_tag(digest)} || '@')"
+            value = _f(
+                "REPLACE", value, _lit("@"), _concat(_lit("."), _tag(digest.copy()), _lit("@"))
+            )
         elif k.name in TAGGED_IDENTIFIER:
-            value = f"({value} || '-' || {_tag(digest)})"
+            value = _p(_concat(value, _lit("-"), _tag(digest.copy())))
         elif k.name in TAGGED_PHONE:
-            value = f"({value} || ' x' || {_tag(digest)})"
-        out = value if col.family == "text" else f"CAST({value} AS {col.data_type})"
+            value = _p(_concat(value, _lit(" x"), _tag(digest.copy())))
+        out = value if col.family == "text" else _cast(value, col.data_type)
     elif isinstance(k, Bool):
         share = _measured(col).true_share if k.share is None else k.share
-        out = f"({u} < {share!r})"
+        assert share is not None  # a bool's measurement holds its share, or a refusal
+        out = _p(exp.LT(this=u.copy(), expression=_num(share)))
     elif isinstance(k, Categories):
         if k.values is None:
             out = _pick_measured(u, _measured(col).values, col)
@@ -279,75 +373,117 @@ def expression(
             shares = list(k.shares) if k.shares else [1 / len(literals)] * len(literals)
             out = _pick(u, literals, shares)
     elif isinstance(k, Uniform):
-        out = _numeric_out(f"({k.min!r} + {u} * {k.max - k.min!r})", col, k.temporal)
+        x = _p(
+            exp.Add(
+                this=_num(k.min), expression=exp.Mul(this=u.copy(), expression=_num(k.max - k.min))
+            )
+        )
+        out = _numeric_out(x, col, k.temporal)
     elif isinstance(k, Triangular):
         span = k.max - k.min
         c = (k.mode - k.min) / span if span else 0.0
-        x = (
-            f"(CASE WHEN {u} < {c!r} THEN {k.min!r} + SQRT({u} * {span * (k.mode - k.min)!r}) "
-            f"ELSE {k.max!r} - SQRT((1.0 - {u}) * {span * (k.max - k.mode)!r}) END)"
+        rising = exp.Add(
+            this=_num(k.min),
+            expression=_f("SQRT", exp.Mul(this=u.copy(), expression=_num(span * (k.mode - k.min)))),
         )
+        falling = exp.Sub(
+            this=_num(k.max),
+            expression=_f(
+                "SQRT",
+                exp.Mul(
+                    this=_p(exp.Sub(this=exp.Literal.number("1.0"), expression=u.copy())),
+                    expression=_num(span * (k.max - k.mode)),
+                ),
+            ),
+        )
+        x = _p(_case([(exp.LT(this=u.copy(), expression=_num(c)), rising)], falling))
         out = _numeric_out(x, col, k.temporal)
     elif isinstance(k, Normal):
-        x = _clamp(f"({k.mean!r} + {k.sd!r} * {inverse_normal_sql(u)})", k.min, k.max)
-        out = _numeric_out(x, col, k.temporal)
+        drawn = exp.Add(
+            this=_num(k.mean), expression=exp.Mul(this=_num(k.sd), expression=inverse_normal(u))
+        )
+        out = _numeric_out(_clamp(_p(drawn), k.min, k.max), col, k.temporal)
     elif isinstance(k, LogNormal):
         origin = k.min if k.temporal and k.min is not None else 0.0
-        x = f"({origin!r} + EXP({k.mu!r} + {k.sigma!r} * {inverse_normal_sql(u)}))"
+        power = exp.Add(
+            this=_num(k.mu), expression=exp.Mul(this=_num(k.sigma), expression=inverse_normal(u))
+        )
+        x = _p(exp.Add(this=_num(origin), expression=_f("EXP", power)))
         out = _numeric_out(_clamp(x, k.min, k.max), col, k.temporal)
     elif isinstance(k, Percentiles):
         out = _numeric_out(_piecewise(u, k.points), col, k.temporal)
     elif isinstance(k, Poisson):
         values, shares = _poisson_table(k.mean)
-        out = f"CAST({_pick(u, values, shares)} AS {col.data_type})"
+        out = _cast(_pick(u, values, shares), col.data_type)
     elif isinstance(k, Bucket):
         if k.width is not None:
-            out = f"CAST(FLOOR({real} / {k.width!r}) * {k.width!r} AS {col.data_type})"
+            floored = _f("FLOOR", _div(real.copy(), _num(k.width)))
+            out = _cast(exp.Mul(this=floored, expression=_num(k.width)), col.data_type)
         else:
             assert k.edges is not None  # a bucket names a width or its edges
-            whens = " ".join(
-                f"WHEN {real} < {hi!r} THEN {lo!r}" for lo, hi in zip(k.edges, k.edges[1:])
-            )
-            out = f"CAST(CASE WHEN {real} < {k.edges[0]!r} THEN {k.edges[0]!r} {whens} ELSE {k.edges[-1]!r} END AS {col.data_type})"
+            whens = [(exp.LT(this=real.copy(), expression=_num(k.edges[0])), _num(k.edges[0]))]
+            whens += [
+                (exp.LT(this=real.copy(), expression=_num(hi)), _num(lo))
+                for lo, hi in zip(k.edges, k.edges[1:])
+            ]
+            out = _cast(_case(whens, _num(k.edges[-1])), col.data_type)
     elif isinstance(k, Truncate):
-        out = f"CAST(DATE_TRUNC({_lit(k.unit)}, {real}) AS {col.data_type})"
+        out = _cast(_f("DATE_TRUNC", _lit(k.unit), real.copy()), col.data_type)
     elif isinstance(k, Prefix):
-        out = f"SUBSTRING({real}, 1, {k.length})"
+        out = _f(
+            "SUBSTRING", real.copy(), exp.Literal.number("1"), exp.Literal.number(str(k.length))
+        )
     elif isinstance(k, Hash):
         # The keyed digest mixed with the definition, as every fake is seeded (REQ-1494): one
         # value still gives one hash, and joined columns of one definition still match.
-        hashed = seed_sql(digest, definition_of(col))
+        hashed = seed(digest.copy(), definition_of(col))
         if col.family == "text":
             out = _tag(hashed)
         else:
             # The seed is 64-bit; a narrower integer takes it within its own range (#272), the
             # same on every engine, so one value still gives one hash in either column of a join.
             bound = _INTEGER_BOUND.get(col.data_type.lower().split("(")[0].strip())
-            narrowed = hashed if bound is None else f"({hashed} % {bound})"
-            out = f"CAST({narrowed} AS {col.data_type})"
+            narrowed = (
+                hashed
+                if bound is None
+                else _p(exp.Mod(this=hashed, expression=exp.Literal.number(str(bound))))
+            )
+            out = _cast(narrowed, col.data_type)
     elif isinstance(k, Ordered):
         named = faked(k.column)
+        amount: exp.Expr  # pyright: ignore[reportPrivateImportUsage]
         if k.distance is None:
             # The measured difference (this column less the named one), signed as measured.
             amount = _piecewise(u, _measured(col).points)
-            sign = "+"
+            add = True
         else:
             scale = _SECONDS[k.distance.unit] if k.distance.unit else 1.0
             low = k.distance.low * scale
             amount = (
-                repr(low)
+                _num(low)
                 if k.distance.high is None
-                else f"({low!r} + {u} * {(k.distance.high - k.distance.low) * scale!r})"
+                else _p(
+                    exp.Add(
+                        this=_num(low),
+                        expression=exp.Mul(
+                            this=u.copy(),
+                            expression=_num((k.distance.high - k.distance.low) * scale),
+                        ),
+                    )
+                )
             )
-            sign = "+" if k.kind in ("after", "greater_than") else "-"
-        x = f"({_epoch(named, family_of(k.column))} {sign} {amount})"
+            add = k.kind in ("after", "greater_than")
+        step = exp.Add if add else exp.Sub
+        x = _p(step(this=_epoch(named, family_of(k.column)), expression=amount))
         out = _numeric_out(x, col, temporal=k.kind in ("after", "before"))
         guarded = False  # NULL exactly when the column it follows is
     elif isinstance(k, Sql) and not k.group:
+        # The administrator's declared expression, parsed once; each column it names is read
+        # as that column's faked form.
         tree = sqlglot.parse_one(k.expression, read="postgres")
         for c in list(tree.find_all(exp.Column)):
-            c.replace(sqlglot.parse_one(faked(c.name), read="postgres"))
-        out = f"CAST({tree.sql(dialect='postgres')} AS {col.data_type})"
+            c.replace(faked(c.name))
+        out = _cast(tree, col.data_type)
         guarded = False  # NULL as the expression makes it
     elif isinstance(k, Profile):
         m = _measured(col)
@@ -361,7 +497,7 @@ def expression(
         filled = [_filled_shape(shape, digest, definition_of(col)) for shape, _ in shapes]
         out = _pick(u, filled, [share for _, share in shapes])
         if col.family != "text":
-            out = f"CAST({out} AS {col.data_type})"
+            out = _cast(out, col.data_type)
     elif isinstance(k, Sequence) or (isinstance(k, Sql) and k.group):
         # Refused when declared as a fake (provisa.fakes.kinds.RULE_ONLY); a fake never holds one.
         raise FakeReadRefused(f"{col.name}: {kind_name(k)}() is a synthetic rule, not a fake")
@@ -371,7 +507,8 @@ def expression(
         raise FakeReadRefused(f"{col.name}: {kind_name(k)}() has no faked read")
     if not guarded:
         return out
-    return f"(CASE WHEN {real} IS NULL THEN NULL ELSE {out} END)"
+    null = exp.Is(this=real.copy(), expression=exp.Null())
+    return _p(_case([(null, exp.Null())], out))
 
 
 _FAKED = re.compile(r'"__fake__((?:[^"]|"")+)"')
@@ -408,32 +545,42 @@ def _measured(col: Column) -> Measured:
     return m
 
 
-def _piecewise(u: str, points: tuple[tuple[float, float], ...] | None) -> str:
+def _piecewise(u: exp.Expr, points: tuple[tuple[float, float], ...] | None) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """The value at quantile ``u`` of points (quantile, value), joined linearly."""
     assert points, "a measurement or declaration of points holds at least one"
-    whens = []
+    whens = [(exp.LT(this=u.copy(), expression=_num(points[0][0])), _num(points[0][1]))]
     for (q0, v0), (q1, v1) in zip(points, points[1:]):
         slope = (v1 - v0) / (q1 - q0) if q1 > q0 else 0.0
-        whens.append(f"WHEN {u} < {q1!r} THEN {v0!r} + ({u} - {q0!r}) * {slope!r}")
-    return f"(CASE WHEN {u} < {points[0][0]!r} THEN {points[0][1]!r} {' '.join(whens)} ELSE {points[-1][1]!r} END)"
+        offset = exp.Mul(
+            this=_p(exp.Sub(this=u.copy(), expression=_num(q0))), expression=_num(slope)
+        )
+        whens.append(
+            (exp.LT(this=u.copy(), expression=_num(q1)), exp.Add(this=_num(v0), expression=offset))
+        )
+    return _p(_case(whens, _num(points[-1][1])))
 
 
-def _pick_measured(u: str, values: tuple[tuple[str, float], ...] | None, col: Column) -> str:
+def _pick_measured(
+    u: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    values: tuple[tuple[str, float], ...] | None,
+    col: Column,
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """A measured value at its measured share. Measured values are text, cast to the column."""
     assert values, "a measurement of values holds at least one, or a refusal"
+    literals: list[exp.Expr]  # pyright: ignore[reportPrivateImportUsage]
     if col.family == "text":
         literals = [_lit(v) for v, _ in values]
     elif col.family == "boolean":
         literals = [_category_literal(v, col) for v, _ in values]
     else:
-        literals = [f"CAST({_lit(v)} AS {col.data_type})" for v, _ in values]
+        literals = [_cast(_lit(v), col.data_type) for v, _ in values]
     return _pick(u, literals, [s for _, s in values])
 
 
 _UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-def _filled_shape(shape: str, digest: str, def_hash: int) -> str:
+def _filled_shape(shape: str, value_digest: exp.Expr, def_hash: int) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """A value of ``shape`` (A an upper-case letter, a a lower-case one, 9 a digit, every other
     character kept), its letters and digits drawn from the digest by the bothify method. The
     method sees only its own placeholders, so no character of the shape is read as one."""
@@ -442,9 +589,17 @@ def _filled_shape(shape: str, digest: str, def_hash: int) -> str:
         return _lit(shape)
     call = {"letters": _UPPER, "text": template}
     args = json.dumps(call, sort_keys=True, separators=(",", ":"))
-    h = _bigint(def_hash)
-    drawn = f"provisa_fake_method('bothify', {_lit(args)}, {digest}, {h})"
-    parts: list[str] = []
+
+    def drawn() -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+        return _f(
+            "provisa_fake_method",
+            _lit("bothify"),
+            _lit(args),
+            value_digest.copy(),
+            _bigint(def_hash),
+        )
+
+    parts: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
     at = 1  # position in the drawn text, from 1
 
     def run_of(ch: str) -> str:
@@ -455,20 +610,30 @@ def _filled_shape(shape: str, digest: str, def_hash: int) -> str:
         if run == "kept":
             parts.append(_lit(text))
             continue
-        piece = f"SUBSTRING({drawn}, {at}, {len(text)})"
-        parts.append(f"LOWER({piece})" if run == "lower" else piece)
+        piece = _f(
+            "SUBSTRING", drawn(), exp.Literal.number(str(at)), exp.Literal.number(str(len(text)))
+        )
+        parts.append(_f("LOWER", piece) if run == "lower" else piece)
         at += len(text)
-    return "(" + " || ".join(parts) + ")"
+    return _p(_concat(*parts))
 
 
-def _category_literal(value: str, col: Column) -> str:
+def _category_literal(value: str, col: Column) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     if col.family in ("integer", "numeric"):
-        return f"CAST({value} AS {col.data_type})"
+        # A declared category of a numeric column is a number as written in the model.
+        return _cast(_number_text(value), col.data_type)
     if col.family == "boolean":
-        return "TRUE" if value.lower() == "true" else "FALSE"
+        return exp.Boolean(this=value.lower() == "true")
     if col.family in ("date", "timestamp"):
-        return f"CAST({_lit(value)} AS {col.data_type})"
+        return _cast(_lit(value), col.data_type)
     return _lit(value)
 
 
-__all__ = ["Column", "FakeReadRefused", "digest_sql", "expression", "uniform_sql", "_q"]
+def _number_text(value: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    text = value.strip()
+    if text.startswith("-"):
+        return exp.Neg(this=exp.Literal.number(text[1:].strip()))
+    return exp.Literal.number(text)
+
+
+__all__ = ["Column", "FakeReadRefused", "column", "digest", "expression", "uniform", "_q"]

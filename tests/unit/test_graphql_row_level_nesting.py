@@ -170,11 +170,21 @@ def test_the_row_level_table_is_still_scoped_by_its_row_rule():
 
     ctx = _row_level("order_docs")
     docs = _table_id(ctx, "order_docs")
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    semantic = _semantic(ctx, _compiled(ctx))
+    tree = sqlglot.parse_one(semantic, read="postgres")
+    aliases = {t.alias_or_name for t in tree.find_all(exp.Table) if t.name == "order_docs"}
+    # REQ-039: the table is read through a relation of its registered columns -- here the ones
+    # the statement reads.
+    columns = sorted({c.name for c in tree.find_all(exp.Column) if c.table in aliases})
     gov = GovernanceContext(
         rls_rules={docs: "status = 'open'"},
         table_map={"order_docs": docs, "perf_bench.order_docs": docs},
+        all_columns={docs: [(c, "varchar") for c in columns]},
     )
-    governed = apply_governance(_semantic(ctx, _compiled(ctx)), gov)
+    governed = apply_governance(semantic, gov)
     assert "'open'" in governed
 
 

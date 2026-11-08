@@ -37,6 +37,7 @@ import sqlglot
 from sqlglot import exp
 
 from provisa.codehost.residual import conjuncts, predicate
+from provisa.compiler.governed_relation import inline
 from provisa.quickbooks.entities import (
     BOOLEAN,
     DATE,
@@ -182,7 +183,8 @@ def narrowed(entity: Entity, sql: str, table: str, columns: Mapping[str, Column]
     (postgres): its query with the conditions pushed (:data:`QUERY_ARG`), and the most rows it
     takes where the LIMIT was pushed (:data:`MAX_ROWS_ARG`). ``columns`` maps each column's SQL
     name to its column. Empty when nothing is pushed."""
-    tree = sqlglot.parse_one(sql, read="postgres")
+    # A governed read: its governed relation read as the table, its row rules as conditions.
+    tree = inline(sqlglot.parse_one(sql, read="postgres"))
     reads = [t for t in tree.find_all(exp.Table) if t.name == table]
     if len(reads) != 1:
         return {}  # read twice, the rows fetched serve both reads

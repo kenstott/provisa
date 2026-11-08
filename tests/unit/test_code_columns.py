@@ -467,7 +467,13 @@ def test_a_column_transform_plan_streams_only_where_its_terminal_applies_the_tra
     from provisa.pgwire._pipeline import streams_from_terminal
 
     plan = SimpleNamespace(
-        two_step=None, code_write=None, scratch=(), staged=None, embedded=None, columns=object()
+        two_step=None,
+        code_write=None,
+        keyed_write=None,
+        scratch=(),
+        staged=None,
+        embedded=None,
+        columns=object(),
     )
     assert not streams_from_terminal(plan)  # e.g. COPY, Flight's ENGINE stream: buffered
     assert streams_from_terminal(plan, applies_columns=True)  # serve_stream_through_cache
