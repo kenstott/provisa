@@ -63,5 +63,14 @@ def connect(
 
 def log_limit(con: Any, what: str) -> None:
     """Log the cap ``con``'s database runs under, as DuckDB reports it."""
-    (limit,) = con.execute("SELECT current_setting('memory_limit')").fetchone()
+    (limit,) = first_row(con.execute("SELECT current_setting('memory_limit')"))
     _said.info("DuckDB %s: memory_limit %s", what, limit)
+
+
+def first_row(result: Any) -> Any:
+    """The first row of a DuckDB ``result`` or ``None``, read to the end so none is left open.
+
+    ``fetchone()`` leaves the result open, and from DuckDB 2.0 a connection holding an open result
+    refuses ``register``/``sql``/``create_function``/``load_extension``."""
+    rows = result.fetchall()
+    return rows[0] if rows else None

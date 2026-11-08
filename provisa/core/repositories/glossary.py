@@ -812,10 +812,24 @@ async def list_terms(
 
     found = await _findings(conn)  # REQ-2146: counted on the row, so a list filters on it
     scope = await term_domains(conn)
+    # REQ-1387 (RELATED_TO HOLDS THE PLACE): the RELATED_TO edges each term is on, either end,
+    # counted on the row so the list filters on the ones that want review.
+    related_rows = (
+        await conn.execute_core(
+            select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id).where(
+                glossary_term_edges.c.rel_type == "RELATED_TO"
+            )
+        )
+    ).fetchall()
+    related: dict[int, int] = {}
+    for e in related_rows:
+        for tid in (e.from_term_id, e.to_term_id):
+            related[tid] = related.get(tid, 0) + 1
     return [
         dict(r._mapping)
         | {
             "ref_count": counts.get(r.id, 0),
+            "related_to": related.get(r.id, 0),
             "table_count": table_counts.get(r.id, 0),
             # REQ-2141: derived -- a term rooted in no column and no table is a Concept.
             "is_abstract": not counts.get(r.id) and not table_counts.get(r.id),
@@ -1570,7 +1584,7 @@ async def axioms(conn: "Connection") -> list[dict]:  # REQ-2163
     rows = await conn.execute_core(
         text(
             "SELECT subject_term_id, predicate, object_term_id, object_iri, object_literal "
-            "FROM _axioms_ontology ORDER BY id"
+            "FROM _axioms_ontology WHERE object_table_id IS NULL ORDER BY id"
         )
     )
     return [dict(r._mapping) for r in rows.fetchall()]
@@ -1880,12 +1894,18 @@ async def role_conflicts(conn: "Connection") -> dict:
                     "columns": columns,
                 }
             )
-    # REQ-2145: a tag stays on a term that has stopped being a Property, and is reported.
+    # REQ-2145: a tag that flows to columns stays on a term that has stopped being a Property, and
+    # is reported. Any other tag on a term is the term's own, whatever its role.
+    from provisa.core.term_tags import FLOWING_TAGS
+
     tag_rows = (
         await conn.execute_core(
             select(tag_assignments.c.tag_id, glossary_terms.c.id, glossary_terms.c.name)
             .join(glossary_terms, glossary_terms.c.id == tag_assignments.c.term_id)
-            .where(tag_assignments.c.object_type == "term")
+            .where(
+                tag_assignments.c.object_type == "term",
+                tag_assignments.c.base_tag_id.in_(FLOWING_TAGS),
+            )
             .order_by(glossary_terms.c.name, tag_assignments.c.tag_id)
         )
     ).fetchall()

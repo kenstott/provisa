@@ -13,8 +13,13 @@
 The one place a materialized view is put back into a statement: the pipeline's optimize stage,
 after governance, on the statement lowered to catalog-physical -- every surface's statement,
 SQL and compiled alike. Having run after governance, the rewrite sees the role's row filters
-and masks as part of the statement: a predicate or a mask over a column the view keeps is
-carried onto the view's column; one over anything else leaves the statement to its tables.
+and masks as part of the statement -- a mask as an expression (or a constant) in its column's
+place. A join-pattern view keeps every column its tables had at its build, so a row filter or a
+mask over a column of a table it covers is carried onto the view's column; one over a table it
+does not cover stays against that table. A column added since the view's build is named on the
+view, which the engine refuses: never answered from rows the role's filter did not judge. A
+subquery that names a read of its own as a covered table is named leaves the statement to its
+tables. An aggregate view answers only what ``mv.aggregate_catalog`` says it does.
 
 Two kinds of view answer:
 
@@ -225,6 +230,14 @@ def _rewrite_join(
     for column in select.find_all(exp.Column):
         if not column.table and len(joins) > 0:
             return None  # which table it reads is not said
+    for nested in select.find_all(exp.Select):
+        if nested is not select and any(
+            source.alias_or_name in prefixes
+            for source in nested.find_all(exp.Table, exp.Subquery, exp.CTE)
+        ):
+            # A subquery -- a row rule's, say -- names a read of its own as a covered table is
+            # named: its columns by that name are its own rows', not the view's.
+            return None
     # Each selected column keeps the name it is read back by, whatever the view calls it.
     select.set(
         "expressions",

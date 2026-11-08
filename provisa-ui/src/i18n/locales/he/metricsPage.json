@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "נגזר מהאגרגציה כאשר המדד נבנה מ-Measure של טבלת עובדות",
     "fieldDescription": "תיאור",
     "fieldAiContext": "הקשר AI",
+    "fieldTags": "תגיות",
     "fieldAiContextPlaceholder": "רמזים ליצירת שאילתות בסיוע AI",
     "saveFailed": "השמירה נכשלה.",
     "editMetric": "עריכת המדד {{name}}",

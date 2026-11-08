@@ -10,14 +10,10 @@
 
 import type { HistoryEntry } from "./types";
 import { HISTORY_KEY, HISTORY_MAX } from "./types";
-import { getStored, setStored } from "../../lib/browserStorage";
+import { getStoredJson, setStored } from "../../lib/browserStorage";
 
 export function loadHistory(): HistoryEntry[] {
-  try {
-    return JSON.parse(getStored(HISTORY_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
+  return getStoredJson<HistoryEntry[]>(HISTORY_KEY) ?? [];
 }
 
 export function saveHistory(entries: HistoryEntry[]) {

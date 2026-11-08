@@ -36,6 +36,9 @@ if TYPE_CHECKING:
     from provisa.pgwire._pipeline import StatementOutcome
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+from provisa.transpiler.metadata_settings import CatalogViewRefused
 from provisa.compiler.params import ParametersDoNotFit
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.federation.pgwire_replica import SourceStillStartingError
@@ -169,6 +172,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
         si = SchemaInput(
             tables=filtered_tables,
             root_table_ids=seed_ids,
+            root_domain_ids=set(domain_list),
             relationships=relationships,
             column_types=cache["column_types"],
             naming_rules=cache["naming_rules"],
@@ -225,11 +229,52 @@ def _with_cache_headers(payload, cache_headers: dict[str, str]):  # REQ-536
     return OrjsonResponse(payload, headers=cache_headers)
 
 
-def _column_types(result) -> list[str] | None:
+async def _column_types(result) -> list[str] | None:  # REQ-1961
     """The result's column types, parallel to its columns, as text; ``None`` when the engine reported
-    none. The UI types a column's filter from them (REQ-1937)."""
+    none. The UI types a column's filter from them (REQ-1937). A registered integer column is
+    listed as the ``integer`` its values are written as (:func:`_typed_rows`), not the engine's
+    decimal(10,0); any other column keeps the engine's type."""
     types = result.column_types
-    return None if types is None else [str(t) for t in types]
+    if types is None:
+        return None
+    integers = await _registered_integers(result)
+    return ["integer" if integer else str(t) for t, integer in zip(types, integers, strict=True)]
+
+
+async def _registered_integers(result) -> list[bool]:  # REQ-1961
+    """For each result column, whether it is a registered column the model types integer.
+
+    A result column that IS a registered column (``compiler.result_shape.RegisteredType``) is
+    written as its registered type, whatever the engine read it as: Trino reads Oracle's
+    NUMBER(10), registered integer, as decimal(10,0), and its value is the number GraphQL writes
+    for it (``ctx.integer_columns``). Matched by name, as every surface reads the shape
+    (``federation.runtime_support.read_targets``). Any other column keeps the engine's type."""
+    from provisa.compiler.result_shape import RegisteredType
+    from provisa.compiler.sql_types import is_integer_type
+
+    shape = None if result.result_shape is None else await result.result_shape()
+    by_name = dict(shape or [])
+    return [
+        isinstance(declared := by_name.get(name), RegisteredType) and is_integer_type(declared)
+        for name in result.column_names
+    ]
+
+
+async def _typed_rows(result) -> list[list]:  # REQ-1961
+    """The result's rows, each a registered integer column's value as the number it is."""
+    from provisa.executor.serialize import integer_value
+
+    integers = await _registered_integers(result)
+    names = result.column_names
+    if not any(integers):
+        return [list(row) for row in result.rows]
+    return [
+        [
+            integer_value(v, name) if integer else v
+            for v, name, integer in zip(row, names, integers, strict=True)
+        ]
+        for row in result.rows
+    ]
 
 
 def _with_warnings(body: dict) -> dict:
@@ -261,6 +306,9 @@ def _sql_error(exc: Exception) -> Exception:
         | ReadRefused
         | SourceStillStartingError
         | NotAvailableHere
+        | CatalogViewRefused  # REQ-2190
+        | MetadataFunctionRefused  # REQ-2190
+        | FunctionRefused  # REQ-2167
         | HTTPException,
     ):
         return exc
@@ -301,9 +349,9 @@ async def _each_body(
         if o.result.redirect is not None:
             entry["redirect"] = o.result.redirect
         else:
-            entry["data"] = [list(row) for row in o.result.rows]
+            entry["data"] = await _typed_rows(o.result)
             entry["columns"] = list(o.result.column_names)
-            entry["column_types"] = _column_types(o.result)
+            entry["column_types"] = await _column_types(o.result)
         entries.append(entry)
     body: dict[str, Any] = {"results": entries}
     if stats_enabled:
@@ -347,7 +395,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         _qs_mod.begin(plan_entries=True)
     _t0 = _time.perf_counter()
 
-    def _finalize(result):
+    async def _finalize(result):
         # REQ-536: HIT (with the entry's age) when the pipeline served this result from the
         # response cache, else MISS — reported on every response shape below.
         from provisa.cache.middleware import build_cache_headers
@@ -361,7 +409,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 _with_warnings({"data": {"sql": None}, "redirect": result.redirect}),
                 headers=cache_headers,
             )
-        rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
+        # REQ-1961: a registered column is written as its registered type.
+        rows_as_dicts = [dict(zip(result.column_names, row)) for row in await _typed_rows(result)]
         if stats_enabled:
             # REQ-1517: the entries and the execution DAG are recorded by the pipeline terminal
             # (provisa.executor.plan_stats), which knows the real route, source and optimizations.
@@ -381,7 +430,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                         {
                             "data": {"sql": rows_as_dicts},
                             "columns": list(result.column_names),
-                            "column_types": _column_types(result),
+                            "column_types": await _column_types(result),
                             "provisa_stats": qs.to_dict(),
                         }
                     ),
@@ -399,32 +448,39 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                     {
                         "data": {"sql": rows_as_dicts},
                         "columns": list(result.column_names),
-                        "column_types": _column_types(result),
+                        "column_types": await _column_types(result),
                     }
                 ),
                 cache_headers,
             )
         from provisa.compiler.sql_gen import ColumnRef
+        from provisa.compiler.sql_types import is_json_type
 
+        # A column the engine types json or jsonb is written as its JSON (REQ-1867); a registered
+        # integer column as its number (REQ-1961).
+        types = result.column_types or [None] * len(result.column_names)
+        integers = await _registered_integers(result)
         columns = [
-            ColumnRef(alias=None, column=c, field_name=c, nested_in=None)
-            for c in result.column_names
+            ColumnRef(
+                alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t), integer=i
+            )
+            for c, t, i in zip(result.column_names, types, integers, strict=True)
         ]
         return _with_cache_headers(
-            _format_response(result.rows, columns, "sql", output_format), cache_headers
+            _format_response(result, columns, "sql", output_format), cache_headers
         )
 
     # ONE pipeline: /data/sql runs through the single governed chokepoint. execute_sql_batch splits a
     # multi-statement batch statement-aware and governs+executes EACH (last result returned) — so the
     # tail is never silently dropped, and a per-statement registered command still routes through the
-    # shared function hook. Surface-specific request auth (capability gate) is a pre-check here; as_of
-    # (REQ-1163) is a query-shaping param threaded in.
+    # shared function hook. As_of (REQ-1163) is a query-shaping param threaded in.
     if role_id not in state.schemas:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
-    role = state.roles.get(role_id)
-    _check_sql_capabilities(role)
+    if stats_enabled:
+        # REQ-2155: reading needs no query_development; the physical SQL the stats show does.
+        _check_sql_capabilities(state.roles.get(role_id))
     from provisa.api.redirect_headers import delivery_from_headers
     from provisa.pgwire._pipeline import execute_sql_batch, execute_sql_batch_each
 
@@ -467,7 +523,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         if mapped is exc:
             raise
         raise mapped from exc
-    return _finalize(result)
+    return await _finalize(result)
 
 
 class SplitRequest(BaseModel):
@@ -1002,8 +1058,8 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     """
     from provisa.api.app import state
     from provisa.compiler.naming import domain_to_sql_name
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.core.org_secrets import read_org_api_keys
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.core.org_settings import resolve_org_config
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request)
@@ -1029,19 +1085,10 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
         return {"sql": sql, "cypher": cypher, "attempts": 1}
 
     ctx = surface.context
-    rls = surface.rls
     from provisa.security.rights import require_role
 
     role_obj = require_role(state.roles, role_id)
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role_obj,
-        relationships=getattr(state, "relationships", None),
-    )
+    gov_ctx = role_governance(state, surface, role_id)
     raw_tables = getattr(state, "tables", [])
 
     all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(

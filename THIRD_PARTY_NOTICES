@@ -34,3 +34,11 @@ codes and cities) are derived from the GeoNames geographical database (https://w
 used under the Creative Commons Attribution 4.0 International License
 (https://creativecommons.org/licenses/by/4.0/). The values were normalised, sorted and
 deduplicated; see provisa/profiler/reference/THIRD_PARTY_NOTICES.
+
+provisa/_encoders (compiled module)
+-----------------------------------
+provisa._encoders, Provisa's encoders compiled from Rust (rust/encoders and the encoder crates it
+links), statically links third-party Rust crates used under the Apache License 2.0, the MIT
+License and the Unicode License v3; each crate, its licence and the licence text are listed in
+provisa/_encoders.THIRD_PARTY_NOTICES, which ships beside the module in every wheel and installer
+(scripts/rust-third-party-notices.sh writes it).

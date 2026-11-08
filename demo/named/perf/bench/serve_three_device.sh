@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 #
-# Device 1 of the three-device optimistic benchmark (../METHODOLOGY.md): Provisa only. Every
-# backend — the sources, the engine (pg by default; duckdb runs in-process here), the control
+# Device 1 of the three-device benchmark (METHODOLOGY.md): Provisa and the engine (pg by default,
+# in its own container; duckdb runs in-process). Every other backend — the sources, the control
 # plane, Redis and the telemetry pipeline — is on device 3. Runs until interrupted (SIGINT/SIGTERM),
 # then stops Provisa and the host agent. Started through `orchestrate.sh serve`.
 #
@@ -19,6 +19,7 @@
 #   PROVISA_BENCH_AGENT_LISTEN   HOST:PORT for host_agent.py, device 1's private address
 # Optional:
 #   PROVISA_WORKERS (default: this host's hardware threads), PROVISA_REQUEST_THREADS
+#   PROVISA_BENCH_ENGINE_HOST    where the engine listens: device 1's private address
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -44,9 +45,12 @@ mkdir -p "$STATE_DIR"
 
 _threads=()
 [ -n "${PROVISA_REQUEST_THREADS:-}" ] && _threads=(--request-threads "$PROVISA_REQUEST_THREADS")
+_engine_host=()
+[ -n "${PROVISA_BENCH_ENGINE_HOST:-}" ] && _engine_host=(--engine-host "$PROVISA_BENCH_ENGINE_HOST")
 eval "$("$PYTHON_BIN" "$SCRIPT_DIR/three_device.py" serve-env \
   --engine "$ENGINE" --telemetry "$TELEMETRY" --backends-host "$PROVISA_BENCH_BACKENDS_HOST" \
-  --workers "$WORKERS" "${_threads[@]}" --config-out "$STATE_DIR/config-$TELEMETRY.yaml")"
+  --workers "$WORKERS" "${_threads[@]}" "${_engine_host[@]}" \
+  --config-out "$STATE_DIR/config-$TELEMETRY.yaml")"
 if [ "$TELEMETRY" = off ]; then
   unset OTEL_EXPORTER_OTLP_ENDPOINT
 fi
@@ -60,7 +64,7 @@ export PROVISA_HTTP_LISTEN="0.0.0.0:$API_PORT"
 PROVISA_PID=$!
 AGENT_PID=""
 stop() {
-  [ -n "$AGENT_PID" ] && kill "$AGENT_PID" 2>/dev/null || true
+  [ -n "$AGENT_PID" ] && sudo kill "$AGENT_PID" 2>/dev/null || true
   kill -INT "$PROVISA_PID" 2>/dev/null || true
   wait "$PROVISA_PID" 2>/dev/null || true
 }
@@ -80,8 +84,10 @@ print(w["ready"], w["expected"])' 2>/dev/null)" && [ "${seen% *}" -ge "${seen#* 
 done
 echo "Provisa serving: $WORKERS workers, engine $ENGINE, telemetry $TELEMETRY"
 
-"$PYTHON_BIN" "$SCRIPT_DIR/host_agent.py" --listen "$PROVISA_BENCH_AGENT_LISTEN" \
+# Root for docker stats of the engine's container, as on device 3.
+sudo "$PYTHON_BIN" "$SCRIPT_DIR/host_agent.py" --listen "$PROVISA_BENCH_AGENT_LISTEN" \
   --pid "$PROVISA_PID" --fact "telemetry=$TELEMETRY" --fact "engine=$ENGINE" \
+  --fact "commit=$(git -C "$REPO_ROOT" rev-parse HEAD)" \
   --fact "workers=$WORKERS" --fact "request_threads=${PROVISA_REQUEST_THREADS:-default}" \
   --rtt-target "backends=$PROVISA_BENCH_BACKENDS_HOST:25632" &
 AGENT_PID=$!

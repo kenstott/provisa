@@ -28,13 +28,16 @@ import time
 from typing import Any
 
 import psycopg2
+import psycopg2.extensions
 import psycopg2.pool
 
 from provisa.core import request_deadline
+from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL, SERVER_FORM_RAISE
 
 _log = logging.getLogger(__name__)
 
@@ -173,6 +176,48 @@ def _pg_type_names(con: Any, oids: list[int]) -> list[str]:
     return [_PG_TYPE_NAMES[o] for o in oids]
 
 
+#: REQ-2171: the types psycopg2 reads into an object whose str() is not PostgreSQL's text form: a
+#: range (its Range's bounds in Python's repr), and xml[], which it leaves as the array's text.
+_RANGE_OIDS = tuple(oid for r in RANGE_TYPES.values() for oid in (r.oid, r.multirange_oid))
+_RANGES_AS_TEXT = psycopg2.extensions.new_type(_RANGE_OIDS, "PG_RANGE_TEXT", lambda text, _: text)
+_XML_ARRAY = psycopg2.extensions.new_array_type((143,), "XML_ARRAY", psycopg2.STRING)
+#: REQ-1867: json (114) and jsonb (3802) as the text PostgreSQL wrote, as the DuckDB and ADBC
+#: reads and the DIRECT driver give them. psycopg2 parses them, and a value parsed here is
+#: misread downstream: a jsonb string "5" reads back as the number 5, a number loses its digits
+#: past a float, and pgwire and Flight write the parse instead of PostgreSQL's text.
+_JSON_AS_TEXT = psycopg2.extensions.new_type((114, 3802), "PG_JSON_TEXT", lambda text, _: text)
+_JSON_ARRAY = psycopg2.extensions.new_array_type((199, 3807), "PG_JSON_ARRAY", _JSON_AS_TEXT)
+
+
+def _bounded(caster: Any) -> Any:
+    """``caster``, an array type's reader, leaving an array whose lower bounds are not 1 as the text
+    PostgreSQL writes of it ("[1:1][2:3]={...}"), which it refuses ("array does not start with
+    '{'") and which no list says."""
+
+    def read(text: str | bytes | None, cur: Any) -> Any:
+        return text if isinstance(text, str) and text.startswith("[") else caster(text, cur)
+
+    return psycopg2.extensions.new_type(caster.values, f"{caster.name}_BOUNDED", read)
+
+
+_BOUNDED_ARRAYS = tuple(
+    _bounded(caster)
+    for caster in {
+        id(c): c for c in psycopg2.extensions.string_types.values() if c.name.endswith("ARRAY")
+    }.values()
+)
+
+
+def _read_as_postgresql_writes(cur: Any) -> None:
+    """``cur`` reading a value as PostgreSQL's own text of it, where psycopg2 would not."""
+    for bounded in _BOUNDED_ARRAYS:
+        psycopg2.extensions.register_type(bounded, cur)
+    psycopg2.extensions.register_type(_RANGES_AS_TEXT, cur)
+    psycopg2.extensions.register_type(_XML_ARRAY, cur)
+    psycopg2.extensions.register_type(_JSON_AS_TEXT, cur)
+    psycopg2.extensions.register_type(_JSON_ARRAY, cur)
+
+
 class _AdbcConnectionPool:
     """Minimal thread-safe bounded pool for ADBC connections (``run_arrow``/``run_arrow_stream``).
 
@@ -186,12 +231,17 @@ class _AdbcConnectionPool:
     ``transaction_status`` before reuse (see ``run_sync``'s pool below); ADBC exposes no equivalent
     state check. A dead pooled connection therefore surfaces as a real ``execute()`` failure to the
     caller, who must call ``discard()`` (closes it, lets the pool create a fresh one on the next
-    ``getconn()``) rather than this pool silently retrying or swallowing the error."""
+    ``getconn()``) rather than this pool silently retrying or swallowing the error.
+
+    Each connection is autocommit: ADBC's DB-API defaults to opening a transaction on a statement
+    and keeping it until commit, so a read given back to the pool sat idle in that transaction,
+    holding its lock on every table it read -- a session's ``DROP SCHEMA`` in this database then
+    waited on the pooled connection (DELETE /data/cypher/session on the pg engine)."""
 
     def __init__(self, dsn: str, *, minconn: int, maxconn: int) -> None:
         from adbc_driver_postgresql import dbapi as adbc_pg
 
-        self._connect = lambda: adbc_pg.connect(dsn)
+        self._connect = lambda: adbc_pg.connect(dsn, autocommit=True)
         self._maxconn = maxconn
         self._pool: list[Any] = [self._connect() for _ in range(minconn)]
         self._created = minconn
@@ -273,6 +323,26 @@ def _install_fake_functions(con: Any) -> bool:
     return True
 
 
+def _install_raise_function(con: Any) -> None:
+    """Create provisa_raise (REQ-2190: a catalog form, in a statement with no table). A role that
+    may not does not stop the engine: only such a form needs it, PostgreSQL then refuses that
+    statement by the function's name, and the reason is logged here. One already there, from another
+    role or an engine starting beside this one, is the function."""
+    cur = con.cursor()
+    try:
+        cur.execute(RAISE_FUNCTION_SQL)
+    except psycopg2.Error as exc:
+        cur.execute(f"SELECT to_regprocedure('{SERVER_FORM_RAISE}(text, text)')")
+        if cur.fetchone()[0] is None:
+            _log.warning(
+                "the pg engine cannot answer a catalog form's error, %s does not exist: %s",
+                SERVER_FORM_RAISE,
+                str(exc).strip().splitlines()[0],
+            )
+    finally:
+        cur.close()
+
+
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     # Class-level default so _get_adbc_pool's `self._adbc_pool is None` check is well-defined even
     # for an instance built via __new__ without __init__ running (the Arrow-transport unit tests
@@ -317,6 +387,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # functions importing provisa. Where it cannot (no plpython3u, no superuser, a managed
         # Postgres), a statement reading a faked column is refused by the column's name.
         self.computes_fakes = _install_fake_functions(self._con)
+        _install_raise_function(self._con)
 
     # -- source exposure -------------------------------------------------------
 
@@ -1166,6 +1237,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         try:
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
+            _read_as_postgresql_writes(cur)
             with request_deadline.cancel_on_deadline(read_con.cancel):
                 cur.execute(*_psycopg2_exec_args(sql, params))
                 # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH,
@@ -1198,7 +1270,8 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         cols = [d[0] for d in cur.description]
         # The description's type_code is the column's pg_type OID, known even for a zero-row
         # result — the pgwire Describe reports it without running the full statement (REQ-589).
-        types = _pg_type_names(read_con, [d[1] for d in cur.description])
+        oids = [d[1] for d in cur.description]
+        types = _pg_type_names(read_con, oids)
 
         def _batches() -> Any:
             if first:
@@ -1210,7 +1283,11 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 yield chunk
 
         return StreamingQueryResult(
-            _batches(), column_names=cols, column_types=types, on_close=_close
+            _batches(),
+            column_names=cols,
+            column_types=types,
+            on_close=_close,
+            column_type_oids=oids,
         )
 
     def describe_sync(self, sql: str, params: list | None = None) -> ResultStream:
@@ -1332,17 +1409,15 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 con = self._read_pool.getconn()
             try:
                 cur = con.cursor()
+                _read_as_postgresql_writes(cur)
                 with request_deadline.cancel_on_deadline(con.cancel):
                     cur.execute(*_psycopg2_exec_args(sql, params))
                     cols = [d[0] for d in cur.description] if cur.description else []
                     rows = list(cur.fetchall()) if cur.description else []
                 # Each column's type, as the streamed read reports it (run_sync): known even for
                 # a zero-row result, which is how a view's output columns are learned (REQ-846).
-                types = (
-                    _pg_type_names(con, [d[1] for d in cur.description])
-                    if cur.description
-                    else None
-                )
+                oids = [d[1] for d in cur.description] if cur.description else None
+                types = _pg_type_names(con, oids) if oids else None
                 con.commit()
                 cur.close()
             except BaseException:
@@ -1353,7 +1428,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             with shield.lock:
                 shield.settle()
                 self._read_pool.putconn(con)
-            return QueryResult(rows=rows, column_names=cols, column_types=types)
+            return QueryResult(
+                rows=rows, column_names=cols, column_types=types, column_type_oids=oids
+            )
 
         return await loop.run_in_executor(None, _run)
 

@@ -16,7 +16,8 @@ every operation acquires it (a blocking OS-level mutex -- no polling, no backoff
 DuckDB's own error text to guess whether a failure means "busy" or "broken"), ATTACHes the actual
 store file (now guaranteed uncontested), does its one operation, DETACHes (closes the connection),
 and releases the lock. No process ever holds either the lock or the file open longer than a single
-call, and `flock` is tied to the file descriptor -- a process that dies mid-operation (crash,
+call -- what outlives a call is an empty in-memory database the next call attaches to (`_take_host`),
+because opening one is what an operation would otherwise spend most of its time on -- and `flock` is tied to the file descriptor -- a process that dies mid-operation (crash,
 SIGKILL) releases it automatically, with no stale-socket or stale-lock cleanup logic needed at all.
 
 This replaces an earlier persistent-broker-process design (one process elected via a Unix socket +
@@ -27,7 +28,7 @@ self-loopback connect that broke on reconnect, and — confirmed live under a re
 benchmark run — a genuine split-brain recurrence (`Unique file handle conflict`) in a scenario
 (an established broker plus one respawned worker rejoining) the earlier design's own tests never
 covered. None of that exists here: there is no persistent state to split, and no connection to
-lose and reconnect, because no connection ever outlives one call.
+lose and reconnect, because no connection to the store ever outlives one call.
 """
 
 from __future__ import annotations
@@ -158,6 +159,38 @@ def _bump_generation(db_path: str) -> None:
     os.replace(tmp, db_path + _GEN_SUFFIX)
 
 
+#: How many empty databases stay open for the next operations: one is taken per operation running
+#: at once, so this bounds what is kept, never what may run.
+_IDLE_HOSTS = 4
+
+#: Each database kept open between operations, with the memory cap it was opened under.
+_idle_hosts: list[tuple[engine_memory.DuckDBConfig, Any]] = []
+_idle_hosts_guard = threading.Lock()
+
+
+def _take_host() -> tuple[engine_memory.DuckDBConfig, Any]:
+    """An in-memory database with no store attached, under the deployment's cap as it stands now,
+    with that cap. Opening one costs several times what the whole operation on the store does
+    (ATTACH, a statement and DETACH), and one operation after another is how a store is used."""
+    cap = engine_memory.config()
+    with _idle_hosts_guard:
+        while _idle_hosts:
+            held_cap, host = _idle_hosts.pop()
+            if held_cap == cap:
+                return cap, host
+            host.close()
+    return cap, engine_memory.connect()
+
+
+def _give_back_host(cap: engine_memory.DuckDBConfig, host: Any) -> None:
+    """Keep ``host``, which holds no store, for the next operation, past :data:`_IDLE_HOSTS` not."""
+    with _idle_hosts_guard:
+        if len(_idle_hosts) < _IDLE_HOSTS:
+            _idle_hosts.append((cap, host))
+            return
+    host.close()
+
+
 def _with_store(
     db_path: str,
     fn: Any,
@@ -194,15 +227,27 @@ def _with_store(
     with open(lock_path, "a+") as lockfile:
         _lock_exclusive(lockfile.fileno(), lock_path)
         try:
-            con = engine_memory.connect()
-            con.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")
+            cap, host = _take_host()
             try:
-                with request_deadline.cancel_on_deadline(con.interrupt):
-                    result = fn(con)
+                host.execute(f"ATTACH '{db_path}' AS {_MAT_STORE_ALIAS} (TYPE duckdb{mode})")
+                # A cursor is its own connection onto the database: what the operation registers
+                # goes with it, and DETACH checkpoints the store, leaving the file whole on disk
+                # for whichever process takes the lock next. Any failure closes the database, so
+                # nothing it left behind reaches a later operation.
+                con = host.cursor()
+                try:
+                    with request_deadline.cancel_on_deadline(con.interrupt):
+                        result = fn(con)
+                finally:
+                    con.close()
+                host.execute(f"DETACH {_MAT_STORE_ALIAS}")
+            except BaseException:
+                host.close()
+                raise
             finally:
-                con.close()
                 if not read_only and not unseen:
                     _bump_generation(db_path)
+            _give_back_host(cap, host)
             return (result, store_canary(db_path)) if canary else result
         finally:
             unlock_fd(lockfile.fileno())
@@ -599,11 +644,13 @@ class _SyncedStore:
 
         def _do(con: Any) -> None:
             if primary:
-                held = con.execute(
-                    "SELECT 1 FROM duckdb_constraints() WHERE database_name = ? "
-                    "AND schema_name = ? AND table_name = ? AND constraint_type = 'PRIMARY KEY'",
-                    [_MAT_STORE_ALIAS, schema, table],
-                ).fetchone()
+                held = engine_memory.first_row(
+                    con.execute(
+                        "SELECT 1 FROM duckdb_constraints() WHERE database_name = ? "
+                        "AND schema_name = ? AND table_name = ? AND constraint_type = 'PRIMARY KEY'",
+                        [_MAT_STORE_ALIAS, schema, table],
+                    )
+                )
                 if held is None:
                     try:
                         con.execute(f"ALTER TABLE {replica} ADD PRIMARY KEY ({cols})")
@@ -678,9 +725,9 @@ class _SyncedStore:
             con.execute(f'CREATE SCHEMA IF NOT EXISTS {_MAT_STORE_ALIAS}."{schema}"')
             for stmt in plan(_table_columns(con, schema, table)):
                 con.execute(stmt)
-            row = con.execute(
-                f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
-            ).fetchone()
+            row = engine_memory.first_row(
+                con.execute(f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"')
+            )
             assert row is not None  # COUNT(*) always yields a row
             return int(row[0])
 
@@ -692,9 +739,7 @@ class _SyncedStore:
         into its own connection before a query that references it, and re-copies only once
         ``canary()`` no longer matches (some process wrote the store since)."""
         return self._run(
-            lambda con: con.execute(
-                f'SELECT * FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
-            ).fetch_arrow_table(),
+            lambda con: zoned_times_as_text(con, f'{_MAT_STORE_ALIAS}."{schema}"."{table}"'),
             read_only=True,
             canary=True,
         )
@@ -702,6 +747,41 @@ class _SyncedStore:
     def canary(self) -> StoreCanary:
         """The store's current canary (no lock: a stat is atomic, and a mismatch only re-copies)."""
         return store_canary(self._db_path)
+
+
+#: The Arrow field metadata naming a column :func:`zoned_times_as_text` sent as its text: its
+#: DuckDB type, which the copy casts it back to.
+ZONED_TIME_TYPE = b"provisa.duckdb_type"
+
+
+def zoned_times_as_text(con: Any, relation: str) -> Any:
+    """``SELECT *`` of ``relation`` as Arrow, a time with its offset (TIMETZ, or a list of them)
+    sent as its text and its field marked with its type (:data:`ZONED_TIME_TYPE`): Arrow has no
+    time with a zone, and DuckDB hands one over as a time64, its wall clock without its offset
+    (REQ-2173, REQ-2176)."""
+    import pyarrow as pa
+
+    zoned = {
+        name: kind
+        for name, kind, *_ in con.execute(f"DESCRIBE {relation}").fetchall()
+        if kind in ("TIME WITH TIME ZONE", "TIME WITH TIME ZONE[]")
+    }
+    if not zoned:
+        return con.execute(f"SELECT * FROM {relation}").fetch_arrow_table()
+
+    def quoted(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    as_text = ", ".join(
+        f"CAST({quoted(n)} AS {'VARCHAR[]' if k.endswith('[]') else 'VARCHAR'}) AS {quoted(n)}"
+        for n, k in zoned.items()
+    )
+    table = con.execute(f"SELECT * REPLACE ({as_text}) FROM {relation}").fetch_arrow_table()
+    fields = [
+        f.with_metadata({ZONED_TIME_TYPE: zoned[f.name].encode()}) if f.name in zoned else f
+        for f in table.schema
+    ]
+    return table.cast(pa.schema(fields))
 
 
 class EngineAttachedStore(_SyncedStore):

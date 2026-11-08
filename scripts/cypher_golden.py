@@ -270,7 +270,7 @@ def model_label_map(config_path: Path) -> Any:
     ctx = build_context(schema_input)
     return _module("label_map").CypherLabelMap.from_schema(
         ctx,
-        domain_access=["*"],
+        domain_access=["*", "meta", "ontology", "ops"],
         all_tables=tables,
         all_relationships=relationships,
         all_column_types=column_types,
@@ -350,7 +350,11 @@ def model_inputs(config_path: Path, *, parameters: bool = False) -> tuple[Any, l
     from provisa.core.db import fold_config_grants
 
     fold_config_grants(tables, raw.get("roles") or [])
-    role = {"id": "org_admin", "domain_access": ["*"], "capabilities": []}
+    role = {
+        "id": "org_admin",
+        "domain_access": ["*", "meta", "ontology", "ops"],
+        "capabilities": [],
+    }
     naming.configure(gql="apollo_graphql")
     schema_input = SchemaInput(
         tables=tables,

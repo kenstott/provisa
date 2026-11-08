@@ -34,6 +34,7 @@ _AI_MODEL_ROLES = (
     "sql_generation",
     "table_selection",
     "mcp_chat",  # REQ-1794: the right-hand chat assistant panel's model (provisa/api/mcp/chat.py)
+    "glossary_term_finding",  # REQ-2179: Find terms (provisa/term_finding/model.py)
 )
 
 # REQ-1349: org-scoped writes are read back per request, so no restart is involved. The note is

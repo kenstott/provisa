@@ -32,8 +32,7 @@ roles:
 - id: __DOMAIN___analyst
   parents: [analyst]
   description: "TODO: what this demo's reader is for."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - __DOMAIN__
 server:

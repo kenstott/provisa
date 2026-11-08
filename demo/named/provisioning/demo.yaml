@@ -13,14 +13,13 @@
 title: Provisioning datasets to downstream teams
 description: >-
   A coffee roaster's warehouse builds a dataset from its order, price and stock feeds as they land,
-  and provisions it to finance and data science: each team is told on Kafka when it is ready and
-  pulls it over Arrow Flight as of that moment, each seeing its own governed view, with no copies.
+  and provisions it to finance and data science. Each team is told on Kafka when it is ready and pulls it over Arrow Flight as of that moment, seeing its own governed view, with no copies.
 screenshot: card.png
 published: true
 group: provision
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
-requires_provisa: 0.1.0a496
+requires_provisa: 0.1.0a497
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Provision Big Data"

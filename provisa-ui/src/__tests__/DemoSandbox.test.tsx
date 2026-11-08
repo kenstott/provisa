@@ -52,11 +52,16 @@ import {
 } from "../lib/sandboxSession";
 import { storedToken } from "../lib/sessionToken";
 import { endVisit } from "../lib/browserStorage";
+import { onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const assign = vi.fn();
+// cloud.provisa.dev, which declares provisa.dev: a sandbox is reached at its own subdomain of it.
+onDeclaredBaseDomain("provisa.dev");
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(openDemoSandbox).mockReset();
+  vi.mocked(fetchDemoStatus).mockReset();
   Object.defineProperty(window, "location", {
     configurable: true,
     value: {
@@ -195,6 +200,145 @@ describe("the live demo link", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each([
+    ["front_door.coordinator_waking", "The server is waking up"],
+    ["front_door.coordinator_updating", "The server is being updated"],
+    ["sandbox.starting", "The demo server is starting"],
+    ["sandbox.demo_not_ready", "Starting this demo"],
+  ])("keeps waiting across %s, saying what is happening", async (code, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(openDemoSandbox).mockRejectedValueOnce(new SandboxRefused("Wait.", code));
+      vi.mocked(openDemoSandbox).mockResolvedValueOnce({
+        org_id: "sbx0123456789ab",
+        demo: "weblogs",
+        token: "t",
+      });
+      const status = { demo: "weblogs", state: "ready", places_free: 3 };
+      vi.mocked(fetchDemoStatus)
+        .mockRejectedValueOnce(new SandboxRefused("Wait.", code))
+        .mockResolvedValueOnce({ ...status, ready: true });
+      openAt("weblogs");
+      expect(await screen.findByText(new RegExp(said))).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(screen.getByText(new RegExp(said))).toBeInTheDocument();
+      expect(screen.queryByTestId("demo-open-refused")).toBeNull();
+      expect(screen.getByTestId("demo-open-cold-start")).toHaveTextContent("about five minutes");
+      expect(screen.getByTestId("demo-open-progress")).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(5000);
+      await waitFor(() => expect(assign).toHaveBeenCalled());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("moves on as the wait moves from one stage to the next, and counts the time", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(openDemoSandbox).mockRejectedValueOnce(
+        new SandboxRefused("Wait.", "front_door.coordinator_waking"),
+      );
+      vi.mocked(fetchDemoStatus)
+        .mockRejectedValueOnce(new SandboxRefused("Wait.", "sandbox.starting"))
+        .mockResolvedValue({ demo: "w", state: "building", places_free: 3, ready: false });
+      openAt("weblogs");
+      await screen.findByText(/The server is waking up/);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await screen.findByText(/The demo server is starting/)).toBeInTheDocument();
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await screen.findByText(/Starting this demo/)).toBeInTheDocument();
+      expect(screen.getByTestId("demo-open-elapsed")).toHaveTextContent("0:10");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits through a connection lost while the server restarts", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(openDemoSandbox).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      vi.mocked(fetchDemoStatus).mockRejectedValueOnce(
+        new SandboxRefused("API unavailable", null, 502),
+      );
+      vi.mocked(fetchDemoStatus).mockResolvedValueOnce({
+        demo: "w",
+        state: "ready",
+        places_free: 3,
+        ready: true,
+      });
+      vi.mocked(openDemoSandbox).mockResolvedValueOnce({
+        org_id: "sbx0123456789ab",
+        demo: "weblogs",
+        token: "t",
+      });
+      openAt("weblogs");
+      await screen.findByText(/Reaching the server/);
+      expect(screen.queryByTestId("demo-open-refused")).toBeNull();
+      await vi.advanceTimersByTimeAsync(10000);
+      await waitFor(() => expect(assign).toHaveBeenCalled());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("opens again now and then, whatever the status says", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(openDemoSandbox).mockRejectedValue(
+        new SandboxRefused("Wait.", "sandbox.demo_not_ready"),
+      );
+      vi.mocked(fetchDemoStatus).mockResolvedValue({
+        demo: "w",
+        state: "unknown",
+        places_free: 3,
+        ready: false,
+      });
+      openAt("weblogs");
+      await screen.findByTestId("demo-open-starting");
+      await vi.advanceTimersByTimeAsync(61000);
+      expect(vi.mocked(openDemoSandbox).mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("names a server that failed to start, with a retry", async () => {
+    vi.mocked(openDemoSandbox).mockRejectedValueOnce(
+      new SandboxRefused("The demo server could not be started.", "sandbox.failed_to_start"),
+    );
+    openAt("weblogs");
+    expect(await screen.findByTestId("demo-open-refused")).toHaveTextContent(
+      "could not be started",
+    );
+    expect(screen.getByTestId("demo-open-retry")).toBeInTheDocument();
+  });
+
+  it("names a demo that could not be prepared, with a retry", async () => {
+    vi.mocked(openDemoSandbox).mockRejectedValueOnce(
+      new SandboxRefused("This demo could not be prepared.", "sandbox.demo_failed"),
+    );
+    openAt("weblogs");
+    expect(await screen.findByTestId("demo-open-refused")).toHaveTextContent("could not be");
+    expect(screen.getByTestId("demo-open-retry")).toBeInTheDocument();
+  });
+
+  it("does not give up inside the real wait, and names it when it does", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.mocked(openDemoSandbox).mockRejectedValue(new SandboxRefused("Wait.", "sandbox.starting"));
+      vi.mocked(fetchDemoStatus).mockRejectedValue(new SandboxRefused("Wait.", "sandbox.starting"));
+      openAt("weblogs");
+      await screen.findByTestId("demo-open-starting");
+      await vi.advanceTimersByTimeAsync(29 * 60 * 1000);
+      expect(screen.queryByTestId("demo-open-refused")).toBeNull();
+      await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+      expect(await screen.findByTestId("demo-open-refused")).toHaveTextContent("did not open");
+      expect(screen.getByTestId("demo-open-retry")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 30000);
 
   it("offers no retry for a demo that does not exist", async () => {
     vi.mocked(openDemoSandbox).mockRejectedValue(

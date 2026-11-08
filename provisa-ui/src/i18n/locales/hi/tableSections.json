@@ -5,10 +5,9 @@
     "identity": "पहचान",
     "associations": "संबद्धताएँ",
     "load": "लोड प्रबंधन और समयबद्धता",
-    "query": "क्वेरी",
+    "query": "API",
     "quality": "गुणवत्ता",
     "columns": "कॉलम",
-    "writes": "लेखन",
     "source": "स्रोत",
     "schema": "स्कीमा",
     "table": "तालिका",
@@ -33,7 +32,6 @@
       "skipped": "छोड़ा गया"
     },
     "classTerm": "पंक्तियाँ इसके उदाहरण हैं",
-    "classTermPlaceholder": "कोई शब्द चुनें",
     "noClassTerm": "कोई शब्द नहीं",
     "classTermUnreadable": "इसका शब्द पढ़ा नहीं जा सका: {{error}}",
     "access": "पहुँच"

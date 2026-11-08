@@ -128,7 +128,7 @@ describe("ReplicateSelect", () => {
 
   it("flags Live if possible when load protection is on, and only then", () => {
     const message =
-      "Live if possible cannot be combined with load protection: a load-protected table is never read live.";
+      "Live if possible cannot be combined with load protection, because a load-protected table is never read live.";
     const { unmount } = render(<Harness initial={-1} loadProtected />);
     expect(screen.getByText(message)).toBeInTheDocument();
     unmount();

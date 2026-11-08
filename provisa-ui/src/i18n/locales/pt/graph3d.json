@@ -24,6 +24,7 @@
     "layer_relationships": "Relacionamentos entre membros",
     "layer_outside": "Relacionamentos com tabelas externas",
     "layer_lineage": "Linhagem",
+    "layer_productLinks": "Ligações a outros produtos",
     "filterDomain": "Domínios",
     "filterTag": "Tags",
     "filterSensitivity": "Sensibilidade",
@@ -64,6 +65,7 @@
     "edge_owns": "possui",
     "loadError": "Não foi possível ler o grafo: {{error}}",
     "zoomTo": "Aproximar",
+    "openInErd": "Abrir no ERD",
     "edge_column_lineage": "alimenta a coluna",
     "preset_taxonomy": "Taxonomia",
     "layer_domains": "Domínios",
@@ -145,6 +147,10 @@
     "quality_none": "Ainda não executada",
     "factOwner": "Proprietário",
     "factMembers": "Tabelas membro",
-    "factColumns": "Colunas"
+    "factColumns": "Colunas",
+    "depth": "Profundidade",
+    "lateral": "Arestas laterais",
+    "grounding_grounded": "Ancorado",
+    "grounding_grounded_pending": "Ancorado, por meio de um rascunho"
   }
 }

@@ -24,6 +24,7 @@
     "layer_relationships": "קשרים בין חברים",
     "layer_outside": "קשרים לטבלאות חיצוניות",
     "layer_lineage": "Data Lineage",
+    "layer_productLinks": "קישורים למוצרים אחרים",
     "filterDomain": "תחומים",
     "filterTag": "תגיות",
     "filterSensitivity": "רגישות",
@@ -64,6 +65,7 @@
     "edge_owns": "בבעלות",
     "loadError": "לא ניתן היה לקרוא את הגרף: {{error}}",
     "zoomTo": "התקרבות",
+    "openInErd": "פתיחה ב-ERD",
     "edge_column_lineage": "מזין עמודה",
     "preset_taxonomy": "טקסונומיה",
     "layer_domains": "תחומים",
@@ -145,6 +147,10 @@
     "quality_none": "טרם הורץ",
     "factOwner": "בעלים",
     "factMembers": "טבלאות חברות",
-    "factColumns": "עמודות"
+    "factColumns": "עמודות",
+    "depth": "עומק",
+    "lateral": "קשתות רוחביות",
+    "grounding_grounded": "מעוגן",
+    "grounding_grounded_pending": "מעוגן, דרך טיוטה"
   }
 }

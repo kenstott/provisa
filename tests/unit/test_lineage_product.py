@@ -101,5 +101,6 @@ def test_the_consumers_are_one_hop_downstream_and_never_a_member() -> None:
 
     g = product_graph(_graph(), MEMBERS, checker_relations={"sales.mart_dq"})
     # report reads mart directly; report2 reads report, two hops away; the checker is no consumer.
-    assert nearest_consumers(g, {"sales.mart"}) == ["sales.report"]
-    assert nearest_consumers(g, {"sales.mart", "sales.report"}) == []
+    # Each consumer names the members it reads (REQ-2158: a contract's consumers are its port's).
+    assert nearest_consumers(g, {"sales.mart"}) == {"sales.report": ["sales.mart"]}
+    assert nearest_consumers(g, {"sales.mart", "sales.report"}) == {}

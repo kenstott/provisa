@@ -36,7 +36,13 @@ def _row(role_id: str) -> dict:
 def test_a_shown_role_carries_its_inherited_rights():
     rows = standard_role_dicts()
     held = _role_from_row(
-        _row("data_steward"), detail=True, effective=effective_capabilities("data_steward", rows)
+        _row("data_steward"),
+        detail=True,
+        effective={
+            "capabilities": effective_capabilities("data_steward", rows),
+            "domains": ["*"],
+            "regions": [],
+        },
     )
     assert "access_config" not in held.capabilities
     assert {"access_config", "glossary_read", "query_development"} <= set(
@@ -45,5 +51,9 @@ def test_a_shown_role_carries_its_inherited_rights():
 
 
 def test_a_withheld_role_carries_no_rights():
-    hidden = _role_from_row(_row("data_steward"), detail=False, effective=["access_config"])
+    hidden = _role_from_row(
+        _row("data_steward"),
+        detail=False,
+        effective={"capabilities": ["access_config"], "domains": [], "regions": []},
+    )
     assert hidden.effective_capabilities is None

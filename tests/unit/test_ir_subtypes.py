@@ -29,12 +29,13 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import insert, select
 
-from buenavista.postgres import BVTYPE_TO_PGTYPE
+from buenavista.postgres import BVTYPE_TO_OID
+from tests.unit.pgwire import wire_cells as wire
 from provisa.api.admin.introspect import _pg_column_typing
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.result_shape import derive_result_shape
 from provisa.core import secrets_store
-from provisa.core.ir_types import SUBTYPES, column_typing, to_ir, to_physical
+from provisa.core.ir_types import HELD_AS_TEXT, SUBTYPES, column_typing, to_ir, to_physical
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, sources, table_columns
@@ -66,9 +67,18 @@ _FIRST_SET = {
     "tsrange": ("text", 3908),
     "tstzrange": ("text", 3910),
     "daterange": ("text", 3912),
+    "int4multirange": ("text", 4451),
+    "int8multirange": ("text", 4536),
+    "nummultirange": ("text", 4532),
+    "tsmultirange": ("text", 4533),
+    "tstzmultirange": ("text", 4534),
+    "datemultirange": ("text", 4535),
     "bit": ("text", 1560),
     "varbit": ("text", 1562),
     "tsvector": ("text", 3614),
+    "timetz": ("text", 1266),
+    "jsonb": ("json", 3802),
+    **{name: ("text", oid) for name, oid in HELD_AS_TEXT.items()},
 }
 
 
@@ -214,6 +224,7 @@ def _hosts(*columns: tuple[str, str]) -> Table:
         domain_id="net",
         schema_name="public",
         table_name="hosts",
+        original_table_name="hosts",
         columns=[Column(name=n, data_type=t, visible_to=["admin"]) for n, t in columns],
     )
 
@@ -279,9 +290,9 @@ def test_the_catalog_reports_a_subtype_as_its_postgresql_type(name):
     oid = _FIRST_SET[name][1]
     assert _physical_to_pg_oid(name) == oid
     assert _physical_to_pg_name(name) == name
-    assert {row[0]: row[1] for row in pg_type_rows()}[oid] == name
+    assert {row[0]: row[1] for row in pg_type_rows()}[oid] == name.strip('"')
     assert oid in _PG_OID_ATTR_META
-    assert _TYPEINFO[oid][1] == name
+    assert _TYPEINFO[oid][1] == name.strip('"')
 
 
 def _catalog_ctx():
@@ -290,6 +301,7 @@ def _catalog_ctx():
         domain_id="net",
         schema_name="public",
         table_name="hosts",
+        original_table_name="hosts",
         display_name="hosts",
         field_name="net__hosts",
     )
@@ -346,15 +358,15 @@ def test_a_statement_reading_a_subtyped_column_is_described_as_the_subtype():
 
 @pytest.mark.parametrize("name", sorted(_FIRST_SET))
 def test_pgwire_sends_a_subtype_with_its_postgresql_type_oid(name):
-    assert BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][0] == _FIRST_SET[name][1]
+    assert BVTYPE_TO_OID[_sql_type_to_bvtype(name)] == _FIRST_SET[name][1]
 
 
 def _text(name: str, value):
-    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][1](value)
+    return wire.entry(_sql_type_to_bvtype(name))[1](value)
 
 
 def _binary(name: str, value):
-    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][2](value)
+    return wire.entry(_sql_type_to_bvtype(name))[2](value)
 
 
 def test_pgwire_sends_each_subtype_in_postgresqls_text_form():
@@ -367,7 +379,8 @@ def test_pgwire_sends_each_subtype_in_postgresqls_text_form():
     assert _text("point", "(1,2)") == "(1,2)"
     assert _text("point", (1.0, 2.5)) == "(1,2.5)"
     assert _text("oid", 42) == "42"
-    # money in PostgreSQL's own form (lc_monetary C): a dollar sign, thousands, two decimals.
+    # money in PostgreSQL's own form (lc_monetary en_US.UTF-8): a dollar sign, thousands, two
+    # decimals.
     assert _text("money", decimal.Decimal("1234.5")) == "$1,234.50"
     assert _text("money", decimal.Decimal("-1234.567")) == "-$1,234.57"
     assert _text("money", "$1,234.50") == "$1,234.50"
@@ -396,7 +409,7 @@ def test_an_undescribed_statements_subtyped_columns_are_sent_as_their_postgresql
         rows=[(1, "10.0.0.1")], column_names=["id", "ip"], column_types=["integer", "varchar"]
     )
     result = ProvisaQueryResult(engine, "SELECT id, ip FROM net.hosts", read_shape=_SHAPE)
-    assert [BVTYPE_TO_PGTYPE[result.column(i)[1]][0] for i in range(2)] == [23, 869]
+    assert [BVTYPE_TO_OID[result.column(i)[1]] for i in range(2)] == [23, 869]
     with pytest.raises(RuntimeError, match="returned 2"):
         ProvisaQueryResult(engine, "SELECT id, ip FROM net.hosts", read_shape=_SHAPE[:1])
 
@@ -412,17 +425,17 @@ def _kept(table_map, sql="SELECT id, ip FROM net.hosts"):
 
 
 def test_only_a_statement_reading_a_subtyped_column_derives_its_shape_for_the_wire():
-    assert _kept({"net.hosts": 1}).subtyped() == _SHAPE
-    assert _kept({"net.ids": 2}).subtyped() is None
+    assert _kept({"net.hosts": 1}).wire_typed() == _SHAPE
+    assert _kept({"net.ids": 2}).wire_typed() is None
 
 
 def test_a_statement_reading_no_subtyped_table_derives_no_shape_where_the_role_has_one():
     # The role's tables include net.hosts (subtyped); the statement reads none of them, as the
     # SELECT a column-list CREATE TEMP TABLE is planned as (temp_tables._NOTHING) reads none.
     roles_tables = {"net.hosts": 1, "net.ids": 2}
-    assert _kept(roles_tables, "SELECT 1 AS n WHERE FALSE").subtyped() is None
-    assert _kept(roles_tables, "SELECT id FROM net.ids").subtyped() is None
-    assert _kept(roles_tables).subtyped() == _SHAPE
+    assert _kept(roles_tables, "SELECT 1 AS n WHERE FALSE").wire_typed() is None
+    assert _kept(roles_tables, "SELECT id FROM net.ids").wire_typed() is None
+    assert _kept(roles_tables).wire_typed() == _SHAPE
 
 
 def test_a_temporary_table_statement_answers_its_command_not_its_selects_rows():
@@ -491,6 +504,15 @@ def test_pgwire_sends_the_shapes_ranges_bit_strings_and_tsvector_in_binary_form(
     )
     assert _binary("int8range", "(,10)") == bytes([0x08]) + struct.pack("!iq", 8, 10)
     assert _binary("int4range", "empty") == bytes([0x01])
+    # multirange_send, as PostgreSQL 17 sent these.
+    assert _binary("int4multirange", "{[1,3),[5,7)}") == bytes.fromhex(
+        "00000002000000110200000004000000010000000400000003"
+        "000000110200000004000000050000000400000007"
+    )
+    assert _binary("int4multirange", "{}") == bytes.fromhex("00000000")
+    assert _binary("datemultirange", "{[2026-01-01,2026-02-01)}") == bytes.fromhex(
+        "00000001000000110200000004000025190000000400002538"
+    )
     assert _binary("daterange", "[2026-01-01,2026-02-01)") == (
         bytes([0x02])
         + struct.pack("!i", 4)

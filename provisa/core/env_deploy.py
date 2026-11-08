@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Table, delete, select
 
 from provisa.core import schema_org as org
+from provisa.core.naming_rule_check import refuse_divergent_rule
 from provisa.core.env_classes import (
     BINDING_COLUMN,
     CARRIED,
@@ -63,6 +64,24 @@ from provisa.core.schema_org import metadata as org_metadata
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
     from provisa.core.env_conflicts import Conflict
+
+
+def _rights_in_two_rules(rules: list[dict[str, Any]]) -> list[str]:  # REQ-2188
+    """A right is in at most one rule of a role on a target: a deploy writes rows, past the save
+    that holds to it, so it is read from the tree here."""
+    seen: set[tuple[Any, ...]] = set()
+    problems: list[str] = []
+    for rule in rules:
+        target = (rule.get(k) for k in ("table_id", "domain_id", "action_name", "tag_id"))
+        scope = (rule.get("role_id"), *target)
+        for right in rule.get("rights", "R"):
+            if (*scope, right) in seen:
+                problems.append(
+                    f"role {rule.get('role_id')!r} has right {right!r} in two row rules on one "
+                    "target; a right is in at most one rule"
+                )
+            seen.add((*scope, right))
+    return problems
 
 
 class DeployError(Exception):
@@ -285,8 +304,17 @@ async def land(
     rows = _decompose(
         incoming, await _existing_ids(conn, schema), await _roles_after(conn, schema, incoming)
     )
+    if "roles" not in scope:
+        # REQ-2208: a load that leaves the environment's roles as they are (REQ-1539) leaves the
+        # tags on them too; the tree's role files, and so their tags, are out of its scope.
+        rows["tag_assignments"].extend(await _role_tags_here(conn, schema))
     if not apply:
         return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
+
+    # REQ-2190: the catalog's views apply a naming rule too, in PostgreSQL's regex engine.
+    names = [row["table_name"] for row in rows.get("registered_tables", [])]
+    for rule in rows.get("naming_rules", []):
+        await refuse_divergent_rule(conn, rule["pattern"], rule["replacement"], names)
 
     ordered = [t for t in org_metadata.sorted_tables if t.name in scope]
     await _apply(conn, ordered, schema, rows, delta)
@@ -402,11 +430,61 @@ async def _existing_ids(conn: "Connection", schema: str) -> dict[str, dict[str, 
     for table in (org.tracked_functions, org.tracked_webhooks):
         for row in (await conn.execute_core(select(_scoped(table, schema)))).fetchall():
             commands[f"{table.name}/{dict(row._mapping)['name']}"] = dict(row._mapping)["id"]
+    paths = _table_paths(tables)
+    # REQ-2208: a row rule keeps its serial, which a tag on it names.
+    rules = {
+        _rule_key(
+            _rule_owner(
+                None if r["table_id"] is None else paths[r["table_id"]],
+                r["domain_id"],
+                r["action_name"],
+                r["tag_id"],
+            ),
+            r["role_id"],
+            r["rights"],
+        ): r["id"]
+        for r in (
+            dict(row._mapping)
+            for row in (await conn.execute_core(select(_scoped(org.rls_rules, schema)))).fetchall()
+        )
+    }
     return {
-        "registered_tables": {p: i for i, p in _table_paths(tables).items()},
+        "registered_tables": {p: i for i, p in paths.items()},
         "glossary_terms": {t["name"]: t["id"] for t in terms},
         "commands": commands,
+        "rls_rules": rules,
     }
+
+
+async def _role_tags_here(conn: "Connection", schema: str) -> list[dict[str, Any]]:  # REQ-2208
+    """The tags on this environment's roles, as rows to write back, less their serials."""
+    table = _scoped(org.tag_assignments, schema)
+    result = await conn.execute_core(select(table).where(table.c.object_type == "role"))
+    return [{k: v for k, v in dict(r._mapping).items() if k != "id"} for r in result.fetchall()]
+
+
+def _rule_owner(
+    table_path: str | None, domain_id: str | None, action_name: str | None, tag_id: str | None
+) -> str:  # REQ-2208
+    """The file a row rule is written in, as the rule's surrogate is addressed: its table's path,
+    its command's, its tag's, or its domain's."""
+    if table_path is not None:
+        return f"table:{table_path}"
+    if action_name is not None:
+        return f"command:{action_name}"
+    if tag_id is not None:
+        return f"tag:{tag_id}"
+    return f"domain:{domain_id}"
+
+
+def _rule_key(owner: str, role_id: Any, rights: Any) -> str:  # REQ-2208
+    """A row rule's address: a role holds a right in one rule on a target (REQ-2188)."""
+    return f"{owner}|{role_id}|{rights}"
+
+
+def _rule_fragment(role_id: Any, rights: Any) -> str:  # REQ-2208
+    """The fragment a tag on a row rule names it by in the rule's file (env_project._fragment)."""
+    return f"#rule:{role_id}:{rights}"
 
 
 async def _roles_after(
@@ -484,26 +562,51 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
         if value is not None and value not in known:
             problems.append(f"{inside!r} names the {what} {value!r}, which the tree does not hold")
 
-    def policies(entries: list[dict[str, Any]], inside: str, **scope: Any) -> None:
+    def policies(
+        entries: list[dict[str, Any]], inside: str, owner: str, **scope: Any
+    ) -> dict[str, int]:
+        """The file's row rules into rows, each given its surrogate; returns the rules by the
+        fragment a tag in the same file names one by (REQ-2208)."""
+        by_fragment: dict[str, int] = {}
         for policy in entries:
             if policy.get("role_id") not in roles:
                 problems.append(
                     f"{inside!r} carries a row policy for the role {policy.get('role_id')!r}, "
                     f"which this environment does not define"
                 )
+            rights = policy.get("rights", "R")
+            rule_id = ids.of("rls_rules", _rule_key(owner, policy.get("role_id"), rights))
+            by_fragment[_rule_fragment(policy.get("role_id"), rights)] = rule_id
             rows["rls_rules"].append(
-                {"table_id": None, "domain_id": None, "action_name": None, **policy, **scope}
+                {
+                    "table_id": None,
+                    "domain_id": None,
+                    "action_name": None,
+                    "tag_id": None,
+                    **policy,
+                    **scope,
+                    "id": rule_id,
+                }
             )
+        return by_fragment
 
     for path in sorted(tree):
         table = table_of(path)
         body = tree[path]
 
         if table == "domains":
-            own, nested = _split(body, "row_policies")
+            own, nested = _split(body, "row_policies", "tags")
             domain = _domain_id_of(path)
             rows["domains"].append({**own, "id": domain})
-            policies(nested["row_policies"], path, domain_id=domain)
+            domain_rules = policies(
+                nested["row_policies"],
+                path,
+                _rule_owner(None, domain, None, None),
+                domain_id=domain,
+            )
+            rows["tag_assignments"].extend(  # REQ-2208: tags on the domain's row rules
+                _tags(nested["tags"], path, problems, rule_ids=domain_rules, rules_only=True)
+            )
 
         elif table == "registered_tables":
             own, nested = _split(
@@ -548,7 +651,9 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                         ),
                     }
                 )
-            policies(nested["row_policies"], path, table_id=tid)
+            table_rules = policies(
+                nested["row_policies"], path, _rule_owner(path, None, None, None), table_id=tid
+            )
             for grant in nested["write_grants"]:  # REQ-2074
                 if grant.get("role_id") not in roles:
                     problems.append(
@@ -577,7 +682,14 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                     }
                 )
             rows["tag_assignments"].extend(
-                _tags(nested["tags"], path, problems, table_id=tid, rel_ids=rel_ids)
+                _tags(
+                    nested["tags"],
+                    path,
+                    problems,
+                    table_id=tid,
+                    rel_ids=rel_ids,
+                    rule_ids=table_rules,
+                )
             )
 
         elif table == "glossary_terms":
@@ -599,13 +711,15 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["tag_assignments"].extend(_tags(nested["tags"], path, problems, term_id=gid))
 
         elif table == "tags":
-            own, nested = _split(body, "values", "row_policies")
+            own, nested = _split(body, "values", "row_policies", "tags")
             tag = _name_of(path)[0]
             rows["tags"].append({**own, "id": tag})
-            for policy in nested["row_policies"]:  # REQ-1384
-                rows["rls_rules"].append(
-                    {**policy, "tag_id": tag, "table_id": None, "domain_id": None}
-                )
+            tag_rules = policies(  # REQ-1384
+                nested["row_policies"], path, _rule_owner(None, None, None, tag), tag_id=tag
+            )
+            rows["tag_assignments"].extend(  # REQ-2208: tags on the tag's row rules
+                _tags(nested["tags"], path, problems, rule_ids=tag_rules, rules_only=True)
+            )
             for value in nested["values"]:
                 rows["tag_param_values"].append({**value, "tag_id": tag})
 
@@ -642,6 +756,19 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             for endpoint in nested["endpoints"]:
                 rows["api_endpoints"].append({**endpoint, "source_id": source})
 
+        elif table == "erd_layouts":  # REQ-2189
+            own, nested = _split(body, "domains", "tables")
+            name = _name_of(path)[0]
+            rows["erd_layouts"].append({**own, "name": name})
+            for domain in nested["domains"]:
+                named(path, "domain", domain.get("domain_id"), known_domains)
+                rows["erd_layout_domains"].append({**domain, "layout_name": name})
+            for placed in nested["tables"]:
+                at = placed.pop("table")
+                rows["erd_layout_tables"].append(
+                    {**placed, "layout_name": name, "table_id": resolve_table(at, path, "table")}
+                )
+
         elif table == "calendars":
             name, version = _name_of(path)
             rows["calendars"].append({**body, "name": name, "version": version})
@@ -654,8 +781,12 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows[registry].append(
                 {**own, "name": name, "id": ids.of("commands", f"{registry}/{name}")}
             )
-            policies(nested["row_policies"], path, action_name=name)
-            rows["tag_assignments"].extend(_tags(nested["tags"], path, problems, command_name=name))
+            command_rules = policies(
+                nested["row_policies"], path, _rule_owner(None, None, name, None), action_name=name
+            )
+            rows["tag_assignments"].extend(
+                _tags(nested["tags"], path, problems, command_name=name, rule_ids=command_rules)
+            )
 
         elif table == "naming_rules":
             for order, rule in enumerate(body.get("rules") or [], start=1):
@@ -665,10 +796,20 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             # metrics, roles, materialized_views, stores, regions -- a flat kind keyed by its
             # path.
             key = "name" if table == "metrics" else "id"
-            entry = {**body, key: _name_of(path)[0]}
+            own, nested = (body, {"tags": []})
+            if table in ("metrics", "roles"):  # REQ-2208: a metric's and a role's tags
+                own, nested = _split(body, "tags")
+            entry = {**own, key: _name_of(path)[0]}
             if table == "roles":
                 for parent in entry.get("parents") or []:  # REQ-2155
                     named(path, "parent role", parent, roles)
+                rows["tag_assignments"].extend(
+                    _tags(nested["tags"], path, problems, role_id=entry["id"])
+                )
+            elif table == "metrics":
+                rows["tag_assignments"].extend(
+                    _tags(nested["tags"], path, problems, metric_name=entry["name"])
+                )
             rows[table].append(entry)
 
     # REQ-1363: the domain files state a tree. A parent that is no domain of this tree, or a
@@ -678,6 +819,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
     not_a_tree = tree_problem(parent_map(rows["domains"]))
     if not_a_tree is not None:
         problems.append(not_a_tree)
+    problems.extend(_rights_in_two_rules(rows["rls_rules"]))  # REQ-2188
     if problems:
         raise DeployError(problems)
     return rows
@@ -702,8 +844,16 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
     product_id: str | None = None,
     term_id: int | None = None,
     rel_ids: dict[str, str] | None = None,
+    role_id: str | None = None,
+    metric_name: str | None = None,
+    rule_ids: dict[str, int] | None = None,
+    rules_only: bool = False,
 ) -> list[dict[str, Any]]:
     """Nested tag entries back into ``tag_assignments`` rows.
+
+    REQ-2208: ``#rule:<role>:<rights>`` names one of the file's row rules (``rule_ids``, by that
+    fragment); ``rules_only`` is a file whose only taggable parts are its row rules (a domain's, a
+    tag's).
 
     ``on`` is REQ-1385's fragment and says which PART of the entity carries the tag; its absence
     says the entity itself does. ``object_key`` is recomputed rather than read, because the stored
@@ -713,6 +863,47 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
     for entry in entries:
         body = {k: v for k, v in entry.items() if k not in ("on", "at")}
         fragment = entry.get("on")
+        if fragment is not None and fragment.startswith("#rule:"):  # REQ-2208
+            rule = (rule_ids or {}).get(fragment)
+            if rule is None:
+                problems.append(
+                    f"{path!r} carries a tag on {fragment!r}, and the file holds no such row rule"
+                )
+                continue
+            body |= {
+                "object_type": "rls_rule",
+                "rls_rule_id": rule,
+                "object_key": f"rls_rule:{rule}",
+            }
+            body.setdefault("base_tag_id", body["tag_id"])
+            out.append(body)
+            continue
+        if rules_only:
+            problems.append(
+                f"{path!r} carries a tag on {fragment or 'the file itself'!r}; the only parts of "
+                f"it a tag may be on are its row rules (#rule:)"
+            )
+            continue
+        if (role_id is not None or metric_name is not None) and fragment is not None:
+            problems.append(
+                f"{path!r} carries a tag on {fragment!r}, but a role or a metric has no parts a "
+                f"fragment can name; its tag is on it itself"
+            )
+            continue
+        if role_id is not None:
+            body |= {"object_type": "role", "role_id": role_id, "object_key": f"role:{role_id}"}
+            body.setdefault("base_tag_id", body["tag_id"])
+            out.append(body)
+            continue
+        if metric_name is not None:
+            body |= {
+                "object_type": "metric",
+                "metric_name": metric_name,
+                "object_key": f"metric:{metric_name}",
+            }
+            body.setdefault("base_tag_id", body["tag_id"])
+            out.append(body)
+            continue
         if command_name is not None and fragment is not None:
             problems.append(
                 f"{path!r} carries a tag on {fragment!r}, but a command has no parts a fragment "
@@ -782,7 +973,7 @@ def _tags(  # noqa: C901 -- allow-complex: one branch per kind of object a tag m
         else:
             problems.append(
                 f"{path!r} carries a tag on {fragment!r}, which is not an address the model gives a "
-                f"part of an entity; the fragments a tag may name are #field: and #rel:"
+                f"part of an entity; the fragments a tag may name are #field:, #rel: and #rule:"
             )
             continue
         body.setdefault("base_tag_id", body["tag_id"])

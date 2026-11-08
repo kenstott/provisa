@@ -155,7 +155,9 @@ async def sql_client(monkeypatch):
     app_mod.state.source_pools = MagicMock()
     app_mod.state.view_sql_map = {}
     app_mod.state.proto_files = {}
-    app_mod.state.schema_build_cache = {}
+    # A served app with a role's schema has its build cache, the registry's column types in it
+    # (app._build_and_register_schemas); /data/sql types a registered column by them (REQ-1961).
+    app_mod.state.schema_build_cache = {"column_types": {}}
 
     transport = ASGITransport(app=the_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -183,25 +185,31 @@ async def sql_client(monkeypatch):
 
 
 class TestSqlEndpointCapability:
-    async def test_no_query_development_capability_403(self, sql_client):
+    async def test_no_query_development_capability_reads(self, sql_client):
+        """REQ-2155: a read needs no query_development; its grants decide what it answers."""
         import provisa.api.app as app_mod
 
         app_mod.state.roles["org_admin"] = {
             "id": "org_admin",
             "description": "Test role.",
             "capabilities": [],
+            "domain_access": ["*"],
         }
-        resp = await sql_client.post(
-            "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
-        )
-        assert resp.status_code == 403
+        answer = _make_query_result(rows=[(1,)], column_names=["id"])
+        with patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=answer)):
+            resp = await sql_client.post(
+                "/data/sql", json={"sql": "SELECT id FROM orders", "role": "org_admin"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["sql"] == [{"id": 1}]
 
-    async def test_no_request_field_can_waive_the_capability_check(self, sql_client):
+    async def test_no_request_field_can_waive_the_table_check(self, sql_client):
         """A request body cannot grant itself rights the role does not hold.
 
         ``discovery_mode`` used to be a body flag that skipped this capability check, the domain
         check and the relationship guard at once — a break-out chosen by the caller rather than by
-        a grant. It is gone; the field is now ignored and the gate holds.
+        a grant. It is gone; the field is now ignored and a table the role does not reach stays
+        refused.
         """
         import provisa.api.app as app_mod
 
@@ -209,11 +217,12 @@ class TestSqlEndpointCapability:
             "id": "org_admin",
             "description": "Test role.",
             "capabilities": [],
+            "domain_access": ["*"],
         }
         resp = await sql_client.post(
             "/data/sql",
             json={
-                "sql": "SELECT id FROM orders",
+                "sql": "SELECT id FROM secrets",
                 "role": "org_admin",
                 "discovery_mode": True,
             },
@@ -336,6 +345,83 @@ class TestSqlEndpointStatsAndFormat:
             )
         assert resp.status_code == 200
         assert resp.json()["column_types"] == ["bigint", "varchar"]
+
+    async def test_a_registered_column_is_written_as_its_registered_type(self, sql_client):
+        """REQ-1961: a result column that is a registered column is typed by the model, whatever
+        type the engine read it as. Trino reads Oracle's NUMBER(10), registered integer, as
+        decimal(10,0): its value is the JSON number GraphQL answers for it, not a decimal's exact
+        string. A registered numeric(p,s) stays exact, and a computed column keeps the engine's
+        type (J778: tests/integration/test_timestamptz_e2e.py [trino], ora_live gave '1')."""
+        from decimal import Decimal
+
+        import provisa.api.app as app_mod
+
+        registered = [
+            SimpleNamespace(column_name=n, data_type=t, subtype=None, native_type=None)
+            for n, t in (("id", "integer"), ("amount", "numeric(10,2)"))
+        ]
+        app_mod.state.schema_build_cache = {"column_types": {1: registered}}
+        app_mod.state.tables[0]["columns"].append(
+            {"column_name": "amount", "data_type": "numeric(10,2)", "visible_to": ["org_admin"]}
+        )
+        read = _make_query_result(
+            rows=[(Decimal("1"), Decimal("12.50"), Decimal("1"))],
+            column_names=["id", "amount", "computed"],
+            column_types=["decimal(10,0)", "decimal(10,2)", "decimal(11,0)"],
+        )
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=read)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=read)),
+        ):
+            sql = "SELECT id, amount, id + 0 AS computed FROM orders"
+            resp = await sql_client.post("/data/sql", json={"sql": sql, "role": "org_admin"})
+            each = await sql_client.post(
+                "/data/sql", json={"sql": sql, "role": "org_admin", "results": "each"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["sql"] == [{"id": 1, "amount": "12.50", "computed": "1"}]
+        assert each.status_code == 200, each.text
+        assert each.json()["results"][0]["data"] == [[1, "12.50", "1"]]
+
+    async def test_column_types_list_the_registered_type_the_values_are_written_as(
+        self, sql_client
+    ):
+        """REQ-1961: column_types says what the values are written as. A registered integer the
+        engine reads as decimal(10,0) is written as a number, so it is listed as ``integer``; a
+        registered numeric(p,s) and a computed column keep the engine's type."""
+        from decimal import Decimal
+
+        import provisa.api.app as app_mod
+
+        registered = [
+            SimpleNamespace(column_name=n, data_type=t, subtype=None, native_type=None)
+            for n, t in (("id", "integer"), ("amount", "numeric(10,2)"))
+        ]
+        app_mod.state.schema_build_cache = {"column_types": {1: registered}}
+        app_mod.state.tables[0]["columns"].append(
+            {"column_name": "amount", "data_type": "numeric(10,2)", "visible_to": ["org_admin"]}
+        )
+        read = _make_query_result(
+            rows=[(Decimal("1"), Decimal("12.50"), Decimal("1"))],
+            column_names=["id", "amount", "computed"],
+            column_types=["decimal(10,0)", "decimal(10,2)", "decimal(11,0)"],
+        )
+        with (
+            patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=read)),
+            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=read)),
+        ):
+            sql = "SELECT id, amount, id + 0 AS computed FROM orders"
+            resp = await sql_client.post("/data/sql", json={"sql": sql, "role": "org_admin"})
+            each = await sql_client.post(
+                "/data/sql", json={"sql": sql, "role": "org_admin", "results": "each"}
+            )
+        expected = ["integer", "decimal(10,2)", "decimal(11,0)"]
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["sql"][0]["id"] == 1
+        assert resp.json()["column_types"] == expected
+        assert each.status_code == 200, each.text
+        assert each.json()["results"][0]["data"][0][0] == 1
+        assert each.json()["results"][0]["column_types"] == expected
 
     async def test_parameter_values_are_bound_never_written_into_the_statement(self, sql_client):
         """REQ-1937: the values of $1…$n travel beside the statement to whatever runs it."""

@@ -26,11 +26,15 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.core.pg_error import raising
 
 #: The object identifier types a projected value of is its oid and its name together.
 NAMED_REG_TYPES = frozenset({"regclass", "regnamespace"})
 #: The object identifier types this module resolves.
 REG_TYPES = NAMED_REG_TYPES | {"regtype"}
+
+#: pg_partition_ancestors as a result column: each ancestor's oid and name together.
+NAMED_ANCESTORS = "pg_partition_ancestors_named"
 
 #: The schemas on PostgreSQL's search path here, pg_catalog first.
 _SEARCH_PATH = ("pg_catalog", "public")
@@ -90,10 +94,15 @@ def _quoted(name_sql: str) -> str:
     return quoted_identifier(name_sql)
 
 
+#: A kind of object's undefined_table (relation), undefined_schema or undefined_object SQLSTATE.
+_UNDEFINED = {"relation": "42P01", "schema": "3F000", "type": "42704"}
+
+
 def _required(lookup: str, kind: str, written: str) -> str:
     """``lookup``, or PostgreSQL's error when it names nothing."""
     message = _literal(f'{kind} "{written}" does not exist')
-    return f"CASE WHEN ({lookup}) IS NULL THEN error({message}) ELSE ({lookup}) END"
+    missing = raising(_UNDEFINED[kind], message)
+    return f"CASE WHEN ({lookup}) IS NULL THEN {missing} ELSE ({lookup}) END"
 
 
 def _catalog_class_oids() -> dict[str, int]:
@@ -195,7 +204,25 @@ def reg_value(reg: str, operand: exp.Expr) -> exp.Expr:
     oid_sql = _oid_of(reg, operand)
     if reg not in NAMED_REG_TYPES:
         return _duckdb(oid_sql)
-    return _duckdb(f"struct_pack(oid := ({oid_sql}), name := {_name_of(reg, f'({oid_sql})')})")
+    pair = f"struct_pack(oid := ({oid_sql}), name := {_name_of(reg, f'({oid_sql})')})"
+    return _duckdb(f"CASE WHEN ({oid_sql}) IS NOT NULL THEN {pair} END")
+
+
+_COMPARISONS = (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)
+
+
+def coerce_reg_comparisons(tree: exp.Expr) -> None:
+    """A string literal compared with an object identifier value is read as a name of that type,
+    as PostgreSQL coerces an unknown-typed literal to the other operand's type: ``'pg_class'::
+    regclass = 'pg_class'`` is true, and a literal naming no relation is that name's error."""
+    for comparison in list(tree.find_all(*_COMPARISONS)):
+        for own, other in (("this", "expression"), ("expression", "this")):
+            reg_side = comparison.args.get(own)
+            literal = comparison.args.get(other)
+            if not (isinstance(reg_side, exp.Cast) and reg_type_of(reg_side.to) is not None):
+                continue
+            if isinstance(literal, exp.Literal) and literal.is_string:
+                comparison.set(other, exp.Cast(this=literal.copy(), to=reg_side.to.copy()))
 
 
 def project_reg_values(tree: exp.Expr) -> None:
@@ -206,6 +233,11 @@ def project_reg_values(tree: exp.Expr) -> None:
         return
     for select in tree.selects:
         target = select.this if isinstance(select, exp.Alias) else select
+        call = target.expression if isinstance(target, exp.Dot) else target
+        if isinstance(call, exp.Anonymous) and call.name.lower() == "pg_partition_ancestors":
+            # A regclass result column: the oid its FROM form joins on is the macro's own.
+            target.replace(exp.Anonymous(this=NAMED_ANCESTORS, expressions=call.expressions))
+            continue
         if not isinstance(target, exp.Cast):
             continue
         reg = reg_type_of(target.to)

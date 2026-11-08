@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry Tracing",
     "statusLabel": "סטטוס:",
     "statusExporting": "מייצא → {{endpoint}}",
-    "statusActiveNoCollector": "פעיל (spans נזרקים — לא הוגדר collector)",
+    "statusActiveNoCollector": "פעיל (ה-traces נשמרים עבור דף זה, לא מיוצאים)",
     "endpointLabel": "נקודת קצה של OTLP Collector",
-    "endpointHelp": "יש להשאיר ריק כדי להפיק traces ללא ייצוא. ניתן לעקוף עם משתנה הסביבה OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "יש להפנות ל-collector של Provisa עצמה, ולהוסיף ספק חיצוני כ-exporter בתוך ה-collector כדי שטבלאות ה-traces ימשיכו להתמלא. יש להשאיר ריק כדי לשמור traces בדף זה בלבד. ניתן לעקוף עם משתנה הסביבה OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "שם שירות",
     "serviceNameHelp": "ניתן לעקוף עם משתנה הסביבה OTEL_SERVICE_NAME.",
     "sampleRateLabel": "קצב דגימה",
@@ -83,6 +83,9 @@
       "document_sources": "שאילתות למאגרי מסמכים.",
       "search_sources": "שאילתות לאינדקסי חיפוש.",
       "grpc_services": "ממשק השאילתות gRPC, נכנס ויוצא."
-    }
+    },
+    "tracesTableCheckFailed": "לא ניתן היה לבדוק את טבלאות ה-traces של Provisa ({{reason}}). לא ידוע אם הן מקבלות שורות; הבדיקה חוזרת כל 30 שניות.",
+    "tracesTableEmpty": "הוגדרה נקודת קצה, אך בטבלאות ה-traces של Provisa עדיין אין שורות. אם נקודת הקצה היא ספק חיצוני ולא ה-collector של Provisa, יש להעביר אותה אל ה-exporters של ה-collector.",
+    "tracesTableStale": "הוגדרה נקודת קצה, אך טבלאות ה-traces של Provisa לא קיבלו שורות ב-{{minutes}} הדקות האחרונות. אם Provisa לא פעלה, זה צפוי. אחרת, יש לוודא שנקודת הקצה היא ה-collector של Provisa ולא ספק חיצוני."
   }
 }

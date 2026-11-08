@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry-Tracing",
     "statusLabel": "Status:",
     "statusExporting": "Export → {{endpoint}}",
-    "statusActiveNoCollector": "Aktiv (Spans verworfen — kein Collector konfiguriert)",
+    "statusActiveNoCollector": "Aktiv (Traces werden für diese Seite behalten, nicht exportiert)",
     "endpointLabel": "OTLP-Collector-Endpunkt",
-    "endpointHelp": "Leer lassen, um Traces ohne Export zu erzeugen. Überschreibbar mit der Umgebungsvariable OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "Auf den eigenen Collector von Provisa zeigen lassen und einen externen Anbieter als Exporter im Collector ergänzen, damit die Trace-Tabellen weiter gefüllt werden. Leer lassen, um Traces nur auf dieser Seite zu behalten. Überschreibbar mit der Umgebungsvariable OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Dienstname",
     "serviceNameHelp": "Überschreibbar mit der Umgebungsvariable OTEL_SERVICE_NAME.",
     "sampleRateLabel": "Sampling-Rate",
@@ -83,6 +83,9 @@
       "document_sources": "Abfragen an Dokumentspeicher.",
       "search_sources": "Abfragen an Suchindizes.",
       "grpc_services": "Die gRPC-Abfrageoberfläche, eingehend und ausgehend."
-    }
+    },
+    "tracesTableCheckFailed": "Die Trace-Tabellen von Provisa konnten nicht geprüft werden ({{reason}}). Ob sie Zeilen empfangen, ist unbekannt; die Prüfung wird alle 30 Sekunden wiederholt.",
+    "tracesTableEmpty": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa enthalten noch keine Zeilen. Ist der Endpunkt ein externer Anbieter und nicht der Collector von Provisa, verschieben Sie ihn in die Exporter des Collectors.",
+    "tracesTableStale": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa haben in den letzten {{minutes}} Minuten keine Zeilen erhalten. War Provisa untätig, ist das zu erwarten. Andernfalls prüfen Sie, ob der Endpunkt der Collector von Provisa und kein externer Anbieter ist."
   }
 }

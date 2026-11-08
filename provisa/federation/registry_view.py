@@ -86,7 +86,7 @@ async def _attach_file_glob_tables(sources: list[Source], conn: Any) -> None:
         return
     from provisa.api.admin.db_queries import fetch_tables
 
-    rows = await fetch_tables(conn)
+    rows = await fetch_tables(conn, catalog=False)  # a SQL catalog's views hold no file glob
     by_source: dict[str, list] = {}
     for row in rows:
         glob = row.get("file_glob")
@@ -141,10 +141,13 @@ def _source_rows(rows: list[dict]) -> list[Source]:
     return [_source_from_row(row) for row in rows if row["id"] not in BUILT_IN_SOURCE_IDS]
 
 
-async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  # REQ-1674
+async def registered_tables(
+    state: Any, conn: Any | None = None, *, catalog: bool = False
+) -> list[Any]:  # REQ-1674
     """Every registered table, in the shape the landing paths read: the control plane's semantic
     sql name, resolved column types and landing settings (live block, change signal, watermark,
-    cadence, probe) — the row's, never the file's (REQ-1919).
+    cadence, probe) — the row's, never the file's (REQ-1919). A SQL catalog's views hold nothing
+    to land and are left out, unless ``catalog`` asks for them (uncached).
 
     REQ-1882: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
     (``conn`` unset) — this is read on every single governed query's residency/pk-bounds step with
@@ -159,8 +162,11 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
     if db is None:
         return []
     if conn is not None:
-        registered = await fetch_tables(conn)
+        registered = await fetch_tables(conn, catalog=False)
         return _build_registered_tables(registered)
+    if catalog:
+        async with db.acquire() as _conn:
+            return _build_registered_tables(await fetch_tables(_conn))
 
     generation = (
         current_org.get(None),
@@ -172,7 +178,7 @@ async def registered_tables(state: Any, conn: Any | None = None) -> list[Any]:  
     if cached is not None:
         return cached
     async with db.acquire() as _conn:
-        registered = await fetch_tables(_conn)
+        registered = await fetch_tables(_conn, catalog=False)
     out = _build_registered_tables(registered)
     rt_cache.put(generation, out)
     return out

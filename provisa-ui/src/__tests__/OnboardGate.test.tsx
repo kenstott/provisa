@@ -17,11 +17,13 @@
 // gate's whole job is to read provider state that the provider itself computes, and the vitest pool
 // shares one module registry across files, so mocking AuthContext here decided what OTHER files saw
 // as well.
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useState } from "react";
 import { render, screen, waitFor } from "../test-utils/render";
 import { OnboardGate } from "../components/OnboardGate";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { endVisit, setStored, startVisit, visitorActive } from "../lib/browserStorage";
+import { storedToken } from "../lib/sessionToken";
 
 vi.mock("../api/admin", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/admin")>();
@@ -361,5 +363,79 @@ describe("unclaimed platform-admin slot outranks org onboarding (REQ-1292)", () 
 
     expect(await screen.findByTestId("identity-unavailable")).toBeInTheDocument();
     expect(screen.queryByTestId("onboard-org-page")).not.toBeInTheDocument();
+  });
+});
+
+// REQ-2006: a demo's visitor holds no account, so a deployment's unclaimed admin slot says nothing
+// about them: clearing the session on it ended the visit and sent them to first-login. On a live
+// sandbox that is every visitor of a deployment nobody has claimed.
+describe("a live demo's visitor", () => {
+  function visit() {
+    startVisit();
+    setStored("provisa_token", "provisa_pat_visitor", { global: true });
+    setStored("provisa_org", "sbx0123456789ab", { global: true });
+  }
+  const member = {
+    userId: "sandbox-visitor-sbx0123456789ab",
+    orgMemberships: [{ org_id: "sbx0123456789ab", org_name: "Demo" }],
+  };
+
+  beforeEach(() => {
+    mockFetchMe.mockReset();
+    mockBootstrapStatus.mockReset();
+    localStorage.clear();
+    endVisit();
+  });
+  afterEach(() => endVisit());
+
+  it("keeps its session and token on a deployment whose admin slot is unclaimed", async () => {
+    const onSessionExpired = vi.fn();
+    visit();
+    resolvesTo(member);
+    mockBootstrapStatus.mockResolvedValue(true);
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(screen.getByTestId("app-shell")).toBeInTheDocument());
+    expect(onSessionExpired).not.toHaveBeenCalled();
+    expect(visitorActive()).toBe(true);
+    expect(storedToken()).toBe("provisa_pat_visitor");
+  });
+
+  it("does not ask who holds the admin slot, and does not wait on the answer", async () => {
+    visit();
+    resolvesTo(member);
+    mockBootstrapStatus.mockImplementation(() => new Promise(() => {}));
+
+    renderGate();
+
+    await waitFor(() => expect(screen.getByTestId("app-shell")).toBeInTheDocument());
+    expect(mockBootstrapStatus).not.toHaveBeenCalled();
+  });
+
+  it("ends the visit when its token is refused, leaving the browser's login as it was", async () => {
+    // A sandbox past its inactivity period: its token is gone, and this still applies.
+    const onSessionExpired = vi.fn();
+    localStorage.setItem("provisa_token", "login-token");
+    visit();
+    mockFetchMe.mockRejectedValue(new AuthMeError(401));
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
+    expect(visitorActive()).toBe(false);
+    expect(localStorage.getItem("provisa_token")).toBe("login-token");
+  });
+
+  it("still sends a signed-in user to first-login once the visit is over", async () => {
+    const onSessionExpired = vi.fn();
+    localStorage.setItem("provisa_token", "login-token");
+    resolvesTo({ userId: "u1" });
+    mockBootstrapStatus.mockResolvedValue(true);
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
+    expect(localStorage.getItem("provisa_token")).toBeNull();
   });
 });

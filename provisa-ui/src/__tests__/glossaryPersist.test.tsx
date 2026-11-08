@@ -18,10 +18,10 @@ import { render, screen, fireEvent } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   fetchGlossaryFindings: vi.fn(async () => []),
@@ -31,8 +31,6 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 const auth = { capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
-
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 
 const filter = {
   domains: [],
@@ -46,12 +44,14 @@ const filter = {
 };
 vi.mock("../context/DomainFilterContext", () => ({ useDomainFilter: () => filter }));
 
-// The 3D view itself is not under test: it stands in with the search it is handed.
-vi.mock("../components/graph3d/GlossaryOntologyView", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../components/graph3d/GlossaryOntologyView")>()),
-  GlossaryOntologyView: ({ search }: { search: string }) => (
+// The graph itself is not under test: the Ontology View stands in with the search it is handed,
+// and jsdom draws no canvas for the term page's snippet (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologyView: ({ search }: { search: string }) => (
     <div data-testid="ontology-view" data-search={search} />
   ),
+  OntologySnippet: () => null,
 }));
 
 import { fetchGlossaryTerm, listGlossaryTerms } from "../api/glossary";
@@ -68,6 +68,7 @@ const LIVE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,

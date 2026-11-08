@@ -12,6 +12,9 @@
     "classTerm": "Klasseterm {{term}}",
     "tableClass": "De eigen klasse van een tabel",
     "propertyTerm": "Eigenschapsterm {{term}}",
-    "columnPredicate": "Kolom {{column}}"
+    "columnPredicate": "Kolom {{column}}",
+    "propertySearch": "Eigenschappen zoeken",
+    "propertyTerms": "Eigenschapstermen",
+    "termClasses": "Klassen: {{classes}}"
   }
 }

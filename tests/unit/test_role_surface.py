@@ -351,6 +351,9 @@ def test_the_build_is_the_only_writer_of_surfaces():
         # A draft table's read (REQ-1921) holds a state of its own: its surfaces are a new
         # mapping, made once when it is built, and no other holder's changes.
         "provisa/api/admin/table_read.py::__init__",
+        # The same for the meta-role fold of that read (REQ-1620): each member's surface with
+        # the draft added, on a new mapping of its own (table_read._Members).
+        "provisa/api/admin/table_read.py::__init__",
         "provisa/api/role_surface.py::install_surface",
     ]
 

@@ -358,16 +358,51 @@ export const forgetClassification = (tableId: number, physicalColumn: string, ki
   );
 
 export const fetchClassificationKinds = () =>
-  call<{ kinds: ClassificationKind[]; canEdit: boolean }>(
-    "fetchClassificationKinds",
-    "/admin/classification-kinds",
-  );
+  call<{ kinds: ClassificationKind[] }>("fetchClassificationKinds", "/admin/classification-kinds");
 
 export const setEnabledClassificationKinds = (enabled: string[]) =>
-  call<{ kinds: ClassificationKind[]; canEdit: boolean }>(
+  call<{ kinds: ClassificationKind[] }>(
     "setEnabledClassificationKinds",
     "/admin/classification-kinds",
     "PUT",
     {},
     { enabled },
   );
+
+// REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
+// kinds held inside their values, and the hints it left. A hint is never a classification.
+export interface SensitiveScan {
+  scanId: string;
+  status: "running" | "succeeded" | "failed";
+  startedAt: string;
+  finishedAt: string | null;
+  sampledRows: number | null;
+  scannedColumns: number | null;
+  error: string | null;
+}
+
+export interface SensitiveHint {
+  /** The column's registered name. */
+  column: string;
+  kind: string;
+  label: string;
+  sensitive: boolean;
+  valuesTested: number;
+  valuesMatched: number;
+  /** valuesMatched / valuesTested. */
+  share: number;
+  evidence: string;
+}
+
+export interface SensitiveScanState {
+  scan: SensitiveScan | null;
+  hints: SensitiveHint[];
+}
+
+const sensitiveScansPath = (tableId: number) => `/admin/tables/${tableId}/sensitive-scans`;
+
+export const startSensitiveScan = (tableId: number) =>
+  call<SensitiveScan>("startSensitiveScan", sensitiveScansPath(tableId), "POST");
+
+export const fetchSensitiveScan = (tableId: number) =>
+  call<SensitiveScanState>("fetchSensitiveScan", `${sensitiveScansPath(tableId)}/latest`);

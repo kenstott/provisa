@@ -201,8 +201,8 @@ Cada columna tiene un modelo de permisos que controla el acceso de lectura, escr
 | Nivel | Condición | Resultado |
 | ------ | ----------- | -------- |
 | **Oculta** | Rol no en `visible_to` | Columna ausente del esquema y del catálogo |
-| **Enmascarada** | Rol en `visible_to`; la primera entrada de máscara que tiene lleva una `mask` | Columna visible, valor sustituido en la salida |
-| **Sin enmascarar** | Rol en `visible_to`; la primera entrada de máscara que tiene no lleva `mask`, o no tiene ninguna | Acceso completo de lectura |
+| **Enmascarada** | Rol en `visible_to`; la primera entrada de máscara que tiene lleva una `mask`, o la columna tiene máscaras y no tiene ninguna | Columna visible, valor sustituido en la salida |
+| **Sin enmascarar** | Rol en `visible_to`; la primera entrada de máscara que tiene no lleva `mask`, o la columna no tiene máscaras | Acceso completo de lectura |
 
 ### Columnas públicas {: #public-columns }
 
@@ -340,7 +340,9 @@ La expresión de máscara se lleva a la proyección SQL SELECT. La base de datos
 
 **Una máscara cubre todos los nombres de la columna, no una columna relacionada.** Una columna se enmascara igual cuando se lee por su alias o por su nombre físico. Una máscara no oculta una clave que una relación aprobada une a una columna que el rol puede ver: el join compara los valores reales, así que la columna relacionada muestra lo que contiene la clave enmascarada. Enmascare también la columna relacionada, o no apruebe la relación para ese rol.
 
-**Sin entrada, sin máscara.** Un lector que no tiene ninguna entrada lee la columna sin enmascarar. Termine una lista con una entrada `*` cuando a cada lector se le deba aplicar alguna máscara. El editor de columnas avisa cuando una lista no tiene entrada `*` (`unlisted_unmasked`).
+**Sin entrada, enmascarado por completo.** Cuando una columna tiene alguna máscara, un lector que no tiene ninguna entrada la lee enmascarada por completo: `****` en una columna de texto, `NULL` en cualquier otro tipo. Solo una entrada da acceso sin máscara. Para que los lectores que la lista no nombra lean sin máscara, termine la lista con una entrada explícita sin `to` ni `mask`. Una columna sin máscaras no cambia.
+
+**Una entrada que ningún lector alcanza se rechaza.** Guardar una lista de máscaras que la contenga se rechaza con `You have defined a mask that is not reachable: ` seguido de las entradas inalcanzables, cada una nombrada por sus roles. Vale para la interfaz de administración, la API de administración y la carga de una configuración.
 
 **Denegar por orden.** Una entrada anterior gana aunque el lector tenga también una posterior más permisiva. Para que los contratistas vean siempre un salario enmascarado, tengan los demás roles que tengan, ponga la entrada de contratistas antes de la entrada sin máscara. Un rol concedido nunca pierde lo que su padre concede por herencia, pero una entrada de máscara situada antes en la lista se aplica primero: así funciona la restricción aquí.
 

@@ -25,9 +25,12 @@ import {
   signInSource,
   takeIssuerAnswer,
 } from "../lib/sourceSignIn";
+import { onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const SIGN_IN = "https://cloud.provisa.test";
 const ORG = "https://acme.provisa.test";
+// A deployment whose org subdomains live under the base domain it declares.
+onDeclaredBaseDomain("provisa.test");
 const RETURNED = `${SIGN_IN}/source-sign-in.html?state=made-up-state&code=made-up-code`;
 
 function loc(href: string): Location {
@@ -73,6 +76,14 @@ describe("the page an issuer returns to", () => {
       { replaceState: vi.fn() },
     );
     expect(answer).toEqual({ state: "s", code: null, error: "access_denied" });
+  });
+
+  it("carries the company Intuit names in its address (REQ-2197)", () => {
+    const answer = takeIssuerAnswer(
+      loc(`${SIGN_IN}/source-sign-in.html?state=s&code=c&realmId=9341453456789012`),
+      { replaceState: vi.fn() },
+    );
+    expect(answer).toEqual({ state: "s", code: "c", error: null, realm_id: "9341453456789012" });
   });
 
   it("strips its address before anything else and asks no server for anything", async () => {
@@ -212,6 +223,17 @@ describe("what the form accepts as the issuer's answer", () => {
       state: "made-up-state",
       code: "made-up-code",
       error: null,
+    });
+  });
+
+  it("hands on the company an Intuit answer names (REQ-2197)", async () => {
+    const { hear, waiting } = form();
+    hear(SIGN_IN, { ...answer, realm_id: "9341453456789012" });
+    await expect(waiting).resolves.toEqual({
+      state: "made-up-state",
+      code: "made-up-code",
+      error: null,
+      realm_id: "9341453456789012",
     });
   });
 

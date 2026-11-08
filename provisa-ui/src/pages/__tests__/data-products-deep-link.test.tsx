@@ -33,9 +33,9 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
-  GraphPanel: () => null,
+  OntologySnippet: () => null,
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
@@ -53,7 +53,8 @@ vi.mock("../../api/actions", () => ({
 }));
 // REQ-2158: the open product's ODCS contracts; none here.
 vi.mock("../../api/dataProductContracts", () => ({
-  fetchProductContracts: () => Promise.resolve({}),
+  fetchProductContract: () => Promise.resolve({}),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 vi.mock("../../api/lineage", () => ({
   fetchProductLineage: () =>

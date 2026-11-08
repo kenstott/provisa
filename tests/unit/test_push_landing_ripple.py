@@ -41,6 +41,12 @@ class _Engine:
         return {**self.counts, "unchanged": []}
 
 
+def _crashed(message: str, *args: object) -> None:
+    """A crashed listener logs it and starts again, for as long as it is not told to stop, and these
+    listeners never are: left to the log, a test whose batch crashes the landing never ends."""
+    raise AssertionError(message % args)
+
+
 async def _listen_once(state, engine, batch, *, row_materialize: bool = False) -> None:
     """Run the listener with a provider that delivers one batch and then ends."""
 
@@ -66,7 +72,7 @@ async def _listen_once(state, engine, batch, *, row_materialize: bool = False) -
             debounce_quiet=0.0,
             debounce_max_delay=5.0,
             node=_NODE,
-            log=SimpleNamespace(exception=lambda *a, **k: None),
+            log=SimpleNamespace(exception=_crashed),
             row_materialize=row_materialize,
             key=("kafka_src", "s", "orders"),
         )
@@ -117,8 +123,10 @@ async def test_a_batch_that_changed_nothing_ripples_nothing(control_plane):
 async def test_a_row_level_table_is_left_to_its_row_cache(control_plane):
     async with _db(control_plane) as db:
         state = _state(db)
+        engine = _Engine({"upserted": 1})
         await _listen_once(
-            state, _Engine({"upserted": 1}), [{"row": {"id": 1}}], row_materialize=True
+            state, engine, [{"op": "insert", "row": {"id": 1}}], row_materialize=True
         )
+        assert engine.applied, "the batch was landed"
         async with db.acquire() as conn:
             assert await queue.peek_pending(conn, dependent_table=_VIEW) == []

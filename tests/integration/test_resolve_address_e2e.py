@@ -67,8 +67,14 @@ def server():
                 {
                     "id": "keyed_reader",
                     "description": "Test role.",
-                    "parents": ["analyst"],
-                    "capabilities": [],
+                    "parents": ["developer"],
+                    "capabilities": [
+                        "catalog_read",
+                        "data_product_read",
+                        "glossary_read",
+                        "query_development",
+                        "usage",
+                    ],
                     "domain_access": ["*"],
                 }
             ],
@@ -266,6 +272,18 @@ def test_a_resolve_is_audited_with_the_pipelines_provenance(server):
             deadline = time.monotonic() + _AUDIT_WAIT_SECONDS
             while _rows() == before and time.monotonic() < deadline:
                 time.sleep(0.5)
-            assert _rows() == before + 1
+            recorded = conn.execute(
+                sa.text(
+                    "SELECT status_code, row_count, route, table_ids "
+                    f'FROM "{schema}".query_audit_log '
+                    "WHERE role_id = 'keyed_reader' ORDER BY id DESC LIMIT 5"
+                )
+            ).fetchall()
+            held = [
+                line
+                for line in server.log_text().splitlines()
+                if "audit" in line.lower() or "Error" in line or "Traceback" in line
+            ]
+            assert _rows() == before + 1, (recorded, held[-30:])
     finally:
         engine.dispose()

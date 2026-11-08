@@ -206,7 +206,7 @@ class _RelJoinMixin:  # mixin for _Translator
         """Resolve early rel_mapping for domain-node path and anonymous node inference."""
         if not rel.types:
             return None
-        _rt_early = rel.types[0].upper()
+        _rt_early = rel.types[0]
         _early_matches = self._lm.aliases.get(_rt_early, [])
         if not _early_matches:
             _rm_early = self._lm.relationships.get(_rt_early)
@@ -218,6 +218,28 @@ class _RelJoinMixin:  # mixin for _Translator
             along = [m for m in _early_matches if self._directed_from(m, rel, src_node, tgt_node)]
             _early_matches = along or _early_matches
         return _early_matches[0] if _early_matches else None
+
+    def _reaches_several_labels(
+        self, rel: "RelPattern", src_nm: "NodeMapping | None", tgt_nm: "NodeMapping | None"
+    ) -> bool:
+        """Whether ``rel``, of one type, from the end the pattern names a type of reaches nodes of
+        several labels at its other end, which the pattern names none of (J198)."""
+        if len(rel.types) != 1 or (src_nm is None) == (tgt_nm is None):
+            return False
+        held = src_nm if src_nm is not None else tgt_nm
+        assert held is not None
+        # The labelled end is the relationship's source read forward from the source, its target
+        # read backward; undirected, either.
+        forward = (src_nm is not None) == (rel.direction != "left")
+        ways = (True, False) if rel.direction == "none" else (forward,)
+        mappings = self._lm.aliases.get(rel.types[0], [])
+        far = {
+            (m.target_label if way else m.source_label)
+            for m in mappings
+            for way in ways
+            if (m.source_label if way else m.target_label) == held.type_name
+        }
+        return len(far) > 1
 
     def _stored_edges_of_unnamed_ends(
         self, rel: "RelPattern", src_node: "NodePattern", tgt_node: "NodePattern"
@@ -231,8 +253,30 @@ class _RelJoinMixin:  # mixin for _Translator
         for node in (src_node, tgt_node):
             if node.variable and self._var_table.get(node.variable, (None, None))[1] is not None:
                 return False
-        mappings = self._lm.aliases.get(rel.types[0].upper(), [])
+        mappings = self._lm.aliases.get(rel.types[0], [])
         return any(m.directed for m in mappings)
+
+    def _either_end_of_unnamed_ends(
+        self, rel: "RelPattern", src_node: "NodePattern", tgt_node: "NodePattern"
+    ) -> bool:
+        """Whether ``rel`` is one undirected hop of a type joining two different node types,
+        between two nodes it names no type of (REQ-347): each node is either end, so neither
+        takes the type of one end, as a self-referential type's two orientations would."""
+        if len(rel.types) != 1 or rel.variable_length or rel.direction != "none":
+            return False
+        if src_node.labels or tgt_node.labels:
+            return False
+        for node in (src_node, tgt_node):
+            if node.variable and (
+                self._var_table.get(node.variable, (None, None))[1] is not None
+                or self._domain_nodes.get(node.variable, "__all__") != "__all__"
+            ):
+                return False
+        rel_type = rel.types[0]
+        mappings = self._lm.aliases.get(rel_type) or [
+            m for m in (self._lm.relationships.get(rel_type),) if m is not None
+        ]
+        return any(m.source_label != m.target_label for m in mappings)
 
     def _directed_from(
         self,
@@ -330,6 +374,15 @@ class _RelJoinMixin:  # mixin for _Translator
         )
         src_domain = self._domain_nodes.get(near) if near else None
         tgt_domain = self._domain_nodes.get(far) if far else None
+        # An end a WITH carries is that WITH's node: the union's end is held to it (MATCH (a:A)
+        # WHERE a.k = 1 WITH a MATCH (a)-->(b) reads only that a's relationships).
+        from provisa.gql.expr_context import graph_identity
+
+        carried = {
+            var: graph_identity(self, var)  # type: ignore[arg-type]
+            for var in (src_var, tgt_var)
+            if var is not None and var in self._cte_sources
+        }
         from_expr = self._build_all_rels_union(
             near,
             rel_var,
@@ -354,6 +407,15 @@ class _RelJoinMixin:  # mixin for _Translator
             self._var_table[tgt_var] = (tgt_var, None)
             self._passthrough_vars.add(tgt_var)
             self._all_rels_node_vars.add(tgt_var)
+        union = from_expr.alias_or_name
+        for var, identity in carried.items():
+            if identity is None:
+                continue
+            end = exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[exp.column(var, table=union), exp.Literal.string("$.id")],
+            )
+            self._held_end_conditions.append(exp.EQ(this=end, expression=identity))
         return from_expr
 
     def _resolve_typed_rel_candidates(
@@ -367,7 +429,7 @@ class _RelJoinMixin:  # mixin for _Translator
         tgt_nm_explicit: bool,
     ) -> "list[tuple]":
         """Resolve relationship candidates for a typed relationship."""
-        rel_type = rel.types[0].upper()
+        rel_type = rel.types[0]
         alias_matches = self._lm.aliases.get(rel_type, [])
         if not alias_matches:
             rm = self._lm.relationships.get(rel_type)
@@ -449,6 +511,7 @@ class _RelJoinMixin:  # mixin for _Translator
         rel_mapping: "RelationshipMapping | None",
         from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         backward: bool,
+        undirected: bool,
     ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Resolve src_nm, tgt_nm, explicitness flags, and updated from_expr.
 
@@ -485,6 +548,14 @@ class _RelJoinMixin:  # mixin for _Translator
                 if backward
                 else (rel_mapping.source_label, rel_mapping.target_label)
             )
+            if undirected and (src_nm is None) != (tgt_nm is None):
+                # REQ-347: undirected, the unnamed end is the one across from the named end,
+                # whichever end of the relationship that is ((n:B)-[:T]-(m), T from A to B: m is A).
+                named = (src_nm or tgt_nm).type_name  # type: ignore[union-attr]
+                ends = (rel_mapping.source_label, rel_mapping.target_label)
+                if named in ends:
+                    across = ends[1] if named == ends[0] else ends[0]
+                    first, last = (named, across) if src_nm is not None else (across, named)
             if src_nm is None:
                 src_nm, from_expr = self._infer_src_from_rel(first, src_var, from_expr)
             if tgt_nm is None:
@@ -746,6 +817,25 @@ class _RelJoinMixin:  # mixin for _Translator
                 tgt_nm=tgt_nm,
             )
 
+        ends = (self._named_type(src_node), self._named_type(tgt_node))
+        if self._session_hop(rel) and (  # type: ignore[attr-defined]
+            len(rel.types) != 1
+            or clause.optional
+            or any(nm is None or nm.type_name in self._lm.label_sets for nm in ends)
+        ):
+            # REQ-2176: a graph session's hop of no one type, from or to a node of no one label,
+            # or of an OPTIONAL MATCH (one join, which its WHERE conditions), read from its one
+            # relationships relation (path_walk). One of one type between labelled nodes joins
+            # their relations, each filtered first (ephemeral.read).
+            return (
+                every_rel_hop(self._named_type(src_node), self._named_type(tgt_node)),
+                joins,
+                True,
+            )
+        if not rel.variable_length and self._reaches_several_labels(rel, *ends):
+            # J198: a type that from the one labelled end reaches nodes of several labels, its
+            # other end of none: every relationship of it, of each pair of labels it joins.
+            return every_rel_hop(*ends), joins, True
         if any(
             held and self._is_value_node(node)
             for node, held in ((src_node, held_source), (tgt_node, held_target))
@@ -768,14 +858,30 @@ class _RelJoinMixin:  # mixin for _Translator
                 src_var,
                 rel.variable,
                 tgt_var,
-                rel_type=rel.types[0].upper(),
+                rel_type=rel.types[0],
                 direction=rel.direction,
+            )
+            return from_expr, joins, True
+
+        if len(nodes) == 2 and self._either_end_of_unnamed_ends(rel, src_node, tgt_node):
+            # REQ-347: an undirected hop of a type between two node types, its ends unnamed and
+            # no other hop of the pattern fixing either: each relationship is read from both its
+            # ends, never only from its source. In a longer pattern the next hop types the node.
+            if joined_hop:
+                return every_rel_hop(None, None), joins, True
+            from_expr = self._handle_unlabeled_rel_pattern(
+                src_var, rel.variable, tgt_var, rel_type=rel.types[0], direction="none"
             )
             return from_expr, joins, True
 
         rel_mapping = self._resolve_early_rel_mapping(rel, src_node, tgt_node)
         src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = self._resolve_rel_node_types(
-            src_node, tgt_node, rel_mapping, from_expr, backward=rel.direction == "left"
+            src_node,
+            tgt_node,
+            rel_mapping,
+            from_expr,
+            backward=rel.direction == "left",
+            undirected=rel.direction == "none",
         )
 
         # A node the outer statement holds is the outer row (#160): this statement reads its hop's
@@ -1111,15 +1217,40 @@ class _RelJoinMixin:  # mixin for _Translator
             # The pattern's first node read as the statement's FROM, all it reads yet: a read of
             # every relationship from it replaces it.
             own_first = None
+            if nodes and not rels and not nodes[0].variable and not nodes[0].labels:
+                # MATCH (): every node, as (n) is, read under a name of its own.
+                anon = f"_anon_node{len(self._var_table)}"
+                nodes = [dataclasses.replace(nodes[0], variable=anon)]
+                self._register_node(nodes[0])
             if from_expr is None and nodes:
                 new_from = self._build_first_node_from(nodes[0])
                 if new_from is not None:
                     from_expr = own_first = new_from
             elif from_expr is not None and nodes and not rels:
-                j = self._build_standalone_node_join(nodes[0].variable, clause)
+                if nodes[0].variable in joined and not nodes[0].labels:
+                    # MATCH (a) ... MATCH (a): a node an earlier pattern placed is that node,
+                    # never a second read of its table under the same name.
+                    j = None
+                else:
+                    j = self._build_standalone_node_join(nodes[0].variable, clause)
                 if j is not None:
                     joins.append(j)
 
+            if self._session_chain(rels):  # type: ignore[attr-defined]
+                # REQ-348, REQ-2176: a session's pattern of several hops, variable-length ones
+                # among them, read hop by hop (path_walk).
+                from_expr = self._translate_session_chain(  # type: ignore[attr-defined]
+                    clause,
+                    nodes,
+                    rels,
+                    joined,
+                    from_expr,
+                    own_first,
+                    joins,
+                    clause_index,
+                    CypherTranslateError,
+                )
+                continue
             for i, rel in enumerate(rels):
                 if i + 1 >= len(nodes):
                     break
@@ -1149,7 +1280,9 @@ class _RelJoinMixin:  # mixin for _Translator
                     if rel.variable and clause.variable:
                         self._varlen_rel_vars[rel.variable] = clause.variable
                     pf_from, pf_joins = self._translate_path_function(pf_clause, joined)
-                    if from_expr is None:
+                    if from_expr is None or from_expr is own_first:
+                        # The path reads its own start (REQ-348): the end it walks from, which
+                        # is not the first node when that one is free.
                         from_expr = pf_from
                     joins.extend(pf_joins)
                     break

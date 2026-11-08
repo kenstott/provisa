@@ -44,7 +44,6 @@ from provisa.core.schema_admin import (
     AWAITING_CHECKOUT,
     orgs,
     user_org_memberships,
-    user_profiles,
 )
 from provisa.security.rights import can_act_cross_org
 
@@ -410,6 +409,8 @@ async def on_its_region_lane(org_id: str, rt: "OrgRuntime") -> "OrgRuntime":  # 
 
     if await _region_lane_of(org_id, PROD) is None:
         return rt
+    # The build this replaces stamped the schema's layout, so this one runs no DDL beside that
+    # build's detached lifecycle wiring, which still reads it (app._set_up_org_schema).
     return await _app_state.org_registry.rebuild(org_id, lambda oid: build_on_its_lane(oid, None))
 
 
@@ -425,7 +426,8 @@ async def _provision_org_task(
 
     from provisa.api.app import build_org_runtime, state as _app_state
     from provisa.core.org_membership import grant_org_role, notify_org_ready
-    from provisa.core.org_provisioning import provision_org
+    from provisa.core.environments import org_schema
+    from provisa.core.org_provisioning import provision_org, schema_exists
 
     try:
         if isolated_engine:
@@ -450,6 +452,12 @@ async def _provision_org_task(
 
         schema_sql_path = Path(__file__).parent.parent.parent / "core" / "schema.sql"
         schema_sql = schema_sql_path.read_text() if schema_sql_path.exists() else ""
+        # Whether the schema is made here, and so holds none of the built-in views its build's
+        # seed makes: an org whose earlier provisioning failed, or a demo template left
+        # provisioning by a stopped start, is provisioned again over the schema it has.
+        provisioned = _pool().dialect == "postgresql" and not await schema_exists(
+            _pool(), org_schema(org_id)
+        )
         await provision_org(
             _pool(),
             schema_sql,
@@ -478,9 +486,20 @@ async def _provision_org_task(
         rt = await _app_state.org_registry.rebuild(
             org_id,
             lambda oid: build_org_runtime(
-                oid, include_demo=include_demo, isolated_engine=isolated_engine, shard=shard
+                oid,
+                include_demo=include_demo,
+                isolated_engine=isolated_engine,
+                shard=shard,
+                provisioned=provisioned,
             ),
         )
+        # REQ-1922: the platform's default grant, so a self-serve org starts with a working
+        # region; then the org is built on the lane it names for this node's region.
+        from provisa.core.repositories.region import apply_default_grant
+
+        assert rt.model_db is not None
+        async with rt.model_db.acquire() as conn:
+            await apply_default_grant(conn, _app_state.config.written.platform.default_grant)
         rt = await on_its_region_lane(org_id, rt)
         # The creator's org_admin role assignment lands in the org's own schema — possible only now
         # the schema + seeded org_admin row exist. Membership (admin plane) was granted synchronously.
@@ -499,7 +518,7 @@ async def _provision_org_task(
         # seeded domains, and the demo model when --demo asked for one): committing it now is what
         # makes the very first user edit a diff rather than the whole model appearing at once.
         from provisa.core.env_repo import ensure_repo, write_through
-        from provisa.core.environments import PROD, org_schema
+        from provisa.core.environments import PROD
 
         ensure_repo(org_id)
         assert rt.model_db is not None
@@ -764,7 +783,7 @@ async def read_org_settings(org_id: str, request: Request):  # REQ-1268, REQ-126
 
 @router.patch("/{org_id}/settings")
 async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request):  # REQ-1268/1269
-    """Edit an org's join policy (email rule + auto-join). Org admin of this org, or platform admin."""
+    """Edit an org's join policy (email rule + auto-join). Org admin of this org only (REQ-1327)."""
     from provisa.api.admin.invites_router import _require_org_admin
 
     await _require_org_admin(request, org_id)
@@ -827,7 +846,7 @@ async def read_org_branding(org_id: str, request: Request):  # REQ-1486
 
 @router.patch("/{org_id}/branding")
 async def update_org_branding(org_id: str, body: OrgBrandingBody, request: Request):  # REQ-1486
-    """Set the org's branding document. Org admin of this org, or platform admin."""
+    """Set the org's branding document. Org admin of this org only (REQ-1327)."""
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_branding import BrandingError, serialize_branding, validate_branding
 
@@ -987,7 +1006,7 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
 
     from provisa.api.admin.invites_router import _require_org_admin
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
     if org_id == "root":
         # REQ-1300/REQ-1296: root carries the deployment's own admin surface and demo assets.
         raise ApiError(400, "orgs.cannot_delete_root", "Cannot delete the root org")
@@ -1070,15 +1089,16 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         )
         await conn.execute_core(_delete(demo_sandboxes).where(demo_sandboxes.c.org_id == org_id))
         await conn.execute_core(_delete(orgs).where(orgs.c.id == org_id))
+    # Evict the cached runtime once the registry rows are gone, so an in-flight request cannot
+    # rebuild it from one, and before its schemas go: a runtime still listed has the config watcher
+    # and the org's background reads asking for tables just dropped (REQ-2006).
+    # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
+    _app_state.org_registry.invalidate_org(org_id)
     # Every environment's schemas on the control plane, then the org's own (prod, role, ACL).
     for env in envs:
         if env != PROD:
             await deprovision_org(_pool(), org_id, env=env)
     await deprovision_org(_pool(), org_id, redis_url=_redis_url())
-    # Evict the cached runtime last: an in-flight request must not rebuild it from a registry row
-    # that still exists.
-    # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
-    _app_state.org_registry.invalidate_org(org_id)
     # What this process holds for it, kept by its id, its schemas or its users (REQ-2006).
     from provisa.core.org_forget import forget_org
 
@@ -1157,31 +1177,12 @@ async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059, REQ-
     the page can only offer every action to everyone and let the server say no.
     """
     from provisa.api.admin.invites_router import _require_org_admin
-    from provisa.core.org_membership import org_admin_user_ids
+    from provisa.core.org_membership import org_admin_user_ids, org_roster
 
     await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     admin_ids = await org_admin_user_ids(await _org_model_db(org_id))
-    pool = _admin_pool()
-    async with pool.acquire() as conn:
-        result = await conn.execute_core(
-            select(
-                user_org_memberships.c.user_id,
-                user_profiles.c.email,
-                user_profiles.c.display_name,
-                user_profiles.c.provider,
-                user_org_memberships.c.created_at,
-            )
-            .select_from(
-                user_org_memberships.outerjoin(
-                    user_profiles,
-                    user_profiles.c.user_id == user_org_memberships.c.user_id,
-                )
-            )
-            .where(user_org_memberships.c.org_id == org_id)
-            .order_by(user_org_memberships.c.user_id)
-        )
-        rows = result.fetchall()
-    return [{**dict(r._mapping), "is_org_admin": r._mapping["user_id"] in admin_ids} for r in rows]
+    rows = await org_roster(_admin_pool(), org_id)
+    return [{**r, "is_org_admin": r["user_id"] in admin_ids} for r in rows]
 
 
 @router.post("/{org_id}/members")
@@ -1190,8 +1191,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
     from provisa.core.org_membership import clear_auto_join_suppression
 
     # Onboarding a member is the same authority as offboarding one (remove_member): the org's own
-    # org_admin, or a platform_admin for any org. Requiring platform_admin here would leave an
-    # org_admin able to remove people from their org but not add them (REQ-1305).
+    # org_admin (REQ-1305). The platform admin never edits an org's members (REQ-1327).
     await _require_org_admin(request, org_id)
     pool = _admin_pool()
     async with pool.acquire() as conn:
@@ -1213,7 +1213,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
 async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-1302, REQ-1305
     """Offboard a person from an org across BOTH planes.
 
-    Available to the org's own org_admin and to a platform_admin for any org. Deleting only the
+    Available to the org's own org_admin only (REQ-1327). Deleting only the
     control-plane membership would leave the tenant-plane role assignments in ``org_<id>`` behind,
     so re-adding the person silently restores every privilege they held before.
 
@@ -1369,7 +1369,7 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_membership import grant_org_admin, record_admin_action
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
         raise ApiError(
@@ -1411,7 +1411,7 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
     from provisa.core.schema_org import user_role_assignments
     from provisa.security.rights import ORG_ADMIN_ROLE
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
         raise ApiError(

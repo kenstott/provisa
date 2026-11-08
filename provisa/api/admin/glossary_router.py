@@ -18,6 +18,8 @@ queues a metadata publish after every mutation because the term graph exports.
 
 # Requirements: REQ-1387, REQ-1590, REQ-1591, REQ-2130
 
+import asyncio
+
 from provisa.core.repositories.identity import TableInIdentity
 from typing import TYPE_CHECKING, Any, cast
 
@@ -617,6 +619,167 @@ async def generate_all_definitions(request: Request) -> dict:
     return {"generated": generated}
 
 
+# REQ-1387 (THE SHAPES THAT RESOLVE A RELATED PAIR): the one-term shapes that turn a RELATED_TO
+# pair into grounding edges, tightest first. The broader the new term, the less its grounding tells
+# a reader, so the order is part of the guidance and the response keeps it whatever the model sent.
+RESOLVE_SHAPES = (
+    "component_type",
+    "specialisation",
+    "common_whole",
+    "common_genus",
+    "common_enumeration",
+)
+
+
+def _term_role(term: dict) -> str:
+    # As the UI's termRole: a term grounding a table is a Class, one holding columns a Property,
+    # one holding neither a Concept (REQ-2141).
+    if term.get("table_count"):
+        return "class"
+    return "property" if term.get("ref_count") else "concept"
+
+
+def relationship_prompt(terms: list[dict]) -> str:
+    """The relationship assistant's prompt (REQ-1387, RELATED_TO IS THE LAST RESORT).
+
+    It carries each grounding type's test, prefers KIND_OF, PART_OF and VALID_VALUE_OF wherever
+    one fits, links a concept to its property-role terms with PART_OF, and proposes RELATED_TO only
+    when none fits, with the one-term shapes that would resolve the pair. It never asks for a new
+    term: candidate names come back as suggestions for the curator.
+    """
+    term_lines = "\n".join(
+        f"- {t['name']} [{_term_role(t)}]" + (f": {t['definition']}" if t["definition"] else "")
+        for t in terms
+    )
+    return (
+        "You are a data catalog assistant. Given this ontology term list, propose semantic "
+        "relationships between terms. Each term is marked with its role: [class] grounds tables, "
+        "[property] holds columns, [concept] holds no data and reaches it only through its "
+        "relationships.\n\n"
+        "Grounding types. These connect a term to data, so prefer them wherever one fits. "
+        "Apply each test with the from term as X and the to term as Y:\n"
+        "- KIND_OF: every X is a Y.\n"
+        "- PART_OF: a Y has an X. A property that describes a concept is PART_OF that concept "
+        "(shift start PART_OF shift coverage), never RELATED_TO it.\n"
+        "- VALID_VALUE_OF: X is one of Y's allowed values.\n\n"
+        "Other types, each only when its own meaning holds: SYNONYM_OF (interchangeable terms), "
+        "DERIVED_FROM (X is computed or sourced from Y), REPLACES (X supersedes the deprecated Y), "
+        "PREFERRED_TERM_FOR (X is the preferred term over the discouraged Y), TRANSLATION_OF "
+        "(X is a language or locale translation of Y), ANTONYM_OF (X is the semantic opposite "
+        "of Y).\n\n"
+        "RELATED_TO is the last resort: two distinct topics that go together, neither a kind, "
+        "a part nor a value of the other (cake and candles). It does not ground. Propose it only "
+        "when two terms clearly go together and no type above fits. For every RELATED_TO, add a "
+        '"resolve" object: the pair may want resolving by one new term, and you name candidates '
+        "for it in each shape that fits, tightest first:\n"
+        + _SHAPE_TEMPLATES
+        + "Each value is a list of candidate names for the new term; leave out a shape that does "
+        "not fit. Never propose an edge to or from a term that is not in the list below: the new "
+        "term is the user's choice to add, not yours.\n\n"
+        "Only propose relationships you are confident in; fewer, correct edges beat many "
+        "speculative ones.\n\n"
+        f"Terms:\n{term_lines}\n\n"
+        'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
+        '"rel_type": "PART_OF"}, {"from": "term name", "to": "term name", "rel_type": '
+        '"RELATED_TO", "resolve": {"component_type": ["candidate"], "common_whole": '
+        '["candidate"]}}] — no prose, no code fences.'
+    )
+
+
+def resolve_shapes(raw: object) -> list[dict]:
+    """A RELATED_TO proposal's resolving shapes, tightest first, each with its candidate names.
+
+    The model's ``resolve`` is untrusted: an unknown shape, a non-list or a blank name is dropped,
+    and the order is RESOLVE_SHAPES's, never the model's.
+    """
+    if not isinstance(raw, dict):
+        return []
+    shapes = []
+    for shape in RESOLVE_SHAPES:
+        names = raw.get(shape)
+        if not isinstance(names, list):
+            continue
+        candidates = [n.strip() for n in names if isinstance(n, str) and n.strip()]
+        if candidates:
+            shapes.append({"shape": shape, "candidates": candidates})
+    return shapes
+
+
+_SHAPE_TEMPLATES = (
+    '- "component_type": X KIND_OF new, new PART_OF Y (candles KIND_OF cake decoration, '
+    "cake decoration PART_OF cake).\n"
+    '- "specialisation": X PART_OF new, new KIND_OF Y (candles PART_OF birthday cake, '
+    "birthday cake KIND_OF cake).\n"
+    '- "common_whole": X and Y both PART_OF new (cake and candles PART_OF party).\n'
+    '- "common_genus": X and Y both KIND_OF new (cake and candles KIND_OF party supplies).\n'
+    '- "common_enumeration": X and Y both VALID_VALUE_OF new (cake and candles VALID_VALUE_OF '
+    "party item type).\n"
+)
+
+
+def resolve_prompt(x: dict, y: dict) -> str:
+    """The prompt naming candidates for the term that would resolve one RELATED_TO pair (REQ-1387,
+    CHOOSING RELATED_TO OPENS THE ALTERNATIVES): the same shapes, in the same order, as the bulk
+    assistant's note."""
+
+    def line(t: dict) -> str:
+        return f"{t['name']} [{_term_role(t)}]" + (
+            f": {t['definition']}" if t["definition"] else ""
+        )
+
+    return (
+        "You are a data catalog assistant. A curator is about to link two ontology terms with "
+        "RELATED_TO, which does not ground: the term still cannot reach data through it. One new "
+        "term between them would turn the pair into grounding edges. For each shape below, name "
+        "the new term that would fit, as short business vocabulary:\n"
+        + _SHAPE_TEMPLATES
+        + f"\nX: {line(x)}\nY: {line(y)}\n\n"
+        "Give up to three candidate names per shape, the best first, and leave out a shape that "
+        "does not fit. A candidate is a suggestion for the curator, never an existing term's "
+        "name.\n\n"
+        'Respond with only a JSON object like {"component_type": ["candidate"], '
+        '"common_whole": ["candidate"]} — no prose, no code fences.'
+    )
+
+
+@router.post("/relationships/resolve")
+async def suggest_resolving_terms(request: Request) -> dict:
+    """Candidate names for the term that would resolve one RELATED_TO pair, shape by shape.
+
+    Nothing is written: the curator starts a shape, which opens the new-term form, or adds the
+    RELATED_TO anyway.
+    """
+    _require_glossary_rw(request)
+    import json
+
+    from provisa.api.admin.schema_helpers import _call_llm
+
+    body = await request.json()
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        pair = []
+        for key in ("from_term_id", "to_term_id"):
+            term = await glossary_repo.get_term(_conn, int(body[key]))
+            if term is None:
+                raise ApiError(404, "glossary.term_not_found", f"term {body[key]} not found")
+            await _require_term_readable(_conn, term["id"], request)
+            pair.append(term)
+    raw = await _call_llm(
+        resolve_prompt(pair[0], pair[1]), "glossary_relationships", max_tokens=512
+    )
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
+    try:
+        proposed = json.loads(raw)
+    except ValueError as exc:
+        raise ApiError(
+            502, "glossary.generation_unparseable", f"Model response was not JSON: {exc}"
+        ) from exc
+    if not isinstance(proposed, dict):
+        raise ApiError(502, "glossary.generation_unparseable", "Model response was not an object")
+    return {"resolve": resolve_shapes(proposed)}
+
+
 @router.post("/relationships/generate")
 async def generate_relationships(request: Request) -> dict:
     """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the whole glossary.
@@ -639,28 +802,9 @@ async def generate_relationships(request: Request) -> dict:
             _conn, include_deprecated=False, domains=_authority(request)
         )  # REQ-1591: propose edges only within the caller's own domains
         if len(terms) < 2:
-            return {"added": 0}
+            return {"added": 0, "review": []}
         by_name = {t["name"]: t["id"] for t in terms}
-        term_lines = "\n".join(
-            f"- {t['name']}" + (f": {t['definition']}" if t["definition"] else "") for t in terms
-        )
-        prompt = (
-            "You are a data catalog assistant. Given this ontology term list, "
-            "propose semantic relationships between terms. Allowed relationship types: "
-            "KIND_OF (from is a kind of to), PART_OF (from is a part of to), "
-            "SYNONYM_OF (interchangeable terms), RELATED_TO (loosely associated), "
-            "VALID_VALUE_OF (from is an allowed value of the to enumeration/domain), "
-            "DERIVED_FROM (from is computed or sourced from to), "
-            "REPLACES (from supersedes the deprecated to), "
-            "PREFERRED_TERM_FOR (from is the preferred term over the discouraged to), "
-            "TRANSLATION_OF (from is a language/locale translation of to), "
-            "ANTONYM_OF (from is the semantic opposite of to). "
-            "Only propose relationships you are confident in; "
-            "fewer, correct edges beat many speculative ones.\n\n"
-            f"Terms:\n{term_lines}\n\n"
-            'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
-            '"rel_type": "KIND_OF"}] — no prose, no code fences.'
-        )
+        prompt = relationship_prompt(terms)
         raw = await _call_llm(prompt, "glossary_relationships", max_tokens=2048)
         raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
         try:
@@ -687,6 +831,10 @@ async def generate_relationships(request: Request) -> dict:
             )
 
         added = 0
+        # REQ-1387 (RELATED_TO HOLDS THE PLACE): each RELATED_TO the model adds comes back with the
+        # one-term shapes that would resolve it. They are offered to the curator, never applied:
+        # the assistant adds edges between existing terms only.
+        review: list[dict] = []
         for p in proposals:
             if not isinstance(p, dict):
                 continue
@@ -699,9 +847,19 @@ async def generate_relationships(request: Request) -> dict:
                 continue
             await glossary_repo.add_edge(_conn, from_id, to_id, rel_type)
             added += 1
+            if rel_type == "RELATED_TO":
+                review.append(
+                    {
+                        "from_term_id": from_id,
+                        "from": p["from"],
+                        "to_term_id": to_id,
+                        "to": p["to"],
+                        "resolve": resolve_shapes(p.get("resolve")),
+                    }
+                )
     if added:
         await _notify(org_id, "ontology relationships generated")
-    return {"added": added}
+    return {"added": added, "review": review}
 
 
 @router.post("/refs/move")
@@ -879,6 +1037,37 @@ async def add_expert(request: Request, term_id: int) -> dict:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     await _notify(org_id, "ontology expert added")
     return {"ok": True}
+
+
+@router.get("/people")
+async def attributable_people(request: Request) -> list[dict]:
+    """REQ-1592: the people a term can be attributed to -- the picker's roster.
+
+    An author or expert is chosen from the org's members, never typed, so a curator has to be able
+    to read who they are. Not through the team page's ``/orgs/{id}/members``: that is user
+    management (who administers the org, how each signed in), a right a curator need not hold --
+    the sandbox's visitor curates and is withheld it (REQ-1608). This answers only who each
+    person is, which is all a picker labels them by.
+
+    In the shared "Try it Out" org every visitor is a curator, so the roster there would show each
+    visitor every other visitor's name and email: it lists only the caller. Real orgs and
+    per-visitor demo sandboxes list the whole roster.
+    """
+    from provisa.api.app import state
+    from provisa.api.sandbox_org import SANDBOX_ORG_ID
+    from provisa.core.org_membership import org_roster
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    assert state.admin_db is not None
+    rows = await org_roster(state.admin_db, org_id)
+    if org_id == SANDBOX_ORG_ID:
+        caller = _caller_id(request)
+        rows = [r for r in rows if r["user_id"] == caller]
+    return [
+        {"user_id": r["user_id"], "email": r["email"], "display_name": r["display_name"]}
+        for r in rows
+    ]
 
 
 @router.delete("/terms/{term_id}/experts/{user_id}")
@@ -1086,9 +1275,12 @@ async def _status_route(request: Request, term_id: int, action: str) -> dict:
 
 @router.post("/terms/{term_id}/approve")
 async def approve_term(request: Request, term_id: int) -> dict:
-    """Approve a draft term (REQ-1387): it needs a definition."""
+    """Approve a draft term (REQ-1387): it needs a definition. With an ``Idempotency-Key``, a
+    repeat is answered with the first result (REQ-2216)."""
+    from provisa.api.idempotency import once
+
     _require_glossary_rw(request)
-    return await _status_route(request, term_id, "approve")
+    return await once(await _pool(), request, lambda: _status_route(request, term_id, "approve"))
 
 
 @router.get("/approvable")
@@ -1190,6 +1382,48 @@ async def stewardship(request: Request) -> dict:
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         return await _named_readable(_conn, request, await glossary_repo.stewardship_summary(_conn))
+
+
+async def _term_ids_by_name(conn: "Connection") -> dict[str, int]:
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import glossary_terms as gt
+
+    rows = (await conn.execute_core(select(gt.c.id, gt.c.name))).fetchall()
+    return {r.name: r.id for r in rows}
+
+
+@router.get("/drift")
+async def ontology_drift(request: Request) -> dict:
+    """The Ontology quality report's drift (REQ-1386): the terms that lost or gained grounding
+    since the previous period, computed from the environment's repository. Narrowed to the terms
+    the caller reads, counts included. A term that no longer exists has no domains to read it by:
+    only a caller limited to no domains is told of it."""
+    from provisa.core import term_drift
+    from provisa.core.environments import PROD
+    from provisa.core.glossary import readable_term
+    from provisa.core.request_context import current_env
+
+    _require_glossary_read(request)
+    org_id = require_active_org_id(request)
+    env = current_env.get() or PROD
+    found = await asyncio.to_thread(term_drift.drift, org_id, env)
+    if not found["has_history"]:
+        return found
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        ids = await _term_ids_by_name(_conn)
+        scopes = await glossary_repo.term_domains(_conn)
+    allowed = _authority(request)
+
+    def told(name: str) -> bool:
+        if name not in ids:
+            return allowed is None
+        return readable_term(allowed, scopes.get(ids[name], set()))
+
+    rows = [{**t, "term_id": ids.get(t["name"])} for t in found["terms"] if told(t["name"])]
+    return {**found, "terms": rows, "counts": term_drift.counted(rows)}
 
 
 @router.post("/terms/{term_id}/deprecate")
@@ -1376,14 +1610,15 @@ async def tag_term(  # REQ-2145
     from provisa.api.admin.schema_mutation import store_tag_assignment
     from provisa.core.models import TagAssignment
     from provisa.core.repositories import tag as tag_repo
-    from provisa.core.term_tags import TermTagRefused, refuse_term_tag
+    from provisa.core.term_tags import FLOWING_TAGS, TermTagRefused, refuse_term_tag
     from provisa.security.sensitive import SENSITIVE_DATA
 
     await _require_term_curatable(conn, term_id, request)
     tag_row = await tag_repo.get(conn, tag_id)
     if tag_row is None:
         raise ApiError(404, "schema.tag_not_found", f"Tag {tag_id!r} not found", tag=tag_id)
-    if tag_row["sensitive"]:
+    # A sensitive tag hides the term's columns only when it flows to them (REQ-2145).
+    if tag_row["sensitive"] and tag_row["id"] in FLOWING_TAGS:
         domains = (await glossary_repo.term_domains(conn)).get(term_id, set())
         require_right_in_domains_request(request, SENSITIVE_DATA, domains)
     else:

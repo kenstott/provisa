@@ -39,8 +39,8 @@ to_freshness_mode(sig) -> str | None   # poll → same value; push → None (eve
 to_provider(sig, source_type) -> str   # native → source_type; debezium → "debezium"; kafka → "kafka"; poll → source_type
 ```
 
-Push signals skip the freshness gate: their landed copy is updated by applying incoming
-events, not by polling.
+Push signals skip the freshness gate. Their landed copy is updated by applying incoming
+events, so nothing polls for it.
 
 ## Rewired sites
 
@@ -66,8 +66,8 @@ events, not by polling.
 
 ## Landing (consumption layer, shipped)
 
-`change_signal.select_landing_shape(sig, watermark_column)` maps the signal to a landing shape,
-applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven by `federation/store_writer.py`), not by engine CTAS in `mv/refresh.py`:
+`change_signal.select_landing_shape(sig, watermark_column)` maps the signal to a landing shape.
+The DB-agnostic Core ops in `federation/materialize_exec.py` (driven by `federation/store_writer.py`) apply it; engine CTAS in `mv/refresh.py` does not:
 
 - Replace: `DELETE`+`INSERT`, for a poll signal with no watermark.
 - Append: `INSERT ... WHERE watermark > cursor`, for a poll signal with a `watermark_column` set.
@@ -77,10 +77,10 @@ applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven 
 
 ## Migration
 
-V1, no migrations. Derivation happens at the read sites rather than by dropping the fields:
+V1, no migrations. Derivation happens at the read sites rather than by dropping the fields.
 `change_signal` is authoritative, and `live.strategy`/`live.watermark_column` remain on the model
 as a legacy fallback read through `resolve_effective` / `signal_from_strategy`. Existing JSONB rows
-carrying `live.strategy` keep working: the resolver maps `strategy → change_signal` when the
+carrying `live.strategy` keep working because the resolver maps `strategy → change_signal` when the
 latter is unset.
 
 ## Sequencing (each phase leaves the tree green)

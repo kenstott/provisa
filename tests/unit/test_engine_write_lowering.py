@@ -73,3 +73,42 @@ def test_an_engine_write_runs_without_query_retries():
     assert hints({"cass"}, writes=True) == {"retry_policy": "NONE"}
     assert hints({"events"}, writes=False) == {"retry_policy": "NONE"}
     assert hints({"pg"}, writes=False) is None
+
+
+_MERGE = (
+    'MERGE INTO "s"."t" AS "t" USING (SELECT 1 AS id) AS "src" ON "t"."id" = "src"."id" '
+    'WHEN MATCHED THEN UPDATE SET "body" = \'q\' WHEN NOT MATCHED THEN INSERT ("id") VALUES (2)'
+)
+
+
+@pytest.mark.parametrize("dialect", ["athena", "trino"])
+@pytest.mark.parametrize(
+    "sql, rendered",
+    [
+        (
+            'UPDATE "s"."t" AS "t" SET "body" = \'z\' WHERE "t"."id" = 11',
+            'UPDATE "s"."t" SET "body" = \'z\' WHERE "id" = 11',
+        ),
+        (
+            'DELETE FROM "s"."t" AS "t" WHERE "t"."id" = 10',
+            'DELETE FROM "s"."t" WHERE "id" = 10',
+        ),
+        (
+            'INSERT INTO "s"."t" AS "t" ("id") VALUES (1)',
+            'INSERT INTO "s"."t" ("id") VALUES (1)',
+        ),
+    ],
+)
+def test_a_trino_family_write_renders_without_a_target_alias(dialect, sql, rendered):
+    from provisa.transpiler.transpile import transpile
+
+    assert transpile(sql, dialect) == rendered
+
+
+@pytest.mark.parametrize("dialect", ["athena", "trino"])
+def test_a_trino_family_merge_keeps_its_accepted_target_alias(dialect):
+    from provisa.transpiler.transpile import transpile
+
+    out = transpile(_MERGE, dialect)
+    assert out.startswith('MERGE INTO "s"."t" AS "t" USING')
+    sqlglot.parse_one(out, read=dialect)

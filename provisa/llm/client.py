@@ -12,8 +12,14 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import contextvars
 import logging
-from typing import Optional
+import os
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any, Optional, TypeVar
 
 # Requirements: REQ-355, REQ-356, REQ-358
 
@@ -29,8 +35,71 @@ _DEFAULTS: dict[str, dict] = {
 }
 
 
+#: How long one model call may take, in seconds. A vendor's own client gives up after anything from
+#: 30 seconds to half an hour, depending on the vendor, or never; this holds for all of them.
+CALL_TIMEOUT_S = 300.0
+
+#: The environment variable aisuite reads each key-taking vendor's key from, when the caller
+#: resolved none (provisa.core.org_secrets.LLM_VENDORS).
+_KEY_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "cohere": "CO_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "xai": "XAI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "together": "TOGETHER_API_KEY",
+    "fireworks": "FIREWORKS_API_KEY",
+    "nebius": "NEBIUS_API_KEY",
+    "sambanova": "SAMBANOVA_API_KEY",
+    "inception": "INCEPTION_API_KEY",
+}
+
+#: What a vendor's ``finish_reason`` says of an answer that stopped at ``max_tokens``.
+_CUT_OFF_REASONS = frozenset({"length", "max_tokens"})
+#: The host of an OpenAI-wire endpoint that takes OpenRouter's ``reasoning`` request object.
+_OPENROUTER_HOST = "openrouter.ai"
+
+_T = TypeVar("_T")
+
+
+@dataclass(frozen=True)
+class Completion:
+    """A completion with what produced it: the vendor and model that answered (the fallback's,
+    when the primary failed) and the usage the vendor reported (aisuite's CompletionUsage, OpenAI
+    shaped; None when the vendor reported none). A caller held to a role's LLM budget (REQ-1174)
+    counts the usage against that model. ``cut_off`` says the answer stopped at its output limit,
+    so its text is the start of an answer (:func:`_stopped_at_limit`)."""
+
+    text: str
+    vendor: str
+    model: str
+    usage: Any
+    cut_off: bool
+
+
 class LLMEmptyResponseError(RuntimeError):
-    """The provider answered 200 but the message carried no text content."""
+    """The provider answered 200 but the message carried no text content. ``answer`` is that
+    answer, with no text: its usage was spent, and ``cut_off`` says the output limit is why."""
+
+    def __init__(self, message: str, answer: Completion) -> None:
+        super().__init__(message)
+        self.answer = answer
+
+
+class LLMTimeoutError(TimeoutError):
+    """The vendor gave no answer within :data:`CALL_TIMEOUT_S`; the message names the model."""
+
+
+def _stopped_at_limit(finish_reason: Any, usage: Any, max_tokens: int) -> bool:
+    """Whether an answer stopped at ``max_tokens``. aisuite's converted vendors (groq, mistral, xai
+    and the like) lose ``finish_reason``, and keep the usage that shows it. aisuite's google,
+    cohere and ollama providers report neither, so a cut-off there is not seen."""
+    if finish_reason in _CUT_OFF_REASONS:
+        return True
+    used = getattr(usage, "completion_tokens", None)
+    return isinstance(used, int) and used >= max_tokens
 
 
 class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
@@ -117,12 +186,95 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         messages.append({"role": "user", "content": prompt})
         return messages
 
+    @property
+    def vendor(self) -> str:
+        return self._vendor
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def key_problem(self) -> str | None:
+        """Why the model cannot be called, as far as that shows with no call made: neither its
+        vendor nor its fallback's has the key it needs. None when one has, or needs none."""
+        primary = self._vendor_key_problem(self._vendor)
+        if primary is None or not self._fallback_vendor:
+            return primary
+        return None if self._vendor_key_problem(self._fallback_vendor) is None else primary
+
+    def _vendor_key_problem(self, vendor: str) -> str | None:
+        if (self._api_keys or {}).get(vendor):
+            return None
+        endpoint = self._endpoints.get(vendor)
+        env = endpoint.get("api_key_env") if endpoint is not None else _KEY_ENV.get(vendor)
+        if not env or os.environ.get(env):
+            return None
+        return f"{vendor} has no API key"
+
     def _complete_sync(
         self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
     ) -> str:
-        import os
+        return self._respond(vendor, model, prompt, system, max_tokens).text
 
+    def _reasoning_off(self, vendor: str, model: str) -> dict[str, Any]:
+        """The request arguments that turn ``vendor``'s model's reasoning off, on its wire:
+        OpenRouter's ``reasoning`` object with ``enabled: false`` (sent as the OpenAI client's
+        ``extra_body``), or Anthropic's ``thinking`` of type ``disabled`` (natively or through an
+        Anthropic-style endpoint). Any other wire gets no setting (``{}``)."""
+        endpoint = self._endpoints.get(vendor)
+        wire = endpoint["style"] if endpoint is not None else vendor
+        if wire == "anthropic":
+            return {"thinking": {"type": "disabled"}}
+        if wire == "openai" and endpoint is not None:
+            if _OPENROUTER_HOST in str(endpoint.get("base_url") or ""):
+                return {"extra_body": {"reasoning": {"enabled": False}}}
+        # Maintainer decision, 2026-11-04: "leave other vendors on their default." Only wires with
+        # a documented switch get one; the rest (openai direct, groq, ollama, lmstudio, other
+        # openai-compatible gateways) send no reasoning setting and keep the vendor's default.
+        # This is the documented design, not a fallback.
+        return {}
+
+    def _json_answer(self, vendor: str, schema: dict[str, Any], name: str) -> dict[str, Any]:
+        """The request arguments that hold ``vendor``'s answer to one JSON value following
+        ``schema`` (an object schema, every property required and no other allowed), on its wire:
+        Anthropic's structured output (``output_config.format`` of type ``json_schema``, natively
+        or through an Anthropic-style endpoint), or the OpenAI ``response_format`` of type
+        ``json_schema``, strict, for OpenAI itself and OpenRouter. Any other wire gets no setting
+        (``{}``) and is asked in the prompt alone."""
+        endpoint = self._endpoints.get(vendor)
+        wire = endpoint["style"] if endpoint is not None else vendor
+        if wire == "anthropic":
+            return {"output_config": {"format": {"type": "json_schema", "schema": schema}}}
+        if wire == "openai" and (
+            endpoint is None or _OPENROUTER_HOST in str(endpoint.get("base_url") or "")
+        ):
+            return {
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": name, "schema": schema, "strict": True},
+                }
+            }
+        # As with reasoning (_reasoning_off): only wires with a documented, known-supported way to
+        # ask get one. Other OpenAI-compatible gateways (ollama, lmstudio, groq and the like)
+        # differ in which response_format they take, so they keep their default.
+        return {}
+
+    def _respond(
+        self,
+        vendor: str,
+        model: str,
+        prompt: str,
+        system: str,
+        max_tokens: int,
+        reasoning_off: bool = False,
+        json_schema: dict[str, Any] | None = None,
+        json_name: str = "answer",
+    ) -> Completion:
         import aisuite as ai
+
+        asked = self._reasoning_off(vendor, model) if reasoning_off else {}
+        if json_schema is not None:
+            asked |= self._json_answer(vendor, json_schema, json_name)
 
         endpoint = self._endpoints.get(vendor)
         if endpoint is not None:
@@ -158,29 +310,49 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             model=model_id,
             messages=messages,
             max_tokens=max_tokens,
+            **asked,
         )
         choice = response.choices[0]
         content = choice.message.content
+        finish_reason = getattr(choice, "finish_reason", None)
+        usage = getattr(response, "usage", None)
+        cut_off = _stopped_at_limit(finish_reason, usage, max_tokens)
         if content is None:
             raise LLMEmptyResponseError(
                 f"{model_id} returned no message content "
-                f"(finish_reason={getattr(choice, 'finish_reason', None)!r}, "
+                f"(finish_reason={finish_reason!r}, "
                 f"max_tokens={max_tokens}); a reasoning model can spend the whole token budget "
-                "before emitting text"
+                "before emitting text",
+                Completion("", vendor, model, usage, cut_off),
             )
-        return content.strip()
+        return Completion(content.strip(), vendor, model, usage, cut_off)
 
-    def complete_sync(
-        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
-    ) -> str:
-        """Complete a prompt synchronously.
+    def _bounded(self, call: Callable[[str, str], _T], vendor: str, model: str) -> _T:
+        """``call(vendor, model)``, given up after :data:`CALL_TIMEOUT_S`. On a thread of its own,
+        the one way to hold a blocking call in a vendor's client whatever that client does: a
+        stalled call's thread ends when its client gives up, and nothing waits for it."""
+        answered: concurrent.futures.Future[_T] = concurrent.futures.Future()
+        context = contextvars.copy_context()
 
-        Tries primary vendor/model first; on failure tries fallback if configured.
-        Returns plain text response.
-        """
+        def run() -> None:
+            try:
+                answered.set_result(context.run(call, vendor, model))
+            except BaseException as exc:  # handed to the caller, who re-raises it
+                answered.set_exception(exc)
+
+        threading.Thread(target=run, name=f"llm-call:{vendor}", daemon=True).start()
+        finished, _ = concurrent.futures.wait([answered], timeout=CALL_TIMEOUT_S)
+        if not finished:
+            raise LLMTimeoutError(
+                f"{vendor}:{model} gave no answer within {CALL_TIMEOUT_S:g} seconds"
+            )
+        return answered.result()
+
+    def _with_fallback(self, call: Callable[[str, str], _T]) -> _T:
+        """``call(vendor, model)`` on the primary vendor/model, and on its failure on the
+        fallback when one is configured. Each is held to :data:`CALL_TIMEOUT_S`."""
         try:
-            result = self._complete_sync(self._vendor, self._model, prompt, system, max_tokens)
-            return result
+            return self._bounded(call, self._vendor, self._model)
         except Exception as primary_exc:
             log.warning(
                 "LLM primary vendor=%s model=%s failed: %s",
@@ -190,10 +362,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             )
             if self._fallback_vendor and self._fallback_model:
                 try:
-                    result = self._complete_sync(
-                        self._fallback_vendor, self._fallback_model, prompt, system, max_tokens
-                    )
-                    return result
+                    return self._bounded(call, self._fallback_vendor, self._fallback_model)
                 except Exception as fallback_exc:
                     log.warning(
                         "LLM fallback vendor=%s model=%s failed: %s",
@@ -203,6 +372,52 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
                     )
                     raise fallback_exc
             raise primary_exc
+
+    def complete_sync(
+        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
+    ) -> str:
+        """Complete a prompt synchronously.
+
+        Tries primary vendor/model first; on failure tries fallback if configured.
+        Returns plain text response.
+        """
+        return self._with_fallback(
+            lambda vendor, model: self._complete_sync(vendor, model, prompt, system, max_tokens)
+        )
+
+    async def complete_detailed(
+        self,
+        prompt: str,
+        system: str = "You are a helpful assistant.",
+        max_tokens: int = 1024,
+        *,
+        reasoning_off: bool = False,
+        json_schema: dict[str, Any] | None = None,
+        json_name: str = "answer",
+    ) -> Completion:
+        """:meth:`complete` with the vendor, model and usage of the answer (:class:`Completion`).
+        ``reasoning_off`` asks each model called, the fallback's too, with its reasoning turned off
+        (:meth:`_reasoning_off`); a wire with no documented switch is sent none and keeps its default.
+        ``json_schema`` (named ``json_name``) asks each model called for one JSON value following
+        it (:meth:`_json_answer`), on the wires that can be held to one."""
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self._with_fallback(
+                lambda vendor, model: self._respond(
+                    vendor,
+                    model,
+                    prompt,
+                    system,
+                    max_tokens,
+                    reasoning_off,
+                    json_schema,
+                    json_name,
+                )
+            ),
+        )
 
     async def complete(
         self,

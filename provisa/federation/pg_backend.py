@@ -40,6 +40,20 @@ class TryCastNeedsPostgres16(ReadRefused):  # REQ-778
         self.params = {}
 
 
+def _database_of(dsn: str) -> tuple[str, str, int, str | None]:
+    """What names one PostgreSQL database in ``dsn``: its server and name, whatever the driver,
+    role or password. Another store kind never equals one."""
+    from sqlalchemy import make_url
+
+    url = make_url(dsn)
+    return (
+        url.get_backend_name(),
+        (url.host or "").lower(),
+        url.port or 5432,
+        url.database,
+    )
+
+
 class PgBackend(NativeEngineBackend):
     """Every registered source ATTACHes (via FDW) into ONE PostgreSQL connection; governed physical
     SQL runs against it. The engine runs on the configured ``federation_engine_url`` Postgres, else the
@@ -78,6 +92,20 @@ class PgBackend(NativeEngineBackend):
 
         result_sink.require_format(self.engine.name, output_format, self.local_result_formats)
         return self._runtime_for(state).write_result_csv(physical_sql, params, path)
+
+    def require_readable_store(self, store_dsn: str) -> None:
+        """Every statement runs in the engine's one database and PostgreSQL has no cross-database
+        query, so a store anywhere else is written and never read. The database a built runtime
+        holds decides; before that, the one it will connect to."""
+        from provisa.federation.engine import StoreOutsideEngineDatabase
+
+        runs_in = (
+            self._runtime._engine_dsn
+            if self._runtime is not None
+            else self.engine.default_materialize_store()
+        )
+        if runs_in is not None and _database_of(runs_in) != _database_of(store_dsn):
+            raise StoreOutsideEngineDatabase(self.engine.name, runs_in, store_dsn)
 
     def replica_engine(
         self, state: Any, source: Any, table: Any, *, address: Any, args: Any
@@ -169,14 +197,9 @@ class PgBackend(NativeEngineBackend):
         return rewrite_json_object_to_build_object(transpile(pg_sql, self.dialect))
 
     def _new_runtime(self) -> Any:
-        from provisa.federation.engine import configured_engine_url
-
-        raw = configured_engine_url() or self.engine.default_materialize_store()
-        if raw is None:
+        dsn = self.engine.default_materialize_store()
+        if dsn is None:
             raise RuntimeError(
                 "pg engine requires a Postgres URL (federation_engine_url) or a platform database"
             )
-        # libpq/psycopg2 want a driver-agnostic DSN (strip a SQLAlchemy '+driver' suffix).
-        scheme, sep, rest = raw.partition("://")
-        dsn = f"{scheme.split('+', 1)[0]}://{rest}" if sep else raw
         return PgFederationRuntime(engine_dsn=dsn)

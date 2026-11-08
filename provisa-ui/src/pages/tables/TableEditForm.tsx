@@ -252,6 +252,18 @@ export function TableEditForm({
           editSource={editSource}
           roles={roles}
           hidingOnly={hidingOnly}
+          writeGrants={
+            // REQ-2074: the grants are saved on their own, apart from the table's other settings.
+            <WriteGrantsPanel
+              grants={editingTable.writeGrants}
+              columns={editingTable.columns.map((c) => c.columnName)}
+              sourceWriteOps={editingTable.writeOps}
+              roles={roleOptions}
+              onSave={hidingOnly ? undefined : saveWriteGrants}
+              kept={creating}
+            />
+          }
+          scanTableId={creating ? undefined : editingTable.id}
           describeColumn={
             creating ? undefined : (column) => generateColumnDescription(editingTable.id, column)
           }
@@ -259,16 +271,6 @@ export function TableEditForm({
       )}
       {/* REQ-2162: who can read or write each column, as the read view shows it. */}
       {section === "access" && <TableAccessPanel tableId={creating ? null : editingTable.id} />}
-      {section === "writes" && (
-        // REQ-2074: the grants are saved on their own, apart from the table's other settings.
-        <WriteGrantsPanel
-          grants={editingTable.writeGrants}
-          columns={editingTable.columns.map((c) => c.columnName)}
-          roles={roleOptions}
-          onSave={hidingOnly ? undefined : saveWriteGrants}
-          kept={creating}
-        />
-      )}
       {/* In the detail panel these are its head's actions while the table is edited, in place of
           the table's own; under a list row they are the form's last row. */}
       <FormFooter

@@ -213,6 +213,11 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     from provisa.api.graph_session import keep as _keep_graph_sessions
 
     state._graph_session_task = spawn_long_lived(_keep_graph_sessions(state), name="graph-sessions")
+    # REQ-2179: and gives up, naming why, on the document scans a restart left running or that
+    # have stopped moving.
+    from provisa.api.admin.term_finding_router import keep as _keep_term_scans
+
+    state._term_scan_task = spawn_long_lived(_keep_term_scans(state), name="term-scans")
 
     if state.hot_manager is not None and state.federation_engine.is_connected():
         from provisa.cache.hot_tables import HotTableManager
@@ -319,6 +324,18 @@ def _resolve_tls(cert_env: str, key_env: str) -> tuple[str, str] | None:
     if cert is not None and key is not None:
         return cert, key
     return None
+
+
+def _log_http_surfaces(app: Any, _log: logging.Logger) -> None:
+    """The startup banner's line for each query surface on the HTTP listener."""
+    from provisa.api.admin.system_health import HTTP_SURFACES, serving_http_surfaces
+
+    serving = serving_http_surfaces(app)
+    for name, path in HTTP_SURFACES.items():
+        if name in serving:
+            _log.info("%s endpoint listening at %s on the HTTP port", name, path)
+        else:
+            _log.warning("%s endpoint not served at %s", name, path)
 
 
 async def _start_servers(_log: logging.Logger) -> None:
@@ -544,7 +561,7 @@ async def _start_servers(_log: logging.Logger) -> None:
 
     _public_url = _settings.value("server.public_url")
     _log.info(
-        "SPARQL endpoint listening at /data/sparql on the HTTP port (subject IRIs under %s)",
+        "SPARQL subject IRIs under %s",
         f"{str(_public_url).rstrip('/')}/id/"
         if _public_url
         else "nothing: server.public_url is unset, so a query answering with one is refused",
@@ -847,7 +864,8 @@ async def _seed_demo_templates(_log: logging.Logger) -> None:  # REQ-2006
 # (employee != employeeId), so it emits an empty source_column that these rows correct. schedules
 # keys on the landed employee_id scalar (config gql_selection "employee_id: employee { id }"), not
 # the raw employee object field -- keying on a column the config does not land refuses the startup
-# column-drop of the stale object field.
+# column-drop of the stale object field. No pets<->assignments breed_name row: either direction makes
+# breed_name a replica key and it repeats on both tables (pets reach assignments via animal_breeds).
 _DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | None], ...] = (
     (
         "employees_to_assignments",
@@ -875,24 +893,6 @@ _DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | Non
         "breed_name",
         "one-to-many",
         "PETS_OF_BREED",
-    ),
-    (
-        "pets-to-shelter-assignments",
-        "pets",
-        "assignments",
-        "breed_name",
-        "breed_name",
-        "many-to-one",
-        None,
-    ),
-    (
-        "shelter-assignments-to-pets",
-        "assignments",
-        "pets",
-        "breed_name",
-        "breed_name",
-        "one-to-many",
-        None,
     ),
     (
         "shelter-assignments-to-employees",

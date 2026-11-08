@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from provisa.compiler.sql_literals import sql_literal
 
+import functools
 import re as _re
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -27,7 +28,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.native_nested import mark_native_nested_reads
-from provisa.compiler.native_subtype import mark_subtype_operations
+from provisa.compiler.native_subtype import mark_subtype_operations, mark_subtype_reads
 from provisa.compiler.ontology_classes import is_class_table_id
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.core.ir_types import EPOCH_UNITS
@@ -41,20 +42,28 @@ def split_sql_statements(sql: str) -> list[str]:
     malformed fragments). Original statement text is preserved (sliced between top-level semicolon
     tokens, not re-rendered), so COPY/CTAS regex matching and governance see EXACTLY what executes —
     closing the parser-differential where the batch was tokenized one way for governance and another
-    at execution. Blank fragments (a trailing ``;``) are dropped."""
+    at execution. A segment holding no token but comments (a trailing ``;``, ``-- ping``) is dropped."""
     tokens = sqlglot.tokenize(sql, read="postgres")
     stmts: list[str] = []
     start = 0
+    held = False  # the segment since the last ';' holds a token: comments are not tokens
     for tok in tokens:
         if tok.token_type == sqlglot.TokenType.SEMICOLON:
-            seg = sql[start : tok.start].strip()
-            if seg:
-                stmts.append(seg)
+            if held:
+                stmts.append(sql[start : tok.start].strip())
+            held = False
             start = tok.end + 1
-    tail = sql[start:].strip()
-    if tail:
-        stmts.append(tail)
+        else:
+            held = True
+    if held:
+        stmts.append(sql[start:].strip())
     return stmts
+
+
+def holds_no_statement(sql: str) -> bool:
+    """True when ``sql`` holds nothing but whitespace, comments and ``;``: PostgreSQL answers it
+    with EmptyQueryResponse on both protocols (REQ-2167)."""
+    return not split_sql_statements(sql)
 
 
 # --- Type coercion for cross-source JOINs ---
@@ -81,9 +90,12 @@ _TEMPORAL_TYPES = {
 }
 
 
+@functools.lru_cache(maxsize=4096)
 def _q(name: str) -> str:
-    """Double-quote a SQL identifier."""
-    return f'"{name}"'
+    """``name`` as one double-quoted SQL identifier: a quote inside it is doubled, so a name a
+    request gives (a where or order_by key, a distinct_on column) never ends the identifier.
+    Memoized: a statement quotes the same few names many times."""
+    return exp.to_identifier(name, quoted=True).sql(dialect="postgres")
 
 
 def _base_type(column_type: str) -> str:
@@ -207,6 +219,51 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     return _apply_replacements(sql, replacements)
 
 
+def _from_entries(node: exp.Expr) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]
+    """The relations ``node`` (a SELECT, UPDATE or DELETE) names in its own FROM, JOINs, target
+    and USING -- never a nested query's."""
+    entries = [node.this] if isinstance(node, (exp.Update, exp.Delete)) else []
+    from_ = node.args.get("from_")
+    if from_ is not None:
+        entries.append(from_.this)
+    entries.extend(j.this for j in node.args.get("joins") or [])
+    entries.extend(node.args.get("using") or [])
+    return [e for e in entries if isinstance(e, (exp.Table, exp.Subquery))]
+
+
+def bind_schema_qualified_columns(tree: exp.Expr) -> None:  # REQ-2204
+    """Each column reference qualified by its table's schema -- ``"s"."t"."c"``, as Metabase
+    writes every data query -- rebound to the name the table has in FROM: ``"t"."c"``. While the
+    table is unaliased the two are one reference to PostgreSQL; once a later step aliases it
+    (normalize_table_refs pins its own name) or puts a governed projection in its place (stage2),
+    the schema-qualified form names nothing and PostgreSQL refuses it (42P01 "invalid reference
+    to FROM-clause entry"). Bound before those steps, the reference reads the name they keep.
+
+    The nearest scope with a relation of the reference's table name decides: an unaliased table
+    of that schema (and catalog, when the reference names one) binds it; anything else -- an
+    alias, another schema's table, a derived relation -- leaves it as written."""
+    for col in list(tree.find_all(exp.Column)):
+        db = col.args.get("db")
+        if db is None:
+            continue
+        scope = col.find_ancestor(exp.Select, exp.Update, exp.Delete)
+        while scope is not None:
+            named = [e for e in _from_entries(scope) if e.alias_or_name == col.table]
+            if named:
+                entry = named[0]
+                catalog = col.args.get("catalog")
+                if (
+                    isinstance(entry, exp.Table)
+                    and not entry.alias
+                    and entry.db == db.name
+                    and (catalog is None or entry.catalog == catalog.name)
+                ):
+                    col.set("db", None)
+                    col.set("catalog", None)
+                break
+            scope = scope.find_ancestor(exp.Select, exp.Update, exp.Delete)
+
+
 def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Qualify and quote all table references using CompilationContext.
 
@@ -270,10 +327,14 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
+    # The alias pinned below hides the table's schema-qualified name from its column references.
+    bind_schema_qualified_columns(tree)
     quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if not isinstance(node, exp.Table):
+        if not isinstance(node, exp.Table) or not isinstance(node.this, exp.Identifier):
+            # REQ-2167: a function in FROM (pg_catalog.json_to_recordset(...) AS t(v int)) is
+            # no table reference: it has no name to qualify, and its definition list is its own.
             return node
         name = node.name
         db = node.db  # schema
@@ -617,6 +678,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
     # catalog normalize_table_refs re-attaches for already-qualified refs (REQ-641/REQ-863).
     sql = translate_epoch_temporal_columns(strip_catalog(sql), ctx.epoch_columns)  # REQ-1908
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
+    sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
@@ -677,6 +739,7 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         _apply_replacements(sql, replacements), ctx.epoch_columns
     )
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
+    sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
@@ -732,6 +795,12 @@ def unalias_write_target(sql: str) -> str:  # REQ-910
     # the INSERT's own, so it stays on the target.
     columns = list(alias.args.get("columns") or [])
     target.set("alias", None)
+    if isinstance(tree, exp.Update):
+        # Trino/Athena's UPDATE binds a column by its bare name; the self-alias qualifier goes too.
+        # A column inside a nested SELECT keeps its qualifier: it belongs to that query's scope.
+        for col in list(tree.find_all(exp.Column)):
+            if col.table == target.name and col.find_ancestor(exp.Select) is None:
+                col.set("table", None)
     if columns and isinstance(tree, exp.Insert) and not isinstance(tree.this, exp.Schema):
         tree.set("this", exp.Schema(this=target, expressions=columns))
     return tree.sql(dialect="postgres")
@@ -908,6 +977,7 @@ def propagate_literal_join_predicates(  # REQ-1880
     column_types: dict[tuple[str, str, str], str] | None = None,
     *,
     allow_params: bool = False,
+    read_once: bool = False,
 ) -> str:
     """Propagate a literal WHERE predicate across an INNER equi-join onto the far table's own join
     column, so a connector whose pushdown is limited to literal predicates (no join-pushdown --
@@ -930,6 +1000,9 @@ def propagate_literal_join_predicates(  # REQ-1880
     column is left alone). Only a genuine INNER (or unqualified, same thing) equi-join on exactly
     two plain columns is propagated across -- see ``_equi_join_columns`` for why LEFT/RIGHT/FULL
     OUTER must not be.
+
+    ``read_once``: an engine that runs a correlated subquery once per outer row also has a nested
+    read whose key set is closed read once, see ``_read_once``.
     """
     if not eligible_targets:
         return sql
@@ -992,9 +1065,102 @@ def propagate_literal_join_predicates(  # REQ-1880
                 combined = exp.and_(combined, pred, copy=False)
             where.set("this", combined)
             changed = True
-    if _propagate_into_correlated_subqueries(tree, eligible_targets, column_types, allow_params):
+    if _propagate_into_correlated_subqueries(
+        tree, eligible_targets, column_types, allow_params, read_once
+    ):
         changed = True
     return tree.sql(dialect=dialect) if changed else sql
+
+
+def _closed_key_set(preds: list[exp.Expr]) -> bool:
+    """Whether ``preds``, literal conjuncts on one column, name a closed set of its values: an
+    open range bounds nothing a root LIMIT would not, so reading all of it can cost far more than
+    one read per row."""
+    if any(isinstance(p, (exp.EQ, exp.In, exp.Between)) for p in preds):
+        return True
+    return any(isinstance(p, (exp.GT, exp.GTE)) for p in preds) and any(
+        isinstance(p, (exp.LT, exp.LTE)) for p in preds
+    )
+
+
+def _reads_only_itself(sub: exp.Select) -> bool:
+    """Whether every qualified column in ``sub`` is of a relation inside it, so it can leave the
+    outer row's scope. A column of the statement around it is a correlation it cannot lose."""
+    local = {t.alias_or_name.lower() for t in sub.find_all(exp.Table)}
+    local |= {s.alias.lower() for s in sub.find_all(exp.Subquery) if s.alias}
+    return all(c.table.lower() in local for c in sub.find_all(exp.Column) if c.table)
+
+
+def _read_once(
+    outer: exp.Select,
+    projection: exp.Expr,
+    sub: exp.Select,
+    correlation: exp.EQ,
+    inner_col: exp.Column,
+    outer_col: exp.Column,
+) -> bool:
+    """A nested relationship's correlated read, bounded to a closed key set, as one grouped read
+    joined by key. PostgreSQL has no decorrelation: the subquery's foreign scan is one remote query
+    per outer row (P10: 10 s over 1000 rows). The value stays one JSON per outer row, so no list
+    element collapses and the outer rows do not repeat. No match reads NULL, as the subquery did:
+    only ``json_agg`` and ``json_object`` qualify, an aggregate that answers no rows otherwise
+    (``count``) does not. The governed WHERE moves with the read. Returns whether it moved."""
+    if (
+        not isinstance(projection, exp.Alias)
+        or outer.args.get("group")
+        or outer.args.get("distinct")
+    ):
+        return False
+    value = projection.this
+    subquery = value.this if isinstance(value, exp.Coalesce) else value
+    if not isinstance(subquery, exp.Subquery) or subquery.this is not sub:
+        return False
+    if any(
+        sub.args.get(arg)
+        for arg in ("joins", "group", "having", "order", "offset", "distinct", "with_")
+    ):
+        return False
+    [read] = sub.expressions if len(sub.expressions) == 1 else [None]
+    limit = sub.args.get("limit")
+    if isinstance(read, exp.JSONObject):
+        # A to-one field: the head of its matched rows, as LIMIT 1 took.
+        if limit is None or limit.expression.sql() != "1":
+            return False
+    elif limit is not None or not (
+        isinstance(read, exp.JSONArrayAgg)
+        or (isinstance(read, exp.Anonymous) and read.name.upper() == "JSON_AGG")
+    ):
+        return False
+    rest = [c for c in _split_and(sub.args["where"].this) if c is not correlation]
+    sub.args["where"].set("this", exp.and_(*rest, copy=False))
+    if not _reads_only_itself(sub):
+        sub.args["where"].set("this", exp.and_(sub.args["where"].this, correlation, copy=False))
+        return False
+    if isinstance(read, exp.JSONObject):
+        sub.set("limit", None)
+        sub.set("distinct", exp.Distinct(on=exp.Tuple(expressions=[inner_col.copy()])))
+    else:
+        sub.set("group", exp.Group(expressions=[inner_col.copy()]))
+    alias = f"_read_{len(outer.args.get('joins') or [])}"
+    sub.set(
+        "expressions",
+        [
+            exp.alias_(inner_col.copy(), "_key", quoted=True),
+            exp.alias_(read, "_value", quoted=True),
+        ],
+    )
+    subquery.replace(exp.column("_value", table=alias, quoted=True))
+    outer.append(
+        "joins",
+        exp.Join(
+            this=exp.Subquery(this=sub, alias=exp.TableAlias(this=exp.to_identifier(alias, True))),
+            side="LEFT",
+            on=exp.EQ(
+                this=exp.column("_key", table=alias, quoted=True), expression=outer_col.copy()
+            ),
+        ),
+    )
+    return True
 
 
 def _propagate_into_correlated_subqueries(
@@ -1002,6 +1168,7 @@ def _propagate_into_correlated_subqueries(
     eligible_targets: set[tuple[str, str]],
     column_types: dict[tuple[str, str, str], str],
     allow_params: bool,
+    read_once: bool = False,
 ) -> bool:
     """REQ-1880 (amended): the same literal propagation into a CORRELATED scalar subquery in a
     SELECT list -- the shape a GraphQL nested relationship compiles to (``(SELECT ... FROM docs t2
@@ -1032,12 +1199,13 @@ def _propagate_into_correlated_subqueries(
         if not literal_preds:
             continue
         for projection in outer.expressions:
-            for sub in projection.find_all(exp.Select):
+            for sub in list(projection.find_all(exp.Select)):
                 sub_where = sub.args.get("where")
                 if sub_where is None:
                     continue
                 sub_aliases = _collect_table_aliases(sub)
                 additions: list[exp.Expr] = []
+                key: tuple[exp.EQ, exp.Column, exp.Column] | None = None
                 for conjunct in _split_and(sub_where.this):
                     if not isinstance(conjunct, exp.EQ):
                         continue
@@ -1084,12 +1252,16 @@ def _propagate_into_correlated_subqueries(
                                     col.set("table", inner_col.args["table"].copy())
                                     col.set("this", inner_col.args["this"].copy())
                             additions.append(propagated)
+                        if _closed_key_set(preds):
+                            key = (conjunct, inner_col, outer_col)
                 if additions:
                     combined = sub_where.this
                     for pred in additions:
                         combined = exp.and_(combined, pred, copy=False)
                     sub_where.set("this", combined)
                     changed = True
+                    if read_once and key is not None:
+                        _read_once(outer, projection, sub, *key)
     return changed
 
 

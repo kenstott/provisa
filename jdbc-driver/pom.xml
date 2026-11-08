@@ -72,6 +72,19 @@
         <artifactId>netty-transport-native-unix-common</artifactId>
         <version>4.1.138.Final</version>
       </dependency>
+      <!-- CVE override: flight-core 19.0.0 pulls guava 33.4.8-jre, affected by GHSA-xxph-c9ww-hj94
+           (CVE-2026-102554, HIGH; fixed in 33.7.2) — failed the release grype gate. -->
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>guava</artifactId>
+        <version>33.7.2-jre</version>
+      </dependency>
+      <!-- guava 33.7.2's own failureaccess; google-cloud-kms's nearer 1.0.2 otherwise wins. -->
+      <dependency>
+        <groupId>com.google.guava</groupId>
+        <artifactId>failureaccess</artifactId>
+        <version>1.0.3</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 

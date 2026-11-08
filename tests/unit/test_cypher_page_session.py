@@ -274,6 +274,34 @@ async def test_clearing_ends_it_and_the_next_statement_begins_a_new_one(dbs, mon
     assert store.graph(held.session).empty
 
 
+async def test_a_plan_kept_before_a_clear_is_not_served_to_the_session_after_it(
+    dbs, monkeypatch, ended
+):
+    """The principal's session id is fixed, so a cleared session's generation must not restart
+    where it began: a governed plan kept under the old key would meet different tables."""
+    from provisa.pgwire.governed_plan import PlanSlot
+    from tests.unit.test_governed_plan_stages import _slot_state
+
+    plans = _slot_state()
+    sql = "SELECT 1"
+
+    async def read_plan():
+        async with graph_session.session_for(state, "ada", ["analyst"], writes=False):
+            slot = PlanSlot(plans, "sql", "analyst", sql, temp_tables.slot_key())
+            assert temp_tables.slot_key(), "the session holds tables, so its plans are keyed"
+            return slot.cached(), slot
+
+    state, h = await _filled(dbs, monkeypatch)
+    _, slot = await read_plan()
+    slot.keep("plan")
+    assert (await read_plan())[0] == "plan"
+    await graph_session.clear(state, "ada")
+    # As many writes as _filled made, so a generation counted from 0 again meets its old value.
+    for x in range(4):
+        await _run(state, h, f"CREATE (:Other {{x: {x}}})")
+    assert (await read_plan())[0] is None
+
+
 async def test_one_unused_past_its_retention_is_ended(dbs, monkeypatch, ended):
     state, _h = await _filled(dbs, monkeypatch)
     assert await graph_session.sweep(state, datetime.now(UTC) + timedelta(days=6)) == []

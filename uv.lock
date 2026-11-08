@@ -1210,6 +1210,31 @@ wheels = [
 ]
 
 [[package]]
+name = "firebird-base"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c4/76/c8b3f19c3594a33752421ca3890ae35170db7ed7770e7e5880ff8c4d7a72/firebird_base-1.8.0.tar.gz", hash = "sha256:3b85952c07d8cce558b7579d08091ef46f7020301f58aa94c1c7f4b516a673c1", size = 49574, upload-time = "2024-05-03T14:58:06.969Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/69/6d99d9600c0d8f5242664b34a820e10fe9cb7e7f2c3c8ca6fbc6570a8ed8/firebird_base-1.8.0-py3-none-any.whl", hash = "sha256:1358fea4626b3ba78230eb5655e085399251ee1c281289a912c528246eeeab0b", size = 62084, upload-time = "2024-05-03T14:58:08.742Z" },
+]
+
+[[package]]
+name = "firebird-driver"
+version = "1.10.11"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "firebird-base" },
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e5/78/79161f44d0971f10375b458d2bc9e5a26db113f38ac97266e3cff4a68cda/firebird_driver-1.10.11.tar.gz", hash = "sha256:e671508d4ddb4c4f2569c5e38013dae82ec4748396d9d7e83af52d6d4d115357", size = 100912, upload-time = "2025-04-22T10:00:17.502Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/32/c576baf7f12faf3a150410fb23b5287d9fd1beb840c855c72ae1a6dad920/firebird_driver-1.10.11-py3-none-any.whl", hash = "sha256:9798dda2bb465070737268a6b31b562b29823908810c4f1faeeb78133c502bb1", size = 105625, upload-time = "2025-04-22T10:00:18.876Z" },
+]
+
+[[package]]
 name = "fonttools"
 version = "4.67.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1937,6 +1962,33 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/28/23/8215ff473a8b986cc138c80ccead07ab0ddeb09e5d3b3fa43885aa51c46e/hypothesis-6.157.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:a905e9a208d12d0e9c9538ac10e721c1bc5893d5a643124e8ba73e43121da079", size = 1245818, upload-time = "2026-07-20T14:09:07.237Z" },
     { url = "https://files.pythonhosted.org/packages/71/61/35145430f30d53461a5535c1aa52d0721c2f5e896c8c443fb6a910a267b2/hypothesis-6.157.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:9cfb9ca5a0747e759aaa7f8eb6866b9186c4766d76ad761ef545ad502d16cce1", size = 1289401, upload-time = "2026-07-20T14:09:22.908Z" },
     { url = "https://files.pythonhosted.org/packages/77/ee/11d026f3a3f142236e32574a963985770a60e0448dd94025ed641b3c6d82/hypothesis-6.157.1-cp312-cp312-win_amd64.whl", hash = "sha256:2aae63ff2e480209a9b4bc1a87800ba9a902c65597d4bb4e93cad070c1b068f5", size = 640053, upload-time = "2026-07-20T14:09:40.861Z" },
+]
+
+[[package]]
+name = "ibm-db"
+version = "3.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/9d/9f31efe9462a220d3e4e19dc96839b97a8dcd4203e9245a0497cfae6f683/ibm_db-3.3.0.tar.gz", hash = "sha256:75c6749957d202e0b6b37e1e823583bfc37b65293ee123fb287e409d7426b53d", size = 315316, upload-time = "2026-08-11T21:00:35.04Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/75/d60e93559b1b0ff8684622ab54901416834a27a5ff11391d341523cbce0b/ibm_db-3.3.0-cp312-cp312-macosx_10_15_x86_64.whl", hash = "sha256:17335ee3f401f32c10db831a727ea365ca22c12a6ae1f97cab5357c85d8fda27", size = 24195236, upload-time = "2026-08-11T20:58:51.819Z" },
+    { url = "https://files.pythonhosted.org/packages/60/34/761cb391e31b952696a5756738aa14840d09e144d662c9d7a8f49f2c43c8/ibm_db-3.3.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:b801774c68c303e5a53fbd982b79bbfa5905b789eb3476b8ae1db22ce6726c20", size = 20865076, upload-time = "2026-08-11T20:58:55.181Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/3d/0832755c8d6e164f6b25a8dcee5408a497f80780a1f8044cee2896ef0113/ibm_db-3.3.0-cp312-cp312-manylinux_2_34_i686.whl", hash = "sha256:e15138cfeb6e2a0fa5c248bfae7ba9cee7b83856048c81b9e7e36f461df74f8c", size = 43810768, upload-time = "2026-08-11T20:59:00.559Z" },
+    { url = "https://files.pythonhosted.org/packages/61/8a/6c57f4c4fcaa4eef419d5eae30f9b7ce620560c3cbd103324dcab5f1e9b1/ibm_db-3.3.0-cp312-cp312-manylinux_2_34_x86_64.whl", hash = "sha256:f282dcc731a33cd19bf310a6f0f28088fa9bd64fb42f28b955b38a5e8f240990", size = 48156737, upload-time = "2026-08-11T20:59:06.154Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/4d/5d14c9ae0051879b4bd4aa6e16b3a8bc0f3ba638c3852d30a2ce77ec76a5/ibm_db-3.3.0-cp312-cp312-win32.whl", hash = "sha256:e3908f9af3e038797a95b60ee0ccfb1a10f35d01cfb623151f534461e9f2691f", size = 24601597, upload-time = "2026-08-11T20:59:10.363Z" },
+    { url = "https://files.pythonhosted.org/packages/29/12/890970bbd9e1232ad8e612e133eb40032011a5a24b632d85b4d1d5a6bdbf/ibm_db-3.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:70147f6885ae7b02f440e5a73be6cf44667d0d708ffec9695d2e5881b9e0ed41", size = 28421640, upload-time = "2026-08-11T20:59:14.33Z" },
+]
+
+[[package]]
+name = "ibm-db-sa"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ibm-db" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7d/9d/2d6a1ba44af4a6ee411a61e18dbaa735f5d63880e159b877658b17ba4ea3/ibm_db_sa-0.4.4.tar.gz", hash = "sha256:f2567853fd095821964d6a6880e54fddee249d68cc835a3fd0c7d1cdd6a01055", size = 45207, upload-time = "2026-03-18T06:49:20.86Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/83/6a/1fdabb124aa5a045e38ad68fec876b27537b50e85cf7603dc2f4778c6bfb/ibm_db_sa-0.4.4-py3-none-any.whl", hash = "sha256:db0464d87d39a6a3ec8716515ec1dbb7f4620596295e433be53375cdeab9d631", size = 42731, upload-time = "2026-03-18T06:49:19.742Z" },
 ]
 
 [[package]]
@@ -3108,11 +3160,11 @@ wheels = [
 
 [[package]]
 name = "oauthlib"
-version = "4.0.0"
+version = "4.0.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7a/d8/a1bcc8ba112a627f8ffbdc212a78ce18d3ac07e91a5ca65d27918eee25a1/oauthlib-4.0.0.tar.gz", hash = "sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86", size = 187232, upload-time = "2026-09-28T06:01:18.77Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/17/2bb072de0b990303c985f26869fd47bb179024a051f47e7f9d208eb92f8e/oauthlib-4.0.1.tar.gz", hash = "sha256:3d73febdb6faa00f277c81fb04be7b7586fb96fc3b7f0b9c772dada69a25ede7", size = 191219, upload-time = "2026-10-31T09:52:58.008Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d9/f4/78229a1066068ca14fc60fb26cf7381cabe4382261392b90e5f9552722d4/oauthlib-4.0.0-py3-none-any.whl", hash = "sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd", size = 159715, upload-time = "2026-09-28T06:01:17.008Z" },
+    { url = "https://files.pythonhosted.org/packages/df/ef/3b8adde1b32a6f540758bff734d3442c621734c83708e5f02b0ba2f43b84/oauthlib-4.0.1-py3-none-any.whl", hash = "sha256:498a298876e996301950a5b053d12c31628bb7b895db03666430c69ce182eb61", size = 161934, upload-time = "2026-10-31T09:52:56.206Z" },
 ]
 
 [[package]]
@@ -3130,6 +3182,17 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/45/e1/ee45285f7a36b8ff2e1bf9f93cd9d3ce4526b9aefc50959dc64b13b37d7e/openai-3.19.1.tar.gz", hash = "sha256:fa289b936961909defe53eb10090d4a5d64c98d64c7c86c8c112cfed8afac332", size = 1716067, upload-time = "2026-09-23T19:16:39.514Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a3/3b/772e8ecab882b8686b0e8d2908dd308868c73696a9ed7276dd0d8da32f69/openai-3.19.1-py3-none-any.whl", hash = "sha256:98a261f86742a957fdf082cbcb19898e2da6946938d1779aa8c01baf10015bdd", size = 2070556, upload-time = "2026-09-23T19:16:36.876Z" },
+]
+
+[[package]]
+name = "opengauss-sqlalchemy"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sqlalchemy" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/f4/cad1ddef7551f54a4a6e96f03c1af00bfefd821a2cec2df45180c1d67abf/opengauss_sqlalchemy-2.4.0-py2.py3-none-any.whl", hash = "sha256:bdaf3b40ebd8884e419f93bb274b100ff1367af07f075df833f500cdf09e87de", size = 27905, upload-time = "2025-06-12T02:24:18.102Z" },
 ]
 
 [[package]]
@@ -3848,8 +3911,11 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pymysql" },
     { name = "pyodbc" },
+    { name = "pypdf" },
     { name = "python-dateutil" },
+    { name = "python-docx" },
     { name = "python-evtx" },
+    { name = "pytz" },
     { name = "pyyaml" },
     { name = "qdrant-client" },
     { name = "rdflib" },
@@ -3866,6 +3932,7 @@ dependencies = [
     { name = "statsmodels" },
     { name = "strawberry-graphql", extra = ["fastapi"] },
     { name = "trino" },
+    { name = "tzdata" },
     { name = "uvicorn" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
     { name = "websockets" },
@@ -3876,15 +3943,34 @@ all-drivers = [
     { name = "aiomysql" },
     { name = "aioodbc" },
     { name = "cassandra-driver" },
+    { name = "firebird-driver" },
     { name = "hdbcli" },
+    { name = "ibm-db" },
+    { name = "ibm-db-sa" },
+    { name = "opengauss-sqlalchemy" },
     { name = "oracledb" },
+    { name = "pyexasol" },
+    { name = "pymonetdb" },
+    { name = "sqlalchemy-cockroachdb" },
+    { name = "sqlalchemy-exasol" },
+    { name = "sqlalchemy-firebird" },
     { name = "sqlalchemy-hana" },
+    { name = "sqlalchemy-monetdb" },
+    { name = "sqlalchemy-vertica-python" },
+    { name = "vertica-python" },
 ]
 azure = [
     { name = "azure-keyvault-keys" },
 ]
 cassandra = [
     { name = "cassandra-driver" },
+]
+cockroachdb = [
+    { name = "sqlalchemy-cockroachdb" },
+]
+db2 = [
+    { name = "ibm-db" },
+    { name = "ibm-db-sa" },
 ]
 demo = [
     { name = "great-expectations", extra = ["postgresql"] },
@@ -3933,8 +4019,16 @@ embedded = [
     { name = "fakeredis" },
     { name = "provisa-duckdb-ext" },
 ]
+exasol = [
+    { name = "pyexasol" },
+    { name = "sqlalchemy-exasol" },
+]
 firebase = [
     { name = "firebase-admin" },
+]
+firebird = [
+    { name = "firebird-driver" },
+    { name = "sqlalchemy-firebird" },
 ]
 gcp = [
     { name = "google-cloud-kms" },
@@ -3947,8 +4041,15 @@ kms-all = [
     { name = "google-cloud-kms" },
     { name = "hvac" },
 ]
+monetdb = [
+    { name = "pymonetdb" },
+    { name = "sqlalchemy-monetdb" },
+]
 mysql = [
     { name = "aiomysql" },
+]
+opengauss = [
+    { name = "opengauss-sqlalchemy" },
 ]
 oracle = [
     { name = "oracledb" },
@@ -3968,6 +4069,10 @@ vault = [
 ]
 vector = [
     { name = "sentence-transformers" },
+]
+vertica = [
+    { name = "sqlalchemy-vertica-python" },
+    { name = "vertica-python" },
 ]
 
 [package.metadata]
@@ -4018,6 +4123,7 @@ requires-dist = [
     { name = "fastavro", specifier = ">=1,<2" },
     { name = "firebase-admin", marker = "extra == 'dev'" },
     { name = "firebase-admin", marker = "extra == 'firebase'" },
+    { name = "firebird-driver", marker = "extra == 'firebird'", specifier = ">=1.10,<2" },
     { name = "google-cloud-bigquery" },
     { name = "google-cloud-bigquery-storage" },
     { name = "google-cloud-kms", marker = "extra == 'gcp'" },
@@ -4038,6 +4144,8 @@ requires-dist = [
     { name = "hvac", marker = "extra == 'kms-all'" },
     { name = "hvac", marker = "extra == 'vault'" },
     { name = "hypothesis", marker = "extra == 'dev'" },
+    { name = "ibm-db", marker = "extra == 'db2'", specifier = ">=3,<4" },
+    { name = "ibm-db-sa", marker = "extra == 'db2'", specifier = ">=0.4,<1" },
     { name = "ijson" },
     { name = "import-linter", marker = "extra == 'dev'" },
     { name = "impyla" },
@@ -4061,6 +4169,7 @@ requires-dist = [
     { name = "neo4j" },
     { name = "networkx", specifier = ">=3.0" },
     { name = "openai" },
+    { name = "opengauss-sqlalchemy", marker = "extra == 'opengauss'", specifier = ">=2.4,<3" },
     { name = "openpyxl" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
@@ -4081,6 +4190,7 @@ requires-dist = [
     { name = "pixeltable-pgserver", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'", specifier = "==0.5.1" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
+    { name = "provisa", extras = ["cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica"], marker = "extra == 'all-drivers'" },
     { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1" },
     { name = "provisa-notebook", editable = "provisa-notebook" },
     { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.2.0" },
@@ -4091,11 +4201,14 @@ requires-dist = [
     { name = "pyathena" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pyexasol" },
+    { name = "pyexasol", marker = "extra == 'exasol'", specifier = ">=0.26,<4" },
     { name = "pyiceberg" },
     { name = "pyjwt", extras = ["crypto"] },
     { name = "pymdown-extensions", marker = "extra == 'docs'" },
+    { name = "pymonetdb", marker = "extra == 'monetdb'", specifier = ">=1.8,<2" },
     { name = "pymysql" },
     { name = "pyodbc" },
+    { name = "pypdf", specifier = ">=6,<7" },
     { name = "pyright", marker = "extra == 'dev'" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
@@ -4104,8 +4217,10 @@ requires-dist = [
     { name = "pytest-timeout", marker = "extra == 'dev'" },
     { name = "pytest-xdist", marker = "extra == 'dev'" },
     { name = "python-dateutil" },
+    { name = "python-docx", specifier = ">=1.2,<2" },
     { name = "python-evtx", specifier = "==0.8.1" },
     { name = "python-pptx", marker = "extra == 'dev'" },
+    { name = "pytz", specifier = "==2026.6" },
     { name = "pyyaml" },
     { name = "qdrant-client", specifier = ">=1.12,<2" },
     { name = "rdflib", specifier = ">=7.1,<8" },
@@ -4122,20 +4237,27 @@ requires-dist = [
     { name = "soda-postgres", marker = "extra == 'soda'" },
     { name = "sparqlwrapper", marker = "extra == 'dev'", specifier = ">=2,<3" },
     { name = "sqlalchemy", specifier = ">=2" },
+    { name = "sqlalchemy-cockroachdb", marker = "extra == 'cockroachdb'", specifier = ">=2,<3" },
+    { name = "sqlalchemy-exasol", marker = "extra == 'exasol'", specifier = ">=7,<8" },
+    { name = "sqlalchemy-firebird", marker = "extra == 'firebird'", specifier = ">=2.2,<3" },
     { name = "sqlalchemy-hana", marker = "extra == 'all-drivers'" },
     { name = "sqlalchemy-hana", marker = "extra == 'saphana'" },
+    { name = "sqlalchemy-monetdb", marker = "extra == 'monetdb'", specifier = ">=2,<3" },
     { name = "sqlalchemy-redshift" },
     { name = "sqlalchemy-singlestoredb" },
+    { name = "sqlalchemy-vertica-python", marker = "extra == 'vertica'", specifier = ">=0.6,<1" },
     { name = "sqlglot", specifier = ">=30.23,<30.24" },
     { name = "statsmodels", specifier = ">=0.14.4,<0.15" },
     { name = "strawberry-graphql", extras = ["fastapi"] },
     { name = "syrupy", marker = "extra == 'dev'" },
     { name = "trino" },
+    { name = "tzdata", specifier = "==2026.6" },
     { name = "uvicorn" },
     { name = "uvloop", marker = "sys_platform != 'win32'" },
+    { name = "vertica-python", marker = "extra == 'vertica'", specifier = ">=1.4,<2" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cassandra", "all-drivers", "soda", "gx", "demo", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica", "cassandra", "all-drivers", "soda", "gx", "demo", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "provisa-duckdb-ext"
@@ -4281,11 +4403,11 @@ wheels = [
 
 [[package]]
 name = "pyasn1"
-version = "0.6.4"
+version = "0.6.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a4/9a/23310166d960def5897e91fe20e5b724601b02a22e84ba1f94232c0b7f67/pyasn1-0.6.4.tar.gz", hash = "sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81", size = 151262, upload-time = "2026-07-09T01:12:33.988Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/7e/3c0da41061a2021cac7cd524fd57092adbe5b515e8bf9005702e366802e2/pyasn1-0.6.5.tar.gz", hash = "sha256:6b11616a6bcf3a40e635f082bb232fa57b5e0dd7f517bd7ddd69ec3794508a47", size = 155152, upload-time = "2026-10-27T06:32:49.125Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9a/3b/6163796d69c3977d1e4287bea4a6979161cbbdd170ebb430511e8e1999ce/pyasn1-0.6.4-py3-none-any.whl", hash = "sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b", size = 84410, upload-time = "2026-07-09T01:12:32.92Z" },
+    { url = "https://files.pythonhosted.org/packages/19/1f/3eefd5c84c35cae44549ce1c7f7e58f7945b34f5a6bce07a135438522073/pyasn1-0.6.5-py3-none-any.whl", hash = "sha256:4017b0fce125096b8573b39c989fdb1a4b19cf761e683398184550fea0e66587", size = 84807, upload-time = "2026-10-27T06:32:48.045Z" },
 ]
 
 [[package]]
@@ -4493,6 +4615,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pymonetdb"
+version = "1.9.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/f4/26d52dea5389d1b86de8d6e845c83302d89051b6de30bde194aad97bd63a/pymonetdb-1.9.1.tar.gz", hash = "sha256:b9d06b8411a35a118558a19fb4f4c3c1a1389ba6c26cc15ae363082cd2a5648c", size = 95879, upload-time = "2026-07-09T10:50:14.797Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/dd/83134c98891df4959736e9064d48718095e3536818850109d78efa19447c/pymonetdb-1.9.1-py2.py3-none-any.whl", hash = "sha256:5937acd255337188ae51f4e0e5bf7bae29f4389d4ff4c4045de9f9c7b7ec14c6", size = 119093, upload-time = "2026-07-09T10:50:13.495Z" },
+]
+
+[[package]]
 name = "pymongo"
 version = "4.19.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4563,11 +4694,11 @@ wheels = [
 
 [[package]]
 name = "pypdf"
-version = "6.21.2"
+version = "6.21.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/06/28/081f1cbcca7042441dafc8de00f48ba60853f89e5bff92c5f26477346d81/pypdf-6.21.2.tar.gz", hash = "sha256:0a3e1c5c886a1be03646c16a04827cc166c2a0575c971b26a4bf89686551c2d4", size = 7144571, upload-time = "2026-10-21T16:44:55.272Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e1/ec8f4d155c997c45917153a5521e60d6ee6389d68abdcbc8e44e564caffc/pypdf-6.21.4.tar.gz", hash = "sha256:c8817e3f888d47a087872ded69812c1ef30cacb871d6e053e0c00bbaf0bc2163", size = 7109255, upload-time = "2026-10-28T17:00:54.81Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1b/4d/c9d2d67f204eff463237a1a8f5e25a6923b7b1043982b91fcaf104c8ef60/pypdf-6.21.2-py3-none-any.whl", hash = "sha256:1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084", size = 407766, upload-time = "2026-10-21T16:44:53.626Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/4b/77e8ad4ac42c9d93600f40541a50e9feb3a61d2bbee2d76f659346072051/pypdf-6.21.4-py3-none-any.whl", hash = "sha256:33e4fb41ca352810eb4e9838aa0d82d6888a5f8bf682f43e99cce5faa666255c", size = 410430, upload-time = "2026-10-28T17:00:53.146Z" },
 ]
 
 [[package]]
@@ -4714,6 +4845,19 @@ wheels = [
 ]
 
 [[package]]
+name = "python-docx"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lxml" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/f7/eddfe33871520adab45aaa1a71f0402a2252050c14c7e3009446c8f4701c/python_docx-1.2.0.tar.gz", hash = "sha256:7bc9d7b7d8a69c9c02ca09216118c86552704edc23bac179283f2e38f86220ce", size = 5723256, upload-time = "2025-06-16T20:46:27.921Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/00/1e03a4989fa5795da308cd774f05b704ace555a70f9bf9d3be057b680bcf/python_docx-1.2.0-py3-none-any.whl", hash = "sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7", size = 252987, upload-time = "2025-06-16T20:46:22.506Z" },
+]
+
+[[package]]
 name = "python-dotenv"
 version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -4774,11 +4918,11 @@ wheels = [
 
 [[package]]
 name = "pytz"
-version = "2026.2"
+version = "2026.6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ff/46/dd499ec9038423421951e4fad73051febaa13d2df82b4064f87af8b8c0c3/pytz-2026.2.tar.gz", hash = "sha256:0e60b47b29f21574376f218fe21abc009894a2321ea16c6754f3cad6eb7cdd6a", size = 320861, upload-time = "2026-05-04T01:35:29.667Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/b0/168030b0bfcc334cf09fa3313afdb888d892c8a0027324683d1de0ec277e/pytz-2026.6.tar.gz", hash = "sha256:3b0fc2727707663d6e517936f444fd8a8b240f1fc32f4bf7ee03274245945284", size = 318520, upload-time = "2026-10-29T09:05:47.011Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/dd/96da98f892250475bdf2328112d7468abdd4acc7b902b6af23f4ed958ea0/pytz-2026.2-py2.py3-none-any.whl", hash = "sha256:04156e608bee23d3792fd45c94ae47fae1036688e75032eea2e3bf0323d1f126", size = 510141, upload-time = "2026-05-04T01:35:27.408Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/25/564f3fc5b70c1398d706c51f2b1470d0ea0b1b2f96fee67877b6f5bdf3b6/pytz-2026.6-py2.py3-none-any.whl", hash = "sha256:7fed3fee8fd6bd4a2b7b75a8d56021d0624127bf69bd5691f115db929ac570b3", size = 506321, upload-time = "2026-10-29T09:05:45.14Z" },
 ]
 
 [[package]]
@@ -5335,6 +5479,46 @@ wheels = [
 ]
 
 [[package]]
+name = "sqlalchemy-cockroachdb"
+version = "2.0.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c0/46/1462dd4734c58e04b754db71a9607de6d748dedea86e30007b5ae7b4e3db/sqlalchemy_cockroachdb-2.0.4.tar.gz", hash = "sha256:f66354d2b93da89cb4524c5b78a44d0cf5a8943d328b7f0aee4aa1dfc6178b65", size = 31803, upload-time = "2026-04-23T18:12:28.147Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f2/f1/e08ec3fc57b6f890e8f6eb16734c4865626635f4863cc2fe7d259699ce7b/sqlalchemy_cockroachdb-2.0.4-py3-none-any.whl", hash = "sha256:0804306a733a1fe09b2d496eadf8bf35d878862b6138e69175136fa2ca0ce5d0", size = 22726, upload-time = "2026-04-23T18:12:26.936Z" },
+]
+
+[[package]]
+name = "sqlalchemy-exasol"
+version = "7.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pyexasol" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f5/fa/88930b04c18918eb1f402cc7bf9448877175ab26ae3c8327827cfcd800e5/sqlalchemy_exasol-7.2.0.tar.gz", hash = "sha256:07b1c35defd4f7f13d53311cad33cce87502d1bdb801385468106153a2b12d49", size = 20203, upload-time = "2026-10-19T11:31:43.322Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/2e/18d813b92d57c4dc567d976052d59c8f6a810b2459b199478ce78ffc0cf6/sqlalchemy_exasol-7.2.0-py3-none-any.whl", hash = "sha256:eae4f9c4d4b3d84e6408f2b62c3209bf22629ddb1894f91d1cf050447e274983", size = 21998, upload-time = "2026-10-19T11:31:44.146Z" },
+]
+
+[[package]]
+name = "sqlalchemy-firebird"
+version = "2.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "firebird-driver" },
+    { name = "packaging" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f7/d4/19b11ce74102bff7508d873affc8a94af6b5e41245151a924729b5231267/sqlalchemy_firebird-2.2.0.tar.gz", hash = "sha256:61149039975557497b80a8aeb9e3fb58c7a2f62fe4776337827e7ce51b4c7781", size = 71281, upload-time = "2026-05-21T12:14:54.592Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/15/cf/c0b3c0c6736f92eb301a7b3234b7447f5f6caa12829c5bf09e187e0fddc7/sqlalchemy_firebird-2.2.0-py3-none-any.whl", hash = "sha256:dd1e63b502f6864466cb4c26789c696ac9bec3ab9b86e2a44d2340b126b0058a", size = 34431, upload-time = "2026-05-21T12:14:53.316Z" },
+]
+
+[[package]]
 name = "sqlalchemy-hana"
 version = "4.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -5346,6 +5530,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f1/3c/b940cdbb8aadae31666aab6913c3cf70b8099a4cf9cb9d8a299b128e9c9d/sqlalchemy_hana-4.6.1.tar.gz", hash = "sha256:b79ef522562e18b616e47d3bed56032c3d26a6f46ff2b03432268a265d5bb657", size = 46826, upload-time = "2026-07-17T11:07:50.916Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/67/6d/6066815a6ebc9dff9daf2da00e2e109be738ac4a2c7446c07c8c263e7d80/sqlalchemy_hana-4.6.1-py3-none-any.whl", hash = "sha256:1edeab5d389be8b583aacc44eaee7b01a021e17b2597c0adfc249e427b060a84", size = 30666, upload-time = "2026-07-17T11:07:49.583Z" },
+]
+
+[[package]]
+name = "sqlalchemy-monetdb"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pymonetdb" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/70/bc/feeb96d7cf9bf1bf06a3368976cab3a4766051f4df14a034c5520c27bd0a/sqlalchemy_monetdb-2.1.0.tar.gz", hash = "sha256:48596a4d1db388293db9e93c42fa838ce9814031b59687f7bb80559c4ca602b7", size = 30941, upload-time = "2026-08-27T14:48:20.124Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/2c/de4326aa90e641437f6adb5417410eafca9589a845934d56b86a1de6d1a7/sqlalchemy_monetdb-2.1.0-py3-none-any.whl", hash = "sha256:026b0c4d4e030708a5bfd5d162c262cd39da1a3e31c476d8c24a0060abb2748b", size = 27782, upload-time = "2026-08-27T14:48:18.917Z" },
 ]
 
 [[package]]
@@ -5372,6 +5569,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/62/e3/f893cb96763e4d0bdcfd5a6661c5db405fd1c1997d420cd65106a2f60a66/sqlalchemy_singlestoredb-1.2.1.tar.gz", hash = "sha256:9cbb92278265487b64ab0b915e72d7cf7beb6f592b73a426bddceae509d06b69", size = 86889, upload-time = "2026-01-28T20:32:37.201Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/53/fe/03ee0908b8bdfa229266e923aed136f0ba98a519ba5c0154d87323e6dcf2/sqlalchemy_singlestoredb-1.2.1-py3-none-any.whl", hash = "sha256:88c51cb2cbb3a731938a1217dfab45f4a6431b607fca0ef94d0b45f5915ebedf", size = 106753, upload-time = "2026-01-28T20:32:35.499Z" },
+]
+
+[[package]]
+name = "sqlalchemy-vertica-python"
+version = "0.6.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "vertica-python" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e0/fc/e52cac0df3d55a2b4d0b07d449ddf9600adcc35c5715b289e17114ad86c2/sqlalchemy-vertica-python-0.6.3.tar.gz", hash = "sha256:5cbebb9875e59366b9e3b4791ef7c2a8e45dbe460fd27687f3dc742dc058a024", size = 7237, upload-time = "2023-06-05T20:29:06.031Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/7f/bc56d6d5dd40ead585529289505547f83322e1ba2cd4990bde534d2445c9/sqlalchemy_vertica_python-0.6.3-py3-none-any.whl", hash = "sha256:9f41c8d51f81bb00d9064cfe8facfda698667c105200f5d570d574696bcca4c9", size = 6747, upload-time = "2023-06-05T20:29:04.55Z" },
 ]
 
 [[package]]
@@ -5783,11 +5992,11 @@ wheels = [
 
 [[package]]
 name = "tzdata"
-version = "2026.2"
+version = "2026.6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ba/19/1b9b0e29f30c6d35cb345486df41110984ea67ae69dddbc0e8a100999493/tzdata-2026.2.tar.gz", hash = "sha256:9173fde7d80d9018e02a662e168e5a2d04f87c41ea174b139fbef642eda62d10", size = 198254, upload-time = "2026-04-24T15:22:08.651Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/29/6a1391d31cd00ff9e927215a224a880e1e84e826b64ba80a499e51c074d8/tzdata-2026.6.tar.gz", hash = "sha256:85d2cd9c09f81f0bb29db27759fc83af4f1e620efb814f8c5bf8b4cc4feece6d", size = 201017, upload-time = "2026-10-28T09:57:09.137Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl", hash = "sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7", size = 349321, upload-time = "2026-04-24T15:22:05.876Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl", hash = "sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec", size = 348210, upload-time = "2026-10-28T09:57:07.276Z" },
 ]
 
 [[package]]
@@ -5869,6 +6078,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/6f/e62b4dfc7ad6518e7eff2516f680d02a0f6eb62c0c212e152ca708a0085e/uvloop-0.22.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7b5b1ac819a3f946d3b2ee07f09149578ae76066d70b44df3fa990add49a82e4", size = 4426307, upload-time = "2025-10-16T22:16:32.917Z" },
     { url = "https://files.pythonhosted.org/packages/90/60/97362554ac21e20e81bcef1150cb2a7e4ffdaf8ea1e5b2e8bf7a053caa18/uvloop-0.22.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:e047cc068570bac9866237739607d1313b9253c3051ad84738cbb095be0537b2", size = 4131970, upload-time = "2025-10-16T22:16:34.015Z" },
     { url = "https://files.pythonhosted.org/packages/99/39/6b3f7d234ba3964c428a6e40006340f53ba37993f46ed6e111c6e9141d18/uvloop-0.22.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:512fec6815e2dd45161054592441ef76c830eddaad55c8aa30952e6fe1ed07c0", size = 4296343, upload-time = "2025-10-16T22:16:35.149Z" },
+]
+
+[[package]]
+name = "vertica-python"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/25/a86f25e00bfeccf0cf22ac9a727d055d061d49e757dabadc37710f9b567c/vertica-python-1.4.0.tar.gz", hash = "sha256:542078ae2fedee694adedb04d81c6edc277b87ed7440302942107d86a0bcd445", size = 110416, upload-time = "2024-07-22T07:02:34.22Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/96/7e/adc6a46263a48e0270b0bc6ddab60c6a70766103f37ec4591ef78f0221db/vertica_python-1.4.0-py3-none-any.whl", hash = "sha256:50fecd7687f4b0b9f6dee6e2b35c195af2a4f702ece01bd12e080b51756e000b", size = 191824, upload-time = "2024-07-22T07:02:32.184Z" },
 ]
 
 [[package]]

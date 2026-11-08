@@ -76,6 +76,9 @@ class SourceType(str, Enum):
     # DuckDB engine; motherduck attaches a remote cloud database on the pg engine.
     motherduck = "motherduck"
     saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
+    # REQ-2191: a database with no named type, reached at its own SQLAlchemy URL and written in the
+    # SQL dialect its admin chose (provisa/jdbc_source).
+    jdbc = "jdbc"
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"
     yugabytedb = "yugabytedb"
@@ -124,10 +127,11 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993): the organisation's own functions, run in a sandboxed worker; their
-    # tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+    # worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
+    go = "go"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -161,6 +165,9 @@ class SourceType(str, Enum):
     sharepoint = "sharepoint"
     salesforce = "salesforce"
     servicenow = "servicenow"  # REQ-1954: read through the instance's Table API
+    # REQ-2197: QuickBooks Online, its Accounting API entities read through the query endpoint
+    # (simple conditions pushed into its query language) and landed.
+    quickbooks = "quickbooks"
     jira = "jira"  # REQ-2069: Jira Cloud, read through its Calcite adapter (JQL pushed down)
     cloudops = "cloudops"  # REQ-1947: Azure / AWS / GCP resource inventory, read only
     splunk = "splunk"
@@ -357,9 +364,13 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         return stored_convention(v)
 
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
-    # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
-    # through for backward compatibility but are deprecated.
+    # vocabulary), translated to the engine session props at query time. Only that vocabulary reaches
+    # the session: every other key is a setting its connector or driver reads from here.
     federation_hints: dict[str, str] = Field(default_factory=dict)
+    # REQ-1923: the values a branded source's setup was given besides its credential, by the
+    # brand's setup field names (Shopify: store, api_version; provisa.graphql_remote.brands
+    # Brand.setup). Empty for a source of no brand, or a brand whose setup asks for nothing.
+    brand_setup: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
@@ -389,6 +400,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         refused = cache_ttl_refusal(self.cache_ttl)
         if refused is not None:
             raise ValueError(f"source {self.id!r}: {refused}")
+        return self
+
+    @model_validator(mode="after")
+    def _kafka_security_agrees(self) -> "Source":  # REQ-147
+        """A Kafka source's TLS and SASL settings are refused when saved if they disagree: a SASL
+        protocol with no mechanism or credential, a CA with no TLS. A reference stands for its
+        value here; what it resolves to is read at use."""
+        if self.type == SourceType.kafka:
+            from provisa.kafka.security import check_settings
+
+            check_settings(self.username, self.password, self.federation_hints)
         return self
 
     @model_validator(mode="after")
@@ -422,6 +444,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             data = {**data, "change_signal": source_change_signal(stype, data.get("change_signal"))}
         return data
 
+    @classmethod
+    def settings_view(
+        cls, source_id: str, source_type: str, federation_hints: dict[str, str]
+    ) -> "Source":  # REQ-2191
+        """The source as a runtime's per-source maps hold it -- its id, type and settings -- for a
+        reader that holds only those (``FederationEngine.connector_pushdown``). Not validated
+        again: it was when the source was saved."""
+        return cls.model_construct(
+            id=source_id, type=SourceType(source_type), federation_hints=dict(federation_hints)
+        )
+
     @property
     def connector(self) -> str | None:
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
@@ -433,7 +466,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     @property
     def dialect(self) -> str | None:
-        """SQLGlot dialect name, or None for NoSQL sources."""
+        """SQLGlot dialect name, or None for NoSQL sources. A JDBC source's is the one its
+        admin chose (REQ-2191)."""
+        if self.type == SourceType.jdbc:
+            from provisa.jdbc_source.settings import SQL_DIALECT
+
+            return self.federation_hints.get(SQL_DIALECT) or None
         return SOURCE_TO_DIALECT.get(self.type.value)
 
     @property
@@ -461,6 +499,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
         # the Avatica JDBC driver) — not a standard jdbc://host:port/db shape and no database segment.
         if st == "druid":
             return f"jdbc:avatica:remote:url=http://{h}:{po}/druid/v2/sql/avatica/"
+        # ClickHouse: Trino's connector speaks the JDBC driver over the HTTP interface, which is the
+        # port a clickhouse source declares (8123 when it names none).
+        if st == "clickhouse":
+            return f"jdbc:clickhouse://{h}:{po or 8123}/{self.database}"
         prefix = {
             "sqlserver": "jdbc:sqlserver",
             "oracle": "jdbc:oracle:thin",
@@ -608,6 +650,47 @@ class ContractTerms(BaseModel):  # REQ-2158
     notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
 
 
+class ContractCheck(BaseModel):  # REQ-2158
+    """One check the product promised on the member, as a contract version saved it: promises are
+    read live, so what a version promised is kept with it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    column: str | None = None  # None: a check of the table
+    severity: Literal["fail", "warn"] = "fail"
+    definition: str = ""
+
+
+class ContractChange(BaseModel):  # REQ-2158
+    """One difference of a contract version from the one before it. ``breaking``: it can break a
+    consumer (provisa.core.contract_versions)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[
+        "field_added",
+        "field_removed",
+        "field_renamed",
+        "field_type_changed",
+        "field_required",
+        "field_optional",
+        "field_described",
+        "sla_added",
+        "sla_removed",
+        "sla_changed",
+        "check_added",
+        "check_removed",
+        "check_changed",
+        "description_changed",
+        "terms_changed",
+    ]
+    subject: str = Field(min_length=1)
+    before: str | None = None
+    after: str | None = None
+    breaking: bool = False
+
+
 class DataContract(BaseModel):  # REQ-2158
     """A data product member's ODCS contract: its output port, versioned on its own. Its promises
     are the checks the product owns on the member (REQ-2157), read when the contract is."""
@@ -623,6 +706,26 @@ class DataContract(BaseModel):  # REQ-2158
     # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
     # every later version (data_contracts.for_save).
     created_at: datetime | None = None
+    # Every saved version, oldest first, the last this one (contract_versions.recorded). The
+    # store's record, as created_at is: a save replaces whatever it declares here.
+    versions: list["ContractVersion"] = Field(default_factory=list)
+
+
+class ContractVersion(BaseModel):  # REQ-2158
+    """A saved version of a contract: what it was, what it promised, how it differs from the one
+    before it, and when and by whom it was saved. ``saved_by`` None is the system (a configuration
+    load, a boot), as model_change.actor() says."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract: DataContract
+    checks: list[ContractCheck] = Field(default_factory=list)
+    changes: list[ContractChange] = Field(default_factory=list)
+    saved_at: datetime
+    saved_by: str | None = None
+
+
+DataContract.model_rebuild()
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -715,7 +818,28 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
         return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
+# REQ-2208: a reference library document, and a section of one, carry registry tags as columns and
+# terms do (a pii policy section tagged as the pii columns are).
+TAG_OBJECT_TYPES = (
+    "source",
+    "table",
+    "column",
+    "relationship",
+    "command",
+    "product",
+    "term",
+    "rls_rule",  # REQ-2208
+    "role",  # REQ-2208
+    "metric",  # REQ-2208
+    "document",
+    "section",
+)
+
+# REQ-2208: the object types whose tags live with the reference library (reference_document_tags),
+# the environment's own as the documents are; every other type's live in tag_assignments, with the
+# model. A tag follows its object's environment class.
+LIBRARY_TAG_OBJECT_TYPES = ("document", "section")
+MODEL_TAG_OBJECT_TYPES = tuple(t for t in TAG_OBJECT_TYPES if t not in LIBRARY_TAG_OBJECT_TYPES)
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -838,7 +962,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
-        applies_to=["column", "term"],
+        # REQ-2208: and on reference library documents and their sections, so the policy sections
+        # about personal data carry the same tag as the columns.
+        applies_to=["column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -949,6 +1075,20 @@ class TagParamValue(BaseModel):  # REQ-1467
     description: str = ""
 
 
+class RowRuleRef(BaseModel):  # REQ-2208
+    """A row rule as a configuration names it: its role, its target (a table by name, a domain,
+    an action or a tag, as :class:`RLSRule` names it) and its rights. A role holds a right in at
+    most one rule on a target (REQ-2188), so the three name one rule in every environment, where
+    the rule's serial names it in one."""
+
+    role_id: str
+    table_id: str | None = None
+    domain_id: str | None = None
+    action_name: str | None = None
+    tag_id: str | None = None
+    rights: list[str] = Field(default_factory=lambda: ["R"])
+
+
 class TagAssignment(BaseModel):  # REQ-1377
     tag_id: str
     object_type: str  # one of TAG_OBJECT_TYPES
@@ -977,6 +1117,19 @@ class TagAssignment(BaseModel):  # REQ-1377
     # loader as table_ref is.
     term_id: int | None = None
     term: str | None = None
+    # REQ-2208: a library document the tag is on (object_type "document"), or the document a
+    # tagged section is in (object_type "section"), the section named by its heading, or by its
+    # page when it has none (a PDF's sections are its pages).
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
+    # REQ-2208: a row rule (its serial, and its config-vocabulary identity ``rls_rule``: the rule's
+    # role, target and rights, which a load resolves as it resolves table_ref), a role (its id) or
+    # a governed metric (its name) the tag is on.
+    rls_rule_id: int | None = None
+    rls_rule: RowRuleRef | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -998,6 +1151,20 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"command:{self.command_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
+        if self.object_type == "product":  # REQ-1634
+            return f"product:{self.product_id}"
+        if self.object_type == "document":  # REQ-2208
+            return f"document:{self.document_id}"
+        if self.object_type == "section":  # REQ-2208
+            if self.section_heading is not None:
+                return f"section:{self.document_id}:heading:{self.section_heading}"
+            return f"section:{self.document_id}:page:{self.section_page}"
+        if self.object_type == "rls_rule":  # REQ-2208
+            return f"rls_rule:{self.rls_rule_id}"
+        if self.object_type == "role":
+            return f"role:{self.role_id}"
+        if self.object_type == "metric":
+            return f"metric:{self.metric_name}"
         return f"relationship:{self.relationship_id}"
 
 
@@ -1092,8 +1259,9 @@ class MaskEntry(BaseModel):  # REQ-2059, REQ-2153
     """One entry of a column's ordered mask list: the readers it is for (grant entries, as
     ``visible_to`` takes them, composites included) and the mask they read the column through, or
     none (``mask`` None: unmasked). A reader reads the column through the first entry it holds; a
-    reader holding none reads it unmasked. An entry with no ``to`` (None) is for every other
-    reader: it is the list's last entry, at most one per list."""
+    reader holding none reads it completely masked, so unmasked is only ever given by an entry.
+    An entry with no ``to`` (None) is for every other reader: it is the list's last entry, at most
+    one per list."""
 
     to: list[str] | None = None
     mask: Mask | None = None
@@ -1140,7 +1308,9 @@ class Column(
     # "query_param" (an OpenAPI operation), "graphql_arg" (a remote GraphQL field's argument),
     # "grpc_input" (a gRPC request's field), "query_arg" (an argument of the table's native
     # query: a MongoDB pipeline, a Cosmos DB query), "partition_key" (a Cosmos DB container's
-    # partition key, REQ-1982).
+    # partition key, REQ-1982), "column_value" (a real column of the table, given by equality,
+    # that narrows the read to the rows having that value: a JDBC source's floor,
+    # REQ-2191).
     native_filter_type: str | None = None
     # Whether the source cannot be read without a value for this parameter, as the source's own
     # description says (an OpenAPI path parameter or one marked required, a GraphQL argument
@@ -1151,6 +1321,7 @@ class Column(
     # require it. The parameter is required when either says so.
     required_by_steward: bool = False
     is_primary_key: bool = False  # user-designated PK (informational, not enforced)
+    not_null: bool = False  # REQ-2190: its source declares it NOT NULL, recorded at registration
     is_foreign_key: bool = False  # derived from relationships (source_column side)
     is_alternate_key: bool = (
         False  # derived from relationships (target_column when PK already exists)
@@ -1161,7 +1332,7 @@ class Column(
     # relationship, not data (graphql_remote/relation_columns.py).
     gql_object_type: str | None = None
     gql_is_list: bool = False
-    scope: str = "domain"  # "domain" | "listed" | "public" (core/column_scope.py, REQ-2153)
+    scope: str = "domain"  # "domain" | "listed" | "public" | "own-domain" (core/column_scope.py)
 
     @model_validator(mode="before")
     @classmethod
@@ -2138,8 +2309,8 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
-    # REQ-2155: the roles this one inherits from, in order; its capabilities are the union of its
-    # own and every ancestor's (security.inheritance).
+    # REQ-2155: the roles this one inherits from, in order; what it holds is what it is given
+    # intersected with the union of what they hold (security.inheritance.effective_rights).
     parents: list[str] = Field(default_factory=list)
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
@@ -2178,12 +2349,10 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042, REQ-2155
-    """Flatten the inherited role hierarchy: each role with its ancestors' capabilities and
-    domain_access unioned in, and each property (max_rows, session values) set by the nearest
-    ancestor that declares it -- the one resolution the runtime build applies
+    """Flatten the inherited role hierarchy: each role with what it holds, its rights intersected
+    with the union of its parents', and each property (max_rows, session values) set by the
+    nearest ancestor that declares it -- the one resolution the runtime build applies
     (security.inheritance.flatten_role_dicts). Refuses an inheritance cycle by name (REQ-1677).
-
-    Returns new Role objects with inherited permissions merged in.
     """
     from provisa.security.inheritance import flatten_role_dicts
 
@@ -2226,6 +2395,31 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     filter: str
     # REQ-2081: what the rule is for, as an access review reads it. Required, as a role's is.
     description: str
+    # REQ-2188: the rights this one predicate narrows: R reading a row, U updating it, D deleting
+    # it. A rule only narrows: the role's R or RW on the model is the ceiling, and U or D on a role
+    # with only R does nothing. Each right is in at most one rule of a role on a target.
+    rights: list[str] = Field(default_factory=lambda: ["R"])
+    # The stored rule a save replaces. None: the rule of this target and role holding exactly
+    # these rights, or a new one.
+    id: int | None = None
+
+    @field_validator("rights", mode="before")
+    @classmethod
+    def _rights(cls, value: Any) -> list[str]:  # REQ-2188
+        held = list(value)
+        unknown = [r for r in held if r not in ("R", "U", "D")]
+        if unknown or not held:
+            raise ValueError(f"A row rule's rights are some of R, U and D, not {value!r}")
+        return [r for r in ("R", "U", "D") if r in held]
+
+    @model_validator(mode="after")
+    def _action_rule_reads(self) -> "RLSRule":  # REQ-2188
+        if self.action_name and self.rights != ["R"]:
+            raise ValueError(
+                f"The row rule for {self.role_id!r} on action {self.action_name!r} has rights "
+                f"{self.rights!r}: an action's rows are read, so it takes only R"
+            )
+        return self
 
     @field_validator("description")
     @classmethod
@@ -2399,6 +2593,14 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
         from provisa.core.command_bindings import check_declared
 
         check_declared(self.name, {k: v.model_dump() for k, v in self.language_bindings.items()})
+        return self
+
+    @model_validator(mode="after")
+    def _void_names_no_return(self) -> "Function":  # REQ-2001
+        """A command declaring no outputs (``output_columns: []``) is VOID: it names no return."""
+        from provisa.core.void_command import check
+
+        check(self.name, self.output_columns, self.returns, self.return_schema)
         return self
 
     @model_validator(mode="after")
@@ -3209,6 +3411,9 @@ class AIModelsConfig(BaseModel):  # REQ-464
     # REQ-1794: the right-hand chat assistant panel's model (provisa/api/mcp/chat.py
     # _resolve_model() falls back to this same default when unconfigured).
     mcp_chat: str | dict = "claude-opus-4-8"
+    # REQ-2179: no default. A scan reads a whole document, so a model is chosen for it, and until
+    # one is a scan is refused saying so (provisa/term_finding/model.py).
+    glossary_term_finding: str | dict = ""
 
 
 class NlConfig(BaseModel):  # REQ-464
@@ -3433,6 +3638,15 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
+class ReferenceLibraryConfig(BaseModel):  # REQ-2185
+    """The reference library's retrieval setting, as an org holds it (org setting
+    ``reference_library``): the passages nearest a question, or the glossary walk's as well."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    retrieval: Literal["passage", "graph"] = "passage"
+
+
 #: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
 STORED_MODEL = "stored_model"
 
@@ -3512,6 +3726,8 @@ class ProvisaConfig(BaseModel):
     # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
+    # REQ-2185: the reference library's retrieval setting, passage or graph.
+    reference_library: ReferenceLibraryConfig = Field(default_factory=ReferenceLibraryConfig)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
@@ -3634,9 +3850,10 @@ class ProvisaConfig(BaseModel):
     def _roles_list_a_domain(self, info: ValidationInfo) -> "ProvisaConfig":
         """A role is always one or more domains, or all (``rights.role_domain_problem``).
 
-        Judged on the role's effective list — its own plus what a parent IN THIS CONFIG hands
-        down. An empty list reads no data, so it fails the load naming the role rather than
-        loading a role that silently reaches nothing.
+        An empty list reads no data, so it fails the load naming the role rather than loading a
+        role that silently reaches nothing. A role with parents is held to the form's rule: a
+        right no parent holds fails the load by name (REQ-2155), judged where every parent is a
+        role of this config or a standard role.
 
         A configuration a file or an apply gives is judged here. The model the store already holds
         (``STORED_MODEL`` in the validation context, ``config_loader.parse_store_raw``) is not: the
@@ -3647,27 +3864,41 @@ class ProvisaConfig(BaseModel):
         """
         if (info.context or {}).get(STORED_MODEL):
             return self
+        from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+        from provisa.security import domain_tree
+        from provisa.security.inheritance import parent_map, right_not_in_parents, role_chain
         from provisa.security.rights import role_domain_problem
 
-        by_id = {r.id: r for r in self.roles}
+        rows = {
+            **{r.id: r.model_dump() for r in self.roles},
+            **{r["id"]: r for r in standard_role_dicts()},
+        }
+        domain_parents = domain_tree.parent_map(d.model_dump() for d in self.domains)
+        parents = parent_map(rows.values())
         for role in self.roles:
-            # Walk the ancestors here rather than through flatten_roles: that refuses an
-            # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
-            # where the roles are flattened. A cycle simply ends this walk.
-            # REQ-2155: capabilities are inherited, reach is the role's own.
-            capabilities: set[str] = set()
-            seen: set[str] = set()
-            pending: list[Role] = [role]
-            while pending:
-                current = pending.pop()
-                if current.id in seen:
-                    continue
-                seen.add(current.id)
-                capabilities.update(current.capabilities)
-                pending.extend(by_id[p] for p in current.parents if p in by_id)
-            problem = role_domain_problem(role.id, capabilities, set(role.domain_access))
+            problem = role_domain_problem(role.id, role.capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
+            if role.id in STANDARD_ROLES:
+                continue
+            try:
+                chain = role_chain(role.id, parents)
+            except ValueError:
+                continue  # a cycle has its own rule and error, where roles flatten (REQ-1677)
+            if not set(chain) <= set(rows):
+                continue
+            refused = right_not_in_parents(
+                role.id,
+                role.parents,
+                role.capabilities,
+                role.domain_access,
+                role.residency_values,
+                [rows[rid] for rid in chain],
+                domain_parents,
+            )
+            if refused is not None:
+                kind, right, why = refused
+                raise ValueError(f"Role {role.id!r} cannot hold {kind} {right!r}: {why}")
         return self
 
     @model_validator(mode="after")

@@ -108,14 +108,44 @@ def _home_copy(view: str, state: Any) -> str | None:
 def _with_own_rules(view: str, body: str, gov: "GovernanceContext") -> str:
     """``body`` under the rules declared on the view's own table (its row filter, masks and
     column visibility), when it has any."""
+    from provisa.compiler.sql_validator import served_columns  # noqa: PLC0415
     from provisa.compiler.stage2 import govern_fragment  # noqa: PLC0415
     from provisa.compiler.view_expand import _expand_one  # noqa: PLC0415
 
-    table_id = gov.table_map.get(view)
-    if table_id is None or not _narrowed(table_id, gov):
+    # The view map keys a view by its STORED name; the reader's table map has that name only
+    # qualified (every registered table's, served or not), and bare only the SEMANTIC name of a
+    # table of its compilation context, which the naming rules may make differ from the stored one
+    # (a leading underscore dropped, an alias). So the view is found by its stored names.
+    named = _registered_view_name(view, gov)
+    if named is None:
         return body
-    own = govern_fragment(f"SELECT * FROM {view}", gov)
+    table_id = gov.table_map[named]
+    # Named bare, it is a table of the reader's compilation context, which serves it. Found only
+    # by its stored name, it is served what the reader's grant on it serves; a view served no
+    # column is refused: its body, put in with none of its own rules, would read every column in
+    # clear (REQ-2201).
+    if named != view and not served_columns(table_id, gov):
+        raise PermissionError(f"[V003] No column of {view!r} is visible to this role")
+    if not _narrowed(table_id, gov):
+        return body
+    own = govern_fragment(f"SELECT * FROM {named}", gov)
     return _expand_one(own, view, body)
+
+
+def _registered_view_name(view: str, gov: "GovernanceContext") -> str | None:
+    """A name the reader's table map holds for the registered table stored as ``view``: the bare
+    name when it is that table's, else its stored qualified name. None when no registered table is
+    stored under it. Stored names reaching two tables are refused rather than one chosen."""
+    stored = sorted(n for n in gov.table_map if "." in n and n.rsplit(".", 1)[-1] == view)
+    ids = {gov.table_map[n] for n in stored}
+    bare = gov.table_map.get(view)
+    if bare is not None and (not ids or bare in ids):
+        return view
+    if not ids:
+        return None
+    if len(ids) > 1:
+        raise PermissionError(f"[V003] View {view!r} names more than one registered table")
+    return stored[0]
 
 
 def _said_names(row: dict) -> set[str]:

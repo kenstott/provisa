@@ -19,6 +19,7 @@ import { MantineProvider } from "@mantine/core";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import "../i18n";
 import type { FrameData } from "../components/graph/graph-model";
+import type { DropNode, SparqlDrop } from "../components/graph/sparqlDrop";
 
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
@@ -39,10 +40,44 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 const framesSeen: FrameData[] = [];
 const languagesSeen: (string | undefined)[] = [];
+const frameProps = vi.hoisted(() => ({
+  expand: undefined as
+    | undefined
+    | ((frameId: string, iri: string, toggle: boolean) => void),
+  drop: undefined as undefined | ((frameId: string, drop: SparqlDrop, on: DropNode | null) => void),
+  describe: undefined as undefined | ((frameId: string, iri: string) => void),
+  describeAll: undefined as undefined | ((frameId: string, iris: string[]) => void),
+  rerun: undefined as undefined | ((frameId: string, query: string) => void),
+  prefixes: undefined as undefined | Record<string, string>,
+}));
 vi.mock("../components/graph/GraphFrame", () => ({
-  GraphFrame: ({ frame, language }: { frame: FrameData; language?: string }) => {
+  GraphFrame: ({
+    frame,
+    language,
+    onExpandResource,
+    onDescribeResource,
+    onDescribeResources,
+    onRerun,
+    onSparqlDrop,
+    sparqlPrefixes,
+  }: {
+    frame: FrameData;
+    language?: string;
+    onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
+    onDescribeResource?: (frameId: string, iri: string) => void;
+    onDescribeResources?: (frameId: string, iris: string[]) => void;
+    onRerun?: (frameId: string, query: string) => void;
+    onSparqlDrop?: (frameId: string, drop: SparqlDrop, on: DropNode | null) => void;
+    sparqlPrefixes?: Record<string, string>;
+  }) => {
     framesSeen.push(frame);
     languagesSeen.push(language);
+    frameProps.expand = onExpandResource;
+    frameProps.drop = onSparqlDrop;
+    frameProps.describe = onDescribeResource;
+    frameProps.describeAll = onDescribeResources;
+    frameProps.rerun = onRerun;
+    frameProps.prefixes = sparqlPrefixes;
     return null;
   },
 }));
@@ -51,7 +86,9 @@ vi.mock("../components/graph/Neo4jExportModal", () => ({
 }));
 
 import { GraphPage } from "../pages/GraphPage";
-import { DEFAULT_QUERY } from "../components/graph/graph-persistence";
+import { DEFAULT_QUERY, graphStateOf } from "../components/graph/graph-persistence";
+import { readBulk, writeBulk } from "../lib/bulkStorage";
+import { bindStorageScope } from "../lib/browserStorage";
 
 const BASE = "https://provisa.example";
 const VOCABULARY = {
@@ -66,17 +103,21 @@ const VOCABULARY = {
   // a table's own class, or a Class term's ("term"), with the labels it types and the terms it is
   // a KIND_OF.
   classes: [
-    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], superclasses: [] },
+    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], parameterized: false, parameterized_labels: [], superclasses: [] },
     {
       iri: `${BASE}/vocab/sales/customers`,
       kind: "table",
       labels: ["customers"],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
     },
     {
       iri: `${BASE}/vocab/term/Customer`,
       kind: "term",
       labels: ["customers"],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [`${BASE}/vocab/term/Party`],
     },
   ],
@@ -84,7 +125,7 @@ const VOCABULARY = {
     {
       iri: `${BASE}/vocab/sales/amount`,
       kind: "column",
-      label: "orders.amount",
+      label: "orders",
       property: "amount",
       datatype: "http://www.w3.org/2001/XMLSchema#decimal",
     },
@@ -92,7 +133,7 @@ const VOCABULARY = {
       // A column predicate as the server names it: its table's class IRI and '#'.
       iri: `${BASE}/vocab/sales/orders#total`,
       kind: "column",
-      label: "orders.total",
+      label: "orders",
       property: "total",
       datatype: "http://www.w3.org/2001/XMLSchema#decimal",
     },
@@ -104,6 +145,7 @@ const VOCABULARY = {
       type: "PLACED_BY",
       source: "orders",
       target: "customers",
+      join: "PLACED_BY",
     },
   ],
   concepts: [{ iri: `${BASE}/vocab/term/Revenue`, name: "Revenue", definition: "Money in" }],
@@ -138,6 +180,12 @@ function page() {
 describe("the SPARQL tab", () => {
   beforeEach(() => {
     localStorage.clear();
+    // The tab's state outlives a page, as it does a navigation.
+    Object.assign(graphStateOf("sparql"), {
+      frames: [],
+      history: [],
+      currentQuery: DEFAULT_QUERY.sparql,
+    });
     framesSeen.length = 0;
     languagesSeen.length = 0;
     sent.length = 0;
@@ -156,6 +204,29 @@ describe("the SPARQL tab", () => {
     );
   });
 
+  it("renders at once, and the saved frames and query arrive from IndexedDB", async () => {
+    bindStorageScope({ controlPlaneId: "cp", orgId: "restored" });
+    await writeBulk("provisa.sparql.state", {
+      frames: [
+        {
+          id: "saved",
+          query: "SELECT saved",
+          status: "done",
+          nodes: [],
+          edges: [],
+          rows: [],
+          columns: [],
+        },
+      ],
+      history: ["SELECT saved"],
+      currentQuery: "SELECT kept",
+    });
+    page();
+    expect(framesSeen.filter((f) => f.id === "saved")).toEqual([]); // not in the first render
+    await waitFor(() => expect(framesSeen.some((f) => f.id === "saved")).toBe(true));
+    expect(graphStateOf("sparql").currentQuery).toBe("SELECT kept");
+  });
+
   it("shows the role's vocabulary where Cypher's labels are", async () => {
     page();
     expect(await screen.findByTestId("sparql-vocabulary")).toBeInTheDocument();
@@ -163,14 +234,16 @@ describe("the SPARQL tab", () => {
     expect((read?.init?.headers as Record<string, string>)["X-Provisa-Role"]).toBe("analyst");
     // No Cypher schema is read.
     expect(sent.some((s) => s.url.includes("/data/graph-schema"))).toBe(false);
-    expect(screen.getByTestId("sparql-class-sales:orders")).toHaveTextContent("sales:orders");
+    // A class is listed under its prefix, its pill showing the local name.
+    expect(screen.getByTestId("sparql-class-prefix-sales")).toHaveTextContent("sales (2)");
+    expect(screen.getByTestId("sparql-class-sales:orders")).toHaveTextContent(/^orders$/);
     // A Class term with the class it is a KIND_OF.
     expect(screen.getByTestId("sparql-class-term:Customer")).toHaveTextContent("⊂ term:Party");
     // An edge type, from its source label's class to its target's.
     expect(screen.getByTestId("sparql-edge-rel:PLACED_BY")).toBeInTheDocument();
     expect(screen.getByTestId("sparql-concept-Revenue")).toHaveTextContent("Revenue");
-    // A column predicate's IRI has no prefixed name: its pill shows its column.
-    expect(screen.getByTestId("sparql-predicate-orders.total")).toHaveTextContent("orders.total");
+    // A column's pill is named by its local name, under its class.
+    expect(screen.getByTestId("sparql-predicate-orders.total")).toHaveTextContent("total");
   });
 
   it("shows the refusal's own words when the vocabulary is refused", async () => {
@@ -193,17 +266,52 @@ describe("the SPARQL tab", () => {
     expect(screen.queryByText("Bad Request")).toBeNull();
   });
 
-  it("adds a pill's triple pattern to the query in the bar, with its PREFIX line", async () => {
+  const posted = () =>
+    sent
+      .filter((s) => s.url.endsWith("/data/sparql") && s.init?.method === "POST")
+      .map((s) => s.init?.body as string);
+
+  it("runs a class pill as its own query, a row per instance with a limit", async () => {
     page();
     fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
-    fireEvent.click(screen.getByTestId("sparql-predicate-sales:amount"));
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toBe(
+      [
+        `PREFIX sales: <${BASE}/vocab/sales/>`,
+        `PREFIX orders: <${BASE}/vocab/sales/orders#>`,
+        "SELECT ?s ?amount ?total WHERE {",
+        "  ?s a sales:orders .",
+        "  OPTIONAL { ?s sales:amount ?amount }",
+        "  OPTIONAL { ?s orders:total ?total }",
+        "}",
+        "LIMIT 25",
+      ].join("\n"),
+    );
+    await waitFor(() => expect(framesSeen.some((f) => f.status === "done")).toBe(true));
+    // The query in the bar is left as it was.
+    const bar = document.querySelector(".gf-header-query-collapsed") as HTMLElement;
+    expect(bar.textContent).toBe(DEFAULT_QUERY.sparql.replace(/\s*\n\s*/g, " "));
+  });
+
+  it("runs a property pill as its own query, the triples using it with a limit", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-predicate-orders.amount"));
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toBe(
+      `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE {\n  ?s sales:amount ?o .\n}\nLIMIT 25`,
+    );
+  });
+
+  it("adds a domain pill's PREFIX line to the query in the bar without running it", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-domain-sales"));
     const bar = document.querySelector(".gf-header-query-collapsed") as HTMLElement;
     await waitFor(() =>
       expect(bar.textContent).toBe(
-        `PREFIX sales: <${BASE}/vocab/sales/> ` +
-          `${DEFAULT_QUERY.sparql.replace(/\s*\n\s*/g, " ").replace(/ }/, " . ?s a sales:orders . ?s sales:amount ?o2 . }")}`,
+        `PREFIX sales: <${BASE}/vocab/sales/> ${DEFAULT_QUERY.sparql.replace(/\s*\n\s*/g, " ")}`,
       ),
     );
+    expect(posted()).toHaveLength(0);
   });
 
   it("POSTs a query to /data/sparql and draws a CONSTRUCT's triples", async () => {
@@ -224,8 +332,299 @@ describe("the SPARQL tab", () => {
     // Each frame is drawn as a SPARQL query's frame.
     expect(new Set(languagesSeen)).toEqual(new Set(["sparql"]));
     // Kept apart from Cypher's: the SPARQL history holds the query, Cypher's does not.
-    expect(localStorage.getItem("test-cp:test-org:provisa.sparql.state")).toContain("CONSTRUCT");
-    expect(localStorage.getItem("test-cp:test-org:provisa.graph.state")).toBeNull();
+    await waitFor(async () =>
+      expect(JSON.stringify(await readBulk("provisa.sparql.state"))).toContain("CONSTRUCT"),
+    );
+    expect(await readBulk("provisa.graph.state")).toBeNull();
+  });
+
+  const lastFrame = () => framesSeen.at(-1)!;
+  const runConstruct = async () => {
+    page();
+    await screen.findByTestId("sparql-vocabulary");
+    act(() => screen.getByText("run").click());
+    await waitFor(() => expect(lastFrame()?.status).toBe("done"));
+  };
+  const ORDER = `${BASE}/id/sales/orders/1`;
+
+  it("runs a relationship and a concept pill as a new frame too", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-edge-rel:PLACED_BY"));
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toContain("?s rel:PLACED_BY ?o");
+    fireEvent.click(screen.getByTestId("sparql-concept-Revenue"));
+    await waitFor(() => expect(posted()).toHaveLength(2));
+    expect(posted()[1]).toContain("term:Revenue ?p ?o");
+  });
+
+  it("gives each query its own frame, in its history", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-class-sales:orders"));
+    fireEvent.click(screen.getByTestId("sparql-class-sales:customers"));
+    await waitFor(() => expect(posted()).toHaveLength(2));
+    await waitFor(async () => {
+      const held = await readBulk<{ frames: unknown[]; history: string[] }>("provisa.sparql.state");
+      expect(held?.frames).toHaveLength(2);
+      expect(held?.history).toHaveLength(2);
+    });
+  });
+
+  it("shows the endpoint's URL for other tools", async () => {
+    page();
+    expect(await screen.findByTestId("sparql-endpoint-url")).toHaveTextContent(
+      `${BASE}/data/sparql`,
+    );
+  });
+
+  it("shows the prefixes, and takes an edit into what a pill writes and shows", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-prefixes-toggle"));
+    const ns = screen.getByTestId("sparql-prefix-namespace-sales");
+    expect(ns).toHaveValue(`${BASE}/vocab/sales/`);
+    const name = screen.getByTestId("sparql-prefix-name-sales");
+    fireEvent.change(name, { target: { value: "shop" } });
+    fireEvent.blur(name);
+    fireEvent.click(await screen.findByTestId("sparql-class-shop:orders"));
+    await waitFor(() => expect(posted()).toHaveLength(1));
+    expect(posted()[0]).toContain(`PREFIX shop: <${BASE}/vocab/sales/>`);
+    expect(posted()[0]).toContain("?s a shop:orders");
+    await waitFor(() => expect(frameProps.prefixes?.shop).toBe(`${BASE}/vocab/sales/`));
+    expect(frameProps.prefixes).not.toHaveProperty("sales");
+  });
+
+  it("refuses a prefix that could not be declared", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-prefixes-toggle"));
+    const name = screen.getByTestId("sparql-prefix-name-sales");
+    fireEvent.change(name, { target: { value: "not valid" } });
+    fireEvent.blur(name);
+    expect(await screen.findByText("Letters, digits, - and _ only")).toBeInTheDocument();
+    expect(screen.getByTestId("sparql-class-sales:orders")).toBeInTheDocument();
+  });
+
+  it("adds a prefix, and restores the vocabulary's", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-prefixes-toggle"));
+    fireEvent.change(screen.getByTestId("sparql-prefix-name-"), { target: { value: "ex" } });
+    const ns = screen.getByTestId("sparql-prefix-namespace-");
+    fireEvent.change(ns, { target: { value: "http://x/" } });
+    fireEvent.blur(ns);
+    expect(await screen.findByTestId("sparql-prefix-row-ex")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("sparql-prefixes-restore"));
+    await waitFor(() => expect(screen.queryByTestId("sparql-prefix-row-ex")).toBeNull());
+  });
+
+  it("runs the query exactly as written, whatever the prefixes", async () => {
+    await runConstruct();
+    expect(posted().at(-1)).toBe(CONSTRUCT);
+  });
+
+  it("merges a DESCRIBE of an expanded node into its frame, and takes it back", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    act(() => frameProps.expand?.(id, ORDER, true));
+    await waitFor(() => expect(lastFrame().sparqlExpansions).toBeDefined());
+    expect(posted().slice(before)).toEqual([`DESCRIBE <${ORDER}>`]);
+    const post = sent.at(-1)!;
+    expect((post.init?.headers as Record<string, string>).Accept).toBe("application/n-triples");
+    expect((post.init?.headers as Record<string, string>)["X-Provisa-Role"]).toBe("analyst");
+    expect(lastFrame().sparqlExpansions?.[ORDER]).toHaveLength(2);
+    // The frame kept its own answer.
+    expect(lastFrame().query).toBe(CONSTRUCT);
+    act(() => frameProps.expand?.(id, ORDER, true));
+    await waitFor(() => expect(lastFrame().sparqlExpansions).toEqual({}));
+    expect(posted().slice(before)).toHaveLength(1);
+  });
+
+  it("merges once for a dragged node, and a drag never takes it back", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    act(() => frameProps.expand?.(id, ORDER, false));
+    await waitFor(() => expect(lastFrame().sparqlExpansions?.[ORDER]).toBeDefined());
+    act(() => frameProps.expand?.(id, ORDER, false));
+    expect(posted().slice(before)).toHaveLength(1);
+    expect(lastFrame().sparqlExpansions?.[ORDER]).toBeDefined();
+  });
+
+  it("describes a selected node once, keeping the drawing as it is", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    const drawn = lastFrame();
+    act(() => frameProps.describe?.(id, ORDER));
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[ORDER]).toBeDefined());
+    expect(posted().slice(before)).toEqual([`DESCRIBE <${ORDER}>`]);
+    const post = sent.at(-1)!;
+    expect((post.init?.headers as Record<string, string>)["X-Provisa-Role"]).toBe("analyst");
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toHaveProperty("literals");
+    // Selection fills the panel only: nothing merged, nothing redrawn.
+    expect(lastFrame().sparqlExpansions).toBeUndefined();
+    expect(lastFrame().sparqlMerge).toBeUndefined();
+    expect(lastFrame().nodes).toBe(drawn.nodes);
+    expect(lastFrame().edges).toBe(drawn.edges);
+    act(() => frameProps.describe?.(id, ORDER));
+    expect(posted().slice(before)).toHaveLength(1);
+  });
+
+  it("keeps a refused DESCRIBE's error for the panel, with no merge notice", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not for you", code: "sparql.refused" }), {
+            status: 403,
+          }),
+      ),
+    );
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() =>
+      expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" }),
+    );
+    expect(lastFrame().sparqlMerge).toBeUndefined();
+  });
+
+  it("adds the panel's prefixes a typed query uses, and the frame shows it as sent", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    const before = posted().length;
+    await act(async () => frameProps.rerun?.(id, "SELECT * WHERE { ?s a sales:orders }"));
+    await waitFor(() => expect(posted().length).toBe(before + 1));
+    const sent = `PREFIX sales: <${BASE}/vocab/sales/>\nSELECT * WHERE { ?s a sales:orders }`;
+    expect(posted().at(-1)).toBe(sent);
+    await waitFor(() => expect(framesSeen.filter((f) => f.id === id).at(-1)?.query).toBe(sent));
+  });
+
+  it("keys what a DESCRIBE said as the frame shows it, a column by its class's prefix", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(`<${ORDER}> <${BASE}/vocab/sales/orders#total> "1" .`, {
+            headers: { "content-type": "application/n-triples" },
+          }),
+      ),
+    );
+    act(() => frameProps.describe?.(id, ORDER));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[ORDER]).toBeDefined());
+    const said = lastFrame().sparqlDescribed?.[ORDER];
+    expect(said && "literals" in said && said.literals[0].p.shown).toBe("orders:total");
+  });
+
+  it("reads a class's styled nodes in one update of the frame, each resource once", async () => {
+    await runConstruct();
+    const before = posted().length;
+    const { id } = lastFrame();
+    const other = `${BASE}/id/sales/orders/2`;
+    const updates = framesSeen.length;
+    act(() => frameProps.describeAll?.(id, [ORDER, other]));
+    act(() => frameProps.describeAll?.(id, [ORDER, other]));
+    await waitFor(() => expect(lastFrame().sparqlDescribed?.[other]).toBeDefined());
+    expect(posted().slice(before).sort()).toEqual([`DESCRIBE <${ORDER}>`, `DESCRIBE <${other}>`].sort());
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toHaveProperty("literals");
+    expect(framesSeen.length - updates).toBeLessThanOrEqual(2);
+    expect(lastFrame().nodes).toBeDefined();
+  });
+
+  it("says why a class's styled nodes could not be read", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not for you", code: "sparql.refused" }), {
+            status: 403,
+          }),
+      ),
+    );
+    act(() => frameProps.describeAll?.(id, [ORDER]));
+    await waitFor(() => expect(lastFrame().sparqlMerge?.error).toBe("Not for you"));
+    expect(lastFrame().sparqlDescribed?.[ORDER]).toEqual({ error: "Not for you" });
+  });
+
+  it("runs a class dropped on a frame as an edit of its query, joined by a relationship", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    const typed = `SELECT * WHERE { ?s a <${BASE}/vocab/sales/orders> } LIMIT 25`;
+    act(() => void frameProps.rerun?.(id, typed));
+    await waitFor(() => expect(lastFrame().query).toBe(typed));
+    const asked = posted().length;
+    act(() =>
+      frameProps.drop?.(id, { kind: "class", iri: `${BASE}/vocab/sales/customers` }, null),
+    );
+    await waitFor(() => expect(posted().length).toBe(asked + 1));
+    const sentQuery = posted().at(-1);
+    expect(sentQuery).toContain("OPTIONAL { ?s rel:PLACED_BY ?customers . ?customers a sales:customers . }");
+    expect(sentQuery).toContain("LIMIT 250");
+    await waitFor(() => expect(lastFrame().query).toBe(sentQuery));
+    expect(lastFrame().dropped).toBe(true);
+    expect(lastFrame().dropLimit).toBe(250);
+  });
+
+  it("says on the frame that a class joins nothing, running nothing", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    const typed = `SELECT * WHERE { ?s a <${BASE}/vocab/sales/customers> }`;
+    act(() => void frameProps.rerun?.(id, typed));
+    await waitFor(() => expect(lastFrame().query).toBe(typed));
+    const asked = posted().length;
+    act(() =>
+      frameProps.drop?.(id, { kind: "predicate", iri: `${BASE}/vocab/sales/amount` }, null),
+    );
+    await waitFor(() =>
+      expect(lastFrame().dropNotices?.[0].key).toBe("graphFrame.sparqlDropNoProperty"),
+    );
+    expect(lastFrame().query).toBe(typed);
+    expect(posted().length).toBe(asked);
+  });
+
+  it("says a refused expansion in its own words, keeping the frame", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ detail: "Not for you", code: "sparql.refused" }), {
+            status: 403,
+          }),
+      ),
+    );
+    act(() => frameProps.expand?.(id, ORDER, true));
+    await waitFor(() => expect(lastFrame().sparqlMerge?.error).toBe("Not for you"));
+    expect(lastFrame().status).toBe("done");
+  });
+
+  it("says when a resource has nothing more to say", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response("", { headers: { "content-type": "application/n-triples" } }),
+      ),
+    );
+    act(() => frameProps.expand?.(id, ORDER, true));
+    await waitFor(() => expect(lastFrame().sparqlMerge?.nothingMore).toBe(ORDER));
+    expect(lastFrame().sparqlExpansions).toBeUndefined();
+  });
+
+  it("forgets what was merged when the frame's query runs again", async () => {
+    await runConstruct();
+    const { id } = lastFrame();
+    act(() => frameProps.expand?.(id, ORDER, true));
+    await waitFor(() => expect(lastFrame().sparqlExpansions).toBeDefined());
+    act(() => screen.getByText("run").click());
+    await waitFor(() => expect(framesSeen.filter((f) => f.status === "done").length).toBeGreaterThan(1));
+    const fresh = framesSeen.filter((f) => f.id !== id).at(-1)!;
+    expect(fresh.sparqlExpansions).toBeUndefined();
   });
 
   it("exports its results in SPARQL's own formats, never to Neo4j", async () => {

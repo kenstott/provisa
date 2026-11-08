@@ -825,7 +825,7 @@ Provisa היא שכבה דקה של הידור וניתוב, והיא מוסיפ
 | Provisa gRPC | (תהליך host) | 50051 | שרת Protobuf gRPC |
 | מנוע פדרציה | `trinodb/trino` (ברירת מחדל) או מחסן נתונים חיצוני | 8080 / משתנה | מנוע פדרציית שאילתות — Trino עבור המחסנית המוטמעת; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB עבור יעדי מחסן נתונים |
 | Zaychik | `provisa-zaychik` (נבנה מקוד המקור) | 8480 | proxy של Arrow Flight SQL עבור Trino; לא נדרש עבור מנועי מחסן נתונים |
-| PostgreSQL | `postgres:16` | 5432 | metadata קונפיגורציה + קטלוג Iceberg |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | metadata קונפיגורציה + קטלוג Iceberg |
 | MongoDB | `mongo:7` | 27017 | מקור נתונים NoSQL להדגמה |
 | MinIO | `minio/minio` | 9000/9001 | אחסון אובייקטים תואם S3 |
 | Redis | `redis:7-alpine` | 6379 | מטמון תוצאות שאילתה |

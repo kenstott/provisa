@@ -5,10 +5,9 @@
     "identity": "Identiteit",
     "associations": "Koppelingen",
     "load": "Belastingbeheer en actualiteit",
-    "query": "Query",
+    "query": "API",
     "quality": "Kwaliteit",
     "columns": "Kolommen",
-    "writes": "Schrijfrechten",
     "source": "Bron",
     "schema": "Schema",
     "table": "Tabel",
@@ -33,7 +32,6 @@
       "skipped": "Overgeslagen"
     },
     "classTerm": "Rijen zijn instanties van",
-    "classTermPlaceholder": "Kies een term",
     "noClassTerm": "Geen term",
     "classTermUnreadable": "De term kon niet worden gelezen: {{error}}",
     "access": "Toegang"

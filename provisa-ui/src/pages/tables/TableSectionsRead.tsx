@@ -96,7 +96,13 @@ export function IdentityRead({ table, source }: { table: RegisteredTable; source
     },
     { label: t("tableEditForm.draftLabel"), value: yesNo(t, table.draft) },
     ...(regions.length > 0
-      ? [{ label: t("regionSelect.label"), value: table.region ?? unset(t("regionSelect.none")) }]
+      ? [
+          {
+            label: t("regionSelect.label"),
+            value: table.region ?? unset(t("regionSelect.none")),
+            testId: "table-identity-region",
+          },
+        ]
       : []),
     ...(table.apiEndpoint
       ? [{ label: t("tableEditForm.apiEndpointLabel"), value: <code>{table.apiEndpoint}</code> }]
@@ -268,7 +274,9 @@ export function QueryRead({ table }: { table: RegisteredTable }) {
       label: t("tableReadView.writable"),
       testId: "table-read-view-writable",
       value:
-        table.writeOps.length > 0 ? table.writeOps.map((op) => op.toUpperCase()).join(", ") : null,
+        table.writeOps.length > 0
+          ? table.writeOps.map((op) => op.toUpperCase()).join(", ")
+          : t("tableReadView.noWrites"),
     },
     ...(table.watermarkColumn
       ? [

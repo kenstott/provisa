@@ -2,7 +2,7 @@
 
 The ontology is a living vocabulary over your data model. Every physical column resolves to a term, and columns that carry the same meaning share one term, however differently they spell it. Each term can hold a definition, typed relationships to other terms, a list of subject-matter experts, and tags such as `pii` that every column with that meaning carries.
 
-It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
+It is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the tables and columns that hold the values, which is what lets it answer questions about your data. A term is a draft until a steward approves it, and whether it reaches data is worked out from the graph. The ontology is separate from the metrics. A term says what a concept is, and a metric says how a number is computed.
 
 That shared vocabulary connects business language to physical data. An AI agent that knows "customer" names every column carrying a customer identifier doesn't have to guess which of `cust_id`, `customerId` and `CUSTOMER_KEY` is the right one. They all resolve to the same term, and the term carries the definition.
 
@@ -95,21 +95,23 @@ A definition alone approves nothing. Approve a term once its definition says wha
 
 ## Grounding
 
-Grounding says whether a term reaches data. Nobody sets it: Provisa works it out from the term's relationships each time the graph changes.
+Grounding says whether a term reaches data. Nobody sets it. Provisa works it out from the term's relationships each time the graph changes.
 
-A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table: the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
+A term's grounding looks down its own paths to data. A path runs from the term, over its relationships, to the first term that holds a column or a table, the term at the data end, which holds the binding. Only the terms strictly between the two ends count. The term itself never counts against its own grounding, and neither does anything above it.
 
-| Grounding | Chip | Meaning |
+| Grounding | Mark | Meaning |
 | --- | --- | --- |
-| **Grounded** | `grounded` | Some path down has no draft term between the term and the data end. |
-| **Grounded · path pending approval** | `~grounded` | Every path down has a draft term in between. Hover the chip: it reads "Reaches data, but only through terms not yet approved". |
+| **Grounded** | green ⏚ icon | Some path down has no draft term between the term and the data end. |
+| **Grounded · path pending approval** | muted ⏚ icon | Every path down has a draft term in between. Hover the icon: it reads "Reaches data, but only through terms not yet approved". |
 | **Not grounded** | none | No path reaches data. |
+
+The icon is the electrical-ground symbol. It sits in the term list beside the column count, on the term's page, before the term's name in the graphs, and in the graph legend. A grounded term's hover text says how far it reaches, for example "Grounded: reaches data in 3 columns"; a screen reader reads the same words.
 
 Some cases follow directly from the rule:
 
 - A draft Concept you are drafting above an approved chain is grounded. Its status chip still says Draft, and the terms below it don't change.
 - A term derived from a column is a draft at the data end. It never makes the chain above it pending.
-- A draft term in the middle of the only path makes every term above it `~grounded`. Approving that one draft grounds them.
+- A draft term in the middle of the only path makes every term above it muted ⏚. Approving that one draft grounds them.
 - A second path that is clean is enough. A draft beside it changes nothing.
 - Deprecated and retired terms break the chain. A term whose only path ran through one stops being grounded, and its chips and filters say so.
 
@@ -178,7 +180,7 @@ Terms relate to other terms through typed edges.
 | `KIND_OF` | The source term is a kind of the target term. |
 | `PART_OF` | The source term is a component of the target term. |
 | `SYNONYM_OF` | The two terms are interchangeable in this domain. |
-| `RELATED_TO` | A loose association, when no stronger claim fits. |
+| `RELATED_TO` | Two distinct topics that go together, when no other type fits. It holds a place and does not ground. |
 | `VALID_VALUE_OF` | The source is an allowed value of the target enumeration or domain. |
 | `DERIVED_FROM` | The source is computed or sourced from the target. |
 | `REPLACES` | The source supersedes the target. Retiring a term writes one from its successor. |
@@ -189,6 +191,94 @@ Terms relate to other terms through typed edges.
 Relationships are directional. The UI shows both outgoing edges (this term → another) and incoming edges (another term → this term), labeling each direction with its own plain-language phrase.
 
 The edges live in an associative table declared as a junction relationship. Its relationship-type column is the discriminator, so each type above is a separate Cypher relationship type between two term nodes. Nothing about it is ontology-specific: it is declared the way you would declare a junction over your own tables, and the same code reads it.
+
+## Building a glossary that grounds
+
+A term helps an agent only when it is grounded, meaning some path of relationships leads from it to a column or a table. Agents see only the terms on such paths, as [What an agent sees](#what-an-agent-sees) describes. A grounded term tells you where its data lives. An ungrounded one names an idea and leaves you to find the data yourself.
+
+The relationship types you choose decide whether that path exists. Grounding runs from a broader term down to a narrower one. `revenue` reaches data because `order amount` is part of it and `order amount` holds a column. It never runs the other way, so `order amount` gains nothing from being part of `revenue`.
+
+### Test each type before you pick it
+
+Read an edge with X as the term it starts from and Y as the term it points to. Then apply the tests in this order and take the first one that passes.
+
+| Type | Test | Example | What it grounds |
+| --- | --- | --- | --- |
+| **Kind of** | Every X is a Y. | Every enterprise customer is a customer. | Y reaches X's data. |
+| **Part of** | A Y has an X. | An order has an order amount. | Y reaches X's data. |
+| **Valid value of** | X is one of Y's allowed values. | Platinum is a customer tier. | Y reaches X's data. |
+| **Synonym of** | X and Y mean the same thing. | Client and customer. | Each reaches the other's data. |
+| **Related to** | X and Y are distinct topics that go together, and neither is a kind, a part or a value of the other. | Cake and candles. | Nothing. |
+
+Derived from, Replaces, Preferred term for, Translation of and Antonym of each record a fact about two terms. None of them grounds.
+
+A property that describes a concept is part of it. Shift start describes a shift, so it is **Part of** shift coverage. It is never merely related to it.
+
+When you add or retype a relationship, the type picker lists Kind of, Part of and Valid value of first, each with its test underneath. Related to comes last, with its test and the reminder that it does not ground. The **Choosing a relationship that grounds** link under the picker opens this section.
+
+### Related to holds a place
+
+Related to is the last resort. Since it doesn't ground, a term whose only links are Related to reaches no data, however many of them it has. Treat each one as a placeholder for a pair you haven't resolved yet.
+
+To work through the placeholders, tick **Related to** above the term list, beside **Deprecated** and **To review**. The list narrows to terms with at least one Related to link, at either end. The book icon beside the box opens this section.
+
+A term that reaches no data and has only Related to links shows a note on its page. The note says the pair may lack a term in between and names the shapes that would resolve it. It is guidance only. Nothing about the term is blocked.
+
+### Resolve a pair with one new term
+
+Most Related to pairs lack a term in between. One new term turns the placeholder into two edges that ground, and five shapes do it. Here they are for cake and candles, tightest first:
+
+| Shape | New term | Edges |
+| --- | --- | --- |
+| **Component type** | cake decoration | candles Kind of cake decoration; cake decoration Part of cake |
+| **Specialisation** | birthday cake | candles Part of birthday cake; birthday cake Kind of cake |
+| **Common whole** | party | cake Part of party; candles Part of party |
+| **Common genus** | party supplies | cake Kind of party supplies; candles Kind of party supplies |
+| **Common enumeration** | party item type | cake Valid value of party item type; candles Valid value of party item type |
+
+Follow the grounding down each row. In the first two shapes, cake reaches the data of candles through the new term. In the last three, the new term is the broader end of both edges, so it reaches the data of both. Neither cake nor candles reaches the other's.
+
+Sometimes the term in between already exists, and you only need to retype the links. The shipped shelter demo has a Concept, `shift coverage`, defined as the window and place a staff member is scheduled to work. Its parts `shift start`, `shift end` and `schedule location` each hold a column. Linked to them by Related to, shift coverage reached no data. With each of the three linked as Part of shift coverage, it is grounded through all three columns. That is a common whole, which was there all along.
+
+### Prefer the tightest shape
+
+The broader the new term, the less its grounding tells a reader. Party connects cake and candles as surely as cake decoration does. But a hub that broad also sits above the guest list, the venue and the music, so its grounding no longer says which data answers a question about candles. Cake decoration gives an agent a short path to the right columns. Party gives it a long path to many.
+
+Start with component type and move down the list only when a tighter shape doesn't fit. Use a common genus or a common enumeration when the pair shares nothing narrower.
+
+### When you choose Related to
+
+Choosing **Related to** for a link you are adding opens a dialog, for example "Link candles and cake with Related to?". Retyping an existing link to Related to opens it too. The interruption is deliberate, because this is the cheapest moment to fix the link.
+
+The dialog first explains why Related to is the least useful edge. It doesn't ground, so the term still can't reach data through it. Below that it draws the five shapes for your two terms, tightest first. Each shape shows a name for the new term, suggested by your organization's AI model, for example candles → cake decoration → cake. If the model suggests no names, the dialog says why, and you type the name yourself.
+
+You then pick one of three actions.
+
+- **Start** beside a shape opens the new-term form. The suggested name is filled in, and **Edges added with it** lists both edges. Rename the term, add a definition and its domains, then click **Create**. Create adds the term. The edge that touches the term you are editing joins your form and is saved with it. The other edge is written at once.
+- **Add Related to anyway** adds the link in one click. It joins the placeholders the **Related to** filter lists.
+- **Cancel** changes nothing.
+
+### How the relationship assistant chooses
+
+**Relationships** in the ✨ menu asks your organization's AI model for relationships across every term in your domains. The model's instructions carry the same tests. It prefers Kind of, Part of and Valid value of wherever one fits, and links a property to the concept it describes with Part of. It proposes Related to only when two terms clearly go together and no other type fits.
+
+The assistant links terms that already exist, and it never adds a term. For every Related to it adds, it names candidate terms for each shape that fits. When it finishes, **Related to links to review** lists each of those pairs with its shapes, tightest first, and the candidates for each. Click either term to open it. Whether a pair needs a new term, and what to call it, is your decision.
+
+### Measure the glossary
+
+The **Ontology quality** report measures the glossary from the model, by domain and by steward. Open it in the [Reports viewer](admin.md#reports-viewer). It reports:
+
+- the share of in-service terms that are grounded, with fully grounded terms and those pending approval counted apart;
+- the share that are approved and grounded, which are the terms an agent may use;
+- unresolved placeholders, meaning Related to links and the terms whose only links are Related to;
+- grounding precision, as the hops from each term to data and the number of paths that pass through a broad hub term;
+- terms grounded only through drafts, each with the term whose approval would ground it fully;
+- undefined terms on paths to data;
+- drift, the terms that lost or gained grounding since the previous period.
+
+Each row links to its term, and each placeholder row links to that term's Related to links for review. Like every report, it reads through the governed pipeline under your role, and you can export it.
+
+Drift is shown below the report and is computed from the model's version history rather than read from a view, so it is not exported with the report's rows. The previous period is the last full calendar month: the baseline is the latest commit on the environment's branch at or before the first of last month (UTC), and it is compared with the current model. A term present at the baseline that moved between grounded, grounded with its path pending approval, and not grounded shows as lost or gained, and a term that did not exist then shows as new. Terms are matched by name, so a rename shows as one lost and one new. If the branch has no commit that old, drift shows as no history, not as zero. Only terms you can read are listed, and a term that has since been deleted is listed only if your access has no domain limit.
 
 ## Concepts
 
@@ -213,7 +303,7 @@ A column that is PII through its term can't be unmarked on its own. Unmark the t
 
 ### Moves that lose tags
 
-Moving a column to another term can take a tag off it: moving `customers.email` from `customer email` (tagged `pii`) to an untagged term would leave the email column unprotected. Every move a person makes is checked first. That covers claiming or moving a column, retiring a term, and saving or deleting a relationship that re-homes key columns.
+Moving a column to another term can take a tag off it. Moving `customers.email` from `customer email` (tagged `pii`) to an untagged term would leave the email column unprotected. Every move a person makes is checked first. That covers claiming or moving a column, retiring a term, and saving or deleting a relationship that re-homes key columns.
 
 When a column would stop carrying `pii` altogether, the move is refused until you decide. The UI shows one summary of what each moved column loses and gains, losses first.
 
@@ -255,17 +345,17 @@ What counts is whether the business uses the word. An ETL batch identifier has a
 
 ## Working with the ontology
 
-Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, and **To review** narrows it to terms with findings. Click a term to open its panel.
+Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, **To review** narrows it to terms with findings, and **Related to** narrows it to terms with a Related to link. Click a term to open its panel.
 
-The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A `~grounded` term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
+The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A muted ⏚ term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
 
 ### Stewardship summary
 
-With no term open, the panel shows the stewardship summary. It lists the terms agents can see, the `~grounded` terms each waiting on one approval with the term to approve, and the approved terms that reach no data. **Approve defined, grounded drafts** lists every draft that has a definition and is grounded; untick any whose definition isn't right, and approve the rest together. The clipboard button in the header brings the summary back.
+With no term open, the panel shows the stewardship summary. It lists the terms agents can see, the muted ⏚ terms each waiting on one approval with the term to approve, and the approved terms that reach no data. **Approve defined, grounded drafts** lists every draft that has a definition and is grounded; untick any whose definition isn't right, and approve the rest together. The clipboard button in the header brings the summary back.
 
 ### Seeing the impact first
 
-Approving, retiring and binding a term each change what reaches data. Before any of them, the page shows what the action would change: how many terms become grounded, `~grounded` or not grounded, and how many tables agents gain or lose a path to. For example, "Approving region makes 3 terms grounded and gives agents a path to 2 more tables". **Approve** opens the preview with its confirm button, **Retire** shows it under the successor you pick, and grounding a table in the edit form shows it under the table before you save.
+Approving, retiring and binding a term each change what reaches data. Before any of them, the page shows what the action would change: how many terms become grounded, muted ⏚ or not grounded, and how many tables agents gain or lose a path to. For example, "Approving region makes 3 terms grounded and gives agents a path to 2 more tables". **Approve** opens the preview with its confirm button, **Retire** shows it under the successor you pick, and grounding a table in the edit form shows it under the table before you save.
 
 **Edit** opens the whole term as one form. Save applies every change together.
 
@@ -279,9 +369,39 @@ Approving, retiring and binding a term each change what reaches data. Before any
 
 Beside Edit, the panel offers the status actions the term allows: **Approve** a defined draft, **Deprecate** an approved term, **Retire** any term in service, and **Restore** a deprecated or retired one.
 
-From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** proposes typed edges across the full term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped.
+From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes.
 
-The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data: relate it to a term that has data.
+The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data. Relate it to a term that has data.
+
+### Finding terms in documents and tables
+
+**Find terms**, on the ✨ menu, proposes new terms from a source your organization already writes its definitions in. Every proposal lands in a review queue as a draft, with the passages it came from. Nothing joins the ontology until you accept it. You need the right to curate the glossary.
+
+Pick where the terms come from, then the domains you are working in. The new terms are placed in those domains.
+
+| Source | What is read | AI model |
+| --- | --- | --- |
+| **A document**, from the reference library | A document already in the library | Yes |
+| **A document**, as a new file | PDF, Word (`.docx`), Markdown, HTML, plain text or eCFR XML. It joins the reference library as proposed | Yes |
+| **A document**, as a URL | A page or file served over `http` or `https`, fetched once. It joins the reference library as proposed | Yes |
+| **A table**, Terms and definitions | One row per term: a term column and a definition column | No |
+| **A table**, Text to read | One passage per row: an ID column and a text column | Yes |
+
+**Documents.** The AI model reads the document's passages for the concepts it defines and uses, such as business concepts, roles, policies and regulations. It never proposes a named person or company. Variants of one concept become synonyms of one candidate. A candidate's definition is badged **Defined in the document** when a passage defines it outright, or **Synthesized** when it is drawn from several passages. A regulation published on eCFR can be read straight from its XML API, cited by section and by each defined term:
+
+```text
+https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+```
+
+**A table of terms and definitions.** Use this for a data dictionary, a business glossary kept as rows, or any registered table that already pairs a term with its definition. Pick its domain, the table, the term column and the definition column. No model is asked, so none needs to be set and nothing counts against your role's AI budget. Each row is offered as a term whose definition is badged **Defined in the table**. Rows naming the same term become one candidate: the first row's definition is its definition, and the others are kept as supporting passages. The scan finishes as soon as you start it.
+
+**A table of text.** Use this for documentation kept as rows, such as policy text or knowledge-base articles. Pick the domain, the table, an ID column and a text column. The model reads each row as one passage, and every proposal cites the rows it came from by their ID. Leave transactional text such as support tickets out. It rarely defines a term.
+
+Either way a table is read as your acting role reads it, so its row rules and masks apply, and no text you can't read reaches the model. A table scan adds nothing to the reference library. If a row limit cuts the read short, the scan is refused and names the limit, because a scan of part of a table would leave rows out without saying so.
+
+**The model and its budget.** A scan that reads text uses the AI model your organization chose for **Find terms** under **Admin → AI Models**. Until one is chosen, the scan is refused and the message says where to set it. A scan of text counts against your role's AI budget, and a table whose rows would not fit in the budget is refused before the scan starts. A running scan shows its model and its progress, and **Cancel scan** stops it.
+
+**Reviewing.** Each scan's review queue lists every candidate as a new term, a duplicate of an existing term, or another name for one. **Accept** adds a new term, **Merge** folds a candidate into the term it matches, and **Reject** drops it. **Accept selected** decides many at once, as each proposes. **Propose relationships** then runs the relationship assistant over the ontology, including the terms you just accepted. **Scan again** rereads the document or the table. Earlier decisions stand, and the new scan shows only what the ontology doesn't hold yet and what matches its terms.
 
 ## Querying the ontology
 
@@ -347,7 +467,7 @@ The same statements are rows of `ontology._axioms` in SQL, and the kind-of pairs
 
 ## The ontology schema
 
-The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST, and MCP — the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
+The `ontology` system schema makes the vocabulary queryable from SQL, GraphQL, Cypher, REST and MCP, the same surfaces you use for your own data. It sits alongside `meta`, which holds the model's structure; `ontology` holds its meaning.
 
 Two parts make up the schema: definition views and class tables.
 
@@ -363,15 +483,15 @@ Five views expose the glossary's contents:
 | `_domains` | Domain membership: the term name and each domain it belongs to. |
 | `_experts` | Expert assignments: the term name, user ID, and role (`expert` or `author`). |
 
-A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express — one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
+A sixth view, `_axioms`, holds every RDFS/OWL/SKOS triple the schema can express, one row per triple, with columns `subject`, `predicate`, `object`, `object_iri` and `object_literal`. `object` names the object when it is a term; `object_iri` holds it when it is an IRI, and `object_literal` when it is a literal. One of the three holds the value on each row. Tools that prefer triples over tabular rows read from here.
 
-A **term binding** — a term bound to a column, recorded in `_term_refs` — is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
+A **term binding**, a term bound to a column and recorded in `_term_refs`, is different from a command binding. A term binding says what a column means; a command binding wires a function into the query pipeline.
 
 ### Class tables
 
 Each Class term that is not retired becomes a view in the `ontology` schema named for that term, with spaces replaced by underscores. A Class grounded in one table yields one view; a Class grounded in several tables yields the union of those tables.
 
-In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from: it holds the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
+In a union view, every source table's rows appear. The column `_source_table` identifies which table each row came from by holding the table's qualified name, `domain.table`. A Property column that one source table does not bind is `NULL` for its rows. A Property bound to several columns of one table becomes an array column.
 
 Every column in a Class view corresponds to a bound Property. The view is governed through the same pipeline as any other read.
 

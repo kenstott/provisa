@@ -13,8 +13,10 @@
 Reads the event stream of one or more `go test -json -tags pgspec` invocations and pgspec's own
 source (pgspec_test.go), and writes:
 
-* a JSON document (total, passed, failed, skipped, pass rate, and every failed test grouped by
-  pgspec section), uploaded as the run's ``conformance-pgwire.json``;
+* a JSON document (the three counts every conformance report gives -- passed, by_design and
+  failed, REQ-2167 amended 2026-10-28 -- the pass rate, passed over passed plus failed, each
+  by-design group with its requirement, decision and cases, and every failed test grouped by
+  pgspec section), uploaded as part of the run's ``conformance-pgwire.json``;
 * the same as Markdown, for the job summary.
 
 A test is a leaf: a subtest, or a top-level test that has none. The leaves are those the source
@@ -23,10 +25,12 @@ reports, so a test the binary never reached -- it exited on an earlier test's pa
 as failed and named "not reached" rather than missing from the total. The section of a test is the
 ``// Section N: Title`` comment its top-level function sits under in the source.
 
-The exit status is non-zero when the suite did not run (no leaf passed or failed), and, while
-pgwire is at its baseline (by_design.AT_BASELINE), when a test failed that no by-design group of
-the pgwire surface excludes (by_design/pgwire.yaml): a regression. A test failed by
-design is left out of the counts, in the group naming its decision.
+Each leaf is passed, skipped by design (a group of by_design/pgwire.yaml naming it, with its
+decision) or failed; one pgspec skipped, or never reached, is failed unless a group names it. A
+leaf skipped by design is never counted as failed, and is out of the pass rate.
+
+The exit status is non-zero when the suite did not run (every leaf unreached), and, while pgwire
+is at its baseline (by_design.AT_BASELINE), when a test failed: a regression.
 
 Usage: pgspec_summary.py <pgspec_test.go> <results.jsonl> <out.json> <out.md> [<version>]
 """
@@ -135,53 +139,41 @@ def summarise(source: str, events: list[dict], version: str = "") -> dict:
         for n in seen
         if not declared.subtests.get(n) and not any(o.startswith(n + "/") for o in seen)
     }
-    counts = {"passed": 0, "failed": 0, "skipped": 0}
-    failed_by_section: dict[str, list[dict]] = {}
+    # REQ-2167 (amended 2026-10-28): each leaf is passed, skipped by design or failed. A leaf the
+    # stream never reached, or one pgspec skipped, did not pass: it is skipped by design when a
+    # group of by_design/pgwire.yaml names it, and failed otherwise.
+    passed = 0
+    unmet: list[dict] = []
     not_reached: list[str] = []
-    declared_groups = by_design.groups("pgwire")
-    excluded: list[dict] = []
     for name in sorted(leaves):
         result = outcome.get(name)
+        if result == "passed":
+            passed += 1
+            continue
         if result is None:
-            result = "failed"
             not_reached.append(name)
             reason = "not reached (the test binary exited before it ran)"
+        elif result == "skipped":
+            reason = "skipped by pgspec: " + _first_failure_line(output.get(name, []))
         else:
-            reason = _first_failure_line(output.get(name, [])) if result == "failed" else ""
-        top = name.split("/", 1)[0]
-        if result == "failed":
-            failure = {"feature": top, "scenario": name.partition("/")[2], "reason": reason}
-            left, by_design_hit = by_design.classify([failure], declared_groups)
-            if not left:
-                excluded = _merged(excluded, by_design_hit)
-                continue
-            section = declared.section_of.get(top, "Unsectioned")
-            failed_by_section.setdefault(section, []).append({"test": name, "reason": reason})
-        counts[result] += 1
-    total = sum(counts.values())
+            reason = _first_failure_line(output.get(name, []))
+        unmet.append(
+            {"feature": name.split("/", 1)[0], "scenario": name.partition("/")[2], "reason": reason}
+        )
+    failures, excluded = by_design.classify(unmet, by_design.groups("pgwire"))
+    failed_by_section: dict[str, list[dict]] = {}
+    for f in failures:
+        test = f"{f['feature']}/{f['scenario']}" if f["scenario"] else f["feature"]
+        section = declared.section_of.get(f["feature"], "Unsectioned")
+        failed_by_section.setdefault(section, []).append({"test": test, "reason": f["reason"]})
     return {
         "suite": "pgspec",
         "module": "github.com/goceleris/celeris/test/pgspec",
         "version": version,
-        "total": total,
-        "passed": counts["passed"],
-        "failed": counts["failed"],
-        "skipped": counts["skipped"],
+        **by_design.outcomes(passed, excluded, failures),
         "not_reached": not_reached,
-        "pass_rate": round(counts["passed"] / total, 4) if total else 0.0,
-        "not_runnable": sum(g["count"] for g in excluded),
-        "by_design": excluded,
         "failed_by_section": dict(sorted(failed_by_section.items(), key=_section_key)),
     }
-
-
-def _merged(excluded: list[dict], hits: list[dict]) -> list[dict]:
-    """The by-design groups with one more case each of ``hits`` excluded."""
-    by_name = {g["group"]: dict(g) for g in excluded}
-    for hit in hits:
-        kept = by_name.setdefault(hit["group"], {**hit, "count": 0})
-        kept["count"] += 1
-    return list(by_name.values())
 
 
 def _section_key(item: tuple[str, list]) -> tuple[int, str]:
@@ -190,21 +182,19 @@ def _section_key(item: tuple[str, list]) -> tuple[int, str]:
 
 
 def markdown(summary: dict) -> str:
-    rate = f"{summary['pass_rate'] * 100:.1f}%"
     lines = [
         f"## pgwire conformance: pgspec {summary['version']}".rstrip(),
         "",
-        "| total | passed | failed | skipped | pass rate |",
-        "|---:|---:|---:|---:|---:|",
-        f"| {summary['total']} | {summary['passed']} | {summary['failed']} "
-        f"| {summary['skipped']} | {rate} |",
+        by_design.counts_line(summary, "tests"),
         "",
     ]
-    if summary["by_design"]:
+    if summary["by_design_groups"]:
         lines += [
-            f"Not runnable by design: {summary['not_runnable']}.",
+            "### Skipped by design",
             "",
-            *by_design.table(summary["by_design"]),
+            *by_design.table(summary["by_design_groups"], requirement=True),
+            "",
+            *by_design.cases_lines(summary["by_design_groups"]),
             "",
         ]
     for section, failures in summary["failed_by_section"].items():
@@ -228,11 +218,10 @@ def main(argv: list[str]) -> int:
     out_json.write_text(json.dumps(summary, indent=2) + "\n")
     out_md.write_text(markdown(summary) + "\n")
     print(markdown(summary))
-    if summary["passed"] + summary["failed"] - len(summary["not_reached"]) == 0:
+    if summary["total"] - len(summary["not_reached"]) == 0:
         print("::error::pgspec did not run: no test passed or failed", file=sys.stderr)
         return 1
-    # REQ-2167: at its baseline, a failure no by-design group excludes fails the job (each is
-    # named in the summary above).
+    # REQ-2167: at its baseline, a failed test fails the job (each is named in the summary above).
     return 1 if by_design.baseline_failed("pgwire", summary["failed"]) else 0
 
 

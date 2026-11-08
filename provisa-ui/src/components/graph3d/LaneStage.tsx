@@ -14,7 +14,7 @@
 // shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A
 // card holds the node's facts with links to their pages, and stays while the pointer is on it.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, useComputedColorScheme } from "@mantine/core";
 import { Check, Copy } from "lucide-react";
@@ -26,7 +26,7 @@ import type { GraphHover } from "./graphScene";
 import { GraphLegend } from "./GraphStage";
 import { hoverBody } from "./hoverBody";
 import { MoreFacts } from "./nodeFacts";
-import { LANES, laneMermaid, type Lane, type LaneDiagram } from "./laneDiagram";
+import { LANES, laneMermaid, placedLaneOrder, type Lane, type LaneDiagram } from "./laneDiagram";
 import { nodeLook } from "./nodeLook";
 
 type CyExt = Parameters<typeof cytoscape.use>[0];
@@ -42,6 +42,8 @@ if (!registered) cytoscape.use(elk);
 type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
 
 const FIT_PAD = 24;
+// The legend's offset from the stage's foot (profile3d.css .p3d-legend) and a gap above it.
+const LEGEND_GAP = 16;
 // How long a card stays once the pointer leaves its node: time to reach the card's links.
 const TIP_LINGER_MS = 300;
 const NODE_H = 26;
@@ -101,6 +103,20 @@ export function LaneStage({
   const scheme = useComputedColorScheme("dark");
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const legendRef = useRef<HTMLDivElement | null>(null);
+  // The diagram is laid out above the legend, never under it: the canvas ends where the legend
+  // begins (graph3d.css, --g3d-legend-h), and its resize refits the diagram.
+  useLayoutEffect(() => {
+    const legend = legendRef.current;
+    const wrap = wrapRef.current;
+    if (!legend || !wrap) return;
+    const clear = () =>
+      wrap.style.setProperty("--g3d-legend-h", `${legend.offsetHeight + LEGEND_GAP}px`);
+    clear();
+    const observer = new ResizeObserver(clear);
+    observer.observe(legend);
+    return () => observer.disconnect();
+  }, []);
   const cyRef = useRef<CyCore | null>(null);
   const [tip, setTip] = useState<TipAt | null>(null);
   const [copied, setCopied] = useState(false);
@@ -321,59 +337,17 @@ export function LaneStage({
       } as CyLayoutOptions);
 
     // The term lane is laid out on its own (top-down), so the outer lanes cannot see the lines
-    // from it. A second pass orders them by it: each table at the mean height of the terms its
-    // columns are bound to, its columns together beside it in their terms' order (its "+N
-    // columns" last), each product at the mean of its tables.
+    // from it. A second pass orders them by it (placedLaneOrder), each lane spread over the
+    // height of the longest.
     const reorder = () => {
-      const y = (id: string) => cy.getElementById(id).position("y");
-      const laneOf = (id: string) => diagram.lane.get(id);
-      const avg = (xs: number[]) => xs.reduce((sum, v) => sum + v, 0) / xs.length;
-      const terms = new Map<string, number[]>();
-      const tableOf = new Map<string, string>();
-      const tablesOf = new Map<string, string[]>();
-      for (const k of diagram.links) {
-        if (laneOf(k.from) === "term" && laneOf(k.to) !== "term")
-          terms.set(k.to, [...(terms.get(k.to) ?? []), y(k.from)]);
-        if (laneOf(k.to) === "table" && laneOf(k.from) !== "term") tableOf.set(k.from, k.to);
-        if (laneOf(k.to) === "product") tablesOf.set(k.to, [...(tablesOf.get(k.to) ?? []), k.from]);
-      }
-      const own = (id: string) => {
-        const ys = terms.get(id);
-        return ys ? avg(ys) : y(id);
-      };
-      const inLane = (l: Lane) => g.nodes.filter((n) => laneOf(n.id) === l).map((n) => n.id);
-      const tableKey = new Map<string, number>();
-      for (const t of inLane("table")) {
-        const ys = [...tableOf].filter(([c, at]) => at === t && terms.has(c)).map(([c]) => own(c));
-        ys.push(...(terms.get(t) ?? []));
-        tableKey.set(t, ys.length === 0 ? y(t) : avg(ys));
-      }
-      const more = new Set(diagram.more.map((m) => m.id));
-      const key = (id: string): [number, number] => {
-        const t = tableOf.get(id);
-        const inner = more.has(id) ? Infinity : own(id);
-        return t ? [tableKey.get(t) as number, inner] : [inner, 0];
-      };
-      const columns = [...inLane("column"), ...more].sort((p, q) => {
-        const [a1, a2] = key(p);
-        const [b1, b2] = key(q);
-        return a1 - b1 || a2 - b2;
-      });
-      const tables = inLane("table").sort(
-        (p, q) => (tableKey.get(p) as number) - (tableKey.get(q) as number),
-      );
-      const place = new Map<string, number>();
-      columns.forEach((id, i) => place.set(id, i));
-      tables.forEach((id, i) => place.set(id, (i * columns.length) / Math.max(1, tables.length)));
-      for (const p of inLane("product")) {
-        const ts = tablesOf.get(p) ?? [];
-        place.set(p, ts.length === 0 ? y(p) : avg(ts.map((t) => place.get(t) as number)));
-      }
+      const lanes = placedLaneOrder(diagram, (id) => cy.getElementById(id).position()).slice(1);
+      const span = Math.max(...lanes.map((row) => row.length));
       // Only the order within each lane counts (ELK's interactive crossing minimisation).
-      for (const [id, at] of place) {
-        const n = cy.getElementById(id);
-        n.position({ x: n.position("x"), y: at * NODE_H * 2 });
-      }
+      for (const row of lanes)
+        row.forEach((id, i) => {
+          const n = cy.getElementById(id);
+          n.position({ x: n.position("x"), y: ((i + 0.5) * span * NODE_H * 2) / row.length });
+        });
     };
 
     // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
@@ -527,7 +501,7 @@ export function LaneStage({
           <div className="p3d-hint">{t("profile3d.hintFlat")}</div>
         </>
       )}
-      <div className="p3d-legend">
+      <div className="p3d-legend" ref={legendRef}>
         <GraphLegend graph={diagram.graph} />
       </div>
     </div>

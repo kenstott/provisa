@@ -13,8 +13,8 @@ Started on device 1 (Provisa) and device 3 (the backends) of the three-device be
 by the load generator on device 2. Read-only; it listens only where ``--listen`` says (there is no
 default address):
 
-    GET /host           the machine read off itself: machine type and zone (GCE metadata),
-                        physical cores (lscpu), each network interface's driver, and the
+    GET /host           the machine read off itself: machine type, zone, CPU platform and
+                        instance id (GCE metadata), physical cores (lscpu), each network interface's driver, and the
                         ``--fact`` values the operator's script states (telemetry, engine)
     GET /cpu            cumulative CPU seconds of ``--pid`` and its descendants (device 1)
     GET /docker-stats   one ``docker stats`` snapshot (device 3's containers)
@@ -105,6 +105,9 @@ def host_facts(
         # GCE answers "projects/<n>/machineTypes/<type>" and "projects/<n>/zones/<zone>"
         "machine_type": lambda: metadata("machine-type").rsplit("/", 1)[-1],
         "zone": lambda: metadata("zone").rsplit("/", 1)[-1],
+        # Two VMs of one type can differ by more than a change under test (bench_sanity.py).
+        "cpu_platform": lambda: metadata("cpu-platform"),
+        "instance_id": lambda: metadata("id"),
         "cpu": lambda: parse_lscpu(lscpu()),
         "nic_drivers": nics,
     }

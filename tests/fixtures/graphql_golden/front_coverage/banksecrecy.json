@@ -1,0 +1,7 @@
+[
+ {
+  "lowered": true,
+  "origin": "demo:banksecrecy/1-ctr-required.graphql",
+  "root_field": "b__viewCtrRequired"
+ }
+]

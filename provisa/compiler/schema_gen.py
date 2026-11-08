@@ -16,7 +16,6 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 # Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-258, REQ-259, REQ-260, REQ-363, REQ-1614
 
-import re
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -57,10 +56,10 @@ from provisa.compiler.naming import (
     unprefixed_field_name,
 )
 from provisa.compiler.metric_expand import metric_reference_tables
-from provisa.compiler.ontology_classes import is_class_table_id, served_class_columns
+from provisa.compiler.ontology_classes import served_class_columns
 from provisa.core.modeling_tags import append_modeling_tag
-from provisa.compiler.type_map import JSONScalar, column_type_to_graphql, array_graphql_type
-from provisa.compiler.schema_types import SchemaInput, _TableInfo
+from provisa.compiler.type_map import JSONScalar, registered_graphql_type, array_graphql_type
+from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain
 from provisa.security.rights import (
     GOVERNANCE_META_COLUMNS,
     META_DOMAIN_ID,
@@ -68,9 +67,9 @@ from provisa.security.rights import (
     Capability,
     column_served,
     has_capability,
-    IMPLICIT_DOMAINS,
-    reaches_all_domains,
-    reaches_implicitly,
+    SYSTEM_DOMAINS,
+    acts_in_domain,
+    reaches_domain,
     served_across_domains,
 )
 from provisa.compiler.actions_schema import (
@@ -97,20 +96,16 @@ from provisa.compiler.schema_inputs import (
 )
 
 
-# Domains implicitly reachable via JOIN from any data domain (traversal only).
-# Tables in these domains are included in all role contexts so SQL JOINs
-# can reference them, but V001 still blocks direct FROM-clause access.
-# The meta (catalog) domain is implicitly discoverable by every role (REQ-1132), and so is the
-# ontology schema, the glossary's definitions moved from meta (REQ-2163), whose rows the glossary's
-# own rule scopes. Ops is a normal domain a role must reach, like any other.
-_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = IMPLICIT_DOMAINS | {"ontology"}
-
-
-def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
-    """Filter tables by role's domain access. Build per-table metadata."""
+def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
+    si: SchemaInput, *, for_sql: bool = False
+) -> list[_TableInfo]:
+    """Filter tables by role's domain access. Build per-table metadata. ``for_sql`` keeps meta's
+    default tier, which a role with no meta grant reads on SQL alone (REQ-1132): the other surfaces
+    describe what it reads of its data, and to it meta is no domain."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
-    # empty list is no domains, and every role reaches the catalog (rights.reaches_implicitly).
+    # empty list is no domains, and a system domain is reached by its capability
+    # (rights.reaches_domain).
     # A COLUMN's visible_to below reads the same way: an empty list is no role (REQ-2154).
 
     # REQ-1319: role-visible metrics keyed by the single semantic table their expression
@@ -127,9 +122,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
             metrics_by_table.setdefault(refs[0], []).append(m)
 
     def _reaches(table: dict) -> bool:
-        # The role reaches the table's domain: one it lists, "*", or the catalog every role may
-        # traverse.
-        return reaches_implicitly(role["domain_access"], table["domain_id"])
+        # The role reaches the table's domain: one it lists, "*", or a system domain it holds.
+        return reaches_domain(role["domain_access"], table["domain_id"])
 
     tables_by_id = {t["id"]: t for t in si.tables}
 
@@ -151,6 +145,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
         reaches = _reaches(table) if class_served is None else bool(class_served)
+        if table["domain_id"] == META_DOMAIN_ID and not reaches and not for_sql:
+            continue
         if not reaches and not served_across_domains(role, table):
             continue
 
@@ -261,10 +257,15 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
                 write_returns_rows=table["write_returns_rows"],
                 write_refused_forms=frozenset(table["write_refused_forms"]),
                 # REQ-2074: the role's write grants on the table, by operation.
+                # A capability opening a system domain brings no write (rights.acts_in_domain).
                 write_grants={
                     g["operation"]: g
                     for g in table.get("write_grants") or []
                     if g["role"] == role["id"]
+                    and (
+                        table["domain_id"] not in SYSTEM_DOMAINS
+                        or acts_in_domain(role["domain_access"], table["domain_id"])
+                    )
                 },
                 modeling_role=table.get("modeling_role"),  # REQ-1320
                 modeling_history=table.get("modeling_history"),  # REQ-1320
@@ -473,6 +474,12 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     fields: dict[str, GraphQLField] = {}
 
     for t in tables:
+        # Only a root table subscribes, as only a root table is queried (root_table_ids).
+        if si.root_table_ids is not None and t.table_id not in si.root_table_ids:
+            continue
+        # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
+        if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
+            continue
         raw = raw_by_id.get(t.table_id, {})
         source_type = (si.source_types or {}).get(t.source_id, "")
         if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):
@@ -626,25 +633,27 @@ def _add_computed_relationship_field(
     functions: list[dict],
     tables: list[_TableInfo],
     gql_types: dict[int, GraphQLObjectType],
-) -> None:
+) -> str | None:
     func = next((f for f in functions if f["name"] == fn_name), None)
     if not func:
-        return
+        return None
     returns_str = func.get("returns", "")
     parts = returns_str.split(".", 1) if returns_str else []
     if len(parts) != 2:
-        return
-    ret_type = next(
-        (
-            gql_types[t.table_id]
-            for t in tables
-            if t.schema_name == parts[0] and t.table_name == parts[1]
-        ),
+        return None
+    ret_table = next(
+        (t for t in tables if t.schema_name == parts[0] and t.table_name == parts[1]),
         None,
     )
-    if ret_type:
-        field_key = re.sub(r"[^a-zA-Z0-9_]", "_", rel["id"])
-        fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(ret_type)))
+    if ret_table is None:
+        return None
+    # REQ-194: named as a table relationship is — its GraphQL alias, else for the table it
+    # reaches (here the one the function returns) and its cardinality.
+    field_key = rel.get("graphql_alias") or rel_field_name(
+        unprefixed_field_name(ret_table.field_name, ret_table.domain_id), rel["cardinality"]
+    )
+    fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(gql_types[ret_table.table_id])))
+    return field_key
 
 
 def _where_relationships(  # REQ-2136
@@ -684,10 +693,10 @@ def _add_standard_relationship_field(
     where_types: dict[int, GraphQLInputObjectType | None],
     order_by_types: dict[int, GraphQLInputObjectType],
     distinct_enums: dict[int, GraphQLEnumType | None],
-) -> None:
+) -> str | None:
     target = table_lookup.get(rel["target_table_id"])
     if not target:
-        return
+        return None
     target_type = gql_types[target.table_id]
     cardinality = rel["cardinality"]
     # REQ-1586: a junction-backed edge is named for its nomination, not for the table it reaches —
@@ -697,7 +706,7 @@ def _add_standard_relationship_field(
     elif rel.get("via_table_id"):
         via = table_lookup.get(rel["via_table_id"])
         if not via:
-            return
+            return None
         field_name = junction_field_name(
             rel["via_label_source"],
             cardinality,
@@ -732,6 +741,7 @@ def _add_standard_relationship_field(
         )
     else:
         raise ValueError(f"unhandled relationship cardinality {cardinality!r} for {rel['id']!r}")
+    return field_name
 
 
 def _make_object_type_fields(
@@ -766,16 +776,32 @@ def _make_object_type_fields(
             fields, ops_traversal_targets, gql_types, where_types, order_by_types, distinct_enums
         )
 
+    # field -> (relationship id, computed?) for the relationships of this type.
+    held: dict[str, tuple[str, bool]] = {}
     for rel in visible_rels:
         if rel["source_table_id"] != tid:
             continue
         fn_name = rel.get("target_function_name")
         if fn_name:
-            _add_computed_relationship_field(fields, rel, fn_name, functions, tables, gql_types)
+            name = _add_computed_relationship_field(
+                fields, rel, fn_name, functions, tables, gql_types
+            )
         else:
-            _add_standard_relationship_field(
+            name = _add_standard_relationship_field(
                 fields, rel, table_lookup, gql_types, where_types, order_by_types, distinct_enums
             )
+        if name is None:
+            continue
+        computed = bool(fn_name)
+        holder = held.get(name)
+        if holder is not None and (computed or holder[1]):
+            # REQ-194: a computed relationship and another named for one field would leave one
+            # replacing the other. Refused, naming both; a GraphQL alias on either resolves it.
+            # (Two table relationships are refused where their joins register, context.py.)
+            from provisa.compiler.context import RelationshipFieldTaken
+
+            raise RelationshipFieldTaken(info.type_name, name, holder[0], rel["id"])
+        held[name] = (rel["id"], computed)
 
     return fields
 
@@ -973,7 +999,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
             meta = t.column_metadata.get(col_name.lower())
             if meta is None or col_name not in allowed:
                 continue
-            col_gql_type = column_type_to_graphql(meta.data_type)
+            col_gql_type = registered_graphql_type(meta.data_type, meta.subtype)
             if isinstance(col_gql_type, GraphQLList):
                 col_gql_type = GraphQLString  # fallback for arrays in input
             # Named as reads name it (its published name); mutation_gen maps it back.
@@ -1168,20 +1194,8 @@ def generate_schema(
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
     _root_ids = si.root_table_ids
-    _accessible_domains = set(si.role["domain_access"])
-    _all_access = reaches_all_domains(si.role["domain_access"])
-
     for t in tables:
         if _root_ids is not None and t.table_id not in _root_ids:
-            continue
-        if (
-            not _all_access
-            and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
-            and t.domain_id not in _accessible_domains
-            # REQ-2163: a Class table, which no relationship reaches, is a root of its readers,
-            # as SQL and Cypher read it, under the read rights of the tables it is the union of.
-            and not is_class_table_id(t.table_id)
-        ):
             continue
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
@@ -1246,17 +1260,8 @@ def generate_schema(
     mutation_fields: dict[str, GraphQLField] = {}
 
     for t in tables:
-        # Mirror the query-root visibility gate: only seed/root tables get mutation fields, and
-        # implicit-traversal domains (meta/ops) reachable via JOIN are query/traverse-only unless
-        # the role explicitly has access. Without this, a domain-filtered schema exposed mutations
-        # for reachable tables in other domains and for always-visible meta/ops tables.
+        # Mirror the query-root visibility gate: only seed/root tables get mutation fields.
         if _root_ids is not None and t.table_id not in _root_ids:
-            continue
-        if (
-            not _all_access
-            and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
-            and t.domain_id not in _accessible_domains
-        ):
             continue
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
@@ -1282,9 +1287,10 @@ def generate_schema(
             command = extra[field].extensions["provisa_command"]
             raise CommandFieldTaken(root, field, command, "a table's field")
         fields.update(extra)
-    _add_resolve_field(  # REQ-1365
-        query_fields, resolve_field_name(si.domain_prefix, domain_alias_map)
-    )
+    # REQ-1365: the resolver is meta's field, so a per-domain schema has it only when meta is asked
+    # for; meta filters by the Domains menu like any domain.
+    if offers_domain(si, META_DOMAIN_ID):
+        _add_resolve_field(query_fields, resolve_field_name(si.domain_prefix, domain_alias_map))
 
     mutation_type: GraphQLObjectType | None = None
     if mutation_fields:

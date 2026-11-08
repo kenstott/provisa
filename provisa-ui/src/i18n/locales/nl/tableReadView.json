@@ -4,7 +4,7 @@
     "colPk": "PK",
     "colSqlAlias": "SQL-alias",
     "colDescription": "Beschrijving",
-    "colVisibleTo": "Zichtbaar voor (lezen)",
+    "colVisibleTo": "Leesrechten",
     "colMasking": "Maskering",
     "colScope": "Bereik",
     "pathBadge": "pad",
@@ -45,13 +45,16 @@
     "editDefinitionButton": "Definitie bewerken",
     "editDefinitionTitle": "De viewdefinitie bewerken (SQL of metriek-/dimensiekiezer)",
     "queryTemplate": "Cypher",
-    "writable": "Schrijfbaar",
+    "writable": "De bron accepteert",
+    "noWrites": "Geen schrijfacties",
     "notShown": "niet getoond",
     "draftLabel": "Concept",
     "draftTooltip": "Concept: buiten gebruik — in geen enkel schema en door niemand gelezen. Vink uit om de tabel vrij te geven; vink aan om haar buiten gebruik te stellen.",
     "draftNoRightTooltip": "Een tabel vrijgeven of terugzetten naar concept vereist het recht Tabelregistratie in het domein van de tabel.",
     "draftPreviewNote": "Conceptvoorbeeld: lezers kunnen deze tabel nog niet zien.",
     "keepsHistory": "Bewaart historie: elke versie, met wanneer het gebeurde en wanneer het werd vastgelegd.",
-    "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd"
+    "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd",
+    "deleteTitle": "Tabel {{name}} verwijderen?",
+    "deleteConsequence": "De registratie van de tabel wordt verwijderd."
   }
 }

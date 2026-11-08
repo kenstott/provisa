@@ -1,19 +1,19 @@
 {
   "maintenanceTab": {
     "title": "Scheduled maintenance",
-    "intro": "Shows a banner to every signed-in user, on every page, until you turn it off. Turn it on before planned work that interrupts queries — replacing the engine cluster, switching its topology, or upgrading the control plane — so the interruption reads as scheduled rather than broken.",
+    "intro": "Shows a banner to every signed-in user, on every page, until you turn it off. Turn it on before planned work that interrupts queries, such as replacing the engine cluster, switching its topology, or upgrading the control plane, so people know the interruption is scheduled.",
     "live": "The banner is live.",
     "liveSince": "The banner is live since {{time}}.",
     "messageLabel": "Message",
     "messagePlaceholder": "Provisa is undergoing scheduled maintenance…",
     "messageHint": "Leave empty for the standard wording.",
     "endsAtLabel": "Expected back by",
-    "endsAtHint": "Leave empty to say no estimate is being offered rather than to imply one.",
+    "endsAtHint": "Leave empty if you have no estimate.",
     "showBanner": "Show banner",
     "updateBanner": "Update banner",
     "clearBanner": "Clear banner",
     "dangerTitle": "Danger zone",
-    "dangerIntro": "Stops the backend and the UI dev server on this machine. Only works against a --demo/--native desktop launch — refused everywhere else.",
+    "dangerIntro": "Stops the backend and the UI dev server on this machine. Works only on a --demo/--native desktop launch and is refused everywhere else.",
     "stopAll": "Stop all services",
     "stopConfirm": "Kill the backend and UI dev server on this machine? This ends your session immediately."
   }

@@ -40,6 +40,23 @@
     "copyErrorTitle": "複製錯誤",
     "expandedDialogLabel": "展開的圖形檢視",
     "firstNodesShown": "顯示首 {{count}} 個節點；尚有更多。請在側邊選單中提高上限。",
-    "deleteFrame": "刪除此結果"
+    "deleteFrame": "刪除此結果",
+    "sparqlNothingMore": "沒有關於 {{resource}} 的更多資訊。",
+    "sparqlDropForm": "不能將標籤拖放到 {{form}} 結果上：只支援 SELECT 或 CONSTRUCT。未有加入任何內容。",
+    "sparqlDropUnion": "不能將標籤拖放到 UNION 查詢上：無法確定連接哪一邊。未有加入任何內容。",
+    "sparqlDropGroupBy": "不能將標籤拖放到 GROUP BY 查詢上：其列是分組，不是資源。未有加入任何內容。",
+    "sparqlDropAggregate": "不能將標籤拖放到聚合查詢上：其列是合計，不是資源。未有加入任何內容。",
+    "sparqlDropSubquery": "不能將標籤拖放到含子 SELECT 的查詢上。未有加入任何內容。",
+    "sparqlDropNoClass": "此結果沒有可連接的類別：請先為變數指定類別，再重新拖放。未有加入任何內容。",
+    "sparqlDropNode": "該節點不是此查詢的變數，因此沒有可連接的對象。未有加入任何內容。",
+    "sparqlDropNoPath": "{{name}} 與 {{classes}} 沒有關係。未有加入任何內容。",
+    "sparqlDropTooFar": "{{name}} 距 {{classes}} 有 {{hops}} 個關係，超過拖放遍歷的 {{most}} 個：沒有短路徑。未有加入任何內容。",
+    "sparqlDropNoEnd": "{{name}} 的兩端都不在此結果中。未有加入任何內容。",
+    "sparqlDropParameterized": "路徑無法經過 {{name}}：讀取它需要參數。未有新增任何內容。",
+    "sparqlDropEdgeParameterized": "{{name}} 通往一個讀取時需要參數的資料表，路徑無法經過這樣的資料表。未有新增任何內容。",
+    "sparqlDropNoProperty": "此結果中沒有類別具有 {{name}}。未有加入任何內容。",
+    "sparqlDropLeftOut": "已加入 {{total}} 條等長路徑中的 {{shown}} 條；其餘已省略。",
+    "sparqlDropCut": "結果已達到 LIMIT {{limit}}：之後的列已省略。",
+    "cypherPathNoKey": "{{from}} 與 {{to}} 之間的路徑需要每個節點的鍵，而其中一個沒有。"
   }
 }

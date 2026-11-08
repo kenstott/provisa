@@ -201,8 +201,8 @@ Jede Spalte hat ein Berechtigungsmodell, das Lese-, Schreib- und Maskierungszugr
 | Stufe | Bedingung | Ergebnis |
 | ------ | ----------- | -------- |
 | **Verborgen** | Rolle nicht in `visible_to` | Spalte fehlt in Schema und Katalog |
-| **Maskiert** | Rolle in `visible_to`; der erste Maskeneintrag, den sie hält, hat eine `mask` | Spalte sichtbar, Wert in der Ausgabe ersetzt |
-| **Unmaskiert** | Rolle in `visible_to`; der erste Maskeneintrag, den sie hält, hat keine `mask`, oder sie hält keinen | Voller Lesezugriff |
+| **Maskiert** | Rolle in `visible_to`; der erste Maskeneintrag, den sie hält, hat eine `mask`, oder die Spalte hat Masken und sie hält keinen | Spalte sichtbar, Wert in der Ausgabe ersetzt |
+| **Unmaskiert** | Rolle in `visible_to`; der erste Maskeneintrag, den sie hält, hat keine `mask`, oder die Spalte hat keine Masken | Voller Lesezugriff |
 
 ### Öffentliche Spalten {: #public-columns }
 
@@ -340,7 +340,9 @@ Der Maskenausdruck wird in die SQL-SELECT-Projektion verschoben. Die Datenbank l
 
 **Eine Maske gilt für jeden Namen der Spalte, nicht für eine verknüpfte Spalte.** Eine Spalte wird unter ihrem Alias und unter ihrem physischen Namen gleich maskiert. Eine Maske verbirgt keinen Schlüssel, den eine genehmigte Beziehung mit einer Spalte verknüpft, die die Rolle sehen kann: Der Join vergleicht die echten Werte, sodass die verknüpfte Spalte zeigt, was der maskierte Schlüssel enthält. Maskieren Sie die verknüpfte Spalte ebenfalls, oder genehmigen Sie die Beziehung für diese Rolle nicht.
 
-**Kein gehaltener Eintrag bedeutet unmaskiert.** Ein Leser, der keinen Eintrag hält, liest die Spalte unmaskiert. Beenden Sie eine Liste mit einem `*`-Eintrag, wenn auf jeden Leser irgendeine Maske angewendet werden soll. Der Spalteneditor warnt, wenn einer Liste ein `*`-Eintrag fehlt (`unlisted_unmasked`).
+**Kein gehaltener Eintrag bedeutet vollständig maskiert.** Sobald eine Spalte eine Maske hat, liest ein Leser, der keinen Eintrag hält, sie vollständig maskiert: `****` bei einer Textspalte, `NULL` bei jedem anderen Typ. Unmaskiert gibt nur ein Eintrag. Damit Leser, die eine Liste nicht nennt, unmaskiert lesen, beenden Sie sie mit einem ausdrücklichen Eintrag ohne `to` und ohne `mask`. Eine Spalte ohne Masken bleibt unverändert.
+
+**Ein Eintrag, den kein Leser erreicht, wird abgelehnt.** Das Speichern einer Maskenliste mit einem solchen Eintrag wird mit `You have defined a mask that is not reachable: ` abgelehnt, gefolgt von den unerreichbaren Einträgen, jeder mit seinen Rollen benannt. Das gilt für die Admin-Oberfläche, die Admin-API und das Laden einer Konfiguration.
 
 **Verweigern durch Reihenfolge.** Ein früherer Eintrag gewinnt, auch wenn der Leser zusätzlich einen späteren, freizügigeren hält. Damit Auftragnehmer ein Gehalt immer maskiert sehen, gleich welche anderen Rollen sie haben, setzen Sie den Eintrag für Auftragnehmer vor den unmaskierten Eintrag. Eine gewährte Rolle verliert nie, was ihr Elternteil über die Vererbung gewährt, aber ein früher in der Liste stehender Maskeneintrag gilt zuerst. So funktioniert Einschränkung hier.
 

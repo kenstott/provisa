@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -35,13 +36,24 @@ def _as_dict(v: Any) -> dict:
     return dict(v or {})
 
 
+@functools.lru_cache(maxsize=1)
+def _outside_sql_catalog() -> str:
+    """The rows of ``registered_tables`` that are not a SQL catalog's views (REQ-2190)."""
+    from provisa.security.rights import META_DOMAIN_ID, SQL_CATALOG_TABLES
+
+    names = ", ".join(sorted(f"'{name}'" for _, name in SQL_CATALOG_TABLES))
+    return f"NOT (domain_id = '{META_DOMAIN_ID}' AND table_name IN ({names}))"
+
+
 async def fetch_tables(  # REQ-155, REQ-393, REQ-399
-    conn: "Connection", *, draft: bool = False
+    conn: "Connection", *, draft: bool = False, catalog: bool = True
 ) -> list[dict]:
     """Fetch registered tables with columns — the data plane's: those in service. ``draft``
     True fetches the ones out of service instead (REQ-1921), which no schema offers and no
     statement reads: fetched to be refused by name, for their steward's preview
-    (admin/table_read.py) and for the replica such a preview lands."""
+    (admin/table_read.py) and for the replica such a preview lands. ``catalog`` False leaves out
+    a SQL catalog's views, for a reader of the tables that hold data."""
+    served = "draft = $1" if catalog else f"draft = $1 AND {_outside_sql_catalog()}"
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
         "alias, description, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
@@ -57,16 +69,22 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         # REQ-2109: what a bitemporal table maps, and the refresh interval and allowed lateness
         # of the version log of one updated in place (bitemporal_capture).
         "business_key, valid_time, recorded_time, mv_refresh_interval, mv_allowed_lateness "
-        "FROM registered_tables WHERE draft = $1 ORDER BY id",
+        f"FROM registered_tables WHERE {served} ORDER BY id",
         draft,
     )
     from provisa.core.repositories import write_grant as write_grant_repo
 
     grants = write_grant_repo.grouped(await conn.fetch(write_grant_repo.BY_TABLE_SQL))
     # Every table's columns in one read, each table's in registration order: a rebuild reads
-    # every table, and a query per table was one for each (REQ-1882).
+    # every table, and a query per table was one for each (REQ-1882). registered_tables is read in
+    # a WITH clause, which PostgreSQL analyzes (and locks) before the FROM clause, so the statement
+    # locks the two in schema.sql's order: its ALTER TABLE blocks take registered_tables, then
+    # table_columns, in one transaction. Read in a subquery of the WHERE clause, registered_tables
+    # was locked second, the read held table_columns while it waited for it, and a run of
+    # schema.sql on the same org schema deadlocked with it.
     columns_of: dict[int, list] = {}
     for r in await conn.fetch(
+        f"WITH served AS (SELECT id FROM registered_tables WHERE {served}) "
         "SELECT table_id, column_name, data_type, visible_to, masks, "
         "alias, description, path, is_primary_key, object_fields, native_filter_type, "
         "native_filter_required, required_by_steward, "  # REQ-1986
@@ -76,8 +94,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "subtype, "  # REQ-2171
         "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
         "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
-        "FROM table_columns WHERE table_id IN "
-        "(SELECT id FROM registered_tables WHERE draft = $1) ORDER BY table_id, id",
+        "FROM table_columns WHERE table_id IN (SELECT id FROM served) ORDER BY table_id, id",
         draft,
     ):
         columns_of.setdefault(r["table_id"], []).append(r)

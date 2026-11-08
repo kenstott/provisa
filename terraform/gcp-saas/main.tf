@@ -290,6 +290,8 @@ locals {
     export VITE_FIREBASE_AUTH_DOMAIN="${var.firebase_web_auth_domain}"
     export VITE_FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export VITE_AZURE_TENANT="${var.azure_tenant_id}"
+    # REQ-1276: org subdomains live under the zone the wildcard certificate covers.
+    export VITE_ORG_BASE_DOMAIN="${var.tls_domain}"
     ${local.protocol_exports}
     export UI_PORT=${local.protocols.ui.port}
     ${local.node_tls_sync}
@@ -332,7 +334,7 @@ locals {
     cat > /root/.provisa/extensions/control-db/docker-compose.control-db.yml <<'YAML'
     services:
       control-db:
-        image: postgres:16.14@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b
+        image: pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a
         restart: unless-stopped
         command: ["postgres", "-c", "max_connections=200"]
         environment:
@@ -682,6 +684,9 @@ locals {
     project  = var.project
     zone     = var.zone
     instance = google_compute_instance.coordinator.name
+    # REQ-2006: started beside the coordinator when a request for a demo wakes it; empty with no
+    # sandbox VM. Its permissions are this role's, on every instance of the project.
+    sandbox_instance = var.sandbox_vm ? local.sandbox_instance_name : ""
     # The control plane's internal address, not a name: the private zone that used to
     # publish one existed only so worker VMs could find the coordinator, and it went
     # with them. The front door is on this same VPC, so the VM's primary internal IP
@@ -713,8 +718,9 @@ locals {
     cert_secret = local.tls_cert_secret
     key_secret  = local.tls_key_secret
     targets     = "/etc/provisa/tls/node.crt:/etc/provisa/tls/node.key /root/.provisa/certs/provisa.crt:/root/.provisa/certs/provisa.key"
-    restart     = "docker ps --format '{{.Names}}' | grep -E '^compose-provisa(-ui|-sandbox|-sandbox-regions)?-1$' | xargs -r docker restart"
-    before      = "docker.service provisa.service"
+    # In double quotes: sync.env holds this in single quotes, and a single quote here ended them.
+    restart = "docker ps --format \"{{.Names}}\" | grep -E \"^compose-provisa(-ui|-sandbox|-sandbox-regions|-sandbox-regions-warehouse)?-1$\" | xargs -r docker restart"
+    before  = "docker.service provisa.service"
   })
   # The front door renews it (the one VM always on).
   front_door_tls_renew = templatefile("${path.module}/tls/install-renew.sh.tftpl", {

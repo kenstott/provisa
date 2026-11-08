@@ -486,6 +486,7 @@ async def test_build_mcp_server_registers_tools():
         "run_sql",
         "explain_sql",
         "search_catalog",
+        "search_reference_library",  # REQ-2185
         # REQ-1857: the naming/generation tools and the capability-gated write tools are all
         # available on the real MCP server now, not just Polly's in-app chat tool list.
         "graphql_field_names",
@@ -569,6 +570,34 @@ async def test_stdio_capability_tool_refuses_when_the_pinned_role_lacks_the_capa
 
     with pytest.raises(Exception, match="data_product_read"):
         await mcp.call_tool("list_data_products", {})
+
+
+async def test_a_decision_through_mcp_applies_with_no_idempotency_key(monkeypatch):
+    # REQ-2216: a decide call reads its Idempotency-Key header; the request a tool hands its
+    # router is the server's shim, which carries no key, so the decision is simply carried out.
+    from unittest.mock import AsyncMock
+
+    from provisa.api import idempotency
+    from provisa.api.mcp import model_tools as mt
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "curator")
+    fake_state = _make_state()
+    fake_state.contexts["curator"] = fake_state.contexts["analyst"]
+    fake_state.roles = {"curator": {"capabilities": ["dq_rw"]}}
+    monkeypatch.setattr("provisa.api.app.state", fake_state)
+    run = AsyncMock(return_value={"id": 9})
+
+    async def decide(state, role, request, *args):
+        return await idempotency.once(_FakePool(), request, run)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(mt, "decide_profile_constraint", decide)
+    mcp = build_mcp_server(fake_state)
+    await mcp.call_tool(
+        "decide_profile_constraint",
+        {"table_id": 5, "kind": "not_null", "column": "id", "status": "accepted"},
+    )
+    run.assert_awaited_once()
 
 
 async def test_jev_tool_absent_without_api_key(monkeypatch):

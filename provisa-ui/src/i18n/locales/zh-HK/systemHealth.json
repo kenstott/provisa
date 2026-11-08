@@ -26,7 +26,9 @@
     "running": "執行中",
     "unreachable": "無法連接",
     "port": "連接埠 {{port}}",
+    "cypherOverHttp": "基於 HTTP 的 Cypher",
     "mvRefreshLoop": "具體化檢視重新整理迴圈",
-    "stopped": "已停止"
+    "stopped": "已停止",
+    "copyUrl": "複製 URL"
   }
 }

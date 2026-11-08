@@ -17,8 +17,10 @@ procedure through a query surface, and a Cypher CALL invokes a command (REQ-872,
 procedure becomes a statement command (REQ-2001) of the fixture model: the procedure's arguments
 are its arguments, its outputs its columns, and its statement answers the rows of the scenario's
 table whose inputs are the call's arguments, in the table's order. Its Cypher binding is the
-procedure's name. It is in the domain ``tck_empty`` and assigned to every role, so both the HTTP
-runner (``org_admin``, which reaches every domain) and a Bolt session (``tck_empty``) call it.
+procedure's name. It is in the domain ``tck_empty`` and assigned to the roles that call it: the
+HTTP runner's (``org_admin``, which reaches every domain) and a Bolt session's (``tck_empty``). A
+command's ``visible_to`` is its one list of assigned roles, and an empty one assigns it to no role
+(REQ-2153, REQ-2154), so the roles are named.
 
 The TCK declares one name (``test.my.proc``) with a different signature in different scenarios,
 and two commands are never bound to one name. So the model holds one procedure at a time: each is
@@ -28,8 +30,9 @@ removes nothing (REQ-1919), so the command keeps its name from one declaration o
 to the next and is replaced; the runner runs the procedure scenarios after every other one, so a
 scenario calling an unknown procedure meets none.
 
-A procedure with no outputs (VOID) is no command: a command answers rows of its columns. Such a
-scenario is a failure naming that."""
+A procedure with no outputs (VOID) is a VOID command (REQ-2001, amended 2026-10-28): it declares
+no output columns, so a call runs it and answers an empty result with no columns; its statement
+reads each of its arguments and nothing else."""
 
 # Requirements: REQ-2167, REQ-2001
 
@@ -144,14 +147,20 @@ def statement(proc: Procedure) -> str:
     )
 
 
-def command(proc: Procedure) -> dict:
-    """The procedure as a statement command of the fixture model, bound in Cypher to its name."""
-    if not proc.outputs:
-        raise NotACommand(
-            f"the procedure {proc.name} is VOID (it has no outputs), which no command expresses: "
-            "a command answers rows of its columns"
-        )
+def void_statement(proc: Procedure) -> str:
+    """The SQL of a VOID procedure's command: one row of its arguments, which its call does not
+    answer (every declared argument is used, REQ-2001)."""
+    items = ['1 AS "_n"'] + [
+        f"CAST({{{{{c}}}}} AS {_TYPES[t][1]}) AS {_quoted(c)}" for c, t in proc.inputs
+    ]
+    return f"SELECT {', '.join(items)}"
+
+
+def command(proc: Procedure, roles: tuple[str, ...]) -> dict:
+    """The procedure as a statement command of the fixture model, bound in Cypher to its name and
+    assigned to ``roles``; a VOID procedure as a VOID command, declaring no output columns."""
     name = "tck_" + proc.name.replace(".", "_")
+    void = {"output_columns": []} if not proc.outputs else {}
     return {
         "name": name,
         "function_name": name,
@@ -161,28 +170,31 @@ def command(proc: Procedure) -> dict:
         "description": f"The openCypher TCK's test procedure {proc.name}",
         "source_id": "",
         "returns": "",
-        # Every role: org_admin over HTTP, tck_empty in a Bolt session.
-        "visible_to": [],
+        # The roles that call it: the runner's over HTTP, tck_empty in a Bolt session.
+        "visible_to": list(roles),
         "arguments": [{"name": c, "type": _TYPES[t][0]} for c, t in proc.inputs],
         "language_bindings": {"cypher": {"name": proc.name}},
-        "binding": {"sql": statement(proc)},
+        "binding": {"sql": statement(proc) if proc.outputs else void_statement(proc)},
+        **void,
     }
 
 
 # --- declaring a procedure ---------------------------------------------------------------------
 
-#: The instance, its fixture model as it booted, and the break-glass account that puts a model
-#: (main sets them); the procedure the model holds now.
+#: The instance, its fixture model as it booted, the break-glass account that puts a model and
+#: the roles a command is assigned to (main sets them); the procedure the model holds now.
 _MODEL: dict[str, Any] = {}
 
 
-def configure(base: str, model: Path, username: str, password: str) -> None:
+def configure(base: str, model: Path, username: str, password: str, roles: tuple[str, ...]) -> None:
+    """``roles``: the roles a procedure's command is assigned to, those the runner calls it as."""
     import yaml
 
     _MODEL.update(
         base=base,
         model=yaml.safe_load(model.read_text()),
         authorization="Basic " + base64.b64encode(f"{username}:{password}".encode()).decode(),
+        roles=tuple(roles),
         held=None,
     )
 
@@ -212,7 +224,7 @@ def declare(proc: Procedure) -> None:
         )
     if _MODEL["held"] == proc:
         return
-    entry = command(proc)
+    entry = command(proc, _MODEL["roles"])
     answer = _put(yaml.safe_dump({**_MODEL["model"], "functions": [entry]}, sort_keys=False))
     if not (isinstance(answer, dict) and answer.get("success")):
         raise ValueError(f"the model with {proc.name} was not applied: {answer}")

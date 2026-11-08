@@ -49,6 +49,10 @@ async def client():
         async with app.router.lifespan_context(app):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as c:
+                # REQ-2176: an earlier module's statements leave the principal's graph session
+                # holding objects, and a read of a session keeps its nodes' graph identities.
+                resp = await c.delete("/data/cypher/session")
+                assert resp.status_code == 200, resp.text
                 yield c
     finally:
         if _prev_config is None:
@@ -62,10 +66,7 @@ def _engine_catalogs() -> str:
     needs the control plane attached as provisa_admin (native_backend's registry walk)."""
     from provisa.api.app import state
 
-    # state.federation_engine is the EngineRuntime binding; the native backend it binds holds
-    # the DuckDB runtime.
-    engine = state.federation_engine
-    backend = getattr(engine, "_backend", engine)
+    backend = state.federation_engine._backend  # the EngineRuntime's concrete engine
     runtime = getattr(backend, "_runtime", None)
     if runtime is None or not hasattr(runtime, "_con"):
         return f"engine {type(backend).__name__}: no native runtime"
@@ -86,11 +87,6 @@ async def _cypher(client: AsyncClient, query: str, params: dict | None = None, h
         json={"query": query, "params": params or {}},
         headers=headers,
     )
-
-
-async def _clear_session(client: AsyncClient) -> None:
-    cleared = await client.delete("/data/cypher/session")
-    assert cleared.status_code == 200, cleared.text
 
 
 async def _schema(client: AsyncClient, headers=None):
@@ -399,17 +395,13 @@ class TestCypherErrorPaths:
         assert resp.status_code == 410
         assert resp.json()["code"] == "cypher.query_id_removed"
 
-    async def test_merge_of_a_free_label_makes_an_ephemeral_node(self, client):
-        """REQ-818, REQ-2176: MERGE is MATCH, then CREATE under the governing rule; a label the
-        model does not have makes one node in the principal's graph session, which is cleared
-        before and after so no later read of this principal reads it beside the model."""
-        await _clear_session(client)
-        try:
-            resp = await _cypher(client, "MERGE (n:TestNode {id: 999})")
-        finally:
-            await _clear_session(client)
+    async def test_merge_of_a_label_the_model_lacks_is_a_session_write(self, client):
+        # REQ-2176: MERGE is MATCH then CREATE, here of the graph session's own node.
+        resp = await _cypher(client, "MERGE (n:TestNode {id: 999})")
         assert resp.status_code == 200, resp.text
-        assert resp.json()["counters"]["nodes-created"] == 1, resp.text
+        assert resp.json()["counters"]["nodes-created"] == 1
+        cleared = await client.delete("/data/cypher/session")
+        assert cleared.status_code == 200, cleared.text
 
 
 # --------------------------------------------------------------------------- #

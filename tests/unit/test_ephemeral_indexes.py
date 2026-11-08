@@ -85,7 +85,7 @@ def test_create_index_on_a_relationship_type(monkeypatch):
     s = _session(monkeypatch)
     s.run("CREATE (:T)-[:R {w: 2}]->(:T)")
     assert s.run("CREATE INDEX FOR ()-[r:R]-() ON (r.w)") == Indexed(1, 0)
-    assert "lookup cypher__rel__R w" in _calls(s)
+    assert f"lookup {store.rel_table('R')} w" in _calls(s)
 
 
 def test_create_index_on_a_model_label_is_refused_by_name(monkeypatch):

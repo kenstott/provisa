@@ -111,12 +111,25 @@ class _PgIntervalBinaryLoader(Loader):
         return interval_value(months, days, micros)
 
 
+#: The built-in range and multirange types: read as the text PostgreSQL writes of them, the form a
+#: range is held in everywhere (provisa.core.pg_range; REQ-2171). psycopg's Range is no such text:
+#: its str() of an unbounded int4range is '(None, 4)', where PostgreSQL writes '(,4)'.
+_RANGE_TYPES = tuple(
+    name
+    for element in ("int4", "int8", "num", "date", "ts", "tstz")
+    for name in (f"{element}range", f"{element}multirange")
+)
+
+
 def _configure(conn: psycopg.Connection[Any]) -> None:
     """Match the value types the asyncpg driver returned: json/jsonb as text (uuid as UUID, inet as
-    ipaddress objects, bytea as bytes and numeric as Decimal are psycopg's own defaults), read an
-    interval with its months, and bound the per-connection prepared-statement cache."""
+    ipaddress objects, bytea as bytes and numeric as Decimal are psycopg's own defaults), read a
+    range as its PostgreSQL text and an interval with its months, and bound the per-connection
+    prepared-statement cache."""
     conn.adapters.register_loader("json", TextLoader)
     conn.adapters.register_loader("jsonb", TextLoader)
+    for name in _RANGE_TYPES:
+        conn.adapters.register_loader(name, TextLoader)
     conn.adapters.register_loader("interval", _PgIntervalLoader)
     conn.adapters.register_loader("interval", _PgIntervalBinaryLoader)
     conn.prepared_max = _PREPARED_MAX
@@ -299,9 +312,28 @@ class _RowFetcher:
             return list(cur.fetchall())
 
 
+#: REQ-2167: a table's columns filled from a sequence -- an identity column, a serial one, or one
+#: whose default calls nextval -- with their places among its live columns. The table is named as
+#: an INSERT names it, resolved on the same search path.
+_GENERATED_COLUMNS = """
+SELECT name, position FROM (
+    SELECT a.attname::text AS name,
+           row_number() OVER (ORDER BY a.attnum)::int AS position,
+           a.attidentity <> ''
+           OR pg_get_serial_sequence(a.attrelid::regclass::text, a.attname) IS NOT NULL
+           OR coalesce(pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%' AS generated
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+    WHERE a.attrelid = to_regclass(concat_ws('.', quote_ident($1::text), quote_ident($2::text)))
+      AND a.attnum > 0 AND NOT a.attisdropped
+) columns WHERE generated ORDER BY position
+"""
+
+
 class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
     # Bounded wait for a pooled connection when all are checked out (request deadline permitting).
     _ACQUIRE_TIMEOUT = 10.0
+    generated_keys = "returning"  # REQ-2167
     # Rows pulled when a stream opens (so its column metadata is known up front); later batches use
     # the caller's fetch size.
     _FIRST_BATCH_ROWS = 1000
@@ -477,6 +509,12 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
             rows=rows, column_names=columns, column_types=col_types, rowcount=affected
         )
 
+    async def generated_columns(self, schema: str | None, table: str):  # REQ-2167
+        from provisa.executor.drivers.base import GeneratedColumn
+
+        found = await self.execute(_GENERATED_COLUMNS, [schema, table])
+        return tuple(GeneratedColumn(name, position) for name, position in found.rows)
+
     @property
     def supports_streaming(self) -> bool:  # REQ-1190
         # PgBouncer transaction-pool mode forbids the long-lived server-side cursor a stream needs, so
@@ -506,6 +544,13 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
 
         with self._borrow() as conn:
             return await fetch_enum_registry(_RowFetcher(conn))
+
+    # Async only as fetch_enums is; queries synchronously in-thread.
+    async def fetch_source_enums(self) -> dict:  # REQ-2171
+        from provisa.compiler.enum_detect import fetch_source_enums
+
+        with self._borrow() as conn:
+            return await fetch_source_enums(_RowFetcher(conn))
 
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:

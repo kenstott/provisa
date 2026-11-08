@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS model_seed (
     seeded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- The layout this schema was given (provisa.core.db.layout_digest): written once schema.sql and
+-- the audit schema have both run, and read before either runs again. A build that finds it
+-- current runs no DDL beside a live runtime's reads.
+CREATE TABLE IF NOT EXISTS schema_layout (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    digest  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sources (
     id            TEXT PRIMARY KEY,
     type          TEXT NOT NULL,
@@ -50,6 +58,7 @@ CREATE TABLE IF NOT EXISTS sources (
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
+    brand_setup   JSONB NOT NULL DEFAULT '{}',  -- REQ-1923: the values a branded source's setup was given
     path          TEXT,  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- REQ-1919: the rest of a source's settings. After the seed the model store alone owns the
     -- model, so everything a configuration can say about a source is held here.
@@ -246,6 +255,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     data_type   TEXT,
     masks        JSONB NOT NULL DEFAULT '[]',  -- REQ-2059: the ordered mask list
     is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
+    not_null BOOLEAN NOT NULL DEFAULT FALSE,
     epoch_unit   TEXT,  -- REQ-1908: epoch-number storage unit of a temporal column
     -- REQ-1965: the hidden attributes of a natively array/struct/map column, from its source
     array_depth  INTEGER NOT NULL DEFAULT 0,
@@ -524,9 +534,11 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     -- The reference to tags(id) is declared after that table, below.
     tag_id      TEXT,
     why         JSONB,  -- REQ-2094: why the rule is what it is
-    UNIQUE (table_id, role_id),
-    UNIQUE (action_name, role_id),
-    CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id)
+    -- REQ-2188: the rights the one predicate narrows: reading a row (R), updating it (U), deleting
+    -- it (D), in that order. A right is in at most one rule of a role on a target; no constraint
+    -- can say so across rows, so the save does (repositories.rls.upsert).
+    rights      TEXT NOT NULL DEFAULT 'R'
+                CHECK (rights IN ('R', 'U', 'D', 'RU', 'RD', 'UD', 'RUD'))
 );
 
 -- REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row
@@ -552,11 +564,6 @@ ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tag_id TEXT;  -- REQ-1384
 DO $$ BEGIN
     ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS domain_id TEXT REFERENCES domains(id) ON DELETE CASCADE;
     ALTER TABLE rls_rules ALTER COLUMN table_id DROP NOT NULL;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-DO $$ BEGIN
-    ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key UNIQUE (domain_id, role_id);
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -621,7 +628,7 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-1467: tag_id with the parameter stripped ('entity:customer' -> 'entity'). Stored
     -- rather than derived at read time because the uniqueness rule below is stated over it.
     base_tag_id     TEXT NOT NULL,
-    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term')),
+    object_type     TEXT NOT NULL CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric')),
     source_id       TEXT REFERENCES sources(id) ON DELETE CASCADE,
     table_id        INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
     column_name     TEXT,
@@ -635,6 +642,12 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- REQ-2145: the glossary term a tag is on (pii on a Property term). Its reference to
     -- glossary_terms is declared after that table, below.
     term_id         INTEGER,
+    -- REQ-2208: a tag on a row rule (its serial: a rule is updated in place, so the id is stable),
+    -- on a role, or on a governed metric (its name). The metric's reference to metrics is declared
+    -- after that table, below.
+    rls_rule_id     INTEGER REFERENCES rls_rules(id) ON DELETE CASCADE,
+    role_id         TEXT REFERENCES roles(id) ON DELETE CASCADE,
+    metric_name     TEXT,
     object_key      TEXT NOT NULL,
     -- Why this tag is on this object; REQUIRED for 'deprecated' (system semantic).
     reason          TEXT,
@@ -667,7 +680,7 @@ DO $$ BEGIN
     ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS product_id TEXT REFERENCES data_products(id) ON DELETE CASCADE;
     ALTER TABLE tag_assignments DROP CONSTRAINT IF EXISTS tag_assignments_object_type_check;
     ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_object_type_check
-        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term'));
+        CHECK (object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', 'term', 'rls_rule', 'role', 'metric'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -871,7 +884,8 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     lease_until     TIMESTAMPTZ,
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
-    snapshot_id     TEXT
+    snapshot_id     TEXT,
+    index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
 );
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.
@@ -885,6 +899,17 @@ CREATE TABLE IF NOT EXISTS metrics (
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
     from_fact   TEXT
 );
+
+-- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
+-- metric goes with the metric.
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS rls_rule_id INTEGER REFERENCES rls_rules(id) ON DELETE CASCADE;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS role_id TEXT REFERENCES roles(id) ON DELETE CASCADE;
+ALTER TABLE tag_assignments ADD COLUMN IF NOT EXISTS metric_name TEXT;
+DO $$ BEGIN
+    ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_metric_name_fkey
+        FOREIGN KEY (metric_name) REFERENCES metrics(name) ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- REQ-962: named, shared, VERSIONED calendars — the temporal-window boundary source. Holiday/
 -- business-day set is captured per version so a replay reproduces the same window existence.
@@ -1034,7 +1059,7 @@ CREATE TABLE IF NOT EXISTS kafka_topics (
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
     id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')),
+    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
@@ -1085,12 +1110,12 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1668/REQ-1683: the query-API source kinds joined the type check after api_sources existed;
+-- REQ-1668/REQ-1683/REQ-2197: the query-API source kinds joined the type check after api_sources existed;
 -- an org schema created before them still carries the narrower constraint.
 DO $$ BEGIN
     ALTER TABLE api_sources DROP CONSTRAINT IF EXISTS api_sources_type_check;
     ALTER TABLE api_sources ADD CONSTRAINT api_sources_type_check
-        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql'));
+        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -1112,6 +1137,46 @@ CREATE TABLE IF NOT EXISTS creation_requests (
 );
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS approvals JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS required_approvals INT NOT NULL DEFAULT 1;
+-- REQ-2217: the environment a request is for. REQ-2216/REQ-2215: the roles it is addressed to and
+-- their members as resolved when it was raised (principals: id, display_name, email), and the
+-- roles none could be resolved for, by name.
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'prod';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS addressed_roles JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS addressed_members JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS unresolved_roles JSONB NOT NULL DEFAULT '[]';
+
+-- REQ-2216: ops.requests is subscribable. Every insert, update or delete of a request is reported
+-- on this schema's own channel (subscriptions.pg_provider.schema_channel: NOTIFY is database-wide
+-- and the org schemas share a database) with the request's id only; the subscription reads the
+-- row back through the governed pipeline as the subscriber, so the event is the table's columns.
+CREATE OR REPLACE FUNCTION provisa_notify_requests()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid int;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_requests_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_requests ON creation_requests;
+CREATE TRIGGER provisa_sub_requests
+AFTER INSERT OR UPDATE OR DELETE ON creation_requests
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_requests();
+
+-- REQ-2216: an approve or decide call carrying an Idempotency-Key applies once; a repeat of the
+-- same key by the same caller on the same endpoint is answered with the first call's result.
+CREATE TABLE IF NOT EXISTS idempotent_calls (
+    scope       TEXT NOT NULL,         -- method and path of the call
+    actor       TEXT NOT NULL,         -- the caller's user id
+    call_key    TEXT NOT NULL,         -- the Idempotency-Key header
+    response    JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (scope, actor, call_key)
+);
 
 -- Live Query Engine watermark state (Phase AM, Phase AY)
 CREATE TABLE IF NOT EXISTS live_query_state (
@@ -1308,6 +1373,64 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
     decided_by       TEXT,
     decided_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (table_id, physical_column, kind)
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
+-- kinds held inside their values.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_scans (
+    scan_id          TEXT PRIMARY KEY,
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    status           TEXT NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at      TIMESTAMPTZ,
+    sampled_rows     INTEGER,
+    scanned_columns  INTEGER,
+    requested_by     TEXT,
+    error            TEXT
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind; counts only, never the
+-- matched text.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_hints (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    scan_id          TEXT NOT NULL,
+    values_tested    INTEGER NOT NULL,
+    values_matched   INTEGER NOT NULL,
+    share            DOUBLE PRECISION NOT NULL,
+    evidence         TEXT NOT NULL,
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
+-- REQ-2189: a saved, named arrangement of the ERD. Only the arrangement: what is drawn in it comes
+-- from the live model, and a table or domain removed from the model goes from every layout with it.
+CREATE TABLE IF NOT EXISTS erd_layouts (
+    name        TEXT PRIMARY KEY,
+    options     JSONB NOT NULL,
+    updated_by  TEXT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_domains (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    domain_id    TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    collapsed    BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    w            DOUBLE PRECISION,
+    h            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_tables (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    table_id     INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, table_id)
 );
 
 CREATE TABLE IF NOT EXISTS synthetic_report (
@@ -1818,6 +1941,140 @@ CREATE TABLE IF NOT EXISTS code_source_vectors (
     PRIMARY KEY (source_id, item_id)
 );
 
+
+-- REQ-2185: the org's reference library: documents its assistants draw on, each proposed or kept,
+-- with domains (a list, or '*' for the whole org, as a glossary term's). A document's content is
+-- held as its passages, each embedded by the org's vector model; vector is the embedding, a pgvector
+-- column of any dimension (provisa.core.pgvector), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.store). Mirrors schema_org.reference_documents,
+-- reference_document_domains and reference_passages.
+CREATE TABLE IF NOT EXISTS reference_documents (
+    id              SERIAL PRIMARY KEY,
+    title           TEXT NOT NULL,
+    source_kind     TEXT NOT NULL CONSTRAINT reference_documents_kind_check
+                        CHECK (source_kind IN ('file', 'url')),
+    source          TEXT NOT NULL,
+    media_type      TEXT NOT NULL,
+    content_sha256  TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT reference_documents_status_check
+                        CHECK (status IN ('proposed', 'kept')),
+    embedding_model TEXT NOT NULL,
+    added_by        TEXT,
+    added_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    refreshed_at    TIMESTAMPTZ,
+    replaced_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
+
+CREATE TABLE IF NOT EXISTS reference_document_domains (
+    id          SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    domain_id   TEXT NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (document_id, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS reference_passages (
+    id          SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    ordinal     INTEGER NOT NULL,
+    section     TEXT,
+    page        INTEGER,
+    text        TEXT NOT NULL,
+    vector      public.vector NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (document_id, ordinal)
+);
+
+-- REQ-2208: the registry's tags on library documents and their sections. They live with the library,
+-- the environment's own as the documents are (env_classes), never in tag_assignments, which travels
+-- with the model: a tag follows its object's environment class. The columns are a tag assignment's
+-- (tag_assignments): the section is named by its heading, or by its page when it has none (a PDF's
+-- pages). Mirrors schema_org.reference_document_tags.
+CREATE TABLE IF NOT EXISTS reference_document_tags (
+    id              SERIAL PRIMARY KEY,
+    tag_id          TEXT NOT NULL,
+    base_tag_id     TEXT NOT NULL,
+    object_type     TEXT NOT NULL CONSTRAINT reference_document_tags_object_type_check
+                        CHECK (object_type IN ('document', 'section')),
+    document_id     INTEGER NOT NULL REFERENCES reference_documents(id) ON DELETE CASCADE,
+    section_heading TEXT,
+    section_page    INTEGER,
+    object_key      TEXT NOT NULL,
+    reason          TEXT,
+    expires_on      TEXT,
+    purpose         TEXT,
+    bases           JSONB,
+    review_on       TEXT,
+    decided_by      TEXT,
+    decided_at      TIMESTAMPTZ,
+    evidence        JSONB,
+    tenant_id       UUID,
+    UNIQUE (base_tag_id, object_key)
+);
+
+-- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by
+-- the org's vector model), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.terms). Mirrors schema_org.glossary_term_vectors.
+CREATE TABLE IF NOT EXISTS glossary_term_vectors (
+    term_id         INTEGER PRIMARY KEY REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    embedding_model TEXT NOT NULL,
+    digest          TEXT NOT NULL,
+    vector          public.vector NOT NULL,
+    tenant_id       UUID
+);
+
+-- REQ-2179: the glossary's scans of reference library documents for terms, and the review queue of
+-- the candidate terms each proposes, drafts until a steward accepts, merges or rejects them. A scan
+-- keeps the document's title and source, so its citations outlive the document. Mirrors
+-- schema_org.glossary_term_scans and glossary_term_drafts.
+CREATE TABLE IF NOT EXISTS glossary_term_scans (
+    id              SERIAL PRIMARY KEY,
+    document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,
+    document_title  TEXT NOT NULL,
+    document_source TEXT NOT NULL,
+    domains         TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT glossary_term_scans_status_check
+                        CHECK (status IN ('running', 'done', 'failed')),
+    error           TEXT,
+    summary         TEXT,
+    started_by      TEXT,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ,
+    model           TEXT,
+    step            TEXT,
+    batch           INTEGER,
+    batches         INTEGER,
+    budget_limit    INTEGER,
+    launch          TEXT,
+    progress_at     TIMESTAMPTZ,
+    source_table    TEXT,  -- REQ-2202: a table's scan: its domain, table, id and text columns
+    tenant_id       UUID
+);
+
+CREATE TABLE IF NOT EXISTS glossary_term_drafts (
+    id              SERIAL PRIMARY KEY,
+    scan_id         INTEGER NOT NULL REFERENCES glossary_term_scans(id) ON DELETE CASCADE,
+    ordinal         INTEGER NOT NULL,
+    name            TEXT NOT NULL,
+    category        TEXT NOT NULL,
+    sense           TEXT NOT NULL,
+    definition      TEXT,
+    definition_kind TEXT NOT NULL CONSTRAINT glossary_term_drafts_definition_check
+                        CHECK (definition_kind IN ('explicit', 'synthesized', 'missing')),
+    proposal        TEXT NOT NULL CONSTRAINT glossary_term_drafts_proposal_check
+                        CHECK (proposal IN ('new', 'merge')),
+    match_term_id   INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    match_kind      TEXT,
+    payload         TEXT NOT NULL,
+    status          TEXT NOT NULL CONSTRAINT glossary_term_drafts_status_check
+                        CHECK (status IN ('draft', 'accepted', 'merged', 'rejected')),
+    term_id         INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    decided_by      TEXT,
+    decided_at      TIMESTAMPTZ,
+    tenant_id       UUID,
+    UNIQUE (scan_id, ordinal)
+);
 
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):

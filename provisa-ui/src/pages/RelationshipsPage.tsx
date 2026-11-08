@@ -8,26 +8,20 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Sparkles, Code2, Network, X } from "lucide-react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Pagination,
-  Table,
-  Text,
-  Title,
-} from "@mantine/core";
+import { ArrowLeft, Sparkles, Code2, X, Link2 } from "lucide-react";
+import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
 import { tagLossTitle } from "../components/admin/tagLoss";
-import { ErdModal } from "../components/erd/ErdModal";
+import { ErdToggle } from "../components/erd/ErdToggle";
+import { ErdView } from "../components/erd/ErdView";
+import { useErdView } from "../components/erd/useErdView";
+import { useScreenInputs } from "../mcp/screenState";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -40,12 +34,12 @@ import {
   acceptCandidate,
   rejectCandidate,
   clearRejectedCandidates,
+  fetchSettings,
 } from "../api/admin";
 import {
   useRelationships,
   useAllRelationships,
   useTables,
-  useDomains,
   useUpsertRelationship,
   useDeleteRelationship,
 } from "../hooks/useAdminQueries";
@@ -71,7 +65,7 @@ import {
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import { domainToSqlName } from "../naming";
+import { applyConvention, domainToSqlName } from "../naming";
 import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 import { matchesQuery } from "../lib/searchItems";
@@ -96,10 +90,11 @@ export function RelationshipsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
+  // What the ERD draws, the system's own relationships too (REQ-2187: a line opens its panel here).
   const { relationships: allRels } = useAllRelationships();
   const { tables, loading: tablesLoading } = useTables();
-  const { domains } = useDomains();
-  const [showErd, setShowErd] = useState(false);
+  // REQ-2187: the ERD in the list's place, its state in the URL.
+  const erd = useErdView();
   const { upsertRelationship } = useUpsertRelationship();
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
@@ -129,8 +124,21 @@ export function RelationshipsPage() {
     retry: { kind: "add" } | { kind: "save" } | { kind: "delete"; id: string };
   } | null>(null);
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
+  // REQ-194: the deployment's GraphQL convention, which names the GraphQL alias a reverse is
+  // offered. Until it is read the reverse cannot be offered; a failed read is said on the page.
+  const [gqlConvention, setGqlConvention] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState("");
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
+  // The link names the filter, also on a page already open: a tour step moving on within the page
+  // searches for its own relationship's alias.
+  const linkedSearch = searchParams.get("search") ?? "";
+  const [seededSearch, setSeededSearch] = useState(linkedSearch);
+  if (linkedSearch !== seededSearch) {
+    setSeededSearch(linkedSearch);
+    setRelSearch(linkedSearch);
+    setRelPage(0);
+  }
   const PAGE_SIZE = 50;
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
@@ -144,6 +152,8 @@ export function RelationshipsPage() {
   const updateSearch = (v: string) => {
     setRelSearch(v);
     setRelPage(0);
+    // REQ-2187: on the ERD the filter box is not part of the link (a focus is what is shared).
+    if (erd.on) return;
     setSearchParams(
       (p) => {
         const n = new URLSearchParams(p);
@@ -170,6 +180,11 @@ export function RelationshipsPage() {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    fetchSettings()
+      .then((s) => setGqlConvention(s.naming.convention))
+      .catch((e: Error) => setSettingsError(e.message));
+  }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // The page's own content is the relationships table, so only its two queries can withhold it.
@@ -200,13 +215,17 @@ export function RelationshipsPage() {
       const lost = tagLossOf(result);
       if (lost) {
         setTagLoss({ columns: lost, retry: { kind: "delete", id } });
-        return;
+        return false;
       }
-      if (refusal.refused(result, id)) return;
+      if (refusal.refused(result, id)) return false;
+      // REQ-2198: a failed delete is said by the panel's Delete (PanelDelete), which it unlocks.
+      if (!result.success) throw new Error(serverMessage(result, result.message));
+      // The list read again without it before the panel closes.
+      await refetchRels();
       setExpanded((prev) => (prev === id ? null : prev));
       setEditingRel(null);
     },
-    [deleteRelationship, refusal],
+    [deleteRelationship, refusal, refetchRels],
   );
 
   const handleAdd = useCallback(
@@ -337,7 +356,7 @@ export function RelationshipsPage() {
   const retryTagLoss = (resolve: TagLossResolution) => {
     const retry = (tagLoss as NonNullable<typeof tagLoss>).retry;
     setTagLoss(null);
-    if (retry.kind === "delete") void handleDelete(retry.id, resolve);
+    if (retry.kind === "delete") void handleDelete(retry.id, resolve).catch(() => {});
     else if (retry.kind === "save") void handleEditSave(resolve);
     else void handleAdd(resolve);
   };
@@ -428,7 +447,7 @@ export function RelationshipsPage() {
   );
 
   const buildReverse = useCallback(
-    (r: Relationship): RelForm => {
+    (r: Relationship, convention: string): RelForm => {
       // One-to-one reads the same both ways.
       const flipCardinality = (c: string) =>
         c === "one-to-one" ? c : c === "many-to-one" ? "one-to-many" : "many-to-one";
@@ -438,16 +457,8 @@ export function RelationshipsPage() {
         if (alias.endsWith("_OF")) return alias.slice(0, -3);
         return `${alias}_BY`;
       };
-      const cqlToGql = (cql: string) => {
-        const parts = cql.toLowerCase().split("_").filter(Boolean);
-        return (
-          parts[0] +
-          parts
-            .slice(1)
-            .map((p) => p[0].toUpperCase() + p.slice(1))
-            .join("")
-        );
-      };
+      // REQ-194: the Cypher alias's words, named by the deployment's GraphQL convention.
+      const cqlToGql = (cql: string) => applyConvention(cql.toLowerCase(), convention);
       const suggestGqlAlias = (gql: string | null, cqlSuggestion: string) => {
         if (gql) {
           if (gql.endsWith("By")) return gql.slice(0, -2);
@@ -563,6 +574,15 @@ export function RelationshipsPage() {
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
   const groupBy = sortGroup.groupBy;
 
+  // REQ-2115: Polly's read_screen reads the page's view from here. A relationship is named only
+  // once the list holds it, so a link to one that does not exist reads as none.
+  useScreenInputs("/relationships", {
+    view: erd.on ? "erd" : "list",
+    relationship: allRels.some((r) => String(r.id) === expanded) ? expanded : null,
+    domains: erd.focus.domains,
+    objects: erd.focus.objects,
+  });
+
   if (loading) return <PageLoading message={t("relationshipsPage.loading")} />;
 
   // The right-hand panel: the form that adds a relationship while it is open, otherwise the
@@ -574,9 +594,21 @@ export function RelationshipsPage() {
     setReverseForm(null);
     setEditingRel(null);
     setExpanded(null);
+    if (erd.on) erd.setPanel("relationship", null);
+  };
+  // REQ-2187: a line clicked in the ERD: its panel, in place of whatever the panel held.
+  const openFromErd = (id: string) => {
+    setSaveProblem("");
+    setShowForm(false);
+    setReverseForm(null);
+    setEditingRel(null);
+    setExpanded(id);
+    erd.setPanel("relationship", id);
   };
   const selectedRel =
-    expanded === null ? null : (rels.find((r) => String(r.id) === expanded) ?? null);
+    expanded === null
+      ? null
+      : ((erd.on ? allRels : rels).find((r) => String(r.id) === expanded) ?? null);
   const panelBody = showForm ? (
     <div data-tour="rels-form">
       <AddRelationshipForm
@@ -616,15 +648,20 @@ export function RelationshipsPage() {
       rel={selectedRel}
       editingRel={editingRel}
       setEditingRel={setEditingRel}
-      canManage={canManage}
+      // A line of the system's own (the ERD draws them) is read here, never edited.
+      canManage={canManage && rels.some((r) => r.id === selectedRel.id)}
       onStartEdit={() => {
         setSaveProblem("");
         startEditing(selectedRel);
       }}
-      onReverse={() => {
-        setSaveProblem("");
-        setReverseForm(buildReverse(selectedRel));
-      }}
+      onReverse={
+        gqlConvention === null
+          ? undefined
+          : () => {
+              setSaveProblem("");
+              setReverseForm(buildReverse(selectedRel, gqlConvention));
+            }
+      }
       onDelete={() => handleDelete(String(selectedRel.id))}
       onEditSave={() => handleEditSave()}
       saving={saving}
@@ -649,7 +686,7 @@ export function RelationshipsPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("relationshipsPage.title")}</Title>
+        <PageTitle icon={Link2}>{t("relationshipsPage.title")}</PageTitle>
         <FilterInput
           value={relSearch}
           onChange={updateSearch}
@@ -696,21 +733,11 @@ export function RelationshipsPage() {
               </ActionIcon>
             }
           />
-          <HelpBubble
+          <ErdToggle
+            page="relationships"
             title={t("relationshipsPage.erdHelpTitle")}
-            paragraphs={[t("relationshipsPage.erdHelpBody")]}
-            ariaLabel={t("relationshipsPage.viewErd")}
-            testId="rels-erd-help"
-            target={
-              <ActionIcon
-                data-tour="rels-erd"
-                variant="subtle"
-                aria-label={t("relationshipsPage.viewErd")}
-                onClick={() => setShowErd(true)}
-              >
-                <Network size={14} />
-              </ActionIcon>
-            }
+            body={t("relationshipsPage.erdHelpBody")}
+            label={t("relationshipsPage.viewErd")}
           />
           {canManage && (
             <HelpBubble
@@ -749,6 +776,11 @@ export function RelationshipsPage() {
           {discoverError}
         </Alert>
       )}
+      {settingsError && (
+        <Alert color="red" mb="md" data-testid="rels-settings-error">
+          {settingsError}
+        </Alert>
+      )}
       {discoverMsg && (
         <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="rels-discover-msg">
           {discoverMsg}
@@ -771,106 +803,115 @@ export function RelationshipsPage() {
           backToList: t("tablesPage.backToList"),
         }}
         list={
-          <>
-            {/* As on Tables: every column keeps its width and a name stays on one line; what the
+          erd.on ? (
+            <ErdView
+              page="relationships"
+              search={relSearch}
+              selected={expanded}
+              onOpen={openFromErd}
+            />
+          ) : (
+            <>
+              {/* As on Tables: every column keeps its width and a name stays on one line; what the
                 panel leaves too little room for scrolls sideways. */}
-            <ListTable testId="relationships-list">
-              <ListHead
-                sortGroup={sortGroup}
-                columns={[
-                  ...(domainsEnabled ? [{ col: "domain" }] : []),
-                  { col: "source" },
-                  { col: "target" },
-                  { label: t("relationshipsPage.gqlCqlAlias") },
-                  { col: "cardinality" },
-                  { col: "materialize" },
-                  { label: t("relationshipsPage.refreshSeconds") },
-                ]}
-              />
-              <Table.Tbody>
-                {(() => {
-                  const filtered = filteredRels;
-
-                  if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
-                    return (
-                      <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
-                        {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
-                      </ListEmpty>
-                    );
-                  }
-                  if (filtered.length === 0) {
-                    return (
-                      <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
-                        {t("relationshipsPage.empty")}
-                      </ListEmpty>
-                    );
-                  }
-
-                  return (
-                    <ListItems
-                      state={sortGroup}
-                      items={pageItems(sortGroup, relPage, PAGE_SIZE)}
-                      colSpan={domainsEnabled ? 7 : 6}
-                      rowKey={(r) => r.id}
-                      render={(r) => {
-                        const id = String(r.id);
-                        return (
-                          <RelationshipRow
-                            rel={r}
-                            selected={expanded === id}
-                            onToggle={() => {
-                              // The row opens its detail in the panel, swaps it, or closes it.
-                              setSaveProblem("");
-                              setExpanded(expanded === id ? null : id);
-                              setEditingRel(null);
-                              setReverseForm(null);
-                              setShowForm(false);
-                            }}
-                            tableDomainById={tableDomainById}
-                            domainsEnabled={domainsEnabled}
-                          />
-                        );
-                      }}
-                    />
-                  );
-                })()}
-              </Table.Tbody>
-            </ListTable>
-            {totalPages > 1 && groupBy.length === 0 && (
-              <Group gap="sm" align="center" justify="flex-end" py="sm">
-                <Tip text={t("relationshipsPage.firstPage")} named>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("relationshipsPage.firstPage")}
-                    onClick={() => setRelPage(0)}
-                    disabled={relPage === 0}
-                  >
-                    «
-                  </ActionIcon>
-                </Tip>
-                <Pagination
-                  total={totalPages}
-                  value={relPage + 1}
-                  onChange={(p) => setRelPage(p - 1)}
-                  size="sm"
-                  data-testid="rels-pagination"
+              <ListTable testId="relationships-list">
+                <ListHead
+                  sortGroup={sortGroup}
+                  columns={[
+                    ...(domainsEnabled ? [{ col: "domain" }] : []),
+                    { col: "source" },
+                    { col: "target" },
+                    { label: t("relationshipsPage.gqlCqlAlias") },
+                    { col: "cardinality" },
+                    { col: "materialize" },
+                    { label: t("relationshipsPage.refreshSeconds") },
+                  ]}
                 />
-                <Text fz="sm" data-testid="rels-page-label">
-                  {t("relationshipsPage.pageOf", { page: relPage + 1, totalPages })}
-                </Text>
-                <Tip text={t("relationshipsPage.lastPage")} named>
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("relationshipsPage.lastPage")}
-                    onClick={() => setRelPage(totalPages - 1)}
-                    disabled={relPage >= totalPages - 1}
-                  >
-                    »
-                  </ActionIcon>
-                </Tip>
-              </Group>
-            )}
-          </>
+                <Table.Tbody>
+                  {(() => {
+                    const filtered = filteredRels;
+
+                    if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
+                      return (
+                        <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
+                          {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
+                        </ListEmpty>
+                      );
+                    }
+                    if (filtered.length === 0) {
+                      return (
+                        <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
+                          {t("relationshipsPage.empty")}
+                        </ListEmpty>
+                      );
+                    }
+
+                    return (
+                      <ListItems
+                        state={sortGroup}
+                        items={pageItems(sortGroup, relPage, PAGE_SIZE)}
+                        colSpan={domainsEnabled ? 7 : 6}
+                        rowKey={(r) => r.id}
+                        render={(r) => {
+                          const id = String(r.id);
+                          return (
+                            <RelationshipRow
+                              rel={r}
+                              selected={expanded === id}
+                              onToggle={() => {
+                                // The row opens its detail in the panel, swaps it, or closes it.
+                                setSaveProblem("");
+                                setExpanded(expanded === id ? null : id);
+                                setEditingRel(null);
+                                setReverseForm(null);
+                                setShowForm(false);
+                              }}
+                              tableDomainById={tableDomainById}
+                              domainsEnabled={domainsEnabled}
+                            />
+                          );
+                        }}
+                      />
+                    );
+                  })()}
+                </Table.Tbody>
+              </ListTable>
+              {totalPages > 1 && groupBy.length === 0 && (
+                <Group gap="sm" align="center" justify="flex-end" py="sm">
+                  <Tip text={t("relationshipsPage.firstPage")} named>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={t("relationshipsPage.firstPage")}
+                      onClick={() => setRelPage(0)}
+                      disabled={relPage === 0}
+                    >
+                      «
+                    </ActionIcon>
+                  </Tip>
+                  <Pagination
+                    total={totalPages}
+                    value={relPage + 1}
+                    onChange={(p) => setRelPage(p - 1)}
+                    size="sm"
+                    data-testid="rels-pagination"
+                  />
+                  <Text fz="sm" data-testid="rels-page-label">
+                    {t("relationshipsPage.pageOf", { page: relPage + 1, totalPages })}
+                  </Text>
+                  <Tip text={t("relationshipsPage.lastPage")} named>
+                    <ActionIcon
+                      variant="subtle"
+                      aria-label={t("relationshipsPage.lastPage")}
+                      onClick={() => setRelPage(totalPages - 1)}
+                      disabled={relPage >= totalPages - 1}
+                    >
+                      »
+                    </ActionIcon>
+                  </Tip>
+                </Group>
+              )}
+            </>
+          )
         }
       >
         {panelBody}
@@ -921,7 +962,7 @@ export function RelationshipsPage() {
 
       {conflictRel && <ConflictModal rel={conflictRel} onClose={() => setConflictRel(null)} />}
 
-      {candidates.length > 0 && (
+      {!erd.on && candidates.length > 0 && (
         <div className="page-aux">
           <CandidatesTable
             candidates={candidates}
@@ -931,15 +972,6 @@ export function RelationshipsPage() {
             onReject={handleReject}
           />
         </div>
-      )}
-      {showErd && (
-        <ErdModal
-          tables={tables}
-          relationships={allRels}
-          domains={domains}
-          checkedDomains={erdCheckedDomains}
-          onClose={() => setShowErd(false)}
-        />
       )}
       {refusal.dialog}
       {tagLoss && (

@@ -24,6 +24,7 @@
     "layer_relationships": "成員之間的關係",
     "layer_outside": "與外部表的關係",
     "layer_lineage": "血緣",
+    "layer_productLinks": "連往其他產品的連結",
     "filterDomain": "網域",
     "filterTag": "標籤",
     "filterSensitivity": "敏感度",
@@ -64,6 +65,7 @@
     "edge_owns": "擁有",
     "loadError": "無法讀取圖：{{error}}",
     "zoomTo": "縮放到此",
+    "openInErd": "在 ERD 中開啟",
     "edge_column_lineage": "供數給欄位",
     "preset_taxonomy": "分類體系",
     "layer_domains": "網域",
@@ -145,6 +147,10 @@
     "quality_none": "尚未執行",
     "factOwner": "擁有者",
     "factMembers": "成員表",
-    "factColumns": "欄位"
+    "factColumns": "欄位",
+    "depth": "深度",
+    "lateral": "橫向邊",
+    "grounding_grounded": "已錨定",
+    "grounding_grounded_pending": "已錨定，經由草稿"
   }
 }

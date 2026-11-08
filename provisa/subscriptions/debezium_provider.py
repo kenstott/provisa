@@ -232,9 +232,15 @@ class DebeziumNotificationProvider(NotificationProvider):  # REQ-261, REQ-285
             # REQ-1733: a partition this group has committed nothing on starts where the table's
             # landing stopped: nothing changed since is missed, nothing landed is read again.
             from provisa.kafka.landed_offsets import start_where_landed
+            from provisa.kafka.security import PLAINTEXT
 
+            # A CDC transport names no TLS or SASL settings: a plain cluster (REQ-147).
             await start_where_landed(
-                self._bootstrap_servers, self._consumer_group_id, topic, self._landed
+                self._bootstrap_servers,
+                self._consumer_group_id,
+                topic,
+                self._landed,
+                security=PLAINTEXT,
             )
         self._consumer = AIOKafkaConsumer(
             topic,

@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "组织",
     "itemDashboard": "仪表板",
@@ -35,6 +36,8 @@
     "itemEmail": "电子邮件",
     "itemMaintenance": "维护",
     "itemDeploymentSettings": "部署设置",
+    "itemPlatform": "平台",
+    "itemRegions": "区域",
     "itemBilling": "账单",
     "itemExplore": "MCP",
     "itemEncryption": "加密",
@@ -77,6 +80,7 @@
     "itemNotebook": "笔记本",
     "itemContainerRegistries": "容器注册表",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "目录"
+    "itemCatalogs": "目录",
+    "itemReferenceLibrary": "参考资料库"
   }
 }

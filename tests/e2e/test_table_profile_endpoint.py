@@ -15,9 +15,12 @@ import os
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, insert, select
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
+
+# The columns the profile view selects from orders.
+_VIEW_COLUMNS = ("id", "amount")
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +42,7 @@ async def view_id():
     """Register a __derived__ view sampling a semantic query, yield its id, clean up."""
     from provisa.api.app import state
     from provisa.core import model_change
-    from provisa.core.schema_org import registered_tables
+    from provisa.core.schema_org import registered_tables, table_columns
 
     assert state.model_db is not None
     # registered_tables is a model table: it is read through the org's model_db and written inside
@@ -60,6 +63,37 @@ async def view_id():
             .returning(registered_tables.c.id)
         )
         new_id = res.fetchone()[0]
+        # A view is served to a reader through the columns registered on it: one with none is
+        # served nothing and is refused (V003, REQ-2201), as the admin API's registration never
+        # leaves it. Its columns carry the types of the orders columns its SQL selects.
+        order_types = dict(
+            (
+                await conn.execute_core(
+                    select(table_columns.c.column_name, table_columns.c.data_type)
+                    .join(registered_tables, table_columns.c.table_id == registered_tables.c.id)
+                    .where(
+                        registered_tables.c.domain_id == "sales-analytics",
+                        registered_tables.c.table_name == "orders",
+                        table_columns.c.column_name.in_(_VIEW_COLUMNS),
+                    )
+                )
+            ).fetchall()
+        )
+        assert set(order_types) == set(_VIEW_COLUMNS), order_types
+        await conn.execute_core(
+            insert(table_columns).values(
+                [
+                    {
+                        "table_id": new_id,
+                        "domain_id": "sales-analytics",
+                        "column_name": name,
+                        "data_type": order_types[name],
+                        "visible_to": ["org_admin"],
+                    }
+                    for name in _VIEW_COLUMNS
+                ]
+            )
+        )
     # A table's profile is read as its caller through the one pipeline, so the view has to be
     # in the model the server holds: the registration is followed by a rebuild, as the admin
     # API's own registration is.

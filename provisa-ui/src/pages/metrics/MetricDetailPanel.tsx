@@ -10,17 +10,20 @@
 
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Group, Stack, Text } from "@mantine/core";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import type { Metric } from "../../types/admin";
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { Tip } from "../../components/Tip";
 import { DetailFields } from "../../components/detail/DetailFields";
+import { TagControl } from "../../components/TagControl";
 
 interface MetricDetailPanelProps {
   m: Metric;
   dependentViews: string[];
   onEdit: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the metric is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
 }
 
 // A metric's Edit and Delete. In the page's detail panel they sit in its pinned head
@@ -32,7 +35,8 @@ function MetricActions({
 }: {
   m: Metric;
   onEdit: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the metric is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
 }) {
   const { t } = useTranslation();
   return (
@@ -51,19 +55,15 @@ function MetricActions({
               <Pencil size={14} />
             </ActionIcon>
           </Tip>
-          <Tip text={t("metricsPage.deleteMetric", { name: m.name })} named>
-            <ActionIcon
-              color="red"
-              aria-label={t("metricsPage.deleteMetric", { name: m.name })}
-              data-testid={`metric-detail-delete-${m.name}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 size={14} />
-            </ActionIcon>
-          </Tip>
+          <PanelDelete
+            itemKey={m.name}
+            title={t("metricsPage.deleteTitle")}
+            consequence={t("metricsPage.deleteConfirm", { name: m.name })}
+            ariaLabel={t("metricsPage.deleteMetric", { name: m.name })}
+            testId={`metric-detail-delete-${m.name}`}
+            confirmTestId="metric-delete-modal"
+            onDelete={onDelete}
+          />
         </Group>
       </fieldset>
     </PanelActions>
@@ -94,6 +94,11 @@ export function MetricDetailPanel({ m, dependentViews, onEdit, onDelete }: Metri
           { label: t("metricsPage.fieldDatatype"), value: m.datatype },
           { label: t("metricsPage.fieldDescription"), value: m.description },
           { label: t("metricsPage.fieldAiContext"), value: m.aiContext },
+          // REQ-2208: a metric carries tags as the model's objects do.
+          {
+            label: t("metricsPage.fieldTags"),
+            value: <TagControl objectType="metric" metricName={m.name} />,
+          },
           {
             label: t("metricsPage.builderFact"),
             value: m.fromFact ?? t("metricsPage.detail.handAuthored"),

@@ -4,14 +4,16 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-1865: land_rows upsert-not-append semantics + build_row_cache_table's bookkeeping columns."""
+"""REQ-1865: land_rows by-key-not-append semantics + build_row_cache_table's bookkeeping columns."""
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 from typing import Any
 
 import pytest
+from sqlalchemy.sql.dml import Delete
 
 from provisa.core.database import Capabilities
 from provisa.federation.materialize_exec import build_row_cache_table, land_rows
@@ -28,14 +30,26 @@ class _FakeConn:
     def __init__(self, dialect: str = "postgresql"):
         self.capabilities = Capabilities.for_dialect(dialect)
         self.stmts: list[Any] = []
-        self.upserts: list[tuple[Any, dict, list[str]]] = []
+        self.landed: list[list[dict]] = []
 
     async def execute_core(self, stmt):
         self.stmts.append(stmt)
         return _Result()
 
-    async def upsert(self, table, values, *, index_elements, update_columns=None, set_extra=None):
-        self.upserts.append((table, dict(values), list(index_elements)))
+    async def bulk_copy(self, table, rows):
+        del table
+        self.landed.append([dict(row) for row in rows])
+        return len(rows)
+
+    async def upsert(self, table, values, *, index_elements):
+        raise AssertionError("row-level landing never upserts row by row")
+
+    async def advisory_xact_lock(self, key):
+        del key
+
+    @contextlib.asynccontextmanager
+    async def transaction(self):
+        yield
 
 
 def test_build_row_cache_table_adds_bookkeeping_columns():
@@ -56,7 +70,7 @@ async def test_land_rows_requires_pk_columns():
 
 
 @pytest.mark.asyncio
-async def test_land_rows_stamps_and_upserts_by_pk():
+async def test_land_rows_stamps_and_lands_by_pk():
     conn = _FakeConn()
     table = build_row_cache_table("mat", "orders", COLUMNS, ["id"])
     now = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
@@ -68,16 +82,16 @@ async def test_land_rows_stamps_and_upserts_by_pk():
         resolved_cache_ttl=60,
         now=now,
     )
-    assert len(conn.upserts) == 1
-    _, values, index_elements = conn.upserts[0]
-    assert index_elements == ["id"]
+    assert len(conn.landed) == 1 and len(conn.landed[0]) == 1
+    values = conn.landed[0][0]
+    assert sum(isinstance(s, Delete) for s in conn.stmts) == 1  # the key goes before its row lands
     assert values["_row_cached_at"] == now
     assert values["_row_expires_at"] == now + dt.timedelta(seconds=60)
     assert values["status"] == "new"
 
 
 @pytest.mark.asyncio
-async def test_land_rows_second_fetch_of_same_key_upserts_not_appends():
+async def test_land_rows_second_fetch_of_same_key_replaces_not_appends():
     """A re-fetch of an already-cached key overwrites in place — never a second row (REQ-1865)."""
     conn = _FakeConn()
     table = build_row_cache_table("mat", "orders", COLUMNS, ["id"])
@@ -91,11 +105,11 @@ async def test_land_rows_second_fetch_of_same_key_upserts_not_appends():
         conn, table, ["id"], [{"id": 1, "status": "shipped"}], resolved_cache_ttl=60, now=t1
     )
 
-    # Both calls upsert (never a bulk insert / append path) on the SAME index_elements — the
-    # store's upsert primitive is what converges the two calls onto one row, not a row count
-    # this fake enforces itself; assert the call shape a real UPDATE-by-PK-else-INSERT depends on.
-    assert len(conn.upserts) == 2
-    for _, _, index_elements in conn.upserts:
-        assert index_elements == ["id"]
-    assert conn.upserts[1][1]["status"] == "shipped"
-    assert conn.upserts[1][1]["_row_cached_at"] == t1
+    # Each call deletes the key before it lands the row: that converges the two onto one row in
+    # a real store (test_row_landing_sets); assert the call shape it depends on.
+    deletes = [s for s in conn.stmts if isinstance(s, Delete)]
+    assert len(deletes) == 2 and len(conn.landed) == 2
+    for delete in deletes:
+        assert '"id" IN' in str(delete)
+    assert conn.landed[1][0]["status"] == "shipped"
+    assert conn.landed[1][0]["_row_cached_at"] == t1

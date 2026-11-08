@@ -1,0 +1,100 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The banksecrecy demo's own tour (REQ-2010, REQ-2201): the story of the demo, told with its own
+# data. The step kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name
+# here is checked against the demo by tests/unit/test_named_demo_tour.py, and the words of each
+# step are tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario -- a bank reading a US law; how the pieces fit -- its cash, the
+# regulation read from its public address, the terms found in it and grounded on the bank's
+# tables; the solution, asked by concept as two roles, over GraphQL and in plain words to Polly; a
+# recap; and "Where next?", the landing page below.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+# The scenario: the bank's core system, read live.
+- key: banksecrecyScenario
+  route: /sources
+  capability: source_registration
+  source: banksecrecy-db
+- key: banksecrecyCash
+  route: /tables
+  capability: table_registration
+  table: banksecrecy-db.cash_transactions
+- key: banksecrecyOnBehalf
+  route: /relationships
+  capability: create_relationship
+  relationship: ON_BEHALF_OF
+# The law: read from its public address, a scan started and cancelled -- the one done ahead is
+# opened -- then its aggregation rule and the definitions both use.
+- key: banksecrecyFindTerms
+  route: /admin/ontology
+  capability: glossary_read
+  find_terms:
+    url: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+    domains: [banksecrecy]
+- key: banksecrecyRuleTerms
+  scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+- key: banksecrecyAggregation
+  scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313
+- key: banksecrecyDefinitions
+  scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100
+- key: banksecrecyLibrary
+  route: /admin/reference-library
+  capability: glossary_rw
+  library: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+# The terms grounded on the bank's tables.
+- key: banksecrecyGrounded
+  route: /admin/ontology
+  capability: glossary_read
+  term: transaction in currency
+- key: banksecrecyBusinessDay
+  term: business day
+# The solution, asked by concept: the cash that needs a report, as a teller and as compliance,
+# and who is structuring.
+- key: banksecrecyTellerAsks
+  route: /sql
+  capability: query_development
+  role: teller
+  sql: >-
+    SELECT r.person, r.tax_id, r.business_day, r.direction, r.multiple_transactions,
+      r.branches, r.account_numbers, r.cash_total
+    FROM "banksecrecy"."view_ctr_required" AS r
+    ORDER BY r.business_day
+- key: banksecrecyComplianceAsks
+  role: compliance_officer
+  sql: >-
+    SELECT r.person, r.tax_id, r.business_day, r.direction, r.multiple_transactions,
+      r.branches, r.account_numbers, r.conducted_by_another, r.cash_total
+    FROM "banksecrecy"."view_ctr_required" AS r
+    ORDER BY r.business_day
+- key: banksecrecyStructuring
+  sql: >-
+    SELECT s.person, s.deposits_under_threshold, s.branches, s.business_days, s.first_day,
+      s.last_day, s.account_numbers, s.cash_total
+    FROM "banksecrecy"."view_structuring" AS s
+    ORDER BY s.cash_total DESC
+# The question no passage answers: the walk from deposits under threshold, to structuring, to the
+# suspicious activity report reaches 31 CFR 1010.314 and 1020.320 under the org's graph retrieval.
+- key: banksecrecyPollyWalk
+  polly: A customer keeps depositing cash just under $10,000; what must the bank do?
+- key: banksecrecyExample
+  route: /query
+  capability: query_development
+  example: 1-ctr-required
+# The same question in plain words, to Polly: answered from the same governed view.
+- key: banksecrecyPollyAsks
+  polly: Which cash needs a currency transaction report?
+# The recap: the report, a concept the law names, reaching the bank's data.
+- key: banksecrecyRecap
+  route: /admin/ontology
+  capability: glossary_read
+  term: currency transaction report

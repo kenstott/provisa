@@ -57,6 +57,26 @@ export const TABLES_SURFACE: CapabilityRequirement = {
 };
 
 /**
+ * REQ-1327: the rights that open the Import page -- any one of the rights an imported object's own
+ * admin edit asks (import_router.IMPORT_RIGHTS). Applying checks each declared object's right.
+ */
+export const IMPORT_RIGHTS: Capability[] = [
+  "create_relationship",
+  "data_product_rw",
+  "glossary_rw",
+  "masking_config",
+  "org_settings",
+  "source_registration",
+  "table_registration",
+  "user_management",
+];
+
+export const IMPORT_SURFACE: CapabilityRequirement = {
+  capability: "table_registration",
+  anyOf: IMPORT_RIGHTS,
+};
+
+/**
  * REQ-1944: the domains a holder of the hiding rights governs -- the union of `domain_access`
  * over the roles that CARRY one of them (never every role held, as on the server), or `null`
  * when one of those roles reaches every domain.

@@ -21,6 +21,8 @@ statement as ``_nf_<name> = <value>``, the form an SQL client gives a parameter 
 
 from __future__ import annotations
 
+from provisa.executor.result import QueryResult
+
 from types import SimpleNamespace
 
 import pytest
@@ -162,13 +164,14 @@ async def test_the_servicer_hands_the_pipeline_the_parameters():
     )
     request = SimpleNamespace(
         limit=0,
+        offset=0,
         read_mask=SimpleNamespace(paths=[]),
         params=params,
         HasField=lambda name: name == "params",
         DESCRIPTOR=SimpleNamespace(fields_by_name={"params": object()}),
     )
-    result = SimpleNamespace(column_names=["order_id"], rows=[])
-    govern = await harness._run(servicer, request, harness._context(), result)
+    result = QueryResult(rows=[], column_names=["order_id"])
+    govern, _sent = await harness._run(servicer, request, harness._context(), result)
 
     govern.assert_awaited_once()
     assert "\"_nf_region\" = 'EU'" in govern.await_args.args[0]

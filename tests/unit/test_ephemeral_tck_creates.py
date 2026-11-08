@@ -118,3 +118,39 @@ def test_a_list_of_durations_keeps_its_months_and_its_nulls(monkeypatch):
     assert rows == [{"d": [Duration(2, 0, 0), None, Duration(0, 3, 0)]}]
     s.run("CREATE (:T {dates: [duration({months: 16}), null]})")
     assert s.run("MATCH (n:T) RETURN n.dates") == [{"n.dates": [Duration(16, 0, 0), None]}]
+
+
+def test_a_list_of_times_with_an_offset_is_stored_and_read_back(monkeypatch):
+    # Temporal4 time lists (REQ-2176, REQ-2173): each item keeps its offset.
+    import datetime as dt
+
+    s = Session(monkeypatch, {})
+    s.run("CREATE ({dates: [time('12:00+01:00')]})")
+    held = dt.time(12, 0, tzinfo=dt.timezone(dt.timedelta(hours=1)))
+    rows = s.run("MATCH (n) RETURN n.dates")
+    assert rows == [{"n.dates": [held]}]
+    assert rows[0]["n.dates"][0].utcoffset() == dt.timedelta(hours=1)
+
+
+def test_a_list_of_times_with_an_offset_keeps_its_nulls(monkeypatch):
+    import datetime as dt
+
+    s = Session(monkeypatch, {})
+    s.run("CREATE ({dates: [time('12:00+01:00'), null, time('08:30:15.000001-05:00')]})")
+    rows = s.run("MATCH (n) RETURN n.dates")
+    one = dt.timezone(dt.timedelta(hours=1))
+    five = dt.timezone(-dt.timedelta(hours=5))
+    assert rows == [
+        {"n.dates": [dt.time(12, 0, tzinfo=one), None, dt.time(8, 30, 15, 1, tzinfo=five)]}
+    ]
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["[date('2015-07-21')]", "[localtime('12:00')]", "[localdatetime('2015-07-21T21:40:32')]"],
+)
+def test_lists_of_other_temporal_values_still_read_back(monkeypatch, written):
+    s = Session(monkeypatch, {})
+    s.run(f"CREATE ({{dates: {written}}})")
+    rows = s.run("MATCH (n) RETURN n.dates")
+    assert len(rows[0]["n.dates"]) == 1 and rows[0]["n.dates"][0] is not None

@@ -45,7 +45,14 @@ def server():
         {"name": "region", "data_type": "varchar", "visible_to": _ROLES},
         {"name": "email", "data_type": "varchar", "visible_to": _ROLES},
     ]
-    reads = ["query_development", "full_results"]
+    reads = [
+        "catalog_read",
+        "data_product_read",
+        "glossary_read",
+        "query_development",
+        "usage",
+        "full_results",
+    ]
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,
@@ -56,7 +63,7 @@ def server():
             "roles": [
                 {
                     "id": "itest_analyst",
-                    "parents": ["analyst"],
+                    "parents": ["developer"],
                     "description": "Test role.",
                     "capabilities": reads,
                     "domain_access": ["*"],

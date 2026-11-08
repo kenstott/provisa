@@ -268,13 +268,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
         )
         raise refused
     from provisa.auth.derived_roles import unsecured_principal
-    from provisa.core.request_context import set_session_vars
+    from provisa.core.request_context import current_acting_role, set_session_vars
 
     # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
     # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
     # Bound in this tool call's own context (its request thread, a copy of the call's).
     role, session_vars = unsecured_principal(state, named)
     set_session_vars(session_vars)
+    # REQ-2188: who a write of the model is held to, on the one transport no middleware binds it.
+    current_acting_role.set(role)
     return role
 
 
@@ -499,8 +501,11 @@ def build_mcp_server(state: Any):
             )
         # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
         # is that role's (REQ-2152, catalog_scope).
+        # No headers: a tool call carries no Idempotency-Key, so a decision applies as it always
+        # did (REQ-2216).
         return SimpleNamespace(
-            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+            headers={},
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role),
         )
 
     @_tool
@@ -669,6 +674,27 @@ def build_mcp_server(state: Any):
         every physical field that means "order date".
         """
         return await tools.search_terms(state, _role(role), query, limit=limit)
+
+    @_tool
+    async def search_reference_library(
+        question: str, role: str | None = None, k: int = 5
+    ) -> list[dict]:
+        """Search the org's reference library -- its policies, regulations, contracts,
+        specifications and standards -- for the passages that answer a question (REQ-2185).
+
+        Only documents the caller's role may read are searched. Each passage carries its
+        document's title and source, its section or page, and the quoted text: cite them
+        whenever an answer uses a passage. ``k`` passages nearest the question come first, then
+        up to as many again of their neighbours (the passages just after and before each in its
+        document, and those nearest it); each passage's ``reached`` says how it was found
+        ("nearest the question", "after passage 3 in 'Client policy'", "near ..."), its
+        ``ordinal`` its number in its document. Under the org's graph retrieval, passages the
+        glossary terms reached from the question cite come between, labelled with the path
+        ("via currency transaction report -> multiple transactions (part of)") and carrying the
+        term and its definition (``term``, ``term_definition``). Cite only the passages an
+        answer used.
+        """
+        return await tools.search_reference_library(state, _role(role), question, k=k)
 
     @_tool
     async def list_metrics(role: str | None = None) -> list[dict]:

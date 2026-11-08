@@ -17,6 +17,7 @@ import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import type { GraphData, LayoutKind, NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
+import { GroundIcon } from "../GroundIcon";
 import { kindKey, labelClass, nodeLook, type Look } from "./nodeLook";
 import { hoverBody } from "./hoverBody";
 import { GLYPH_OUTLINE, glyphClip, glyphPoints } from "./glyph";
@@ -192,6 +193,13 @@ export function GraphLegend({ graph }: { graph: GraphData }) {
           </span>
         );
       })}
+      {graph.nodes.some((n) => n.grounding !== undefined) &&
+        (["grounded", "grounded_pending"] as const).map((g) => (
+          <span key={g} data-testid={`legend-grounding-${g}`}>
+            <GroundIcon state={g} size={14} style={{ verticalAlign: "middle" }} />
+            {t(`graph3d.grounding_${g}`)}
+          </span>
+        ))}
       {statuses &&
         (["approved", "draft", "deprecated", "retired"] as const).map((st) => (
           <span

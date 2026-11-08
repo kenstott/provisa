@@ -76,7 +76,7 @@ def test_details_emit_extension_server_mapping_and_import_schema():
     assert ddl[0] == "CREATE EXTENSION IF NOT EXISTS pg_clickhouse"
     assert any(
         'CREATE SERVER IF NOT EXISTS "ch_org_acme__orders_ch"' in s
-        and "driver 'binary'" in s
+        and "driver 'http'" in s
         and "host 'clickhouse'" in s
         and "dbname 'analytics'" in s
         for s in ddl
@@ -94,6 +94,37 @@ def test_details_defaults_database_to_default_when_unset():
     details = PgClickHouseFdwConnector().details(attaching(_src("bare", host="clickhouse"), "bare"))
     assert any("dbname 'default'" in s for s in details["attach_ddl"])
     assert any("user 'default'" in s for s in details["attach_ddl"])
+
+
+def _server_ddl(**kw) -> str:
+    details = PgClickHouseFdwConnector().details(
+        attaching(_src("ch", host="clickhouse", **kw), "ch")
+    )
+    return next(s for s in details["attach_ddl"] if s.startswith("CREATE SERVER"))
+
+
+def test_attach_reaches_clickhouse_at_the_declared_port():
+    ddl = _server_ddl(port=21102)
+    assert "port '21102'" in ddl
+    assert "driver 'http'" in ddl  # a source's port is ClickHouse's HTTP port
+    assert "secure 'off'" in ddl
+
+
+def test_attach_of_a_source_with_no_port_uses_the_http_port():
+    assert "port '8123'" in _server_ddl()
+
+
+def test_attach_of_a_secure_source_uses_tls_at_the_declared_port():
+    # pg_clickhouse infers TLS only from 8443 and 9440, so a remapped port must say so itself.
+    ddl = _server_ddl(port=21443, federation_hints={"secure": "true"})
+    assert "port '21443'" in ddl
+    assert "secure 'on'" in ddl
+
+
+def test_attach_of_a_secure_source_with_no_port_uses_the_https_port():
+    ddl = _server_ddl(federation_hints={"secure": "true"})
+    assert "port '8443'" in ddl
+    assert "secure 'on'" in ddl
 
 
 async def test_probe_available_when_extension_installed():

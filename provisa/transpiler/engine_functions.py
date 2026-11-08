@@ -44,16 +44,18 @@ _NAMED = frozenset(
         "sequence",  # Cypher's range(start, end[, step])
         "json_size",  # size() of an item of a list of several types (expr_visitor)
         "json_order_key",  # its place in openCypher's order (expr_visitor)
+        "json_list_compare",  # two JSON lists compared element by element (expr_visitor)
         "json_kind",  # its kind: string, number, boolean, list, map or null (expr_visitor)
         "is_nan",  # a float comparison's NaN guard (expr_visitor)
         "range_step",  # a range's computed step, refused at 0 (expr_visitor)
+        "type_refused",  # a value of a kind a function refuses: a TypeError (expr_visitor)
         "json_keys",  # keys() of a map the client gives (expr_visitor)
     }
 )
 #: A statement naming none of them is not parsed: the check is on every direct route.
 _MENTIONED = re.compile(
     r"\b(map|element_at|filter|transform|any_match|all_match|none_match|reduce|slice|sequence"
-    r"|json_size|json_order_key|json_kind|is_nan|range_step|json_keys)\s*\(",
+    r"|json_size|json_order_key|json_kind|json_list_compare|is_nan|range_step|type_refused|json_keys)\s*\(",
     re.IGNORECASE,
 )
 

@@ -242,9 +242,9 @@ def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
     from provisa.security.rights import served_roles
 
     roles = {
-        "seller": {"domain_access": ["sales"]},
-        "hr": {"domain_access": ["hr"]},
-        "everywhere": {"domain_access": ["*"]},
+        "seller": {"domain_access": ["sales"], "capabilities": ["usage"]},
+        "hr": {"domain_access": ["hr"], "capabilities": ["usage"]},
+        "everywhere": {"domain_access": ["*"], "capabilities": ["usage"]},
     }
     open_column = {"column_name": "id", "visible_to": [], "scope": "domain"}
     assert served_roles(roles, {}, "sales", open_column) == set()
@@ -260,5 +260,5 @@ def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
     assert served_roles(roles, {}, "sales", published) == {"seller", "hr", "everywhere"}
     # A grant to a parent serves the roles inheriting it, as the schema build expands it.
     chains = {"junior": ["junior", "seller"]}
-    roles["junior"] = {"domain_access": ["sales"]}
+    roles["junior"] = {"domain_access": ["sales"], "capabilities": ["usage"]}
     assert "junior" in served_roles(roles, chains, "sales", named)

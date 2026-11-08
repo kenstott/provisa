@@ -12,10 +12,10 @@
 // file exports only components (react-refresh) — this is the single source the
 // nav, the router capability table test, and App's group-entry navigation read.
 
-import { meetsRequirement } from "../lib/capabilities";
+import { IMPORT_RIGHTS, meetsRequirement } from "../lib/capabilities";
 import { LAST_SUBNAV_KEY } from "../lib/session";
 import type { Capability } from "../types/auth";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStoredJson, setStored } from "../lib/browserStorage";
 
 export interface DropdownItem {
   to: string;
@@ -35,11 +35,17 @@ export interface DropdownItem {
   // A second right that also opens the entry, for a surface that carries two things gated
   // differently.
   orCapability?: Capability;
+  // Further rights, any one of which also opens the entry (CapabilityRequirement.anyOf).
+  anyOf?: Capability[];
   // The label to use when `orCapability` is what opened the entry. An entry that two rights open
   // for two different reasons is not the same entry to both callers: a platform admin reaching
   // /admin/secrets gets the DEPLOYMENT's secrets service and no org vault at all, so naming it
   // "Org Secrets" to them advertises something the page does not contain.
   orLabelKey?: string;
+  // REQ-1922: the surface exists only where the platform declares regions (useRegionChoices).
+  regionsOnly?: boolean;
+  // REQ-1922: a demo sandbox's visitor may open it to read, though its capability is not theirs.
+  sandboxReadable?: boolean;
 }
 
 /** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
@@ -110,6 +116,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/sql", labelKey: "navBar.itemSql", capability: "query_development" },
       { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
+      { to: "/odata", labelKey: "navBar.itemOData", capability: "query_development" }, // REQ-2193
       { to: "/openapi", labelKey: "navBar.itemOpenApi", capability: "query_development" },
       { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
       // REQ-2071: Python over the role's governed data, as a script and as a Jupyter notebook.
@@ -214,6 +221,23 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemDeploymentSettings",
         capability: "platform_settings",
       },
+      // REQ-1922: the platform's regions, the default grant and each org's grant. A node reads them
+      // before it opens any store, so they are the platform administrator's, applied on restart. A
+      // demo sandbox shows the regions read-only, to explain them.
+      {
+        to: "/admin/platform",
+        labelKey: "navBar.itemPlatform",
+        capability: "platform_settings",
+        sandboxReadable: true,
+      },
+      // REQ-1922: the regions the platform granted the org and their stores, read-only. Shown only
+      // where the platform declares regions: with none, region is not a concept anywhere a user sees.
+      {
+        to: "/admin/regions",
+        labelKey: "navBar.itemRegions",
+        capability: "org_settings",
+        regionsOnly: true,
+      },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1984: the registries every Node install of the organisation goes through.
       {
@@ -229,21 +253,41 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       // REQ-2122: the catalogs this org connects to once, for export and import.
       { to: "/admin/catalogs", labelKey: "navBar.itemCatalogs", capability: "org_settings" },
+      // REQ-2185: the documents the org's assistants draw on and cite, curated with the glossary
+      // (term finding adds them), so the glossary's curation right (REQ-1327).
+      {
+        to: "/admin/reference-library",
+        labelKey: "navBar.itemReferenceLibrary",
+        capability: "glossary_rw",
+      },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
         to: "/admin/metadata-export",
         labelKey: "navBar.itemMetadataExport",
         capability: "org_settings",
       },
-      // REQ-1483: importing a Hasura project rewrites the acting org's semantic layer.
-      { to: "/admin/import", labelKey: "navBar.itemImport", capability: "org_settings" },
-      // REQ-1374: the tag registry is the acting org's own metadata, so org_settings.
-      { to: "/admin/tags", labelKey: "navBar.itemTags", capability: "org_settings" },
-      // REQ-2147: which of the profiler's classification kinds the org tests for is the org's own.
+      // REQ-1483, REQ-1327: an import writes objects of several layers; any one of their rights
+      // opens the page, and applying checks each declared object's own right.
+      {
+        to: "/admin/import",
+        labelKey: "navBar.itemImport",
+        capability: "table_registration",
+        anyOf: IMPORT_RIGHTS,
+      },
+      // REQ-1374, REQ-1944: tags are edited by a table editor or a holder of sensitive_data, the
+      // rights the tag mutations ask.
+      {
+        to: "/admin/tags",
+        labelKey: "navBar.itemTags",
+        capability: "table_registration",
+        orCapability: "sensitive_data",
+      },
+      // REQ-2147, REQ-1327: classification is the steward's; the kinds are switched by the right
+      // a classification decision asks.
       {
         to: "/admin/classification-kinds",
         labelKey: "navBar.itemClassificationKinds",
-        capability: "org_settings",
+        capability: "sensitive_data",
       },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
       // REQ-1387: the ontology route is /admin/ontology (glossary_read), and its nav entry is
@@ -253,7 +297,9 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemObservability",
         capability: "observability",
       },
-      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "org_settings" },
+      // REQ-1327: every member sees the requests it made and decides those whose own right it
+      // holds (creation_requests_router), so the page asks `usage`, the right every role carries.
+      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "usage" },
     ],
   },
 ];
@@ -262,14 +308,19 @@ export const NAV_GROUPS: NavGroup[] = [
 // group restores that item instead of always landing on the first one.
 // The key itself lives in lib/session so clearSessionState drops it at sign-in.
 function readLastSubnav(): Record<string, string> {
-  const raw = getStored(LAST_SUBNAV_KEY);
-  if (!raw) return {};
-  const parsed: unknown = JSON.parse(raw);
+  const parsed = getStoredJson<unknown>(LAST_SUBNAV_KEY);
   return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
 }
 
 export function writeLastSubnav(groupId: string, to: string) {
   setStored(LAST_SUBNAV_KEY, JSON.stringify({ ...readLastSubnav(), [groupId]: to }));
+}
+
+/** REQ-1922: whether a demo sandbox's visitor may open the page at ``path`` (its query string
+ * aside) to read, though its capability is not theirs: an entry marked `sandboxReadable`. */
+export function sandboxReadable(path: string): boolean {
+  const page = path.split("?")[0];
+  return NAV_GROUPS.some((g) => g.items.some((i) => i.to === page && i.sandboxReadable === true));
 }
 
 // The submenu item within a group to navigate to on entry: the remembered one (if still valid,

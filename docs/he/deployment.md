@@ -505,7 +505,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    | ------- | ---------- |
    | `provisa/provisa:<version>` | API של Provisa |
    | `trinodb/trino:480` | קואורדינטור + עובדי מנוע פדרציה |
-   | `postgres:16` | PostgreSQL בתוך-אשכולי (אם `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | PostgreSQL בתוך-אשכולי (אם `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | PgBouncer בתוך-אשכולי (אם `pgbouncer.enabled`) |
    | `redis:7.2` | Redis בתוך-אשכולי (אם `redis.enabled` וללא `redis.host`) |
    | `minio/minio:latest` | MinIO בתוך-אשכולי (אם `minio.enabled`) |

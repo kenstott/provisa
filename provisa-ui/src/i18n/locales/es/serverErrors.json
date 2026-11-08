@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "El endpoint de prueba está deshabilitado (establezca PROVISA_ENABLE_TEST_ENDPOINTS para habilitarlo fuera de producción).",
       "unknown_action_type": "actionType desconocido: '{{action_type}}'",
       "unknown_role": "Rol desconocido: '{{role}}'",
+      "mask_unreachable": "Ha definido una máscara que no es alcanzable: {{entries}}",
       "webhook_not_found": "No se encontró el webhook '{{name}}'",
       "written_table_not_registered": "'{{table}}' no es una tabla registrada del origen '{{source_id}}'",
       "function_exists": "La función '{{name}}' ya existe",
@@ -129,12 +130,14 @@
       "address_not_found": "Nada que resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve no se puede combinar con otros campos raíz en una misma operación",
       "source_starting": "El origen {{source}} todavía se está iniciando. Vuelva a intentarlo en un momento.",
+      "source_unavailable": "El origen {{source}} no pudo responder. Inténtelo de nuevo en breve.",
       "view_outside_load_window": "La vista {{view}} solo se puede leer dentro de su ventana de lectura. Vuelve a abrirse a las {{opens_at}}.",
       "graphql_body_missing": "La solicitud no tiene cuerpo: una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_body_not_json": "El cuerpo de la solicitud no es JSON: {{error}}",
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_parameter_type": "El parámetro {{parameter}} de la solicitud GraphQL debe ser {{expected}}.",
-      "graphql_mutation_over_get": "Una mutación se envía con POST, nunca con GET."
+      "graphql_mutation_over_get": "Una mutación se envía con POST, nunca con GET.",
+      "listed_only": "El rol {{role}} solo puede listar {{table}}: se pueden leer sus metadatos, no sus datos"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -155,7 +158,7 @@
       "in_use": "{{env}} sigue siendo referido por {{count}} elemento(s). Quite o cambie cada uno y vuelva a eliminarlo."
     },
     "front_door": {
-      "coordinator_waking": "El entorno se está iniciando. Estará listo en unos dos minutos.",
+      "coordinator_waking": "El entorno se está iniciando. Estará listo en unos cinco minutos.",
       "coordinator_updating": "El entorno se está actualizando. Volverá a estar disponible en breve."
     },
     "functions": {
@@ -268,6 +271,10 @@
       "classification_decision_not_found": "No hay ninguna decisión sobre {{column}} como {{kind}}",
       "classification_pii_refused": "No se pudo marcar la columna como PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} es una vista de catálogo del dominio meta y no se puede leer en una instrucción junto con una tabla de un origen de datos: léalas en dos instrucciones.",
+      "function_unsupported": "{{function}}() no tiene equivalente en {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "La respuesta leída para la réplica de {{table}} no es JSON válido: [{{content_type}}] {{cause}} (en los {{kib}} KiB anteriores al byte {{before_byte}} de la respuesta).",
       "no_whole_copy": "La tabla {{schema}}.{{table}} del origen {{source}} no tiene una copia completa que compilar: se replica fila a fila o tiene una columna de parámetro.",
@@ -287,7 +294,8 @@
       "not_found": "No se encontró el rol",
       "org_selection_required": "Se requiere seleccionar una organización",
       "already_exists": "El rol '{{role}}' ya existe",
-      "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve"
+      "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
+      "right_not_in_parents": "El rol {{role}} no puede tener {{right}}: ningún padre lo tiene"
     },
     "schema": {
       "allowed_domains_updated": "Dominios permitidos actualizados para el origen '{{source}}'",
@@ -357,6 +365,7 @@
       "request_rejected": "Solicitud de creación #{{id}} rechazada",
       "rls_rule_deleted": "Regla de RLS eliminada",
       "rls_rule_not_found": "No se encontró la regla de RLS",
+      "rls_rule_right_taken": "El permiso {{right}} del rol '{{role}}' ya está en la regla {{rule}}. Un permiso está como máximo en una regla: quítelo de esa regla o edite esa regla.",
       "rls_rule_saved_domain": "Regla de RLS para el dominio '{{domain}}' / rol '{{role}}' guardada",
       "rls_rule_saved_table": "Regla de RLS para la tabla {{table}} / rol '{{role}}' guardada",
       "rls_rule_saved_tag": "Regla de RLS para la etiqueta '{{tag}}' / rol '{{role}}' guardada",
@@ -396,6 +405,7 @@
       "source_region_set": "Región del origen {{source}} establecida en {{region}}",
       "region_refused": "No se estableció la región: {{reason}}",
       "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas.",
+      "remote_throttled": "La tabla '{{table}}' no se registró: el límite de solicitudes del origen no permitió comprobarla ({{reason}}). Inténtelo de nuevo más tarde.",
       "table_updated": "Tabla '{{table}}' actualizada (id={{id}})",
       "task_deleted": "Tarea '{{task}}' eliminada",
       "task_disabled": "Tarea '{{task}}' deshabilitada",
@@ -413,6 +423,7 @@
       "view_spans_sources": "la vista abarca varios orígenes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprobado",
       "webhook_name_required": "webhook_name es obligatorio para un desencadenador de webhook",
+      "mask_unreachable": "Ha definido una máscara que no es alcanzable: {{entries}}",
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
       "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll.",
       "table_draft_set": "Tabla {{table}} marcada como borrador",
@@ -467,7 +478,11 @@
       "relationship_same_entity_cardinality": "La relación '{{relationship}}' no se puede marcar como la misma entidad: es {{cardinality}}, y la misma entidad es una fila con una fila",
       "relationship_same_entity_not_grounded": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{source}} y {{target}} no están fundamentadas en el mismo término",
       "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}",
-      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token."
+      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token.",
+      "jdbc_invalid": "Fuente {{source}}: {{error}}",
+      "jdbc_file_refused": "Fuente {{source}}: la URL nombra {{path}}, que este servidor no puede abrir para la organización.",
+      "jdbc_options_refused": "Fuente {{source}}: la URL de esta organización no puede indicar la opción de controlador {{options}}.",
+      "jdbc_driver_refused": "Fuente {{source}}: un controlador JDBC del cliente se ejecuta como código en la propia JVM de Provisa, algo que solo permite una instalación autoalojada."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
@@ -615,7 +630,10 @@
       "popup_blocked": "Su navegador bloqueó la ventana de inicio de sesión. Permita las ventanas emergentes de este sitio e inténtelo de nuevo.",
       "window_closed": "La ventana de inicio de sesión se cerró antes de terminar.",
       "tenant_invalid": "La configuración de Microsoft 365 de la organización no indica un directorio (inquilino). Un administrador introduce el ID o el dominio del directorio.",
-      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón."
+      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón.",
+      "client_missing": "Introduzca el ID de cliente y el secreto de cliente de la aplicación y luego inicie sesión.",
+      "client_not_taken": "Este tipo de fuente inicia sesión con el cliente de su organización, no con uno introducido en el formulario.",
+      "no_account_returned": "Se aprobó el inicio de sesión, pero la respuesta no indicó qué cuenta ({{parameter}}). Inicie sesión de nuevo."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Su organización no ha permitido orígenes que lean sus buzones. Un administrador lo permite en Administración › Correo.",
@@ -661,6 +679,8 @@
       "unknown_demo": "No hay ninguna demostración publicada llamada {{demo}}.",
       "demo_not_ready": "Esta demostración todavía se está preparando. Inténtelo de nuevo en breve.",
       "demo_stores_failed": "No se pudo iniciar esta demostración. Inténtelo de nuevo en unos minutos.",
+      "demo_failed": "No se pudo preparar esta demostración. Inténtelo de nuevo en unos minutos.",
+      "failed_to_start": "No se pudo iniciar el servidor de demostración. Inténtelo de nuevo más tarde.",
       "at_capacity": "Todos los sandboxes de demostración están en uso. Inténtelo de nuevo en breve.",
       "starting": "El servidor de demostración se está iniciando. Vuelve a intentarlo en uno o dos minutos.",
       "disk_full": "Este sandbox ha agotado su límite de disco de {{limit}} bytes; no se puede escribir nada más en él.",
@@ -748,6 +768,12 @@
         "no_description": "Este producto de datos no indica ni su propósito ni su uso.",
         "successor_retired": "El producto de datos que recibió los miembros de este, '{{successor}}', también se ha retirado."
       }
+    },
+    "erd": {
+      "database_unavailable": "No se pueden leer los diseños del ERD: la base de datos no está disponible",
+      "layout_not_found": "No hay ningún diseño llamado {{name}}",
+      "layout_name_required": "Un diseño necesita un nombre",
+      "layout_place_unreadable": "El diseño coloca un(a) {{kind}} que usted no puede leer"
     }
   }
 }

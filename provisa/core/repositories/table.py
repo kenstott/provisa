@@ -14,7 +14,7 @@
 
 from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
 from provisa.core import model_change
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 
 from sqlalchemy import delete as _delete, select
@@ -40,6 +40,7 @@ from provisa.core.schema_org import (
     table_columns,
     tag_assignments,
 )
+from provisa.core.repositories.mask_lists import refuse_unreachable_masks
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -86,6 +87,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.native_filter_required,
     table_columns.c.required_by_steward,
     table_columns.c.is_primary_key,
+    table_columns.c.not_null,
     table_columns.c.is_foreign_key,
     table_columns.c.is_alternate_key,
     table_columns.c.object_fields,
@@ -412,7 +414,11 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
 
     stored = (
         await conn.execute_core(
-            select(registered_tables.c.product_id, registered_tables.c.contract).where(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.product_id,
+                registered_tables.c.contract,
+            ).where(
                 registered_tables.c.source_id == table.source_id,
                 registered_tables.c.schema_name == table.schema_name,
                 registered_tables.c.table_name == table.table_name,
@@ -430,15 +436,23 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
             column_types[col.name] = stored_type_of(base_type(declared_type))
         except ReportedNumericMalformed as malformed:
             raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
+    product_id = getattr(table, "product_id", None)
+    is_checker = getattr(table, "dq_contract", None) is not None
+    promised = (
+        await data_product_repo.promised_checks(conn, product_id, stored.id)
+        if stored is not None and product_id is not None and not is_checker
+        else []
+    )
     return data_contracts.for_save(
-        product_id=getattr(table, "product_id", None),
-        is_checker=getattr(table, "dq_contract", None) is not None,
+        product_id=product_id,
+        is_checker=is_checker,
         schema_name=table.schema_name,
         table_name=table.table_name,
         declared=getattr(table, "contract", None),
         stored=None if stored is None else stored.contract,
         stored_product_id=None if stored is None else stored.product_id,
         column_types=column_types,
+        checks=promised,
     )
 
 
@@ -647,6 +661,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 table_columns.c.data_type,
                 table_columns.c.is_foreign_key,
                 table_columns.c.is_alternate_key,
+                table_columns.c.not_null,
                 table_columns.c.array_depth,
                 table_columns.c.element_type,
                 table_columns.c.native_type,
@@ -682,6 +697,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
     _derived_keys = {
         r.column_name: (bool(r.is_foreign_key), bool(r.is_alternate_key)) for r in _existing_rows
     }
+    # REQ-2190: NOT NULL is recorded from the source at registration and persists with the column:
+    # a re-registration that does not read the source keeps it.
+    _not_null = {r.column_name for r in _existing_rows if r.not_null}
     # REQ-1918: a column this registration no longer lists is dropped. While a relationship is
     # keyed on it, or a view, materialized view or metric names it, the registration is refused
     # naming them; the transaction around this call undoes the table row's update. A dropped
@@ -768,8 +786,19 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             )
             _entries.append({**_bare, "why": _entry_why})
         _whys[col.name] = (_fake_why, _entries)
-    # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
+    # What each column's list is stored as: a control-plane role is no reader of it.
+    _stored_masks = {
+        name: [
+            e
+            if e.get("to") is None  # every other reader: names no role (REQ-2153)
+            else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
+            for e in entries
+        ]
+        for name, (_, entries) in _whys.items()
+    }
+    await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
         object_fields_raw = getattr(col, "object_fields", [])
@@ -805,12 +834,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 domain_id=domain_id,
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
-                masks=[
-                    e
-                    if e.get("to") is None  # every other reader: names no role (REQ-2153)
-                    else {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
-                    for e in _whys[col.name][1]
-                ],
+                masks=_stored_masks[col.name],
                 alias=getattr(col, "alias", None),
                 description=getattr(col, "description", None),
                 data_type=_data_type,
@@ -821,6 +845,13 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 is_primary_key=getattr(col, "is_primary_key", False)
                 # REQ-2170: the key its source declares
                 or (declared is not None and col.name in declared.primary_key),
+                not_null=getattr(col, "not_null", False)
+                or getattr(col, "is_primary_key", False)
+                or col.name in _not_null
+                or (
+                    declared is not None
+                    and (col.name in declared.primary_key or col.name in declared.not_null)
+                ),
                 is_foreign_key=getattr(col, "is_foreign_key", False)
                 or _derived_keys.get(col.name, (False, False))[0],
                 is_alternate_key=getattr(col, "is_alternate_key", False)
@@ -994,31 +1025,35 @@ async def find_by_table_name(
     return dict(rows[0]._mapping)
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
+async def list_all(
+    conn: "Connection", *, parts_of: "Callable[[dict], bool] | None" = None
+) -> list[dict]:  # REQ-013, REQ-016
+    """Every registered table's row with its ``columns`` and ``write_grants``. ``parts_of``, when
+    given, says which tables' parts are read: a table it refuses is its row alone, with neither
+    key — for a reader that needs no more of it than its row (``store_model``'s seeded tables)."""
     from provisa.core.repositories import write_grant as write_grant_repo
 
     result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
-    rows = result.fetchall()
+    rows = [dict(row._mapping) for row in result.fetchall()]
+    with_parts = [r["id"] for r in rows if parts_of is None or parts_of(r)]
     # Every table's columns in one read, each table's in registration order (as _load_columns
     # reads one table's): a rebuild lists every table, and a query per table was a query for each.
+    columns_read = select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
+        table_columns.c.table_id, table_columns.c.id
+    )
+    if parts_of is not None:
+        columns_read = columns_read.where(table_columns.c.table_id.in_(with_parts))
     columns: dict[int, list[dict]] = {}
-    for c in (
-        await conn.execute_core(
-            select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
-                table_columns.c.table_id, table_columns.c.id
-            )
-        )
-    ).fetchall():
+    for c in (await conn.execute_core(columns_read)).fetchall():
         column = dict(c._mapping)
         columns.setdefault(column.pop("table_id"), []).append(column)
     grants = await write_grant_repo.by_table(conn)
-    out = []
-    for row in rows:
-        r = dict(row._mapping)
-        r["columns"] = columns.get(r["id"], [])
-        r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
-        out.append(r)
-    return out
+    wanted = set(with_parts)
+    for r in rows:
+        if r["id"] in wanted:
+            r["columns"] = columns.get(r["id"], [])
+            r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
+    return rows
 
 
 async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-1918

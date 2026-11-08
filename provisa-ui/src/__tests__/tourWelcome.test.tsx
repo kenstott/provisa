@@ -14,7 +14,7 @@
  * toolbar button still starts it either way, because that click is a request, not an offer.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 
 // REQ-2013: the org has every object the product tour's steps show.
@@ -41,6 +41,9 @@ vi.mock("../context/pollyState", async (importOriginal) => ({
   }),
 }));
 
+// Which org the viewer acts in, and whether the deployment has several.
+const acting = vi.hoisted(() => ({ activeOrgId: "acme", multitenancy: true }));
+
 // TourProvider now reads the signed-in rights to decide which steps this viewer is shown. These
 // suites are about the offer and the recovery behaviour, not about gating, so the viewer holds
 // every right the tour's steps name — the whole tour is on the itinerary and nothing is dropped.
@@ -49,7 +52,7 @@ vi.mock("../context/AuthContext", async () => {
   const capabilities = [
     ...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : []))),
   ];
-  return { useAuth: () => ({ loading: false, capabilities }) };
+  return { useAuth: () => ({ loading: false, capabilities, ...acting }) };
 });
 
 const {
@@ -63,7 +66,7 @@ const {
 } = await import("../tour/useTour");
 const { TourWelcomeModal } = await import("../tour/TourWelcomeModal");
 const { TourAutoStart } = await import("../tour/TourAutoStart");
-const { TOUR_SEEN_KEY } = await import("../tour/tourKeys");
+const { TOUR_OFFERED_KEY, TOUR_SEEN_KEY } = await import("../tour/tourKeys");
 
 /** Stands in for the navbar compass: a plain launch click, no offer involved. */
 function Compass() {
@@ -190,5 +193,43 @@ describe("where the offer is made", () => {
   it("offers the tour on a product page", async () => {
     renderAt("/query");
     expect(await screen.findByText("Take the guided tour?")).toBeTruthy();
+  });
+
+  // A multi-tenant deployment's Platform org holds no data: the tour would show empty pages.
+  describe("in the Platform org", () => {
+    beforeEach(() => {
+      acting.activeOrgId = "default";
+    });
+    afterEach(() => {
+      acting.activeOrgId = "acme";
+      acting.multitenancy = true;
+    });
+
+    it("does not offer the tour", () => {
+      renderAt("/query");
+      expect(screen.queryByText("Take the guided tour?")).toBeNull();
+    });
+
+    it("leaves the offer unclaimed for the org the person enters next", () => {
+      renderAt("/query");
+      expect(sessionStorage.getItem(TOUR_OFFERED_KEY)).toBeNull();
+    });
+
+    it("still starts on an explicit request", async () => {
+      render(
+        <TourProvider>
+          <TourAutoStart demoMode={false} />
+          <Compass />
+        </TourProvider>,
+        { initialEntries: ["/query?tour=1"] },
+      );
+      await waitFor(() => expect(screen.getByTestId("status")).not.toHaveTextContent("idle"));
+    });
+
+    it("offers it in the one org of a single-tenant deployment", async () => {
+      acting.multitenancy = false;
+      renderAt("/query");
+      expect(await screen.findByText("Take the guided tour?")).toBeTruthy();
+    });
   });
 });

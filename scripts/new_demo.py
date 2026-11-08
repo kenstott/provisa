@@ -11,7 +11,7 @@
 """Scaffold a named demo: demo/named/<name>/ in the shape every named demo has (docs/named-demos.md),
 and its tour's words in every locale of the UI.
 
-    python scripts/new_demo.py <name> [--title "..."] [--port 28632] [--requires 0.1.0a496]
+    python scripts/new_demo.py <name> [--title "..."] [--port 28632] [--requires 0.1.0a497]
 
 What it writes passes scripts/check_demo.py's checks from the start, except what only the demo's
 author can supply: the card's screenshot, and the translations of the tour's words (each locale

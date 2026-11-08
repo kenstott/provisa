@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "端点",
+    "copyEndpoint": "复制端点 URL",
+    "prefixes_one": "{{count}} 个前缀",
+    "prefixes_other": "{{count}} 个前缀",
+    "prefixName": "前缀",
+    "namespace": "命名空间",
+    "removePrefix": "移除前缀",
+    "invalidPrefix": "仅限字母、数字、- 和 _",
+    "addHint": "填写最后一行即可添加前缀。前缀用于在结果和标签查询中命名术语；查询按原样运行。",
+    "restore": "恢复前缀"
+  }
+}

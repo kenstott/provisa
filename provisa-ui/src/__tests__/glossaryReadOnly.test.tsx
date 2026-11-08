@@ -22,8 +22,11 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
@@ -59,6 +62,7 @@ const REVENUE: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,
@@ -78,6 +82,7 @@ const CHURN: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "draft",
   status_reason: null,
@@ -212,6 +217,6 @@ describe("glossary read-only mode", () => {
   it("keeps searching and filtering, which write nothing", async () => {
     await openRevenue();
     expect(screen.getByTestId("glossary-search")).toBeInTheDocument();
-    expect(screen.getByTestId("glossary-show-deprecated")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-status-filter")).toBeInTheDocument();
   });
 });

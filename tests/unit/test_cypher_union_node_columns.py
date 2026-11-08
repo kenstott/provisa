@@ -44,8 +44,8 @@ def test_a_return_ordered_by_a_property_returns_the_node_whole(monkeypatch):
         ("Pet", "Bo"),
         ("Person", "Cy"),
     ]
-    # Every property of its own type, not only the one ordered by.
-    assert rows[0]["n"]["properties"]["legs"] == "4"
+    # Every property, not only the one ordered by, as its column holds it: a number a number.
+    assert rows[0]["n"]["properties"]["legs"] == 4
 
 
 def test_a_with_ordered_by_a_property_carries_the_node(monkeypatch):

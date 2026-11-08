@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry トレーシング",
     "statusLabel": "ステータス:",
     "statusExporting": "エクスポート中 → {{endpoint}}",
-    "statusActiveNoCollector": "有効(スパンは破棄されます — コレクター未設定)",
+    "statusActiveNoCollector": "有効(トレースはこのページ用に保持され、エクスポートはされません)",
     "endpointLabel": "OTLP コレクターエンドポイント",
-    "endpointHelp": "空のままにするとエクスポートせずにトレースを生成します。環境変数 OTEL_EXPORTER_OTLP_ENDPOINT で上書きできます。",
+    "endpointHelp": "Provisa 自身のコレクターを指定し、外部プロバイダーはコレクター内のエクスポーターとして追加してください。そうするとトレーステーブルへの書き込みが続きます。このページにのみトレースを保持する場合は空のままにします。環境変数 OTEL_EXPORTER_OTLP_ENDPOINT で上書きできます。",
     "serviceNameLabel": "サービス名",
     "serviceNameHelp": "環境変数 OTEL_SERVICE_NAME で上書きできます。",
     "sampleRateLabel": "サンプルレート",
@@ -83,6 +83,9 @@
       "document_sources": "ドキュメントストアに対するクエリ。",
       "search_sources": "検索インデックスに対するクエリ。",
       "grpc_services": "gRPC のクエリサーフェス (受信および送信)。"
-    }
+    },
+    "tracesTableCheckFailed": "Provisa のトレーステーブルを確認できませんでした（{{reason}}）。行を受け取っているかどうかは不明です。確認は 30 秒ごとに繰り返されます。",
+    "tracesTableEmpty": "エンドポイントが設定されていますが、Provisa のトレーステーブルにはまだ行がありません。エンドポイントが Provisa のコレクターではなく外部プロバイダーの場合は、コレクターのエクスポーターに移してください。",
+    "tracesTableStale": "エンドポイントが設定されていますが、Provisa のトレーステーブルは過去 {{minutes}} 分間に行を受け取っていません。Provisa が動作していなかった場合は想定どおりです。そうでなければ、エンドポイントが外部プロバイダーではなく Provisa のコレクターであることを確認してください。"
   }
 }

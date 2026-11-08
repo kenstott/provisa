@@ -156,6 +156,18 @@ def test_two_tables_combined_outside_a_relationship_are_refused(shape):
     assert said, shape
 
 
+def test_a_trail_check_a_client_writes_is_held_to_the_rule():
+    """Only a walk's trail check the graph compiler wrote is exempt (provisa.compiler.walk_checks):
+    the same shape written by a client relates its rows by a non-equality and is refused."""
+    said = _v002(
+        "WITH RECURSIVE w AS (SELECT c.id, '|' || CAST(c.id AS TEXT) || '|' AS trail "
+        "FROM customers c UNION ALL SELECT v.id, w.trail || CAST(v.id AS TEXT) || '|' "
+        "FROM w JOIN visits v ON v.customer_id = w.id "
+        "WHERE POSITION('|' || CAST(v.id AS TEXT) || '|' IN w.trail) = 0) SELECT * FROM w"
+    )
+    assert said
+
+
 @pytest.mark.parametrize("shape", list(_OUTSIDE))
 def test_a_role_that_may_ignore_relationships_is_not_held_to_them(shape):
     assert _v002(_OUTSIDE[shape], bypass_relationship_guard=True) == []
@@ -261,6 +273,70 @@ _ALONG = {
 @pytest.mark.parametrize("shape", list(_ALONG))
 def test_tables_combined_along_a_relationship_pass(shape):
     assert _v002(_ALONG[shape]) == [], shape
+
+
+# A filter on a window function's result over rows already joined by a registered relationship
+# is not a match between those tables (REQ-603, amended 2026-11-07): the latest row per group.
+_WINDOW_RESULTS = {
+    "row_number_latest": (
+        "SELECT e.name FROM (SELECT c.name, ROW_NUMBER() OVER (PARTITION BY c.id "
+        "ORDER BY v.id DESC) AS n FROM customers c JOIN visits v ON c.id = v.customer_id) e "
+        "WHERE e.n = 1"
+    ),
+    "rank": (
+        "SELECT e.name FROM (SELECT c.name, RANK() OVER (PARTITION BY v.customer_id "
+        "ORDER BY c.region, v.id) AS r FROM customers c JOIN visits v ON c.id = v.customer_id) e "
+        "WHERE e.r <= 3"
+    ),
+    "dense_rank_in_a_cte": (
+        "WITH e AS (SELECT c.name, DENSE_RANK() OVER (PARTITION BY c.id ORDER BY v.id) AS d "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id) SELECT name FROM e WHERE d = 1"
+    ),
+    "one_table": (
+        "SELECT e.id FROM (SELECT o.id, ROW_NUMBER() OVER (PARTITION BY o.customer_id "
+        "ORDER BY o.id DESC) AS n FROM orders o) e WHERE e.n = 1"
+    ),
+}
+
+
+@pytest.mark.parametrize("sql", _WINDOW_RESULTS.values(), ids=list(_WINDOW_RESULTS))
+def test_a_filter_on_a_window_result_over_joined_rows_passes(sql):
+    assert _v002(sql) == [], sql
+
+
+# A window does not lift the rule from the join it is computed over, nor from a comparison of the
+# two tables' columns that is not a registered equality.
+_STILL_REFUSED_BESIDE_A_WINDOW = {
+    "unregistered_join_under_the_window": (
+        "SELECT e.id FROM (SELECT o.id, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY o.id) AS n "
+        "FROM orders o JOIN customers c ON o.region = c.region) e WHERE e.n = 1"
+    ),
+    "not_equal": (
+        "SELECT e.name FROM (SELECT c.name, c.id AS cid, v.id AS vid, ROW_NUMBER() OVER "
+        "(PARTITION BY c.id ORDER BY v.id) AS n FROM customers c JOIN visits v "
+        "ON c.id = v.customer_id) e WHERE e.n = 1 AND e.cid <> e.vid"
+    ),
+    "less_than": (
+        "SELECT e.name FROM (SELECT c.name, c.id AS cid, v.id AS vid, ROW_NUMBER() OVER "
+        "(PARTITION BY c.id ORDER BY v.id) AS n FROM customers c JOIN visits v "
+        "ON c.id = v.customer_id) e WHERE e.n = 1 AND e.cid < e.vid"
+    ),
+    "case_comparing_two_tables": (
+        "SELECT e.name FROM (SELECT c.name, CASE WHEN c.id > v.id THEN 1 ELSE 0 END AS n "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id) e WHERE e.n = 1"
+    ),
+    "window_beside_an_inequality": (
+        "SELECT c.name, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY v.id) AS n "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id WHERE c.id <> v.id"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "sql", _STILL_REFUSED_BESIDE_A_WINDOW.values(), ids=list(_STILL_REFUSED_BESIDE_A_WINDOW)
+)
+def test_two_tables_compared_beside_a_window_are_still_refused(sql):
+    assert _v002(sql), sql
 
 
 @pytest.mark.parametrize(
@@ -945,3 +1021,145 @@ def test_a_relationship_s_join_is_accepted_whichever_way_round_it_is_written(con
         f"SELECT c.name FROM customers c JOIN visits v ON {condition}",
     ):
         assert _v002(sql) == [], sql
+
+
+# --- a pattern of unions over tables no registered table is ---------------------------------------
+
+
+def _hops(arms: int, hops: int, table: str) -> str:
+    """``hops`` derived tables joined, each a UNION of ``arms`` reads of ``table``: the shape of a
+    graph session's pattern of unlabelled hops."""
+    union = " UNION ALL ".join(f"SELECT {i} AS k, x.id AS id FROM {table} x" for i in range(arms))
+    joined = f"SELECT h0.id FROM ({union}) h0"
+    for n in range(1, hops):
+        joined += f" JOIN ({union}) h{n} ON h{n}.id = h{n - 1}.id"
+    return joined
+
+
+def test_branches_reading_no_registered_table_are_one_alternative():
+    # TCK WithWhere2 [1], MatchWhere2 [1]: a session's tables are no registered table, so each
+    # union arm is the same empty alternative, and the guard enumerated arms ** hops of them in
+    # Python, past the request's 60 s, while the SQL itself takes milliseconds.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(_hops(3, 4, "session_table"), read="postgres")
+    resolver = _Resolver(lambda _table: None, lambda _table_id: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 1
+
+
+def test_a_pattern_of_many_unions_is_judged_at_once():
+    # 6 ** 7 alternatives (279936) before they were one.
+    assert _v002(_hops(6, 7, "session_table")) == []
+
+
+def test_branches_of_registered_tables_stay_alternatives():
+    # Different instances are different choices: each is still judged, and combining orders with
+    # customers on no relationship is still refused through a union.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(
+        "SELECT * FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u", read="postgres"
+    )
+    resolver = _Resolver(lambda table: {"orders": 1, "visits": 3}[table.name], lambda _i: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 2
+    assert _v002(
+        "SELECT u.id FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u "
+        "JOIN customers c ON TRUE"
+    )
+
+
+# --- a model reading the same views of a union again and again (#329) ---------------------------
+
+_RECORDS = "(SELECT k, n FROM a UNION ALL SELECT k, n FROM b UNION ALL SELECT k, n FROM c " + (
+    "UNION ALL SELECT k, n FROM d)"
+)
+_IDS = {"a": 1, "b": 2, "c": 3, "d": 4}
+
+
+def _crosswalks(reads: int, crosswalks: int) -> str:
+    """customer360's ``master``: ``crosswalks`` reads of a crosswalk view, each reading a view of a
+    4-branch UNION ``reads`` times, every view read inlined as its own copy as governance does."""
+
+    def crosswalk() -> str:
+        joins = [f"FROM {_RECORDS} AS r0"] + [
+            f"LEFT JOIN {_RECORDS} AS r{i} ON r{i}.k = r0.k" for i in range(1, reads)
+        ]
+        return "(SELECT r0.k, r0.n " + " ".join(joins) + ")"
+
+    joins = [f"FROM {crosswalk()} AS c0"] + [
+        f"LEFT JOIN {crosswalk()} AS c{i} ON c{i}.k = c0.k" for i in range(1, crosswalks)
+    ]
+    return "SELECT c0.k " + " ".join(joins)
+
+
+def _crosswalk_check(sql: str, registered: set[tuple[int, int, str, str]]) -> list:
+    import sqlglot
+
+    from provisa.compiler import join_guard
+
+    return join_guard.unrelated_tables(
+        sqlglot.parse_one(sql),
+        resolve_table_id=lambda t: _IDS.get(t.name),
+        columns_of=lambda _table_id: {"k", "n"},
+        registered=registered,
+        exempt_table=lambda _table_id: False,
+        same_remote_source=lambda a, b: False,
+    )
+
+
+@pytest.mark.timeout(5)
+def test_views_of_a_union_read_again_and_again_are_checked_without_listing_their_product():
+    """#329: customer360's ``master`` reads a crosswalk view 3 times, which reads a 4-branch
+    UNION view 4 times: 4 ** 12 (16.7M) choices of branch. The guard listed every one before
+    making them distinct -- 14 GB, the CI runner killed. Each choice is now its connected pieces
+    as seen from beyond it, combined as built: the same check in a fraction of a second."""
+    import time
+    import tracemalloc
+
+    every_pair = {(x, y, "k", "k") for x in range(1, 5) for y in range(1, 5)}
+    tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        found = _crosswalk_check(_crosswalks(4, 3), every_pair)
+        took = time.perf_counter() - started
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert found == []
+    # Measured: 0.13 s and ~66 MB RSS for the whole process; before, >120 s and 4.2 GB.
+    assert took < 2, took
+    assert peak < 100_000_000, peak
+
+
+@pytest.mark.timeout(5)
+def test_views_of_a_union_read_again_and_again_are_refused_as_before():
+    """The same shape with d related to nothing is refused, each pairing with d named, as the
+    guard listing every choice refused it at the sizes it could list (checked on the same tree
+    for 4x2 and 3x3) -- and at this size it now answers instead of exhausting memory."""
+    import time
+
+    from provisa.compiler.join_guard import UNREGISTERED
+
+    without_d = {(x, y, "k", "k") for x in range(1, 4) for y in range(1, 4)}
+    started = time.perf_counter()
+    found = _crosswalk_check(_crosswalks(4, 3), without_d)
+    took = time.perf_counter() - started
+    # Which tables a piece combined with nothing is named by follows the instances' order in
+    # memory, as it always has; the pairings refused for their condition do not.
+    assert sorted({(f.left_table, f.right_table) for f in found if f.reason == UNREGISTERED}) == [
+        (1, 4),
+        (2, 4),
+        (3, 4),
+        (4, 4),
+    ]
+    assert {f.written for f in found if f.reason == UNREGISTERED} == {
+        *(f"r{i}.k = r0.k" for i in range(1, 4)),
+        *(f"c{i}.k = c0.k" for i in range(1, 3)),
+    }
+    assert took < 2, took

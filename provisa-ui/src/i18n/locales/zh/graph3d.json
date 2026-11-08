@@ -24,6 +24,7 @@
     "layer_relationships": "成员之间的关系",
     "layer_outside": "与外部表的关系",
     "layer_lineage": "血缘",
+    "layer_productLinks": "指向其他产品的链接",
     "filterDomain": "域",
     "filterTag": "标签",
     "filterSensitivity": "敏感度",
@@ -64,6 +65,7 @@
     "edge_owns": "拥有",
     "loadError": "无法读取图：{{error}}",
     "zoomTo": "缩放到此",
+    "openInErd": "在 ERD 中打开",
     "edge_column_lineage": "供数给列",
     "preset_taxonomy": "分类体系",
     "layer_domains": "域",
@@ -145,6 +147,10 @@
     "quality_none": "尚未运行",
     "factOwner": "所有者",
     "factMembers": "成员表",
-    "factColumns": "列"
+    "factColumns": "列",
+    "depth": "深度",
+    "lateral": "横向边",
+    "grounding_grounded": "已锚定",
+    "grounding_grounded_pending": "已锚定，经由草稿"
   }
 }

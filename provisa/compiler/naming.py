@@ -21,8 +21,12 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
+    from types import SimpleNamespace
+
     from inflect import Word
     from inflect import engine as _Engine
+
+    from provisa.core.models import Source
 
 # inflect's import + engine() build costs ~0.8s. Lazy-load it so that cost is paid ONCE on first
 # pluralization (schema generation), never at module import — keeps the desktop/demo cold start
@@ -180,6 +184,12 @@ def _to_pascal_case(name: str) -> str:
     return "".join(result)
 
 
+def to_pascal_case(name: str) -> str:  # REQ-194
+    """A name in pascal case (``active_users`` and ``activeUsers`` are ``ActiveUsers``), for a
+    client-facing name outside the convention presets: a gRPC RPC, a GraphQL type name."""
+    return _to_pascal_case(name)
+
+
 def _to_camel_case(name: str) -> str:
     """Convert snake_case or kebab-case to camelCase."""
     pascal = _to_pascal_case(name)
@@ -242,15 +252,23 @@ def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:  # REQ-4
 
 def domain_alias_map(domains: list[dict]) -> dict[str, str]:  # REQ-471
     """Each domain's alias (:func:`domain_gql_alias`), every one its own: a computed alias another
-    domain's alias also is -- ontology's and ops's are both "o" -- is the domain's own name
-    instead, so no domain's tables are named, typed or grouped as another's. A stored alias is the
-    domain's, as written."""
+    domain's alias also is is the domain's own name instead, so no domain's tables are named, typed
+    or grouped as another's. A stored alias is the domain's, as written. A system schema
+    (ontology, ops) is named in the SDL by its own prefix (``SYSTEM_SCHEMA_GQL_PREFIX``, REQ-2163),
+    never by an alias, so its computed alias is its own name and takes no model domain's: opioids
+    keeps "o" beside ops."""
     aliases = {d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias")) for d in domains}
-    taken = [a for a in aliases.values() if a]
+    system = {
+        d["id"]
+        for d in domains
+        if d["id"] in SYSTEM_SCHEMA_GQL_PREFIX and not d.get("graphql_alias")
+    }
+    taken = [a for domain_id, a in aliases.items() if a and domain_id not in system]
     return {
         d["id"]: (
             domain_to_sql_name(d["id"])
-            if not d.get("graphql_alias") and taken.count(aliases[d["id"]]) > 1
+            if d["id"] in system
+            or (not d.get("graphql_alias") and taken.count(aliases[d["id"]]) > 1)
             else aliases[d["id"]]
         )
         for d in domains
@@ -296,7 +314,7 @@ def engine_attach_name(kind: str, catalog: str) -> str:  # REQ-1266, REQ-1529
     return f"{kind}_{catalog}"
 
 
-def attach_catalog(source: object) -> str:  # REQ-1266, REQ-1529
+def attach_catalog(source: "Source | SimpleNamespace") -> str:  # REQ-1266, REQ-1529
     """The catalog name an engine attaches ``source`` under: carried by the attach view of a
     source its caller builds (``native_backend._walk_registry``, ``pg_backend``) from the org's
     ``source_catalogs``. A source that was not handed over that way has none (KeyError)."""
@@ -470,6 +488,11 @@ def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:  # REQ-4
 
 def active_gql_convention() -> str:  # REQ-471
     return _gql_convention
+
+
+def active_sql_form() -> str:  # REQ-2190
+    """The output form of the SQL convention in force, as :func:`_canonical_convention` names it."""
+    return _canonical_convention(_sql_convention)
 
 
 _GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")

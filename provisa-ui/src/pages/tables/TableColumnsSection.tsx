@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
 import { Tip } from "../../components/Tip";
@@ -35,6 +35,8 @@ import {
   shownMasks,
 } from "./helpers";
 import type { UpdateEditCol } from "./tableEditTypes";
+import { SensitiveHintText, SensitiveScanBar } from "./SensitiveScan";
+import { useSensitiveScan } from "./useSensitiveScan";
 
 /** The Columns section of a table's form: the same when it is created and when it is edited. */
 export function TableColumnsSection({
@@ -43,15 +45,22 @@ export function TableColumnsSection({
   editSource,
   roles,
   hidingOnly,
+  writeGrants,
   describeColumn,
+  scanTableId,
 }: {
   editingTable: RegisteredTable;
   updateEditCol: UpdateEditCol;
   editSource: Source | undefined;
   roles: Role[];
   hidingOnly: boolean;
+  /** The Write grants tab's editor. */
+  writeGrants: ReactNode;
   /** Writes a column's description from the saved table; absent while it is being created. */
   describeColumn?: (column: string) => Promise<string>;
+  /** REQ-2147: the saved table a scan for sensitive values reads; absent while it is being
+   * created, when there is nothing saved to read yet. */
+  scanTableId?: number;
 }) {
   const { t } = useTranslation();
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
@@ -89,6 +98,8 @@ export function TableColumnsSection({
     (topic) => !(topic === "access" && governanceHidden) && !(topic === "testing" && hidingOnly),
   );
   const [tab, setTab] = useColumnTab(shownTabs);
+  const scan = useSensitiveScan(scanTableId);
+  const hinted = (scan.state?.hints.length ?? 0) > 0;
   // A column's full definition for the hover on its name: every attribute, whichever tab edits it.
   const definitionOf = (c: TableColumn): ColumnDefinitionLine[] => [
     { label: t("tableEditForm.columnHeader"), value: c.columnName },
@@ -111,7 +122,10 @@ export function TableColumnsSection({
     <div data-testid="table-section-columns-panel">
       {/* One tab bar for everything of a column: its own attributes, and its test data. */}
       <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
-      {tab === "testing" ? (
+      {tab === "access" && <SensitiveScanBar scan={scan} />}
+      {tab === "writeGrants" ? (
+        writeGrants
+      ) : tab === "testing" ? (
         <TestDataColumns table={editingTable} updateEditCol={updateEditCol} />
       ) : (
         <Table.ScrollContainer minWidth={640}>
@@ -145,6 +159,7 @@ export function TableColumnsSection({
                   <>
                     <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
                     <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
+                    {hinted && <Table.Th>{t("sensitiveScan.header")}</Table.Th>}
                   </>
                 )}
               </Table.Tr>
@@ -260,10 +275,11 @@ export function TableColumnsSection({
                             title={t("tableEditForm.scopeHelp")}
                             data={[
                               { value: "domain", label: t("tableEditForm.scopeDomain") },
+                              { value: "listed", label: t("tableEditForm.scopeListed") },
                               { value: "public", label: t("tableEditForm.scopePublic") },
                               {
-                                value: "restricted",
-                                label: t("tableEditForm.scopeRestricted"),
+                                value: "own-domain",
+                                label: t("tableEditForm.scopeOwnDomain"),
                               },
                             ]}
                             value={c.scope || "domain"}
@@ -307,12 +323,20 @@ export function TableColumnsSection({
                             {masksSummary(c.masks, t)}
                           </Button>
                         </Table.Td>
+                        {hinted && (
+                          <Table.Td>
+                            <SensitiveHintText
+                              column={c.columnName}
+                              hints={scan.hintsOf(c.columnName)}
+                            />
+                          </Table.Td>
+                        )}
                       </>
                     )}
                   </Table.Tr>
                   {tab === "access" && masksOpen.has(c.columnName) && (
                     <Table.Tr>
-                      <Table.Td colSpan={4} style={{ paddingInlineStart: "1.5rem" }}>
+                      <Table.Td colSpan={hinted ? 5 : 4} style={{ paddingInlineStart: "1.5rem" }}>
                         <MaskListEditor
                           value={shownMasks(c.masks)}
                           onChange={(next) => updateEditCol(i, "masks", next)}

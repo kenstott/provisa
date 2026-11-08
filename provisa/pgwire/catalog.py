@@ -8,12 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PostgreSQL catalog proxy.
-
-Intercepts information_schema and pg_catalog queries and answers them
-from CompilationContext without the engine round-trip. Uses DuckDB in-memory
-as the query engine so clients can send arbitrary JOINs and WHERE clauses.
-"""
+"""PostgreSQL's catalog on a Provisa connection (REQ-2190): which statements are the catalog's, and
+their answers. SET, SHOW and transaction control are the session's, answered here; any other is
+addressed to the meta domain (catalog_route) and governed as a read of it."""
 
 # Requirements: REQ-127, REQ-128, REQ-363
 
@@ -21,27 +18,48 @@ as the query engine so clients can send arbitrary JOINs and WHERE clauses.
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
 import functools
 import logging
 import re
+from collections.abc import Mapping
 
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
     _INTERCEPT_SCHEMAS,
 )
-from provisa.pgwire.catalog_rewrite import _rewrite_for_duckdb, next_txid
+from provisa.pgwire.catalog_route import RESOLVED_REGS, CatalogRequest, address, next_txid
+from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_data import (
     _KNOWN_SETTINGS,
     _TYPEINFO_COL_TYPES,
     _TYPEINFO_COLS,
     typeinfo,
 )
-from provisa.pgwire.catalog_populate import catalog_db_for
+from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
+from provisa.pgwire.constant_arguments import evaluable, is_constant_sql
+from provisa.pgwire.session_zone import SessionZone
+from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
+from provisa.pgwire.catalog_server_answers import REWRITTEN
+from provisa.core.pg_error import PostgresError, from_engine, postgres_error
+from provisa.transpiler.metadata_functions import (
+    FORMS,
+    READS_THE_SERVER,
+    RELATION_FORMS,
+    MetadataFunctionRefused,
+)
+from provisa.transpiler.metadata_settings import relation_names_literal
 
 log = logging.getLogger(__name__)
 
 _SET_RE = re.compile(r"^\s*SET\b", re.IGNORECASE)
 _SHOW_RE = re.compile(r"^\s*SHOW\b", re.IGNORECASE)
+_SHOW_ZONE_RE = re.compile(r"^\s*SHOW\s+(?:\"?TimeZone\"?|TIME\s+ZONE)\s*$", re.IGNORECASE)
+_READS_ZONE_RE = re.compile(
+    r"^\s*SHOW\s+(?:ALL\b|\"?TimeZone\b|TIME\s+ZONE\b)|current_setting\s*\(\s*'timezone'",
+    re.IGNORECASE,
+)
 _TXN_RE = re.compile(
     r"^\s*(BEGIN|START\s+TRANSACTION|START|COMMIT|END|ROLLBACK|ABORT|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
@@ -49,9 +67,13 @@ _TXN_RE = re.compile(
 
 _SHOW_MIN_PARTS = 2
 
+#: A call sqlglot reads as syntax of its own (provisa.transpiler.pg_functions.readable).
+_UNPARSED_CALL = re.compile(r"\b(convert|json_object)\s*\(")
+
 # REQ-2167: a statement that only sleeps, as PostgreSQL's pg_sleep(seconds) does, answering void.
 _PG_SLEEP_RE = re.compile(
-    r'^\s*SELECT\s+(?:pg_catalog\.)?"?pg_sleep"?\s*\((?P<arg>.*)\)\s*(?:AS\s+(?P<alias>\w+))?\s*;?\s*$',
+    r'^\s*SELECT\s+(?:pg_catalog\.)?"?(?P<name>pg_sleep(?:_for|_until)?)"?\s*\((?P<arg>.*)\)\s*'
+    r"(?:AS\s+(?P<alias>\w+))?\s*;?\s*$",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -64,11 +86,18 @@ _SCALAR_FN_RE = re.compile(
 
 
 def _parse_typeinfo_oids(sql: str) -> list[int] | None:
-    """Extract OIDs from ANY('{oid,...}'::oid[]) pattern; None if $1 still present."""
-    m = re.search(r"ANY\s*\(\s*'\{([^}]*)\}'", sql, re.IGNORECASE)
-    if m:
-        raw = m.group(1).strip()
-        return [int(x) for x in raw.split(",") if x.strip()] if raw else []
+    """The OIDs asyncpg's type introspection asks for: the array its ``ANY($1::oid[])`` was bound
+    to, read on the tree (REQ-2167); None while the ``$1`` is unbound (Describe)."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    for any_ in sqlglot.parse_one(sql, read="postgres").find_all(exp.Any):
+        bound = any_.this
+        while isinstance(bound, (exp.Cast, exp.Paren)):
+            bound = bound.this
+        if isinstance(bound, exp.Literal) and bound.is_string:
+            raw = bound.name.strip().removeprefix("{").removesuffix("}")
+            return [int(x) for x in raw.split(",") if x.strip()]
     return None
 
 
@@ -121,12 +150,15 @@ _SCALAR_NAMES = frozenset(
 
 
 # REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): the catalog functions clients call (psql describe.c,
-# pgAdmin, DBeaver) that the catalog's rewrite answers inside a catalog statement. Called on its
-# own -- a statement reading no table -- one is answered the same way, not sent to the engine.
+# pgAdmin, DBeaver) that are answered with their form. Called on its own, in a statement reading no
+# table, the statement is the engine's once written in the form (REQ-2190).
 _STANDALONE_CATALOG_FUNCTIONS = frozenset(
     {
         "pg_encoding_to_char",
         "has_table_privilege",
+        # REQ-2190: left to the engine, DuckDB's own answers TRUE for a column the role is not served.
+        "has_column_privilege",
+        "has_any_column_privilege",
         "pg_get_function_arguments",
         "pg_get_function_identity_arguments",
         "pg_get_function_result",
@@ -169,11 +201,61 @@ _STANDALONE_CATALOG_FUNCTIONS = frozenset(
         "oidvectortypes",
         "pg_cursor",
         "pg_sequence_last_value",
-        "setval",
-        "plpgsql_validator",
-        "fmgr_c_validator",
+        "bpchar",
+        "has_type_privilege",
+        "pg_available_extensions",
+        "json_to_record",
+        "pg_blocking_pids",
+        "pg_current_logfile",
+        "pg_get_keywords",
+        "pg_get_replica_identity_index",
+        "pg_get_viewdef",
+        "pg_stat_reset_single_table_counters",
+        "ts_token_type",
+        "pg_partition_root",
+        # REQ-2190: left to the engine, its own built-ins answer these whatever the model says.
+        "has_database_privilege",
+        "has_foreign_data_wrapper_privilege",
+        "has_function_privilege",
+        "has_language_privilege",
+        "has_schema_privilege",
+        "has_sequence_privilege",
+        "has_server_privilege",
+        "has_tablespace_privilege",
+        "pg_has_role",
+        "pg_collation_is_visible",
+        "pg_conversion_is_visible",
+        "pg_function_is_visible",
+        "pg_opclass_is_visible",
+        "pg_operator_is_visible",
+        "pg_opfamily_is_visible",
+        "pg_ts_config_is_visible",
+        "pg_ts_dict_is_visible",
+        "pg_ts_parser_is_visible",
+        "pg_ts_template_is_visible",
+        "pg_type_is_visible",
+        "pg_get_constraintdef",
+        "pg_get_expr",
+        "pg_is_other_temp_schema",
+        "col_description",
+        "obj_description",
+        "shobj_description",
+        *_SERVER_ANSWERED,
+        *REWRITTEN,
     }
 )
+
+
+def _reads_only_meta(tree) -> bool:
+    """Whether every table ``tree`` reads is meta's: such a statement runs on the control plane."""
+    import sqlglot.expressions as exp
+
+    tables = list(tree.find_all(exp.Table))
+    return bool(tables) and all((t.db or "").lower() == "meta" for t in tables)
+
+
+#: What is written in its form in a statement on the control plane.
+_FORM_NAMES = frozenset({*(name for name, _ in (*FORMS, *RELATION_FORMS)), *READS_THE_SERVER})
 
 
 def _calls_a_catalog_function_alone(tree) -> bool:
@@ -193,18 +275,14 @@ def _calls_a_catalog_function_alone(tree) -> bool:
     )
 
 
-#: The types only the catalog has (name, and the object identifier types): a statement reading no
-#: table that casts to one is answered by the catalog (REQ-2167).
-_CATALOG_ONLY_TYPES = frozenset({"name", "regclass", "regtype", "regnamespace"})
-
-
-def _casts_to_a_catalog_type_alone(tree) -> bool:
+def _names_a_catalog_object(tree) -> bool:
+    """A cast to an object identifier type the model resolves (``'orders'::regclass``): its form is
+    a read of meta, as to_regclass's is, or for a number the oid it is, then the engine's."""
     import sqlglot.expressions as exp
 
-    if any(True for _ in tree.find_all(exp.Table)):
-        return False
     return any(
-        cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.") in _CATALOG_ONLY_TYPES
+        cast.to.sql(dialect="postgres").lower().removeprefix("pg_catalog.").removesuffix("[]")
+        in RESOLVED_REGS
         for cast in tree.find_all(exp.Cast)
     )
 
@@ -222,6 +300,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         import sqlglot.expressions as exp
         import sqlglot
 
+        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript (pg_syntax).
         tree = sqlglot.parse_one(stripped, read="postgres")
         for tbl in tree.find_all(exp.Table):
             db = tbl.db.lower() if tbl.db else ""
@@ -234,8 +313,8 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
             fn = func.name.lower()
             if "current_setting" in fn or "set_config" in fn:
                 return "INTERCEPT"
-            if fn in _SCALAR_NAMES:
-                return "INTERCEPT"
+            if fn in _SCALAR_NAMES or (fn in _FORM_NAMES and _reads_only_meta(tree)):
+                return "INTERCEPT"  # REQ-2190: left in, it would answer about the control plane
             if any(
                 x in fn
                 for x in (
@@ -250,7 +329,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         for col in tree.find_all(exp.Column):
             if col.name.lower() in _SCALAR_NAMES:
                 return "INTERCEPT"
-        if _calls_a_catalog_function_alone(tree) or _casts_to_a_catalog_type_alone(tree):
+        if _calls_a_catalog_function_alone(tree) or _names_a_catalog_object(tree):
             return "INTERCEPT"
         for node in tree.walk():
             if type(node).__name__ in (
@@ -258,10 +337,13 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
                 "SessionUser",
                 "CurrentDatabase",
                 "CurrentSchema",
+                "CurrentCatalog",
             ):
                 return "INTERCEPT"
     except Exception:
         lower = stripped.lower()
+        if _UNPARSED_CALL.search(lower) and " from " not in lower:
+            return "INTERCEPT"  # REQ-2167: sqlglot reads it as syntax; the catalog DB as a call
         for name in _CATALOG_TABLE_NAMES:
             if re.search(r"\b" + re.escape(name) + r"\b", lower):
                 return "INTERCEPT"
@@ -271,21 +353,23 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     return "PASS_THROUGH"
 
 
-def _handle_show(sql: str):
+def _handle_show(sql: str, settings: Mapping[str, str]):
     """Answer SHOW commands without DuckDB."""
     from provisa.executor.result import QueryResult
 
     normalized = sql.strip().rstrip(";")
     if re.match(r"^\s*SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL\s*$", normalized, re.IGNORECASE):
         return QueryResult(rows=[("read committed",)], column_names=["transaction_isolation"])
+    if _SHOW_ZONE_RE.match(normalized):
+        return QueryResult(rows=[(settings["timezone"],)], column_names=["TimeZone"])
     parts = normalized.split()
     if len(parts) < _SHOW_MIN_PARTS:
         return QueryResult(rows=[], column_names=[])
     setting = parts[1].lower()
     if setting == "all":
-        rows = [(k, v) for k, v in _KNOWN_SETTINGS.items()]
+        rows = [(k, v) for k, v in settings.items()]
         return QueryResult(rows=rows, column_names=["name", "setting"])
-    value = _KNOWN_SETTINGS.get(setting, "")
+    value = settings.get(setting, "")
     return QueryResult(rows=[(value,)], column_names=[setting])
 
 
@@ -301,7 +385,7 @@ def _handle_scalar(sql: str, role_id: str, state):
     if "current_user" in s or "session_user" in s:
         return QueryResult(rows=[(role_id,)], column_names=["current_user"])
     if "current_database" in s:
-        from provisa.pgwire.catalog_populate import served_database_name
+        from provisa.pgwire.catalog_data import served_database_name
 
         return QueryResult(rows=[(served_database_name(state),)], column_names=["current_database"])
     if "version()" in s:
@@ -317,9 +401,9 @@ def _handle_scalar(sql: str, role_id: str, state):
         return QueryResult(rows=[(next_txid(),)], column_names=["txid_current"])
     if "pg_advisory_unlock_all()" in s:
         # asyncpg's pool connection-release reset query (Connection.get_reset_query()) always
-        # includes this — Provisa never grants real advisory locks, so releasing "all of them" is
-        # trivially satisfied. A void-returning function answers with one row, one NULL column,
-        # same as _handle_scalar's other functions.
+        # includes this. A connection's own call releases its locks in the server
+        # (server._advisory_answer); answered here it has none: one row, one NULL column, same as
+        # _handle_scalar's other functions.
         return QueryResult(rows=[(None,)], column_names=["pg_advisory_unlock_all"])
     return None
 
@@ -341,45 +425,82 @@ def _handle_txid(sql: str):
 
 
 _SET_CONFIG_VALUE_RE = re.compile(
-    r"set_config\s*\(\s*'(?:[^']|'')*'\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*'(?P<value>(?:[^']|'')*)'",
+    re.IGNORECASE,
 )
 
 
-def _set_config_value(sql: str) -> str | None:
-    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does."""
+def _set_config_value(sql: str, settings: Mapping[str, str]) -> str | None:
+    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does, and of
+    TimeZone the name it read that as."""
     m = _SET_CONFIG_VALUE_RE.search(sql)
-    return m.group(1).replace("''", "'") if m else None
+    if m is None:
+        return None
+    if m.group("name").lower() == "timezone":
+        return settings["timezone"]
+    return m.group("value").replace("''", "'")
 
 
-def _handle_current_setting(sql: str):
-    """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
+def _handle_current_setting(sql: str, settings: Mapping[str, str]):
+    """Answer a statement that is only SELECT current_setting('x') [AS a] [, set_config(...) [AS b]]
+    without DuckDB. Any other statement that mentions current_setting is None: the catalog read
+    answers it with the rest of the statement intact (REQ-2167, REQ-2204)."""
+    import sqlglot
+    import sqlglot.errors
+    import sqlglot.expressions as exp
     from provisa.executor.result import QueryResult
 
-    lower = sql.lower()
-    if "current_setting" not in lower:
+    if "current_setting" not in sql.lower():
+        return None
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except sqlglot.errors.SqlglotError:
+        return None
+    if not isinstance(tree, exp.Select) or any(
+        tree.args.get(k) for k in tree.args if k not in ("expressions", "kind")
+    ):
         return None
 
-    # Multi-expression startup query: SELECT current_setting('x') AS a, set_config(...) AS b
-    # Detect alias names from the SQL so we return the right column names for asyncpg.
-    if "set_config" in lower:
-        m1 = re.search(
-            r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)(?:\s+AS\s+(\w+))?",
-            sql,
-            re.IGNORECASE,
-        )
-        m2 = re.search(r"set_config\s*\([^)]+\)(?:\s+AS\s+(\w+))?", sql, re.IGNORECASE)
-        col1 = (m1.group(2) or "current_setting") if m1 else "current_setting"
-        col2 = (m2.group(1) or "set_config") if m2 else "set_config"
-        key = m1.group(1).lower() if m1 else ""
-        val1 = _KNOWN_SETTINGS.get(key, "")
-        return QueryResult(rows=[(val1, _set_config_value(sql))], column_names=[col1, col2])
+    names: list[str] = []
+    values: list[str | None] = []
+    for projection in tree.expressions:
+        alias = projection.alias if isinstance(projection, exp.Alias) else ""
+        call = projection.this if isinstance(projection, exp.Alias) else projection
+        if not isinstance(call, exp.Anonymous):
+            return None
+        fn = call.name.lower()
+        args = call.expressions
+        if fn == "current_setting" and len(args) == 1 and _is_string_literal(args[0]):
+            names.append(alias or "current_setting")
+            values.append(settings.get(args[0].name.lower(), ""))
+        elif fn == "set_config" and names:  # only after a current_setting
+            names.append(alias or "set_config")
+            values.append(_set_config_value(call.sql(dialect="postgres"), settings))
+        else:
+            return None
+    return QueryResult(rows=[tuple(values)], column_names=names)
 
-    m = re.search(r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", sql, re.IGNORECASE)
-    if not m:
-        return None
-    key = m.group(1).lower()
-    value = _KNOWN_SETTINGS.get(key, "")
-    return QueryResult(rows=[(value,)], column_names=["current_setting"])
+
+def _is_string_literal(node) -> bool:
+    import sqlglot.expressions as exp
+
+    return isinstance(node, exp.Literal) and node.is_string
+
+
+#: An object identifier value a statement reads with its name, its oid and name held together.
+_NAMED_VALUES = frozenset({"regclass", "regnamespace"})
+
+
+def _pg_types(sql: str, names: list[str]) -> list[str]:
+    """Each column's type as PostgreSQL 17 declares it, by position or else by name; "" for one it
+    does not."""
+    from provisa.pgwire.catalog_types import result_types
+
+    declared = result_types(sql)
+    if len(declared) == len(names):
+        return [pg_type for _, pg_type in declared]
+    by_name = dict(reversed(declared))
+    return [by_name.get(name, "") for name in names]
 
 
 def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:  # REQ-2167
@@ -387,24 +508,30 @@ def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:
     wire form (a catalog column served as text that PostgreSQL declares name keeps its text, sent
     as name); otherwise the type it is served with. Columns pair up by position, or by name where
     the served relation's columns are not PostgreSQL's."""
-    from provisa.pgwire.catalog_types import result_types
+    from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
     from provisa.pgwire.server import same_wire_form
 
-    declared = result_types(sql)
-    if len(declared) == len(served):
-        pg_types = [pg_type for _, pg_type in declared]
-    else:
-        by_name = dict(reversed(declared))
-        pg_types = [by_name.get(name, "") for name in names]
+    pg_types = _pg_types(sql, names)
     return [
-        pg_type if pg_type and same_wire_form(pg_type, duck_type) else duck_type
+        pg_type
+        if pg_type
+        and (
+            pg_type == "record"
+            or pg_type in CATALOG_TYPE_OIDS
+            or pg_type in _NAMED_VALUES
+            # A read of an undeclared numeric is floating point (REQ-1961); a catalog's is exact.
+            or pg_type == "decimal"
+            or same_wire_form(pg_type, duck_type)
+        )
+        else duck_type
         for pg_type, duck_type in zip(pg_types, served)
     ]
 
 
 def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
-    """pg_sleep(seconds): sleeps that long and answers void (empty text); strict, so a NULL
-    argument answers NULL without sleeping. A sleep longer than the request has left ends with
+    """pg_sleep(seconds), pg_sleep_for(interval) or pg_sleep_until(timestamp with time zone):
+    sleeps that long and answers void (empty text); strict, so a NULL argument answers NULL
+    without sleeping. A sleep longer than the request has left ends with
     the request's timeout."""
     import threading
 
@@ -413,9 +540,18 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     from provisa.core import engine_memory
     from provisa.executor.result import QueryResult
 
-    seconds_sql = sqlglot.transpile(
-        f"SELECT CAST(({match['arg']}) AS DOUBLE PRECISION)", read="postgres", write="duckdb"
-    )[0]
+    arg = match["arg"]
+    if not is_constant_sql(arg):
+        raise NotImplementedError(
+            f"{match['name']}: an argument that is not a constant expression is not supported"
+        )
+    arg = evaluable(arg)
+    seconds = {
+        "pg_sleep": f"CAST(({arg}) AS DOUBLE PRECISION)",
+        "pg_sleep_for": f"EXTRACT(EPOCH FROM ({arg}))",
+        "pg_sleep_until": f"EXTRACT(EPOCH FROM ({arg})) - EXTRACT(EPOCH FROM NOW())",
+    }[match["name"]]
+    seconds_sql = sqlglot.transpile(f"SELECT {seconds}", read="postgres", write="duckdb")[0]
     con = engine_memory.connect()
     try:
         ((seconds,),) = con.execute(seconds_sql).fetchall()
@@ -433,13 +569,320 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
         request_deadline.check()
     return QueryResult(
         rows=[(None if seconds is None else "",)],
-        column_names=[match["alias"] or "pg_sleep"],
+        column_names=[match["alias"] or match["name"]],
         column_types=["void"],
     )
 
 
-def answer(sql: str, role_id: str, state):  # REQ-532
-    """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
+@dataclasses.dataclass(frozen=True)
+class CatalogSession:
+    """The connection a catalog statement is answered for: what pg_stat_activity lists of it
+    (REQ-2167). ``backend_start`` is when the connection was made."""
+
+    pid: int
+    application_name: str = ""
+    backend_start: datetime.datetime | None = None
+    system_user: str | None = None
+    time_zone: str | None = None
+    zone: SessionZone | None = None
+    #: The org whose advisory locks pg_locks lists (advisory_locks.LOCKS keys them by org).
+    org_id: str | None = None
+    #: What the connection's own set_config(name, value, false) set (the connection's dict, which
+    #: a set_config here writes): current_setting reads it back. Never a catalog view's setting.
+    client_settings: dict[str, str] | None = None
+    #: The cursors pg_cursors lists of the connection: its DECLAREd ones and the open portal.
+    cursors: tuple[dict, ...] = ()
+    #: The client's end of the connection, (host, port), which pg_stat_activity lists.
+    client_end: tuple = ()
+    #: The statements the connection has run, this one with them: pg_stat_database's xact_commit.
+    queries: int = 0
+
+
+def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
+    """The settings as this session has them, what it set itself over the server's. A statement
+    that reads TimeZone in a session whose zone cannot be told is refused; any other is
+    answered."""
+    zone = None if session is None else session.zone
+    own = (session.client_settings if session is not None else None) or {}
+    if zone is None:
+        return {**_KNOWN_SETTINGS, **own}
+    if _READS_ZONE_RE.search(sql):
+        return {**_KNOWN_SETTINGS, **own, "timezone": zone.named()}
+    return {
+        **_KNOWN_SETTINGS,
+        **own,
+        "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"],
+    }
+
+
+#: A set_config whose name, value and is_local are constants.
+_SET_CONFIG_CALL_RE = re.compile(
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*"
+    r"'(?P<value>(?:[^']|'')*)'(?:::\w+)?\s*,\s*(?P<local>\w+)(?:::\w+)?\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _keep_set_config(sql: str, session: CatalogSession | None) -> None:
+    """A set_config(name, value, false) is the session's from then on, as PostgreSQL keeps it;
+    one local to a transaction ends with it, and TimeZone is the session zone's to keep."""
+    if session is None or session.client_settings is None:
+        return
+    m = _SET_CONFIG_CALL_RE.search(sql)
+    if m is None or m["local"].lower() not in ("false", "f", "off"):
+        return
+    name = m["name"].replace("''", "'").lower()
+    if name != "timezone":
+        session.client_settings[name] = m["value"].replace("''", "'")
+
+
+def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
+    """Make ``session`` the one row of pg_stat_activity, for this statement's cursor alone: a
+    temporary table of the same name shadows the shared, empty one, and goes with the cursor
+    (REQ-2167). The row is the session as PostgreSQL shows a backend running a statement."""
+    cur.execute(
+        "CREATE TEMPORARY TABLE _pg_stat_activity AS SELECT * FROM main._pg_stat_activity LIMIT 0"
+    )
+    cur.execute(
+        "INSERT INTO _pg_stat_activity (datid, datname, pid, usesysid, usename, application_name, "
+        "backend_start, xact_start, query_start, state_change, state, query, backend_type) "
+        "SELECT d.oid, d.datname, ?, (SELECT r.oid FROM _pg_roles r WHERE r.rolname = ?), ?, ?, ?, "
+        "now(), now(), now(), 'active', ?, 'client backend' FROM _pg_database d",
+        [session.pid, role_id, role_id, session.application_name, session.backend_start, sql],
+    )
+
+
+#: regproc's oid, a value of which a driver hands over as the function's name.
+_REGPROC_OID = 24
+_PROC_OIDS = {name: oid for oid, name in PROC_NAMES.items()}
+#: PostgreSQL's oids of a value it sends in text as a vector of numbers.
+_VECTOR_OIDS = frozenset({22, 30})
+
+
+def _catalog_request(
+    sql: str, role_id: str, state, session: CatalogSession | None
+) -> CatalogRequest:
+    from provisa.pgwire.catalog_facts import role_facts, row_counts
+    from provisa.pgwire.catalog_data import served_database_name
+    from provisa.transpiler.metadata_facts import catalog_facts
+
+    held = getattr(state, "pg_source_enums", None)
+    enums = tuple(held.values()) if isinstance(held, dict) else ()
+    connection: dict[str, str] = {}
+    if session is not None:
+        connection = {
+            "pid": str(session.pid),
+            "application_name": session.application_name,
+            "backend_start": session.backend_start.isoformat() if session.backend_start else "",
+            "queries": str(session.queries),
+            **_client_end_told(session.client_end),
+            **({"system_user": session.system_user} if session.system_user else {}),
+            **({"time_zone": session.time_zone} if session.time_zone else {}),
+        }
+    return CatalogRequest(
+        role_id=role_id,
+        database=served_database_name(state),
+        # Only the privilege functions read them, and the model is walked for them.
+        facts=role_facts(role_id, state)
+        if "_privilege" in sql.lower()
+        else catalog_facts(role_id, {}),
+        settings=_session_settings(sql, session),
+        pid=session.pid if session is not None else 0,
+        session={
+            **connection,
+            **({"query": sql} if "pg_stat_activity" in sql.lower() else {}),
+            **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
+            **({"enums": _enums_told(enums)} if enums else {}),
+            **({"cursors": _cursors_told(session)} if "pg_cursor" in sql.lower() else {}),
+            **(
+                {"row_estimates": _row_estimates_told(row_counts(role_id, state))}
+                if "pg_stat_user_tables" in sql.lower()
+                else {}
+            ),
+        },
+        enums=enums,
+        reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
+    )
+
+
+def _client_end_told(end: tuple) -> dict[str, str]:
+    """The client's address and port, as pg_stat_activity's view reads them: none where the
+    connection's client end is not known."""
+    if len(end) < 2:
+        return {}
+    return {"client_addr": str(end[0]), "client_port": str(end[1])}
+
+
+def _row_estimates_told(counts: Mapping[int, float]) -> str:
+    """The role's row estimates by relation oid, as pg_stat_user_tables' view reads them (JSON):
+    a table with none is not in it."""
+    import json
+
+    return json.dumps({str(oid): round(rows) for oid, rows in counts.items()})
+
+
+def _cursors_told(session: CatalogSession | None) -> str:
+    """The connection's cursors, as pg_cursors' view reads them (JSON)."""
+    import json
+
+    return json.dumps(list(session.cursors) if session is not None else [])
+
+
+def _enums_told(enums: tuple) -> str:
+    """The sources' enums, as pg_type's and pg_enum's views read them (JSON)."""
+    import json
+
+    return json.dumps(
+        [
+            {
+                "oid": e.oid,
+                "array_oid": e.array_oid,
+                "schema": e.schema,
+                "name": e.name,
+                "labels": list(e.labels),
+            }
+            for e in enums
+        ]
+    )
+
+
+def _advisory_locks(session: CatalogSession | None) -> str:
+    """The advisory locks of the asking session's org, as pg_locks' view reads them (JSON)."""
+    import json
+
+    from provisa.pgwire import advisory_locks
+
+    if session is None:
+        return "[]"
+    return json.dumps(advisory_locks.LOCKS.held(session.org_id))
+
+
+def _served_type(oid: int) -> str:
+    """The type PostgreSQL said it sent, by the name the catalog's own list gives it."""
+    entry = TYPES.get(oid)
+    return entry[-1] if entry is not None else "text"
+
+
+def _as_declared(sql: str, result):
+    """``result`` with its columns of the statement as the client wrote it: a catalog relation's
+    columns are PostgreSQL 17's types, which a view holds as what it can."""
+    from provisa.executor.result import QueryResult
+
+    # An engine answered a statement that reads no table: its own column types, no oids.
+    served = [_served_type(oid) for oid in result.column_type_oids or ()] or list(
+        result.column_types or ()
+    )
+    if len(served) != len(result.column_names):
+        served = ["text"] * len(result.column_names)
+    col_types = _declared_types(sql, result.column_names, served)
+    if not result.rows or all(v is None for row in result.rows for v in row):
+        # REQ-2171: a NULL has no form of its own, so it is what PostgreSQL declares it.
+        col_types = [d or c for d, c in zip(_pg_types(sql, result.column_names), col_types)]
+    oids = result.column_type_oids or ()
+    vectors = [i for i, oid in enumerate(oids) if oid in _VECTOR_OIDS]
+    procs = [i for i, oid in enumerate(oids) if oid == _REGPROC_OID]
+    records = [i for i, declared in enumerate(col_types) if declared == "record"]
+    rows = result.rows
+    if vectors or records or procs:
+        rows = [
+            tuple(
+                record_text(v)
+                if i in records
+                else [int(n) for n in v.split()]
+                if i in vectors and isinstance(v, str)
+                else _PROC_OIDS.get(v, 0)
+                if i in procs and isinstance(v, str)
+                else v
+                for i, v in enumerate(row)
+            )
+            for row in rows
+        ]
+    return _with_own_oids(
+        QueryResult(rows=rows, column_names=result.column_names, column_types=col_types),
+        oids,
+        served,
+    )
+
+
+def _array_text(value: list) -> str:
+    return "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
+
+
+def _with_own_oids(result, oids, served: list[str]):
+    """A column of a type the wire has no form of its own for (tsquery, xml[]) is sent as text under
+    PostgreSQL's oid, which is what its text form is: the client names it as PostgreSQL does."""
+    from provisa.pgwire.server import BVTYPE_TO_OID, _sql_type_to_bvtype
+
+    declared = result.column_types
+    own: list[int | None] = [None] * len(declared)
+    for i, oid in enumerate(oids):
+        if declared[i] == served[i] and BVTYPE_TO_OID[_sql_type_to_bvtype(served[i])] != oid:
+            own[i] = oid
+            declared[i] = "text"
+    if not any(own):
+        return result
+    result.column_type_oids = own
+    result.rows = [
+        tuple(
+            _array_text(v) if own[i] is not None and isinstance(v, list) else v
+            for i, v in enumerate(row)
+        )
+        for row in result.rows
+    ]
+    return result
+
+
+def _unbound(sql: str) -> str:
+    """``sql`` with each $N NULL, on the tree (REQ-2167): a ``$1`` in a string literal is its
+    text."""
+    if "$" not in sql:
+        return sql
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def null(node: exp.Expr) -> exp.Expr:
+        unbound = isinstance(node, exp.Parameter) and node.name.isdigit()
+        return exp.Null() if unbound else node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(null)
+    return sql if written == tree else written.sql(dialect="postgres")
+
+
+def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, run):
+    """The statement as a read of the meta domain, governed as any read is (REQ-2190): ``run``
+    takes the coroutine onto the connection's loop."""
+    from provisa.pgwire._pipeline import _execute_plan, govern_catalog_plan
+
+    request = _catalog_request(sql, role_id, state, session)
+    # A $N a value was not bound for (Describe of an unbound statement): any value describes it.
+    bare = _unbound(sql)
+    try:
+        addressed, asked = address(bare, request)
+    except MetadataFunctionRefused as exc:
+        raise PostgresError("0A000", str(exc)) from exc
+    if asked is not None:
+        told = {**request.session, "asked": relation_names_literal(asked)}
+        request = dataclasses.replace(request, session=told)
+
+    async def read():
+        plan = await govern_catalog_plan(addressed, role_id, request)
+        return await _execute_plan(plan)
+
+    try:
+        return _as_declared(sql, run(read()))
+    except Exception as exc:
+        answered = postgres_error(exc) or from_engine(exc)
+        if answered is not None:
+            raise answered from exc
+        log.error("[CATALOG] sql=%r addressed=%r: %s", sql[:200], addressed[:200], exc)
+        raise
+
+
+def answer(sql: str, role_id: str, state, session: CatalogSession | None = None, *, run=None):
+    """Return a QueryResult for intercepted catalog/SET/SHOW queries (REQ-532). ``session`` is the
+    connection asking, which pg_stat_activity lists; a statement with none lists no session.
+    ``run`` runs a coroutine to completion on the connection's own loop."""
     from provisa.executor.result import QueryResult
 
     stripped = sql.strip().rstrip(";")
@@ -447,8 +890,9 @@ def answer(sql: str, role_id: str, state):  # REQ-532
     if _TXN_RE.match(stripped) or _SET_RE.match(stripped):
         return QueryResult(rows=[], column_names=[])
 
+    settings = _session_settings(stripped, session)
     if _SHOW_RE.match(stripped):
-        return _handle_show(stripped)
+        return _handle_show(stripped, settings)
 
     sleep = _PG_SLEEP_RE.match(stripped)
     if sleep:
@@ -466,15 +910,16 @@ def answer(sql: str, role_id: str, state):  # REQ-532
             return result
 
     if "current_setting" in stripped.lower():
-        result = _handle_current_setting(stripped)
+        result = _handle_current_setting(stripped, settings)
         if result is not None:
             return result
 
     if "set_config" in stripped.lower() and "current_setting" not in stripped.lower():
         from provisa.executor.result import QueryResult
 
+        _keep_set_config(stripped, session)
         return QueryResult(
-            rows=[(_set_config_value(stripped),)],
+            rows=[(_set_config_value(stripped, settings),)],
             column_names=["set_config"],
             column_types=["VARCHAR"],
         )
@@ -491,39 +936,4 @@ def answer(sql: str, role_id: str, state):  # REQ-532
             )
         return _handle_typeinfo_tree(oids)
 
-    if "pg_get_keywords" in stripped.lower():
-        # pg_get_keywords() is a SRF — rewriter turns it into scalar NULL, breaking FROM clause.
-        # DBeaver uses it only for SQL autocomplete keyword exclusion; return empty string.
-        return QueryResult(rows=[(None,)], column_names=["string_agg"], column_types=["VARCHAR"])
-
-    rewritten = stripped
-    cur = None
-    try:
-        # REQ-2167: the role's kept catalog DB, on a cursor of this statement's own.
-        cur = catalog_db_for(role_id, state).cursor()
-        # Substitute $N params before rewriting so SQLGlot can parse the SQL.
-        # Queries with $N::type[] (e.g. asyncpg type introspection) would otherwise
-        # fail to parse, preventing table-name rewrites.
-        import re as _re
-
-        # Strip $N params AND any trailing PG type cast (e.g. $1::oid[]) so SQLGlot
-        # can parse the query without failing on array-type annotations.
-        pre_subst = _re.sub(r"\$\d+(?:::[^\s,)]+)?", "NULL", stripped)
-        from provisa.pgwire.catalog_populate import served_database_name
-
-        rewritten = _rewrite_for_duckdb(pre_subst, role_id, served_database_name(state))
-        cur.execute(rewritten)
-        rows = [tuple(r) for r in cur.fetchall()]
-        col_names = [desc[0] for desc in (cur.description or [])]
-        col_types = _declared_types(
-            stripped, col_names, [str(desc[1]) for desc in (cur.description or [])]
-        )
-        return QueryResult(rows=rows, column_names=col_names, column_types=col_types)
-    except Exception as exc:
-        log.error(
-            "[CATALOG] DuckDB error sql=%r rewritten=%r: %s", stripped[:200], rewritten[:200], exc
-        )
-        raise
-    finally:
-        if cur is not None:
-            cur.close()
+    return _read_meta(stripped, role_id, state, session, run)

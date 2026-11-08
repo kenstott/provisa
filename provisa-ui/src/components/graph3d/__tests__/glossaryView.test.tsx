@@ -43,18 +43,17 @@ vi.mock("../graphScene", () => ({
   },
 }));
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
-const reads = vi.hoisted(() => ({ roles: [] as string[] }));
-vi.mock("../useProductGraph", () => ({
-  metaReader: async (role: string) => {
-    reads.roles.push(role);
-    return { schema: null, roots: new Map() };
-  },
+// REQ-1723: the navbar's domain filter; every test but the navbar's own leaves it unnarrowed.
+const nav = vi.hoisted(() => ({
+  value: { domains: [] as string[], checkedDomains: new Set<string>(), domainsEnabled: true },
 }));
+vi.mock("../../../context/DomainFilterContext", () => ({ useDomainFilter: () => nav.value }));
+const reads = vi.hoisted(() => ({ roles: [] as string[] }));
 // The view's one query (REQ-2136) stands for its scope here; the server below answers it as the
 // query's where would (ontologyQuery.test.ts holds the query text itself).
 const asked = vi.hoisted(() => ({ scopes: [] as Record<string, unknown>[] }));
-vi.mock("../glossaryGraphData", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../glossaryGraphData")>()),
+vi.mock("../ontologyData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyData")>()),
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   // The count read before it (REQ-2143): the same scope, answered with the terms' ids.
@@ -65,22 +64,22 @@ const term = (id: number, name: string, over: object = {}) => ({
   id,
   name,
   definition: `${name}.`,
-  is_abstract: false,
+  isAbstract: false,
   deprecated: false,
   retired: false,
   status: "approved",
   grounding: "grounded",
-  domains: [{ domain_id: "sales" }],
-  refs: [] as { domain_id: string }[],
+  domains: [{ domainId: "sales" }],
+  refs: [] as { domainId: string }[],
   ...over,
 });
 const TERMS = [
   term(1, "Customer"),
-  term(2, "Party", { is_abstract: true }),
+  term(2, "Party", { isAbstract: true }),
   term(3, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded" }),
   term(4, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
   // No edge of any type: an orphan.
-  term(5, "Lonely", { domains: [{ domain_id: "finance" }] }),
+  term(5, "Lonely", { domains: [{ domainId: "finance" }] }),
   term(7, "shift coverage"),
   term(8, "shift start"),
   term(9, "clinic"),
@@ -89,25 +88,29 @@ const TERMS = [
   term(6, "Email address", {
     refs: [
       {
-        column_key: "10:email",
-        column_name: "email",
-        table_id: 10,
-        table_name: "customers",
-        domain_id: "sales",
-        table: { id: 10, product: null },
+        columnKey: "10:email",
+        columnName: "email",
+        tableId: 10,
+        tableName: "customers",
+        domainId: "sales",
+        registeredTable: { id: 10, product: null },
       },
     ],
   }),
 ];
 const EDGES = [
-  { id: 1, from_term_id: 1, to_term_id: 2, rel_type: "KIND_OF" },
-  { id: 2, from_term_id: 3, to_term_id: 1, rel_type: "REPLACES" },
-  { id: 3, from_term_id: 10, to_term_id: 9, rel_type: "RELATED_TO" },
+  { id: 1, fromTermId: 1, toTermId: 2, relType: "KIND_OF" },
+  { id: 2, fromTermId: 3, toTermId: 1, relType: "REPLACES" },
+  { id: 3, fromTermId: 10, toTermId: 9, relType: "RELATED_TO" },
 ];
 type Term = ReturnType<typeof term>;
 const standing = (t: Term) => t.status;
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async (role: string) => {
+    reads.roles.push(role);
+    return { schema: null, roots: new Map() };
+  },
   dataGraphql: async (query: string) => {
     const s = JSON.parse(query) as {
       layers: string[];
@@ -122,18 +125,18 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
       s.domains.length === 0 || ds.some((d) => d === "*" || s.domains.includes(d));
     const kept = TERMS.filter(
       (t) =>
-        !s.hiddenStatuses.includes(standing(t)) && inDomains(t.domains.map((d) => d.domain_id)),
+        !s.hiddenStatuses.includes(standing(t)) && inDomains(t.domains.map((d) => d.domainId)),
     );
     const keptIds = new Set(kept.map((t) => t.id));
-    const edges = EDGES.filter((e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.rel_type));
-    const refsOf = (t: Term) => t.refs.filter((r) => inDomains([r.domain_id]));
+    const edges = EDGES.filter((e) => s.edgeTypes.length === 0 || s.edgeTypes.includes(e.relType));
+    const refsOf = (t: Term) => t.refs.filter((r) => inDomains([r.domainId]));
     // Orphans off: a term with an edge kept to a term kept, or a column it IS under Columns.
     const related = (t: Term) =>
       (s.layers.includes("ontology") &&
         edges.some(
           (e) =>
-            (e.from_term_id === t.id && keptIds.has(e.to_term_id)) ||
-            (e.to_term_id === t.id && keptIds.has(e.from_term_id)),
+            (e.fromTermId === t.id && keptIds.has(e.toTermId)) ||
+            (e.toTermId === t.id && keptIds.has(e.fromTermId)),
         )) ||
       (s.layers.includes("columns") && refsOf(t).length > 0);
     const terms = kept
@@ -141,12 +144,12 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
       .map((t) => ({
         ...t,
         domains: s.layers.includes("domains")
-          ? t.domains.filter((d) => inDomains([d.domain_id]))
+          ? t.domains.filter((d) => inDomains([d.domainId]))
           : undefined,
         refs: s.layers.includes("columns") ? refsOf(t) : undefined,
         // Under Ontology, each term is read with the edges leaving it.
-        edges_out: s.layers.includes("ontology")
-          ? edges.filter((e) => e.from_term_id === t.id)
+        edgesOut: s.layers.includes("ontology")
+          ? edges.filter((e) => e.fromTermId === t.id)
           : undefined,
       }));
     if (s.count) return { _terms: terms.map((t) => ({ id: t.id, domains: t.domains })) };
@@ -154,9 +157,9 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   },
 }));
 
-import { GlossaryOntologyView, OntologyToggle } from "../GlossaryOntologyView";
+import { OntologyToggle, OntologyView } from "../OntologyGraph";
 import { GraphExplorer } from "../GraphExplorer";
-import { GLOSSARY_SCOPE } from "../graphModel";
+import { ONTOLOGY_SCOPE } from "../graphModel";
 
 const drawn = () => made.scenes[made.scenes.length - 1].setData.mock.calls.at(-1)?.[0] as GraphData;
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
@@ -167,12 +170,13 @@ function Page() {
   return (
     <>
       <OntologyToggle open={open} onChange={setOpen} />
-      {open && <GlossaryOntologyView search="" />}
+      {open && <OntologyView search="" />}
     </>
   );
 }
 
 beforeEach(() => {
+  nav.value = { domains: [], checkedDomains: new Set(), domainsEnabled: true };
   made.scenes.length = 0;
   reads.roles.length = 0;
   asked.scopes.length = 0;
@@ -204,11 +208,12 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("runs its layers, domains, edge types and statuses in its query, not after it", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    // Every layer and no filter, for the controls' choices; then the defaults: retired hidden.
+    // Every layer of the Ontology preset's rules and no filter, for the controls' choices; then the
+    // defaults: retired hidden.
     expect(asked.scopes[0]).toEqual({
-      layers: ["ontology", "domains", "data", "columns", "ownerTables"],
+      layers: ["ontology", "domains", "data", "columns"],
       domains: [],
       edgeTypes: [],
       hiddenStatuses: [],
@@ -216,6 +221,11 @@ describe("the Glossary page's Ontology View", () => {
       tags: [],
       sensitivities: [],
       search: [],
+      // The whole ontology: no focus.
+      focus: null,
+      depth: 2,
+      // Only what a shown term reaches (REQ-2174, ONE GRAPH, RULES PER PRESET).
+      products: false,
     });
     await waitFor(() =>
       expect(asked.scopes.at(-1)).toEqual({
@@ -229,6 +239,9 @@ describe("the Glossary page's Ontology View", () => {
         search: [],
         // Drawn in 3D: no lane diagram's products to name.
         lanes: false,
+        focus: null,
+        depth: 2,
+        products: false,
       }),
     );
     // The Taxonomy preset's edge types and layers are the query's.
@@ -248,12 +261,13 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("shows draft and deprecated terms and hides retired ones, until asked", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(ids(made.scenes[0].setData.mock.calls[0][0])).toEqual([
       "c:10:email",
       "d:finance",
       "d:sales",
+      "t:10",
       "term:1",
       "term:10",
       "term:2",
@@ -272,7 +286,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("first draws the whole graph: every edge type and every domain chosen", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes.length).toBeGreaterThan(0));
     await waitFor(() => expect(drawn()).toBeDefined());
     // Both of the graph's edge types (KIND_OF, REPLACES) and both of its domains (sales, finance).
@@ -282,7 +296,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("hides the terms left with no edge when Unconnected is unticked, and shows them again", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(await ticked("terms", "unconnected")).toBe(true);
     expect(ids(drawn())).toContain("term:5");
@@ -294,26 +308,26 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("draws the columns a term IS, and takes them away with Columns", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const isEdges = () =>
       drawn()
         .edges.filter((e) => e.kind === "term_binding")
         .map((e) => [e.a, e.label, e.b]);
-    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent(
-      "Layers: Domains, Columns",
-    );
+    // Domains and Columns: the layers this graph has, both on.
+    expect(screen.getByTestId("ontology-layers-menu")).toHaveTextContent("Layers: all");
     expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]);
     expect(node(drawn(), "c:10:email")).toMatchObject({ type: "column", label: "customers.email" });
     await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([]));
     expect(ids(drawn())).not.toContain("c:10:email");
+    expect(ids(drawn())).not.toContain("t:10");
     await choose("layers", "columns");
     await waitFor(() => expect(isEdges()).toEqual([["term:6", "IS", "c:10:email"]]));
   });
 
   it("does not count a term joined only by IS as unconnected while Columns is on", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     await choose("terms", "unconnected");
     await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
@@ -323,7 +337,7 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("focuses on what the page's search matches, any of its items, with their neighbourhoods", async () => {
-    const { rerender } = render(<GlossaryOntologyView search="shift clinic" />);
+    const { rerender } = render(<OntologyView search="shift clinic" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     // Both shift terms and the clinic, each with what it reaches; nothing else.
     await waitFor(() =>
@@ -336,7 +350,7 @@ describe("the Glossary page's Ontology View", () => {
     );
     expect(screen.queryByTestId("ontology-filter-focus")).toBeNull();
     // A quoted phrase is one item beside a bare word.
-    rerender(<GlossaryOntologyView search={'"shift coverage" clinic'} />);
+    rerender(<OntologyView search={'"shift coverage" clinic'} />);
     await waitFor(() =>
       expect(ids(drawn()).filter((id) => id.startsWith("term:"))).toEqual([
         "term:10",
@@ -345,7 +359,7 @@ describe("the Glossary page's Ontology View", () => {
       ]),
     );
     // An empty search is the whole graph.
-    rerender(<GlossaryOntologyView search="" />);
+    rerender(<OntologyView search="" />);
     await waitFor(() => expect(ids(drawn())).toContain("term:1"));
   });
 
@@ -360,8 +374,9 @@ describe("the Glossary page's Ontology View", () => {
     const { unmount } = render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         focus="term:1"
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
@@ -373,8 +388,9 @@ describe("the Glossary page's Ontology View", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         focus="term:2"
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
@@ -385,14 +401,14 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("the Taxonomy preset redraws the KIND_OF and PART_OF edges alone", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
     await waitFor(() => expect(drawn().edges.map((e) => e.label)).toEqual(["KIND_OF"]));
   });
 
   it("opens Taxonomy layered, with its lateral edges as arcs, and Force on the reader's choice", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByRole("radio", { name: "Taxonomy" }));
     await waitFor(() => expect(made.scenes[0].setArcs).toHaveBeenLastCalledWith(true));
@@ -401,10 +417,56 @@ describe("the Glossary page's Ontology View", () => {
   });
 
   it("expands to 95% of the viewport with a scene of its own", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     fireEvent.click(screen.getByTestId("ontology-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
     expect(await screen.findByTestId("graph3d-modal")).toBeInTheDocument();
+  });
+});
+
+describe("the Ontology View under the navbar's domains (REQ-1723)", () => {
+  const navbar = (all: string[], checked: string[]) => {
+    nav.value = { domains: all, checkedDomains: new Set(checked), domainsEnabled: true };
+  };
+
+  it("holds only what is in the domains the navbar checks", async () => {
+    navbar(["sales", "finance", "hr"], ["finance"]);
+    render(<OntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: ["finance"] }));
+    await waitFor(() => expect(ids(drawn())).toContain("term:5"));
+    // Nothing of sales: its terms, its column and its domain.
+    for (const id of ["term:1", "term:6", "c:10:email", "d:sales"])
+      expect(ids(drawn())).not.toContain(id);
+    // The view's own filter offers the navbar's domains alone.
+    fireEvent.click(screen.getByTestId("ontology-filter-domain"));
+    expect(await screen.findByTestId("ontology-filter-domain-option-finance")).toBeInTheDocument();
+    expect(screen.queryByTestId("ontology-filter-domain-option-sales")).not.toBeInTheDocument();
+  });
+
+  it("narrows further inside the navbar's domains with its own filter, never past them", async () => {
+    navbar(["sales", "finance", "hr"], ["sales", "finance"]);
+    render(<OntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    await waitFor(() =>
+      expect(asked.scopes.at(-1)).toMatchObject({ domains: ["finance", "sales"] }),
+    );
+    fireEvent.click(screen.getByTestId("ontology-filter-domain"));
+    fireEvent.click(await screen.findByTestId("ontology-filter-domain-option-finance"));
+    await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: ["sales"] }));
+    await waitFor(() => expect(ids(drawn())).not.toContain("term:5"));
+  });
+
+  it("is no narrowing with every domain checked, or none", async () => {
+    for (const checked of [["sales", "finance"], []]) {
+      navbar(["sales", "finance"], checked);
+      const { unmount } = render(<OntologyView search="" />);
+      await waitFor(() => expect(asked.scopes.length).toBeGreaterThanOrEqual(2));
+      await waitFor(() => expect(asked.scopes.at(-1)).toMatchObject({ domains: [] }));
+      unmount();
+      asked.scopes.length = 0;
+      made.scenes.length = 0;
+    }
   });
 });

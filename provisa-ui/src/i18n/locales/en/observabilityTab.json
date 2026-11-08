@@ -1,6 +1,6 @@
 {
   "observabilityTab": {
-    "noSpansYet": "No spans yet — make a request to see traces.",
+    "noSpansYet": "No spans yet. Make a request to see traces.",
     "noSpansMatch": "No spans match filter.",
     "traces": "Traces",
     "filterPlaceholder": "Filter…",
@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry Tracing",
     "statusLabel": "Status:",
     "statusExporting": "Exporting → {{endpoint}}",
-    "statusActiveNoCollector": "Active (spans dropped — no collector configured)",
+    "statusActiveNoCollector": "Active (traces are kept for this page, not exported)",
     "endpointLabel": "OTLP Collector Endpoint",
-    "endpointHelp": "Leave empty to generate traces without exporting. Override with OTEL_EXPORTER_OTLP_ENDPOINT env var.",
+    "endpointHelp": "Point this at Provisa's own collector, and add an external provider as an exporter in the collector so the trace tables keep filling. Leave empty to keep traces on this page only. Override with OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Service Name",
     "serviceNameHelp": "Override with OTEL_SERVICE_NAME env var.",
     "sampleRateLabel": "Sample Rate",
@@ -83,6 +83,9 @@
       "document_sources": "Queries against document stores.",
       "search_sources": "Queries against search indexes.",
       "grpc_services": "The gRPC query surface, inbound and outbound."
-    }
+    },
+    "tracesTableCheckFailed": "Provisa's trace tables could not be checked ({{reason}}). Whether they are receiving rows is unknown; the check repeats every 30 seconds.",
+    "tracesTableEmpty": "An endpoint is set, but Provisa's trace tables have no rows yet. If the endpoint is an external provider rather than Provisa's collector, move it into the collector's exporters.",
+    "tracesTableStale": "An endpoint is set, but Provisa's trace tables have received no rows in the last {{minutes}} minutes. If Provisa has been idle that is expected. If not, check that the endpoint is Provisa's collector and not an external provider."
   }
 }

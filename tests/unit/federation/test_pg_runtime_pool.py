@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import psycopg2
 import pytest
 
 from provisa.federation.pg_runtime import PgFederationRuntime, _POOL_MAXCONN, _POOL_MINCONN
@@ -89,6 +90,8 @@ def fake_psycopg2(monkeypatch):
     import provisa.federation.pg_runtime as pg_runtime_mod
 
     monkeypatch.setattr(pg_runtime_mod.psycopg2, "connect", _connect)
+    # A fake cursor is no psycopg2 cursor, which is all register_type accepts.
+    monkeypatch.setattr(pg_runtime_mod, "_read_as_postgresql_writes", lambda _cur: None)
     monkeypatch.setattr(pg_runtime_mod.psycopg2.pool.AbstractConnectionPool, "_connect", None)
     # psycopg2.pool.AbstractConnectionPool._connect calls the real psycopg2.connect internally
     # (module-level, not through our patched attribute lookup on psycopg2), so patch it directly
@@ -372,3 +375,121 @@ def test_the_arrow_pool_keeps_its_count_when_a_connect_fails() -> None:
     con = pool.getconn()  # the failed connect did not use up the pool's one connection
     pool.discard(con)
     assert pool._created == 0
+
+
+def _role_that_may_create_nothing(monkeypatch, found: object) -> None:
+    """A role with no CREATE on the schema; ``found`` is what to_regprocedure answers it."""
+    execute = _FakeCursor.execute
+
+    def refusing(self: _FakeCursor, sql: str, params: Any = None) -> None:
+        if sql.startswith("CREATE"):
+            raise psycopg2.errors.InsufficientPrivilege("permission denied for schema public\n")
+        execute(self, sql, params)
+        if "to_regprocedure" in sql:
+            self._rows = [(found,)]
+
+    monkeypatch.setattr(_FakeCursor, "execute", refusing)
+
+
+def test_a_role_that_may_not_create_provisa_raise_still_starts_and_says_why(
+    fake_psycopg2, monkeypatch, caplog
+) -> None:
+    _role_that_may_create_nothing(monkeypatch, None)
+    with caplog.at_level("WARNING", logger="provisa.federation.pg_runtime"):
+        runtime = PgFederationRuntime(engine_dsn="postgresql://x")
+    assert "provisa_raise does not exist: permission denied for schema public" in caplog.text
+    assert runtime.computes_fakes is False
+
+
+def test_provisa_raise_another_role_put_there_needs_no_warning(
+    fake_psycopg2, monkeypatch, caplog
+) -> None:
+    _role_that_may_create_nothing(monkeypatch, "provisa_raise(text,text)")
+    with caplog.at_level("WARNING", logger="provisa.federation.pg_runtime"):
+        PgFederationRuntime(engine_dsn="postgresql://x")
+    assert "provisa_raise" not in caplog.text
+
+
+def test_the_install_reads_on_after_engines_race_to_replace_it(fake_psycopg2, monkeypatch) -> None:
+    """Two engines starting together: PostgreSQL's ``tuple concurrently updated`` for the loser."""
+    execute = _FakeCursor.execute
+
+    def racing(self: _FakeCursor, sql: str, params: Any = None) -> None:
+        if "provisa_raise(sqlstate" in sql:
+            raise psycopg2.errors.InternalError_("tuple concurrently updated\n")
+        execute(self, sql, params)
+
+    monkeypatch.setattr(_FakeCursor, "execute", racing)
+    PgFederationRuntime(engine_dsn="postgresql://x")
+    assert any("to_regprocedure" in sql for sql in fake_psycopg2[0].executed)
+
+
+class _FakeAdbcCursor:
+    def __init__(self, con: "_FakeAdbcConnection") -> None:
+        self.con = con
+
+    def execute(self, sql: str, params: Any = None) -> None:
+        del sql, params
+        # ADBC dbapi: a statement outside autocommit opens a transaction
+        if not self.con.autocommit:
+            self.con.in_transaction = True
+
+    def fetch_arrow_table(self) -> Any:
+        import pyarrow as pa
+
+        return pa.table({"id": [1]})
+
+    def fetch_record_batch(self) -> Any:
+        import pyarrow as pa
+
+        return pa.RecordBatchReader.from_batches(
+            pa.schema([("id", pa.int64())]), [pa.record_batch({"id": [1]})]
+        )
+
+    def adbc_cancel(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class _FakeAdbcConnection:
+    def __init__(self, autocommit: bool) -> None:
+        self.autocommit = autocommit
+        self.in_transaction = False
+
+    def cursor(self) -> _FakeAdbcCursor:
+        return _FakeAdbcCursor(self)
+
+    def commit(self) -> None:
+        self.in_transaction = False
+
+    def rollback(self) -> None:
+        self.in_transaction = False
+
+    def close(self) -> None:
+        pass
+
+
+def test_an_arrow_read_gives_back_no_connection_inside_a_transaction(
+    fake_psycopg2, monkeypatch
+) -> None:
+    """A pooled engine connection left idle in its read's transaction keeps that read's lock on the
+    tables it read: a session's DROP SCHEMA in the same database then waits on it, for as long as
+    the connection sits in the pool (DELETE /data/cypher/session hung on the pg engine)."""
+    from adbc_driver_postgresql import dbapi as adbc_pg
+
+    made: list[_FakeAdbcConnection] = []
+
+    def _connect(dsn: str, *_: Any, autocommit: bool = False, **__: Any) -> _FakeAdbcConnection:
+        del dsn
+        made.append(_FakeAdbcConnection(autocommit))
+        return made[-1]
+
+    monkeypatch.setattr(adbc_pg, "connect", _connect)
+    rt = _runtime(fake_psycopg2)
+    monkeypatch.setattr(rt, "refresh_live_relations", lambda sql: None)
+    assert rt.run_arrow("SELECT id FROM t").num_rows == 1
+    schema, batches = rt.run_arrow_stream("SELECT id FROM t")
+    assert sum(b.num_rows for b in batches) == 1 and schema.names == ["id"]
+    assert made and not any(con.in_transaction for con in made)

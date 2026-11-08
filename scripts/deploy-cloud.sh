@@ -38,9 +38,10 @@
 # a sign-in session or a hand-built org under test has to survive the deploy.
 #
 # Every arm that pushes the python package to a sandbox VM also resets the sandbox tier there
-# (reset_sandbox_state: its demo templates and sandboxes, never the coordinator's accounts or
-# orgs) -- patch included, since the tier's tables are rebuilt only from nothing -- and proves a
-# demo opens. `sandbox-reset` does that alone, with no build.
+# (reset_sandbox_state: its sandboxes and every demo template not built under the pushed code's
+# table shapes, never the coordinator's accounts or orgs) -- patch included, since the tier's
+# tables are rebuilt only from nothing -- and proves a demo opens. `sandbox-reset` does that
+# alone, with no build.
 #
 # Env overrides: NODE, ZONE, PROJECT, CONTAINERS, SITE, SQL_IMAGE.
 set -euo pipefail
@@ -91,7 +92,7 @@ ENGINE_PIN="trino"
 preflight_engine() {
   echo "== engine preflight"
   local env_dump running missing=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(PROVISA_ENGINE|PROVISA_ZAYCHIK)' || true" | tr -d '\r')"
+  env_dump="$(ssh_node "sudo docker inspect $API_CONTAINER --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(PROVISA_ENGINE|PROVISA_ZAYCHIK)' || true" | tr -d '\r')"
   running="$(printf '%s\n' "$env_dump" | sed -n 's/^PROVISA_ENGINE=//p')"
   if [ "$running" != "$ENGINE_PIN" ]; then
     echo "$API_CONTAINER runs PROVISA_ENGINE='${running:-<unset>}', expected '$ENGINE_PIN'." >&2
@@ -180,9 +181,25 @@ preflight_commerce() {
   printf '%s\n' "$env_dump" | sed -n 's/^\(TEST_\)\{0,1\}\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1\2=<set>/p'
 }
 
+# REQ-1276/REQ-1348: the base domain org subdomains live under. The control plane is
+# cloud.<base>, so it is $SITE's host without its `cloud.` label: cloud.provisa.dev declares
+# provisa.dev. Every process that reads an org from a Host reads it under this value, as
+# VITE_ORG_BASE_DOMAIN: the UI's build and its /deployment-config.js, and the API containers
+# (provisa/security/sni.py org_from_host). Unset, no host names an org, so a deploy without it
+# would leave every org subdomain unaddressable.
+org_base_domain() {
+  local base="${SITE#https://cloud.}"
+  case "$base" in
+    ""|*/*|*:*) echo "SITE=$SITE is not https://cloud.<base domain>; cannot declare the base domain" >&2; exit 1 ;;
+  esac
+  printf '%s\n' "$base"
+}
+
 build_ui() {
-  echo "== building UI"
-  (cd "$REPO/provisa-ui" && npm run build)
+  local base
+  base="$(org_base_domain)" || exit 1
+  echo "== building UI (org base domain: $base)"
+  (cd "$REPO/provisa-ui" && VITE_ORG_BASE_DOMAIN="$base" npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
   # left behind, the control plane answers an org subdomain's token request with a stale page or
@@ -209,8 +226,29 @@ build_api() {
   echo "== packaging python package"
   # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
   # carries the built renderer there as a directory, which a pushed symlink cannot replace.
+  # REQ-2194: provisa's compiled encoders (provisa._encoders), taken from provisa's Linux wheels,
+  # which the Dockerfile's provisa-wheel stage builds from this checkout for both architectures.
+  # Each module file is given its architecture's name (_encoders.cpython-312-<arch>-linux-gnu.so),
+  # so the one pushed tree imports on an amd64 node and an arm64 one alike. A checkout's own
+  # (macOS) module stays out.
+  echo "== compiling provisa's encoders (linux/amd64, linux/arm64)"
+  rm -rf "$STAGE/encoders"
+  local platform arch wheel
+  for platform in linux/amd64 linux/arm64; do
+    arch=x86_64; [ "$platform" = linux/arm64 ] && arch=aarch64
+    docker build --quiet --platform "$platform" --target provisa-wheel \
+      --output "type=local,dest=$STAGE/encoders/$arch" "$REPO" >/dev/null
+    wheel="$(ls "$STAGE/encoders/$arch"/provisa-*-manylinux_2_28_"$arch".whl)"
+    unzip -q -o "$wheel" 'provisa/_encoders*.so' -d "$STAGE/encoders/$arch/tree"
+    mkdir -p "$STAGE/encoders/tree/provisa"
+    mv "$STAGE/encoders/$arch"/tree/provisa/_encoders*.so \
+      "$STAGE/encoders/tree/provisa/_encoders.cpython-312-$arch-linux-gnu.so"
+  done
   tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='provisa/_graph_render' provisa
+    --exclude='provisa/_graph_render' --exclude='provisa/_encoders*-darwin.so' provisa \
+    -C "$REPO/vendor/buenavista" buenavista \
+    -C "$STAGE/encoders/tree" provisa/_encoders.cpython-312-x86_64-linux-gnu.so \
+    provisa/_encoders.cpython-312-aarch64-linux-gnu.so
 }
 
 push_api() {
@@ -406,24 +444,39 @@ HF_CACHE_DIR="/root/.provisa/hf-cache"
 # through, fetched once rather than at every recreate (provisa/runtime_deps/pgwire_bundles.py).
 RUNTIME_DEPS_DIR="/root/.provisa/runtime-deps"
 
+# The rest of the overlay of a node running the regions tier's other nodes: only the sandbox VM,
+# whose compose push_compose has brought up to them. An overlay naming a service a node's compose
+# does not have stops that node's stack.
+REGIONS_NODES_OVERLAY=""
+
 push_overlay() {
+  local ORG_BASE
+  ORG_BASE="$(org_base_domain)" || exit 1
   cat > "$STAGE/docker-compose.overlay.yml" <<YAML
 # Installed by scripts/deploy-cloud.sh — the deployed app tree, on the host disk, so that a
 # container recreate (every idle-stop on this node) does not revert it.
 services:
   provisa:
+    # REQ-1276: the API reads an org from a Host only under this base domain. Literal here, not
+    # interpolated from the node's provisa.env, so the deploy is what puts it in the container.
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       # A huggingface embedding model is fetched into the hub cache at its first use; on the host,
       # a recreate does not fetch it again.
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
   provisa-ui:
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
   # REQ-2006: the sandbox tier runs the same app; without the tree it ran the image's own code
   # beside an API on the deployed one.
@@ -431,6 +484,7 @@ services:
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -440,6 +494,7 @@ services:
     ports:
       - "${SANDBOX_PUBLISH}:8000"
     environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
       # The demos cloud.provisa.dev offers (packaging/linux/demo-stores/sandbox-tier-bundles,
       # the list first-launch.sh and terraform's sandbox VM read).
       PROVISA_DEMO_BUNDLES: "$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/sandbox-tier-bundles")"
@@ -456,12 +511,16 @@ services:
   # (provisa-sandbox-regions.yaml, shipped in CONFIG_FILES); without the tree it ran the image's
   # code and the image's config directory.
   provisa-sandbox-regions:
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
+${REGIONS_NODES_OVERLAY}
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
@@ -677,6 +736,88 @@ push_app() {
   ssh_node "sudo systemctl restart provisa"
 }
 
+# The node's generated control-plane base, the same gap push_app closes for the app overlay.
+# first-launch.sh writes ${PROVISA_HOME}/compose-control-plane.yml once, at first boot, and nothing
+# here refreshed it: when provisa/ui_server.py came to read PROVISA_SANDBOX_REGIONS_DEMOS as
+# region pairs and PROVISA_SANDBOX_REGIONS_NODES as a map, the code reached the node and the
+# compose that sets them did not, and the UI container crash-looped on the old value.
+#
+# Generated, not shipped, like the demo overlay: write_control_plane_compose() holds the only
+# copy, so the expected file is that function's own output, run here rather than duplicated. It
+# holds none of the node's values: each one is a ${...} that `provisa start` resolves from the
+# node's provisa.env (and the launcher's store-credentials.env), so the regenerated file keeps
+# them. What it bakes in is the node's PROVISA_HOME and the certificate directory under it.
+CP_HOME="/root/.provisa"
+CP_YML="$CP_HOME/compose-control-plane.yml"
+STORE_CREDENTIALS="$CP_HOME/store-credentials.env"
+
+# Writes write_control_plane_compose's output for the node to $1.
+render_control_plane_compose() {
+  local fn home="$STAGE/cp-home"
+  fn="$(awk '/^write_control_plane_compose\(\) \{$/{f=1} f; f&&/^}$/{exit}' \
+    "$REPO/packaging/linux/first-launch.sh")"
+  # An empty extraction means the function was restructured and this awk no longer matches.
+  grep -q 'compose-control-plane.yml' <<<"$fn" \
+    || { echo "cannot extract write_control_plane_compose from first-launch.sh" >&2; exit 1; }
+  mkdir -p "$home"
+  # In a subshell: ROLE, PROVISA_HOME and CERT_DIR are first-launch's globals, not this script's.
+  # PROVISA_HOME is a staging directory (the function writes the file under it) and is put back to
+  # the node's in the output.
+  (
+    ok() { :; }
+    ROLE=control-plane PROVISA_HOME="$home" CERT_DIR="$CP_HOME/certs"
+    eval "$fn"
+    write_control_plane_compose
+  )
+  sed "s|$home|$CP_HOME|g" "$home/compose-control-plane.yml" > "$1"
+  grep -q '^services:' "$1" \
+    || { echo "write_control_plane_compose wrote no services" >&2; exit 1; }
+}
+
+# The variables a compose file requires (${NAME:?...}) that $2 did not already require and that
+# the node's environment ($3: one name per line, each set to a non-empty value) does not set.
+# What the installed file requires is already satisfied however the launcher satisfies it (the
+# stack resolves it at every start), so only what the shipped file adds is asked of the node.
+missing_compose_vars() {
+  required() { grep -o '\${[A-Za-z_][A-Za-z0-9_]*:?' "$1" | sed 's/^\${//; s/:?$//' | sort -u; }
+  comm -23 <(required "$1") <({ required "$2"; cat "$3"; } | sort -u)
+}
+
+push_cp_compose() {
+  render_control_plane_compose "$STAGE/compose-control-plane.yml"
+  local want have
+  want="$(shasum -a 256 "$STAGE/compose-control-plane.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $CP_YML" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  # Only a control-plane node has one, and every node this script deploys to is one: a missing
+  # file is a node that is not, which is an abort, as push_app's is.
+  [ -n "$have" ] || { echo "cannot read $CP_YML on $NODE" >&2; exit 1; }
+  if [ "$want" = "$have" ]; then
+    echo "== control-plane compose: up to date"
+    return
+  fi
+  # A required variable the node does not set stops `provisa start` with the stack down, so it
+  # is asked for here, by name, before anything changes. Names only: no value leaves the node.
+  ssh_node "sudo cat $CP_YML" | tr -d '\r' > "$STAGE/compose-control-plane.installed.yml"
+  ssh_node "sudo sh -c 'cat $ENV_FILE; cat $STORE_CREDENTIALS 2>/dev/null || true'" \
+    | tr -d '\r' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=..*/\1/p' > "$STAGE/node-env-keys"
+  local missing
+  missing="$(missing_compose_vars "$STAGE/compose-control-plane.yml" \
+    "$STAGE/compose-control-plane.installed.yml" "$STAGE/node-env-keys")"
+  if [ -n "$missing" ]; then
+    echo "the shipped control-plane compose requires what $NODE's $ENV_FILE does not set:" >&2
+    sed 's/^/  /' <<<"$missing" >&2
+    echo "Set each there and re-run; $CP_YML is unchanged." >&2
+    exit 1
+  fi
+  echo "== control-plane compose: updating"
+  diff -u "$STAGE/compose-control-plane.installed.yml" "$STAGE/compose-control-plane.yml" \
+    | sed -n 's/^\([-+]\)\([^-+]\)/   \1\2/p' || true
+  scp_node "$STAGE/compose-control-plane.yml" /tmp/compose-control-plane.yml
+  ssh_node "sudo cp $CP_YML $CP_YML.bak-\$(date +%s) && sudo cp /tmp/compose-control-plane.yml $CP_YML"
+  echo "== control-plane compose: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+}
+
 # REQ-1330: the origin invite links are built from. It is not a per-node knob an operator sets — it
 # is $SITE, the address this script already deploys to and verifies against, and terraform derives
 # the same value from the DNS zone it creates the record in. But first-launch writes provisa.env
@@ -857,9 +998,42 @@ SQL
   run_sql "$STAGE/verify_demo.sql" verify-demo
 }
 
+# What a failed poll says about the node: every container's state, and the last log lines of each
+# one that is down. The front door answers 503 for any backend that is not answering, which names
+# no container; a UI server crash-looping on its environment looked exactly like a slow start.
+#
+# failing_containers reads one line per container -- name, state, exit code, restart count, health
+# ("-" when it has no check) -- and prints the names of those that are not up: not running (an
+# init container that exited 0 and was never restarted is done, not down), health-checked
+# unhealthy, or restarted by their policy since they were created. A crash loop is "running" at
+# the instant between two of its restarts, so the restart count is what gives it away.
+failing_containers() {
+  awk '{ down = ($2 != "running" && !($2 == "exited" && $3 == 0 && $4 == 0)) || $4 > 0 || $5 == "unhealthy" }
+       down { print $1 }'
+}
+
+diagnose_containers() {
+  local states c
+  # The node may be what is down; that is a finding too, not a reason to lose the poll's.
+  states="$(ssh_node "sudo docker inspect -f '{{.Name}} {{.State.Status}} {{.State.ExitCode}} {{.RestartCount}} {{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' \$(sudo docker ps -aq)" \
+    | tr -d '\r' | sed 's|^/||')" || states=""
+  if [ -z "$states" ]; then
+    echo "   $NODE: no container state (the node or its docker did not answer)" >&2
+    return
+  fi
+  echo "   containers on $NODE (name state exit restarts health):" >&2
+  sed 's/^/     /' <<<"$states" >&2
+  for c in $(failing_containers <<<"$states"); do
+    echo "   $c is down; its last 40 log lines:" >&2
+    ssh_node "sudo docker logs --tail 40 $c 2>&1" | sed 's/^/     | /' >&2 || true
+  done
+}
+
 verify() {
   echo "== verifying $SITE"
-  # Accept: text/html marks this a document request; ui_server proxies anything else to
+  # Accept: text/html with Sec-Fetch-Dest: document marks this a page load, which the front door and
+  # ui_server send to the UI; anything else goes to the API, where an unauthenticated GET / is a
+  # 401 and says nothing about the deploy (ui_server proxies anything else to
   # the API, where an unauthenticated GET / is a 401 and says nothing about the deploy.
   # 300s. The old 120s budget was shorter than a cold restart on this node, where the API's
   # lifespan spends ~115s in engine-wake alone, so the poll reported 503 on a deploy that then
@@ -868,11 +1042,12 @@ verify() {
     # A refused connection is the expected state while the container restarts, so it is
     # recorded as a probe result instead of tripping `set -e` and aborting the poll. It is
     # never treated as success: the loop still fails loudly below if 200 never arrives.
-    code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$SITE/") || code="unreachable"
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate' "$SITE/") || code="unreachable"
     [ "$code" = "200" ] && { echo "$SITE/ -> 200 after $((i * 2))s"; return 0; }
     sleep 2
   done
   echo "$SITE/ -> $code (never reached 200)" >&2
+  diagnose_containers
   return 1
 }
 
@@ -889,6 +1064,7 @@ verify_api() {
     sleep 2
   done
   echo "$SITE/health -> $code (never reached 200)" >&2
+  diagnose_containers
   return 1
 }
 
@@ -919,6 +1095,22 @@ verify_commerce() {
        echo "Without it no /billing routes mount and nobody can sign up." >&2
        exit 1 ;;
   esac
+}
+
+# REQ-1276: the API container must carry the base domain after a deploy. Read from the RUNNING
+# container, like the engine's keys: that is what org_from_host sees. Without it every host names
+# no org, and the deploy would otherwise report success on a cloud nobody can sign in to.
+verify_org_base() {
+  echo "== org base domain"
+  local want have
+  want="$(org_base_domain)" || exit 1
+  have="$(ssh_node "sudo docker exec $API_CONTAINER printenv VITE_ORG_BASE_DOMAIN || true" | tr -d '\r')"
+  if [ "$have" != "$want" ]; then
+    echo "$API_CONTAINER has VITE_ORG_BASE_DOMAIN='${have:-<unset>}', expected '$want'." >&2
+    echo "The API reads an org from a Host only under it; without it no host names an org." >&2
+    exit 1
+  fi
+  echo "   VITE_ORG_BASE_DOMAIN=$have"
 }
 
 verify_engine() {
@@ -956,18 +1148,55 @@ SANDBOX_NODE="${SANDBOX_NODE:-provisa-saas-sandbox}"
 # server reaches it by service name (first-launch.sh's default); deploy_sandbox_vm sets the VM's.
 SANDBOX_PUBLISH="127.0.0.1:18000"
 
+# The sandbox VM's base compose. first-launch.sh writes it, and runs only when a release changes,
+# while every deploy pushes the configs that name what it sets: a config naming a variable the
+# node's compose did not (PROVISA_DEMO_LEDGER_ADDRESS) crash-looped the regions tier at startup.
+# Rendered by first-launch.sh's own function, as push_demo extracts its overlay, so the two cannot
+# drift. Recreates the stack when it changes, so it runs BEFORE the pushes, like the overlays. The
+# coordinator's is push_cp_compose's: the UI server reads what it holds (PROVISA_SANDBOX_REGIONS_*).
+CONTROL_PLANE_YML="/root/.provisa/compose-control-plane.yml"
+
+push_compose() {
+  (
+    ROLE=control-plane PROVISA_HOME=/root/.provisa CERT_DIR=/root/.provisa/certs
+    ok() { :; }
+    eval "$(awk '/^write_control_plane_compose\(\) \{$/,/^}$/' "$REPO/packaging/linux/first-launch.sh")"
+    write_control_plane_compose "$STAGE/compose-control-plane.yml"
+  )
+  # An empty rendering means the function was restructured and this awk no longer matches;
+  # installing nothing would take the stack off the node.
+  grep -q 'provisa-sandbox-regions:' "$STAGE/compose-control-plane.yml" \
+    || { echo "cannot render the control-plane compose from first-launch.sh" >&2; exit 1; }
+  local want have
+  want="$(shasum -a 256 "$STAGE/compose-control-plane.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $CONTROL_PLANE_YML" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  if [ "$want" = "$have" ]; then
+    echo "== compose: up to date"
+    return
+  fi
+  echo "== compose: updating"
+  scp_node "$STAGE/compose-control-plane.yml" /tmp/compose-control-plane.yml
+  ssh_node "sudo cp $CONTROL_PLANE_YML $CONTROL_PLANE_YML.bak-\$(date +%s) && sudo cp /tmp/compose-control-plane.yml $CONTROL_PLANE_YML"
+  echo "== compose: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+}
+
 # The sandbox tier's containers on its VM: the tier and, where they run, the regions tier's nodes.
 sandbox_containers() {
   ssh_node "sudo docker ps -a --format '{{.Names}}'" | tr -d '\r' \
     | grep -xE 'compose-provisa-sandbox-1|compose-provisa-sandbox-regions(-warehouse)?-1' | tr '\n' ' '
 }
 
-# The sandbox tier back to no orgs of its own: every demo template and sandbox (ids sbx*, REQ-2006)
-# out of the control plane, their schemas out of it and out of the regions tier's two stores, and
-# their folders off the VM. There are no migrations (V1): a template built by older code keeps its
-# old tables, and a sandbox opened from it fails on a column added since (500 ProgrammingError,
-# "column calendars.day_close does not exist"). The coordinator's accounts and orgs are untouched;
-# the tier rebuilds each template from its bundle at its next start. Runs with NODE set to the
+# The sandbox tier back to no orgs of its own but its demo templates still good: every sandbox
+# (ids sbx*, REQ-2006) and every other template out of the control plane, their schemas out of it
+# and out of the regions tier's two stores, and their folders off the VM. There are no migrations
+# (V1): a template built by older code keeps its old tables, and a sandbox opened from it fails on
+# a column added since (500 ProgrammingError, "column calendars.day_close does not exist"). So a
+# template is kept only when its readiness record names the DDL fingerprint of the pushed code's
+# tables (schema_org.ddl_fingerprint, read from that code through the tier's own image and mounts):
+# the tier's start trusts it only when its demo version matches too (demo_templates.warm_ready),
+# and replaces it otherwise. The coordinator's accounts and orgs are untouched; the tier rebuilds
+# each template it does not keep from its bundle at its next start. Runs with NODE set to the
 # sandbox VM (deploy_sandbox_vm), its containers stopped so nothing writes while it runs.
 reset_sandbox_state() {
   local containers
@@ -978,40 +1207,65 @@ reset_sandbox_state() {
   # so a failed reset never leaves it down. Replaced by the stage cleanup alone once it is done.
   trap "echo 'sandbox reset failed: starting $containers again' >&2; ssh_node 'sudo docker start $containers >/dev/null'; rm -rf \"\$STAGE\"" EXIT
   ssh_node "sudo docker stop $containers >/dev/null"
+  local tier image ddl kept keep
+  tier="${containers%% *}"
+  image="$(ssh_node "sudo docker inspect -f '{{.Config.Image}}' $tier" | tr -d '\r')"
+  ddl="$(ssh_node "sudo docker run --rm --volumes-from $tier --entrypoint python $image -c 'from provisa.core.schema_org import ddl_fingerprint; print(ddl_fingerprint())'" | tr -d '\r' | tail -1)"
+  [[ "$ddl" =~ ^[0-9a-f]{16}$ ]] || { echo "sandbox VM: no DDL fingerprint from the pushed code on $tier: $ddl" >&2; exit 1; }
+  cat > "$STAGE/kept_templates.sql" <<SQL
+\pset tuples_only on
+\pset format unaligned
+SELECT template_org FROM public.demo_template_readiness
+ WHERE template_org LIKE 'sbxtpl%' AND version LIKE '%@$ddl' ORDER BY template_org;
+SQL
+  # Only names a template id can be: each is written into the statements below.
+  kept="$(run_sql "$STAGE/kept_templates.sql" kept-templates | tr -d '\r' | grep -xE 'sbxtpl[a-z0-9]+' | tr '\n' ' ')" || kept=""
+  kept="${kept% }"
+  echo "   templates kept (DDL $ddl): ${kept:-none}"
+  keep="ARRAY[$(for k in $kept; do printf "'%s'," "$k"; done | sed 's/,$//')]::text[]"
   # One schema per statement, each its own transaction (psql autocommit + \gexec): every
   # template's schema holds hundreds of views, and dropping them all in one transaction runs
   # out of locks (max_locks_per_transaction). Schemas first, then the orgs rows, so a failure
-  # part way leaves orgs whose schemas a rerun drops.
-  cat > "$STAGE/reset_sandbox.sql" <<'SQL'
+  # part way leaves orgs whose schemas a rerun drops. A kept template's schemas are org_<id> and
+  # org_<id>_<more> (environments.org_schema); a template id has no underscore of its own.
+  cat > "$STAGE/reset_sandbox.sql" <<SQL
 \pset pager off
 SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
-  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%'
+   AND NOT EXISTS (SELECT 1 FROM unnest($keep) k
+                    WHERE nspname = 'org_' || k OR nspname LIKE 'org\_' || k || '\_%') \gexec
 -- Every admin row of an org cascades from its orgs row (provisa/core/schema_admin.py).
-DELETE FROM public.orgs WHERE id LIKE 'sbx%';
+DELETE FROM public.orgs WHERE id LIKE 'sbx%' AND id <> ALL($keep);
 SELECT count(*) AS sandbox_orgs_left FROM public.orgs WHERE id LIKE 'sbx%';
 SQL
   run_sql "$STAGE/reset_sandbox.sql" reset-sandbox
   # The regions tier's stores (first-launch.sh: region-pg-eu, region-pg-us) hold each region's
-  # schemas of its orgs, a database per region: eu and ledger in region-pg-eu, us and warehouse in
-  # region-pg-us.
-  cat > "$STAGE/reset_sandbox_store.sql" <<'SQL'
+  # schemas of its orgs, a database per region. Which databases a store holds is the store's own
+  # answer, not this script's: the VM's compose comes from its installed release (terraform's
+  # provisa_version), which a deploy never rewrites, and a release before REQ-2107's has neither
+  # ledger nor warehouse (first-launch.sh's REGION_PG_ALSO).
+  cat > "$STAGE/reset_sandbox_store.sql" <<SQL
 SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
-  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%'
+   AND NOT EXISTS (SELECT 1 FROM unnest($keep) k
+                    WHERE nspname = 'org_' || k OR nspname LIKE 'org\_' || k || '\_%') \gexec
 SQL
   local b64 store
   b64="$(base64 < "$STAGE/reset_sandbox_store.sql" | tr -d '\n')"
-  local db database
+  local databases database
   for store in $(ssh_node "sudo docker ps --format '{{.Names}}'" | tr -d '\r' | grep -E 'region-pg-(eu|us)'); do
-    case "$store" in *region-pg-eu*) db=ledger ;; *) db=warehouse ;; esac
-    for database in provisa "$db"; do
+    databases="$(ssh_node "sudo docker exec $store psql -U provisa -d provisa -tAc 'SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname'" | tr -d '\r')"
+    [ -n "$databases" ] || { echo "sandbox VM: $store lists no database" >&2; exit 1; }
+    for database in $databases; do
       ssh_node "set -e; echo $b64 | base64 -d | sudo docker exec -i $store psql -U provisa -d $database -v ON_ERROR_STOP=1 -q -f -"
       echo "   $store/$database: sandbox schemas dropped"
     done
   done
   # Their folders (provisa.core.org_files: <data dir>/orgs/<org>; first-launch.sh mounts the
-  # tiers' data dirs from these). Only orgs/sbx*: demo-bundles/ beside it is the demo stores sync's.
-  # Expanded as root: the login user cannot list /root, where its own shell would expand nothing.
-  ssh_node "sudo sh -c 'rm -rf /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx* /root/.provisa/sandbox-regions-warehouse-data/orgs/sbx*'"
+  # tiers' data dirs from these), but a kept template's. Only orgs/sbx*: demo-bundles/ beside it is
+  # the demo stores sync's. Expanded as root: the login user cannot list /root, where its own shell
+  # would expand nothing.
+  ssh_node "sudo sh -c 'for d in /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx* /root/.provisa/sandbox-regions-warehouse-data/orgs/sbx*; do case \" $kept \" in *\" \${d##*/} \"*) ;; *) rm -rf \"\$d\" ;; esac; done'"
   trap 'rm -rf "$STAGE"' EXIT
   CONTAINERS="$containers"
 }
@@ -1100,12 +1354,24 @@ deploy_sandbox_vm() {
   done
   echo "== sandbox VM: $SANDBOX_NODE"
   preflight_sandbox_ai
-  push_demo_stores; push_demo_stores_env; push_overlay
+  # A VM set up by a release from before the regions tier's warehouse node has no such variable.
+  grep -qx PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH <<<"$(ssh_node "sudo cut -d= -f1 $ENV_FILE" | tr -d '\r')" \
+    || set_node_env PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH "${SANDBOX_PUBLISH%:*}:8101"
+  REGIONS_NODES_OVERLAY="  provisa-sandbox-regions-warehouse:
+    volumes:
+      - ${OVERLAY_DIR}/static:/app/static
+      - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
+      - ${OVERLAY_DIR}/config:/app/config
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"
+  push_demo_stores; push_demo_stores_env; push_compose; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg
   # New code against the tier's old tables fails (no migrations): whenever the package is pushed,
-  # or asked for alone (sandbox-reset), the tier starts from no orgs of its own.
+  # or asked for alone (sandbox-reset), the tier starts from no orgs of its own but the templates
+  # built under the pushed code's table shapes.
   if [ -f "$STAGE/api.tgz" ] || [ "$TARGET" = sandbox-reset ]; then
     reset_sandbox_state
   fi
@@ -1115,16 +1381,16 @@ deploy_sandbox_vm() {
 
 case "$TARGET" in
   ui)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
@@ -1132,10 +1398,10 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

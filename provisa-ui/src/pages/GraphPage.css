@@ -460,6 +460,10 @@
   inset-inline-end: 8px;
 }
 
+.graph-query-editor-wrap .gf-clear-query-btn {
+  inset-inline-end: 36px;
+}
+
 .graph-query-input {
   width: 100%;
 }
@@ -877,6 +881,14 @@
 .gf-error-violations {
   margin: 0.35rem 0 0;
   padding-inline-start: 1.1rem;
+}
+
+/* What a drop on the frame said, under its query, whatever view the frame shows. */
+.gf-drop-notices {
+  padding: 0.35rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border-block-end: 1px solid var(--border);
 }
 
 /* REQ-1224: a result delivered to a file, said where the graph would be. */
@@ -2253,4 +2265,84 @@ button.gf-overview-chip {
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* ── SPARQL endpoint and prefixes, above the query bar ──────────────────────── */
+.graph-endpoint-bar {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.graph-endpoint-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.graph-endpoint-url {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-endpoint-copy {
+  position: static;
+  flex-shrink: 0;
+}
+
+.graph-prefix-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+
+.graph-prefix-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: start;
+}
+
+.graph-prefix-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+/* ── SPARQL properties and cells ────────────────────────────────────────────── */
+.graph-property-search {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.gf-td-iri {
+  position: relative;
+}
+
+.gf-td-iri .gf-td-copy-iri {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-end: 2px;
+  opacity: 0;
+}
+
+.gf-td-iri:hover .gf-td-copy-iri,
+.gf-td-iri .gf-td-copy-iri:focus-visible {
+  opacity: 1;
+}
+
+.gf-sparql-toggle {
+  align-self: flex-start;
+  flex-shrink: 0;
+  margin: 4px 8px;
 }

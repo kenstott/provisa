@@ -16,11 +16,14 @@ whether it has.
 
 The credential is read from BRAND_TOKEN. Introspection needs no particular grant, only a
 credential the endpoint accepts. An endpoint that introspects for anonymous callers (GitLab)
-is baked with BRAND_TOKEN unset.
+is baked with BRAND_TOKEN unset. A brand reached at a per-customer address is introspected at
+the public copy of its schema it names (Shopify: shopify.dev's Admin API proxy for the version
+the brand pins), also with BRAND_TOKEN unset.
 
 Usage:
     BRAND_TOKEN=$(gh auth token) .venv/bin/python3 scripts/bake_graphql_brand_schema.py github
     .venv/bin/python3 scripts/bake_graphql_brand_schema.py gitlab
+    .venv/bin/python3 scripts/bake_graphql_brand_schema.py shopify
 """
 
 import asyncio
@@ -41,10 +44,11 @@ from provisa.graphql_remote.introspect import introspect_schema  # noqa: E402
 async def main(brand_id: str) -> None:
     brand = BRANDS[brand_id]
     token = os.environ.get("BRAND_TOKEN")
-    schema = await introspect_schema(brand.url, brand.auth(token) if token else None)
+    url = brand.introspection_url
+    schema = await introspect_schema(url, brand.auth(token) if token else None)
     canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"))
     artifact = {
-        "url": brand.url,
+        "url": url,
         "schema_fingerprint": f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "schema": schema,

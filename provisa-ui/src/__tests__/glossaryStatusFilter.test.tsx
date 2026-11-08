@@ -17,10 +17,15 @@ import { render, screen, fireEvent, within } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import type { GlossaryTermSummary } from "../api/glossary";
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   // A term with no findings: the findings list names none.
@@ -31,8 +36,6 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 const auth = { capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
-
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 
 const filter = {
   domains: [],
@@ -60,6 +63,7 @@ const APPROVED: GlossaryTermSummary = {
   ref_count: 1,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,
@@ -81,6 +85,7 @@ const DRAFT: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "draft",
   status_reason: null,
@@ -124,15 +129,42 @@ describe("glossary status and grounding filters", () => {
     await screen.findByTestId("glossary-item-1");
     // An approved term is the ordinary case: the list marks only its grounding.
     expect(screen.queryByTestId("glossary-status-1")).toBeNull();
-    expect(screen.getByTestId("glossary-grounding-1")).toHaveTextContent("grounded");
-    expect(screen.getByTestId("glossary-status-2")).toHaveTextContent("Draft");
+    // A Property (bound to a column) is always grounded: no ground symbol on its row.
+    expect(screen.queryByTestId("glossary-grounding-1")).toBeNull();
+    expect(screen.getByTestId("glossary-status-2")).toHaveAccessibleName("Draft");
+    // Pending: the same symbol, muted, saying its path awaits approval.
     const pending = screen.getByTestId("glossary-grounding-2");
-    expect(pending).toHaveTextContent("~grounded");
-    expect(pending).toHaveAttribute(
+    expect(pending).toHaveAttribute("data-grounding", "grounded_pending");
+    const pendingIcon = within(pending).getByRole("img");
+    expect(pendingIcon).toHaveAttribute("data-ground-state", "grounded_pending");
+    expect(pendingIcon).toHaveAttribute(
       "aria-label",
       "Reaches data, but only through terms not yet approved",
     );
     // Not grounded: no chip.
+    expect(screen.queryByTestId("glossary-grounding-3")).toBeNull();
+  });
+
+  it("shows the ground symbol on Concepts only", async () => {
+    const CLASS: GlossaryTermSummary = { ...APPROVED, id: 4, name: "Customer", ref_count: 0, table_count: 1 };
+    const CONCEPT: GlossaryTermSummary = { ...APPROVED, id: 5, name: "Loyalty", ref_count: 0, table_count: 0 };
+    mockList.mockResolvedValue([APPROVED, CLASS, CONCEPT, DRAFT, RETIRED]);
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-5");
+    expect(screen.getByTestId("glossary-role-1")).toHaveAttribute("data-role", "property");
+    expect(screen.getByTestId("glossary-role-4")).toHaveAttribute("data-role", "class");
+    expect(screen.queryByTestId("glossary-grounding-1")).toBeNull();
+    expect(screen.queryByTestId("glossary-grounding-4")).toBeNull();
+    // A Concept grounded through relationships: the green symbol.
+    const grounded = screen.getByTestId("glossary-grounding-5");
+    expect(grounded).toHaveAttribute("data-grounding", "grounded");
+    expect(within(grounded).getByRole("img")).toHaveAttribute("data-ground-state", "grounded");
+    // Pending through a draft term: muted.
+    expect(within(screen.getByTestId("glossary-grounding-2")).getByRole("img")).toHaveAttribute(
+      "data-ground-state",
+      "grounded_pending",
+    );
+    // Not grounded: none.
     expect(screen.queryByTestId("glossary-grounding-3")).toBeNull();
   });
 
@@ -147,10 +179,44 @@ describe("glossary status and grounding filters", () => {
     expect(mockList.mock.calls.length).toBe(callsBefore);
   });
 
+  it("shows the terms of every status picked", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    await pick("glossary-status-filter", "Draft");
+    await pick("glossary-status-filter", "Retired");
+    expect(screen.queryByTestId("glossary-item-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-2")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+  });
+
+  it("offers each status once, and shows every term when none is left picked", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    await pick("glossary-status-filter", "Draft");
+    expect(screen.queryByTestId("glossary-item-1")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("option", { name: "Draft", hidden: true }));
+    expect(await screen.findByTestId("glossary-item-1")).toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("option", { hidden: true })
+        .map((option) => option.textContent)
+        .filter((name) => ["Draft", "Approved", "Deprecated", "Retired"].includes(name ?? "")),
+    ).toEqual(["Draft", "Approved", "Deprecated", "Retired"]);
+  });
+
+  it("explains the status filter in a tooltip", async () => {
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    const filter = screen.getByTestId("glossary-status-filter").closest(".mantine-MultiSelect-root");
+    fireEvent.mouseEnter(filter!.parentElement!);
+    expect(await screen.findByText("Show only these statuses")).toBeInTheDocument();
+  });
+
   it("narrows the list by grounding, in the words findings use", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    await pick("glossary-grounding-filter", "Grounded · path pending approval");
+    await pick("glossary-grounding-filter", "Grounded · via a draft");
     const list = screen.getByTestId("glossary-list");
     expect(within(list).queryByTestId("glossary-item-1")).not.toBeInTheDocument();
     expect(within(list).getByTestId("glossary-item-2")).toBeInTheDocument();
@@ -163,11 +229,21 @@ describe("glossary status and grounding filters", () => {
     const { unmount } = render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     await pick("glossary-status-filter", "Approved");
-    expect(window.localStorage.getItem(scopedKey("glossary.status"))).toBe("approved");
+    await pick("glossary-status-filter", "Retired");
+    expect(window.localStorage.getItem(scopedKey("glossary.status"))).toBe("approved,retired");
     unmount();
 
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
     expect(screen.queryByTestId("glossary-item-2")).not.toBeInTheDocument();
+    expect(screen.getByTestId("glossary-item-3")).toBeInTheDocument();
+  });
+
+  it("keeps no choice for the removed Deprecated checkbox", async () => {
+    window.localStorage.setItem(scopedKey("glossary.showDeprecated"), "false");
+    render(<GlossaryTab />);
+    await screen.findByTestId("glossary-item-1");
+    expect(mockList).toHaveBeenCalledWith("", true, null);
+    expect(screen.queryByTestId("glossary-show-deprecated")).toBeNull();
   });
 });

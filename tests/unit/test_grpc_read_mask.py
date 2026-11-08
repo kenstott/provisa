@@ -30,6 +30,10 @@ import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
+# The proxy binds the pipeline's functions when it is imported. Imported first under _run's
+# patches, it would keep their mocks for every later test in the process.
+import provisa.api.data.endpoint_grpc_proxy  # noqa: F401
+from provisa.executor.result import QueryResult
 from tests.grpc_model import compiled_read, grpc_model, serving_state
 
 _COLUMNS = [
@@ -220,6 +224,7 @@ def test_two_masks_never_share_a_kept_plan_key():
 def _request(paths: list[str]):
     return SimpleNamespace(
         limit=10,
+        offset=0,
         read_mask=SimpleNamespace(paths=paths),
         HasField=lambda _name: False,
         DESCRIPTOR=SimpleNamespace(fields_by_name={}),
@@ -227,22 +232,19 @@ def _request(paths: list[str]):
 
 
 def _servicer(model=None):
-    from google.protobuf.descriptor import FieldDescriptor
-
+    """The servicer over a compiled service whose Orders message has the two fields read."""
+    from provisa.grpc.descriptor import OrgDescriptor
     from provisa.grpc.server import ProvisaServicer
 
-    fields = [
-        SimpleNamespace(name="order_id", message_type=None, type=FieldDescriptor.TYPE_INT64),
-        SimpleNamespace(name="order_meta", message_type=None, type=FieldDescriptor.TYPE_STRING),
-    ]
-    descriptor = SimpleNamespace(fields=fields, fields_by_name={f.name: f for f in fields})
-    msg_cls = MagicMock(DESCRIPTOR=descriptor)
-    pb2 = SimpleNamespace(Orders=msg_cls)
+    pb2 = OrgDescriptor(
+        'syntax = "proto3"; package provisa.v1;'
+        " message Orders { optional int64 order_id = 1; optional string order_meta = 2; }"
+    )
     state = serving_state(model or _model())
     servicer = ProvisaServicer(state, pb2)
     servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg
-    return servicer, msg_cls
+    return servicer, pb2.Orders
 
 
 def _context():
@@ -267,8 +269,8 @@ async def _run(servicer, request, context, result):
             "provisa.pgwire._pipeline._execute_plan", new_callable=AsyncMock, return_value=result
         ),
     ):
-        _ = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
-    return govern
+        sent = [m async for m in servicer._handle_query(request, context, "Orders")]
+    return govern, sent
 
 
 class TestServicerReadMask:
@@ -276,8 +278,8 @@ class TestServicerReadMask:
     async def test_request_mask_reaches_the_governed_statement(self):
         """The servicer hands the pipeline a statement selecting the masked columns only."""
         servicer, _msg_cls = _servicer()
-        result = SimpleNamespace(column_names=["order_id", "amount"], rows=[])
-        govern = await _run(servicer, _request(["order_id", "amount"]), _context(), result)
+        result = QueryResult(rows=[], column_names=["order_id", "amount"])
+        govern, _sent = await _run(servicer, _request(["order_id", "amount"]), _context(), result)
 
         govern.assert_awaited_once()
         assert _selected(govern.await_args.args[0]) == ["order_id", "amount"]
@@ -285,24 +287,23 @@ class TestServicerReadMask:
     @pytest.mark.asyncio
     async def test_json_sub_path_restricts_the_message_value(self):
         servicer, msg_cls = _servicer()
-        result = SimpleNamespace(
-            column_names=["order_id", "order_meta"], rows=[[7, json.dumps(_META)]]
-        )
+        result = QueryResult(rows=[(7, json.dumps(_META))], column_names=["order_id", "order_meta"])
         request = _request(["order_id", "order_meta.source_id"])
-        govern = await _run(servicer, request, _context(), result)
+        govern, sent = await _run(servicer, request, _context(), result)
 
         assert _selected(govern.await_args.args[0]) == ["order_id", "order_meta"]
-        msg_cls.assert_called_once()
-        kwargs = msg_cls.call_args.kwargs
-        assert kwargs["order_id"] == 7
-        assert json.loads(kwargs["order_meta"]) == {"source_id": "s1"}
+        (message,) = [msg_cls.FromString(m) for m in sent]
+        assert message.order_id == 7
+        assert json.loads(message.order_meta) == {"source_id": "s1"}
 
     @pytest.mark.asyncio
     async def test_unknown_path_aborts_invalid_argument_before_governing(self):
         servicer, _msg_cls = _servicer()
         context = _context()
-        result = SimpleNamespace(column_names=["order_id"], rows=[])
-        govern = await _run(servicer, _request(["order_id", "no_such_field"]), context, result)
+        result = QueryResult(rows=[], column_names=["order_id"])
+        govern, _sent = await _run(
+            servicer, _request(["order_id", "no_such_field"]), context, result
+        )
 
         govern.assert_not_awaited()
         context.abort.assert_awaited_once()

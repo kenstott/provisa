@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select, update
 
-from provisa.core import process_mode, process_region
+from provisa.core import process_mode, process_region, settings_registry
 from provisa.core.regions import DEFAULT_REGION
 from provisa.core.schema_admin import cluster_nodes
 
@@ -48,7 +48,8 @@ def _now() -> datetime:
 
 
 async def register(db: "Database") -> None:
-    """List this node: its host and process, its mode and its region (None for the implicit one)."""
+    """List this node: its host and process, its mode, its region (None for the implicit one) and
+    the address clients reach it at (``server.node_url``, None when the launch set none)."""
     region = process_region.region()
     now = _now()
     async with db.acquire() as conn:
@@ -60,6 +61,7 @@ async def register(db: "Database") -> None:
                 pid=os.getpid(),
                 mode=process_mode.mode(),
                 region=None if region == DEFAULT_REGION else region,
+                address=settings_registry.value("server.node_url"),
                 started_at=now,
                 last_seen=now,
             )

@@ -361,11 +361,11 @@ class TestColumnPresets:
 
 
 class TestInheritedRoles:
-    """REQ-215, REQ-2155: a child role inherits its parents' capabilities; its domain_access is its
-    own; O(1) lookup."""
+    """REQ-215, REQ-2155: a child role holds what it is given of what its parents hold; O(1)
+    lookup."""
 
-    def test_child_inherits_parent_capabilities(self):
-        # REQ-215: flatten_roles merges parent capabilities into child
+    def test_child_holds_what_it_is_given_of_its_parents(self):
+        # REQ-2155: a capability no parent holds is not held
         from provisa.core.models import Role, flatten_roles
 
         parent = Role(
@@ -375,36 +375,38 @@ class TestInheritedRoles:
             domain_access=["*"],
         )
         child = Role(
-            id="analyst",
+            id="reporter",
             description="Test role.",
-            capabilities=["custom_cap"],
+            capabilities=["query_development", "custom_cap"],
             domain_access=["sales"],
             parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
-        child_flat = next(r for r in flattened if r.id == "analyst")
+        child_flat = next(r for r in flattened if r.id == "reporter")
 
-        assert "query_development" in child_flat.capabilities
-        assert "custom_cap" in child_flat.capabilities
+        assert child_flat.capabilities == ["query_development"]
 
-    def test_child_keeps_its_own_domain_access(self):
-        # REQ-2155 (superseding REQ-215's merge): a role's reach is its own, never inherited
+    def test_child_reaches_what_it_lists_of_what_its_parents_reach(self):
+        # REQ-2155: a role's reach narrows as its capabilities do
         from provisa.core.models import Role, flatten_roles
 
         parent = Role(
-            id="base", description="Test role.", capabilities=[], domain_access=["finance"]
+            id="base",
+            description="Test role.",
+            capabilities=["usage"],
+            domain_access=["finance", "sales"],
         )
         child = Role(
-            id="analyst",
+            id="reporter",
             description="Test role.",
-            capabilities=[],
-            domain_access=["sales"],
+            capabilities=["usage"],
+            domain_access=["sales", "hr"],
             parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
-        child_flat = next(r for r in flattened if r.id == "analyst")
+        child_flat = next(r for r in flattened if r.id == "reporter")
 
         assert child_flat.domain_access == ["sales"]
 
@@ -435,17 +437,19 @@ class TestInheritedRoles:
         # REQ-2155: a parent reaching every domain widens no child
         from provisa.core.models import Role, flatten_roles
 
-        parent = Role(id="base", description="Test role.", capabilities=[], domain_access=["*"])
+        parent = Role(
+            id="base", description="Test role.", capabilities=["usage"], domain_access=["*"]
+        )
         child = Role(
-            id="analyst",
+            id="reporter",
             description="Test role.",
-            capabilities=[],
+            capabilities=["usage"],
             domain_access=["sales"],
             parents=["base"],
         )
 
         flattened = flatten_roles([parent, child])
-        child_flat = next(r for r in flattened if r.id == "analyst")
+        child_flat = next(r for r in flattened if r.id == "reporter")
 
         assert child_flat.domain_access == ["sales"]
 
@@ -458,8 +462,8 @@ class TestInheritedRoles:
             Role(
                 id="r2",
                 description="Test role.",
-                capabilities=["cap2"],
-                domain_access=["d2"],
+                capabilities=["cap1"],
+                domain_access=["d1"],
                 parents=["r1"],
             ),
         ]

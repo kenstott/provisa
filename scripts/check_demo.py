@@ -100,7 +100,11 @@ def check_examples(home: Path) -> list[str]:
     queries = sorted((home / "queries").glob("*.graphql"))
     if not queries:
         return ["queries/ holds no example query"]
-    admin = {"id": "org_admin", "capabilities": [], "domain_access": ["*"]}
+    admin = {
+        "id": "org_admin",
+        "capabilities": [],
+        "domain_access": ["*", "meta", "ontology", "ops"],
+    }
     schema = _views_schema(home, admin, include_tables=True)
     problems = []
     for query in queries:
@@ -165,6 +169,8 @@ def check_images(home: Path) -> list[str]:
 _FEATURES = (
     ("roles with parents, or grants naming data_steward (REQ-2155)", "0.1.0a496"),
     ("a code export taking inputs (REQ-2100)", "0.1.0a496"),
+    ("roles listing what they hold of their parents' rights (REQ-2155)", "0.1.0a497"),
+    ("a setup scanning a document for terms, carried in its bundle (REQ-2201)", "0.1.0a499"),
 )
 _INPUTS = re.compile(r"\binputs\b")
 
@@ -174,6 +180,11 @@ def _uses_role_parents(home: Path) -> bool:
     config = yaml.safe_load(text) or {}
     has_parents = any(r.get("parents") for r in config.get("roles") or [])
     return has_parents or re.search(r"\bdata_steward\b", text) is not None
+
+
+def _narrows_parents(home: Path) -> bool:
+    config = yaml.safe_load((home / "config.yaml").read_text()) or {}
+    return any(r.get("parents") for r in config.get("roles") or [])
 
 
 def _uses_export_inputs(home: Path) -> bool:
@@ -187,10 +198,25 @@ def _uses_export_inputs(home: Path) -> bool:
     return False
 
 
+def _scans_for_terms(home: Path) -> bool:
+    from provisa.api.demo_templates import demo_scans
+
+    return bool(demo_scans(home))
+
+
+def _uses(home: Path) -> tuple[bool, bool, bool, bool]:
+    """Whether this demo uses each _FEATURES entry, in its order."""
+    return (
+        _uses_role_parents(home),
+        _uses_export_inputs(home),
+        _narrows_parents(home),
+        _scans_for_terms(home),
+    )
+
+
 def _features_used(home: Path) -> list[str]:
     """The first release of each _FEATURES entry this demo uses."""
-    used = (_uses_role_parents(home), _uses_export_inputs(home))
-    return [first for (_, first), uses in zip(_FEATURES, used) if uses]
+    return [first for (_, first), uses in zip(_FEATURES, _uses(home)) if uses]
 
 
 def needed_release(home: Path) -> str | None:
@@ -205,10 +231,9 @@ def check_features(home: Path, required: str) -> list[str]:
     """The features this demo uses that come after ``required``, one problem each."""
     from provisa.core import demo_bundles as bundles
 
-    used = (_uses_role_parents(home), _uses_export_inputs(home))
     return [
         f"demo.yaml: requires_provisa {required} is older than {first}, which {feature} needs"
-        for (feature, first), uses in zip(_FEATURES, used)
+        for (feature, first), uses in zip(_FEATURES, _uses(home))
         if uses and bundles.provisa_version_key(required) < bundles.provisa_version_key(first)
     ]
 

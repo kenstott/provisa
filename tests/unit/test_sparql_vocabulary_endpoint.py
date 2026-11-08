@@ -10,20 +10,24 @@
 
 """GET /data/sparql/vocabulary (REQ-2135, VOCABULARY ENDPOINT): the caller's role's vocabulary as
 IRIs, for a client to offer as a query is written -- its base and prefixes; each class, a table's
-own or a Class term, with the labels it types; each predicate, a column's own or a Property term,
-with its label, property and datatype; each edge type with its source and target; and the live
-Concept terms."""
+own or a Class term, with the labels it types; each predicate, a column's own with its label,
+property and datatype, or a Property term once with each class that has it (REQ-2163); each edge
+type with its source and target; and the live Concept terms."""
 
-# Requirements: REQ-2135
+# Requirements: REQ-2135, REQ-2163
 
 from __future__ import annotations
+
+import dataclasses
 
 from provisa.sparql_query.vocabulary import (
     RDF,
     XSD,
+    Grounding,
     build_vocabulary,
     concepts_of,
     superclasses_of,
+    term_domains_of,
     term_iri,
     vocabulary_document,
 )
@@ -43,9 +47,13 @@ from tests.unit.test_sparql_compiler import (
 )
 
 
-def _doc(concepts: list[dict] | None = None, superclasses: dict | None = None) -> dict:
+def _doc(
+    concepts: list[dict] | None = None,
+    superclasses: dict | None = None,
+    term_domains: dict | None = None,
+) -> dict:
     vocab = build_vocabulary(_model(), BASE, _TYPES, _GROUNDING)
-    return vocabulary_document(vocab, concepts or [], superclasses or {})
+    return vocabulary_document(vocab, concepts or [], superclasses or {}, term_domains or {})
 
 
 def test_the_vocabulary_names_its_base_and_prefixes():
@@ -63,12 +71,16 @@ def test_each_class_is_a_tables_own_or_a_class_term_with_the_labels_it_types():
         "iri": PERSON,
         "kind": "table",
         "labels": ["Person"],
+        "parameterized": False,
+        "parameterized_labels": [],
         "superclasses": [],
     }
     assert classes[COMPANY] == {
         "iri": COMPANY,
         "kind": "table",
         "labels": ["Company"],
+        "parameterized": False,
+        "parameterized_labels": [],
         "superclasses": [],
     }
     # A Class term with no KIND_OF edge has no superclass.
@@ -76,19 +88,15 @@ def test_each_class_is_a_tables_own_or_a_class_term_with_the_labels_it_types():
         "iri": EMPLOYEE,
         "kind": "term",
         "labels": ["Person"],
+        "parameterized": False,
+        "parameterized_labels": [],
         "superclasses": [],
+        "domains": [],
     }
 
 
 def test_each_predicate_is_a_columns_own_or_a_property_term_with_its_datatype():
     predicates = _doc()["predicates"]
-    assert {
-        "iri": NAME,
-        "kind": "column",
-        "label": "Person",
-        "property": "name",
-        "datatype": f"{XSD}string",
-    } in predicates
     assert {
         "iri": AGE,
         "kind": "column",
@@ -96,16 +104,19 @@ def test_each_predicate_is_a_columns_own_or_a_property_term_with_its_datatype():
         "property": "age",
         "datatype": f"{XSD}integer",
     } in predicates
-    # A Property term is the predicate of every column it grounds.
-    by_term = [p for p in predicates if p["iri"] == FULL_NAME]
-    assert sorted((p["label"], p["property"], p["kind"]) for p in by_term) == [
-        ("Company", "name", "term"),
-        ("Person", "name", "term"),
+    # REQ-2163: a Property term is the predicate of every column it grounds, in place of the
+    # column's own, listed once with the classes that have it.
+    assert NAME not in {p["iri"] for p in predicates}
+    (by_term,) = [p for p in predicates if p["iri"] == FULL_NAME]
+    assert by_term["kind"] == "term"
+    assert sorted((c["label"], c["property"]) for c in by_term["classes"]) == [
+        ("Company", "name"),
+        ("Person", "name"),
     ]
 
 
 def test_each_edge_type_with_its_source_and_target():
-    edges = _doc()["edges"]
+    edges = [{k: e[k] for k in ("iri", "type", "source", "target")} for e in _doc()["edges"]]
     assert {"iri": KNOWS, "type": "KNOWS", "source": "Person", "target": "Person"} in edges
     assert {"iri": WORKS_AT, "type": "WORKS_AT", "source": "Person", "target": "Company"} in edges
 
@@ -117,13 +128,21 @@ def test_the_agent_visible_concept_terms_are_offered_and_nothing_else_of_the_glo
             "definition": "How long a customer stays.",
             "is_abstract": True,
             "agent_visible": True,
+            "domains": ["hr"],
         },
-        {"name": "draft idea", "definition": None, "is_abstract": True, "agent_visible": False},
+        {
+            "name": "draft idea",
+            "definition": None,
+            "is_abstract": True,
+            "agent_visible": False,
+            "domains": [],
+        },
         {
             "name": "party",
             "definition": "Someone we deal with.",
             "is_abstract": False,
             "agent_visible": True,
+            "domains": [],
         },
     ]
     concepts = concepts_of(BASE, rows)
@@ -132,6 +151,7 @@ def test_the_agent_visible_concept_terms_are_offered_and_nothing_else_of_the_glo
             "iri": term_iri(BASE, "customer lifetime"),
             "name": "customer lifetime",
             "definition": "How long a customer stays.",
+            "domains": ["hr"],
         }
     ]
     assert _doc(concepts)["concepts"] == concepts
@@ -148,3 +168,55 @@ def test_a_class_term_names_the_terms_it_is_a_kind_of_that_the_role_reads():
     assert classes[EMPLOYEE]["superclasses"] == [term_iri(BASE, "Person")]
     # A table's own class has none.
     assert classes[PERSON]["superclasses"] == []
+
+
+def test_a_term_carries_its_domains_and_a_tables_own_class_does_not():
+    # REQ-1723 (EVERY EXPLORER FOLLOWS THE CHECKED DOMAINS): the client shows a term when one of
+    # its domains is checked, so each Class term, Property term and Concept names them.
+    rows = [
+        {"name": "Employee", "domains": ["hr"]},
+        {"name": "Legal name", "domains": []},
+    ]
+    doc = _doc(term_domains=term_domains_of(BASE, rows))
+    classes = {c["iri"]: c for c in doc["classes"]}
+    assert classes[term_iri(BASE, "Employee")]["domains"] == ["hr"]
+    assert "domains" not in classes[PERSON]
+    predicates = {p["iri"]: p for p in doc["predicates"]}
+    assert predicates[FULL_NAME]["domains"] == []
+    assert all("domains" not in p for p in doc["predicates"] if p["kind"] == "column")
+
+
+def _parameterized_doc() -> dict:
+    lm = _model()
+    person = lm.nodes["Person"]
+    lm.nodes["Person"] = dataclasses.replace(person, native_filter_columns={"_nf_age": "integer"})
+    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
+    return vocabulary_document(vocab, [], {}, {})
+
+
+def test_a_class_says_it_is_parameterized_and_which_labels_are():
+    classes = {c["iri"]: c for c in _parameterized_doc()["classes"]}
+    assert classes[PERSON]["parameterized"] is True
+    assert classes[PERSON]["parameterized_labels"] == ["Person"]
+    assert classes[COMPANY]["parameterized"] is False
+    assert classes[COMPANY]["parameterized_labels"] == []
+    # A class term of the parameterized table's label says so too.
+    assert classes[EMPLOYEE]["parameterized"] is True
+
+
+def test_a_class_term_of_tables_some_parameterized_is_not_parameterized_itself():
+    lm = _model()
+    person = lm.nodes["Person"]
+    lm.nodes["Person"] = dataclasses.replace(person, native_filter_columns={"_nf_age": "integer"})
+    grounding = Grounding(class_terms={"Person": "Staff", "Company": "Staff"})
+    vocab = build_vocabulary(lm, BASE, _TYPES, grounding)
+    doc = vocabulary_document(vocab, [], {}, {})
+    staff = next(c for c in doc["classes"] if c["iri"] == term_iri(BASE, "Staff"))
+    assert staff["parameterized"] is False
+    assert staff["parameterized_labels"] == ["Person"]
+
+
+def test_an_edge_says_what_it_joins():
+    edges = {e["type"]: e for e in _doc()["edges"]}
+    assert edges["KNOWS"]["join"] == _model().relationships["KNOWS"].join
+    assert edges["KNOWS"]["join"] != edges["WORKS_AT"]["join"]

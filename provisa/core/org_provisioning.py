@@ -26,6 +26,18 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+async def schema_exists(control_plane: "Database", schema: str) -> bool:
+    from sqlalchemy import text
+
+    async with control_plane.acquire() as conn:
+        found = await conn.execute_core(
+            text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s").bindparams(
+                s=schema
+            )
+        )
+        return found.fetchone() is not None
+
+
 async def provision_redis_acl(redis_url: str, org_id: str, password: str) -> None:  # REQ-700
     """Create or replace a Redis ACL user scoped to this org's key prefixes."""
     import redis.asyncio as aioredis
@@ -75,6 +87,36 @@ async def deprovision_redis_acl(redis_url: str, org_id: str) -> None:  # REQ-701
         await r.aclose()
 
 
+async def lay_out_schema(
+    pool: "Database", schema_sql: str, org_id: str, env: str | None = None
+) -> bool:
+    """Lay the org environment's schema out -- ``schema_sql`` (init_schema), then its audit schema
+    -- unless it is stamped as laid out to this release's layout already (db.layout_digest).
+    Returns whether it ran.
+
+    The stamp is read first, in plain reads: a schema already current takes no lock beside a live
+    runtime's readers, where schema.sql's ALTER TABLEs take AccessExclusive ones and deadlock them
+    (J710). It is written only once both have succeeded, so a layout that failed part way runs
+    again. Two callers that both find it stale serialize on the schema's advisory lock, as before."""
+    from provisa.audit.query_log import AUDIT_SCHEMA_SQL, init_audit_schema
+    from provisa.core.db import (
+        init_schema,
+        layout_digest,
+        read_layout_digest,
+        write_layout_digest,
+    )
+    from provisa.core.environments import org_schema
+
+    schema_name = org_schema(org_id, env)
+    digest = layout_digest(schema_sql, AUDIT_SCHEMA_SQL)
+    if await read_layout_digest(pool, schema_name) == digest:
+        return False
+    await init_schema(pool, schema_sql, org_id=org_id, env=env)
+    await init_audit_schema(pool, org_id=org_id, env=env)
+    await write_layout_digest(pool, schema_name, digest)
+    return True
+
+
 async def provision_org(  # REQ-701
     pool: "Database",
     schema_sql: str,
@@ -97,8 +139,7 @@ async def provision_org(  # REQ-701
 
     Idempotent — safe to call on an existing org.
     """
-    from provisa.audit.query_log import init_audit_schema
-    from provisa.core.db import _validate_org_id, create_org_role, init_schema
+    from provisa.core.db import _validate_org_id, create_org_role
     from provisa.core.environments import (
         PROD,
         EnvironmentPlaneError,
@@ -126,8 +167,7 @@ async def provision_org(  # REQ-701
     provisioned_redis = False
 
     try:
-        await init_schema(pool, schema_sql, org_id=org_id, env=env)
-        await init_audit_schema(pool, org_id=org_id, env=env)
+        await lay_out_schema(pool, schema_sql, org_id, env)
         provisioned_pg = True
 
         async with pool.acquire() as conn:
@@ -191,6 +231,7 @@ async def deprovision_org(  # REQ-701
     """
     from provisa.core.db import _validate_org_id
     from provisa.core.environments import PROD, EnvironmentNameError
+    from provisa.core.org_registry_view import ORG_SCHEMAS_LOCK_KEY
 
     _validate_org_id(org_id)
     if env == PROD:
@@ -208,8 +249,10 @@ async def deprovision_org(  # REQ-701
         ):  # REQ-889: PG-only role hardening
             # Schemas exist only on PostgreSQL. On a portable backend the org's tables are the
             # backend's own namespace, which this call does not own and must not drop.
-            for schema in env_schemas(org_id, env):
-                await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+            # Not while the root org's registry view is rebuilt over every org's schema (REQ-1301).
+            async with conn.advisory_lock(ORG_SCHEMAS_LOCK_KEY):
+                for schema in env_schemas(org_id, env):
+                    await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
             # The role last: it holds privileges on those schemas, and PostgreSQL refuses to drop
             # a role that something still depends on.
             if org_itself:

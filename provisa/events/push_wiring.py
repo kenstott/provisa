@@ -185,6 +185,27 @@ def cdc_capture(src: Any, tbl: Any) -> tuple[str, str] | None:
     return cdc.bootstrap_servers, topic
 
 
+def kafka_bootstrap(src: Any) -> str:
+    """The bootstrap address of Kafka source ``src``, its host resolved as a source pool's is
+    (it may name an environment variable or a secret, ${env:...})."""
+    from provisa.core.secrets import resolve_secrets
+
+    host = resolve_secrets(src.host) if src.host else src.host
+    # REQ-1766: was `src.host` alone — the Sources form (now HOST_PORT_ONLY, see
+    # provisa-ui/src/pages/sources/constants.ts) captures host and port as SEPARATE fields,
+    # the same shape websocket's own ws://host:port derivation uses. Passing bare host as
+    # bootstrap_servers silently used aiokafka's default port (9092) regardless of what the user
+    # actually registered, rather than failing loudly or connecting correctly.
+    return f"{host}:{src.port}" if src.port else host
+
+
+def listener_group(org: str, env: str | None, source_id: str) -> str:
+    """The consumer group an org's (and environment's) listener on ``source_id``'s topics reads
+    under. Each org lands the topic into its own table, so each reads every message: its own
+    group. One shared by every org would split the topic's messages among them."""
+    return f"provisa-{org}-{source_id}" if env is None else f"provisa-{org}-{env}-{source_id}"
+
+
 def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None:
     """A (NotificationProvider, watch_target) pair for *src*, or None (logged) when its config is
     incomplete. ``watch_target`` is what gets passed to ``provider.watch()`` — the Kafka topic for
@@ -192,6 +213,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
     from provisa.core.secrets import resolve_secrets
     from provisa.kafka.avro_registry import RegistrySettings
     from provisa.kafka.landed_offsets import landed_group
+    from provisa.kafka.security import KafkaSecurity
     from provisa.subscriptions.registry import get_provider
 
     source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
@@ -218,17 +240,9 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 src.id,
             )
             return None
-        # REQ-1766: was `src.host` alone — the Sources form (now HOST_PORT_ONLY, see
-        # provisa-ui/src/pages/sources/constants.ts) captures host and port as SEPARATE fields,
-        # the same shape websocket's own ws://host:port derivation uses just below. Passing bare
-        # host as bootstrap_servers silently used aiokafka's default port (9092) regardless of
-        # what the user actually registered, rather than failing loudly or connecting correctly.
-        bootstrap_servers = f"{host}:{src.port}" if src.port else host
-        # Each org (and each of its environments) lands the topic into its own table, so each
-        # reads every message: its own consumer group. One shared by every org would split the
-        # topic's messages among them.
+        bootstrap_servers = kafka_bootstrap(src)
         org, env, _ = _listener_key(node)
-        group = f"provisa-{org}-{src.id}" if env is None else f"provisa-{org}-{env}-{src.id}"
+        group = listener_group(org, env, src.id)
         provider = get_provider(
             "kafka",
             {
@@ -240,6 +254,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 "field_mapping": kafka_cfg.get("field_mapping") or {},
                 # REQ-1733: its first start reads from where the table's landing stopped.
                 "landed": landed_group(src.id),
+                "security": KafkaSecurity.of_source(src),  # REQ-147
             },
         )
         return provider, topic
@@ -687,6 +702,7 @@ async def _wire_pipeline(
     import asyncio
 
     from provisa.federation import singlestore_kafka, singlestore_pipeline as sp
+    from provisa.kafka.security import KafkaSecurity
 
     kafka = (
         ((tbl.get("live") or {}).get("kafka") or {}) if isinstance(tbl.get("live"), dict) else {}
@@ -696,12 +712,15 @@ async def _wire_pipeline(
         source_id=src.id, schema_name=tbl["schema_name"], table_name=tbl["table_name"]
     )
     bootstrap = f"{src.host}:{src.port}" if src.port else src.host
+    security = KafkaSecurity.of_source(src)  # REQ-147
     registry = src.cdc.schema_registry_url if getattr(src, "cdc", None) else None
     field_mapping = kafka.get("field_mapping") or None
     expected = sp.kafka_pipeline_name(
         address.schema,
         address.table,
-        sp.kafka_definition(origin, columns, pk_columns, field_mapping, registry, bootstrap),
+        sp.kafka_definition(
+            origin, columns, pk_columns, field_mapping, registry, bootstrap, security
+        ),
     )
     if not hasattr(state, "kafka_pipelines"):
         state.kafka_pipelines = {}
@@ -718,7 +737,7 @@ async def _wire_pipeline(
 
     try:
         # REQ-1733: a new pipeline starts where the table's landing stopped on the topic.
-        landed = await recorded(bootstrap, landed_group(src.id), origin.location)
+        landed = await recorded(bootstrap, landed_group(src.id), origin.location, security=security)
         name = await asyncio.to_thread(
             singlestore_kafka.ensure,
             _pipeline_store(state, engine),
@@ -731,6 +750,7 @@ async def _wire_pipeline(
             field_mapping=field_mapping,
             schema_registry=registry,
             landed=landed,
+            security=security,
         )
     except Exception:
         log.exception(
@@ -1050,6 +1070,15 @@ async def _run_change_stream(
             deadline -= 0.2
 
 
+#: How long a listener that crashed waits before it starts again, doubling each time to the limit.
+_RESTART_AFTER_S = 5.0
+_RESTART_AT_MOST_S = 60.0
+
+
+def _restart_delay(crashes: int) -> float:
+    return min(_RESTART_AFTER_S * 2 ** min(crashes, 16), _RESTART_AT_MOST_S)
+
+
 async def _run_listener(
     *,
     state: Any,
@@ -1075,6 +1104,9 @@ async def _run_listener(
     ``store_connection()`` held here, which would open a SECOND connection onto an embedded
     single-writer DuckDB store the engine already has ATTACHed and deadlock/error against it).
     Never let an unhandled exception escape (this runs detached — nothing awaits its result).
+    A crash is logged with its cause and the listener starts again, from what it last committed:
+    nothing else would, since its key says it is running, and every subscription on its table
+    would wait on a landing that never comes.
 
     ``row_materialize`` (REQ-1865) routes the batch through the row-materialize CDC branch
     (design doc section 5) instead of the ordinary upsert-every-event land."""
@@ -1158,25 +1190,32 @@ async def _run_listener(
             )
         return counts
 
-    try:
-        await consume_cdc_into_store(
-            provider,
-            _land,
-            schema=land_schema,
-            table=land_table,
-            disconnect=disconnect,
-            watch_target=watch_target,
-            debounce_quiet=debounce_quiet,
-            debounce_max_delay=debounce_max_delay,
-        )
-    except asyncio.CancelledError:
-        raise
-    except RuntimeNotBuilt as gone:
-        # Its runtime was retired between two batches: the batch was not landed and not
-        # acknowledged, so the next build's listener reads it again.
-        left_to_the_next_runtime(gone, f"push listener {node}")
-    except Exception:
-        log.exception("push listener %s crashed", node)
+    crashes = 0
+    while not disconnect.is_set():
+        try:
+            await consume_cdc_into_store(
+                provider,
+                _land,
+                schema=land_schema,
+                table=land_table,
+                disconnect=disconnect,
+                watch_target=watch_target,
+                debounce_quiet=debounce_quiet,
+                debounce_max_delay=debounce_max_delay,
+            )
+            return
+        except asyncio.CancelledError:
+            raise
+        except RuntimeNotBuilt as gone:
+            # Its runtime was retired between two batches: the batch was not landed and not
+            # acknowledged, so the next build's listener reads it again.
+            left_to_the_next_runtime(gone, f"push listener {node}")
+            return
+        except Exception:
+            delay = _restart_delay(crashes)
+            crashes += 1
+            log.exception("push listener %s crashed; starting again in %.0fs", node, delay)
+            await asyncio.sleep(delay)
 
 
 def stop_runtime_listeners(state: Any, org_id: str, env: str) -> None:

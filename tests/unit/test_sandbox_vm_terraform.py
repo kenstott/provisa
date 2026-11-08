@@ -41,6 +41,21 @@ def test_the_sandbox_vm_runs_the_tier_alone_against_the_coordinator():
     assert "desired_status = null" in startup
 
 
+def test_the_sandbox_disk_grows_without_replacing_the_vm():
+    """google 5.45.2 forces a replacement on initialize_params.size (terraform plan, 2026-10-31:
+    50 -> 100 # forces replacement): the size is left out of terraform's changes, and an existing
+    VM's disk is grown with gcloud."""
+    sandbox = (_TF / "sandbox.tf").read_text()
+    variables = (_TF / "variables.tf").read_text()
+    instance = sandbox[sandbox.index('resource "google_compute_instance" "sandbox"') :]
+    instance = instance[: instance.index('resource "google_project_iam_custom_role"')]
+    assert "ignore_changes = [boot_disk[0].initialize_params[0].size]" in instance
+    declared = variables[variables.index('variable "sandbox_disk_gb"') :]
+    declared = declared[: declared.index("\n}\n")]
+    assert "default     = 100" in declared
+    assert "gcloud compute disks resize" in declared
+
+
 def test_the_coordinator_hands_the_tier_over_only_when_asked():
     sandbox = (_TF / "sandbox.tf").read_text()
     main = (_TF / "main.tf").read_text()
@@ -53,7 +68,8 @@ def test_the_coordinator_hands_the_tier_over_only_when_asked():
         "export COMPOSE_PROFILES=control",
         'export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"',
         # REQ-2068: the regions sandbox tier's nodes, on the same VM.
-        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100"',
+        'export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,'
+        'warehouse=https://${var.sandbox_internal_ip}:8101"',
     ):
         assert line in sandbox, line
     variables = (_TF / "variables.tf").read_text()
@@ -171,7 +187,7 @@ def test_a_patch_rewrites_the_vm_sync_settings_when_they_differ_and_runs_the_syn
     deploy = _DEPLOY.read_text()
     body = deploy[deploy.index("deploy_sandbox_vm() {") :]
     body = body[: body.index("\n}\n")]
-    assert "push_demo_stores; push_demo_stores_env; push_overlay" in body
+    assert "push_demo_stores; push_demo_stores_env; push_compose; push_overlay" in body
     push = _function("push_demo_stores_env")
     assert 'demo_stores_env > "$STAGE/demo-stores.env"' in push
     assert '[ "$want" = "$have" ]' in push  # rewritten only when it differs

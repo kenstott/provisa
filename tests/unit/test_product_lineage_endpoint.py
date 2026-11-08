@@ -177,6 +177,7 @@ CHECKERS = [
         "checked_table_id": 3,
         "checked_table": {"id": 3, "domain_id": "sales", "table_name": "mart", "alias": None},
         "rule_columns": ["amount"],
+        "rules": [{"check_type": "missing", "column_name": "amount", "args": {}}],
         "latest_outcome": "pass",
         "latest_run_at": None,
     },
@@ -190,6 +191,7 @@ CHECKERS = [
         "checked_table_id": 1,
         "checked_table": {"id": 1, "domain_id": "sales", "table_name": "orders", "alias": None},
         "rule_columns": ["cost"],
+        "rules": [{"check_type": "missing", "column_name": "cost", "args": {}}],
         "latest_outcome": "fail",
         "latest_run_at": None,
     },
@@ -363,5 +365,7 @@ def test_a_consumer_one_hop_downstream_is_listed_cut_to_the_reader(wired, monkey
         8,
         "p2",
     )
+    # REQ-2158: the members it reads, so each contract counts its own port's consumers.
+    assert only["reads"] == ["sales.mart"]
     # The analyst reads no column of report: no consumer.
     assert _lineage("analyst")["consumers"] == []

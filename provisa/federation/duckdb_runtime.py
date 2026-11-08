@@ -40,10 +40,11 @@ import duckdb
 
 from provisa.federation.duckdb_extensions import install_and_load
 from provisa.federation.file_locks import ReadersWriterGate
-from provisa.executor.drivers.duckdb_driver import READ_THROUGH_ARROW, fetch_rows
-from provisa.executor.result import QueryResult, ResultStream
+from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batches, arrow_rows
+from provisa.executor.result import ArrowResult, ArrowStreamResult, QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
+from provisa.core import engine_memory
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
 from provisa.federation.land_guard import LandGuard
@@ -52,8 +53,6 @@ from provisa.federation.runtime_support import (
     close_cursor,
     columns_from_describe,
     open_cursor,
-    stream_from_dbapi,
-    stream_rows_from_arrow,
 )
 from provisa.transpiler.transpile import transpile
 
@@ -182,6 +181,34 @@ def named_write_conflict() -> Iterator[None]:
         raise WriteConflict(first) from exc
 
 
+def _typed_back(schema: Any) -> str:
+    """The select list copying a store table from its Arrow: ``*``, each column the broker sent
+    as its text for want of an Arrow type (materialize_broker.zoned_times_as_text) cast back to
+    its own type."""
+    from provisa.federation.materialize_broker import ZONED_TIME_TYPE
+
+    back = [
+        (f.name, f.metadata[ZONED_TIME_TYPE].decode())
+        for f in schema
+        if f.metadata and ZONED_TIME_TYPE in f.metadata
+    ]
+    if not back:
+        return "*"
+
+    def quoted(name: str) -> str:
+        return '"' + name.replace('"', '""') + '"'
+
+    return (
+        "* REPLACE (" + ", ".join(f"CAST({quoted(n)} AS {k}) AS {quoted(n)}" for n, k in back) + ")"
+    )
+
+
+#: The target of a cast naming a schema and no catalog.
+_CAST_TO_A_SCHEMAS_TYPE = re.compile(
+    r"""\bAS\s+(?P<schema>"[^"]+"|\w+)\.(?P<name>"[^"]+"|\w+)(?=\))"""
+)
+
+
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(
         self, *, materialize_dsn: str | None = None, store_engine: Any | None = None
@@ -218,6 +245,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         from provisa.fakes.duckdb_functions import register as register_fake_functions
 
         register_fake_functions(self._con)  # REQ-1494: provisa_digest, provisa_fake_method
+        from provisa.federation.duckdb_pg_functions import register as register_pg_functions
+
+        register_pg_functions(self._con)  # REQ-2167: what DuckDB has no equivalent of
         self._engine = build_duckdb_engine()
         # REQ-1922: the FederationEngine whose store this runtime lands in — the backend's own, so
         # the store an org lane pins on it (``pin_materialize_store``) is the one attached. A
@@ -385,11 +415,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if parts[0] not in self._phys_catalogs:
             return  # nothing of this source was ever exposed on this connection
         is_view = self._listing(
-            lambda: self._con.execute(
-                "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
-                "AND view_name = ?",
-                parts,
-            ).fetchone()
+            lambda: engine_memory.first_row(
+                self._con.execute(
+                    "SELECT 1 FROM duckdb_views() WHERE database_name = ? AND schema_name = ? "
+                    "AND view_name = ?",
+                    parts,
+                )
+            )
         )
         if is_view is not None:
             self._con.execute(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
@@ -526,7 +558,29 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         (REQ-1901). A source set aside as unreachable is attached again first."""
         self._bring_back(duck_sql)
         self._refresh_databricks_relations(duck_sql)
-        return self._refresh_store_relations(duck_sql)
+        return self._refresh_store_relations(self._source_types_qualified(duck_sql))
+
+    def _source_types_qualified(self, duck_sql: str) -> str:
+        """A cast to ``schema.type``, a type of an attached source's (an enum, REQ-2171), with the
+        catalog DuckDB holds it in: a statement names the source's schema, and DuckDB resolves a
+        type only in the default catalog. A name two sources hold is left, for DuckDB to refuse."""
+
+        def qualified(match: re.Match[str]) -> str:
+            schema, name = match["schema"].strip('"'), match["name"].strip('"')
+            cur = self._con.cursor()
+            try:
+                catalogs = cur.execute(
+                    "SELECT DISTINCT database_name FROM duckdb_types() "
+                    "WHERE schema_name = ? AND type_name = ?",
+                    [schema, name],
+                ).fetchall()
+            finally:
+                close_cursor(cur)
+            if len(catalogs) != 1:
+                return match[0]
+            return f'AS "{catalogs[0][0]}"."{schema}"."{name}"'
+
+        return _CAST_TO_A_SCHEMAS_TYPE.sub(qualified, duck_sql)
 
     def _attach_clickhouse(self, source: Any, details: dict) -> None:
         """REQ-899: register a ClickHouse table for the query-time HTTP read. Loads httpfs, creates
@@ -1332,7 +1386,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         try:
             cur.register(reg_name, arrow_tbl)
             try:
-                cur.execute(f'CREATE OR REPLACE TABLE {target} AS SELECT * FROM "{reg_name}"')
+                cur.execute(
+                    f"CREATE OR REPLACE TABLE {target} AS SELECT {_typed_back(arrow_tbl.schema)} "
+                    f'FROM "{reg_name}"'
+                )
             finally:
                 cur.unregister(reg_name)
             if is_replicas_schema(schema):
@@ -1359,9 +1416,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._ext_loaded.add("vss")
         for column in columns:
             quoted = '"' + column.replace('"', '""') + '"'
-            found = cur.execute(
-                f"SELECT len({quoted}) FROM {target} WHERE {quoted} IS NOT NULL LIMIT 1"
-            ).fetchone()
+            found = engine_memory.first_row(
+                cur.execute(
+                    f"SELECT len({quoted}) FROM {target} WHERE {quoted} IS NOT NULL LIMIT 1"
+                )
+            )
             if found is None:
                 continue
             cur.execute(f"ALTER TABLE {target} ALTER {quoted} TYPE FLOAT[{int(found[0])}]")
@@ -1426,13 +1485,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # took a cursor for this reason).
                 cur = self._open_cursor(live_http=live_http)
                 try:
+                    cur.execute(LOSSLESS_ARROW)
                     with request_deadline.cancel_on_deadline(cur.interrupt):
                         with named_write_conflict():
                             res = cur.execute(sql, params) if params else cur.execute(sql)
-                        cols = [d[0] for d in res.description] if res.description else []
-                        types = [str(d[1]) for d in res.description] if res.description else []
-                        rows = fetch_rows(res)
-                    return QueryResult(rows=rows, column_names=cols, column_types=types)
+                        if not res.description:
+                            return QueryResult(rows=[], column_names=[], column_types=[])
+                        types = [str(d[1]) for d in res.description]
+                        # REQ-2194: the engine's Arrow, never its DB-API rows
+                        # (duckdb_arrow.arrow_rows builds the rows from it).
+                        table = res.to_arrow_table()
+                    # Rows are built here, on the executor thread: the awaiting consumer must do
+                    # no per-row work on the event loop.
+                    return ArrowResult(table, types, to_rows=arrow_rows).with_rows()
                 finally:
                     close_cursor(cur)
 
@@ -1488,9 +1553,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
             cur = self._open_cursor(live_http=live_http)
             try:
+                cur.execute(LOSSLESS_ARROW)
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
                         cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                    reader = (
+                        cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS) if cur.description else None
+                    )
             except BaseException:
                 # No stream will own the cursor: it is closed here (REQ-1905).
                 close_cursor(cur)
@@ -1503,18 +1572,17 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             close_cursor(cur)
             self._catalog_gate.release_read()
 
+        if reader is None:
+            _close()
+            return QueryResult(rows=[], column_names=[])
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
-        types = [str(d[1]) for d in cur.description] if cur.description else []
-        if READ_THROUGH_ARROW.intersection(types):
-            # DuckDB's own Python rows fold an interval's months into days and read infinity as
-            # the last date Python holds; its Arrow batches keep both (duckdb_driver.fetch_rows).
-            reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
-            return stream_rows_from_arrow(
-                reader.schema, iter(reader), on_close=_close, column_types=types
-            )
-        return stream_from_dbapi(
-            cur, on_close=_close, type_names=lambda codes: [str(c) for c in codes]
+        types = [str(d[1]) for d in cur.description]
+        # REQ-2194: the engine's Arrow batches, never its DB-API rows. A consumer that reads rows
+        # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows); an engine error
+        # met in a later batch is PostgreSQL's own (duckdb_arrow.answered_batches).
+        return ArrowStreamResult(
+            reader.schema, answered_batches(reader), types, to_rows=arrow_rows, on_close=_close
         )
 
     def describe_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:

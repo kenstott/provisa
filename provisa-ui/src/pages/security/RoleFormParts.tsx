@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 5397601b-c80d-4309-8a4b-c3a8c683e829
+// Canary: 6fef819e-cf0f-494c-90ae-29ac9f776637
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -9,34 +9,50 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Checkbox, Group, Text } from "@mantine/core";
+import { MultiSelect, Text } from "@mantine/core";
 import { alsoReached } from "../../lib/domainTree";
 import type { TreeDomain } from "../../lib/domainTree";
 import { FormField } from "../../components/form/FormLayout";
+import { CapabilityOption } from "./CapabilityOption";
 import type { Capability } from "../../types/auth";
 
+// Every right a role may be given but data_residency, which its own control carries, with what it
+// covers (components/admin/ResidencyGrant). A platform right is defined by a platform administrator.
 const ALL_CAPABILITIES: Capability[] = [
+  "catalog_read",
+  "glossary_read",
+  "data_product_read",
+  "usage",
+  "query_development",
+  "full_results",
+  "write",
+  "no_aggregations",
+  "create_view",
+  "approve_view",
+  "create_relationship",
+  "approve_relationship",
+  "ignore_relationships",
   "source_registration",
   "table_registration",
-  "create_relationship",
   "access_config",
-  "query_development",
-  "approve_view",
-  "full_results",
-  "usage",
-  "approve_relationship",
-  "create_view",
   "column_grant",
-  "user_management",
   "masking_config",
-  // REQ-1590: granted and revoked here like any other right — read opens the glossary, rw curates it.
-  "glossary_read",
+  "sensitive_data",
+  "view_governance",
+  "user_management",
   "glossary_rw",
-  // REQ-2155: data quality's own rights, and editing the data products the role owns.
+  "org_glossary_rw",
+  "data_product_rw",
   "dq_read",
   "dq_rw",
-  "data_product_owned_rw",
+  "org_settings",
+  "observability",
+  "environment_switch",
   "environment_owned_management",
+  "environment_management",
+  "environment_data",
+  "platform_settings",
+  "cross_org",
 ];
 
 /**
@@ -77,29 +93,47 @@ export function SubtreeNote({ listed, domains }: { listed: string[]; domains: Tr
 
 export function CapabilityGrid({
   value,
+  held,
   onToggle,
   label,
 }: {
   value: Capability[];
+  /** What the role's parents hold; null for a role with none. Anything else is shown disabled. */
+  held: ReadonlySet<string> | null;
   onToggle: (cap: Capability) => void;
   label: string;
 }) {
+  const offered = (cap: Capability) => held === null || held.has(cap);
   return (
-    // One labelled set of ticks, a line of the role form to itself.
-    <FormField size="full">
-      <Checkbox.Group label={label} value={value} data-testid="capability-grid">
-        <Group gap="sm" mt="xs" style={{ rowGap: "0.35rem" }}>
-          {ALL_CAPABILITIES.map((cap) => (
-            <Checkbox
-              key={cap}
-              label={cap}
-              checked={value.includes(cap)}
-              onChange={() => onToggle(cap)}
-              size="sm"
-            />
-          ))}
-        </Group>
-      </Checkbox.Group>
+    // One dropdown, a line of the role form to itself, shaped as Domain Access is.
+    <FormField size="long">
+      <MultiSelect
+        label={label}
+        aria-label={label}
+        data={ALL_CAPABILITIES.map((cap) => ({ value: cap, label: cap, disabled: !offered(cap) }))}
+        value={value}
+        // The picker reports the whole selection; the form's contract is one toggle at a time.
+        onChange={(next) => {
+          const changed = [
+            ...next.filter((c) => !value.includes(c as Capability)),
+            ...value.filter((c) => !next.includes(c)),
+          ];
+          for (const cap of changed) onToggle(cap as Capability);
+        }}
+        renderOption={({ option, checked }) => (
+          <CapabilityOption
+            cap={option.value as Capability}
+            checked={!!checked}
+            offered={offered(option.value as Capability)}
+          />
+        )}
+        searchable
+        clearable={false}
+        comboboxProps={{ withinPortal: true }}
+        placeholder={label}
+        size="sm"
+        data-testid="capability-grid"
+      />
     </FormField>
   );
 }

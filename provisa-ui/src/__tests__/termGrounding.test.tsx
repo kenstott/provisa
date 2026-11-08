@@ -35,8 +35,11 @@ const TABLES = [
     domain_id: "sales",
   },
 ];
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listTermTables: async (termId: number) =>
@@ -75,11 +78,9 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({ ...auth, actingRoles: "analyst" }),
 }));
 // The table's class term as the meta domain answers it: from the grounding above.
-vi.mock("../components/graph3d/useProductGraph", () => ({
-  metaReader: async () => ({ schema: null, roots: new Map() }),
-}));
 vi.mock("../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/metaGraph")>()),
+  metaReader: async () => ({ schema: null, roots: new Map() }),
   rootQuery: (_m: unknown, _n: string, _v: string, _s: unknown, where: { id: { eq: number } }) =>
     JSON.stringify(where.id.eq),
   dataGraphql: async (query: string) => {
@@ -88,7 +89,7 @@ vi.mock("../api/metaGraph", async (importOriginal) => ({
     const names: Record<number, string> = { 1: "Customer", 2: "Order" };
     return {
       registered_tables: [
-        { id: tableId, class_term: term === undefined ? null : { id: term, name: names[term] } },
+        { id: tableId, classTerm: term === undefined ? null : { id: term, name: names[term] } },
       ],
     };
   },
@@ -115,6 +116,7 @@ const SUMMARY: GlossaryTermSummary = {
   ref_count: 0,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,
@@ -136,18 +138,39 @@ describe("a term's role", () => {
 
   it("is badged on each term in the list", () => {
     render(<TermListBadges term={{ ...SUMMARY, table_count: 1 }} />);
-    expect(screen.getByTestId("glossary-role-1")).toHaveTextContent("Class");
+    expect(screen.getByTestId("glossary-role-1")).toHaveAccessibleName("Class");
     render(<TermListBadges term={{ ...SUMMARY, id: 2, ref_count: 1 }} />);
-    expect(screen.getByTestId("glossary-role-2")).toHaveTextContent("Property");
+    expect(screen.getByTestId("glossary-role-2")).toHaveAccessibleName("Property");
     render(<TermListBadges term={{ ...SUMMARY, id: 3 }} />);
-    expect(screen.getByTestId("glossary-role-3")).toHaveTextContent("Concept");
+    expect(screen.getByTestId("glossary-role-3")).toHaveAccessibleName("Concept");
+  });
+});
+
+describe("the term list's chips", () => {
+  const cases: [string, string, string, Record<string, unknown>, string][] = [
+    ["glossary-role-1", "Class", "Box", { table_count: 1 }, "grape"],
+    ["glossary-role-1", "Property", "Tag", { ref_count: 1 }, "blue"],
+    ["glossary-role-1", "Concept", "Lightbulb", {}, "gray"],
+    ["glossary-review-1", "To review", "Eye", { table_count: 2, findings: 1 }, "orange"],
+    ["glossary-status-1", "Draft", "PencilLine", { status: "draft" }, "gray"],
+  ];
+  it.each(cases)("%s %s renders the %s icon with its name and tip", async (id, word, icon, over, colour) => {
+    render(<TermListBadges term={{ ...SUMMARY, ...over } as typeof SUMMARY} />);
+    const chip = screen.getByTestId(id);
+    expect(chip).toHaveAttribute("aria-label", word);
+    expect(chip).toHaveTextContent("");
+    expect(chip.querySelector("svg")).toHaveClass(`lucide-${icon.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase()}`);
+    // A concept with no grounding is drawn red: it names no data.
+    if (!(word === "Concept")) expect(chip.style.color).toContain(`-${colour}-6`);
+    fireEvent.mouseEnter(chip);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(new RegExp(`^${word}`));
   });
 });
 
 describe("a class whose tables are not all declared one entity", () => {
   it("is marked To review in the list when it has a finding", () => {
     render(<TermListBadges term={{ ...SUMMARY, table_count: 2, findings: 1 }} />);
-    expect(screen.getByTestId("glossary-review-1")).toHaveTextContent("To review");
+    expect(screen.getByTestId("glossary-review-1")).toHaveAccessibleName("To review");
     render(<TermListBadges term={{ ...SUMMARY, id: 2, table_count: 2 }} />);
     expect(screen.queryByTestId("glossary-review-2")).toBeNull();
   });
@@ -190,32 +213,21 @@ describe("a term's Grounded in tables", () => {
 });
 
 describe("a table's Rows are instances of", () => {
-  it("names the table's class term, and sets another in its place", async () => {
+  it("is read-only and linked to its term, even to one who may curate; none says so", async () => {
     api.grounded.set(1, [10]);
     render(<TableClassTerm tableId={10} />);
-    const select = await screen.findByTestId("table-class-term-select");
-    await waitFor(() => expect(select).toHaveValue("Customer"));
-    fireEvent.click(select);
-    fireEvent.click(await screen.findByRole("option", { name: "Order", hidden: true }));
-    // One class term a table: the old one lets go first.
-    await waitFor(() => expect(api.calls).toEqual(["unground 1 10", "ground 2 10"]));
-    await waitFor(() => expect(screen.getByTestId("table-class-term-select")).toHaveValue("Order"));
-  });
-
-  it("clears it", async () => {
-    api.grounded.set(1, [10]);
-    render(<TableClassTerm tableId={10} />);
-    const box = await screen.findByTestId("table-class-term");
-    await waitFor(() =>
-      expect(screen.getByTestId("table-class-term-select")).toHaveValue("Customer"),
+    expect(await screen.findByTestId("table-class-term-link")).toHaveAttribute(
+      "href",
+      "/admin/ontology?term=1",
     );
-    const clear = box.querySelector("button");
-    if (!clear) throw new Error("no clear button");
-    fireEvent.click(clear);
-    await waitFor(() => expect(api.calls).toEqual(["unground 1 10"]));
+    expect(screen.getByTestId("table-class-term-link")).toHaveTextContent("Customer");
+    render(<TableClassTerm tableId={11} />);
+    expect(await screen.findByTestId("table-class-term-none")).toHaveTextContent("No term");
+    expect(within(document.body).queryByTestId("table-class-term-select")).toBeNull();
+    expect(api.calls).toEqual([]);
   });
 
-  it("is read, linked to its term, by one who may not curate; none says so", async () => {
+  it("is read the same by one who may not curate", async () => {
     auth.capabilities = ["glossary_read"];
     api.grounded.set(1, [10]);
     render(<TableClassTerm tableId={10} />);
@@ -223,8 +235,5 @@ describe("a table's Rows are instances of", () => {
       "href",
       "/admin/ontology?term=1",
     );
-    render(<TableClassTerm tableId={11} />);
-    expect(await screen.findByTestId("table-class-term-none")).toHaveTextContent("No term");
-    expect(within(document.body).queryByTestId("table-class-term-select")).toBeNull();
   });
 });

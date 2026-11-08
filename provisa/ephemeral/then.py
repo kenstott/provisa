@@ -41,6 +41,7 @@ from typing import Any
 
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import store
+from provisa.gql.label_map import SESSION_REL_ID
 
 #: A variable's binding after a write: ("n", graph identity, labels) for a node, ("r", rel id,
 #: type) for a session relationship, ("m", None, what) for a model relationship (which the rest
@@ -54,8 +55,12 @@ PARAM = "__bound"
 ROW = "__b"
 #: While the rest runs, a session relationship's id reads as this property (read.overlay), which
 #: the rest finds it again by; it is taken out of the answer's values.
-REL_ID = "__rel_id"
+REL_ID = SESSION_REL_ID
 _FLAG = "cypher.bound"
+#: While the rest runs, the label the session's nodes with no label are read by (read.overlay):
+#: a node the write gave no label is found again among them alone, never in a union of every
+#: label the role reads.
+UNLABELED = "__session_unlabeled"
 
 _CLAUSES = frozenset(
     {
@@ -108,7 +113,7 @@ class Split:
 
     head: str
     rest: str
-    #: The head's write: "create", "merge", "labels" or "props".
+    #: The head's write: "create", "merge", "delete", "labels" or "props".
     kind: str
     #: The variables in scope after the head, in order.
     scope: tuple[str, ...]
@@ -196,10 +201,11 @@ def _paths(steps: list[Any]) -> set[str]:
 
 
 def split_of(statement: str) -> Split | None:
-    """The statement as its first write and the rest after it; None when it writes nothing, its
-    first write ends it, or its first write is a DELETE (delete.py's)."""
+    """The statement as its first write and the rest after it; None when it writes nothing or
+    its first write ends it."""
     from provisa.cypher.parser import parse_cypher_statement, writes_in
-    from provisa.gql.ir import CreateClause, MergeClause, RemoveClause, SetClause
+    from provisa.ephemeral.props import prop_items
+    from provisa.gql.ir import CreateClause, DeleteClause, MergeClause, RemoveClause, SetClause
 
     if not writes_in(statement):
         return None
@@ -217,11 +223,13 @@ def split_of(statement: str) -> Split | None:
         kind = "create"
     elif isinstance(first, MergeClause):
         kind = "merge"
+    elif isinstance(first, DeleteClause):
+        kind = "delete"
     elif isinstance(first, (SetClause, RemoveClause)):
         items = first.items
         if all(i.property is None and not getattr(i, "value", None) for i in items):
             kind = "labels"
-        elif all(i.property is not None for i in items):
+        elif prop_items(items) is not None:
             kind = "props"
         else:
             return None
@@ -254,11 +262,41 @@ def split_of(statement: str) -> Split | None:
             f"A read after a write finds its rows again by their nodes and relationships: the "
             f"path {', '.join(sorted(paths))} is neither; return it before the write"
         )
-    return Split(statement[:rest_at].rstrip(), statement[rest_at:], kind, tuple(scope))
+    rest = statement[rest_at:]
+    if (
+        isinstance(first, MergeClause)
+        and first.path_variable is not None
+        and first.path_variable in names_in(rest)
+    ):
+        # MERGE p = <pattern>: the path is found again by the elements it matched or made.
+        rest = f"MATCH {first.path_variable} = {_path_text(first.pattern)} {rest}"
+    return Split(statement[:rest_at].rstrip(), rest, kind, tuple(scope))
+
+
+def _path_text(path: Any) -> str:
+    """A write pattern every element of which is named, as a pattern of its names alone."""
+    text = f"({_quoted(path.nodes[0].variable)})"
+    for rel, node in zip(path.rels, path.nodes[1:], strict=True):
+        body = f"[{_quoted(rel.variable)}]"
+        arrow = (
+            f"-{body}->"
+            if rel.direction == "right"
+            else f"<-{body}-"
+            if rel.direction == "left"
+            else f"-{body}-"
+        )
+        text += f"{arrow}({_quoted(node.variable)})"
+    return text
 
 
 _CARRY = re.compile(
     r"\s*WITH\s+((?:[A-Za-z_][A-Za-z0-9_]*\s*,\s*)*[A-Za-z_][A-Za-z0-9_]*)\s+"
+    r"(?=(?:MATCH|OPTIONAL|UNWIND|CREATE|MERGE|SET|REMOVE|DELETE|DETACH|RETURN|WITH|CALL)\b)",
+    re.I,
+)
+#: WITH * on its own: every variable in scope carried on, which finding them again already is.
+_CARRY_ALL = re.compile(
+    r"\s*WITH\s+\*\s+"
     r"(?=(?:MATCH|OPTIONAL|UNWIND|CREATE|MERGE|SET|REMOVE|DELETE|DETACH|RETURN|WITH|CALL)\b)",
     re.I,
 )
@@ -319,6 +357,9 @@ def rest_read(
     rest = split.rest
     scope = split.scope
     condition = None
+    every = _CARRY_ALL.match(rest)
+    if every is not None:
+        rest = rest[every.end() :]
     carried_on = _CARRY.match(rest) or _CARRY_WHERE.match(rest)
     if carried_on is not None:
         names = {n.strip().strip("`") for n in carried_on.group(1).split(",")}
@@ -385,9 +426,11 @@ def rest_read(
             ids = [b[1] for b in held if b is not None]
             ephemeral = [i for i in ids if i in graph.node_keys]
             firsts = {graph.node_keys[i][0] for i in ephemeral}
-            if len(ephemeral) == len(ids) and len(firsts) == 1 and "" not in firsts:
+            if len(ephemeral) == len(ids) and len(firsts) == 1:
                 [label] = firsts
-                matches.append(f"MATCH ({name}:{_quoted(label)}) WHERE id({name}) = {field}")
+                matches.append(
+                    f"MATCH ({name}:{_quoted(label or UNLABELED)}) WHERE id({name}) = {field}"
+                )
                 fields_of[var] = [var]
             else:
                 # Read with no label, a node's id is ``Label|key`` -- a session node's label
@@ -406,6 +449,8 @@ def rest_read(
     for row in rows:
         out: dict[str, Any] = {"__live": True}
         for var, names in fields_of.items():
+            if not names:
+                continue  # null in every row: carried as null, never found again
             b = row[var]
             assert b is not None
             if b[0] == "v":

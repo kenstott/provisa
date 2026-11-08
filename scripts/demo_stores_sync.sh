@@ -22,14 +22,14 @@
 #      waiting visitor with (and clears when it asks for the demo again);
 #   4. take down every older version nothing reads (<bundles>/<name>/in-use): its data dropped
 #      from the shared stores, its own services removed with the images no other container uses,
-#      its bundle directory deleted.
+#      its bundle directory deleted. A demo not up has the older versions it never ran deleted.
 # Nothing is started at boot: a demo's stores come up the first time it is asked for, and stay
 # up while it is used. When its last sandbox closes, the tier rewrites <bundles>/<name>/requested
 # as "until <epoch seconds>" (sandbox.demo_stores_linger after the close); an open before then
-# marks it requested again. Once that time has passed, its stores are taken down as an older
-# version's are in step 4 (its data dropped from the shared stores, its own services removed) but
-# with its images and bundle kept, and requested and ready cleared, so its next open asks for it
-# again and it comes back without a pull. Run with
+# marks it requested again. Once that time has passed, only its own services are taken down: its
+# data stays loaded in the shared stores, its images and bundle are kept, and requested and ready
+# are cleared, so its next open asks for it again and it comes back with a container start and a
+# loaded check (REQ-2049, amended 2026-11-02). Run with
 # --boot (its own unit, before docker starts), it clears what the node's last run left: no demo is
 # asked for or ready, since none of its stores is running.
 # Run at boot, on a timer, and whenever the tier touches <bundles>/.wanted (systemd units in
@@ -46,6 +46,9 @@
 #   DEMO_STORES_SHARED     the shared stores' compose file (docker-compose.shared.yml)
 #   DEMO_STORES_PROJECT    the shared stores' compose project
 #   DEMO_STORES_KAFKA_PORT the port the shared Kafka listens, is published and advertised at
+#   DEMO_PRUNE_ENGINES     true: each run deletes the connector engine releases this Provisa does
+#                          not read from the runtime-deps cache, through DEMO_PULL (prune-engines).
+#                          A node's alone: a developer's cache is shared by other worktrees.
 #   DEMO_STORES_NETWORK    the docker network the tier is on: each store joins it and is named by
 #                          its container and container port. Empty: by 127.0.0.1 and its published
 #                          port (a tier on this host, as the test instance runs it).
@@ -71,7 +74,10 @@ write_atomically() { # path text
 }
 
 linger_out() { # name
-  # Its last sandbox closed and none opened since: its stores are taken down, its bundle kept.
+  # Its last sandbox closed and none opened since: its own services are taken down, its data kept
+  # in the shared stores and its bundle and images kept (REQ-2049, amended 2026-11-02), so its next
+  # open is a container start and a loaded check. Its stores.env stays: it says the version has data
+  # in the shared stores, which a newer version's run drops once this one is superseded.
   local name="$1" ready
   ready=""
   if [ -f "$DEMO_BUNDLES_DIR/$name/ready" ]; then
@@ -79,25 +85,27 @@ linger_out() { # name
   fi
   rm -f "$DEMO_BUNDLES_DIR/$name/ready"
   if [ -n "$ready" ] && [ -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env" ]; then
-    # Its images are kept: the demo is brought back at its next open, not superseded.
     python3 "$DEMO_STORES" stop "$name" "$ready"
-    rm -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env"
   fi
   rm -f "$DEMO_BUNDLES_DIR/$name/requested" "$DEMO_BUNDLES_DIR/$name/failed"
-  echo "demo $name: no sandbox open since it lingered; its stores taken down"
+  echo "demo $name: no sandbox open since it lingered; its own services taken down, its data kept"
 }
 
 sync_demo() { # name
-  local name="$1" pulled version dir keep old asked errors
+  local name="$1" pulled version dir asked errors started
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
+  # Each step is timed in the log: an open that waits names the step it waited on.
+  started=$SECONDS
   pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
+  echo "demo $name: pulled in $((SECONDS - started))s"
   dir="$DEMO_BUNDLES_DIR/$name/$version"
   [ -d "$dir" ] || { echo "demo $name: $pulled is not $dir on this host" >&2; return 1; }
   # Offered from here; its stores are started only once it is asked for.
   write_atomically "$DEMO_BUNDLES_DIR/$name/pulled" "$version"
   if [ ! -f "$DEMO_BUNDLES_DIR/$name/requested" ]; then
     echo "demo $name: $version pulled; not asked for since the node started"
+    prune_versions "$name" "$version"
     return 0
   fi
   asked="$(cat "$DEMO_BUNDLES_DIR/$name/requested")"
@@ -105,6 +113,7 @@ sync_demo() { # name
     "until "*)
       if [ "$(date +%s)" -ge "${asked#until }" ]; then
         linger_out "$name"
+        prune_versions "$name" "$version"
         return 0
       fi
       ;;
@@ -113,6 +122,7 @@ sync_demo() { # name
     # Its stores not brought up: why, for the tier to answer the visitor waiting on them with,
     # never a demo left starting with nothing said.
     errors="$DEMO_BUNDLES_DIR/$name/.up-errors"
+    started=$SECONDS
     # Then checked: a version is never marked ready over data its shared stores do not hold.
     if ! python3 "$DEMO_STORES" up "$name" "$version" "$dir" 2>"$errors" \
         || ! python3 "$DEMO_STORES" check "$name" "$version" "$dir" 2>>"$errors"; then
@@ -124,11 +134,23 @@ sync_demo() { # name
     fi
     cat "$errors" >&2
     rm -f "$errors"
+    echo "demo $name: stores up and checked in $((SECONDS - started))s"
   fi
   rm -f "$DEMO_BUNDLES_DIR/$name/failed"
   write_atomically "$DEMO_BUNDLES_DIR/$name/ready" "$version"
   echo "demo $name: $version ready"
+  prune_versions "$name" "$version" drop
+}
+
+prune_versions() { # name version [drop]
+  # A version pulled is never read once a newer one is, whether or not its demo is ever asked for.
+  # Without drop the demo is not up, and its shared stores may not be: a version with data in them
+  # stays until a run that has them up.
+  local name="$1" version="$2" drop="${3:-}" keep old
   keep=" $version "
+  if [ -f "$DEMO_BUNDLES_DIR/$name/ready" ]; then
+    keep="$keep$(cat "$DEMO_BUNDLES_DIR/$name/ready") "
+  fi
   if [ -f "$DEMO_BUNDLES_DIR/$name/in-use" ]; then
     keep="$keep$(tr '\n' ' ' < "$DEMO_BUNDLES_DIR/$name/in-use") "
   fi
@@ -143,6 +165,7 @@ sync_demo() { # name
     esac
     [[ "$old" < "$version" ]] || continue
     if [ -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env" ]; then
+      [ -n "$drop" ] || continue
       python3 "$DEMO_STORES" drop "$name" "$old"
       rm -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env"
       echo "demo $name: $old taken down"
@@ -171,9 +194,29 @@ IFS=',' read -r -a demos <<< "$PROVISA_DEMO_BUNDLES"
 signal="$DEMO_BUNDLES_DIR/.wanted"
 while :; do
   rm -f "$signal"
+  # A demo asked for and not up first: a visitor's open is waiting on it. Then the rest, those up
+  # among them, which are brought up again (a shared store stopped since is started). In the
+  # node's order alone, an open of a demo late in the list waited behind every demo up.
+  waiting=()
+  others=()
   for name in "${demos[@]}"; do
     name="$(echo "$name" | tr -d '[:space:]')"
     [ -n "$name" ] || continue
+    if [ -f "$DEMO_BUNDLES_DIR/$name/requested" ] && [ ! -f "$DEMO_BUNDLES_DIR/$name/ready" ]; then
+      waiting+=("$name")
+    else
+      others+=("$name")
+    fi
+  done
+  first=${#waiting[@]}
+  for name in ${waiting[@]+"${waiting[@]}"} ${others[@]+"${others[@]}"}; do
+    # Asked for again while it goes over the demos already up: the run goes again at once, the
+    # demo now waited on first. Run to its end, an open waited behind every demo up (REQ-2049).
+    if [ "$first" -le 0 ] && [ -e "$signal" ]; then
+      echo "demo stores: asked for during the run; syncing the demos waited on first"
+      break
+    fi
+    first=$((first - 1))
     # One demo that cannot be synced does not keep the others from theirs; the run still fails.
     # Not `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
     set +e
@@ -188,4 +231,7 @@ while :; do
   [ -e "$signal" ] || break
   echo "demo stores: asked for again during the run; syncing again"
 done
+if [ "${DEMO_PRUNE_ENGINES:-}" = "true" ]; then
+  $DEMO_PULL prune-engines || { echo "demo stores: engine releases not pruned" >&2; failed=1; }
+fi
 exit "$failed"

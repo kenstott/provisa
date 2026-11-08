@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Wird beim Erstellen aus einer Faktkennzahl vom Aggregat abgeleitet",
     "fieldDescription": "Beschreibung",
     "fieldAiContext": "KI-Kontext",
+    "fieldTags": "Tags",
     "fieldAiContextPlaceholder": "Hinweise für KI-gestützte Abfragegenerierung",
     "saveFailed": "Speichern fehlgeschlagen.",
     "editMetric": "Metrik {{name}} bearbeiten",

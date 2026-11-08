@@ -48,3 +48,26 @@ def non_finite_refusal(exc: BaseException) -> NonFiniteNumber | None:
     makes each backend raise with the rule's name in its own message (DuckDB ``error``, Trino
     ``fail``, PostgreSQL a cast that cannot succeed); the name is how the error is recognised."""
     return NonFiniteNumber() if NON_FINITE in str(exc) else None
+
+
+class JsonValueRefused(JsonRefused):
+    """REQ-1867: a JSON value an answer would hold that JSON cannot carry exactly -- NaN or
+    Infinity, a lone surrogate, text in a JSON-typed column that is not JSON, nesting past what a
+    response can hold. The answer is refused naming the field; nothing is substituted."""
+
+    code = "json.value_refused"
+
+    def __init__(self, field: str, reason: str) -> None:
+        self.params = {"field": field, "reason": reason}
+        super().__init__(f"{self.code}: the value of {field!r} {reason}")
+
+
+class JsonResponseRefused(JsonRefused):
+    """REQ-1867: a response body JSON cannot carry -- nested past the encoder's depth, or holding a
+    lone surrogate -- refused by name rather than failed."""
+
+    code = "json.response_refused"
+
+    def __init__(self, reason: str) -> None:
+        self.params = {"reason": reason}
+        super().__init__(f"{self.code}: the response {reason}")

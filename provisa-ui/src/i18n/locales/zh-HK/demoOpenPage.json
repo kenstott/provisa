@@ -1,8 +1,19 @@
 {
   "demoOpenPage": {
     "title": "正在開啟您的示範沙盒",
+    "titleMaking": "正在製作您的示範沙盒",
+    "titleCooking": "正在烹調您的示範沙盒",
+    "titleGrowing": "正在培育您的示範沙盒",
+    "titleComposing": "正在譜寫您的示範沙盒",
     "opening": "正在為您準備示範的副本，需要幾秒鐘。",
     "starting": "正在啟動此示範…",
-    "retry": "重試"
+    "retry": "重試",
+    "coordinatorWaking": "伺服器正在喚醒…",
+    "coordinatorUpdating": "伺服器正在更新，很快就會恢復…",
+    "serverStarting": "示範伺服器正在啟動…",
+    "connecting": "正在連接伺服器…",
+    "elapsed": "已用時 {{time}}",
+    "coldStart": "閒置的示範大約需要五分鐘才能啟動。",
+    "gaveUp": "示範未能在 {{minutes}} 分鐘內開啟。請稍後再試。"
   }
 }

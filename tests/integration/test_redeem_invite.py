@@ -127,6 +127,7 @@ def planes(monkeypatch):
         model_db=tenant_db,
         tenant_db=tenant_db,
         record_db=tenant_db,
+        # Reads nothing on purpose: no capability, no domain (J354).
         roles={"org_admin": {"id": "org_admin", "description": "Test role.", "capabilities": []}},
     )
 

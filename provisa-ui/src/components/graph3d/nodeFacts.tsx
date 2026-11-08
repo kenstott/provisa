@@ -21,12 +21,13 @@ import { Link } from "react-router-dom";
 import { entityHref } from "../../lib/entityHref";
 import type { GraphData, GraphNode } from "./graphModel";
 import { nodeHref } from "./nodeHref";
+import { BreakableName } from "../list/BreakableName";
 
 /** A link to ``to``, named ``name``. */
 function Named({ to, name, testId }: { to: string; name: string; testId?: string }) {
   return (
     <Anchor component={Link} to={to} size="xs" data-testid={testId}>
-      {name}
+      <BreakableName name={name} />
     </Anchor>
   );
 }
@@ -113,7 +114,8 @@ export function NodeFacts({
       ]);
     description();
   } else if (node.type === "product") {
-    if (info.status) rows.push([t("graph3d.factStatus"), t(`dataProductsTab.status_${info.status}`)]);
+    if (info.status)
+      rows.push([t("graph3d.factStatus"), t(`dataProductsTab.status_${info.status}`)]);
     if (info.owner) rows.push([t("graph3d.factOwner"), info.owner]);
     domains();
     const members = data.edges.filter(

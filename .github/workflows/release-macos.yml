@@ -61,7 +61,7 @@ jobs:
 
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -84,6 +84,11 @@ jobs:
         with:
           node-version: "20"
           install: "false"
+
+      # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
+      - name: Install the Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.95.0 --profile minimal
 
       - name: Build DMG
         env:
@@ -110,7 +115,7 @@ jobs:
 
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -132,6 +137,11 @@ jobs:
         with:
           node-version: "20"
           install: "false"
+
+      # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
+      - name: Install the Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.95.0 --profile minimal
 
       - name: Build Container DMG
         env:
@@ -159,7 +169,7 @@ jobs:
 
   build-macos-obs:
     name: Build macOS Obs DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -210,7 +220,7 @@ jobs:
 
   build-macos-demo:
     name: Build macOS Demo DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45

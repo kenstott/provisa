@@ -14,9 +14,9 @@
     "otelTitle": "Trazado con OpenTelemetry",
     "statusLabel": "Estado:",
     "statusExporting": "Exportando → {{endpoint}}",
-    "statusActiveNoCollector": "Activo (spans descartados — no hay collector configurado)",
+    "statusActiveNoCollector": "Activo (las trazas se conservan para esta página, no se exportan)",
     "endpointLabel": "Endpoint del collector OTLP",
-    "endpointHelp": "Deje vacío para generar trazas sin exportarlas. Anule con la variable de entorno OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "Apunte al collector propio de Provisa y añada un proveedor externo como exportador en el collector para que las tablas de trazas sigan llenándose. Deje vacío para conservar las trazas solo en esta página. Anule con la variable de entorno OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Nombre del servicio",
     "serviceNameHelp": "Anule con la variable de entorno OTEL_SERVICE_NAME.",
     "sampleRateLabel": "Tasa de muestreo",
@@ -83,6 +83,9 @@
       "document_sources": "Consultas contra almacenes de documentos.",
       "search_sources": "Consultas contra índices de búsqueda.",
       "grpc_services": "La superficie de consulta gRPC, entrante y saliente."
-    }
+    },
+    "tracesTableCheckFailed": "No se pudieron comprobar las tablas de trazas de Provisa ({{reason}}). No se sabe si están recibiendo filas; la comprobación se repite cada 30 segundos.",
+    "tracesTableEmpty": "Hay un endpoint configurado, pero las tablas de trazas de Provisa aún no tienen filas. Si el endpoint es un proveedor externo y no el collector de Provisa, páselo a los exportadores del collector.",
+    "tracesTableStale": "Hay un endpoint configurado, pero las tablas de trazas de Provisa no han recibido filas en los últimos {{minutes}} minutos. Si Provisa ha estado inactivo, es lo esperado. Si no, compruebe que el endpoint es el collector de Provisa y no un proveedor externo."
   }
 }

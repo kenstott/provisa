@@ -11,12 +11,14 @@
 // REQ-2161, as its scenario sets it: dq_lead inherits Data quality steward and Data product
 // owner; its panel lists each capability with the standard role it comes from.
 
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "../../../test-utils/render";
+import { render, screen, waitFor, within } from "../../../test-utils/render";
 import { RoleCapabilities } from "../RoleCapabilities";
 import type { RoleEffective } from "../../../api/roleRights";
 
 const VIEW: RoleEffective = {
+  regions: [],
   role: "dq_lead",
   standard: false,
   chain: ["dq_lead", "dq_steward", "viewer", "dp_owner"],
@@ -29,13 +31,13 @@ const VIEW: RoleEffective = {
   adds: {
     viewer: ["read"],
     dq_steward: ["dq_rw"],
-    dp_owner: ["data_product_owned_rw"],
+    dp_owner: ["data_product_rw"],
     dq_lead: ["export"],
   },
   standards: ["dq_steward", "viewer", "dp_owner"],
   capabilities: [
     // Entering in two branches, it comes from both.
-    { right: "data_product_owned_rw", from: ["dp_owner", "dq_steward"] },
+    { right: "data_product_rw", from: ["dp_owner", "dq_steward"] },
     { right: "dq_rw", from: ["dq_steward"] },
     { right: "export", from: ["dq_lead"] },
     { right: "read", from: ["viewer"] },
@@ -52,21 +54,47 @@ vi.mock("../../../api/roleRights", () => ({
 }));
 // The diagram is the lineage page's own component, held by its own tests.
 vi.mock("../../../components/lineage/LineageDag", () => ({
-  LineageDag: ({ graph }: { graph: { nodes: unknown[] } }) => (
-    <div data-testid="lineage-dag" data-nodes={graph.nodes.length} />
-  ),
+  LineageDag: (props: { graph: { nodes: unknown[] }; readable?: boolean; minZoom?: number }) => {
+    // One diagram instance: a new one is laid out and fitted from scratch.
+    const [instance] = useState(() => ++instances);
+    return (
+      <div
+        data-testid="lineage-dag"
+        data-nodes={props.graph.nodes.length}
+        data-instance={instance}
+        data-holds-a-zoom={String(Boolean(props.readable) || props.minZoom !== undefined)}
+      />
+    );
+  },
 }));
 
+let instances = 0;
+
 describe("a role's Capabilities tab (REQ-2161)", () => {
+  it("fits the whole lineage, holding no zoom that could cut it off", async () => {
+    render(<RoleCapabilities roleId="dq_lead" />);
+    expect(await screen.findByTestId("lineage-dag")).toHaveAttribute("data-holds-a-zoom", "false");
+  });
+
+  it("starts from the fit again for every role", async () => {
+    const { rerender } = render(<RoleCapabilities roleId="dq_lead" />);
+    const first = (await screen.findByTestId("lineage-dag")).getAttribute("data-instance");
+    rerender(<RoleCapabilities roleId="other" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("lineage-dag").getAttribute("data-instance")).not.toBe(first),
+    );
+  });
+
   it("lists each capability with the role it comes from, standard roles marked", async () => {
+    asked.roles.length = 0;
     render(<RoleCapabilities roleId="dq_lead" />);
     const list = await screen.findByTestId("role-capabilities-list");
     expect(asked.roles).toEqual(["dq_lead"]);
     const row = (right: string) => within(list).getByTestId(`role-capability-${right}`);
     expect(row("dq_rw")).toHaveTextContent("dq_steward");
     expect(row("dq_rw")).toHaveTextContent("standard role");
-    expect(row("data_product_owned_rw")).toHaveTextContent("dp_owner");
-    expect(row("data_product_owned_rw")).toHaveTextContent("dq_steward");
+    expect(row("data_product_rw")).toHaveTextContent("dp_owner");
+    expect(row("data_product_rw")).toHaveTextContent("dq_steward");
     expect(row("export")).toHaveTextContent("its own");
     expect(row("export")).not.toHaveTextContent("standard role");
     // The lineage: a box per role, a kind row each plus what each adds and the accumulated set.

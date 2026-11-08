@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry 跟踪",
     "statusLabel": "状态：",
     "statusExporting": "正在导出 → {{endpoint}}",
-    "statusActiveNoCollector": "活动（Span 已丢弃——未配置收集器）",
+    "statusActiveNoCollector": "活动（跟踪仅保留在此页面，不会导出）",
     "endpointLabel": "OTLP 收集器终结点",
-    "endpointHelp": "留空则仅生成跟踪而不导出。可通过 OTEL_EXPORTER_OTLP_ENDPOINT 环境变量覆盖。",
+    "endpointHelp": "请指向 Provisa 自己的收集器，并在收集器中把外部提供商添加为导出器，这样跟踪表才会持续写入。留空则只在此页面保留跟踪。可通过 OTEL_EXPORTER_OTLP_ENDPOINT 环境变量覆盖。",
     "serviceNameLabel": "服务名称",
     "serviceNameHelp": "可通过 OTEL_SERVICE_NAME 环境变量覆盖。",
     "sampleRateLabel": "采样率",
@@ -83,6 +83,9 @@
       "document_sources": "针对文档存储的查询。",
       "search_sources": "针对搜索索引的查询。",
       "grpc_services": "gRPC 查询接口，包括入站和出站。"
-    }
+    },
+    "tracesTableCheckFailed": "无法检查 Provisa 的跟踪表（{{reason}}）。不清楚它们是否在接收行；检查每 30 秒重复一次。",
+    "tracesTableEmpty": "已设置终结点，但 Provisa 的跟踪表还没有任何行。如果该终结点是外部提供商而不是 Provisa 的收集器，请把它移到收集器的导出器中。",
+    "tracesTableStale": "已设置终结点，但 Provisa 的跟踪表在过去 {{minutes}} 分钟内没有收到任何行。如果 Provisa 一直空闲，这是正常的。否则，请确认该终结点是 Provisa 的收集器，而不是外部提供商。"
   }
 }

@@ -12,6 +12,7 @@
 // solid and opaque at one size. A term's status shows on its label alone (labelClass). The scene
 // draws from this and the legend keys from it, so the two cannot drift apart.
 
+import type { TermGrounding } from "../../api/glossary";
 import type { GraphNode, NodeType, TermStatus } from "./graphModel";
 
 export type Shape =
@@ -82,6 +83,19 @@ export function nodeLook(n: GraphNode): Look {
       : { shape: "cube", colour: "fam-other", variant: "out_of_product" };
   }
   return { ...BY_TYPE[n.type], variant: "plain" };
+}
+
+/** The label class a term's grounding puts on its name: the ground symbol before it (graph3d.css);
+ * a term that reaches no data, and any other node, has none. */
+export function groundClass(grounding: TermGrounding | undefined): string {
+  switch (grounding) {
+    case "grounded":
+      return "g3d-label-grounded";
+    case "grounded_pending":
+      return "g3d-label-grounded-pending";
+    default:
+      return "";
+  }
 }
 
 /** The label class a term's status puts on its name; an approved term (or any other node) has none. */

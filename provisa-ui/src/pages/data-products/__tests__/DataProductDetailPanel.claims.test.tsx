@@ -22,8 +22,8 @@ import type { CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
 
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
 }));
 
 const P = {
@@ -38,13 +38,13 @@ const P = {
 
 const table = (id: number, name: string, over: Partial<CoreTable> = {}): CoreTable => ({
   id,
-  source_id: "pg",
-  domain_id: "sales",
-  schema_name: "public",
-  table_name: name,
+  sourceId: "pg",
+  domainId: "sales",
+  schemaName: "public",
+  tableName: name,
   alias: null,
   description: null,
-  dq_contract: null,
+  dqContract: null,
   ...over,
 });
 
@@ -62,6 +62,7 @@ const check = (
   owner_product_id: owner,
   checked_table_id: checked[0],
   checked_table: { id: checked[0], domain_id: "sales", table_name: checked[1], alias: null },
+  rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: "pass",
   latest_run_at: "2026-10-20T10:00:00Z",
   ...over,
@@ -110,6 +111,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       table_name: "revenue_daily",
       alias: null,
       product_id: null,
+      reads: ["sales.orders"],
     },
     {
       relation: "finance.ledger",
@@ -119,6 +121,7 @@ const lineage = (dq: ProductDq): ProductLineage => ({
       table_name: "ledger",
       alias: "gl",
       product_id: "billing",
+      reads: ["sales.customers", "sales.orders"],
     },
   ],
   inputs: [input(30, "raw.raw_orders"), input(31, "raw.raw_customers")],
@@ -132,7 +135,7 @@ const CORE: ProductCore = {
     table(1, "customers"),
     table(2, "orders"),
     table(11, "check_11", {
-      dq_contract: "dataset: x",
+      dqContract: "dataset: x",
       description: "Customers are unique so counts reconcile",
     }),
   ],
@@ -147,8 +150,7 @@ function panel() {
       coreError={null}
       reader={null}
       lineageLoading={false}
-      odcs={null}
-      odcsError=""
+      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
       canEdit={false}
@@ -223,8 +225,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={lineage({ ...DQ, related: [...DQ.related, partner] })}
         canEdit={false}
@@ -278,8 +279,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
@@ -301,6 +301,11 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     const consumers = screen.getByTestId("data-product-detail-consumers-c360");
     expect(consumers).toHaveTextContent("sales.revenue_daily (view)");
     expect(consumers).toHaveTextContent("finance.gl (materialized view · in billing)");
+    // The contract no longer says who reads a port, so this card says which ports each reads.
+    const reads = (relation: string) =>
+      screen.getByTestId(`data-product-detail-consumers-c360-reads-${relation}`);
+    expect(reads("sales.revenue_daily")).toHaveTextContent(/^reads sales\.orders$/);
+    expect(reads("finance.ledger")).toHaveTextContent(/^reads sales\.customers, sales\.orders$/);
   });
 
   it("shows any other reader the product's promises, and none of the owner's part", () => {
@@ -309,8 +314,14 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     expect(screen.queryByTestId("data-product-detail-dq-expectations-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-related-c360")).toBeNull();
     expect(screen.queryByTestId("data-product-detail-dq-c360-orphan-15")).toBeNull();
-    expect(screen.queryByTestId("data-product-card-inputPorts-c360")).toBeNull();
-    expect(screen.queryByTestId("data-product-card-consumers-c360")).toBeNull();
+    // REQ-2160: the two cards are shown, holding no list (the owner's) and no "None".
+    for (const [card, list] of [
+      ["inputPorts", "inputs"],
+      ["consumers", "consumers"],
+    ]) {
+      expect(screen.getByTestId(`data-product-card-${card}-c360`)).toBeInTheDocument();
+      expect(screen.queryByTestId(`data-product-detail-${list}-c360`)).toBeNull();
+    }
     // Its promises on its output ports, as the owner sees them.
     expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
   });
@@ -325,8 +336,7 @@ describe("editing a data product follows the right to edit it, not the view (REQ
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
@@ -365,15 +375,15 @@ describe("a set of checks' summary status", () => {
 describe("Related Tables (REQ-2126)", () => {
   it("lists the directly related tables only; the indirect joins are the graph's", () => {
     const edge = (over: Partial<CoreEdge>): CoreEdge => ({
-      id: `c360:related:${over.target_table_id}`,
+      id: `c360:related:${over.targetTableId}`,
       kind: "related",
-      target_product_id: null,
-      target_table_id: null,
+      targetProductId: null,
+      targetTableId: null,
       direct: true,
       hops: 1,
-      path_count: 1,
+      pathCount: 1,
       aliases: null,
-      supporting_tables: null,
+      supportingTables: null,
       ...over,
     });
     render(
@@ -383,29 +393,29 @@ describe("Related Tables (REQ-2126)", () => {
           ...CORE,
           edges: [
             edge({
-              target_table_id: 61,
-              target_product_id: "billing",
-              path_count: 2,
+              targetTableId: 61,
+              targetProductId: "billing",
+              pathCount: 2,
               aliases: "BILLED_TO, PAID_BY",
-              target_table: {
+              targetTable: {
                 id: 61,
-                domain_id: "finance",
-                table_name: "invoices",
+                domainId: "finance",
+                tableName: "invoices",
                 alias: null,
                 description: null,
               },
-              target_product: { id: "billing", name: "Billing", domain_id: "finance" },
+              targetProduct: { id: "billing", name: "Billing", domainId: "finance" },
             }),
             edge({
               kind: "relationship",
               direct: false,
               hops: 2,
-              target_table_id: 51,
-              supporting_tables: "finance.currencies",
-              target_table: {
+              targetTableId: 51,
+              supportingTables: "finance.currencies",
+              targetTable: {
                 id: 51,
-                domain_id: "finance",
-                table_name: "fx_rates",
+                domainId: "finance",
+                tableName: "fx_rates",
                 alias: null,
                 description: null,
               },
@@ -415,8 +425,7 @@ describe("Related Tables (REQ-2126)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        odcs={null}
-        odcsError=""
+        contractsVersion={0}
         lineageError=""
         lineageGraph={null}
         canEdit={false}

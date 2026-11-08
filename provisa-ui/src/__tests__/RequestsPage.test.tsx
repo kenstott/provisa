@@ -16,6 +16,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import i18n from "../i18n";
+
+// REQ-2216: the page offers the org's delivery setting to a holder of org_settings.
+const auth = vi.hoisted(() => ({ capabilities: [] as string[] }));
+vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
+
 import { RequestsPage } from "../pages/RequestsPage";
 
 const base = {
@@ -121,6 +126,7 @@ function serve(approve: () => Response) {
     "fetch",
     vi.fn(async (url: string) => {
       if (url.includes("/rejection-reasons")) return json({ relationship: ["duplicate"] });
+      if (url.includes("/request-delivery")) return json({ delivery: "events" });
       if (url.endsWith("/approve")) return approve();
       return json([DECIDABLE, MINE, ONE_SIDED, VIEW, VIEW_TO_RETRY, MY_VIEW]);
     }),
@@ -259,5 +265,41 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     const alert = await screen.findByTestId("requests-error");
     expect(alert).toHaveTextContent(expected);
     expect(alert).not.toHaveTextContent("server English");
+  });
+});
+
+describe("RequestsPage's remembered filters", () => {
+  beforeEach(async () => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    await i18n.changeLanguage("en");
+    serve(() => new Response("{}"));
+  });
+
+  it("reopens on the tab and the search it was left on", async () => {
+    const first = page();
+    fireEvent.click(await screen.findByTestId("requests-tab-resolved"));
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "orders" } });
+    first.unmount();
+    page();
+    expect(await screen.findByTestId("requests-tab-resolved")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByTestId("filter-input")).toHaveValue("orders");
+  });
+
+  it("offers the delivery setting only to a holder of org_settings", async () => {
+    serve(() => json({}));
+    auth.capabilities = [];
+    const { unmount } = page();
+    await row(1);
+    expect(screen.queryByTestId("request-delivery")).toBeNull();
+    unmount();
+    auth.capabilities = ["org_settings"];
+    page();
+    const setting = await screen.findByTestId("request-delivery");
+    expect(setting).toHaveTextContent("Notify by");
+    auth.capabilities = [];
   });
 });

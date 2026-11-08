@@ -24,6 +24,7 @@
     "layer_relationships": "Связи между участниками",
     "layer_outside": "Связи с внешними таблицами",
     "layer_lineage": "Происхождение",
+    "layer_productLinks": "Связи с другими продуктами",
     "filterDomain": "Домены",
     "filterTag": "Теги",
     "filterSensitivity": "Чувствительность",
@@ -64,6 +65,7 @@
     "edge_owns": "владеет",
     "loadError": "Не удалось прочитать граф: {{error}}",
     "zoomTo": "Приблизить",
+    "openInErd": "Открыть в ERD",
     "edge_column_lineage": "питает столбец",
     "preset_taxonomy": "Таксономия",
     "layer_domains": "Домены",
@@ -145,6 +147,10 @@
     "quality_none": "Ещё не запускалась",
     "factOwner": "Владелец",
     "factMembers": "Таблицы-участники",
-    "factColumns": "Столбцы"
+    "factColumns": "Столбцы",
+    "depth": "Глубина",
+    "lateral": "Боковые рёбра",
+    "grounding_grounded": "Привязан",
+    "grounding_grounded_pending": "Привязан, через черновик"
   }
 }

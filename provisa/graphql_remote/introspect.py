@@ -55,6 +55,9 @@ def _build_headers(auth: dict | None) -> dict:
             f"{auth.get('username', '')}:{auth.get('password', '')}".encode()
         ).decode()
         return {"Authorization": f"Basic {creds}"}
+    if auth_type == "header":
+        # A token sent bare in a header the source names (Shopify: X-Shopify-Access-Token).
+        return {auth["header"]: auth.get("token", "")}
     return {}
 
 

@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 // The detail panel's lifecycle props for a test that does not look at the lifecycle: no other
-// products, no members, no findings, and status actions that answer success.
+// products, no members, no findings, and status actions that answer success; and a viewer holding
+// no role.
 
 import { vi } from "vitest";
 
@@ -17,12 +18,14 @@ const ok = () => Promise.resolve({ success: true, message: "" });
 
 export function lifecycleProps() {
   return {
+    viewer: { held: new Set<string>(), acting: "analyst" },
     products: [],
     members: [],
     findings: [],
     onStatusChanged: vi.fn(),
     onStatusFailed: vi.fn(),
     openProduct: vi.fn(),
+    onTagsChanged: vi.fn(),
     statusActions: { publish: vi.fn(ok), deprecate: vi.fn(ok), retire: vi.fn(ok), restore: vi.fn(ok) },
   };
 }

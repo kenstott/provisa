@@ -74,6 +74,8 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # connector for either type (trino_connectors.py has no entry).
         "neo4j",
         "sparql",
+        # REQ-2197: a QuickBooks table's rows come from the company's query endpoint.
+        "quickbooks",
         # REQ-1982: Cosmos DB documents are read through its SDK (provisa/cosmosdb/loader.py); no
         # engine reaches it.
         "cosmosdb",
@@ -192,9 +194,10 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
 
     from provisa.core.operator_floor import floor_setting
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        if floor_setting(source) is None and engine_attaches(engine, _source_type(source)):
+        if floor_setting(source) is None and engine_attaches(engine, reach_type(source, engine)):
             return await engine_table_rows(engine, source, table)
         dialect = state.source_dialects[source.id] or None
         relation = direct_relation(table, dialect)
@@ -335,6 +338,7 @@ class SourceRowLoader:
             EngineTableSource,
         )
         from provisa.federation.strategy import engine_attaches
+        from provisa.jdbc_source.attach import reach_type
 
         stype = _source_type(source)
         pools = getattr(state, "source_pools", None)
@@ -413,7 +417,7 @@ class SourceRowLoader:
         return EngineTableSource(
             self._engine,
             ref,
-            in_place=engine_attaches(self._engine, stype),
+            in_place=engine_attaches(self._engine, reach_type(source, self._engine)),
             projection=projection,
             where=landing_where(table, lambda: self._engine.dialect),  # REQ-2062
         )
@@ -550,16 +554,11 @@ def make_openapi_loader(state: Any) -> AdapterLoader:
         return endpoint, api_source
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.api_source.caller import answer_rows, call_api
+        from provisa.api_source.caller import answer_rows
+        from provisa.api_source.contract import call_endpoint
 
         endpoint, api_source = _registered(source, table)
-        answer = await call_api(
-            endpoint,
-            dict(endpoint.default_params),
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
-        )
+        answer = await call_endpoint(endpoint, api_source, dict(endpoint.default_params))
         return _whole(source, table, *answer_rows(endpoint, answer))
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
@@ -591,7 +590,8 @@ def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.api_source.caller import answer_rows, call_api
+        from provisa.api_source.caller import answer_rows
+        from provisa.api_source.contract import call_endpoint
         from provisa.cypher.query_template_filter import inject_keys_filter
 
         endpoint = state.api_endpoints.get((source.id, table.table_name))
@@ -608,12 +608,8 @@ def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
             )
         wrapped_template = inject_keys_filter(endpoint.query_template, pk_columns[0])
         wrapped_endpoint = endpoint.model_copy(update={"query_template": wrapped_template})
-        answer = await call_api(
-            wrapped_endpoint,
-            {**endpoint.default_params, "keys": [k[0] for k in keys]},
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
+        answer = await call_endpoint(
+            wrapped_endpoint, api_source, {**endpoint.default_params, "keys": [k[0] for k in keys]}
         )
         return _whole(source, table, *answer_rows(wrapped_endpoint, answer))
 
@@ -1572,6 +1568,23 @@ def make_mongodb_keyed_loader() -> AdapterKeyedLoader:
     return _load
 
 
+def _kafka_connection(source: Any) -> Any:
+    """The source's brokers and its TLS and SASL settings (REQ-147), resolved at use."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kafka.fetch import KafkaConnection
+    from provisa.kafka.security import KafkaSecurity
+
+    return KafkaConnection.build(
+        resolve_secrets(getattr(source, "host", "") or "localhost"),
+        getattr(source, "port", None),
+        KafkaSecurity.of_settings(
+            username=getattr(source, "username", None),
+            password=getattr(source, "password", None),
+            hints=getattr(source, "federation_hints", None),
+        ),
+    )
+
+
 def make_kafka_loader() -> AdapterLoader:
     """Build the Kafka row-fetch (REQ-1730): every message currently on the topic, drained via
     aiokafka and landed like any other fetched source. Wired only on an engine with no live Kafka
@@ -1581,14 +1594,10 @@ def make_kafka_loader() -> AdapterLoader:
     Elasticsearch/Redis/Cassandra/MongoDB — every self-only warehouse engine and DuckDB itself had
     no live Kafka reach at all. ``kafka.fetch``'s own module doc explains the "current rows of an
     unbounded log" semantics this loader relies on."""
-    from provisa.core.secrets import resolve_secrets
-    from provisa.kafka.fetch import KafkaConnection, fetch_rows
+    from provisa.kafka.fetch import fetch_rows
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        conn = KafkaConnection.build(
-            resolve_secrets(getattr(source, "host", "") or "localhost"),
-            getattr(source, "port", None),
-        )
+        conn = _kafka_connection(source)
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
             return []
@@ -1599,10 +1608,7 @@ def make_kafka_loader() -> AdapterLoader:
         from provisa.kafka import landed_offsets
         from provisa.kafka.fetch import iter_row_batches
 
-        conn = KafkaConnection.build(
-            resolve_secrets(getattr(source, "host", "") or "localhost"),
-            getattr(source, "port", None),
-        )
+        conn = _kafka_connection(source)
         names = [name for name, _ in columns]
         # REQ-1733: a build lands the table; it records where it stopped, and the table's
         # listener (or pipeline) starts there. A read that lands nothing records nothing.
@@ -1623,18 +1629,14 @@ def make_kafka_keyed_loader() -> AdapterKeyedLoader:
     :func:`make_kafka_loader` already has to drain the whole topic every whole-table call. Filters
     client-side after that same drain: correct (never reads the self-referential landed replica the
     absence of a keyed loader used to force), no worse than the whole-table load it replaces."""
-    from provisa.core.secrets import resolve_secrets
-    from provisa.kafka.fetch import KafkaConnection, fetch_rows
+    from provisa.kafka.fetch import fetch_rows
 
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
         if not keys:
             return []
-        conn = KafkaConnection.build(
-            resolve_secrets(getattr(source, "host", "") or "localhost"),
-            getattr(source, "port", None),
-        )
+        conn = _kafka_connection(source)
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
             return []
@@ -1915,7 +1917,7 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.graphql_remote.executor import execute_remote
+        from provisa.graphql_remote.contract import call_field
 
         if not keys:
             return []
@@ -1946,18 +1948,24 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
             if fetch["on"] is not None:
                 # The field returns an interface or union: the table's fields are its type's.
                 columns = [f"... on {fetch['on']} {{ {' '.join(columns)} }}"]
-        answer = await execute_remote(
-            request["url"],
-            request["auth"],
-            fetch["field"],
-            columns,
-            variables=variables,
-            required_args=[
-                *(a for a in fixed if a["name"] != fetch["arg"]),
-                {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
-            ],
-            rows_path=rows_path,
-            error_policy=request["error_policy"],
+        answer = await call_field(
+            source.id,
+            table.table_name,
+            {
+                "url": request["url"],
+                "auth": request["auth"],
+                "field_name": fetch["field"],
+                "columns": columns,
+                "required_args": [
+                    *(a for a in fixed if a["name"] != fetch["arg"]),
+                    {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
+                ],
+                "rows_path": rows_path,
+                # A connection is read at the page size its registration priced.
+                "limit": state.config.graphql_remote.max_list_items if rows_path else None,
+                "error_policy": request["error_policy"],
+            },
+            variables,
         )
         # A list of IDs answers null for an ID it does not know.
         return [row for row in answer.rows if row is not None]
@@ -1965,7 +1973,9 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
     return _load
 
 
-def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> AdapterLoader:
+def make_graphql_remote_loader(
+    gql_sources: dict[str, Any], max_rows: int, page_size: int
+) -> AdapterLoader:
     """Build the graphql_remote adapter row-fetch (REQ-941/846): resolve the table's registration in
     ``state.graphql_remote_sources`` (by ``sql_name``), forward a minimal GraphQL query to the remote
     endpoint via :func:`execute_remote`, and return the rows. Refreshes from the remote source — the
@@ -1974,7 +1984,8 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
     ``gql_sources`` maps source_id → a registration dict (``url``, ``auth``, ``tables``); each table
     carries its ``field_name``/``sql_name`` and ``columns`` (a column's ``gql_selection`` overrides
     its name for nested object fields). A table with no matching registration raises
-    :class:`UnsupportedSourceFetch`."""
+    :class:`UnsupportedSourceFetch`. ``page_size``: the rows a page of a connection table asks
+    for -- ``graphql_remote.max_list_items``, the size its registration priced its query at."""
 
     def _request(source: Any, table: Any) -> dict:
         return _graphql_remote_request(gql_sources, source, table)
@@ -1994,6 +2005,7 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
             request["columns"],
             request["rows_path"],
             table=f"{source.id}.{table.table_name}",
+            page_size=page_size,
             # REQ-318: the table's own bound where it set one (registry row), else the operator's.
             max_rows=connection_max_rows(table.pagination, max_rows),
             error_policy=request["error_policy"],
@@ -2002,14 +2014,18 @@ def make_graphql_remote_loader(gql_sources: dict[str, Any], max_rows: int) -> Ad
         )
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.graphql_remote.executor import execute_remote
+        from provisa.graphql_remote.contract import call_field
 
         request = _request(source, table)
         if request["rows_path"]:
             # A land is the whole table: never one cut at max_rows (REQ-1915).
             async with aclosing(_pages(source, table)) as pages:
                 return [row async for page in pages for row in page]
-        return (await execute_remote(**request, max_rows=max_rows)).rows
+        variables = request.pop("variables")
+        answer = await call_field(
+            source.id, table.table_name, {**request, "max_rows": max_rows}, variables
+        )
+        return answer.rows
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import CursorSource

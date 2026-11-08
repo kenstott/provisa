@@ -44,10 +44,25 @@ class GraphVarKind(str, Enum):
     # REQ-2135: an RDF term, one JSON value (provisa.gql.terms); a subject's IRI is built from it
     # outside SQL (provisa.gql.iri).
     TERM = "TERM"
+    # properties(n) or properties(r): its JSON object; the answer is the map of the properties
+    # it holds set (a null property is no property, openCypher).
+    PROPERTIES = "PROPERTIES"
 
 
 # The column a statement carries when one of its paths is bounded by the depth limit.
 CUT_COLUMN = "__cut"
+
+
+class PathDepthExceeded(RuntimeError):
+    """REQ-348: a Cypher variable-length walk reached the maximum depth (graph.depth_limit) and
+    could still go on. The statement fails by name rather than answer with the walk cut short."""
+
+    code = "cypher.path_depth_exceeded"
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(f"variable-length path exceeded the maximum depth {limit}")
+        self.params = {"limit": limit}
+
 
 # REQ-2168: the table function a composed ``CALL ns.name(args) YIELD …`` is translated to, its
 # arguments the Cypher name, the yields and the call's argument values (each as JSON). The Cypher

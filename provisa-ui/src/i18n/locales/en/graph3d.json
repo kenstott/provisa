@@ -24,6 +24,7 @@
     "layer_relationships": "Relationships between members",
     "layer_outside": "Relationships to outside tables",
     "layer_lineage": "Lineage",
+    "layer_productLinks": "Links to other products",
     "filterDomain": "Domains",
     "filterTag": "Tags",
     "filterSensitivity": "Sensitivity",
@@ -64,6 +65,7 @@
     "edge_owns": "owns",
     "loadError": "The graph could not be read: {{error}}",
     "zoomTo": "Zoom to it",
+    "openInErd": "Open in ERD",
     "edge_column_lineage": "feeds column",
     "preset_taxonomy": "Taxonomy",
     "layer_domains": "Domains",
@@ -145,6 +147,10 @@
     "quality_none": "Not run yet",
     "factOwner": "Owner",
     "factMembers": "Member tables",
-    "factColumns": "Columns"
+    "factColumns": "Columns",
+    "depth": "Depth",
+    "lateral": "Lateral edges",
+    "grounding_grounded": "Grounded",
+    "grounding_grounded_pending": "Grounded, via a draft"
   }
 }

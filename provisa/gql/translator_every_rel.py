@@ -53,6 +53,13 @@ def _value_of(column: str, member: str) -> exp.Expression:  # pyright: ignore[re
     )
 
 
+def _member(value: exp.Expression, member: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``member`` of a node or edge ``value``, as text."""
+    return exp.Anonymous(
+        this="JSON_EXTRACT_SCALAR", expressions=[value, exp.Literal.string(f"$.{member}")]
+    )
+
+
 def _same_edge(left: str, right: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Whether two union columns carry the same edge: its id, of its type."""
     return exp.And(
@@ -82,6 +89,9 @@ class _EveryRelMixin:  # mixin for _Translator
         _all_rels_node_vars: set[str]
         _rel_var_types: dict[str, str]
         _held_end_conditions: list[exp.Expression]
+
+        def _typed_rel_value(self, name: str) -> exp.Expression: ...  # pyright: ignore[reportPrivateImportUsage]
+
         _all_rels_src_col: str | None
         _all_rels_rel_col: str | None
         _all_rels_tgt_col: str | None
@@ -231,10 +241,18 @@ class _EveryRelMixin:  # mixin for _Translator
                 return _value_of(col, "id"), col in self._every_rel_clause_cols
             if nm is not None:
                 return node_identity(self._node_alias(node, nm, as_source=as_source), nm), False
+        elif var in self._all_rels_node_vars and var in getattr(self, "_cte_sources", set()):
+            # The node value a WITH carries, read from that WITH's row.
+            held_in = self._var_table.get(var, (var, None))[0]
+            return exp.Anonymous(
+                this="JSON_EXTRACT_SCALAR",
+                expressions=[exp.column(var, table=held_in), exp.Literal.string("$.id")],
+            ), False
         elif var in self._all_rels_node_vars:
             return _value_of(var, "id"), var in self._every_rel_clause_cols
         elif var in self._domain_nodes:
-            return exp.column("__id", table=var), False
+            # Its union's identity, where it is held: its own alias, or a WITH carrying it.
+            return exp.column("__id", table=self._var_table.get(var, (var, None))[0]), False
         elif nm is not None:
             return node_identity(self._var_table[var][0], nm), False
         raise CypherTranslateError(
@@ -267,7 +285,8 @@ class _EveryRelMixin:  # mixin for _Translator
                 "A variable-length relationship from or to a node the statement already holds is "
                 "read between labelled nodes"
             )
-        if len(rel.types) > 1:
+        session = self._session_hop(rel)  # type: ignore[attr-defined]
+        if len(rel.types) > 1 and not session:
             raise CypherTranslateError(
                 "A relationship of several types between nodes the pattern names no type of is "
                 "read one type at a time"
@@ -298,7 +317,10 @@ class _EveryRelMixin:  # mixin for _Translator
             if held or (loop and side == "t") or var is None:
                 col = f"_{alias}_{side}"
                 props_of.append(var)
-                held_row = self._held_row(node, nm, as_source=as_source) if held else None
+                # A graph session's hop reads each end as its node value, held by its identity.
+                held_row = (
+                    self._held_row(node, nm, as_source=as_source) if held and not session else None
+                )
                 if held_row is not None:
                     # A node of one table the statement holds: joined on that table's key, as a
                     # second read of its row (REQ-603), never on a value built from it.
@@ -319,6 +341,11 @@ class _EveryRelMixin:  # mixin for _Translator
                     identity, of_clause = self._held_identity(node, nm, as_source=as_source)
                     cond = exp.EQ(this=_value_of(col, "id"), expression=identity)
                     (inner if of_clause else outer).append(cond)
+                    if session and node.labels and var is not None:
+                        # A held node a later pattern labels: it has those labels too (REQ-347).
+                        ctx = self._temporal_context()  # type: ignore[attr-defined]
+                        has = ctx.resolve_label_predicate(ctx.resolve_variable(var), node.labels)
+                        (inner if of_clause else outer).append(has)
                 if var is None:
                     self._every_rel_anon[id(node)] = col
                 domains.append(None)
@@ -336,37 +363,60 @@ class _EveryRelMixin:  # mixin for _Translator
             rel.variable in self._all_rels_rel_vars or rel.variable in self._rel_var_types
         )
         if rel_bound:
-            if rel.variable in self._rel_var_types:
-                raise CypherTranslateError(
-                    f"The relationship {rel.variable}, bound to a relationship between labelled "
-                    "nodes, is matched again between labelled nodes"
-                )
             rel_col = f"_{alias}_r"
-            same = _same_edge(rel_col, rel.variable)  # type: ignore[arg-type]
-            (inner if rel.variable in self._every_rel_clause_cols else outer).append(same)
+            if rel.variable in self._rel_var_types:
+                # A relationship an earlier pattern between labelled nodes bound: the edge of
+                # its id and type, its value as a union would carry it (translator).
+                held = self._typed_rel_value(rel.variable)
+                same = exp.And(
+                    this=exp.EQ(this=_value_of(rel_col, "id"), expression=_member(held, "id")),
+                    expression=exp.EQ(
+                        this=_value_of(rel_col, "type"), expression=_member(held, "type")
+                    ),
+                )
+                outer.append(same)
+            else:
+                same = _same_edge(rel_col, rel.variable)  # type: ignore[arg-type]
+                (inner if rel.variable in self._every_rel_clause_cols else outer).append(same)
         for earlier, of_clause in self._every_rel_edges:
             # Relationship uniqueness: no two hops of one MATCH bind the same edge.
             distinct = exp.Not(this=exp.paren(_same_edge(rel_col, earlier)))
             (inner if of_clause == clause_index else outer).append(distinct)
         self._every_rel_edges.append((rel_col, clause_index))
 
-        union = self._build_all_rels_union(
-            cols[0],
-            rel_col,
-            cols[1],
-            domains[0],
-            domains[1],
-            src_type=types[0],
-            tgt_type=types[1],
-            rel_type=rel.types[0].upper() if rel.types else None,
-            alias=alias,
-            undirected=rel.direction == "none",
-            src_props_of=props_of[0],
-            tgt_props_of=props_of[1],
-            loop=loop,
-            src_keys=keyed[0],
-            tgt_keys=keyed[1],
-        )
+        if session:
+            # A graph session's relationships, every one a row of its one relation (path_walk).
+            union = self._build_session_hop(  # type: ignore[attr-defined]
+                cols[0],
+                rel_col,
+                cols[1],
+                types=list(rel.types) or None,
+                src_type=types[0],
+                tgt_type=types[1],
+                src_domain=domains[0],
+                tgt_domain=domains[1],
+                alias=alias,
+                undirected=rel.direction == "none",
+                loop=loop,
+            )
+        else:
+            union = self._build_all_rels_union(
+                cols[0],
+                rel_col,
+                cols[1],
+                domains[0],
+                domains[1],
+                src_type=types[0],
+                tgt_type=types[1],
+                rel_type=rel.types[0] if rel.types else None,
+                alias=alias,
+                undirected=rel.direction == "none",
+                src_props_of=props_of[0],
+                tgt_props_of=props_of[1],
+                loop=loop,
+                src_keys=keyed[0],
+                tgt_keys=keyed[1],
+            )
         for var in new_vars:
             self._domain_nodes.pop(var, None)
             self._var_table[var] = (var, None)
@@ -383,6 +433,19 @@ class _EveryRelMixin:  # mixin for _Translator
             first, last = (cols[1], cols[0]) if backward else (cols[0], cols[1])
             self._every_rel_paths.setdefault(clause.variable, []).append((first, rel_col, last))
 
+        sources = getattr(self, "_cte_sources", set())
+        held_vars = [node.variable for node, held, _, _ in ends if held and node.variable]
+        if rel_bound and rel.variable:
+            held_vars.append(rel.variable)
+        carried = next(
+            (self._var_table[v][0] for v in held_vars if v in sources and v in self._var_table),
+            None,
+        )
+        if replaceable and clause.optional and carried is not None:
+            # An OPTIONAL MATCH from a node a WITH carries: that WITH's rows, each kept whether
+            # or not the hop matches from it (REQ-347).
+            from_expr = exp.Table(this=exp.to_identifier(carried))
+            replaceable = False
         if replaceable:
             self._held_end_conditions.extend(inner + outer)
             return union

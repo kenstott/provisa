@@ -25,7 +25,7 @@ from typing import Any, TypeVar
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids, rel_ids
-from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind
+from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind, PathDepthExceeded
 
 
 class CypherAssemblyError(Exception):
@@ -58,8 +58,8 @@ class Path:  # REQ-350
 
 
 def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
-    """The rows without the cut column. When a path bounded by the depth limit was cut there, the
-    statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
+    """The rows of a SPARQL statement without the cut column. When a property path bounded by the
+    depth limit was cut there, the statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
     plan's own list (``of_plan``) and the request's collector, or the collector alone where the
     rows came from no one plan. A statement with no such path carries no cut column."""
     cut = False
@@ -89,6 +89,31 @@ def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
         else:
             tell(warning, of_plan)
     return out
+
+
+def take_overrun(rows: list[dict]) -> list[dict]:  # REQ-348
+    """The rows of a Cypher statement without the cut column. A Cypher walk with no upper bound
+    takes the maximum depth (graph.depth_limit); one that reached it and could still go on fails
+    by name (:class:`PathDepthExceeded`), never answered cut short."""
+    out: list[dict] = []
+    for row in rows:
+        key = next((k for k in row if k.lower() == CUT_COLUMN), None)
+        if key is None:
+            out.append(row)
+            continue
+        if row[key]:
+            from provisa.core import settings_registry
+
+            raise PathDepthExceeded(settings_registry.value("graph.depth_limit"))
+        out.append({k: v for k, v in row.items() if k != key})
+    return out
+
+
+def answered_columns(column_names: list[str]) -> list[str]:
+    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
+    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135). The
+    same on every Cypher surface: what a read of no rows names (Bolt's fields, HTTP's columns)."""
+    return [c for c in column_names if c != CUT_COLUMN]
 
 
 def assemble_rows(  # REQ-349, REQ-350
@@ -169,6 +194,14 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
             return json.loads(value) if isinstance(value, str) else value
         except json.JSONDecodeError as exc:
             raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
+    if kind == GraphVarKind.PROPERTIES:
+        try:
+            held = json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError as exc:
+            raise CypherAssemblyError(f"Malformed JSON in column {col!r}: {exc}") from exc
+        if not isinstance(held, dict):
+            raise CypherAssemblyError(f"properties() in {col!r} is no map: {held!r}")
+        return {k: v for k, v in held.items() if v is not None}
     if kind == GraphVarKind.DURATION:  # REQ-2173
         from provisa.gql.temporal import Duration
 
@@ -197,11 +230,16 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
             except json.JSONDecodeError as exc:
                 raise CypherAssemblyError(f"Malformed JSON in map column {col!r}: {exc}") from exc
         return value
+    data: Any
     try:
         if isinstance(value, str):
             data = json.loads(value)
         elif isinstance(value, dict):
             data = value
+        elif isinstance(value, list) and kind in (GraphVarKind.NODE, GraphVarKind.EDGE):
+            # A list of nodes or relationships the engine hands back as a list of JSON values (a
+            # session walk's, REQ-751), each its text or decoded.
+            data = [json.loads(v) if isinstance(v, str) else v for v in value]
         else:
             raise CypherAssemblyError(
                 f"Unexpected graph column value type for {col!r}: {type(value)}"
@@ -445,10 +483,11 @@ def _apply_id_map(v: Any, id_map: dict[str, int]) -> Any:
             if isinstance(new_v.get("end"), str) and new_v["end"] in id_map:
                 new_v["end"] = id_map[new_v["end"]]
             return new_v
-        if "nodes" in v and "edges" in v:
-            # Path dict — recurse into both lists so node IDs get replaced.
-            return {k: _apply_id_map(val, id_map) for k, val in v.items()}
-        return v
+        if "label" in v and "properties" in v:
+            return v
+        # A path, or a map holding nodes ({node1: n, rel: r}): each value's node IDs are
+        # replaced, so two nodes a map holds are never one id (0) to the client.
+        return {k: _apply_id_map(val, id_map) for k, val in v.items()}
     if isinstance(v, list):
         return [_apply_id_map(item, id_map) for item in v]
     return v

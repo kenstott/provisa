@@ -24,6 +24,7 @@
     "layer_relationships": "Beziehungen zwischen Mitgliedern",
     "layer_outside": "Beziehungen zu externen Tabellen",
     "layer_lineage": "Lineage",
+    "layer_productLinks": "Verknüpfungen zu anderen Produkten",
     "filterDomain": "Domänen",
     "filterTag": "Tags",
     "filterSensitivity": "Sensibilität",
@@ -64,6 +65,7 @@
     "edge_owns": "besitzt",
     "loadError": "Der Graph konnte nicht gelesen werden: {{error}}",
     "zoomTo": "Hineinzoomen",
+    "openInErd": "Im ERD öffnen",
     "edge_column_lineage": "speist Spalte",
     "preset_taxonomy": "Taxonomie",
     "layer_domains": "Domänen",
@@ -145,6 +147,10 @@
     "quality_none": "Noch nicht ausgeführt",
     "factOwner": "Eigentümer",
     "factMembers": "Mitgliedstabellen",
-    "factColumns": "Spalten"
+    "factColumns": "Spalten",
+    "depth": "Tiefe",
+    "lateral": "Laterale Kanten",
+    "grounding_grounded": "Verankert",
+    "grounding_grounded_pending": "Verankert, über einen Entwurf"
   }
 }

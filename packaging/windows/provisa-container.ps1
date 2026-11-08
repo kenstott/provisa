@@ -1,8 +1,9 @@
 # Provisa container-tier CLI for Windows (REQ-889 / REQ-633). Routes the full
 # compose stack (Trino + compute) through nerdctl inside the Provisa WSL2 distro
-# - the Windows equivalent of the macOS Lima tier. No VirtualBox. The base native
-# tier (provisa-native.ps1) stays available; this tier is an additive, reversible
-# upgrade. Mirrors the compose routing in scripts/provisa (RUNTIME=lima).
+# - the Windows counterpart of the macOS container tier, which runs docker compose on
+# the user's own Docker. No VirtualBox. The base native tier (provisa-native.ps1)
+# stays available; this tier is an additive, reversible upgrade. Mirrors the compose
+# routing in scripts/provisa (RUNTIME=docker).
 #Requires -Version 5.1
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

@@ -20,8 +20,11 @@ from __future__ import annotations
 
 import pytest
 
+from provisa.cypher.parser import parse_cypher
+from provisa.ephemeral import seam, store
 from provisa.gql.label_map import RelationshipMapping
 from provisa.gql.path_walk import UNLABELLED_ENDS
+from provisa.gql.translator import cypher_to_sql
 from provisa.gql.translator_types import CypherTranslateError
 from tests.unit.ephemeral_harness import Session
 
@@ -73,8 +76,10 @@ def test_tck_match6_a_named_variable_length_path(monkeypatch):
         "CREATE (a:A {name: 'A'})-[:KNOWS {num: 1}]->(b:B {name: 'B'})-[:KNOWS]->(c:C {name: 'C'})"
     )
     rows = s.run("MATCH p = (n {name: 'A'})-[:KNOWS*1..2]->(x) RETURN p, length(p) AS l")
-    ends = sorted(([n["id"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
-    assert ends == [(["A|e:1", "B|e:2"], 1), (["A|e:1", "C|e:3"], 2)]
+    # REQ-751: the path is every node the walk passed, not its two ends alone.
+    nodes = sorted(([n["id"] for n in r["p"]["nodes"]], r["l"]) for r in rows)
+    assert nodes == [(["A|e:1", "B|e:2"], 1), (["A|e:1", "B|e:2", "C|e:3"], 2)]
+    assert [len(r["p"]["edges"]) for r in sorted(rows, key=lambda r: r["l"])] == [1, 2]
 
 
 def test_tck_match4_an_undirected_walk_takes_no_relationship_twice(monkeypatch):
@@ -139,24 +144,29 @@ def test_a_walk_reaches_a_model_node_by_a_session_relationship(monkeypatch):
         "MATCH p = shortestPath((a)-[*..5]-(c)) RETURN length(p) AS l, p"
     )
     assert [r["l"] for r in rows] == [2]
-    assert [n["id"] for n in rows[0]["p"]["nodes"]] == ["Person|1", "Robot|e:2"]
+    assert [n["id"] for n in rows[0]["p"]["nodes"]] == ["Person|1", "Robot|e:1", "Robot|e:2"]
 
 
 def test_a_walk_reads_the_relationships_table_once(monkeypatch):
     s = Session(monkeypatch, {})
     s.run("CREATE ({n: 1})-[:T]->({n: 2})-[:U]->({n: 3})")
     sql = s.sql("MATCH p = shortestPath((a {n: 1})-[*..3]->(b)) RETURN length(p)")
-    assert sql.count("FROM cypher__rels") == 1
-    assert "cypher__rel__T" not in sql and "cypher__rel__U" not in sql
+    assert sql.count('FROM "cypher__rels"') == 1
+    assert store.rel_table("T") not in sql and store.rel_table("U") not in sql
 
 
 # --- refused --------------------------------------------------------------------------------------
 
 
-def test_the_model_graph_refuses_an_unlabelled_end_by_name(monkeypatch):
+def test_the_model_graph_refuses_a_path_with_both_ends_free_by_name(monkeypatch):
+    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end is enough; neither is refused. The
+    # model graph is a read outside any graph session (an empty session walks its own, REQ-2176).
     s = Session(monkeypatch, _PEOPLE)
+    query = "MATCH p = shortestPath((a)-[*..3]->(b)) RETURN p"
+    on_model = seam.label_map(s.model, None)
+    assert on_model is s.model
     with pytest.raises(CypherTranslateError, match=UNLABELLED_ENDS):
-        s.run("MATCH p = shortestPath((a:Person)-[*..3]->(b)) RETURN p")
+        cypher_to_sql(parse_cypher(query, on_model), on_model, {})
 
 
 def test_a_walk_the_models_relationships_could_take_is_refused_by_name(monkeypatch):
@@ -165,3 +175,19 @@ def test_a_walk_the_models_relationships_could_take_is_refused_by_name(monkeypat
     s.run("CREATE (:Robot {m: 'R2'})-[:KNOWS]->(:Robot {m: 'C3'})")
     with pytest.raises(CypherTranslateError, match=UNLABELLED_ENDS):
         s.run("MATCH (a)-[:KNOWS*1..2]->(b) RETURN b.m")
+
+
+def test_a_walk_from_a_labelled_model_end_takes_the_models_relationships(monkeypatch):
+    # REQ-348 (ONE END BOUND OR BINDABLE): one labelled end places the walk on the model's
+    # relationships, session or not; Ann knows Bo, Bo knows no one.
+    people = {
+        "Person": (
+            {"id": "integer", "name": "text", "knows_id": "integer"},
+            "(1, 'Ann', 2), (2, 'Bo', NULL)",
+        )
+    }
+    knows = RelationshipMapping("KNOWS", "Person", "Person", "knows_id", "id", "knows")
+    s = Session(monkeypatch, people, relationships=[knows])
+    s.run("CREATE (:Robot {m: 'R2'})-[:KNOWS]->(:Robot {m: 'C3'})")
+    rows = s.run("MATCH (a:Person {name: 'Ann'})-[:KNOWS*1..2]->(b) RETURN b.name")
+    assert _sorted(rows) == [("Bo",)]

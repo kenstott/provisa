@@ -169,8 +169,10 @@ def register(
         )
 
     @described
-    async def propose_fakes(table_id: int, role: str | None = None) -> dict:
-        return await mt.propose_fakes(*ctx(role), table_id)
+    async def propose_fakes(
+        table_id: int, columns: list[str] | None = None, role: str | None = None
+    ) -> dict:
+        return await mt.propose_fakes(*ctx(role), table_id, columns=columns)
 
     @described
     async def list_synthetic_datasets(role: str | None = None) -> list[dict]:

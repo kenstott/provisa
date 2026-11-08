@@ -40,6 +40,10 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-2147: a steward's classification decisions are about the model's columns, as the
         # constraints are, so they travel with them.
         "profiler_classifications",
+        # REQ-2189: a saved ERD layout is stored in the model and versions with the environment.
+        "erd_layouts",
+        "erd_layout_domains",
+        "erd_layout_tables",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
@@ -122,6 +126,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_delta_ledger",
         "relationship_candidates",
         "creation_requests",
+        # REQ-2216: the approve and decide calls this environment already answered.
+        "idempotent_calls",
         "live_query_state",
         "file_source_mtimes",
         "node_ids",
@@ -153,6 +159,20 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # REQ-2106: what this environment's code sources cached and indexed for themselves.
         "code_source_cache",
         "code_source_vectors",
+        # REQ-2185: its own reference library, embedded by its own vector models; a document
+        # is added to the environment whose assistants draw on it.
+        "reference_documents",
+        "reference_document_domains",
+        "reference_passages",
+        # REQ-2208: the tags on its documents and their sections, which go where the documents go.
+        "reference_document_tags",
+        # REQ-2185 (GRAPH RETRIEVAL): its glossary terms' embeddings, by its own vector model,
+        # made again from its own terms wherever they are missing or stale.
+        "glossary_term_vectors",
+        # REQ-2179: the glossary's scans of this environment's library documents and the review
+        # queue of the terms they propose, drafts until a steward decides on them.
+        "glossary_term_scans",
+        "glossary_term_drafts",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
@@ -163,6 +183,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # a copy or a merge makes to this environment's tables; carrying another environment's
         # value over it would move it backwards and hide a change from the workers watching it.
         "config_stamp",
+        # The layout this environment's schema was given: its own DDL's, which no copy changes.
+        "schema_layout",
         # REQ-1939: an environment's synthetic datasets belong to it alone -- they replace its
         # bindings with data in its own store -- so no copy or promotion carries them.
         "synthetic_datasets",
@@ -183,6 +205,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "checker_targets",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
+        # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
+        "profiler_sensitive_scans",
+        "profiler_sensitive_hints",
     }
 )
 

@@ -138,6 +138,8 @@ async def _queue_creation_request(  # REQ-434
     """Persist a governed create the caller is not authorized to perform (REQ-434)."""
 
     from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.api.admin.request_queue import raise_request
+    from provisa.api.app import state
     from provisa.core.repositories import creation_request as cr_repo
 
     payload = request_payload(input)
@@ -145,8 +147,8 @@ async def _queue_creation_request(  # REQ-434
     requested_by = getattr(identity, "user_id", None) if identity is not None else None
     pool = await _get_pool()
     async with pool.acquire() as conn:
-        rid = await cr_repo.create(
-            cast("Connection", conn), request_type, capability, payload, requested_by
+        rid = await raise_request(
+            cast("Connection", conn), request_type, capability, payload, requested_by, state=state
         )
     if request_type in cr_repo.REQUIRED_APPROVALS:
         # REQ-1948: a relationship request is decided by the domains it touches.
@@ -330,6 +332,56 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
             code="schema.google_workspace_invalid",
             params={"source": input.id, "error": str(exc)},
         )
+    return None
+
+
+def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-2191
+    """Why a JDBC source's settings cannot be a source, or None: for another source type,
+    and for settings that can. The settings are the source's federation hints
+    (provisa.jdbc_source.settings); its URL is checked as it will be connected to
+    (provisa.jdbc_source.url), so a file it names is held to the org's folder (REQ-1997)."""
+    import json as _json
+
+    from provisa.jdbc_source import SOURCE_TYPE
+    from provisa.jdbc_source.settings import InvalidJdbcSource, parse
+    from provisa.jdbc_source.jdbc import JdbcRefused
+    from provisa.jdbc_source.url import DriverOptionsRefused, FileUrlRefused, check
+
+    if input.type != SOURCE_TYPE:
+        return None
+    try:
+        settings = parse(_json.loads(input.federation_hints_json or "{}"))
+        check(settings.url)
+    except FileUrlRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_file_refused",
+            params={"source": input.id, "path": exc.path, "error": str(exc)},
+        )
+    except JdbcRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_driver_refused",
+            params={"source": input.id},
+        )
+    except DriverOptionsRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_options_refused",
+            params={"source": input.id, "options": ", ".join(exc.options)},
+        )
+    except InvalidJdbcSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    # Attach turned on is kept: the source attaches as the built-in type its URL names where the
+    # engine has that type's attach, and lands where it has not (provisa.jdbc_source.attach).
     return None
 
 

@@ -443,6 +443,8 @@ def _translated(call: exp.Anonymous) -> exp.Expr:
     if len(call.expressions) != 2:
         raise NotImplementedError("to_char takes a value and a format")
     value, fmt = call.expressions
+    if isinstance(fmt, exp.Null) or (isinstance(fmt, exp.Cast) and isinstance(fmt.this, exp.Null)):
+        return exp.cast(exp.null(), "TEXT")  # to_char is strict: a NULL format answers NULL
     if not (isinstance(fmt, exp.Literal) and fmt.is_string):
         raise NotImplementedError(
             "to_char: a format that is not a literal is not supported; each of its elements is "

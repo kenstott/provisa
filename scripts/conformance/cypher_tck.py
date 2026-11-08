@@ -27,7 +27,17 @@ fixed when it is declared, not created by a statement. Every other scenario pass
 failure is data. An error the scenario expects (a SyntaxError, a TypeError, ...) passes when the query is
 refused; the error's type is not compared, since Provisa names its own. A scenario run in a Bolt
 session has its side effects (``the side effects should be``, ``no side effects``) compared
-exactly with the summary counters of its query.
+exactly with the side effects of its query as the TCK defines them: the difference between the
+TCK's observation queries run before and after it in the same session (cypher_tck_bolt.effects),
+not a summary's counters, which count what was written rather than what changed.
+
+Log lines (by_design.log_lines), printed to stdout after the files are written, so the result is
+readable from the job log without the artifact; names escape backslash, newline, CR and colon with
+a backslash:
+
+    CONFORMANCE-COUNTS surface=<surface> passed=<n> by_design=<n> failed=<n> total=<n>
+    CONFORMANCE-GROUP <group name>                  (one per skipped-by-design group)
+    CONFORMANCE-FAILURE <feature> :: <scenario>     (one per failed case)
 
 The exit status is non-zero only when the suite did not run (no scenario passed or failed).
 
@@ -38,6 +48,7 @@ Usage: cypher_tck.py <features dir> <version> <base url> <role> <out.json> <out.
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import math
 import os
@@ -372,7 +383,7 @@ def _same(expected: Any, got: Any, ignore_list_order: bool) -> bool:
 #: A setup that builds a graph: Provisa's graph is the model's, so the scenario cannot run --
 #: unless a Bolt session is configured, in which a setup's statements (or a named graph's script)
 #: build the session's own graph (REQ-2167, amended 2026-10-27).
-_NOT_RUNNABLE = (("having executed", "builds its graph with a statement"),)
+_NOT_RUN = (("having executed", "builds its graph with a statement"),)
 
 #: What a session scenario's outcome is marked with, for its adapted group (by_design/cypher.yaml).
 IN_A_SESSION = "[in a session]"
@@ -435,44 +446,39 @@ def _setup_steps(scenario: Scenario) -> list[Step]:
     return out
 
 
-#: A TCK side-effect counter and the Bolt summary's counter for it; None for one Bolt's summary
-#: has no counter for (Neo4j counts a removed property as a property set).
-_SIDE_EFFECTS: dict[str, str | None] = {
-    "+nodes": "nodes-created",
-    "-nodes": "nodes-deleted",
-    "+relationships": "relationships-created",
-    "-relationships": "relationships-deleted",
-    "+properties": "properties-set",
-    "-properties": None,
-    "+labels": "labels-added",
-    "-labels": "labels-removed",
-}
+#: The TCK's side effects (tck/README.adoc, "Side effects of executing a query").
+SIDE_EFFECTS = (
+    "+nodes",
+    "-nodes",
+    "+relationships",
+    "-relationships",
+    "+properties",
+    "-properties",
+    "+labels",
+    "-labels",
+)
 
 
-def side_effects(expected: dict[str, int], stats: dict[str, int]) -> str | None:
-    """None when a query's summary counters are exactly the side effects ``expected`` (each TCK
-    counter not named is zero); else what differs. A Bolt summary leaves out a counter at zero,
-    so an absent Bolt counter reads as zero; a TCK counter with no Bolt counter is a failure
-    when it is expected, naming it."""
-    differs: list[str] = []
-    for counter, key in _SIDE_EFFECTS.items():
-        want = expected.get(counter, 0)
-        if key is None:
-            if want:
-                differs.append(f"{counter} expected {want}, the summary has no counter for it")
-            continue
-        got = stats.get(key, 0)
-        if got != want:
-            differs.append(f"{counter} {got}, expected {want}")
-    unknown = sorted(set(expected) - set(_SIDE_EFFECTS))
-    differs += [f"{counter}: no such side effect" for counter in unknown]
+def side_effects(expected: dict[str, int], measured: dict[str, int]) -> str | None:
+    """None when a query's side effects, ``measured`` as the TCK observes them (the difference of
+    its observation queries before and after the query, cypher_tck_bolt.effects), are exactly the
+    ``expected`` ones (each one not named is zero); else what differs."""
+    differs = [
+        f"{name} {measured.get(name, 0)}, expected {expected.get(name, 0)}"
+        for name in SIDE_EFFECTS
+        if measured.get(name, 0) != expected.get(name, 0)
+    ]
+    differs += [
+        f"{name}: no such side effect" for name in sorted(set(expected) - set(SIDE_EFFECTS))
+    ]
     return "; ".join(differs) or None
 
 
 def _session_scenario(scenario: Scenario) -> str | None:
     """How a scenario runs in a Bolt session, when one is configured: NAMED_GRAPH for a named
     TCK graph, IN_A_SESSION for a setup that builds its graph, EMPTY_GRAPH for an empty graph its
-    query matches a pattern on (the session's graph alone is empty); None to run it over HTTP. A
+    query or control query matches (MATCH) or merges (MERGE) a pattern on (the session's graph
+    alone is empty); None to run it over HTTP. A
     test procedure is the fixture model's command, called over either."""
     if not bolt.configured():
         return None
@@ -481,8 +487,15 @@ def _session_scenario(scenario: Scenario) -> str | None:
         return NAMED_GRAPH
     if any(t.startswith("having executed") for t in texts):
         return IN_A_SESSION
-    query = next((s.doc or "" for s in scenario.steps if s.text.startswith("executing query")), "")
-    if "an empty graph" in texts and re.search(r"\bMATCH\b", query, re.I):
+    # The query and its control query: a MERGE matches its pattern before it creates it, and a
+    # control query reads what the query made (Temporal4: CREATE, then MATCH (n)); on an empty
+    # graph either one matches the session's graph, never the model's.
+    read = "\n".join(
+        s.doc or ""
+        for s in scenario.steps
+        if s.text.startswith(("executing query", "executing control query"))
+    )
+    if "an empty graph" in texts and re.search(r"\b(?:MATCH|MERGE)\b", read, re.I):
         return EMPTY_GRAPH
     return None
 
@@ -498,7 +511,7 @@ def _waiting(reason: str) -> str:
 class Outcome:
     feature: str
     scenario: str
-    status: str  # passed | failed | not_runnable
+    status: str  # passed | failed | not_run (skipped by design if a group names it, else failed)
     reason: str = ""
 
 
@@ -550,10 +563,21 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             marks.append(session)
         return Outcome(scenario.feature, scenario.name, status, " ".join([reason, *marks]).strip())
 
+    # The scenario's control query: run after its query, in the same graph session, its answer
+    # what the steps after it check.
+    control = next(
+        (s.doc or "" for s in scenario.steps if s.text.startswith("executing control query")), None
+    )
+
     def ask(query: str, params: dict) -> tuple[int, Any]:
         if session is None:
-            return _post(base, role, query, params)
-        return bolt.run(setups, query, params)
+            asked = _post(base, role, query, params)
+            if control is not None and asked[0] < 400 and isinstance(asked[1], dict):
+                asked[1]["control"] = _post(base, role, control, {})
+            return asked
+        if control is None:
+            return bolt.run(setups, query, params)
+        return bolt.run(setups, query, params, control)
 
     _clear(base, _CREDENTIAL["Authorization"] if session is None else bolt.authorization())
     params: dict = {}
@@ -583,16 +607,23 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if text == "parameters are" and step.table:
                 params = {r[0]: tck_value(r[1]) for r in step.table}
                 continue
-            why = next((w for marker, w in _NOT_RUNNABLE if text.startswith(marker)), None)
-            return out("not_runnable", f"its setup {why or 'uses a named TCK graph'}")
+            why = next((w for marker, w in _NOT_RUN if text.startswith(marker)), None)
+            return out("not_run", f"its setup {why or 'uses a named TCK graph'}")
         if text.startswith("executing query"):
             query = step.doc or ""
             continue
         assert query is not None
-        if text.startswith("executing control query"):
-            return out("not_runnable", "checks state with a control query")
         if answer is None:
             answer = ask(query, params)
+        if text.startswith("executing control query"):
+            status, body = answer
+            if status >= 400:
+                detail = (body or {}).get("detail") if isinstance(body, dict) else body
+                return out("failed", f"refused ({status}): {str(detail)[:200]}")
+            # An HTTP control answer is its own (status, body); a session's is its rows.
+            held = body["control"]
+            answer = held if isinstance(held, tuple) else (200, held)
+            continue
         status, body = answer
         if "should be raised" in text:
             if status >= 400:
@@ -605,7 +636,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if status >= 400:
                 return out("failed", f"refused ({status}): {str(body)[:200]}")
             expected = {r[0]: int(r[1]) for r in step.table or []}
-            differs = side_effects(expected, body["stats"])
+            differs = side_effects(expected, body["effects"])
             if differs:
                 return out("failed", f"side effects differ: {differs}")
             checked = True
@@ -656,7 +687,7 @@ def run(scenario: Scenario, base: str, role: str) -> Outcome:
             if good:
                 checked = True
                 continue
-            if _below_the_microsecond(header, expected_raw):
+            if _below_the_microsecond(header, expected_raw) or _builds_below_the_microsecond(query):
                 return out(
                     "failed", f"expects digits below the microsecond; rows differ: got {rows[:3]}"
                 )
@@ -681,6 +712,22 @@ def _below_the_microsecond(header: list[str], rows: list[list[str]]) -> bool:
     return False
 
 
+#: A temporal constructor's nanosecond count, or a temporal string's fraction of a second.
+_NANOSECOND_KEY = re.compile(r"\bnanosecond\s*:\s*(\d+)", re.I)
+_SUB_MICROSECOND_STRING = re.compile(r"'[^']*\d:\d\d(?::\d\d)?\.\d{6}\d*[1-9][^']*'")
+
+
+def _builds_below_the_microsecond(query: str) -> bool:
+    """Whether a query builds temporal values that differ below the microsecond (REQ-2173,
+    amended 2026-10-27, NANOSECONDS PRESENTED AS ZERO): a constructor's nanosecond count that is
+    not a whole number of microseconds, or a temporal string with digits past the sixth. Held to
+    microsecond precision, such values are one value, so a scenario ordering or comparing them
+    expects the digits below the microsecond."""
+    if any(int(n) % 1000 for n in _NANOSECOND_KEY.findall(query)):
+        return True
+    return bool(_SUB_MICROSECOND_STRING.search(query))
+
+
 def in_running_order(scenarios: list[Scenario]) -> list[int]:
     """The scenarios' indexes in the order they run: every scenario that declares no test
     procedure first, as read, so one that calls an unknown procedure meets none; then those that
@@ -702,20 +749,44 @@ def in_running_order(scenarios: list[Scenario]) -> list[int]:
 # --- the report --------------------------------------------------------------------------------
 
 
-def report(outcomes: list[Outcome], version: str) -> dict:
-    """The run as the conformance page reads it (REQ-2167, amended 2026-10-27): a scenario not
-    run, or failed, because of a designed limitation is not runnable by design in a group that
-    names its decision (by_design/cypher.yaml) and is out of the pass rate; one with no decision
-    behind it is a failure."""
+def select_scenarios(scenarios: list[Scenario], spec: str) -> list[Scenario]:
+    """The scenarios of the features a comma-separated list of globs selects (REQ-2167). A glob
+    matches a feature by its full name ("Merge1 - Merge node") or by its prefix before " - "
+    ("Merge1"), case-sensitively. An empty spec selects every scenario; a spec that selects no
+    feature is an error naming it."""
+    globs = [g.strip() for g in spec.split(",") if g.strip()]
+    if not spec.strip():
+        return scenarios
+    if not globs:
+        raise ValueError(f"feature filter {spec!r} names no feature glob")
+    chosen = [
+        s
+        for s in scenarios
+        if any(
+            fnmatch.fnmatchcase(s.feature, g)
+            or fnmatch.fnmatchcase(s.feature.split(" - ", 1)[0], g)
+            for g in globs
+        )
+    ]
+    if not chosen:
+        raise ValueError(f"feature filter {spec!r} matches no TCK feature")
+    return chosen
+
+
+def report(outcomes: list[Outcome], version: str, filter: str = "") -> dict:
+    """The run as the conformance page reads it (REQ-2167, amended 2026-10-27 and 2026-10-28):
+    each scenario is passed, skipped by design or failed. One not run, or failed, because of a
+    designed limitation is skipped by design in a group that names its decision
+    (by_design/cypher.yaml) and is out of the pass rate; one with no decision behind it is
+    failed."""
     passed = sum(o.status == "passed" for o in outcomes)
     unmet = [
         {"feature": o.feature, "scenario": o.scenario, "reason": o.reason}
         for o in outcomes
-        if o.status in ("failed", "not_runnable")
+        if o.status in ("failed", "not_run")
     ]
     declared = by_design.groups("cypher")
     failures, excluded = by_design.classify(unmet, declared)
-    ran = passed + len(failures)
     # A scenario run in a session is adapted: its group says what its setup became.
     adapted = by_design.adapted(
         [
@@ -729,36 +800,38 @@ def report(outcomes: list[Outcome], version: str) -> dict:
             if o.status in ("passed", "failed")
         ],
         declared,
+        excluded,
     )
-    return {
+    doc = {
         "surface": "cypher",
         "suite": "openCypher TCK",
         "version": version,
-        "total": len(outcomes),
-        "ran": ran,
-        "passed": passed,
-        "failed": len(failures),
-        "not_runnable": sum(g["count"] for g in excluded),
-        "by_design": excluded,
-        "pass_rate": round(passed / ran, 4) if ran else None,
-        "failures": failures,
+        **by_design.outcomes(passed, excluded, failures),
         "adapted": adapted,
     }
+    if filter.strip():
+        doc["filter"] = filter
+    return doc
 
 
 def markdown(doc: dict) -> str:
-    rate = "n/a" if doc["pass_rate"] is None else f"{doc['pass_rate']:.1%}"
     lines = [
         f"## Cypher conformance: {doc['suite']} {doc['version']}",
         "",
-        f"Passed {doc['passed']} of {doc['ran']} scenarios run ({rate}); "
-        f"{doc['not_runnable']} not runnable by design.",
+        *([f"Filtered to features: `{doc['filter']}`", ""] if "filter" in doc else []),
+        by_design.counts_line(doc, "scenarios"),
         "",
-        *by_design.table(doc["by_design"]),
+        "### Skipped by design",
+        "",
+        *by_design.table(doc["by_design_groups"], requirement=True),
+        "",
+        *by_design.cases_lines(doc["by_design_groups"]),
         "",
         "### Adapted",
         "",
         *by_design.adapted_lines(doc["adapted"]),
+        "",
+        "### Failed",
         "",
         "| Feature | Scenario | Reason |",
         "| --- | --- | --- |",
@@ -787,8 +860,13 @@ def main(argv: list[str]) -> int:
             Path(os.environ["CONFORMANCE_MODEL"]),
             os.environ["PROVISA_SUPERUSER_USERNAME"],
             os.environ["PROVISA_SUPERUSER_PASSWORD"],
+            # Its callers: the runner's role over HTTP and the Bolt session's.
+            (role, bolt.EMPTY_ROLE),
         )
     scenarios = [s for p in sorted(Path(features).rglob("*.feature")) for s in parse_feature(p)]
+    # CONFORMANCE_FEATURES: comma-separated feature-name globs; empty runs the whole suite.
+    spec = os.environ.get("CONFORMANCE_FEATURES", "")
+    scenarios = select_scenarios(scenarios, spec)
     outcomes: list[Outcome | None] = [None] * len(scenarios)
     for n in in_running_order(scenarios):
         s = scenarios[n]
@@ -796,12 +874,13 @@ def main(argv: list[str]) -> int:
             outcomes[n] = run(s, base, role)
         except (OSError, ValueError, KeyError) as exc:
             outcomes[n] = Outcome(s.feature, s.name, "failed", f"runner: {exc}")
-    doc = report([o for o in outcomes if o is not None], version)
+    doc = report([o for o in outcomes if o is not None], version, spec)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))
-    if not doc["ran"]:
+    print("\n".join(by_design.log_lines(doc)), flush=True)
+    if not doc["total"]:
         return 1
-    # REQ-2167: at its baseline, a failure no by-design group excludes fails the job.
+    # REQ-2167: at its baseline, a failed scenario fails the job.
     return 1 if by_design.baseline_failed("cypher", doc["failed"]) else 0
 
 

@@ -7,7 +7,7 @@
 """REQ-1349: MCP chat/tools must resolve the ACTING ORG's config (org_settings overrides layered
 on the deployment config), not the static deployment-only config loaded once at process startup.
 
-Before this fix, provisa/api/mcp/tools.py's _resolve_embedding_model and provisa/api/mcp/chat.py's
+Before this fix, provisa/api/mcp/tools.py's resolve_embedding_model and provisa/api/mcp/chat.py's
 _resolve_vendor/_llm_configured/_resolve_model read state.config / the bare deployment file only —
 an org that registered a vector model or picked an mcp_chat vendor through the AI Models UI (which
 writes to the org_settings table, per REQ-1349) would never see it take effect, no matter how the
@@ -53,7 +53,7 @@ class TestEmbeddingModelHonorsOrgOverride:
             },
             updated_by="test",
         )
-        model = await mcp_tools._resolve_embedding_model(_state(tenant_db))
+        model = await mcp_tools.resolve_embedding_model(_state(tenant_db))
         assert model.id == "nomic-embed-text"
         assert model.provider == "ollama"
         assert model.dimensions == 768
@@ -61,7 +61,7 @@ class TestEmbeddingModelHonorsOrgOverride:
     async def test_no_org_override_and_no_deployment_entry_fails_loud(self, tenant_db, monkeypatch):
         monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: {"sources": []})
         with pytest.raises(ValueError, match="embedding model"):
-            await mcp_tools._resolve_embedding_model(_state(tenant_db))
+            await mcp_tools.resolve_embedding_model(_state(tenant_db))
 
 
 class TestChatVendorHonorsOrgOverride:  # REQ-1349, REQ-1797

@@ -13,6 +13,8 @@ nothing for a pii column with no confident match, and nothing for a column alrea
 
 from __future__ import annotations
 
+import pytest
+
 from provisa.fakes.kinds import parse
 from provisa.fakes.propose import ProfiledColumnFacts, propose
 
@@ -66,3 +68,51 @@ def test_every_proposal_is_a_declaration_the_save_reads():
             parse(proposal["fake"])
         else:
             parse(proposal["syntheticRule"], rule=True)
+
+
+def test_a_named_column_is_proposed_from_its_profile_though_it_declares_a_fake():
+    out = propose("r1", _COLUMNS, pii=set(), declared={"email", "city"}, named={"email"})
+    assert out.columns == {"email": {"fake": "email()"}}
+    assert out.unmatched_pii == []
+
+
+def test_with_no_columns_named_a_declared_column_is_still_skipped():
+    out = propose("r1", _COLUMNS, pii=set(), declared={"email", "city"})
+    assert "email" not in out.columns and "city" not in out.columns
+    assert out.columns["full_name"] == {"fake": "name()"}
+
+
+def test_a_named_column_the_profile_does_not_hold_is_refused_by_name():
+    with pytest.raises(ValueError, match="'nickname'"):
+        propose("r1", _COLUMNS, pii=set(), declared=set(), named={"email", "nickname"})
+
+
+# A profile run replaces a classified column's plausible type with the classification kind its
+# values passed (REQ-2147, profiler.run.classified_plausible_types): an address column reads as
+# ``email_address``, not ``email``. The proposal is the same fake either way. The names here match
+# no identifier by name, so only the kind decides.
+@pytest.mark.parametrize(
+    ("kind", "fake"),
+    [
+        ("email_address", "email()"),
+        ("e164_phone", "phone_number()"),
+        ("city", "city()"),
+        ("country", "country()"),
+    ],
+)
+def test_a_column_classified_by_a_kind_is_proposed_that_kinds_fake(kind, fake):
+    out = propose("r1", [_col("contact", plausible=kind, confidence=1.0)], set(), set())
+    assert out.columns == {"contact": {"fake": fake}}
+
+
+def test_each_kind_proposed_a_fake_is_a_classification_kind():
+    from provisa.fakes.propose import _FAKES_BY_KIND
+    from provisa.profiler import classify
+
+    assert set(_FAKES_BY_KIND) <= {k.id for k in classify.catalogue()}
+
+
+def test_a_fake_of_another_kind_on_a_classified_column_is_a_kind_mismatch():
+    from provisa.fakes.adequacy import FAILED, kind_mismatch
+
+    assert kind_mismatch("name()", "email_address", 1.0).status == FAILED

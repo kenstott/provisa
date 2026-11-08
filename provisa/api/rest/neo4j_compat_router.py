@@ -101,7 +101,7 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     )
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
-    from provisa.gql.assembler import assemble_rows, take_cut, to_serializable
+    from provisa.gql.assembler import assemble_rows, take_overrun, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import (
         cache_hint_for,
@@ -178,7 +178,7 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
 
     try:
         result = await _execute_plan(plan)
-        rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
+        rows = take_overrun([dict(zip(result.column_names, row)) for row in result.rows])
     except (ReadRefused, ApiError) as exc:
         return _refused(exc)
     except Exception as exc:

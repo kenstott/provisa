@@ -12,6 +12,7 @@ import { useState, useEffect, useRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
+  Alert,
   Button,
   Checkbox,
   Group,
@@ -54,6 +55,57 @@ interface TraceEntry {
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+// GET /admin/traces/latest: when the ops traces table last received a row.
+interface TracesTableLatest {
+  tracked: boolean;
+  latest?: string | null;
+  age_seconds?: number | null;
+  stale_after_seconds: number;
+}
+
+const TABLE_CHECK_MS = 30_000;
+
+// What the ops traces table says about itself while an endpoint is set. The read is the server's;
+// nothing is inferred from the endpoint's URL. `latest` is null until the first answer, and when
+// the table is not read by this engine. `failure` holds why the last check could not be made (the
+// status code or the error message); a later successful check clears it.
+function useTracesTableLatest(endpointSet: boolean): {
+  latest: TracesTableLatest | null;
+  failure: string | null;
+} {
+  const [latest, setLatest] = useState<TracesTableLatest | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!endpointSet) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const resp = await fetch(`${API_BASE}/admin/traces/latest`);
+        if (!resp.ok) {
+          if (alive) setFailure(`HTTP ${resp.status}`);
+          return;
+        }
+        const json: TracesTableLatest = await resp.json();
+        if (alive) {
+          setLatest(json);
+          setFailure(null);
+        }
+      } catch (err) {
+        if (alive) setFailure(err instanceof Error ? err.message : String(err));
+      }
+    };
+    check();
+    const id = setInterval(check, TABLE_CHECK_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [endpointSet]);
+
+  return endpointSet ? { latest, failure } : { latest: null, failure: null };
+}
 
 function TraceList({
   traces,
@@ -199,7 +251,7 @@ function TraceFeed() {
 
   return (
     <>
-      <div className="trace-feed">
+      <div className="trace-feed" data-testid="trace-feed">
         <div className="trace-feed-header">{headerContent}</div>
         <TraceList
           traces={traces}
@@ -270,6 +322,15 @@ function OtelSettingsSection({
   };
 
   const active = Boolean(otel.endpoint);
+  // The endpoint the process is exporting to is the saved one, not what is being typed.
+  const { latest: tableLatest, failure: tableFailure } = useTracesTableLatest(Boolean(saved.endpoint));
+  // A failed check leaves the last answer stale, so the failure is shown instead of it.
+  const tableStale =
+    tableFailure === null &&
+    tableLatest !== null &&
+    tableLatest.tracked &&
+    (tableLatest.latest == null ||
+      (tableLatest.age_seconds ?? 0) > tableLatest.stale_after_seconds);
 
   return (
     <div className="settings-section">
@@ -281,6 +342,20 @@ function OtelSettingsSection({
             : t("observabilityTab.statusActiveNoCollector")}
         </Text>
       </Text>
+      {tableFailure !== null && (
+        <Alert color="red" variant="light" mb="md" data-testid="traces-table-unchecked">
+          {t("observabilityTab.tracesTableCheckFailed", { reason: tableFailure })}
+        </Alert>
+      )}
+      {tableStale && tableLatest && (
+        <Alert color="yellow" variant="light" mb="md" data-testid="traces-table-stale">
+          {tableLatest.latest == null
+            ? t("observabilityTab.tracesTableEmpty")
+            : t("observabilityTab.tracesTableStale", {
+                minutes: Math.round(tableLatest.stale_after_seconds / 60),
+              })}
+        </Alert>
+      )}
       {/* Four unrelated groups of fields stacked into one column ran far past the trace feed
           beside them; as tabs each is a screenful and the page ends where the feed does. */}
       <Tabs defaultValue="exporter" keepMounted={false}>

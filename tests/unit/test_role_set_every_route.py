@@ -40,6 +40,7 @@ from tests.unit.test_governed_plan_stages import pipeline  # noqa: F401  (the pi
 
 SET = "org_admin,attr1__v,attr2__v"
 META = "meta:attr1+attr1__v+attr2+attr2__v+org_admin"
+_ACTING = {"acting_roles": "attr1,attr1__v,attr2,attr2__v,org_admin"}  # REQ-2188
 
 
 @pytest.fixture()
@@ -79,11 +80,14 @@ def test_the_unsecured_resolver_acts_as_the_meta_role_of_the_set(built):
     assert role == META
     assert built == [(["org_admin"], ("attr1__v", "attr1", "attr2__v", "attr2"))]
     # what a row filter reads: the attributes the derived roles name, then the acting role
-    assert session_vars == {"attr1": "v", "attr2": "v", "role": META}
+    assert session_vars == {**_ACTING, "attr1": "v", "attr2": "v", "role": META}
 
 
 def test_one_named_role_is_that_role(built):
-    assert unsecured_principal(_state(), "analyst") == ("analyst", {"role": "analyst"})
+    assert unsecured_principal(_state(), "analyst") == (
+        "analyst",
+        {"role": "analyst", "acting_roles": "analyst"},
+    )
     assert built == []
 
 
@@ -149,17 +153,18 @@ class TestMcp:
         import contextvars
 
         from provisa.api.mcp.server import named_role
-        from provisa.core.request_context import current_session_vars
+        from provisa.core.request_context import current_acting_role, current_session_vars
 
         monkeypatch.setenv("PROVISA_MCP_ROLE", SET)
 
         def _call():
-            return named_role(SET, _state()), current_session_vars.get()
+            return named_role(SET, _state()), current_session_vars.get(), current_acting_role.get()
 
-        role, session_vars = contextvars.copy_context().run(_call)
+        role, session_vars, acting = contextvars.copy_context().run(_call)
         assert role == META
+        assert acting == META  # REQ-2188: what a write of the model is held to, on stdio too
         assert built == [(["org_admin"], ("attr1__v", "attr1", "attr2__v", "attr2"))]
-        assert session_vars == {"attr1": "v", "attr2": "v", "role": META}
+        assert session_vars == {**_ACTING, "attr1": "v", "attr2": "v", "role": META}
 
     def test_a_local_call_naming_a_role_beyond_its_pin_is_refused_by_name(self, monkeypatch):
         from provisa.api.mcp.server import named_role

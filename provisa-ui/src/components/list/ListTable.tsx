@@ -36,6 +36,10 @@ import {
 } from "./listCellLimits";
 import { Tip } from "../Tip";
 import { useLeaveGuard } from "./panelLeave";
+import { DeletingKeysContext } from "./panelActions";
+
+/** The key of the item a row of `ListItems` shows: what a delete in progress marks it by. */
+const RowKeyContext = createContext<string | undefined>(undefined);
 
 /** The caps the list's columns stated for themselves, by position; told by the head, read by rows. */
 const ColumnCaps = createContext<{
@@ -326,7 +330,11 @@ export function ListItems<T>({
             onToggle={() => state.toggleCollapsed(item.key)}
           />
         ) : (
-          <Fragment key={rowKey(item.row)}>{render(item.row)}</Fragment>
+          <Fragment key={rowKey(item.row)}>
+            <RowKeyContext.Provider value={String(rowKey(item.row))}>
+              {render(item.row)}
+            </RowKeyContext.Provider>
+          </Fragment>
         ),
       )}
     </>
@@ -342,6 +350,12 @@ export interface ListRowProps extends Omit<
   /** Click toggles the row's expansion (or whatever the page binds); adds the pointer/hover style. */
   onClick?: () => void;
   selected?: boolean;
+  /**
+   * REQ-2198: the key of the item the row shows, as the detail panel's delete names it
+   * (`PanelDelete` `itemKey`). A row of `ListItems` knows it already; a page that draws its rows
+   * itself passes it.
+   */
+  itemKey?: string | number;
 }
 
 /**
@@ -358,9 +372,21 @@ export function ListActionsHead({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
 
-export function ListRow({ children, testId, onClick, selected, ...aria }: ListRowProps) {
+export function ListRow({ children, testId, onClick, selected, itemKey, ...aria }: ListRowProps) {
+  const { t } = useTranslation();
+  const listedKey = useContext(RowKeyContext);
+  const key = itemKey === undefined ? listedKey : String(itemKey);
+  // REQ-2198: while its item is being deleted the row is marked so and offers it for nothing:
+  // not clickable, and its own actions are out of reach.
+  const deletingKeys = useContext(DeletingKeysContext);
+  const deleting = key !== undefined && deletingKeys.has(key);
   // list-row: the item rows App.css stripes (every even item row, detail rows excluded).
-  const cls = ["list-row", onClick ? "clickable" : "", selected ? "row-selected" : ""]
+  const cls = [
+    "list-row",
+    onClick && !deleting ? "clickable" : "",
+    selected ? "row-selected" : "",
+    deleting ? "row-deleting" : "",
+  ]
     .filter(Boolean)
     .join(" ");
   // Beside a detail panel whose form has unsaved changes, choosing a row asks first.
@@ -371,7 +397,12 @@ export function ListRow({ children, testId, onClick, selected, ...aria }: ListRo
       {...aria}
       data-testid={testId}
       className={cls}
-      onClick={onClick ? () => guard(onClick) : undefined}
+      onClick={onClick && !deleting ? () => guard(onClick) : undefined}
+      data-deleting={deleting || undefined}
+      aria-disabled={deleting || undefined}
+      aria-busy={deleting || undefined}
+      inert={deleting}
+      title={deleting ? t("common.deleting") : aria.title}
     >
       {capCells(children, caps, { at: 0 })}
     </Table.Tr>

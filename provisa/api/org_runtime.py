@@ -202,11 +202,14 @@ class OrgRuntime:
     # table names and table ids that repeat from one org to the next.
     kafka_windows: dict[str, str] = field(default_factory=dict)
     kafka_bootstrap: dict[str, str] = field(default_factory=dict)
+    # REQ-147: each Kafka source's entry as declared, its references resolved where a client opens.
+    kafka_declared: dict[str, dict] = field(default_factory=dict)
     kafka_table_configs: dict[str, KafkaTableConfig] = field(default_factory=dict)
     kafka_table_physical: dict[str, str] = field(default_factory=dict)
     table_approval_hooks: dict[int, bool] = field(default_factory=dict)
     source_approval_hooks: dict[str, bool] = field(default_factory=dict)
     pg_enum_types: dict = field(default_factory=dict)
+    pg_source_enums: dict = field(default_factory=dict)
     graphql_remote_sources: dict[str, dict] = field(default_factory=dict)
     openapi_specs: dict[str, dict] = field(default_factory=dict)
     grpc_remote_sources: dict[str, dict] = field(default_factory=dict)
@@ -232,6 +235,10 @@ class OrgRuntime:
     # `table_path_maps` and `proto_files` below are views of it.
     # Each role's surface, built when first read (api/role_surface.LazySurface).
     surfaces: "dict[str, RoleSurface | LazySurface]" = field(default_factory=dict)
+    # REQ-1008: this runtime's catalog search index (DuckDB VSS HNSW), over its own catalog and
+    # embedded with its own model: built lazily on first search_catalog, set None on catalog
+    # reload. Any so the mcp package owns the type.
+    mcp_catalog_index: Any = None
     # The whole model — every registered table and column, no role's grants applied — used to
     # lower view SQL to physical (api/app_rebuild.py) and to name a table model-wide (a contract's
     # dataset, a semantic name, an approval hook's table): never every role's surface, which would

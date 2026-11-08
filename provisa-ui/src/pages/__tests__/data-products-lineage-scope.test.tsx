@@ -29,7 +29,7 @@ vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
     selectedRoles: [{ id: "admin" }],
-    availableRoles: [],
+    availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
 // Every right but view_governance: the product's lineage asks none.
@@ -40,8 +40,8 @@ vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
   saveFunction: vi.fn(),
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
   ProductMapButton: () => null,
 }));
 
@@ -235,7 +235,7 @@ const input = (relation: string, over: Partial<ProductInput> = {}): ProductInput
   ...over,
 });
 
-const panel = (lineage: ProductLineage | null) =>
+const panel = (lineage: ProductLineage | null, owner = true) =>
   render(
     <DataProductDetailPanel
       p={product}
@@ -244,12 +244,11 @@ const panel = (lineage: ProductLineage | null) =>
       reader={null}
       canEdit={false}
       canDelete={false}
-      owner
+      owner={owner}
       lineageLoading={false}
       lineageError=""
       lineageGraph={lineage}
-      odcs={null}
-      odcsError=""
+      contractsVersion={0}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
       {...lifecycleProps()}
@@ -289,9 +288,18 @@ describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", ()
     logged.mockRestore();
   });
 
-  it("are absent until the product's lineage is read", () => {
+  it("show no list until the product's lineage is read (the card itself is always shown, REQ-2160)", () => {
     panel(null);
-    expect(screen.queryByTestId("data-product-card-inputPorts-pet_health")).toBeNull();
+    expect(screen.getByTestId("data-product-card-inputPorts-pet_health")).toBeInTheDocument();
+    expect(screen.queryByTestId("data-product-detail-inputs-pet_health")).toBeNull();
+  });
+
+  it("give a non-owner the card with the muted owner-only line and no list, even with lineage read", () => {
+    panel({ ...LINEAGE, inputs: [input("pet_store.orders")] }, false);
+    const card = screen.getByTestId("data-product-card-inputPorts-pet_health");
+    expect(within(card).getByText(/visible to the product's owner/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("data-product-detail-inputs-pet_health")).toBeNull();
+    expect(screen.queryByText(/orders/)).toBeNull();
   });
 });
 

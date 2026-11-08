@@ -4,7 +4,7 @@
     "colPk": "PK",
     "colSqlAlias": "Alias SQL",
     "colDescription": "Descrizione",
-    "colVisibleTo": "Visibile a (lettura)",
+    "colVisibleTo": "Autorizzazioni di lettura",
     "colMasking": "Mascheramento",
     "colScope": "Ambito",
     "pathBadge": "percorso",
@@ -45,13 +45,16 @@
     "editDefinitionButton": "Modifica definizione",
     "editDefinitionTitle": "Modifica la definizione della vista (SQL o selettore metrica/dimensione)",
     "queryTemplate": "Cypher",
-    "writable": "Scrivibile",
+    "writable": "La sorgente accetta",
+    "noWrites": "Nessuna scrittura",
     "notShown": "non mostrato",
     "draftLabel": "Bozza",
     "draftTooltip": "Bozza: fuori servizio — in nessuno schema e letta da nessuno. Deselezionare per rilasciare la tabella; selezionare per metterla fuori servizio.",
     "draftNoRightTooltip": "Rilasciare una tabella, o riportarla a bozza, richiede il diritto Registrazione tabelle nel dominio della tabella.",
     "draftPreviewNote": "Anteprima della bozza: i lettori non possono ancora vedere questa tabella.",
     "keepsHistory": "Conserva la cronologia: ogni versione, con quando è accaduto e quando è stato registrato.",
-    "keepsHistoryQuery": "Interrogala a una data o come registrata"
+    "keepsHistoryQuery": "Interrogala a una data o come registrata",
+    "deleteTitle": "Eliminare la tabella {{name}}?",
+    "deleteConsequence": "La registrazione della tabella viene eliminata."
   }
 }

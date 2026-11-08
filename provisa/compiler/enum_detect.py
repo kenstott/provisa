@@ -28,6 +28,8 @@ from graphql import (
     GraphQLScalarType,
 )
 
+from provisa.core.pg_enum import SourceEnum
+
 GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
 # Requirements: REQ-221
@@ -80,6 +82,27 @@ async def fetch_enum_registry(conn) -> dict[str, list[str]]:  # REQ-221
         label = row["enum_value"]
         registry.setdefault(name, []).append(label)
     return registry
+
+
+async def fetch_source_enums(conn) -> dict[tuple[str, str], SourceEnum]:  # REQ-2171
+    """Each enum a PostgreSQL source declares, by schema and name, with the numbers a client is
+    told and the labels in their order."""
+    rows = await conn.fetch(
+        "SELECT n.nspname, t.typname, t.oid, t.typarray, e.enumlabel "
+        "FROM pg_enum e "
+        "JOIN pg_type t ON e.enumtypid = t.oid "
+        "JOIN pg_namespace n ON t.typnamespace = n.oid "
+        "ORDER BY n.nspname, t.typname, e.enumsortorder"
+    )
+    labels: dict[tuple[str, str], list[str]] = {}
+    numbers: dict[tuple[str, str], tuple[int, int]] = {}
+    for row in rows:
+        key = (row["nspname"], row["typname"])
+        labels.setdefault(key, []).append(row["enumlabel"])
+        numbers[key] = (int(row["oid"]), int(row["typarray"]))
+    return {
+        key: SourceEnum(key[0], key[1], *numbers[key], tuple(held)) for key, held in labels.items()
+    }
 
 
 def build_enum_types(  # REQ-221

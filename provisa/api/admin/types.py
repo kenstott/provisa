@@ -290,17 +290,28 @@ class TagType:  # REQ-1373, REQ-1375
 @strawberry.type
 class TagAssignmentType:  # REQ-1377
     tag_id: str
-    object_type: str  # source | table | column | relationship
+    object_type: str  # one of models.TAG_OBJECT_TYPES
     source_id: str | None = None
     table_id: int | None = None
     column_name: str | None = None
     relationship_id: str | None = None
     command_name: str | None = None  # tracked function/webhook name
+    product_id: str | None = None  # REQ-1634: the data product a "product" assignment is on
+    term_id: int | None = None  # REQ-2145: the glossary term a "term" assignment is on
+    # REQ-2208: the library document a "document" assignment is on, or a "section" one is in,
+    # and that section's heading, or its page when it has none.
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
     table_ref: str | None = None  # qualified "source.schema.table" for table/column targets
     reason: str | None = None  # required for 'deprecated'
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
     # REQ-2094: purpose, bases and review-by date, and who decided it, when and on what evidence.
     why: JsonScalar | None = None
+    # REQ-2208: the row rule (its id), role or metric the tag is on.
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
 
 @strawberry.type
@@ -801,6 +812,9 @@ class AvailableTableType:  # REQ-533
     paging_kind: str | None = None
     pagination: PagingType | None = None
     paging_ceiling_rows: int | None = None  # graphql_remote.max_rows, for a connection table
+    # REQ-1986: the parameters a read of it must give (path parameters, required arguments), by
+    # the name a caller gives each; the picker lists a table with any apart, as a lookup.
+    required_parameters: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -983,6 +997,9 @@ class RoleType:  # REQ-042
     # REQ-2155: what the role holds -- its own capabilities and every ancestor's; null as
     # capabilities is. The client builds the caller's rights from it.
     effective_capabilities: list[str] | None = None
+    # REQ-2155: the data domains and regions it holds, what its children may be given.
+    effective_domains: list[str] | None = None
+    effective_residency_values: list[str] | None = None
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155
     # REQ-2155: a standard role is Provisa's and locked: extended with child roles, never edited.
@@ -1013,6 +1030,8 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     action_name: str | None = None  # REQ-1679
     tag_id: str | None = None  # REQ-1384: the rule applies to every table carrying this tag
     why: JsonScalar | None = None  # REQ-2094: reason, bases, review_on; who decided it and when
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
 
 
 # --- Input types for mutations ---
@@ -1190,7 +1209,7 @@ class TagParamValueInput:  # REQ-1467
 @strawberry.input
 class TagAssignmentInput:  # REQ-1377
     tag_id: str
-    object_type: str  # source | table | column | relationship
+    object_type: str  # one of models.TAG_OBJECT_TYPES
     source_id: str | None = None
     table_id: int | None = None
     column_name: str | None = None
@@ -1203,6 +1222,17 @@ class TagAssignmentInput:  # REQ-1377
     why: JsonScalar | None = None
     # REQ-2145: the glossary term an object_type "term" assignment is on.
     term_id: int | None = None
+    product_id: str | None = None  # REQ-1634: the data product a "product" assignment is on
+    # REQ-2208: the library document a "document" assignment is on, or a "section" one is in,
+    # and that section's heading, or its page when it has none.
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
+    # REQ-2208: the row rule (its id), role or metric an object_type "rls_rule", "role" or
+    # "metric" assignment is on.
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
     # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False
@@ -1460,6 +1490,8 @@ class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a 
     valid_time: str | None = None
     recorded_time: str | None = None
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.input
@@ -1483,6 +1515,8 @@ class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggrega
     measures: list[MeasureInput] = strawberry.field(default_factory=list)
     dimensions: list[DimRefInput] = strawberry.field(default_factory=list)
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.type
@@ -1768,6 +1802,11 @@ class RLSRuleInput:  # REQ-041, REQ-402
     description: str = ""  # REQ-2081: required; an empty one is refused
     # REQ-2094: reason, bases and review_on given; left out, the stored ones stand.
     why: JsonScalar | None = None
+    # REQ-2188: what the rule narrows: any of R read, U update, D delete.
+    rights: list[str] = strawberry.field(default_factory=lambda: ["R"])
+    id: int | None = None  # the rule this save edits; None: a new rule, or its rights' own
+    # REQ-2188: a person adding a rule: it replaces no rule of the same rights, it is refused.
+    creating: bool = False
 
 
 @strawberry.type
@@ -1941,15 +1980,19 @@ class MaterializeStoreInfoType:
 
 @strawberry.type
 class ProtocolHealthType:
-    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt).
+    """Liveness of a separate socket listener (gRPC, Arrow Flight, pgwire, bolt), or of a query
+    surface on the HTTP listener (SPARQL, GraphQL, Cypher, REST, JSON:API).
 
     ``status`` is one of "running" | "down" | "disabled". "disabled" means the protocol was
-    never started (no bound port); "down"/"running" come from a TCP-connect liveness probe.
+    never started (no bound port) or its routes are not mounted; "down"/"running" come from a
+    TCP-connect liveness probe, or for an HTTP surface from its routes being mounted. A listener
+    has a ``port``, an HTTP surface a ``path``.
     """
 
     name: str
     status: str
     port: int | None
+    path: str | None = None
 
 
 @strawberry.type

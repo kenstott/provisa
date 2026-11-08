@@ -96,11 +96,15 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # read when a graph query is compiled
         # REQ-2135: the most hops a variable-length path or property path walks when the query
-        # gives no bound of its own; a result cut at it says so. 10 was the bound before the setting.
+        # gives no bound of its own; a SPARQL result cut at it says so. REQ-348: the maximum an
+        # unbounded Cypher path ([*], [*n..], an unbounded shortestPath) takes; a Cypher walk keeps
+        # the trail rule, so the maximum is a safety limit, very large by design (maintainer
+        # 2026-11-03: 1000), and a walk that would go further fails by name. A recursive statement
+        # runs on Trino with max_recursion_depth one past it.
         req="REQ-2135",
         env="PROVISA_GRAPH_DEPTH_LIMIT",
         config_path=("server", "limits", "graph_depth_limit"),
-        default=10,
+        default=1000,
         min=1,
         unit="hops",
     ),
@@ -110,11 +114,12 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # read when a graph query is compiled
         # REQ-2135: the most branches a variable predicate's union over the mapped predicates may
-        # have; a query needing more is refused, naming the limit.
+        # have; a query needing more is refused, naming the limit. A query with a LIMIT and no
+        # ORDER BY, DISTINCT or aggregate is allowed ten times it.
         req="REQ-2135",
         env="PROVISA_GRAPH_UNION_LIMIT",
         config_path=("server", "limits", "graph_union_limit"),
-        default=64,
+        default=256,
         min=1,
         unit="branches",
     ),
@@ -1235,6 +1240,24 @@ DECLARED: list[Setting] = [
         env="PROVISA_ORG_FILES_NODE_ID",
         # The pod's or host's own name, which is the node's.
         default_fn=socket.gethostname,
+        editable=False,
+        readonly_reason="set_by_launcher",
+    ),
+    # REQ-1916 (amended 2026-11-02, "registered nodes when none are declared"): the address a client
+    # reaches THIS node at, recorded in the node list, so a coordinator-served UI can offer the
+    # region's live query and every nodes when the region declares no data addresses. Per node:
+    # server.public_url is the deployment's one IRI base and server.hostname a bare host, neither
+    # an address of one node. Set by the launcher, never stored: a stored value would be the same
+    # on every node. Unset, the node is not offered.
+    Setting(
+        key="server.node_url",
+        card="bootstrap",
+        type="str",
+        effect="restart",  # recorded when the node registers at boot
+        req="REQ-1916",
+        env="PROVISA_NODE_URL",
+        default=None,
+        nullable=True,
         editable=False,
         readonly_reason="set_by_launcher",
     ),

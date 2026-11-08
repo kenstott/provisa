@@ -1,0 +1,246 @@
+{
+  "modelingWizard": {
+    "stepOf": "Étape {{index}} sur {{count}}",
+    "next": "Suivant",
+    "toReview": "Vérifier",
+    "back": "Retour",
+    "remove": "Retirer",
+    "domainHelp": "Le domaine sous lequel chaque table créée par cet assistant est enregistrée : son espace de noms pour le contrôle d'accès et les requêtes.",
+    "validTime": "Temps de validité",
+    "validTimeHelp": "La colonne indiquant depuis quand chaque version était vraie pour le métier. Avec le temps d'enregistrement, elle permet d'interroger les versions passées.",
+    "recordedTime": "Temps d'enregistrement",
+    "recordedTimeHelp": "La colonne indiquant quand chaque version a été enregistrée dans la source.",
+    "primitive": {
+      "entity": "Entité",
+      "fact": "Fait",
+      "relationship": "Relation"
+    },
+    "role": {
+      "dimension": "Dimension",
+      "fact": "Fait",
+      "hub": "Hub",
+      "satellite": "Satellite",
+      "linkSatellite": "Satellite de link",
+      "effectivity": "Satellite d'effectivité",
+      "link": "Link",
+      "sameAs": "Link same-as"
+    },
+    "roleIn": {
+      "dimension": "Une dimension du schéma en étoile, construite comme entité ayant sa clé métier pour clé",
+      "fact": "Le fait du schéma en étoile, construit comme fait relié à chaque dimension",
+      "hub": "Un hub Data Vault, construit comme entité ayant la clé métier pour clé",
+      "satellite": "Un satellite Data Vault, construit comme entité ayant la clé métier de son hub pour clé",
+      "linkSatellite": "Un satellite de link Data Vault, construit comme entité ayant les clés du link",
+      "effectivity": "Un satellite d'effectivité Data Vault, construit comme entité ayant les clés du link, avec temps de validité",
+      "link": "Un link Data Vault, construit comme fait sans mesures dont le grain est les clés participantes",
+      "sameAs": "Un link same-as Data Vault, construit comme fait sans mesures reliant le hub à lui-même"
+    },
+    "star": {
+      "process": {
+        "title": "Processus métier",
+        "intro": "Le processus métier que mesure ce schéma en étoile, où ses événements sont enregistrés et le type de fait qu'il est."
+      },
+      "grain": {
+        "title": "Grain",
+        "intro": "Ce que représente une ligne du fait. Déclarez le grain avant les dimensions et les mesures."
+      },
+      "dimensions": {
+        "title": "Dimensions",
+        "intro": "Le qui, quoi, où et quand de chaque événement : chaque dimension, comment elle change et si elle est conforme."
+      },
+      "measures": {
+        "title": "Mesures",
+        "intro": "Les chiffres que produit le processus, comment chacun est agrégé et s'il peut être additionné."
+      },
+      "processLabel": "Processus métier",
+      "processHelp": "Le processus métier que le fait enregistre, dans les mots du métier (traitement des commandes, gestion des sinistres). Il nomme la table de faits.",
+      "sourceLabel": "Où le processus est enregistré",
+      "sourceHelp": "La table enregistrée contenant les événements du processus. Le fait y est lu : son grain, ses mesures et ses liens vers les dimensions.",
+      "factTypeLabel": "Type de fait",
+      "factTypeHelp": "Transaction : une ligne par événement. Instantané périodique : une ligne par période, l'état à sa fin. Instantané cumulatif : une ligne par élément, mise à jour à chaque étape franchie.",
+      "factType": {
+        "transaction": "Transaction",
+        "periodic": "Instantané périodique",
+        "accumulating": "Instantané cumulatif"
+      },
+      "grainStatement": "Grain, en mots",
+      "grainStatementHelp": "Une ligne du fait, dite simplement. Elle figure dans la description du fait.",
+      "grainStatementPlaceholder": "une ligne par ligne de commande",
+      "grainHelp": "La ou les colonnes de la table du processus qui identifient une ligne du fait. Les mesures sont agrégées à ce niveau.",
+      "dimensionsHelp": "Chaque dimension selon laquelle le fait est analysé. Une nouvelle est construite à partir de sa propre table ; une dimension conforme est une dimension existante que le fait partage avec d'autres faits.",
+      "dimName": "Dimension",
+      "dimNameHelp": "Ce que décrit la dimension (client, produit, date). Elle nomme la table de dimension.",
+      "via": "Colonne du fait",
+      "viaHelp": "La colonne de la table du processus qui pointe vers cette dimension.",
+      "conformed": "Dimension conforme",
+      "conformedHelp": "Choisissez une dimension existante pour la partager avec d'autres faits et les comparer selon elle. Laissez vide pour construire une nouvelle dimension.",
+      "conformedNew": "Construire une nouvelle dimension",
+      "dimSource": "Table de la dimension",
+      "dimSourceHelp": "La table enregistrée dont sont lues les lignes de la dimension.",
+      "dimKeyHelp": "La ou les colonnes qui identifient un membre de la dimension. Les lignes y sont dédoublonnées, et la colonne du fait pointe vers elle.",
+      "dimAttributesHelp": "Les colonnes descriptives selon lesquelles les analystes filtrent et regroupent.",
+      "scdLabel": "Quand un membre change",
+      "scdHelp": "Le type 1 écrase : seule la valeur actuelle est conservée. Le type 2 conserve chaque version. L'instantané conserve l'état de chaque chargement. Le type 2 et l'instantané demandent les temps de validité et d'enregistrement.",
+      "scd": {
+        "type1": "Type 1 : écraser",
+        "type2": "Type 2 : conserver chaque version",
+        "snapshot": "Instantané"
+      },
+      "measuresHelp": "Les colonnes numériques que mesure le processus. Chacune devient une mesure du fait, agrégée au grain.",
+      "aggOf": "{{column}} : agrégation",
+      "additivityLabel": "Additivité",
+      "additivityHelp": "Additive : se somme selon toutes les dimensions (un montant). Semi-additive : pas dans le temps (un solde). Non additive : ne se somme jamais (un ratio, un prix).",
+      "additivity": {
+        "additive": "Additive",
+        "semiAdditive": "Semi-additive",
+        "nonAdditive": "Non additive"
+      },
+      "missing": {
+        "process": "Indiquez le processus métier, son domaine et la table où il est enregistré.",
+        "grain": "Choisissez la ou les colonnes qui identifient une ligne du fait.",
+        "dimensions": "Chaque dimension demande un nom et une colonne du fait, et soit une dimension conforme, soit sa propre table et sa clé (avec temps de validité et d'enregistrement pour le type 2 ou l'instantané)."
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "Hubs et clés métier",
+        "intro": "Les concepts métier centraux, la clé métier qui identifie chacun et la source d'enregistrement d'où vient la clé."
+      },
+      "links": {
+        "title": "Links",
+        "intro": "Les unités de travail entre les concepts, et si chaque relation peut prendre fin."
+      },
+      "satellites": {
+        "title": "Satellites",
+        "intro": "Les attributs descriptifs de chaque hub ou link, regroupés par source, rythme de changement ou sensibilité, et jusqu'où remonte leur historique."
+      },
+      "rules": {
+        "title": "Business vault",
+        "intro": "Les règles métier qui dérivent de nouvelles valeurs du raw vault. Facultatif."
+      },
+      "hubsLabel": "Hubs",
+      "hubsHelp": "Un hub par concept métier central (client, produit, commande), identifié par sa clé métier : la clé qu'utilise le métier lui-même, pas la clé de substitution d'un système.",
+      "addHub": "Ajouter un hub",
+      "concept": "Concept métier",
+      "conceptHelp": "Le concept que représente le hub. Il nomme le hub.",
+      "recordSource": "Source d'enregistrement",
+      "recordSourceHelp": "La table enregistrée d'où sont chargées les clés métier.",
+      "businessKeyHelp": "La ou les colonnes par lesquelles le métier identifie le concept.",
+      "sameAsSource": "Link same-as",
+      "sameAsHelp": "Quand deux clés désignent la même instance (un client connu par les numéros de deux systèmes), la table qui les apparie. Laissez vide s'il n'y en a pas.",
+      "sameAsNone": "Aucun",
+      "sameAsMaster": "Clé maître",
+      "sameAsDuplicate": "Clé en double",
+      "linksLabel": "Links",
+      "linksHelp": "Un link par unité de travail entre hubs (un client passe une commande). Un link ne contient que les clés participantes.",
+      "addLink": "Ajouter un link",
+      "linkName": "Unité de travail",
+      "linkNameHelp": "Ce qu'enregistre le link. Il nomme le link ; laissé vide, le link est nommé d'après ses hubs.",
+      "linkSource": "Table du link",
+      "linkSourceHelp": "La table enregistrée qui consigne l'unité de travail, avec la clé de chaque hub participant.",
+      "linkHubs": "Hubs reliés",
+      "linkHubsHelp": "Les hubs qui participent. Un link relie deux hubs ou plus.",
+      "linkVia": "Clé de {{hub}}",
+      "endsLabel": "La relation prend-elle fin ?",
+      "endsHelp": "Quand une relation peut prendre fin (un client change de gestionnaire), un satellite d'effectivité enregistre quand chacune commence et finit.",
+      "ends": {
+        "never": "Non, elle demeure une fois créée",
+        "effectivity": "Oui : suivre l'effectivité"
+      },
+      "depthLabel": "Profondeur de l'historique",
+      "depthHelp": "Chaque version : chaque changement des attributs d'un satellite est conservé et interrogeable à tout instant. Valeurs actuelles seulement : un changement écrase.",
+      "depth": {
+        "full": "Chaque version",
+        "current": "Valeurs actuelles seulement"
+      },
+      "satellitesLabel": "Satellites",
+      "satellitesHelp": "Les attributs descriptifs d'un hub ou d'un link. Répartissez-les en plusieurs satellites par source, rythme de changement ou sensibilité.",
+      "addSatellite": "Ajouter un satellite",
+      "satParent": "Décrit",
+      "satParentHelp": "Le hub ou le link dont le satellite contient les attributs.",
+      "parentHub": "Hub {{name}}",
+      "parentLink": "Link {{name}}",
+      "parentSatellite": "Satellite {{name}}",
+      "satName": "Nom du satellite",
+      "satNameHelp": "Ce qui distingue ce satellite (sa source, crm ; ou son sujet, adresse). Ajouté à son nom.",
+      "satSource": "Table du satellite",
+      "satSourceHelp": "La table enregistrée dont sont lus les attributs.",
+      "satParentKey": "Clé de ce qu'il décrit",
+      "satParentKeyHelp": "La ou les colonnes de la table du satellite contenant la clé métier du hub ou les clés du link.",
+      "satAttributesHelp": "Les colonnes descriptives que contient ce satellite.",
+      "groupedBy": "Regroupés par",
+      "groupedByHelp": "Pourquoi ces attributs vont ensemble : ils viennent d'une même source, changent au même rythme ou partagent une sensibilité (données personnelles à part).",
+      "grouping": {
+        "source": "Source",
+        "rateOfChange": "Rythme de changement",
+        "sensitivity": "Sensibilité"
+      },
+      "multiActive": "Clé multi-active",
+      "multiActiveHelp": "Quand plusieurs lignes sont actives à la fois pour une clé (les numéros de téléphone d'un client), la ou les colonnes qui les distinguent. Sinon, laissez vide.",
+      "multiActiveNone": "Pas multi-active",
+      "rulesLabel": "Règles métier",
+      "rulesHelp": "Une règle du business vault dérive une valeur du raw vault (la valeur vie client). Elle est consignée dans la description de la table dont elle dérive, puis construite comme vue.",
+      "addRule": "Ajouter une règle",
+      "ruleTarget": "Dérive de",
+      "ruleText": "Règle",
+      "ruleTextPlaceholder": "valeur vie client = somme des totaux de commande",
+      "missing": {
+        "hubs": "Choisissez le domaine et donnez à chaque hub un concept métier, une source d'enregistrement et une clé métier ; un link same-as demande sa table et les deux clés.",
+        "links": "Chaque link demande sa table, au moins deux hubs, la clé de chacun, et les temps de validité et d'enregistrement s'il prend fin.",
+        "satellites": "Chaque satellite demande ce qu'il décrit, sa table, cette clé et ses attributs, avec temps de validité et d'enregistrement si chaque version est conservée.",
+        "rules": "Indiquez de quelle table dérive chaque règle.",
+        "satelliteKey": "La clé d'un satellite compte autant de colonnes que la clé de ce qu'il décrit, dans le même ordre."
+      }
+    },
+    "review": {
+      "title": "Vérification",
+      "intro": "Ce que devient chaque réponse dans Provisa : une entité ou un fait, sa clé ou son grain, son historique et ses relations. Les noms suivent la convention de la méthode ; modifiez-les ici.",
+      "nameOf": "Nom ({{role}})",
+      "nameHelp": "Le nom de la table. C'est le nom usuel de la méthode ; retirez le préfixe si les consommateurs ne doivent pas le voir.",
+      "source": "Lit",
+      "key": "Clé",
+      "attributes": "Attributs",
+      "history": "Historique",
+      "historyNone": "valeurs actuelles seulement",
+      "historyKept": "chaque version, par temps de validité {{validTime}} et temps d'enregistrement {{recordedTime}}",
+      "grain": "Grain",
+      "measures": "Mesures",
+      "relationships": "Relations",
+      "relationship": "{{via}} → {{target}}",
+      "description": "Brouillon de description",
+      "notCreatedTitle": "Consigné, non créé",
+      "ruleNotCreated": "Règle du business vault « {{rule}} » : consignée dans la description de sa table ; construisez-la comme vue sur ces tables.",
+      "draftNote": "Chaque description est un premier brouillon qu'un intendant révisera dans Tables enregistrées.",
+      "create": "Créer",
+      "nameRequired": "Donnez un nom à chaque table.",
+      "nameTaken": "Deux tables portent le même nom. Donnez-en un propre à chacune."
+    },
+    "result": {
+      "created_one": "{{count}} table créée",
+      "created_other": "{{count}} tables créées",
+      "stopped": "Arrêté à {{name}}",
+      "draftNote": "Leurs descriptions sont des premiers brouillons : révisez-les dans Tables enregistrées.",
+      "oneWay": "L'assistant ne fait que créer. Modifiez ces tables dans Tables enregistrées ou dans le formulaire entité/fait ; l'assistant ne les régénère pas.",
+      "relatesTo": "relié à {{tables}}",
+      "status": {
+        "created": "Créée",
+        "failed": "Refusée",
+        "notReached": "Non créée"
+      }
+    },
+    "desc": {
+      "none": "aucune",
+      "dimension": "Brouillon : dimension « {{name}} » du schéma en étoile du processus {{process}}, de clé {{key}}, lue depuis {{source}}. Quand un membre change : {{scd}}.",
+      "fact": "Brouillon : fait du schéma en étoile du processus {{process}} ({{factType}}). Grain : {{grain}}. Dimensions : {{dimensions}}. Mesures : {{measures}}.",
+      "measure": "{{agg}}({{column}}), {{additivity}}",
+      "hub": "Brouillon : hub Data Vault du concept {{concept}}, de clé métier {{key}}, depuis la source d'enregistrement {{source}}.",
+      "sameAs": "Brouillon : link same-as Data Vault de {{hub}} : {{master}} et {{duplicate}} désignent la même instance de {{concept}}, depuis {{source}}.",
+      "link": "Brouillon : link Data Vault pour l'unité de travail « {{name}} » entre {{hubs}}, sur les clés {{keys}}, depuis {{source}}.",
+      "linkEnds": "La relation peut prendre fin ; son satellite d'effectivité enregistre quand.",
+      "effectivity": "Brouillon : satellite d'effectivité Data Vault de {{link}} : quand chaque relation commence et finit, par temps de validité {{validTime}} et temps d'enregistrement {{recordedTime}}.",
+      "satellite": "Brouillon : satellite Data Vault de {{parent}} : {{attributes}} depuis {{source}}, regroupés par {{grouping}}. Historique : {{history}}.",
+      "multiActive": "Multi-active sur {{columns}}.",
+      "rule": "Règle du business vault : {{rule}}."
+    }
+  }
+}

@@ -11,7 +11,7 @@
 
 """Whether a conformance report whose runner is not Python fails its job (REQ-2167, amended
 2026-10-27): the report's ``failed`` cases on a surface at its baseline (by_design.AT_BASELINE).
-For the GraphQL over HTTP audit, whose report (graphql_http_audit.mjs) counts failed MUST audits.
+For the GraphQL over HTTP audit, whose report (graphql_http_audit.mjs) counts its failed audits.
 
 Usage: baseline_gate.py <surface> <report.json>
 """

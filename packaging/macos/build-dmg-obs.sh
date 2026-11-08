@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Build Provisa Observability DMG — loads obs images into Lima VM, writes extension compose file.
+# Build Provisa Observability DMG — loads obs images into the user's Docker, writes extension compose file.
 # Requires: docker (build host), hdiutil, codesign, python3
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${SCRIPT_DIR}/dist"
 IMAGES_DIR="${SCRIPT_DIR}/obs-images"
 DMG_NAME="Provisa-Obs.dmg"
@@ -27,6 +26,8 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\03
 info() { printf "${CYAN}[build-dmg-obs]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-dmg-obs]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-dmg-obs]${NC} %s\n" "$*" >&2; }
+# shellcheck source=packaging/macos/notary-lib.sh
+source "${SCRIPT_DIR}/notary-lib.sh"
 
 curl_retry() {
   local url="$1" out="$2"
@@ -113,7 +114,7 @@ check_prereqs() {
 save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
-  count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
+  count=$(find "$IMAGES_DIR" -maxdepth 1 -name '*.tar.gz' | wc -l | tr -d ' ')
   if [ "$count" -ge "${#OBS_IMAGES[@]}" ]; then
     info "Obs images pre-populated (${count} tarballs) — skipping docker pull."
     return
@@ -145,22 +146,13 @@ write_installer_script() {
   cat > "${dest}/install-obs.sh" <<'INSTALLER'
 #!/usr/bin/env bash
 # Provisa Observability Extension Installer
-# Loads obs images into the Lima VM and writes the extension compose file.
+# Loads obs images into the user's Docker (docker load) and writes the extension compose file.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROVISA_HOME="${PROVISA_INSTALL_DIR:-${HOME}/.provisa}"
-LIMA_VM_NAME="provisa"
 EXT_DIR="${PROVISA_HOME}/extensions/observability"
 EXT_COMPOSE="${EXT_DIR}/docker-compose.observability.yml"
-
-ARCH="$(uname -m)"
-case "$ARCH" in
-  arm64)  BIN_ARCH="arm64" ;;
-  x86_64) BIN_ARCH="x86_64" ;;
-  *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
-esac
-LIMACTL="${PROVISA_HOME}/bin/limactl"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa-obs]${NC} %s\n" "$*"; }
@@ -172,40 +164,30 @@ check_core() {
     err "Provisa Core is not installed. Install Provisa.dmg first."
     exit 1
   fi
-  if [ ! -x "$LIMACTL" ] && [ ! -L "$LIMACTL" ]; then
-    err "limactl not found at ${LIMACTL}. Reinstall Provisa Core."
-    exit 1
-  fi
 }
 
-ensure_vm_running() {
-  local state
-  state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM_NAME" 2>/dev/null || echo "missing")"
-  if [ "$state" = "missing" ]; then
-    err "Provisa VM not found. Run Provisa.app first to complete first-launch setup."
+require_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    err "Docker is required for the observability extension."
+    err "Install Docker Desktop or colima, start it, then run this installer again."
     exit 1
   fi
-  if [ "$state" != "Running" ]; then
-    info "Starting Provisa VM..."
-    "$LIMACTL" start --yes "$LIMA_VM_NAME"
-    ok "VM started."
+  if ! docker info >/dev/null 2>&1; then
+    err "Docker is installed but not running. Start Docker Desktop (or colima) and run this installer again."
+    exit 1
   fi
 }
 
 import_images() {
-  info "Importing observability images into Provisa VM (no network required)..."
+  info "Loading observability images into Docker (no network required)..."
   local count=0
   for gz_file in "${SCRIPT_DIR}/images"/*.tar.gz; do
     [ -f "$gz_file" ] || continue
-    local name
-    name="$(basename "$gz_file")"
-    info "  Importing: ${name}"
-    gunzip -c "$gz_file" | \
-      "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-        sudo ctr --namespace=default images import -
+    info "  docker load $(basename "$gz_file")"
+    docker load -i "$gz_file" >/dev/null
     count=$((count + 1))
   done
-  ok "Imported ${count} images."
+  ok "Loaded ${count} images."
 }
 
 write_extension() {
@@ -227,7 +209,7 @@ main() {
   printf "\nProvisa Observability Extension Installer\n"
   printf "═══════════════════════════════════════════\n\n"
   check_core
-  ensure_vm_running
+  require_docker
   import_images
   write_extension
   ok "Observability installed."
@@ -312,7 +294,7 @@ notarize_dmg() {
       Accepted) ok "Notarization accepted."; break ;;
       Invalid|Rejected)
         err "Notarization ${status}:"
-        xcrun notarytool log "$submission_id" "${notary_args[@]}" >&2 || true
+        notary_log_check "$submission_id" "${notary_args[@]}"
         exit 1 ;;
       *) info "  Status: ${status:-unknown} (poll $((poll+1))/${max_polls})" ;;
     esac
@@ -320,18 +302,19 @@ notarize_dmg() {
     poll=$((poll + 1))
   done
   [ "$status" = "Accepted" ] || { err "Notarization timed out."; exit 1; }
-  xcrun stapler staple "$DMG_PATH"
+  notary_log_check "$submission_id" "${notary_args[@]}"
+  staple_retry "$DMG_PATH"
   ok "DMG notarized and stapled."
 }
 
 main() {
-  printf "\n${BOLD}Provisa Obs DMG Builder${NC}\n"
+  printf '\n%bProvisa Obs DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
   check_prereqs
   save_images
   create_dmg
   notarize_dmg
-  printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
+  printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
   printf "DMG: %s\n" "${DMG_PATH}"
 }
 

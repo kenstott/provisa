@@ -17,6 +17,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
 import { useAuth } from "../context/AuthContext";
+import { SandboxReadableGate } from "./admin/SandboxReadableGate";
+import { useRegionChoices } from "../hooks/useRegionQueries";
 import { NAV_GROUPS, activeGroupId, labelKeyFor, type NavGroup } from "./navGroups";
 
 // The rail IS the admin group; a build whose NAV_GROUPS lost it has nothing to render, so this
@@ -33,6 +35,8 @@ export function AdminRail() {
   const { t } = useTranslation();
   const location = useLocation();
   const { billing, capabilities } = useAuth();
+  // REQ-1922: a connected region exists only where the platform declares regions.
+  const regionsDeclared = useRegionChoices().connected !== null;
 
   if (activeGroupId(location.pathname) !== "admin") return null;
 
@@ -43,17 +47,27 @@ export function AdminRail() {
       aria-label={t("navBar.groupAdmin")}
     >
       {ADMIN_GROUP.items
-        .filter((item) => !(item.commercial && !billing) && !(item.installedOnly && billing))
+        .filter(
+          (item) =>
+            !(item.commercial && !billing) &&
+            !(item.installedOnly && billing) &&
+            !(item.regionsOnly && !regionsDeclared),
+        )
         .map((item) =>
           item.comingSoon ? (
             <span key={item.to} className="admin-rail-coming-soon">
               {t("navBar.comingSoon", { label: t(item.labelKey) })}
             </span>
+          ) : item.sandboxReadable ? (
+            <SandboxReadableGate key={item.to} capability={item.capability} navigable>
+              <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+            </SandboxReadableGate>
           ) : (
             <CapabilityGate
               key={item.to}
               capability={item.capability}
               orCapability={item.orCapability}
+              anyOf={item.anyOf}
               navigable
             >
               <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>

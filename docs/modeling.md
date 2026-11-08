@@ -16,7 +16,7 @@ the valid-time and recorded-time columns you name.
 
 A **fact** is a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa writes an aggregate-MV query (`GROUP BY` grain + FK columns) and registers a relationship for each declared dimension link. A fact with no measures is a pure key set, which is the Data Vault link pattern.
 
-Both constructs are IR. The generated definitions move across engines without remodeling: materialized in Oracle or Databricks, or left virtual over an MPP engine.
+Both constructs are IR. The generated definitions move across engines without remodeling, whether materialized in Oracle or Databricks or left virtual over an MPP engine.
 
 ## History modes
 
@@ -47,8 +47,8 @@ The default aggregation is `sum`.
 
 ### The source tables
 
-- `raw.customers` — id, name, region, tier, effective_date, updated_at
-- `raw.orders` — order_id, customer_id, amount, quantity
+- `raw.customers`: id, name, region, tier, effective_date, updated_at
+- `raw.orders`: order_id, customer_id, amount, quantity
 
 ### Register the Customer entity
 
@@ -148,9 +148,18 @@ Plus one registered relationship: `Sales.customer_id → Customer` (cardinality:
 ## The Model form (admin UI)
 
 The **+ Model** button appears on the **Tables** page (tooltip: "Model an entity or fact (star
-schema / Data Vault)").
+schema / Data Vault)"). Click it to open the entity/fact form. The arrow beside it opens a menu
+with three choices:
 
-A segmented control at the top of the modal switches between **Entity (dimension)** and **Fact**.
+| Menu item | Opens |
+| --- | --- |
+| **Entity/Fact** | The entity/fact form, the same as clicking **+ Model** |
+| **Star Schema** | The [star schema wizard](#the-modeling-wizards) |
+| **Data Vault** | The [Data Vault wizard](#the-modeling-wizards) |
+
+Each opens in the detail panel beside the table list.
+
+A segmented control at the top of the entity/fact form switches between **Entity (dimension)** and **Fact**.
 
 ### Entity fields
 
@@ -177,6 +186,77 @@ A segmented control at the top of the modal switches between **Entity (dimension
 | Dimensions | no | `Entity:fk_column` pairs, comma-separated, e.g. `Customer:customer_id` |
 
 When `agg` is omitted in a measure (`amount` instead of `amount:sum`), it defaults to `sum`.
+
+## The modeling wizards
+
+If you think in star schemas or Data Vault, you don't have to translate your design into entities
+and facts yourself. The **Star Schema** and **Data Vault** items on the **+ Model** menu each open a
+wizard that asks its questions in that method's words. It then creates the entities, facts and
+relationships the answers call for. The wizards create tables through the same `registerEntity`
+and `registerFact` lowering as the form, so what they make is ordinary entities and facts.
+
+A step that is not complete says what it still needs. Pick the domain on the first step.
+Every table the wizard creates is registered in it.
+
+### Star schema wizard
+
+| Step | What it asks |
+| --- | --- |
+| Business process | The process the fact records (it names the fact table), the registered table where its events are recorded, and the fact type: transaction, periodic snapshot or accumulating snapshot |
+| Grain | What one row of the fact stands for, in words and as the column(s) that identify it |
+| Dimensions | For each dimension: its name, the fact column that points at it, and either an existing dimension to share (a conformed dimension) or its own table, key and attributes. How it handles change: type 1 (overwrite), type 2 (keep every version) or snapshot. Type 2 and snapshot need a valid-time and a recorded-time column |
+| Measures | The numeric columns, each with its aggregation and whether it is additive, semi-additive or non-additive |
+
+Each new dimension becomes an entity keyed on its business key, with `scd2` or `snapshot`
+history for type 2 or snapshot. The fact becomes a fact at the declared grain, with a dimension
+link to each dimension.
+
+### Data Vault wizard
+
+| Step | What it asks |
+| --- | --- |
+| Hubs and business keys | For each core business concept: its name, the record source it is loaded from, its business key, and an optional same-as table pairing a master key with a duplicate |
+| Links | For each unit of work: the link table, the two or more hubs it relates with each hub's key column, and whether the relationship can end |
+| Satellites | For each satellite: the hub or link it describes, its table, the column(s) holding that hub's or link's key, its attributes, why they are grouped (source, rate of change or sensitivity), and an optional multi-active key. History depth (every version, or current values only) applies to all satellites |
+| Business vault | Optional rules that derive values from the raw vault, such as `lifetime value = sum of order totals` |
+
+What each answer becomes:
+
+| Data Vault artifact | Created as |
+| --- | --- |
+| Hub | An entity keyed on the business key, with no history |
+| Same-as link | A fact with no measures, relating the hub to itself |
+| Link | A fact with no measures whose grain is the participating keys, related to each hub |
+| Effectivity satellite (a link that can end) | An entity keyed on the link's keys, with valid and recorded time, related to its link |
+| Satellite | An entity keyed on its hub's business key (plus its multi-active key, if any), related to its hub |
+| Link satellite | An entity keyed on the link's keys, related to its link |
+| Business vault rule | Not created. It is written into the description of the table it derives from, for you to build as a view |
+
+Each satellite and effectivity satellite is related to its hub or link many-to-one, so a query can
+walk from a hub to its descriptive history. With **Every version** chosen, satellites keep `scd2`
+history and need valid-time and recorded-time columns.
+
+### Review and create
+
+Before anything is created, the last step shows what each answer becomes in Provisa. Each table is
+listed as an entity or a fact with its key or grain, history, measures, relationships and a draft
+description. Its name is prefilled with the method's convention, and you can edit it there.
+
+| Method | Prefixes |
+| --- | --- |
+| Star schema | `dim_`, `fact_` |
+| Data Vault | `hub_`, `lnk_`, `sat_` |
+
+For example, a hub for the concept "Customer" is proposed as `hub_customer`, and an effectivity
+satellite of a link "places order" as `sat_places_order_effectivity`. Clear the prefix if the
+people who query the tables should not see it.
+
+**Create** registers the entities first, then the facts, then the relationships. The first refusal
+stops it. Tables already created stay created, and the result lists each table as created, refused
+(with the reason) or not created.
+
+The wizard only creates. It never edits or regenerates what it made. Change those tables in
+**Registered Tables** or the entity/fact form, and revise their draft descriptions there.
 
 ## The GraphQL API
 
@@ -206,6 +286,7 @@ mutation RegisterEntity($input: EntityInput!) {
 | `validTime` | String | `null` | Valid-time column; required when `history` isn't `"none"` |
 | `recordedTime` | String | `null` | Recorded-time column; required when `history` isn't `"none"` |
 | `visibleTo` | [String] | `["public"]` | Role visibility list |
+| `description` | String | `null` | The registered table's description |
 
 ### `registerFact`
 
@@ -229,6 +310,7 @@ mutation RegisterFact($input: FactInput!) {
 | `measures` | [MeasureInput] | `[]` | `{ column, agg }` pairs |
 | `dimensions` | [DimRefInput] | `[]` | `{ entity, via }` pairs |
 | `visibleTo` | [String] | `["public"]` | Role visibility list |
+| `description` | String | `null` | The registered table's description |
 
 `MeasureInput`: `{ column: String, agg: String }`; `agg` defaults to `"sum"`.
 
@@ -241,12 +323,14 @@ On success, `registerFact` returns a message of the form:
 
 Neither pattern requires separate tooling. The same two primitives compose into both.
 
+The [modeling wizards](#the-modeling-wizards) build either one from questions asked in the method's own terms. The walkthroughs below show the primitives underneath, written by hand.
+
 ### Kimball star schema
 
 This walkthrough builds a three-dimension star. Two source tables are new:
 
-- `raw.products` — `product_id`, `name`, `category`, `list_price`
-- `raw.date_spine` — `date_key`, `year`, `quarter`, `month`
+- `raw.products`: `product_id`, `name`, `category`, `list_price`
+- `raw.date_spine`: `date_key`, `year`, `quarter`, `month`
 
 `raw.orders` also gains `product_id` and `order_date` columns here.
 
@@ -267,7 +351,7 @@ The grain is the lowest level of detail the fact answers. `order_id` gives one r
 
 #### Register the dimensions
 
-**Customer** (SCD Type 2 — tier changes must be preserved):
+**Customer** (SCD Type 2, because tier changes must be preserved):
 
 ```graphql
 mutation {
@@ -291,7 +375,7 @@ SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"
 -- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
-**Product** (SCD Type 1 — current catalog, no version history needed):
+**Product** (SCD Type 1, because only the current catalog is needed):
 
 ```graphql
 mutation {
@@ -312,7 +396,7 @@ Generates an ordinary MV rebuilt on refresh:
 SELECT "product_id", "name", "category", "list_price" FROM "raw"."products"
 ```
 
-**DateDim** (no history — a date is immutable):
+**DateDim** (no history, because a date is immutable):
 
 ```graphql
 mutation {
@@ -335,7 +419,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### Register the Sales fact across three dimensions
 
-Grain: `order_id`. Three dimension references, with one FK column each. Both measures are additive sums.
+The grain is `order_id`, with three dimension references of one FK column each. Both measures are additive sums.
 
 ```graphql
 mutation {
@@ -358,8 +442,7 @@ mutation {
 ```
 
 Provisa computes `group_cols = dedup([grain] + [dim FKs])`
-= `["order_id", "customer_id", "product_id", "order_date"]` and generates
-:
+= `["order_id", "customer_id", "product_id", "order_date"]` and generates:
 
 ```sql
 SELECT "order_id", "customer_id", "product_id", "order_date",
@@ -400,8 +483,7 @@ mutation {
 ```
 
 Both `Sales` and `Returns` point to the same `Customer` and `Product` entities. Provisa's join
-paths enforce that queries through either fact traverse the same dimension definition
-.
+paths enforce that queries through either fact traverse the same dimension definition.
 
 ---
 
@@ -411,8 +493,8 @@ The same primitives map directly onto Data Vault vocabulary:
 
 | DV artifact | Primitive | History |
 | --- | --- | --- |
-| Hub | `entity` | `none` — entity keys only |
-| Satellite | `entity` | `scd2` or `snapshot` — attribute history beside the hub key |
+| Hub | `entity` | `none` (entity keys only) |
+| Satellite | `entity` | `scd2` or `snapshot` (attribute history beside the hub key) |
 | Link | `fact` with no measures | — |
 | Bridge / aggregate link | `fact` with measures | — |
 
@@ -519,8 +601,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 ```
 
 Two relationships registered: `OrderCustomerLink.customer_id → CustomerHub` and
-`OrderCustomerLink.order_id → OrderHub`, both many-to-one
-.
+`OrderCustomerLink.order_id → OrderHub`, both many-to-one.
 
 #### Bridge / aggregate link
 
@@ -544,8 +625,7 @@ mutation {
 ```
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
-(the duplicate `order_id` from the dimension list is dropped by `_dedup`). Generates
-:
+(the duplicate `order_id` from the dimension list is dropped by `_dedup`). Generates:
 
 ```sql
 SELECT "order_id", "customer_id", SUM("amount") AS "amount"
@@ -558,7 +638,7 @@ split remain the modeler's decisions. Provisa executes them.
 
 ## Metrics
 
-A **metric** is a named, governed aggregate definition with no grain of its own. The grain, meaning the dimensions the aggregate is broken out by, is bound by the caller at query time instead of at definition time. That's what sets a metric apart from a view: a view fixes the grain when it's created, and a metric stays open until it's queried.
+A **metric** is a named, governed aggregate definition with no grain of its own. The grain, meaning the dimensions the aggregate is broken out by, is bound by the caller at query time instead of at definition time. That's what sets a metric apart from a view. A view fixes the grain when it's created, and a metric stays open until it's queried.
 
 ### The Metric object
 
@@ -568,7 +648,7 @@ A **metric** is a named, governed aggregate definition with no grain of its own.
 | `expression` | yes | Aggregate ANSI-SQL; must include at least one aggregate function |
 | `datatype` | no | Result type hint, e.g. `number`, `integer` |
 | `description` | no | Human-readable business definition |
-| `ai_context` | no | Text for AI consumers — projects to MCP tools, pg_description, GraphQL docs, and Ossie export |
+| `ai_context` | no | Text for AI consumers; projects to MCP tools, pg_description, GraphQL docs, and Ossie export |
 | `visible_to` | no | Role list; defaults to `["*"]` (all roles) |
 | `from_fact` | — | Set automatically when the metric was generated from a fact measure |
 
@@ -671,6 +751,6 @@ fact table (filtered to `modelingRole=fact`), a measure column, and an aggregate
 `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type`.
 The expression textarea remains the escape hatch for arbitrary expressions.
 
-## The IR payoff
+## Moving between engines
 
 Every registration call goes through the same path as a hand-written MV. The entity and fact spec is an intermediate representation; it isn't a template or a macro. The warehouse it targets is a property of the deployment, and the model doesn't name it. Change the target engine, and the same `entity` / `fact` declarations materialize there, because the generated SQL and the bitemporal history are engine-neutral by design.

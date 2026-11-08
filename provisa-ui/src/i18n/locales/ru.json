@@ -9,7 +9,9 @@
     "identity": "Идентификация",
     "discardTitle": "Отменить изменения?",
     "discardBody": "Изменения в {{what}} не сохранены.",
-    "discard": "Отменить изменения"
+    "discard": "Отменить изменения",
+    "deleting": "Удаление…",
+    "deleteFailed": "Не удалено: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Не удалось подключиться к API Provisa.",

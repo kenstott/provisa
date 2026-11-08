@@ -175,6 +175,32 @@ class TestCreationCopy:
         # a real source schema is not a schema of this org and is left exactly as it is
         assert copied["orders"] == "public"
 
+    async def test_a_table_the_target_holds_no_row_of_arrives_row_for_row(self, seeded):
+        # REQ-2006: a table empty in the target is copied on the server (INSERT ... SELECT): each
+        # row arrives with every column as the source holds it, its own schema rebased, and the
+        # report names each row added, as the row-by-row path's does.
+        prod = org_schema(seeded.org_id)
+        await seeded.insert(
+            registered_tables,
+            source_id="warehouse",
+            domain_id="sales",
+            schema_name=prod,
+            table_name="org_registry",
+            description="the registry",
+        )
+        assert await seeded.rows(registered_tables, ENV) == []
+        report = await copy_model(
+            seeded.db, seeded.org_id, None, ENV, mode=REPLACE, landing="unbound"
+        )
+        dev = org_schema(seeded.org_id, ENV)
+        expected = [
+            {**r, "schema_name": dev if r["schema_name"] == prod else r["schema_name"]}
+            for r in await seeded.rows(registered_tables)
+        ]
+        assert await seeded.rows(registered_tables, ENV) == expected
+        added = next(t for t in report.tables if t.table == "registered_tables").added
+        assert sorted(added) == sorted(str(r["id"]) for r in expected)
+
     async def test_the_source_row_arrives_without_the_connection_it_pointed_at(self, seeded):
         # REQ-1491: the row must exist — registered_tables references it — but where prod points is
         # prod's, and a copied environment inheriting it would write to production.
@@ -404,6 +430,7 @@ class TestScopedMerge:
         refused by the apply's validation and the target is left exactly as it was."""
         from provisa.core.env_deploy import DeployError
 
+        # Reads nothing on purpose: no capability, no domain (J354).
         await seeded.insert(roles, ENV, id="lab_reviewer", capabilities=[])
         await seeded.insert(
             registered_tables,

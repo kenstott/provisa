@@ -71,6 +71,8 @@ query RolesQuery {
     description
     capabilities
     effectiveCapabilities
+    effectiveDomains
+    effectiveResidencyValues
     demonstrated
     domainAccess
     parents
@@ -241,6 +243,14 @@ query TagAssignmentsQuery {
     columnName
     relationshipId
     commandName
+    productId
+    termId
+    documentId
+    sectionHeading
+    sectionPage
+    rlsRuleId
+    roleId
+    metricName
     tableRef
     reason
     expiresOn
@@ -751,6 +761,7 @@ query RLSRulesQuery {
     roleId
     filterExpr
     description
+    rights
   }
 }
 
@@ -777,6 +788,7 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
       rowsField
     }
     pagingCeilingRows
+    requiredParameters
   }
 }
 
@@ -991,6 +1003,7 @@ query SystemHealth {
       name
       status
       port
+      path
     }
     mvRefreshLoopRunning
   }
@@ -1398,6 +1411,7 @@ mutation DeleteRlsRule(
   $domainId: String
   $actionName: String
   $tagId: String
+  $id: Int
 ) {
   deleteRlsRule(
     roleId: $roleId
@@ -1405,6 +1419,7 @@ mutation DeleteRlsRule(
     domainId: $domainId
     actionName: $actionName
     tagId: $tagId
+    id: $id
   ) {
     ...MutationResult
   }

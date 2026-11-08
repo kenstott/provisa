@@ -23,10 +23,15 @@ import type { GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   // A term with no findings: the findings list names none.
@@ -40,8 +45,6 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 // alone, so the same mounted form must be checked from both sides of that right.
 const auth = { capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
-
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 
 // The navbar state under test. Mutating the object between cases is what lets "everything checked"
 // and "one box unchecked" be two assertions against one mounted component rather than two suites.
@@ -71,6 +74,7 @@ const ORDER: GlossaryTermSummary = {
   ref_count: 2,
   table_count: 0,
   identity_gap: false,
+  related_to: 0,
   findings: 0,
   status: "approved",
   status_reason: null,

@@ -71,7 +71,7 @@ from provisa.core.env_store import (
 )
 from provisa.core.environments import PROD, EnvironmentNameError, EnvironmentNameTaken
 from provisa.core.schema_admin import user_org_memberships, user_profiles
-from provisa.api.admin._platform_guard import require_platform_settings
+from provisa.api.admin._platform_guard import require_deployment_settings
 
 log = logging.getLogger(__name__)
 
@@ -123,13 +123,20 @@ def _caller_user_id(request: Request) -> str | None:
 
 async def _guard(request: Request, org_id: str) -> str | None:
     """An act on the ORGANIZATION's environments — protecting one, deleting one, deciding a merge
-    into a protected one. These stay org_admin acts (REQ-1488, REQ-1504, REQ-1528). Returns the
-    acting user for the audit entry."""
-    from provisa.api.admin.invites_router import _require_org_admin
-
-    await _require_org_admin(request, org_id)
+    into a protected one, the repository integration (REQ-1488, REQ-1504, REQ-1528). REQ-1327:
+    these are environment management, so they need ``environment_management`` held as a member of
+    the org being acted in — not user_management, and never cross_org: a platform admin does not
+    act on an org's model branches. Returns the acting user for the audit entry."""
+    user_id = await _member_rights(request, org_id, MANAGE_CAPABILITY)
+    if user_id is not None and getattr(request.state, "active_org_id", None) != org_id:
+        raise ApiError(
+            403,
+            "environments.capability_required_in_org",
+            f"{MANAGE_CAPABILITY} in {org_id} required",
+            org=org_id,
+        )
     await _org_ready_on_this_node(org_id)
-    return _caller_user_id(request)
+    return user_id
 
 
 #: The right to create an environment and to reach the environments surface at all (REQ-1573).
@@ -148,13 +155,11 @@ async def _reads_parent(request: Request, org_id: str, parent: str) -> None:
     there -- the usage right, and, for a parent other than prod, being served by it."""
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state as _app_state
-    from provisa.security.rights import can_act_cross_org
 
     if _caller_user_id(request) is None:
         return  # dev mode — no auth configured, matching _require_org_admin
+    # REQ-1327: no cross_org pass — a platform admin never reads an org's model branches.
     capabilities = _resolved_capabilities(request.state.identity, _app_state)
-    if can_act_cross_org(capabilities):
-        return
     needed = {"usage"} | ({"environment_switch"} if parent != PROD else set())
     missing = sorted(needed - capabilities)
     if missing:
@@ -193,15 +198,13 @@ async def _member_rights(request: Request, org_id: str, *rights: str) -> str | N
     """
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state as _app_state
-    from provisa.security.rights import can_act_cross_org
 
     user_id = _caller_user_id(request)
     if user_id is None:
         return None  # dev mode — no auth configured, matching _require_org_admin
     identity = request.state.identity
+    # REQ-1327: no cross_org pass — a platform admin never reads or acts on an org's model branches.
     capabilities = _resolved_capabilities(identity, _app_state)
-    if can_act_cross_org(capabilities):
-        return user_id
     if not set(rights) & capabilities:
         raise ApiError(
             403,
@@ -274,8 +277,9 @@ async def _confined(request: Request, org_id: str, *names: str) -> None:
 
 
 async def _guard_within(request: Request, org_id: str, name: str) -> str | None:
-    """An act INSIDE one environment. Held either by an org_admin, or by whoever created the
-    environment — who holds org_admin's model-editing rights within it and nowhere else (REQ-1528).
+    """An act INSIDE one environment. Held either by a holder of environment_management in the org
+    (:func:`_guard`), or by whoever created the environment — who holds org_admin's model-editing
+    rights within it and nowhere else (REQ-1528).
 
     The owner's authority is derived from ``environments.created_by`` at this moment rather than
     read from a grant table, so it cannot describe an environment that no longer exists.
@@ -301,7 +305,8 @@ def _caller_capabilities(request: Request) -> set[str]:
 
 
 async def _guard_owned(request: Request, org_id: str, name: str) -> str | None:  # REQ-2155
-    """Managing ONE environment -- deleting it. Held by an org_admin, or by its owner when the
+    """Managing ONE environment -- deleting it. Held by a holder of environment_management in the
+    org (:func:`_guard`), or by its owner when the
     owner holds environment_owned_management: a developer manages the branches it made, never
     another's. The pin is asked first, as in :func:`_guard_within`."""
     await _confined(request, org_id, name)
@@ -1371,7 +1376,21 @@ async def decide_merge_request(
 
     Deciding is an org_admin act and the requester is refused their own request — the two together
     are what makes the approval a second person's, which is the whole of what protection means.
+    With an ``Idempotency-Key``, a repeat is answered with the first result (REQ-2216).
     """
+    from provisa.api.admin.orgs_router import _org_model_db
+    from provisa.api.idempotency import once
+
+    return await once(
+        await _org_model_db(org_id),
+        request,
+        lambda: _decide_merge_request(request, org_id, request_id, body),
+    )
+
+
+async def _decide_merge_request(
+    request: Request, org_id: str, request_id: int, body: DecideBody
+) -> dict:
     from provisa.api.admin.orgs_router import _org_model_db
 
     actor = await _guard(request, org_id)
@@ -2167,10 +2186,11 @@ async def _request_or_404(org_id: str, request_id: int) -> dict:
 async def fix_sandbox_membership(request: Request) -> dict:
     """Emergency fix for users pinned to invalid ephemeral environments (REQ-1602).
 
-    Clears env_name on sandbox membership to fall back to prod routing.
-    Requires superuser or platform_admin auth.
+    Clears env_name on sandbox membership to fall back to prod routing. A platform route: the
+    deployment check, which a single-tenant org admin's platform_settings alone does not pass
+    (REQ-1327).
     """
-    require_platform_settings(request)
+    require_deployment_settings(request)
     body = await request.json()
     email = body.get("email")
     if not email:

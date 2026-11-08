@@ -51,8 +51,6 @@ GATE_NAMES = frozenset(
         "require_right_in_domains",
         "require_right_in_domains_request",
         "holds_right_in_domains",
-        # REQ-2155: data_product_rw, or data_product_owned_rw on the product the caller owns
-        "data_product_edit_refusal",
         # provisa.api.admin._hiding_guard (REQ-1944)
         "require_table_save",
         "require_hiding_editor_request",
@@ -112,6 +110,11 @@ EXEMPT: dict[tuple[str, str], str] = {
         "/admin/creation-requests/rejection-reasons",
     ): "static vocabulary for the request form",
     ("GET", "/admin/platform/maintenance"): "REQ-1466: the notice banner every client renders",
+    (
+        "GET",
+        "/admin/data-addresses",
+    ): "REQ-1916: every signed-in UI user picks a data address from it, whatever their role; "
+    "the bearer gate refuses a caller with no sign-in (test_ui_data_addresses)",
     # --- the GraphQL endpoint itself; its resolvers are checked individually below --------------
     ("GET", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
     ("POST", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
@@ -120,20 +123,15 @@ EXEMPT: dict[tuple[str, str], str] = {
 
 # The tag registry: the org's vocabulary of tags and their policies. It names no table, column,
 # source or role, so it is read by every member's pages; which objects carry a tag is
-# tagAssignments, trimmed below. (tables, relationships, allRelationships, domains, sources and
+# tagAssignments, gated per object. (tables, relationships, allRelationships, domains, sources and
 # metrics are answered by the caller's rights and reach — admin/catalog_scope.py, REQ-1958 — so
 # they count as gated and need no entry.)
 EXEMPT[("graphql:query", "tags")] = (
     "org tag vocabulary read by every role's pages; names no table, column, source or role"
 )
 # resolveOwners is answered per right (has_capability("user_management") decides whether the user id
-# and e-mail come back), so it counts as gated and needs no entry. tagAssignments is trimmed to the
-# caller's reachable domains (allowed_domains_request) rather than refused.
-EXEMPT[("graphql:query", "tagAssignments")] = (
-    "returns only assignments on objects in the caller's reachable domains (table/column by the "
-    "table's domain, relationship by both its tables, command by its domain, source by "
-    "allowed_domains); unrestricted scope sees all"
-)
+# and e-mail come back), and tagAssignments by the right to read each tagged object, so both count
+# as gated and need no entry.
 EXEMPT[("graphql:query", "schemaVersion")] = "identifier hash only; no model content"
 # REQ-1921: the org's region ids and the node's region, read by every admin form with a region field
 # (tables, views, sources, roles); holds no store, connection or security detail.
@@ -150,6 +148,14 @@ EXEMPT[("graphql:query", "namingConventions")] = (
 EXEMPT[("graphql:query", "dqContractParse")] = (
     "parses the contract text it is given; touches no source, credential or model row"
 )
+# The saved ERD arrangement (REQ-2189): positions only, no model content; the ERD is shown to every
+# role in Schema Explorer, and a layout's places are trimmed to what the caller reads.
+_ERD_LAYOUT_READ = (
+    "saved ERD arrangement (positions only, no model content); the ERD is shown to every role in "
+    "Schema Explorer"
+)
+EXEMPT[("GET", "/admin/erd-layouts")] = _ERD_LAYOUT_READ
+EXEMPT[("GET", "/admin/erd-layouts/{name}")] = _ERD_LAYOUT_READ
 
 
 def _callees(fn) -> set[str]:

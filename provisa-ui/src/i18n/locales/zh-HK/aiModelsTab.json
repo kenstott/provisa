@@ -16,6 +16,7 @@
     "role_sql_generation": "SQL 產生",
     "role_table_selection": "表格選取",
     "role_mcp_chat": "聊天助理",
+    "role_glossary_term_finding": "尋找術語",
     "vendorLabel": "供應商",
     "modelLabel": "模型",
     "nlHeading": "自然語言查詢",

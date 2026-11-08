@@ -1,8 +1,8 @@
 # SPARQL 1.1 Conformance
 
-**Suite:** W3C SPARQL 1.1 test suite (query, update, result formats). TBD: version recorded from CI.
+**Suite:** W3C SPARQL 1.1 test suite (query, update, result formats).
 
-**Pass rate:** TBD: generated from CI.
+**Pass rate:** The W3C SPARQL 1.1 test suite does not run in CI. An in-process run is the current measure.
 
 ## Deliberate differences
 
@@ -14,7 +14,7 @@ SPARQL Update is supported where the update maps onto the model through governed
 
 New classes and properties belong in the model as tables, columns, or ontology terms. Add the term there to make it available.
 
-Unbounded property path queries (`?s :p* ?o`) are answered within a depth limit. TBD: exact limit.
+Unbounded property path queries (`?s :p* ?o`) are answered within the server's depth limit, which defaults to 10 hops. A result cut at the limit includes a warning. Set `graph.depth_limit` to raise it.
 
 ### Add-ins
 
@@ -24,7 +24,7 @@ Custom SPARQL functions beyond the W3C built-ins are unavailable inline. Where a
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| Protégé | TBD | TBD | Covered by driver (SPARQL over HTTP) |
-| Stardog Studio | TBD | TBD | Covered by driver (SPARQL over HTTP) |
-| Apache Jena (API) | TBD | TBD | TBD: replay or manual |
-| GraphDB | TBD | TBD | TBD: replay or manual |
+| Protégé | — | — | Covered by driver (SPARQL over HTTP) |
+| Stardog Studio | — | — | Covered by driver (SPARQL over HTTP) |
+| Apache Jena (API) | — | — | Not yet verified |
+| GraphDB | — | — | Not yet verified |

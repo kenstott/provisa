@@ -85,6 +85,8 @@ export const SOURCE_TYPES = [
   // `hive`/`hive_s3` (Trino-scanned lake storage). Read-then-land like any other RDB-shaped
   // source; SIMPLE_RDBMS's host/port/database/username/password shape matches exactly.
   { value: "hiveserver2", label: "HiveServer2", category: "RDBMS", defaultPort: 10000 },
+  // REQ-2191: a database with no named type, at its own SQLAlchemy URL (JdbcSourceFields).
+  { value: "jdbc", label: "JDBC", category: "RDBMS", defaultPort: 0 },
   // Cloud DW
   { value: "snowflake", label: "Snowflake", category: "Cloud DW", defaultPort: 443 },
   { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },
@@ -120,9 +122,11 @@ export const SOURCE_TYPES = [
   { value: "qdrant", label: "Qdrant", category: "NoSQL", defaultPort: 0 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
   { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
-  // Code (REQ-1984, REQ-1993): the organisation's own functions, run in a sandboxed worker.
+  // Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+  // worker.
   { value: "node", label: "Node.js", category: "Code", defaultPort: 0 },
   { value: "python", label: "Python", category: "Code", defaultPort: 0 },
+  { value: "go", label: "Go", category: "Code", defaultPort: 0 },
   // Graph
   { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
   { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
@@ -167,6 +171,7 @@ export const SOURCE_TYPES = [
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
   { value: "servicenow", label: "ServiceNow", category: "Enterprise", defaultPort: 0 }, // REQ-1954
   { value: "jira", label: "Jira", category: "Enterprise", defaultPort: 0 }, // REQ-2069
+  { value: "quickbooks", label: "QuickBooks Online", category: "Enterprise", defaultPort: 0 }, // REQ-2197
   // REQ-1947
   {
     value: "cloudops",
@@ -194,6 +199,7 @@ export const SOURCE_TYPES = [
   // and credential handling already supplied. The user sees the brand as an ordinary type.
   { value: "github", label: "GitHub", category: "Enterprise", defaultPort: 443 },
   { value: "gitlab", label: "GitLab", category: "Enterprise", defaultPort: 443 },
+  { value: "shopify", label: "Shopify", category: "Enterprise", defaultPort: 443 },
   // REQ-1923: carried by the OpenAPI source, with the system's pinned spec supplied.
   { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
   // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
@@ -223,13 +229,6 @@ export const API_AUTH_TYPES = [
   { value: "api_key", label: "API Key" },
   { value: "oauth2_client_credentials", label: "OAuth2 Client Credentials" },
   { value: "custom_headers", label: "Custom Headers" },
-];
-
-export const KAFKA_AUTH_TYPES = [
-  { value: "none", label: "No Auth" },
-  { value: "sasl_plain", label: "SASL/PLAIN" },
-  { value: "sasl_scram_256", label: "SASL/SCRAM-SHA-256" },
-  { value: "sasl_scram_512", label: "SASL/SCRAM-SHA-512" },
 ];
 
 export const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
@@ -304,6 +303,7 @@ export const NO_CONNECTION_TYPES = new Set([
   "data_profiler", // REQ-1934
   "node", // REQ-1984: its code, not a connection (CodeSourceFields)
   "python", // REQ-1993: the same
+  "go", // REQ-2200: the same
 ]);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and
@@ -311,6 +311,7 @@ export const NO_CONNECTION_TYPES = new Set([
 export const BRAND_CARRIER: Record<string, string> = {
   github: "graphql",
   gitlab: "graphql",
+  shopify: "graphql",
   stripe: "openapi",
   wikipedia: "files", // REQ-1960
 };
@@ -322,9 +323,48 @@ export type BrandAuth = "token" | "none";
 export const BRAND_AUTH: Record<string, BrandAuth> = {
   github: "token",
   gitlab: "token",
+  shopify: "token",
   stripe: "token",
   wikipedia: "none",
 };
+
+// REQ-1923: what a brand reached at a per-customer address asks for besides its credential,
+// sent as the registration's `setup` under each field's `name` (the brand's setup fields,
+// provisa/graphql_remote/brands.py). A field with a `defaultValue` starts filled with it.
+export interface BrandSetupField {
+  name: string;
+  labelKey: string;
+  hintKey: string;
+  placeholder?: string;
+  defaultValue?: string;
+  required: boolean;
+}
+// The Admin API version a Shopify source is added with unless the steward names another: the
+// newest stable one when the shipped schema was baked (SHOPIFY_API_VERSION in brands.py).
+export const SHOPIFY_API_VERSION = "2026-10";
+export const BRAND_SETUP: Record<string, BrandSetupField[]> = {
+  shopify: [
+    {
+      name: "store",
+      labelKey: "sourceFormFieldsExtended.shopifyStore",
+      hintKey: "sourceFormFieldsExtended.shopifyStoreHint",
+      placeholder: "my-store",
+      required: true,
+    },
+    {
+      name: "api_version",
+      labelKey: "sourceFormFieldsExtended.shopifyApiVersion",
+      hintKey: "sourceFormFieldsExtended.shopifyApiVersionHint",
+      defaultValue: SHOPIFY_API_VERSION,
+      required: true,
+    },
+  ],
+};
+
+/** The setup values a brand's form starts with: each field's default, or empty. */
+export function brandSetupDefaults(brand: string): Record<string, string> {
+  return Object.fromEntries((BRAND_SETUP[brand] ?? []).map((f) => [f.name, f.defaultValue ?? ""]));
+}
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).
 export const TYPE_ALIAS: Record<string, string> = {

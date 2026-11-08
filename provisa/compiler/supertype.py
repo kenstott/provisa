@@ -47,6 +47,7 @@ _FLOATS: dict[str, str] = {
 _CHARACTERS = {"varchar", "text", "char", "bpchar", "string", "nvarchar", "varchar2", "nvarchar2"}
 _DECIMAL = re.compile(r"(?:decimal|numeric)\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)")
 _TIMESTAMP = re.compile(r"timestamp(?:\s*\((\d+)\))?")
+_LENGTH = re.compile(r"\(\s*(\d+)\s*\)")
 #: The widest decimal every engine declares.
 _MAX_PRECISION = 38
 
@@ -79,7 +80,8 @@ def _decimal(precision: int, scale: int) -> str:
 
 def _widen(a: tuple[str, tuple], b: tuple[str, tuple]) -> tuple[str, tuple] | None:
     """The common supertype of two kinds, or None where there is none."""
-    (ka, pa), (kb, pb) = sorted((a, b))
+    # By family alone: a timestamp's precision may be None, which orders against nothing.
+    (ka, pa), (kb, pb) = sorted((a, b), key=lambda kind: kind[0])
     if ka == kb == "integer":
         return "integer", max(pa, pb)
     if ka == kb == "float":
@@ -133,3 +135,29 @@ def common_supertype(data_types: list[str]) -> str:
         if widest is None:
             return "varchar"
     return _spelled(widest)  # type: ignore[arg-type]
+
+
+def _length(data_type: str) -> int | None:
+    """A character type's length, None where it has no limit."""
+    m = _LENGTH.search(data_type)
+    return int(m.group(1)) if m else None
+
+
+def holds(held: str, holder: str) -> bool:
+    """Whether every value of a ``held`` column still reads as itself from a ``holder`` one
+    (REQ-2158): the same type, or a wider one of its family -- a wider integer, or a decimal holding
+    it; a wider decimal or float; a longer character type. A float for a number, or a timestamp
+    for a date, gives a reader another kind of value, and a type no other widens to holds only
+    itself."""
+    a, b = (" ".join(t.lower().split()) for t in (held, holder))
+    if a == b:
+        return True
+    kind_a, kind_b = _kind(a), _kind(b)
+    if kind_a is None or kind_b is None:
+        return False
+    if kind_a[0] == kind_b[0] == "character":
+        length_a, length_b = _length(a), _length(b)
+        return length_b is None or (length_a is not None and length_b >= length_a)
+    if kind_a[0] != kind_b[0] and (kind_a[0], kind_b[0]) != ("integer", "decimal"):
+        return False
+    return _widen(kind_a, kind_b) == kind_b

@@ -22,17 +22,14 @@ from provisa.pgwire.function_call import (
     rows_to_query_result,
 )
 from provisa.security.rights import Capability
-
-
-class _FakeResult:
-    def __init__(self, cols, rows):
-        self.column_names = cols
-        self.rows = rows
+from provisa.executor.result import QueryResult
 
 
 class _FakePools:
     def __init__(self, result=None):
-        self._result = result or _FakeResult(["id", "name"], [(1, "ada")])
+        self._result = result or QueryResult(
+            rows=[(1, "ada")], column_names=["id", "name"], column_types=["integer", "text"]
+        )
         self.calls: list = []
 
     def has(self, src_id):

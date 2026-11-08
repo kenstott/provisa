@@ -14,6 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "../../test-utils/render";
 import { setStored } from "../../lib/browserStorage";
+import { writeBulk } from "../../lib/bulkStorage";
 import { kept } from "../../lib/resultWithQuery";
 
 vi.mock("../../context/AuthContext", async (importOriginal) => ({
@@ -42,14 +43,14 @@ describe("the NL page's kept answers", () => {
 
   it("are shown beside the question that produced them", async () => {
     setStored("nl-question", "how many owners");
-    setStored("nl-branches", JSON.stringify(kept("how many owners", ANSWERS)));
+    await writeBulk("nl-branches", kept("how many owners", ANSWERS));
     render(<NlPage />);
     expect(await screen.findByText("SELECT count(*) FROM owners")).toBeInTheDocument();
   });
 
   it("are not shown beside a question edited since", async () => {
     setStored("nl-question", "how many pets");
-    setStored("nl-branches", JSON.stringify(kept("how many owners", ANSWERS)));
+    await writeBulk("nl-branches", kept("how many owners", ANSWERS));
     render(<NlPage />);
     await waitFor(() => expect(screen.getByDisplayValue("how many pets")).toBeInTheDocument());
     expect(screen.queryByText("SELECT count(*) FROM owners")).not.toBeInTheDocument();

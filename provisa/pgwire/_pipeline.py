@@ -36,12 +36,16 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+import sqlglot
+
 from provisa.federation.execution_auth import plan_authorization
 
 from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
+from provisa.pgwire.catalog_route import CLIENT_TABLE_FUNCTIONS
+from provisa.pgwire.catalog_route import current_request as current_catalog_request
 
 if TYPE_CHECKING:
     from provisa.compiler.directives import CacheHint
@@ -57,6 +61,7 @@ _CURRENT_SETTING_RE = re.compile(
     r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*(?:,\s*true\s*)?\)",
     re.IGNORECASE,
 )
+_SETTING_NAME_RE = re.compile(r"provisa\.([A-Za-z0-9_]+)", re.IGNORECASE)
 
 
 def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
@@ -66,15 +71,38 @@ def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: s
     keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
     """
 
+    if _CURRENT_SETTING_RE.search(sql) is None:
+        return sql
     from provisa.compiler.sql_literals import sql_literal
 
-    def _sub(m: re.Match) -> str:
+    def _resolved(node: sqlglot.exp.Expr) -> sqlglot.exp.Expr:
+        named = _setting_named(node)
+        if named is None:
+            return node
         # ``dialect`` is the dialect ``sql`` is written in: the engine's for transpiled SQL, where
         # a backslash may be an escape, so each value takes that dialect's one literal rule.
-        value = session_vars.get(m.group(1))
-        return "NULL" if value is None else sql_literal(value, dialect)
+        value = session_vars.get(named)
+        return sqlglot.parse_one(
+            "NULL" if value is None else sql_literal(value, dialect), read=dialect
+        )
 
-    return _CURRENT_SETTING_RE.sub(_sub, sql)
+    # REQ-2167: on the tree, so a current_setting a string literal holds is its text.
+    tree = sqlglot.parse_one(sql, read=dialect)
+    resolved = tree.transform(_resolved)
+    return sql if resolved == tree else resolved.sql(dialect=dialect)
+
+
+def _setting_named(node: sqlglot.exp.Expr) -> str | None:
+    """The provisa.<var> ``node`` reads, where it is current_setting('provisa.<var>' [, true])."""
+    exp = sqlglot.exp
+    if not isinstance(node, exp.Anonymous) or node.name.lower() != "current_setting":
+        return None
+    args = node.expressions
+    missing_ok = len(args) == 2 and isinstance(args[1], exp.Boolean) and args[1].this is True
+    if not (len(args) == 1 or missing_ok) or not isinstance(args[0], exp.Literal):
+        return None
+    found = _SETTING_NAME_RE.fullmatch(args[0].this) if args[0].is_string else None
+    return found.group(1) if found else None
 
 
 @dataclass
@@ -244,11 +272,17 @@ class _Plan:
     writes_tables: bool = field(default=False)
     # The registered table a write targets (None for a read): what :func:`_after_write` acts on.
     written_table_id: int | None = field(default=None)
+    # REQ-2167: how a pgwire INSERT reports the identity or serial value it makes its source
+    # generate (pgwire.generated_keys.GeneratedKey), for the session's lastval(). None otherwise.
+    generated_key: Any = field(default=None)
     # REQ-1897: the governed role and the registered tables the statement reads/writes — the
     # response-cache key and policy inputs. Carried on the plan itself, not read off ``audit``: a
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
     role_id: str | None = field(default=None)
     table_ids: tuple[int, ...] = field(default=())
+    # REQ-2190: what the admin terminal tells a statement's catalog views, set in the statement's
+    # own transaction (provisa.transpiler.metadata_settings). None for every other statement.
+    catalog_settings: dict[str, str] | None = field(default=None)
     # REQ-1942: a mutation in a Reversible environment, kept in its change log rather than run on
     # the source (provisa.pgwire.kept_mutations). None for every other plan.
     kept: Any = field(default=None)
@@ -381,7 +415,7 @@ async def _optimize_and_route(
     from provisa.cache.values_cte import build_values_ctes_sql
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
     from provisa.fakes.read_sql import reads_fakes
-    from provisa.transpiler.router import Route, decide_route
+    from provisa.transpiler.router import Route, RouteDecision, decide_route
 
     # REQ-1942: a table a Test (synthetic) environment holds no generated copy of is refused as
     # that, first -- before the API stage, which would ask its source (a synthetic environment
@@ -488,6 +522,19 @@ async def _optimize_and_route(
         else _forced_engine(routed, _view, _rewrites, ctx, state, table_ids),
         **({} if is_mutation else await _proxy_plan(routed, governed_sql, ctx, state, table_ids)),
     )
+    if routed == {"provisa-admin"} and current_catalog_request.get() is not None:
+        # REQ-2190: a catalog statement reads the meta domain, and the store that holds meta answers
+        # it, under the role such statements run as. One that reads no table is the engine's.
+        decision = RouteDecision(
+            route=Route.DIRECT,
+            source_id="provisa-admin",
+            dialect=state.source_dialects.get("provisa-admin", "postgres"),
+            reason="a catalog statement reads the control plane",
+        )
+    if "provisa-admin" in routed and (
+        decision.route != Route.DIRECT or decision.source_id != "provisa-admin"
+    ):
+        _refuse_catalog_views_off_the_admin_terminal(ctx, table_ids)
     from provisa.api.region_ops_views import reads_region_views
 
     if (
@@ -511,6 +558,12 @@ async def _optimize_and_route(
         if _live or _live_inline:
             optimized = True
             opt_labels.extend(f"read live: {_tn}" for _tn in sorted({*_live, *_live_inline}))
+    if not sources and not is_mutation:
+        from provisa.compiler.result_shape import pg_named
+
+        # REQ-2167: a statement reading no table is the engine's, which names SELECT 1 "1";
+        # PostgreSQL names it ?column?.
+        exec_sql = pg_named(exec_sql)
     return exec_sql, decision, optimized, sources, tuple(opt_labels)
 
 
@@ -735,6 +788,63 @@ def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
     return bounds
 
 
+def _catalog_views_read(ctx: Any, table_ids: Any) -> list[str]:
+    """REQ-2190: the catalog views of the meta domain among ``table_ids``, as a client names them."""
+    from provisa.security.rights import SQL_CATALOG_TABLES
+
+    read = set(table_ids)
+    return sorted(
+        {
+            f"{tm.domain_id}.{tm.table_name}"
+            for tm in ctx.tables.values()
+            if tm.table_id in read
+            and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES
+        }
+    )
+
+
+def _refuse_catalog_views_off_the_admin_terminal(ctx: Any, table_ids: Any) -> None:
+    """REQ-2190: what a catalog view and its row scope read of a statement, the admin terminal alone
+    tells it. On any other route they would read a setting nothing gave them, so the statement is
+    refused by name, whatever an engine would make of CURRENT_SETTING."""
+    from provisa.transpiler.metadata_settings import CatalogViewRefused
+
+    read = _catalog_views_read(ctx, table_ids)
+    if read:
+        raise CatalogViewRefused(read[0])
+
+
+def _catalog_settings(
+    gov_ctx: Any, ctx: Any, state: Any, source_id: str, table_ids: Any
+) -> dict[str, str] | None:
+    """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
+    request; None for any other, which pays no round trip for settings."""
+    from provisa.pgwire.catalog_data import served_database_name
+    from provisa.transpiler.metadata_settings import statement_settings
+
+    if source_id != "provisa-admin":
+        return None
+    request = current_catalog_request.get()
+    if request is not None:
+        return statement_settings(
+            gov_ctx.role_id,
+            gov_ctx.can_write,
+            request.database,
+            bool(state.schema_build_cache.get("domain_prefix", False)),
+            session=request.session,
+            scope=gov_ctx.meta_scope,
+        )
+    if not _catalog_views_read(ctx, table_ids):
+        return None
+    return statement_settings(
+        gov_ctx.role_id,
+        gov_ctx.can_write,
+        served_database_name(state),
+        bool(state.schema_build_cache.get("domain_prefix", False)),
+        scope=gov_ctx.meta_scope,
+    )
+
+
 def _direct_terminal_serves(decision: Any, state: Any) -> bool:
     """Whether the router's decision lands on the DIRECT terminal proper — one source on its own
     pooled driver (``_run_plan_terminal``'s last branch), which is the read the threshold probe
@@ -830,8 +940,11 @@ async def _optimize_and_route_cached(
 
     # A request's route hint is the request's own: its decision is not the shape's to keep. A
     # statement a view answers depends on the view being fresh now: never the shape's to keep.
+    # REQ-2190: nor is a catalog statement's: a form can read as a client's own statement does
+    # (CAST(NULL AS TIMESTAMPTZ)), which must not inherit the control plane as its route.
     if (
         steward_hint is not None
+        or current_catalog_request.get() is not None
         or would_materialize_optimize(exec_sql, state, table_ids=table_ids)
         or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
         is not None
@@ -1228,7 +1341,7 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
         src = sources_by_id.get(t.source_id)
         if src is None:
             continue
-        cap = state.federation_engine.connector_pushdown(src.type.value)
+        cap = state.federation_engine.connector_pushdown(src)
         if cap.predicate_pushdown and not cap.join_pushdown:
             eligible.add(phys)
     if not eligible:
@@ -1242,8 +1355,15 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     # as do Trino/ClickHouse/warehouse drivers (compiler.params.substitute_positional_placeholders),
     # where a reused $1 would shift every later parameter.
     by_number = state.federation_engine.engine.name in _BINDS_PARAMS_BY_NUMBER
+    # PostgreSQL alone runs a correlated subquery once per outer row: DuckDB decorrelates its own,
+    # and Trino's are lifted at transpile.
     return propagate_literal_join_predicates(
-        sql, "postgres", eligible, column_types, allow_params=by_number
+        sql,
+        "postgres",
+        eligible,
+        column_types,
+        allow_params=by_number,
+        read_once=state.federation_engine.engine.name == "postgres",
     )
 
 
@@ -1490,10 +1610,12 @@ class _KeptResultShape:
             self._memo["read_shape"] = await _off_loop(self._derive)
         return self._memo["read_shape"]
 
-    def subtyped(self) -> list[tuple[str, str]] | None:
-        """REQ-2171: the shape of a statement that reads a table with a subtyped column, for one
-        whose columns are otherwise typed by what the engine returned (not described first);
-        None for any other statement, which is not derived. Read on the caller's own thread.
+    def wire_typed(self) -> list[tuple[str, str]] | None:
+        """The shape of a statement that reads a table with a column the wire types by the model
+        -- a subtyped column (REQ-2171), a sized numeric or a column recording a native type
+        (REQ-1961) -- for one whose columns are otherwise typed by what the engine returned (not
+        described first); None for any other statement, which is not derived. Read on the
+        caller's own thread.
 
         The tables are the ones the statement reads, not every table of the role (``table_map``
         maps them all): a statement reading none of the subtyped ones -- a table-less SELECT, as
@@ -1510,9 +1632,19 @@ class _KeptResultShape:
             for table in sqlglot.parse_one(sql, read="postgres").find_all(exp.Table)
             if (table_id := _resolve_table(table, table_map)) is not None
         }
-        if not any(c.subtype for tid in read for c in column_types.get(tid, [])):
+        if not any(_typed_by_model(c) for tid in read for c in column_types.get(tid, [])):
             return None
         return self.now()
+
+
+def _typed_by_model(column: Any) -> bool:
+    """Whether the wire types a registered column by the model rather than by what the engine
+    returned: a subtype (REQ-2171), a sized numeric's typmod or a native type (REQ-1961)."""
+    from provisa.core.numeric_type import numeric_size_of
+
+    return bool(
+        column.subtype or column.native_type or numeric_size_of(column.data_type) is not None
+    )
 
 
 def _kept_result_shape(
@@ -1618,8 +1750,8 @@ async def govern_statement(
 
     from provisa.api.app import state
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
-    from provisa.compiler.sql_validator import validate_sql
+    from provisa.compiler.stage2 import apply_governance
+    from provisa.compiler.sql_validator import READ, client_table_function, validate_sql
 
     from provisa.audit.pipeline import write_denial
 
@@ -1638,7 +1770,6 @@ async def govern_statement(
     await resolve_trace_scope(state, role_id, hint=cache_hint_for("sql", sql).debug_trace)
 
     ctx = surface.context
-    rls = surface.rls
     # REQ-1620: domain_access follows the UNION of every role the caller is acting as ("Role:
     # All"); role_id/RLS/masking/capabilities stay single-role. See
     # security.rights.effective_domain_access_role — the one place this is computed, so every
@@ -1652,7 +1783,7 @@ async def govern_statement(
     # statement's bound values — so a governed statement is kept in the org's compiled-query cache
     # (generation-keyed, TTL-evicted, bounded) and a repeat is not parsed, validated or governed
     # again. Every raw-SQL surface reaches the pipeline here, so they all share it.
-    from provisa.pgwire.governed_plan import PlanSlot
+    from provisa.pgwire.governed_plan import PlanSlot, role_governance
     from provisa.core.request_context import session_vars_for
 
     _session_vars = session_vars if session_vars is not None else session_vars_for(role)
@@ -1671,6 +1802,8 @@ async def govern_statement(
             *temp_tables.slot_key(),
             # A statement governed as the product's is never the one kept for a role's same words.
             *([("provisa.product_statement", "1")] if product_statement else []),
+            # Nor is a catalog statement, whose guard is its own (REQ-2190).
+            *([("provisa.catalog", "1")] if current_catalog_request.get() is not None else []),
             # A request-level as-of decides which bitemporal views keep their reference.
             *([("provisa.as_of", as_of)] if as_of else []),
         ],
@@ -1692,19 +1825,7 @@ async def govern_statement(
 
     def _governance() -> Any:
         if not built:
-            built.append(
-                build_governance_context(
-                    role_id,
-                    rls,
-                    state.masking_rules,
-                    ctx,
-                    getattr(state, "tables", []),
-                    role=role,
-                    relationships=getattr(state, "relationships", None),
-                    source_types=state.source_types,
-                    engine=getattr(state, "federation_engine", None),
-                )
-            )
+            built.append(role_governance(state, surface, role_id))
         return built[0]
 
     # REQ-1163: a relation's time-travel arguments are lifted off it before anything else reads
@@ -1753,8 +1874,12 @@ async def govern_statement(
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
-    _bypass_guard = product_statement or relationship_guard_bypassed(
-        role, state, statement_opts_out=sql_opts_out
+    # REQ-2190: a client's join on oids is no registered relationship; row scope and column rules
+    # hold on a catalog statement as on any.
+    _bypass_guard = (
+        product_statement
+        or current_catalog_request.get() is not None
+        or relationship_guard_bypassed(role, state, statement_opts_out=sql_opts_out)
     )
 
     # REQ-1877: in-memory, TTL-evicted cache of the validate_sql + domain-access outcome — see
@@ -1777,6 +1902,9 @@ async def govern_statement(
         state.schema_version,
         _bypass_guard,
     )
+    _table_functions = (
+        CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
+    )
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,
@@ -1786,16 +1914,25 @@ async def govern_statement(
             getattr(state, "tables", []),
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
+            table_functions=_table_functions,
         )
 
         _role_domain_access = role["domain_access"]
         if "*" not in _role_domain_access:
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
-                parsed_tree = await _off_loop(
-                    lambda: sqlglot.parse_one(_validated_sql, read="postgres")
+                # Read as validate_sql reads it: ``explode`` is no unnest (client_table_function).
+                parsed_tree = await _off_loop(lambda: sqlglot.parse_one(_validated_sql, read=READ))
+                _statement_ctes = (
+                    {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
                 for tbl in parsed_tree.find_all(exp.Table):
+                    if isinstance(tbl.this, exp.XMLTable):
+                        continue  # REQ-2167: no relation; what it reads is the statement's own
+                    if client_table_function(tbl, _table_functions) or (
+                        not tbl.db and tbl.name in _statement_ctes
+                    ):
+                        continue
                     tbl_name = tbl.name
                     tbl_db = tbl.db
                     full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
@@ -2885,6 +3022,7 @@ async def route_governed(
             source_id=_direct_sid,
             dialect=dialect,
             exec_params=exec_params,
+            catalog_settings=_catalog_settings(gov_ctx, ctx, state, _direct_sid, _table_ids),
             semantic_sql=_metric_semantic_sql,  # REQ-1322
             auto_deliver=auto_deliver,  # REQ-1224: probed at the terminal
             engine_landing=_engine_landing if _probe_direct else None,
@@ -3096,20 +3234,16 @@ def _row_materialize_tables_in_memory(state: Any) -> dict[str, Any]:
     already in memory, and a rebuild republishes them. Same selection and keying as
     ``query_residency.row_materialized_tables_by_name`` — the flag is set AND the bound engine
     cannot direct-attach the table's source type; keyed by both the bare table name and the alias."""
-    flagged = [t for t in state.tables if t.get("row_materialize")]
-    if not flagged:
+    if not any(t.get("row_materialize") for t in state.tables):
         return {}
     from types import SimpleNamespace
 
     from provisa.compiler.naming import apply_sql_name
-    from provisa.federation.strategy import engine_attaches
+    from provisa.federation.strategy import row_level_tables
 
-    engine = state.federation_engine
     out: dict[str, Any] = {}
-    for t in flagged:
-        # tables.source_id is a NOT NULL foreign key to sources.id, so the type is always known.
-        if engine_attaches(engine, state.source_types[t["source_id"]]):
-            continue
+    # tables.source_id is a NOT NULL foreign key to sources.id, so the type is always known.
+    for t in row_level_tables(state.tables, state.federation_engine, state.source_types):
         table = SimpleNamespace(
             id=t["id"],
             source_id=t["source_id"],
@@ -4412,6 +4546,18 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
         # That store serves this source and no other: a statement for any other source reaching
         # it would be read from, or written into, the control plane.
+        from provisa.transpiler.metadata_settings import (
+            enter_client_role,
+            refuse_client_settings,
+            set_statement,
+        )
+
+        from provisa.transpiler.metadata_functions import refuse_server_reads
+
+        refuse_client_settings(plan.sql)  # REQ-2190: what a catalog view trusts is this terminal's
+        # REQ-2190: a clear refusal by name. What holds is the client role, below: the database
+        # refuses a function no list names.
+        refuse_server_reads(plan.sql)
         tenant_db = state.model_db
         if tenant_db is None:
             raise RuntimeError("Admin model_db not available")
@@ -4428,12 +4574,25 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 # Column names come from the result itself, so an empty result still has them.
                 # The statement's bound values, as the client gave them: its ANY($2) list is an
                 # array, not the control plane's jsonb. exec_params is None when it has none.
-                col_names, _rows = await _conn.fetch_with_columns(
-                    plan.sql, *(plan.exec_params or ()), bind_as_given=True
-                )
+                col_oids: list[int] | None = None
+                # REQ-2190: every client statement here runs as the role that reaches no more than
+                # a client may, whatever it reads, and any settings last as long as its transaction.
+                async with _conn.transaction():
+                    if plan.catalog_settings is not None:
+                        _setting, _values = set_statement(plan.catalog_settings)
+                        await _conn.fetch(_setting, *_values)
+                    await _conn.execute(enter_client_role())
+                    if plan.catalog_settings is None:
+                        col_names, _rows = await _conn.fetch_with_columns(
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                        )
+                    else:
+                        col_names, col_oids, _rows = await _conn.fetch_described(
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                        )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
-        result = QueryResult(rows=rows, column_names=col_names)
+        result = QueryResult(rows=rows, column_names=col_names, column_type_oids=col_oids)
     elif not state.source_pools.has(plan.source_id):
         # A DIRECT plan names a source this process holds no driver for. Nothing here can run it,
         # and it is refused by name rather than handed to some other connection.
@@ -4448,13 +4607,23 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         )
     else:
         # DIRECT terminal (REQ-825): single reachable source on its native driver.
+        from provisa.pgwire.generated_keys import LAST_INSERT_ID
+
+        key = plan.generated_key
+        # REQ-2167: a write whose connection reports what it generated is run to report it.
+        reported = (
+            {"reports_generated": True} if key is not None and key.by == LAST_INSERT_ID else {}
+        )
         result = await engine.execute_native(
             state.source_pools,
             plan.source_id,
             plan.sql,
             plan.exec_params,
             plan.span_attrs,
+            **reported,
         )
+        if key is not None:
+            result = key.taken(result)  # REQ-2167: the client's rows, the generated value kept
     return result
 
 
@@ -4632,7 +4801,11 @@ async def _run_statements(
             buffered=buffered and answered,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
         )
-        return await _execute_plan(plan, state)
+        result = await _execute_plan(plan, state)
+        # REQ-1961: the caller writes the rows without the plan; it types each registered
+        # column by the statement's result shape, derived only when it is asked for.
+        result.result_shape = plan.result_shape
+        return result
 
     outcomes: list[StatementOutcome] = []
     last = len(statements) - 1
@@ -4839,6 +5012,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
 
     import sqlglot.expressions as _sg_exp
 
+    from provisa.compiler import temp_tables
     from provisa.pgwire.governed_plan import PlanSlot
     from provisa.core.request_context import session_vars_for
 
@@ -4849,8 +5023,18 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     _session_vars = session_vars_for(state.roles.get(role_id))
     # The validation a plan was kept with depends on whether its joins were the SDL's.
     # A request-level as-of decides which bitemporal views keep their reference.
+    # REQ-615, REQ-2176: as on the raw-SQL stage, a statement compiled in a session holding
+    # temporary tables (a Bolt connection's ephemeral graph) is kept for that session alone, as
+    # its tables stand: its kept engine form names the session's store schema, gone with it.
     _slot = PlanSlot(
-        state, "compiled", role_id, sql, sorted(_session_vars.items()), sdl_joins, as_of or ""
+        state,
+        "compiled",
+        role_id,
+        sql,
+        sorted(_session_vars.items()),
+        sdl_joins,
+        as_of or "",
+        temp_tables.slot_key(),
     )
     # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
     # statement as written: a kept plan outlives the window, and governance expands the view.
@@ -5097,7 +5281,7 @@ async def _govern_compiled(
     import sqlglot as _sg
 
     from provisa.audit.pipeline import resolve_table_ids
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.compiler.stage2 import apply_governance
 
     # REQ-1882: sqlglot tokenization off-loaded — see _off_loop's own docstring. This is the
     # Flight SQL / gRPC compiled path's own parse, the same class of blocking call the raw-SQL
@@ -5145,23 +5329,13 @@ async def _govern_compiled(
     from provisa.security.rights import require_role
 
     from provisa.api.role_surface import built_surface
+    from provisa.pgwire.governed_plan import role_governance
 
     # One snapshot: context and row filters of one build.
     surface = built_surface(state.surfaces[role_id])
     ctx = surface.context
-    rls = surface.rls
 
-    gov_ctx = build_governance_context(
-        role_id,
-        rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=require_role(state.roles, role_id),
-        relationships=getattr(state, "relationships", None),
-        source_types=state.source_types,
-        engine=getattr(state, "federation_engine", None),
-    )
+    gov_ctx = role_governance(state, surface, role_id)
     # REQ-1163: a GraphQL field's as_of/as_recorded are compiled onto its relation's reference
     # (the SQL call form); lifted here, as on the raw-SQL stage, each reference is read at its
     # own time.
@@ -5254,16 +5428,18 @@ def _engine_session_hints(
     exec_sql: str,
     *,
     writes: bool,
-) -> dict[str, str] | None:  # REQ-281, REQ-910
+    tree: Any = None,
+) -> dict[str, str] | None:  # REQ-281, REQ-910, REQ-348
     """The engine session properties one compiled statement runs with: each source's federation
     hints (translated from the ``@provisa`` vocabulary), then the request's own properties and the
     statement's comment hints filling only what the operator left open — and no fault-tolerant
-    retry for a write or a read of a non-replayable connector (:func:`_no_retry`)."""
+    retry for a write or a read of a non-replayable connector (:func:`_no_retry`). A recursive
+    statement (``tree``, its compiled AST) runs with the maximum recursion depth (REQ-348)."""
     from provisa.compiler.directives import merge_session_props, translate_federation_hints
-    from provisa.compiler.hints import extract_hints
+    from provisa.compiler.hints import extract_hints, recursion_session_props
 
     _, comment_hints = extract_hints(exec_sql)
-    operator_hints: dict[str, str] = {}
+    operator_hints: dict[str, str] = recursion_session_props(tree) if tree is not None else {}
     for sid in sources or ():
         operator_hints.update(
             translate_federation_hints(getattr(state, "source_federation_hints", {}).get(sid, {}))
@@ -5577,7 +5753,9 @@ async def _route_compiled(
         # REQ-2100: a code source's own statement the engine runs after all is landed for it.
         _exec_sql, exec_params = await land_direct_reads(_exec_sql, exec_params, state, _table_ids)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
-        _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
+        _hints = _engine_session_hints(
+            state, sources, session_props, _exec_sql, writes=_is_write, tree=_compiled_tree
+        )
         return _Plan(
             route=Route.ENGINE,
             sql=governed_sql,
@@ -5713,6 +5891,39 @@ async def plan_pgwire_sql(  # REQ-267
     return await _govern_and_route(sql, role_id, as_of=as_of)
 
 
+async def reporting_generated(plan: _Plan, state: Any) -> _Plan:  # REQ-2167
+    """A pgwire INSERT written to report the identity or serial value it makes its source
+    generate (pgwire.generated_keys), the columns that would be read from the source's own
+    catalog. Any other plan, and one for a source with no way to report one, is unchanged."""
+    from provisa.pgwire.generated_keys import LAST_INSERT_ID, GeneratedKey
+    from provisa.pgwire.generated_keys import inserted_table, returning_rewrite
+    from provisa.transpiler.router import Route
+
+    if not (
+        plan.writes_tables
+        and plan.route == Route.DIRECT
+        and plan.source_id
+        and state.source_pools.has(plan.source_id)
+    ):
+        return plan
+    driver = state.source_pools.get(plan.source_id)
+    if driver.generated_keys is None:
+        return plan
+    target = inserted_table(plan.sql, plan.dialect or "postgres")
+    if target is None:
+        return plan
+    columns = await driver.generated_columns(*target)
+    if not columns:
+        return plan
+    if driver.generated_keys == LAST_INSERT_ID:
+        plan.generated_key = GeneratedKey(LAST_INSERT_ID)
+        return plan
+    rewritten = returning_rewrite(plan.sql, columns)
+    if rewritten is not None:
+        plan.sql, plan.generated_key = rewritten
+    return plan
+
+
 async def govern_pgwire_plan(  # REQ-028, REQ-266
     sql: str,
     role_id: str,
@@ -5782,7 +5993,18 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         deliver=deliver,
         as_of=as_of,
     )
-    return plan
+    return await reporting_generated(plan, _state)  # REQ-2167
+
+
+async def govern_catalog_plan(sql: str, role_id: str, request: Any) -> _Plan:  # REQ-2190
+    """Govern a client's catalog statement, already addressed to the meta domain, as any read of
+    it: row scope and column rules hold, the relationship guard does not (a client's join on oids
+    is no registered relationship), and its terminal is told who asks."""
+    token = current_catalog_request.set(request)
+    try:
+        return await _govern_and_route(sql, role_id)
+    finally:
+        current_catalog_request.reset(token)
 
 
 @dataclass
@@ -5794,6 +6016,8 @@ class _Described:
     # None for a registered-function call: a command has no governed statement to hold — its
     # Execute invokes it through ``govern_pgwire_plan``.
     governed: _Governed | None
+    # $N -> its type, for each uncast parameter the statement types (REQ-2167).
+    parameters: dict[int, str] = field(default_factory=dict)
 
 
 def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
@@ -5808,11 +6032,12 @@ def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
         import json
 
         declared = json.loads(declared)
-    if not declared:
+    if declared is None:
         raise UnderivableColumn(
             f"cannot describe a call to {name!r}: it declares no output_columns, so its result "
             "columns are unknown until it runs"
         )
+    # An empty list: a VOID command (REQ-2001), whose call answers no columns.
     return [(c["name"], c["type"]) for c in declared]
 
 
@@ -5825,6 +6050,7 @@ async def describe_pgwire_statement(  # REQ-589
     from provisa.api.app import state
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
     from provisa.pgwire.function_call import detect_sql_function_call
+    from provisa.compiler.parameter_types import parameter_types
     from provisa.compiler.result_shape import derive_result_shape
 
     sql = rewrite_surface_operators(sql)
@@ -5866,7 +6092,14 @@ async def describe_pgwire_statement(  # REQ-589
             # REQ-2131: a column transform's inputs are read; its outputs are what is answered.
             shape = reshape(shape, transformed.calls)
         governed.memo["result_shape"] = shape
-    return _Described(shape, governed)
+    parameters = await _off_loop(
+        parameter_types,
+        governed.governed_semantic,
+        governed.gov_ctx.table_map,
+        governed.ctx,
+        state.schema_build_cache["column_types"],
+    )
+    return _Described(shape, governed, parameters)
 
 
 async def plan_pgwire_statement(  # REQ-589
@@ -5890,7 +6123,8 @@ async def plan_pgwire_statement(  # REQ-589
         deliver=deliver,
         as_of=governed.as_of,
     )
-    return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+    plan = await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+    return await reporting_generated(plan, state)  # REQ-2167
 
 
 async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272

@@ -24,6 +24,7 @@
     "layer_relationships": "सदस्यों के बीच संबंध",
     "layer_outside": "बाहरी टेबल से संबंध",
     "layer_lineage": "लिनिएज",
+    "layer_productLinks": "अन्य उत्पादों से लिंक",
     "filterDomain": "डोमेन",
     "filterTag": "टैग",
     "filterSensitivity": "संवेदनशीलता",
@@ -64,6 +65,7 @@
     "edge_owns": "का मालिक",
     "loadError": "ग्राफ़ पढ़ा नहीं जा सका: {{error}}",
     "zoomTo": "उस पर ज़ूम करें",
+    "openInErd": "ERD में खोलें",
     "edge_column_lineage": "कॉलम को डेटा देता है",
     "preset_taxonomy": "टैक्सोनॉमी",
     "layer_domains": "डोमेन",
@@ -145,6 +147,10 @@
     "quality_none": "अभी तक नहीं चला",
     "factOwner": "स्वामी",
     "factMembers": "सदस्य टेबल",
-    "factColumns": "कॉलम"
+    "factColumns": "कॉलम",
+    "depth": "गहराई",
+    "lateral": "पार्श्व किनारे",
+    "grounding_grounded": "आधारित",
+    "grounding_grounded_pending": "आधारित, ड्राफ़्ट के माध्यम से"
   }
 }

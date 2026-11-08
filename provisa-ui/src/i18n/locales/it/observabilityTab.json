@@ -14,9 +14,9 @@
     "otelTitle": "Tracciamento OpenTelemetry",
     "statusLabel": "Stato:",
     "statusExporting": "Esportazione → {{endpoint}}",
-    "statusActiveNoCollector": "Attivo (span scartati — nessun collector configurato)",
+    "statusActiveNoCollector": "Attivo (le tracce vengono conservate per questa pagina, non esportate)",
     "endpointLabel": "Endpoint del collector OTLP",
-    "endpointHelp": "Lasciare vuoto per generare tracce senza esportarle. Sostituibile con la variabile d'ambiente OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "Indicare il collector di Provisa e aggiungere un provider esterno come exporter nel collector, così le tabelle delle tracce continuano a riempirsi. Lasciare vuoto per tenere le tracce solo in questa pagina. Sostituibile con la variabile d'ambiente OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Nome del servizio",
     "serviceNameHelp": "Sostituibile con la variabile d'ambiente OTEL_SERVICE_NAME.",
     "sampleRateLabel": "Frequenza di campionamento",
@@ -83,6 +83,9 @@
       "document_sources": "Query verso archivi di documenti.",
       "search_sources": "Query verso indici di ricerca.",
       "grpc_services": "La superficie di query gRPC, in entrata e in uscita."
-    }
+    },
+    "tracesTableCheckFailed": "Non è stato possibile controllare le tabelle delle tracce di Provisa ({{reason}}). Non è noto se stiano ricevendo righe; il controllo si ripete ogni 30 secondi.",
+    "tracesTableEmpty": "Un endpoint è impostato, ma le tabelle delle tracce di Provisa non hanno ancora righe. Se l'endpoint è un provider esterno e non il collector di Provisa, spostarlo negli exporter del collector.",
+    "tracesTableStale": "Un endpoint è impostato, ma le tabelle delle tracce di Provisa non hanno ricevuto righe negli ultimi {{minutes}} minuti. Se Provisa è rimasto inattivo, è previsto. Altrimenti verificare che l'endpoint sia il collector di Provisa e non un provider esterno."
   }
 }

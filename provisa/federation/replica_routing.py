@@ -23,8 +23,10 @@ with (``replica_address.address_replicas``).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
+import contextlib
+import contextvars
 import functools
 import asyncio
 import logging
@@ -146,9 +148,11 @@ def home_keeps_by_key(source: Any, table: Any, region: Any) -> bool:
     source in place. Such a region holds only the rows its own reads fetched, so no other region
     reads the table from it."""
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
+    engine = _judging_engine(region.engine_kind)
     return bool(getattr(table, "row_materialize", False)) and not engine_attaches(
-        _judging_engine(region.engine_kind), _source_type(source)
+        engine, reach_type(source, engine)
     )
 
 
@@ -263,12 +267,56 @@ class _Registry(NamedTuple):
     kept_sources: frozenset[str] = frozenset()
 
 
+class _OneModelRead:
+    """The model's part of :func:`_registry` (registered tables, sources, synthetic tables, bound
+    sources), read once per model store while ``open``. A task made inside :func:`one_model_read`
+    holds this object past its end; closed, it is read through."""
+
+    def __init__(self) -> None:
+        self.open = True
+        self.reads: dict[int, tuple[Any, tuple[list[dict], dict[str, Any], dict, frozenset]]] = {}
+
+
+_one_model_read: contextvars.ContextVar[_OneModelRead | None] = contextvars.ContextVar(
+    "replica_routing_one_model_read", default=None
+)
+
+
+@contextlib.contextmanager
+def one_model_read() -> Iterator[None]:
+    """Within, every :func:`_registry` of a model store reads its model once: a schema rebuild,
+    which built the model it publishes routes for from one read, reconciles the landed tables and
+    publishes the routes by it (REQ-1882). What is promoted, serving and kept is state, read each
+    time."""
+    held = _OneModelRead()
+    token = _one_model_read.set(held)
+    try:
+        yield
+    finally:
+        held.open = False
+        held.reads.clear()
+        _one_model_read.reset(token)
+
+
+async def _model_read(state: Any, mdb: Any) -> tuple[list[dict], dict[str, Any], dict, frozenset]:
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.federation.registry_view import registered_sources
+    from provisa.synthetic.datasets import generated_tables, synthetic_sources
+
+    # A SQL catalog's views are on a built-in source, never among ``sources``: nothing here
+    # routes, floors or keeps them, so their rows and columns are not read (REQ-2190).
+    async with mdb.acquire() as conn:
+        registered = await fetch_tables(conn, catalog=False)
+        sources = {s.id: s for s in await registered_sources(state, conn)}
+        synthetic = await generated_tables(conn)
+        bound = frozenset(await synthetic_sources(conn))
+    return registered, sources, synthetic, bound
+
+
 async def _registry(state: Any) -> _Registry:
     """The registered tables, their sources by id and the Hot replication sets, read together
     from the control plane (REQ-1674): the names the compiler emits; a source created in the UI
     and a table registered at runtime count exactly like config-declared ones."""
-    from provisa.api.admin.db_queries import fetch_tables
-    from provisa.federation.registry_view import registered_sources
     from provisa.federation.replica_builds import store_identity
     from provisa.federation.replica_state import promotion
 
@@ -277,14 +325,18 @@ async def _registry(state: Any) -> _Registry:
     tdb = getattr(state, "tenant_db", None)
     if config is None or mdb is None or tdb is None:
         return _Registry([], {}, frozenset(), frozenset(), {})
-    from provisa.synthetic.datasets import generated_tables, synthetic_sources
 
     # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
-    async with mdb.acquire() as conn:
-        registered = await fetch_tables(conn)
-        sources = {s.id: s for s in await registered_sources(state, conn)}
-        synthetic = await generated_tables(conn)
-        bound = frozenset(await synthetic_sources(conn))
+    held = _one_model_read.get()
+    if held is None or not held.open:
+        model = await _model_read(state, mdb)
+    else:
+        kept_read = held.reads.get(id(mdb))
+        if kept_read is None or kept_read[0] is not mdb:
+            kept_read = (mdb, await _model_read(state, mdb))
+            held.reads[id(mdb)] = kept_read
+        model = kept_read[1]
+    registered, sources, synthetic, bound = model
     from provisa.core.cache_ttl import NEVER_EXPIRES
     from provisa.federation.replica_state import read_all
 

@@ -53,6 +53,8 @@ export type Capability =
   // page renders read-only without it. A curator is granted both.
   | "glossary_read"
   | "glossary_rw"
+  // REQ-1132: reads the meta domain, as `glossary_read` does ontology and `observability` ops.
+  | "catalog_read"
   // REQ-1921: set, change or remove where data lives, for the region values the grant lists.
   // Exists only when the platform declares regions.
   | "data_residency"
@@ -62,16 +64,17 @@ export type Capability =
   // carries `glossary_read` and `glossary_rw` as well.
   | "org_glossary_rw"
   // REQ-1634: data products' two rights. `data_product_read` opens the surface — org_admin,
-  // analyst, developer, and modeler all hold it. `data_product_rw` is create/delete, on the
-  // same footing as `table_registration`: org_admin only.
+  // analyst, developer, and modeler all hold it. `data_product_rw` is org_admin's and, REQ-2188,
+  // comes with being named in a product's Owner field, held to that product by a row rule.
   | "data_product_read"
   | "data_product_rw"
-  // REQ-2155: edit a data product the caller's role owns (its owner_role, an ancestor included).
-  | "data_product_owned_rw"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
   | "dq_read"
-  | "dq_rw";
+  | "dq_rw"
+  | "ignore_relationships"
+  | "write"
+  | "no_aggregations";
 
 /** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */
 export interface LlmLimit {
@@ -105,9 +108,12 @@ export interface Role {
    *  definition is withheld: it explains, it grants nothing. */
   description: string;
   capabilities: Capability[];
-  /** REQ-2155: what the role holds -- its own capabilities and every ancestor's. A caller's rights
+  /** REQ-2155: what the role holds: what it is given of what its parents hold. A caller's rights
    *  are the union of this over the roles it acts as. */
   effectiveCapabilities: Capability[];
+  /** REQ-2155: the data domains and regions it holds, what its children may be given. */
+  effectiveDomains?: string[];
+  effectiveResidencyValues?: string[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
    * badged as belonging to the production system. A role defined by subtraction (the sandbox,
@@ -117,7 +123,8 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
-  /** REQ-2155: the roles this one inherits from, in order; its capabilities are their union. */
+  /** REQ-2155: the roles this one inherits from, in order; it holds what it is given of what they
+   *  hold. */
   parents?: string[];
   /** REQ-2155: a standard role is Provisa's and locked -- extended with child roles, never edited. */
   standard?: boolean;

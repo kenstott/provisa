@@ -24,6 +24,7 @@
     "layer_relationships": "メンバー間のリレーションシップ",
     "layer_outside": "外部テーブルへのリレーションシップ",
     "layer_lineage": "リネージ",
+    "layer_productLinks": "他のプロダクトへのリンク",
     "filterDomain": "ドメイン",
     "filterTag": "タグ",
     "filterSensitivity": "機密度",
@@ -64,6 +65,7 @@
     "edge_owns": "所有",
     "loadError": "グラフを読み込めませんでした: {{error}}",
     "zoomTo": "ズーム",
+    "openInErd": "ERDで開く",
     "edge_column_lineage": "列に供給",
     "preset_taxonomy": "タクソノミー",
     "layer_domains": "ドメイン",
@@ -145,6 +147,10 @@
     "quality_none": "未実行",
     "factOwner": "オーナー",
     "factMembers": "メンバーテーブル",
-    "factColumns": "列"
+    "factColumns": "列",
+    "depth": "深さ",
+    "lateral": "横方向のエッジ",
+    "grounding_grounded": "紐付け済み",
+    "grounding_grounded_pending": "紐付け済み、下書き経由"
   }
 }

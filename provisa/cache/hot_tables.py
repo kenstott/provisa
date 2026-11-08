@@ -295,15 +295,10 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         """Load an OpenAPI table into Redis, read as every read of it is: through its endpoint
         and the one caller, with its source's stored address, credential and headers and its
         own paging. Returns row count."""
-        from provisa.api_source.caller import answer_rows, call_api
+        from provisa.api_source.caller import answer_rows
+        from provisa.api_source.contract import call_endpoint
 
-        answer = await call_api(
-            endpoint,
-            dict(endpoint.default_params),
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
-        )
+        answer = await call_endpoint(endpoint, api_source, dict(endpoint.default_params))
         rows, cut = answer_rows(endpoint, answer)
         if cut is not None or len(rows) > self._max_rows:
             # More than the tier holds, or more than one read of the table takes: not hot.

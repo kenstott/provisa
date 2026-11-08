@@ -35,11 +35,13 @@ a version's data is dropped by its suffix, so another demo's, or another version
 Usage (scripts/demo_stores_sync.sh runs it):
     demo_stores.py up <name> <version> <bundle dir>    start, load, write <bundle dir>/stores.env
     demo_stores.py check <name> <version> <bundle dir> fail unless every index its search
-                                                       stores restore is in the shared instance
+                                                       stores restore is in the shared instance,
+                                                       and none is red
     demo_stores.py drop <name> <version>               drop the version's data and own services,
                                                        and the images no other container uses
-    demo_stores.py stop <name> <version>               the same, its images kept: a demo whose
-                                                       stores lingered out comes back quickly
+    demo_stores.py stop <name> <version>               take down its own services alone, its
+                                                       data and images kept: a demo whose stores
+                                                       lingered out comes back quickly
 
 Environment:
     DEMO_STORES_PROJECT   the shared instances' compose project (provisa-demo-stores on a node)
@@ -523,6 +525,15 @@ def es_missing(shared: Shared, name: str, version: str, store: Store, suffix: st
     )
 
 
+def es_not_red(shared: Shared, suffix: str) -> None:
+    """Refuse a version with a red index. Waited for: a store just restarted is red until its
+    shards recover. A wait that runs out is answered 408, which ``_es`` fails on."""
+    try:
+        _es(shared, "GET", f"/_cluster/health/*{suffix}?wait_for_status=yellow&timeout=30s")
+    except StoreError as red:
+        raise StoreError(f"Elasticsearch: red indices under *{suffix}: {red}") from red
+
+
 def es_load(shared: Shared, name: str, version: str, store: Store, suffix: str) -> None:
     ns = suffix.lstrip("_")
     marked = shared.exec(
@@ -844,11 +855,18 @@ class Demo:
             raise StoreError(
                 f"demo {self.name} {self.version}: Elasticsearch holds no {', '.join(missing)}"
             )
+        if any(store.kind == "elasticsearch" for store in self.stores()):
+            es_not_red(self.shared, self.suffix)
 
-    def drop(self, shared_kinds: set[str], *, keep_images: bool = False) -> None:
-        """Remove the version: its data from each shared instance running, its own services, and
-        -- unless ``keep_images`` (a demo lingered out, to be brought back) -- the images they ran
-        that no other container uses (a superseded version)."""
+    def stop(self) -> None:
+        """A version lingered out (REQ-2049, amended 2026-11-02): only its own services are taken
+        down. Its data stays loaded -- in every shared instance and in its own services' volumes
+        -- and its images stay, so its next open is a container start and a loaded check."""
+        self.runner.run(["docker", "compose", "-p", self.project, "down", "--remove-orphans"])
+
+    def drop(self, shared_kinds: set[str]) -> None:
+        """Remove a superseded version: its data from each shared instance running, its own
+        services, and the images they ran that no other container uses."""
         if "postgres" in shared_kinds:
             pg_drop(self.shared, self.suffix)
         if "mongo" in shared_kinds:
@@ -873,8 +891,6 @@ class Demo:
             ).split()
         )
         self.runner.run(["docker", "compose", "-p", self.project, "down", "-v", "--remove-orphans"])
-        if keep_images:
-            return
         # The images its services ran, once no container (a newer version's) still uses them:
         # every version pulled leaves its own on the node's disk otherwise.
         for image in sorted(images):
@@ -939,10 +955,11 @@ def main(argv: list[str]) -> int:
     if len(argv) == 4 and argv[0] == "check":
         Demo(runner, argv[1], argv[2], Path(argv[3])).check()
         return 0
-    if len(argv) == 3 and argv[0] in ("drop", "stop"):
-        Demo(runner, argv[1], argv[2], None).drop(
-            running_shared(runner), keep_images=argv[0] == "stop"
-        )
+    if len(argv) == 3 and argv[0] == "drop":
+        Demo(runner, argv[1], argv[2], None).drop(running_shared(runner))
+        return 0
+    if len(argv) == 3 and argv[0] == "stop":
+        Demo(runner, argv[1], argv[2], None).stop()
         return 0
     print(__doc__, file=sys.stderr)
     return 2

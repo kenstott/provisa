@@ -40,6 +40,14 @@ def client():
         yield c
 
 
+@pytest.fixture
+def cleared_session(client):
+    """REQ-2176: what a statement makes in the principal's graph session outlives the request,
+    and every later read of the principal goes through it: a test making any clears it after."""
+    yield
+    assert client.delete("/data/cypher/session").status_code == 200
+
+
 def test_cypher_endpoint_reachable(client):
     """Verify the /data/cypher endpoint exists and responds.
 
@@ -54,43 +62,35 @@ def test_cypher_endpoint_reachable(client):
     assert resp.status_code != 404, f"Endpoint not found: {resp.text}"
 
 
-def _clear_session(client) -> None:
-    cleared = client.delete("/data/cypher/session")
-    assert cleared.status_code == 200, cleared.text
-
-
-def _ephemeral_write(client, query: str) -> httpx.Response:
-    """``query`` answered in an empty graph session, which is cleared again after: the node it
-    makes is the principal's session's (REQ-2176), which every later statement of this principal
-    would read beside the model, on every surface, until the session's retention ran out."""
-    _clear_session(client)
-    try:
-        return client.post("/data/cypher", json={"query": query})
-    finally:
-        _clear_session(client)
-
-
-def test_merge_of_a_free_label_makes_an_ephemeral_node(client):
-    """REQ-818, REQ-2176: MERGE is MATCH, then CREATE under the governing rule. A label the
-    model does not have names no model table, so the CREATE is no governed write: it makes one
-    node in the principal's graph session (no longer refused as an unsupported write), and the
-    answer counts it as Neo4j does (REQ-670)."""
-    resp = _ephemeral_write(client, "MERGE (n:Person {name: 'Eve'})")
-    assert resp.status_code == 200, resp.text
+def test_unsupported_write_pattern_rejected(client, cleared_session):
+    """Cypher is NOT read-only: a write pattern it cannot do is refused by name, and the refusal
+    must NOT claim Cypher is read-only. MERGE, CREATE and DETACH DELETE of what the model does
+    not have are the graph session's (REQ-2176); a MERGE reads one hop at a time."""
+    resp = client.post(
+        "/data/cypher",
+        json={"query": "CREATE (a), (b) MERGE (a)-[:KNOWS*2]->(b)"},
+    )
+    assert resp.status_code == 400
     data = resp.json()
-    assert data["counters"]["nodes-created"] == 1, data
-    assert data["counters"]["labels-added"] == 1, data
+    assert data["code"] == "cypher.refused", data
+    err = data["detail"]
+    assert "one hop" in err, err
+    assert "read-only" not in err.lower()
 
 
-def test_create_of_a_free_label_makes_an_ephemeral_node(client):
-    """REQ-2176: a CREATE whose label names no model table is not routed to the governed write
-    (once refused there for the missing label); it makes an ephemeral node, never a read-only or
-    write-clause error."""
-    resp = _ephemeral_write(client, "CREATE (n:Person {name: 'Eve'})")
+def test_supported_write_reaches_write_pipeline(client, cleared_session):
+    """A CREATE of a label the model does not have is the graph session's (REQ-2176, replacing
+    REQ-818's rejection): it is written, counted (REQ-670), and read back."""
+    resp = client.post(
+        "/data/cypher",
+        json={"query": "CREATE (n:Person {name: 'Eve'})"},
+    )
     assert resp.status_code == 200, resp.text
-    data = resp.json()
-    assert data["counters"]["nodes-created"] == 1, data
-    assert "read-only" not in resp.text.lower()
+    counters = resp.json()["counters"]
+    assert counters["nodes-created"] == 1 and counters["properties-set"] == 1, counters
+    read = client.post("/data/cypher", json={"query": "MATCH (n:Person) RETURN n.name AS name"})
+    assert read.status_code == 200, read.text
+    assert read.json()["rows"] == [{"name": "Eve"}]
 
 
 def test_apoc_rejected(client):
@@ -104,12 +104,8 @@ def test_apoc_rejected(client):
 
 
 def test_parse_error_returns_400(client):
-    # A statement that does not parse (MERGE once stood in for one; it is a write, REQ-2176).
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "MATCH (n:Person RETURN n"},
-    )
-    assert resp.status_code == 400, resp.text
+    resp = client.post("/data/cypher", json={"query": "MATCH (n RETURN n"})
+    assert resp.status_code == 400
     assert resp.json()["code"] == "cypher.refused"
 
 

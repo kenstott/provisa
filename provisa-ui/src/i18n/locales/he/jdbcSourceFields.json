@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "ניב SQL",
+    "dialectHelp": "סוג ה-SQL ש-Provisa כותב עבור מקור זה. הוא אינו חייב להתאים למנהל ההתקן: בחר את הקרוב ביותר למסד הנתונים, או ANSI.",
+    "ansi": "ANSI (SQL כללי)",
+    "username": "שם משתמש",
+    "password": "סיסמה",
+    "capabilityName": {
+      "attach": "חיבור חי",
+      "predicate": "Pushdown של מסננים",
+      "join": "Pushdown של צירופים",
+      "aggregate": "Pushdown של צבירות",
+      "key_range": "Pushdown של טווחי מפתח"
+    },
+    "detect": "זיהוי",
+    "checkPassed": "{{capability}}: עבר",
+    "checkFailed": "{{capability}}: נכשל ({{reason}})",
+    "jdbcDriverJar": "קובץ JAR של מנהל התקן JDBC",
+    "jdbcDriverJarHint": "קובץ ה-JAR של מנהל ההתקן, שהועלה מהמחשב שלך. התקנות באירוח עצמי בלבד.",
+    "jdbcDriverClass": "מחלקת מנהל ההתקן",
+    "driver": "מנהל התקן",
+    "jarDriver": "מנהל התקן JDBC משלך (JAR)",
+    "host": "מארח",
+    "port": "פורט",
+    "database": "מסד נתונים",
+    "file": "קובץ מסד נתונים",
+    "fileHint": "קובץ מסד הנתונים, שנכתב {files}/… עבור קובץ באזור הקבצים של הארגון.",
+    "jdbcUrl": "כתובת JDBC URL",
+    "jdbcUrlHint": "כתובת ה-jdbc: URL של מנהל ההתקן. אל תכלול בה סיסמה.",
+    "jdbcDriverJarPlaceholder": "העלה את קובץ ה-JAR של מנהל ההתקן"
+  }
+}

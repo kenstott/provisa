@@ -30,14 +30,14 @@ says this copy IS the creation (``seed``). Afterwards they are the environment's
 may do what (REQ-1539).
 """
 
-# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539
+# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539, REQ-2201
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import MetaData, Table, delete, select
+from sqlalchemy import MetaData, Table, case, delete, insert, literal, select
 
 from provisa.core.env_classes import (
     BINDING_COLUMN,
@@ -312,6 +312,7 @@ async def clone_model(
             conn, src_schema, dst_schema, report, REPLACE, True, True, False, landing, apply=True
         )
         await copy_profile_results(conn, src_schema, dst_schema)
+        await copy_term_scans(conn, src_schema, dst_schema)
         return report
 
 
@@ -321,10 +322,13 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
     A run's results are relations of the org's schema of their own (``<table>_<id>_profile_<kind>``,
     provisa.profiler.schema), not model tables, so the model copy does not move them; a sandbox
     is cloned with its template's table ids, so each keeps its name. Each is replaced whole.
-    Returns the relations copied."""
+    A relation no table of ``src_schema``'s model names (profiler.schema.superseded_results) is
+    not copied. Returns the relations copied."""
     from sqlalchemy import text
 
-    from provisa.profiler.schema import is_result_table_name
+    from provisa.profiler.schema import is_result_table_name, superseded_results
+
+    superseded = set(await superseded_results(conn, src_schema))
 
     names = [
         r[0]
@@ -336,7 +340,7 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
                 ).bindparams(schema=src_schema)
             )
         ).fetchall()
-        if is_result_table_name(r[0])
+        if is_result_table_name(r[0]) and r[0] not in superseded
     ]
     for name in names:
         src, dst = f'"{src_schema}"."{name}"', f'"{dst_schema}"."{name}"'
@@ -344,6 +348,41 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
         await conn.execute_core(text(f"CREATE TABLE {dst} (LIKE {src} INCLUDING ALL)"))
         await conn.execute_core(text(f"INSERT INTO {dst} SELECT * FROM {src}"))
     return names
+
+
+#: REQ-2201: a library document, its domains, passages and tags (REQ-2208), and the scans of it with their drafts,
+#: in the order their foreign keys need.
+_SCAN_TABLES = (
+    "reference_documents",
+    "reference_document_domains",
+    "reference_passages",
+    "reference_document_tags",  # REQ-2208: the tags on its documents and their sections
+    "glossary_term_scans",
+    "glossary_term_drafts",
+)
+
+
+async def copy_term_scans(conn: "Connection", src_schema: str, dst_schema: str) -> list[str]:
+    """REQ-2201: the reference library and the scans of it of ``src_schema``, carried into
+    ``dst_schema``: a demo's template holds the scans its bundle carries (provisa.term_finding.carry),
+    and a sandbox opens on them. They are the environment's own (env_classes.NEVER_RUNTIME), so the
+    model copy does not move them; a sandbox is cloned with its template's glossary term ids, so
+    each row keeps its ids. Each table is replaced whole. Returns the tables copied."""
+    tables = [org_metadata.tables[name] for name in _SCAN_TABLES]
+    for table in reversed(tables):
+        await conn.execute_core(delete(_scoped(table, dst_schema)))
+    for table in tables:
+        src, dst = _scoped(table, src_schema), _scoped(table, dst_schema)
+        columns = [c.name for c in table.columns]
+        await conn.execute_core(
+            insert(dst).from_select(columns, select(*(src.c[c] for c in columns)))
+        )
+    await _resync_sequences(conn, tables, dst_schema)
+    # REQ-2185: the copied passages searchable under their dimension's vector index.
+    from provisa.reference_library import store
+
+    await store.index_vectors(conn, dst_schema)
+    return list(_SCAN_TABLES)
 
 
 async def _copy_schemas(
@@ -411,6 +450,9 @@ async def _copy_table(
     dst = _scoped(table, dst_schema)
     columns = _carried_columns(table, strip_identities)
     delta = TableDelta(table.name)
+    if apply and not (table.name in IDENTITY_ONLY and strip_identities):
+        if not await _holds_rows(conn, dst):
+            return await _copy_into_empty(conn, src, dst, columns, src_schema, dst_schema, delta)
 
     source_rows = {
         k: _rebase(r, src_schema, dst_schema) for k, r in (await _rows(conn, src)).items()
@@ -471,6 +513,41 @@ async def _copy_table(
     for key, values in updates:
         await conn.execute_core(dst.update().where(_where(dst, key)).values(**values))
     await _insert_rows(conn, dst, inserts)
+    return delta
+
+
+async def _holds_rows(conn: "Connection", table: Table) -> bool:
+    return (
+        await conn.execute_core(select(literal(1)).select_from(table).limit(1))
+    ).first() is not None
+
+
+async def _copy_into_empty(
+    conn: "Connection",
+    src: Table,
+    dst: Table,
+    columns: list[str],
+    src_schema: str,
+    dst_schema: str,
+    delta: TableDelta,
+) -> TableDelta:
+    """A table the target holds no row of, copied in one statement on the server: every source row
+    arrives as the row-by-row path would insert it, a value naming the source's own schema rebased
+    onto the target's (``_rebase``). The rows are never carried here and back: a sandbox's open
+    copied its template's model three times over (prod and two environments), each time 2,722
+    rows of table_columns, nearly all the built-in tables', through one statement of a value a
+    parameter (REQ-2006). A row whose binding a copy decides (IDENTITY_ONLY, stripped) never
+    comes here."""
+    picked = {
+        c: case((src.c[c] == src_schema, literal(dst_schema)), else_=src.c[c]).label(c)
+        if c == _SCHEMA_COLUMN
+        else src.c[c]
+        for c in columns
+    }
+    keys = await conn.execute_core(select(*(picked[c.name] for c in src.primary_key.columns)))
+    delta.added = [_render(tuple(key)) for key in keys.fetchall()]
+    if delta.added:
+        await conn.execute_core(insert(dst).from_select(columns, select(*picked.values())))
     return delta
 
 

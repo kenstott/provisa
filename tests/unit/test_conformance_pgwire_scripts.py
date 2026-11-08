@@ -20,8 +20,13 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))  # the scripts' sibling imports
+
+
+import pgwire_function_probe as function_probe  # noqa: E402
 
 
 def _load(name: str):
@@ -90,7 +95,9 @@ def test_pgspec_results_are_counted_per_leaf_and_failures_grouped_by_section():
         _ev("pass", "TestLone"),
     ]
     s = m.summarise(_SOURCE, events, "v1.5.11")
-    assert (s["total"], s["passed"], s["failed"], s["skipped"]) == (5, 2, 2, 1)
+    # REQ-2167 (amended 2026-10-28): a skipped or unreached leaf no group names is failed.
+    assert (s["total"], s["passed"], s["by_design"], s["failed"]) == (5, 2, 0, 3)
+    assert "skipped" not in s
     assert s["not_reached"] == ["TestSimpleQuery/Cancel"]
     assert s["pass_rate"] == 0.4
     assert list(s["failed_by_section"]) == [
@@ -101,9 +108,14 @@ def test_pgspec_results_are_counted_per_leaf_and_failures_grouped_by_section():
     assert startup == [
         {"test": "TestStartup/WrongVersion", "reason": "pgspec_test.go:60: expected ErrorResponse"}
     ]
+    assert [f["test"] for f in s["failed_by_section"]["Section 2: Simple Query (55.2.3)"]] == [
+        "TestSimpleQuery/Cancel",
+        "TestSimpleQuery/Insert",
+    ]
     md = m.markdown(s)
-    assert "| 5 | 2 | 2 | 1 | 40.0% |" in md
+    assert "5 tests: 2 passed, 0 skipped by design, 3 failed. Pass rate 40.0%" in md
     assert "`TestSimpleQuery/Cancel`: not reached" in md
+    assert "`TestSimpleQuery/Insert`: skipped by pgspec" in md
 
 
 def test_a_top_level_test_that_failed_before_its_subtests_counts_them_not_itself():
@@ -148,7 +160,9 @@ def test_the_summary_fails_when_the_suite_did_not_run_or_a_test_failed(tmp_path)
     assert m.main(["x", str(src), str(passing), *args]) == 0
 
 
-def test_a_failure_a_by_design_group_names_is_left_out_and_fails_nothing(tmp_path, monkeypatch):
+def test_a_failure_a_by_design_group_names_is_skipped_by_design_and_fails_nothing(
+    tmp_path, monkeypatch
+):
     m = _load("pgspec_summary")
     rules = tmp_path / "by_design"
     rules.mkdir()
@@ -164,8 +178,15 @@ def test_a_failure_a_by_design_group_names_is_left_out_and_fails_nothing(tmp_pat
         for t in ("TestStartup/Version30", "TestStartup/WrongVersion", "TestSimpleQuery/Insert")
     ] + [_ev("fail", "TestSimpleQuery/Cancel"), _ev("pass", "TestLone")]
     s = m.summarise(_SOURCE, events)
-    assert (s["total"], s["passed"], s["failed"], s["not_runnable"]) == (4, 4, 0, 1)
-    assert s["by_design"][0]["group"] == "Cancel" and s["by_design"][0]["count"] == 1
+    assert (s["total"], s["passed"], s["by_design"], s["failed"]) == (5, 4, 1, 0)
+    assert s["pass_rate"] == 1.0
+    (group,) = s["by_design_groups"]
+    assert (group["group"], group["count"], group["cases"]) == (
+        "Cancel",
+        1,
+        [{"case": "TestSimpleQuery::Cancel", "reason": ""}],
+    )
+    assert "| Cancel | 1 | REQ-2167 |" in m.markdown(s)
     src, results = tmp_path / "pgspec_test.go", tmp_path / "r.jsonl"
     src.write_text(_SOURCE)
     results.write_text("\n".join(json.dumps(e) for e in events))
@@ -198,10 +219,13 @@ def test_catalog_columns_are_compared_by_name_order_type_and_typmod():
 
 
 def test_each_part_of_the_catalog_report_is_its_own_section():
+    import by_design
+
     m = _load("pgwire_catalog_types")
     report = {
         "postgres_version": "16.4",
         "catalog_relations": {
+            **by_design.outcomes(1, [], [{}, {}]),
             "postgres_relations": 3,
             "served": 2,
             "matching": ["pg_catalog.pg_class"],
@@ -210,22 +234,32 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             "served_not_in_postgres": [],
         },
         "catalog_functions": {
-            "postgres_functions": 2,
-            "excluded": "pseudo-types",
+            **by_design.outcomes(1, [], [{}, {}]),
+            "postgres_functions": 3,
             "served": 1,
             "matching": 1,
+            "by_engine": {
+                "duckdb": {
+                    "same_type": 1,
+                    "refused_by_name": 0,
+                    "differs": 1,
+                    "differs_type": 0,
+                    "differs_engine_error": 1,
+                    "by_design": 0,
+                    "not_compared": 1,
+                }
+            },
             "differing": {},
             "not_served": {"pg_catalog.foo(integer)": "function foo does not exist"},
-            "by_design": [
-                {
-                    "group": "Geometric functions",
-                    "requirement": "REQ-2167",
-                    "decision": "d",
-                    "count": 2,
-                }
-            ],
+            "not_callable": {"bar(internal)": "takes an internal argument"},
+            "refused_here": {"pg_wal_replay_pause()": "recovery is not in progress"},
+            "failures_by_family": {
+                "Geometric": {"count": 1, "functions": ["pg_catalog.foo(integer)"]},
+                "Index support": {"count": 1, "functions": ["bar(internal)"]},
+            },
         },
         "type_conversions": {
+            **by_design.outcomes(0, [], [{}]),
             "fixture_columns": [],
             "casts": [
                 {
@@ -238,11 +272,19 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
             ],
             "compared": 1,
             "matching": 0,
-            "by_design": [],
             "differing": 1,
         },
     }
     md = m.markdown(report)
+    # REQ-2167 (amended 2026-10-28): each part's three counts, side by side.
+    assert "| catalog relations | 3 | 1 | 0 | 2 | 33.3% |" in md
+    # REQ-2171 (RESULTS ARE BY ENGINE): functions are no part of that table; they have one engine's
+    # counts, and no failed count.
+    assert "| catalog functions |" not in md
+    assert "## Catalog functions on duckdb (PostgreSQL 16.4)" in md
+    assert "| duckdb | 1 | 0 | 0 | 1 | 0 | 1 |" in md
+    assert "Functions failed" not in md
+    assert "| type conversions | 1 | 0 | 0 | 1 | 0.0% |" in md
     for heading in (
         "## pgwire catalog shape (PostgreSQL 16.4)",
         "## pgwire catalog coverage (PostgreSQL 16.4)",
@@ -251,7 +293,14 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         assert heading in md
     assert "`pg_catalog.pg_stat_database`" in md
     assert "`pg_catalog.foo(integer)`" in md
-    assert "Functions not served by design (2)" in md and "| Geometric functions | 2 |" in md
+    # REQ-2167 (INTERNAL FUNCTIONS): one PostgreSQL itself cannot call is listed by name, apart
+    # from one this server refuses for its state; what stays is counted by family.
+    assert "Functions PostgreSQL itself cannot call (1)" in md
+    assert "`bar(internal)`" in md
+    assert "Functions this PostgreSQL refuses for its own state (1)" in md
+    assert "`pg_wal_replay_pause()`: recovery is not in progress" in md
+    assert "Functions refused or differing on duckdb, by family" in md
+    assert "| Index support | 1 |" in md
     assert "| `SELECT 'x'::name AS v` | name | text |" in md
 
 
@@ -286,7 +335,15 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     assert cfg.auth.provider == "basic"
     assert cfg.auth.scram is True
     assert cfg.naming.domain_prefix is False
-    (table,) = cfg.tables
+    table, probed = cfg.tables
+    # REQ-2167: lastval's probe inserts into a table whose id the source generates.
+    assert (probed.schema_name, probed.table_name) == (
+        function_probe.PROBE_IDENTITY_SCHEMA,
+        function_probe.PROBE_IDENTITY_TABLE,
+    )
+    assert [(g.role, g.operation, g.columns) for g in probed.write_grants] == [
+        ("org_admin", "insert", ["note"])
+    ]
     assert domain_to_sql_name(table.domain_id) == m.FIXTURE_SCHEMA == table.schema_name
     assert table.table_name == m.FIXTURE_TABLE == table.alias
     assert all(c.visible_to == ["org_admin"] for c in table.columns)
@@ -318,62 +375,634 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         "c_money": "money",
     }
     assert set(sampled) == {"c_numeric"}
+    # REQ-1961 (VARCHAR AND CHAR KEEP THEIR TYPE): a character column is text, its native type
+    # kept as a hidden attribute.
+    assert {
+        n: (arrays[n].data_type, arrays[n].native_type, arrays[n].native_platform)
+        for n in ("c_text", "c_varchar", "c_varchar_20", "c_bpchar_5")
+    } == {
+        "c_text": ("text", None, None),
+        "c_varchar": ("text", "character varying", "postgresql"),
+        "c_varchar_20": ("text", "character varying(20)", "postgresql"),
+        "c_bpchar_5": ("text", "character(5)", "postgresql"),
+    }
     assert cfg.sources[0].port == 55432
 
 
 class _Probe:
     """A server answering the catalog function probe: each function either answers or refuses."""
 
-    def __init__(self, functions: list[tuple[str, str]], refused: set[str]) -> None:
+    def __init__(
+        self,
+        functions: list[tuple[str, str]],
+        refused: dict[str, str],
+        oids: dict[str, int] | None = None,
+        sqlstate: str = "55000",
+    ) -> None:
         self._functions = functions
+        self._sqlstate = sqlstate
         self._refused = refused
+        self._oids = oids or {}
 
     def rows(self, sql: str) -> list[tuple]:
-        return [(name, args, "f", False, "integer", []) for name, args in self._functions]
+        return [
+            (name, args, "f", False, "n", 0, "integer", "i", list(argtypes))
+            for name, args, argtypes in self._functions
+        ]
 
     def run(self, sql: str, result_format: int = 0) -> dict:
         name = sql.split('pg_catalog."', 1)[1].split('"', 1)[0]
         if name in self._refused:
-            return {"ok": False, "error": f"Scalar Function with name {name} does not exist!"}
-        return {"ok": True, "fields": [{"type_oid": 23}]}
+            said = self._refused[name]
+            return {
+                "ok": False,
+                "error": said,
+                "sqlstate": self._sqlstate,
+                "primary": said.split("\n", 1)[0],
+            }
+        return {"ok": True, "fields": [{"type_oid": self._oids.get(name, 23)}]}
 
 
-def test_a_catalog_function_of_a_by_design_family_is_left_out_of_not_served():
-    # PGWIRE'S CATALOG FUNCTIONS (REQ-2167): a function of a family no client calls is not
-    # served by design; one a client calls stays not served, to be answered.
+def _report(monkeypatch, functions, pg_refused=None, refused=(), oids=None):
+    """``pg_refused``: each function PostgreSQL refuses, with its error. ``refused``: those
+    Provisa does not serve. ``oids``: a result type Provisa gives that is not PostgreSQL's."""
     m = _load("pgwire_catalog_types")
-    functions = [("point_above", ""), ("pg_cancel_backend", ""), ("abs", "")]
-    pg = _Probe(functions, refused=set())
-    provisa = _Probe(functions, refused={"point_above", "pg_cancel_backend"})
-    report = m.catalog_functions(pg, provisa, {23: "int4"})
-    assert list(report["not_served"]) == ["pg_cancel_backend()"]
-    assert [(g["group"], g["count"]) for g in report["by_design"]] == [("Geometric functions", 1)]
-    assert report["matching"] == 1
+    not_served = {n: f"Scalar Function with name {n} does not exist!" for n in refused}
+    return m, m.catalog_functions(
+        _Probe(functions, refused=pg_refused or {}),
+        _Probe(functions, refused=not_served, oids=oids),
+        {23: "int4", 25: "text"},
+    )
 
 
-def test_no_by_design_function_group_names_a_function_a_client_calls():
+def test_every_catalog_function_not_served_is_failed_with_its_name_overload_and_family(monkeypatch):
+    # PG_CATALOG FUNCTIONS ARE GAPS (REQ-2167): outside the two function groups, whatever its
+    # family and whether or not a client calls it, a function not served is failed.
+    functions = [
+        ("point_above", "point, point", ("point", "point")),
+        ("pg_cancel_backend", "integer", ("integer",)),
+        ("abs", "", ()),
+    ]
+    _, report = _report(monkeypatch, functions, refused={"point_above", "pg_cancel_backend"})
+    assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
+        3,
+        1,
+        0,
+        2,
+    )
+    assert report["by_design_groups"] == []
+    assert list(report["not_served"]) == ["pg_cancel_backend(integer)", "point_above(point, point)"]
+    failure = next(f for f in report["failures"] if f["name"] == "point_above")
+    assert failure["overload"] == "point, point"
+    assert failure["family"] == "Geometric"
+    assert failure["reason"].startswith("not served: ")
+    assert report["failures_by_family"] == {
+        "Geometric": {"count": 1, "functions": ["point_above(point, point)"]},
+        "System": {"count": 1, "functions": ["pg_cancel_backend(integer)"]},
+    }
+
+
+#: PostgreSQL 17's own refusals on the conformance job's server, as the probe records them.
+def test_a_function_s_counts_are_its_engine_s_with_a_refusal_apart_from_an_engine_error(
+    monkeypatch,
+):
+    # REQ-2171 (RESULTS ARE BY ENGINE): the keys the landing floor can read, one engine at a time.
+    m = _load("pgwire_catalog_types")
+    failures = [
+        {"scenario": "a()"},
+        {"scenario": "b()"},
+        {"scenario": "c()"},
+        {"scenario": "d()"},
+    ]
+    counts = m._engine_counts(
+        failures,
+        matching=5,
+        by_design_cases=2,
+        differing={"a()": "returns text"},
+        not_served={"b()": "ERROR:  b() has no form on duckdb", "c()": "ERROR:  Binder Error: c"},
+    )
+    assert counts == {
+        "same_type": 5,
+        "refused_by_name": 1,
+        "differs": 2,
+        "differs_type": 1,
+        "differs_engine_error": 1,
+        "by_design": 2,
+        "not_compared": 1,
+    }
+
+
+def test_the_artifact_gives_the_engine_s_counts_beside_the_floor_s_key(monkeypatch):
     import by_design
 
-    called = [
-        "pg_cancel_backend",
-        "pg_terminate_backend",
-        "pg_get_indexdef",
-        "pg_get_functiondef",
-        "aclexplode",
-        "quote_ident",
-        "quote_literal",
-        "pg_database_size",
-        "pg_relation_size",
-        "pg_options_to_table",
-        "unnest",
-        "btrim",
-        "json_to_record",
-        "pg_encoding_to_char",
+    m, report = _report(monkeypatch, [("abs", "integer", ("integer",))], refused={"abs"})
+    assert report["engine"] == "duckdb"
+    pgspec = {"suite": "pgspec", **by_design.outcomes(1, [], [])}
+    doc = m.combined(pgspec, {"postgres_version": "17", "catalog_functions": report})
+    assert doc["functions_by_engine"]["duckdb"]["differs_engine_error"] == 1
+    assert doc["outside_functions"]["failed"] == 0
+    # land3.sh reads these until its floor moves to functions_by_engine.
+    assert doc["failed"] == 1
+    assert "failures_by_family" in doc["catalog_functions"]
+
+
+TRIGGER_REFUSAL = 'ERROR:  function "unique_key_recheck" was not called by trigger manager'
+RECOVERY_REFUSAL = (
+    "ERROR:  recovery is not in progress\n"
+    "HINT:  Recovery control functions can only be executed during recovery."
+)
+
+
+def test_a_function_postgresql_cannot_call_is_internal_with_its_proof_and_none_is_dropped(
+    monkeypatch,
+):
+    # INTERNAL FUNCTIONS (REQ-2167): PostgreSQL has no expression of type internal, and a trigger
+    # function runs only in a trigger. Each stays a case: the total is every overload pg_proc
+    # lists, and the group names each one with its proof.
+    functions = [
+        ("boolrecv", "internal", ("internal",)),
+        ("unique_key_recheck", "", ()),
+        ("abs", "", ()),
     ]
-    groups = [g for g in by_design.groups("pgwire") if g.kind == "design"]
-    for name in called:
-        failure = {"feature": "catalog function", "scenario": f"{name}()", "reason": ""}
-        assert not [g.group for g in groups if g.matches(failure)], name
+    _, report = _report(
+        monkeypatch, functions, pg_refused={"unique_key_recheck": TRIGGER_REFUSAL}, refused={"abs"}
+    )
+    assert (report["total"], report["postgres_functions"]) == (3, 3)
+    assert (report["passed"], report["by_design"], report["failed"]) == (0, 2, 1)
+    assert report["not_callable"]["boolrecv(internal)"] == function_probe.NO_CALL
+    assert "refuses the call" in report["not_callable"]["unique_key_recheck()"]
+    assert report["refused_here"] == {}
+    (group,) = report["by_design_groups"]
+    assert (group["group"], group["requirement"], group["count"]) == (
+        "Internal functions",
+        "REQ-2167",
+        2,
+    )
+    assert group["cases"] == [
+        {
+            "case": "catalog function::boolrecv(internal)",
+            "reason": f"no call reaches it: {function_probe.NO_CALL}",
+        },
+        {
+            "case": "catalog function::unique_key_recheck()",
+            "reason": f"no call reaches it: PostgreSQL refuses the call: {TRIGGER_REFUSAL}",
+        },
+    ]
+    assert [f["scenario"] for f in report["failures"]] == ["abs()"]
+
+
+def test_a_refusal_of_this_server_s_state_proves_nothing_and_stays_failed(monkeypatch):
+    # If PostgreSQL can call it, it is not internal: this function runs on a server in recovery.
+    functions = [("pg_wal_replay_pause", "", ())]
+    _, report = _report(
+        monkeypatch, functions, pg_refused={"pg_wal_replay_pause": RECOVERY_REFUSAL}
+    )
+    assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
+        1,
+        0,
+        0,
+        1,
+    )
+    assert report["not_callable"] == {}
+    assert list(report["refused_here"]) == ["pg_wal_replay_pause()"]
+    (failure,) = report["failures"]
+    assert failure["reason"].startswith("PostgreSQL refuses the call: ERROR:  recovery")
+    assert report["failures_by_family"]["System"]["functions"] == ["pg_wal_replay_pause()"]
+
+
+def _state_refusal(monkeypatch, provisa_sqlstate: str) -> dict:
+    """A refusal of the server's state, which Provisa answers with ``provisa_sqlstate``."""
+    m = _load("pgwire_catalog_types")
+    functions = [("pg_wal_replay_pause", "", ())]
+    return m.catalog_functions(
+        _Probe(functions, refused={"pg_wal_replay_pause": RECOVERY_REFUSAL}),
+        _Probe(
+            functions,
+            refused={"pg_wal_replay_pause": RECOVERY_REFUSAL},
+            sqlstate=provisa_sqlstate,
+        ),
+        {23: "int4", 25: "text"},
+    )
+
+
+def test_a_refusal_of_the_servers_state_passes_when_provisa_refuses_it_the_same(monkeypatch):
+    report = _state_refusal(monkeypatch, "55000")
+    assert (report["passed"], report["failed"]) == (1, 0)
+    assert report["refused_here"] == {}
+
+
+def test_a_refusal_with_another_sqlstate_stays_failed(monkeypatch):
+    report = _state_refusal(monkeypatch, "0A000")
+    assert (report["passed"], report["failed"]) == (0, 1)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        'function "RI_FKey_check_ins" was not called by trigger manager',
+        "suppress_redundant_updates_trigger: must be called as trigger",
+        "tsvector_update_trigger: not fired by trigger manager",
+        "pg_event_trigger_ddl_commands() can only be called in an event trigger function",
+        "pg_event_trigger_dropped_objects() can only be called in a sql_drop event trigger function",
+        "function can only be called when server is in binary upgrade mode",
+        "cannot accept a value of type event_trigger",
+        "cannot accept a value of a shell type",
+        'functions returning type "internal" cannot be called explicitly',
+        "PL/pgSQL functions cannot return type language_handler",
+        "cannot advance OID counter anymore",
+    ],
+)
+def test_a_refusal_no_server_state_changes_proves_a_function_internal(error):
+    assert function_probe.proves_internal(f"PostgreSQL refuses the call: ERROR:  {error}")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "recovery is not in progress",
+        "could not get commit timestamp data",
+        'logical decoding requires "wal_level" >= "logical"',
+        'could not open directory "log": No such file or directory',
+        "no replication origin is configured",
+        "replication slots can only be synchronized to a standby server",
+        # SELECT pg_typeof(unknownin(NULL)) runs: only the probe's top-level column is refused.
+        "failed to find conversion function from unknown to text",
+        "no result column",
+    ],
+)
+def test_a_refusal_of_a_server_s_state_or_of_the_probe_s_statement_proves_nothing(error):
+    assert not function_probe.proves_internal(f"PostgreSQL refuses the call: ERROR:  {error}")
+
+
+def test_an_index_function_not_served_is_failed_and_only_an_internal_one_is_skipped(monkeypatch):
+    # The index support functions are served or refused by name (REQ-2171), so no group hides one:
+    # one served stays passed, and one not served or served with the wrong result type is failed.
+    # A function PostgreSQL cannot call is internal.
+    functions = [
+        ("brin_summarize_range", "regclass, bigint", ("regclass", "bigint")),
+        ("btint4cmp", "integer, integer", ("integer", "integer")),
+        ("gtsvectorout", "gtsvector", ("gtsvector",)),
+        ("amvalidate", "oid", ("oid",)),
+        ("btint4sortsupport", "internal", ("internal",)),
+        ("pg_get_indexdef", "oid", ("oid",)),
+        ("hashtext", "text", ("text",)),
+    ]
+    _, report = _report(
+        monkeypatch,
+        functions,
+        refused={"brin_summarize_range", "btint4cmp", "pg_get_indexdef", "hashtext"},
+        oids={"gtsvectorout": 25},
+    )
+    assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
+        7,
+        1,
+        1,
+        5,
+    )
+    assert {g["group"]: [c["case"] for c in g["cases"]] for g in report["by_design_groups"]} == {
+        "Internal functions": ["catalog function::btint4sortsupport(internal)"],
+    }
+    assert sorted(f["scenario"] for f in report["failures"]) == [
+        "brin_summarize_range(regclass, bigint)",
+        "btint4cmp(integer, integer)",
+        "gtsvectorout(gtsvector)",
+        "hashtext(text)",
+        "pg_get_indexdef(oid)",
+    ]
+
+
+def test_index_metadata_btrim_and_hash_functions_are_outside_the_index_support_family():
+    # Index metadata stays served (REQ-2190), so it is never in the family that decides the group;
+    # btrim is a string function whose name happens to start like a btree one.
+    declared = function_probe.families()
+
+    def named(name: str) -> str:
+        return function_probe.family(function_probe.Function(name, ""), declared)
+
+    for name in (
+        "pg_get_indexdef",
+        "pg_index_has_property",
+        "pg_index_column_has_property",
+        "pg_indexam_has_property",
+        "pg_indexam_progress_phasename",
+        "pg_indexes_size",
+        "pg_table_size",
+        "btrim",
+    ):
+        assert named(name) != "Index support", name
+    # A client calls a hash function directly, so the group never hides one.
+    for name in ("hashtext", "hashtextextended", "hashint4", "hash_numeric", "hash_array"):
+        assert named(name) == "Hash", name
+    for name in (
+        "brin_summarize_range",
+        "brin_desummarize_range",
+        "gin_clean_pending_list",
+        "btint4cmp",
+        "gtsvectorin",
+        "brin_bloom_summary_in",
+        "spg_poly_quad_compress",
+        "hashhandler",
+    ):
+        assert named(name) == "Index support", name
+
+
+def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
+    # Not by the case the group names, not by a family, not under an allowed name with a wider
+    # rule, and not by a reason a function's failure happens to match.
+    import by_design
+
+    rules = tmp_path / "by_design"
+    rules.mkdir()
+    monkeypatch.setattr(by_design, "RULES", rules)
+    (rules / "pgwire.yaml").write_text(
+        "- group: Geometric functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: not emulated\n"
+        '  case: "^catalog function::(point_above)\\\\("\n'
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        "- group: Geometric functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: not emulated\n"
+        '  reason: "."\n'
+        "  family: Geometric\n"
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        "- group: Index functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: wider than declared\n"
+        '  case: "^catalog function::"\n'
+        '  reason: "."\n'
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        "- group: Internal functions\n"
+        "  requirement: REQ-2167\n"
+        "  decision: every refusal\n"
+        '  case: "^catalog function::"\n'
+        '  reason: "^PostgreSQL refuses"\n'
+    )
+    with pytest.raises(ValueError, match="names catalog functions"):
+        by_design.groups("pgwire")
+    (rules / "pgwire.yaml").write_text(
+        '- group: Any error\n  requirement: REQ-2167\n  decision: d\n  reason: "."\n'
+    )
+    _, report = _report(monkeypatch, [("point_above", "", ())], refused={"point_above"})
+    assert (report["by_design"], report["failed"]) == (0, 1)
+
+
+def test_the_shipped_groups_naming_catalog_functions_are_exactly_those_allowed():
+    import by_design
+
+    groups = by_design.groups("pgwire")
+    assert groups
+    named = [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
+    assert named == ["Internal functions", "Not supported"] == list(by_design.FUNCTION_GROUPS)
+    assert [g.group for g in by_design.function_groups("pgwire")] == named
+    assert {g.family for g in groups} == {""}
+
+
+@pytest.mark.parametrize(
+    ("fn", "statement"),
+    [
+        (
+            function_probe.Function("abs", "integer", argtypes=("integer",)),
+            'SELECT pg_catalog."abs"(NULL::integer) AS v',
+        ),
+        (  # a pseudo-type becomes a concrete type, one element type across the call
+            function_probe.Function(
+                "array_position", "anyarray, anyelement", argtypes=("anyarray", "anyelement")
+            ),
+            'SELECT pg_catalog."array_position"(NULL::integer[], NULL::integer) AS v',
+        ),
+        (
+            function_probe.Function("enum_first", "anyenum", argtypes=("anyenum",)),
+            'SELECT pg_catalog."enum_first"(NULL::conformance.probe_enum) AS v',
+        ),
+        (  # VARIADIC of an array is the VARIADIC form
+            function_probe.Function(
+                "json_extract_path",
+                "from_json json, VARIADIC path_elems text[]",
+                argtypes=("json", "text[]"),
+                variadic=True,
+            ),
+            'SELECT pg_catalog."json_extract_path"(NULL::json, VARIADIC NULL::text[]) AS v',
+        ),
+        (  # an ordered-set aggregate needs WITHIN GROUP
+            function_probe.Function(
+                "percentile_cont",
+                "double precision ORDER BY interval",
+                kind="a",
+                argtypes=("double precision", "interval"),
+                aggkind="o",
+                direct=1,
+            ),
+            'SELECT pg_catalog."percentile_cont"(NULL::double precision) '
+            "WITHIN GROUP (ORDER BY NULL::interval) AS v",
+        ),
+        (
+            function_probe.Function(
+                "rank",
+                'VARIADIC "any" ORDER BY VARIADIC "any"',
+                kind="a",
+                argtypes=('"any"',),
+                aggkind="h",
+            ),
+            'SELECT pg_catalog."rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        ),
+        (function_probe.Function("count", "", kind="a"), 'SELECT pg_catalog."count"(*) AS v'),
+        (
+            function_probe.Function("row_number", "", kind="w"),
+            'SELECT pg_catalog."row_number"() OVER () AS v',
+        ),
+        (  # PostgreSQL refuses a NULL here: a real argument, by signature
+            function_probe.Function(
+                "int4range", "integer, integer, text", argtypes=("integer", "integer", "text")
+            ),
+            "SELECT pg_catalog.\"int4range\"(NULL::integer, NULL::integer, '[]'::text) AS v",
+        ),
+        (
+            function_probe.Function("json_to_recordset", "json", argtypes=("json",)),
+            "SELECT * FROM pg_catalog.\"json_to_recordset\"('[]') AS t(v integer)",
+        ),
+        (function_probe.Function("boolrecv", "internal", argtypes=("internal",)), None),
+    ],
+)
+def test_a_function_is_called_the_way_postgresql_requires(fn, statement):
+    assert function_probe.call(fn) == statement
+
+
+def test_lastval_is_probed_by_an_insert_into_an_identity_table_then_the_call():
+    """REQ-2167 (amended 2026-11-02): lastval answers the session's own inserts, and a sequence
+    function is refused by name, so the probe advances no sequence."""
+    fn = function_probe.Function("lastval", "", rettype="bigint")
+    assert function_probe.call(fn) == 'SELECT pg_catalog."lastval"() AS v'
+    assert function_probe.BEFORE["lastval()"] == (
+        f"INSERT INTO {function_probe.PROBE_IDENTITY} (note) VALUES ('probe')"
+    )
+    assert "nextval" not in function_probe.call(fn) + function_probe.BEFORE["lastval()"]
+
+
+class _Session:
+    """One connection: lastval answers once an INSERT on it ran, else PostgreSQL's 55000."""
+
+    def __init__(self, insert_ok: bool = True) -> None:
+        self.ran: list[str] = []
+        self._insert_ok = insert_ok
+
+    def run(self, sql: str, result_format: int = 0) -> dict:
+        self.ran.append(sql)
+        if sql.startswith("INSERT"):
+            if not self._insert_ok:
+                return {"ok": False, "error": "permission denied", "sqlstate": "42501"}
+            return {"ok": True, "fields": [], "row": None}
+        if any(s.startswith("INSERT") for s in self.ran):
+            return {"ok": True, "fields": [{"type_oid": 20}], "row": [b"1"]}
+        said = "lastval is not yet defined in this session"
+        return {"ok": False, "error": said, "sqlstate": "55000", "primary": said}
+
+    def rows(self, sql: str) -> list[tuple]:
+        return [("lastval", "", "f", False, "n", 0, "bigint", "v", [])]
+
+
+def test_the_catalog_probe_runs_lastval_after_its_insert_on_each_server():
+    m = _load("pgwire_catalog_types")
+    pg, provisa = _Session(), _Session()
+    report = m.catalog_functions(pg, provisa, {20: "int8"})
+    assert report["matching"] == 1
+    for server in (pg, provisa):
+        assert server.ran == [
+            function_probe.BEFORE["lastval()"],
+            'SELECT pg_catalog."lastval"() AS v',
+        ]
+
+
+def test_an_insert_provisa_refuses_is_the_reason_lastval_is_not_served():
+    m = _load("pgwire_catalog_types")
+    report = m.catalog_functions(_Session(), _Session(insert_ok=False), {20: "int8"})
+    assert report["not_served"] == {
+        "lastval()": f"{function_probe.BEFORE['lastval()']}: permission denied"
+    }
+
+
+def test_a_real_argument_is_given_to_no_function_but_those_named():
+    # A real argument runs the function for real: pg_terminate_backend stays a NULL.
+    assert all("(" in signature for signature in function_probe.ARGUMENTS)
+    fn = function_probe.Function(
+        "pg_terminate_backend", "integer, bigint", argtypes=("integer", "bigint")
+    )
+    assert "NULL::integer, NULL::bigint" in function_probe.call(fn)
+
+
+def test_every_postgresql_17_function_has_a_family_and_the_old_groups_kept_theirs():
+    from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+
+    declared = function_probe.families()
+    assert declared[-1].family == "Other"
+    found = {}
+    for name, overloads in FUNCTION_OVERLOADS.items():
+        for argtypes, rettype in overloads:
+            fn = function_probe.Function(name, "", argtypes=argtypes, rettype=rettype)
+            found.setdefault(function_probe.family(fn, declared), set()).add(name)
+    assert {"Type operators", "Geometric", "Numeric", "Text search", "Index support"} <= set(found)
+    assert {"JSON", "Date", "Network", "Range", "Trigger"} <= set(found)
+    assert "RI_FKey_check_ins" in found["Trigger"]
+    assert "ginhandler" in found["Index support"]
+    # "Other" is for what no family says, not a place a family's functions end up.
+    assert len(found["Other"]) < 100
+
+
+def test_the_page_gives_the_function_groups_and_each_case_s_proof_on_one_line(monkeypatch):
+    import by_design
+
+    fill_docs = _load("fill_docs")
+    functions = [
+        ("event_trigger_out", "event_trigger", ("event_trigger",)),
+        ("btint4cmp", "integer, integer", ("integer", "integer")),
+        ("pg_wal_replay_pause", "", ()),
+    ]
+    m, report = _report(
+        monkeypatch,
+        functions,
+        pg_refused={
+            "event_trigger_out": "ERROR:  cannot accept a value of type event_trigger\nLINE 1: x\n",
+            "pg_wal_replay_pause": RECOVERY_REFUSAL,
+        },
+        refused={"btint4cmp"},
+    )
+    pgspec = {
+        "suite": "pgspec",
+        "version": "v1",
+        **by_design.outcomes(0, [], []),
+        "failed_by_section": {},
+    }
+    catalog = {"postgres_version": "17.11", "catalog_functions": report}
+    _, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
+    assert rate.endswith("Catalog functions are reported by engine")
+    assert "## Skipped by design" in cases
+    assert "<details><summary>Internal functions (1)</summary>" in cases
+    assert "Index functions" not in cases
+    assert (
+        "| catalog function::event_trigger_out(event_trigger) | no call reaches it: PostgreSQL "
+        "refuses the call: ERROR: cannot accept a value of type event_trigger LINE 1: x |"
+    ) in cases
+    # REQ-2171 (RESULTS ARE BY ENGINE): no function is a failed case of the page.
+    assert "Catalog function:" not in cases
+
+
+def test_the_pgwire_page_states_a_catalog_function_s_result_is_by_engine():
+    # REQ-2171 (RESULTS ARE BY ENGINE) replaces the three outcomes of REQ-2167 for functions.
+    page = (_load("fill_docs").DOCS / "pgwire.md").read_text()
+    assert "each overload then has a result on each engine" in page.lower()
+    assert "Internal functions cannot be called by PostgreSQL itself" in page
+    assert "Index functions" not in page
+    assert "such as `brin_summarize_range`, are ordinary functions" in page
+    assert "each case is passed, skipped by design or failed" not in page
+    assert "| Failed | Every other function" not in page
+    assert "No `pg_catalog` function is skipped by design" not in page
+
+
+def test_the_pgwire_page_counts_leave_functions_to_the_results_by_engine():
+    # fill_docs gives the run's counts outside functions, in the words every report uses. A function
+    # not served is no failed case of the page (REQ-2171, RESULTS ARE BY ENGINE).
+    import by_design
+
+    fill_docs = _load("fill_docs")
+    function = {
+        "feature": "catalog function",
+        "scenario": "box(point)",
+        "reason": "not served: no function\nDid you mean?",
+        "name": "box",
+        "overload": "point",
+        "family": "Geometric",
+    }
+    pgspec = {
+        "suite": "pgspec",
+        "version": "v1",
+        **by_design.outcomes(51, [], []),
+        "failed_by_section": {},
+    }
+    group = {"group": "g", "requirement": "REQ-1", "decision": "d", "count": 1, "cases": []}
+    m = _load("pgwire_catalog_types")
+    catalog = {
+        "postgres_version": "17.11",
+        "catalog_relations": by_design.outcomes(2, [], []),
+        "catalog_functions": by_design.outcomes(3, [], [function]),
+        "type_conversions": by_design.outcomes(4, [group], []),
+    }
+    surface, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
+    assert surface == "pgwire"
+    assert rate == (
+        "100.0%: 57 passed, 1 skipped by design, 0 failed, of 58 cases. "
+        "Catalog functions are reported by engine"
+    )
+    assert "box(point)" not in cases
+    assert "no client queries" not in cases
 
 
 def _conversion(statement: str, *differences: str) -> dict:
@@ -384,6 +1013,8 @@ def test_a_conversion_is_passed_by_design_or_failed():
     """REQ-2167 (amended 2026-10-28): each compared statement is in one outcome; a difference a
     by-design group names (by_design/pgwire.yaml) is by design only when every difference the
     statement has is one the group allows."""
+    import by_design
+
     m = _load("pgwire_catalog_types")
     fixture = [
         _conversion("SELECT c_int4 FROM conformance.types_fixture"),
@@ -416,7 +1047,8 @@ def test_a_conversion_is_passed_by_design_or_failed():
     ]
     out = m.conversion_outcomes(fixture, casts)
     assert (out["compared"], out["matching"], out["differing"]) == (6, 1, 2)
-    assert {g["group"]: g["count"] for g in out["by_design"]} == {
+    assert (out["total"], out["passed"], out["by_design"], out["failed"]) == (6, 1, 3, 2)
+    assert {g["group"]: g["count"] for g in out["by_design_groups"]} == {
         "A source's array column is JSON": 1,
         "The session's role and database": 1,
         "The server's version": 1,
@@ -433,6 +1065,7 @@ def test_a_conversion_is_passed_by_design_or_failed():
         {
             "postgres_version": "17.11",
             "catalog_relations": {
+                **by_design.outcomes(0, [], []),
                 "postgres_relations": 0,
                 "served": 0,
                 "matching": [],
@@ -441,17 +1074,98 @@ def test_a_conversion_is_passed_by_design_or_failed():
                 "served_not_in_postgres": [],
             },
             "catalog_functions": {
+                **by_design.outcomes(0, [], []),
+                "by_engine": {
+                    "duckdb": m._engine_counts([], 0, 0, {}, {}),
+                },
                 "postgres_functions": 0,
-                "excluded": "pseudo-types",
                 "served": 0,
                 "matching": 0,
                 "differing": {},
                 "not_served": {},
-                "by_design": [],
+                "not_callable": {},
+                "refused_here": {},
+                "failures_by_family": {},
             },
             "type_conversions": out,
         }
     )
-    assert "1 identical in type OID, typmod, text and binary encoding; 3 differ by design; " in md
+    assert (
+        "1 passed (identical in type OID, typmod, text and binary encoding); 3 skipped by "
+        "design; 2 failed." in md
+    )
     assert "| `SELECT session_user AS v` |" in md
     assert "| `SELECT current_user AS v` |" not in md
+
+
+def test_the_pgwire_artifact_sums_each_part_s_three_counts_at_the_top():
+    """REQ-2167 (amended 2026-10-28): the pgwire run's artifact has the shape every conformance
+    report has -- passed, by_design and failed at the top -- summed over pgspec and the catalog
+    and type parts, each part keeping its own; a comparison that did not complete counts nowhere."""
+    import by_design
+
+    m = _load("pgwire_catalog_types")
+    group = {
+        "group": "g",
+        "kind": "design",
+        "requirement": "REQ-1",
+        "decision": "d",
+        "count": 1,
+        "cases": [{"case": "x", "reason": "y"}],
+    }
+    pgspec = {"suite": "pgspec", **by_design.outcomes(50, [group], [])}
+    catalog = {
+        "postgres_version": "17.11",
+        "catalog_relations": by_design.outcomes(196, [], [{}] * 15),
+        "catalog_functions": by_design.outcomes(477, [{**group, "count": 10}], [{}] * 5),
+        "type_conversions": by_design.outcomes(81, [{**group, "count": 3}], [{}] * 5),
+    }
+    doc = m.combined(pgspec, catalog)
+    assert doc["surface"] == "pgwire"
+    assert (doc["total"], doc["passed"], doc["by_design"], doc["failed"]) == (843, 804, 14, 25)
+    assert doc["pass_rate"] == round(804 / 829, 4)
+    assert doc["pgspec"] is pgspec and doc["catalog_relations"]["failed"] == 15
+    # REQ-2171 (RESULTS ARE BY ENGINE): the page reads the run without functions. The top's sums stay
+    # for the landing floor until it moves to the engines' counts.
+    others = doc["outside_functions"]
+    assert (others["passed"], others["by_design"], others["failed"]) == (327, 4, 20)
+    alone = m.combined(pgspec, None)
+    assert (alone["total"], alone["passed"], alone["by_design"], alone["failed"]) == (51, 50, 1, 0)
+    assert alone["catalog_functions"] is None
+
+
+def test_the_sampled_numerics_size_and_the_bootstrap_owner_are_by_design():
+    """REQ-1961 (PGWIRE SENDS NUMERIC(P,S)): the unsized numeric registration samples into
+    numeric(38,4) is described as that, a typmod PostgreSQL's unsized numeric does not have.
+    REQ-2167 (THE CATALOG'S BOOTSTRAP OWNER IS PROVISA): pg_get_userbyid(10) is provisa. Only
+    those statements and those differences."""
+    m = _load("pgwire_catalog_types")
+    numeric_typmod = "typmod 2490376, PostgreSQL -1"
+    owner = (
+        "text 'provisa', PostgreSQL 'postgres'",
+        "binary 70726f76697361, PostgreSQL 706f737467726573",
+    )
+    fixture = [
+        _conversion("SELECT c_numeric FROM conformance.types_fixture", numeric_typmod),
+        # Another column with a typmod difference, or the same column with another difference,
+        # stays a failure.
+        _conversion("SELECT c_numeric_10_2 FROM conformance.types_fixture", numeric_typmod),
+    ]
+    casts = [
+        _conversion("SELECT pg_catalog.pg_get_userbyid(10) AS v", *owner),
+        _conversion("SELECT pg_catalog.pg_get_userbyid(11) AS v", *owner),
+    ]
+    out = m.conversion_outcomes(fixture, casts)
+    assert [r["outcome"] for r in fixture + casts] == ["by_design", "failed", "by_design", "failed"]
+    assert {g["group"]: g["count"] for g in out["by_design_groups"]} == {
+        "An unsized source numeric is the numeric(38,s) registration samples": 1,
+        "The catalog's bootstrap owner is provisa": 1,
+    }
+    other = [
+        _conversion(
+            "SELECT c_numeric FROM conformance.types_fixture",
+            numeric_typmod,
+            "text '12345.6789', PostgreSQL '12345.67890'",
+        )
+    ]
+    assert m.conversion_outcomes(other, [])["fixture_columns"][0]["outcome"] == "failed"

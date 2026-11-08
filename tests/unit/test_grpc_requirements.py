@@ -295,7 +295,7 @@ class TestREQ617RoleSelectionViaMetadata:
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = []
 
-        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders", "orders")]
+        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders")]
 
         assert rows == []
         context.abort.assert_awaited_once_with(
@@ -325,7 +325,7 @@ class TestREQ617RoleSelectionViaMetadata:
         )
         request = MagicMock()
         with pytest.raises(grpc.aio.AbortError):
-            async for _ in servicer._handle_query(request, context, "Orders", "orders"):
+            async for _ in servicer._handle_query(request, context, "Orders"):
                 pass
         context.abort.assert_awaited_once()
 
@@ -394,8 +394,10 @@ class TestREQ617RoleSelectionViaMetadata:
             tier_caps=None,
             tier_plan=None,
         )
-        fake_result = SimpleNamespace(
-            column_names=["id", "amount"], rows=[[1, 10.0], [2, 20.0], [3, 30.0]]
+        from provisa.executor.result import QueryResult
+
+        fake_result = QueryResult(
+            rows=[(1, 10.0), (2, 20.0), (3, 30.0)], column_names=["id", "amount"]
         )
 
         with (
@@ -424,11 +426,11 @@ class TestREQ617RoleSelectionViaMetadata:
             ),
         ):
             rows_yielded = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 rows_yielded.append(msg)
 
         # One message per row: 3 rows → 3 messages
-        assert len(rows_yielded) == 3
+        assert [pb2.Orders.FromString(m).id for m in rows_yielded] == [1, 2, 3]
 
     @pytest.mark.asyncio
     async def test_mutation_rpc_is_unary(self):
@@ -452,25 +454,8 @@ class TestREQ617RoleSelectionViaMetadata:
 
 
 def _make_pb2_module(type_name: str = "Orders", fields: list[str] | None = None):
-    if fields is None:
-        fields = ["id", "amount"]
-    from google.protobuf.descriptor import FieldDescriptor
+    """A compiled service, as an organisation's is (tests/unit/test_grpc_server.py): the
+    encoder writes a result's rows into its real messages (REQ-2194)."""
+    from tests.unit.test_grpc_server import _make_pb2_module as compiled
 
-    # A real protobuf descriptor carries the by-name index and each field's type, and the
-    # servicer uses both when it builds a message — a fake without them tests a shape protobuf
-    # never hands it.
-    field_descriptors = [
-        SimpleNamespace(name=f, message_type=None, type=FieldDescriptor.TYPE_INT64) for f in fields
-    ]
-    descriptor = SimpleNamespace(
-        fields=field_descriptors,
-        fields_by_name={fd.name: fd for fd in field_descriptors},
-    )
-    msg_cls = MagicMock()
-    # A message has a serialized size: its egress is metered to the org bound (REQ-1452).
-    msg_cls.return_value.ByteSize.return_value = 1
-    msg_cls.DESCRIPTOR = descriptor
-    pb2 = SimpleNamespace(
-        **{type_name: msg_cls, "DESCRIPTOR": SimpleNamespace(services_by_name={})}
-    )
-    return pb2, msg_cls
+    return compiled(type_name, fields)

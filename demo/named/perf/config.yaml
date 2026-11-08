@@ -346,12 +346,6 @@ relationships:
   source_table_id: pets
   target_column: pet_id
   target_table_id: inquiries
-- cardinality: one-to-many
-  id: pets-to-shelter-assignments
-  source_column: breed_name
-  source_table_id: pets
-  target_column: breed_name
-  target_table_id: assignments
 - alias: BREED_INFO
   cardinality: many-to-one
   id: pets-to-shelter-breed
@@ -359,6 +353,11 @@ relationships:
   source_table_id: pets
   target_column: name
   target_table_id: animal_breeds
+# No relationship joins pets to assignments on breed_name. Either direction makes breed_name a
+# replica key (the "one" side holds it), and breed_name repeats on both tables -- several keepers per
+# breed, many pets per breed -- so the replica build failed with "The key (breed_name) could not be
+# built: the source repeats its values". Pets reach assignments through animal_breeds instead:
+# BREED_INFO (pets -> animal_breeds) and ASSIGNMENT_BREED (assignments -> animal_breeds).
 - alias: ASSIGNMENT_BREED
   cardinality: many-to-one
   graphql_alias: breed
@@ -374,12 +373,6 @@ relationships:
   source_table_id: assignments
   target_column: id
   target_table_id: employees
-- cardinality: one-to-many
-  id: shelter-assignments-to-pets
-  source_column: breed_name
-  source_table_id: assignments
-  target_column: breed_name
-  target_table_id: pets
 - alias: PETS_OF_BREED
   cardinality: one-to-many
   id: shelter-breed-to-pets
@@ -495,8 +488,7 @@ relationships:
   via_target_column: product_id
   via_label_source: fixed
 roles:
-- capabilities:
-  - query_development
+- capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   - shelter
@@ -504,34 +496,9 @@ roles:
   parents: [analyst]
   description: "Queries the pet store's and the shelter's data, as the benchmark's reader."
 - id: org_admin_unguarded
-  parents: [viewer]
+  parents: [org_admin, modeler]
   description: "The organization administrator's rights without the relationship guard, for the benchmark's unguarded joins."
-  capabilities:
-  - source_registration
-  - table_registration
-  - create_relationship
-  - create_view
-  - approve_view
-  - approve_relationship
-  - access_config
-  - user_management
-  - masking_config
-  - column_grant
-  - view_governance
-  - query_development
-  - full_results
-  - write
-  - usage
-  - org_settings
-  - observability
-  - environment_management
-  - environment_switch
-  - glossary_read
-  - glossary_rw
-  - org_glossary_rw
-  - data_product_read
-  - data_product_rw
-  - ignore_relationships
+  capabilities: [access_config, approve_relationship, approve_view, catalog_read, column_grant, create_relationship, create_view, data_product_read, data_product_rw, environment_management, environment_switch, full_results, glossary_read, glossary_rw, ignore_relationships, masking_config, observability, org_glossary_rw, org_settings, query_development, source_registration, table_registration, usage, user_management, view_governance, write]
   domain_access:
   - '*'
 server:

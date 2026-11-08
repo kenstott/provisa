@@ -36,6 +36,8 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\03
 info() { printf "${CYAN}[build-dmg]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-dmg]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-dmg]${NC} %s\n" "$*" >&2; }
+# shellcheck source=packaging/macos/notary-lib.sh
+source "${SCRIPT_DIR}/notary-lib.sh"
 
 curl_retry() {
   local url="$1" out="$2"
@@ -231,6 +233,8 @@ bundle_native_payload() {
     ( cd "$REPO_ROOT" && "$py" -m build --wheel )
   fi
   local built_wheel
+  # Wheel file names are [A-Za-z0-9._+-] only (PEP 427), so ls -t is safe for picking the newest.
+  # shellcheck disable=SC2012
   built_wheel="$(ls -t "${REPO_ROOT}/dist"/provisa-*.whl 2>/dev/null | head -1)"
   if [ -z "$built_wheel" ] || [ ! -f "$built_wheel" ]; then
     err "provisa wheel not found in ${REPO_ROOT}/dist after build."
@@ -247,8 +251,11 @@ bundle_native_payload() {
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "$py" "$notebook_dir"
   "$py" -m pip install --quiet --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
   # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
-  "$py" -c "import provisa, sqlite3, mcp_proxy" || {
-    err "native runtime is missing provisa/sqlite3/mcp_proxy after install."
+  # REQ-2194: provisa's wheel carries its compiled encoders (provisa._encoders) and their notices.
+  # -I: from the repository root, `-c` would import the checkout's provisa (no compiled module).
+  "$py" -I -c "import provisa, sqlite3, mcp_proxy, provisa._encoders.pgwire, pathlib; \
+assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES').is_file()" || {
+    err "native runtime is missing provisa/sqlite3/mcp_proxy/provisa._encoders (or its notices) after install."
     exit 1
   }
   # `build` is a build-host tool — it has no business in the shipped tree.
@@ -309,82 +316,14 @@ bake_version() {
 }
 
 # ── Sign macOS native binaries embedded inside JARs ──────────────────────────
-# Apple notarization rejects unsigned .dylib/.jnilib/.so files even when they
-# are nested inside JARs inside the app bundle. We extract, sign, and repack.
+# Apple notarization rejects unsigned .dylib/.jnilib/.so files nested inside JARs inside the
+# app bundle. The Trino plugins are not in the bundle: they ship as hidden DMG content, outside
+# the notarized .app, so notarytool never scans them and there is nothing to sign.
 sign_jar_natives() {
   if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
     return
   fi
-
-  local id="${APPLE_DEVELOPER_ID}"
-  local sign_flags=(--force --sign "$id" --options runtime --timestamp)
-  # Plugins are now in REPO_ROOT/trino/plugins (not inside app bundle)
-  # They are bundled as hidden DMG content, outside the notarized .app,
-  # so Apple notarytool will not scan them. Signing is skipped.
   info "Trino plugins are outside the app bundle (hidden DMG content) — JAR native signing not required."
-  return
-  # (unreachable — kept for reference if plugins are moved back inside bundle)
-  local plugins_dir="${APP_BUNDLE}/Contents/Resources/trino/plugins"
-
-  if [ ! -d "$plugins_dir" ]; then
-    info "No trino/plugins directory — skipping JAR native signing."
-    return
-  fi
-
-  info "Signing macOS native binaries inside Trino plugin JARs..."
-  local tmp_jar_dir
-  tmp_jar_dir=$(mktemp -d)
-
-  local jar_count=0
-  local signed_count=0
-
-  while IFS= read -r -d '' jar; do
-    local jar_tmp="${tmp_jar_dir}/$(basename "$jar" .jar)-$$"
-    mkdir -p "$jar_tmp"
-
-    # Extract only macOS native files
-    local natives
-    natives=$(unzip -l "$jar" 2>/dev/null \
-      | awk '{print $NF}' \
-      | grep -E '\.(dylib|jnilib)$|/osx[_/]|/mac[_/]|/darwin[_/]|/Mac[_/]|so_osx' \
-      | grep -v '^$' || true)
-
-    if [ -z "$natives" ]; then
-      rm -rf "$jar_tmp"
-      continue
-    fi
-
-    # Extract those files
-    local extracted=0
-    while IFS= read -r entry; do
-      [ -z "$entry" ] && continue
-      unzip -q "$jar" "$entry" -d "$jar_tmp" 2>/dev/null && extracted=$((extracted + 1))
-    done <<< "$natives"
-
-    if [ "$extracted" -eq 0 ]; then
-      rm -rf "$jar_tmp"
-      continue
-    fi
-
-    # Sign each extracted native binary
-    local jar_signed=0
-    while IFS= read -r -d '' native; do
-      codesign "${sign_flags[@]}" "$native" 2>/dev/null && jar_signed=$((jar_signed + 1))
-    done < <(find "$jar_tmp" -type f \( -name "*.dylib" -o -name "*.jnilib" -o -name "*.so_osx*" \) -print0)
-
-    if [ "$jar_signed" -gt 0 ]; then
-      # Repack — update jar in place with signed binaries
-      (cd "$jar_tmp" && zip -u "$jar" $(find . -type f \( -name "*.dylib" -o -name "*.jnilib" -o -name "*.so_osx*" \) | sed 's|^\./||') 2>/dev/null)
-      signed_count=$((signed_count + jar_signed))
-      jar_count=$((jar_count + 1))
-      info "  Signed ${jar_signed} native(s) in $(basename "$jar")"
-    fi
-
-    rm -rf "$jar_tmp"
-  done < <(find "$plugins_dir" -name "*.jar" -print0)
-
-  rm -rf "$tmp_jar_dir"
-  ok "JAR native signing complete: ${signed_count} binaries in ${jar_count} JARs."
 }
 
 # ── Code signing ──────────────────────────────────────────────────────────────
@@ -478,7 +417,7 @@ notarize_app() {
         break ;;
       Invalid|Rejected)
         err "Notarization ${status}:"
-        xcrun notarytool log "$submission_id" "${notary_args[@]}" >&2 || true
+        notary_log_check "$submission_id" "${notary_args[@]}"
         exit 1 ;;
       network-error)
         info "  Network error — retrying in 40 s (poll $((poll+1))/${max_polls})..." ;;
@@ -495,7 +434,8 @@ notarize_app() {
     exit 1
   fi
 
-  xcrun stapler staple "${APP_BUNDLE}"
+  notary_log_check "$submission_id" "${notary_args[@]}"
+  staple_retry "${APP_BUNDLE}"
   ok "App bundle notarized and stapled."
 }
 
@@ -548,7 +488,7 @@ create_dmg() {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
-  printf "\n${BOLD}Provisa DMG Builder${NC}\n"
+  printf '\n%bProvisa DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
 
   check_prereqs
@@ -569,7 +509,7 @@ main() {
   notarize_app   # notarize the small .app before images are added
   create_dmg     # DMG bundles Provisa.app (notarized) + hidden native payload
 
-  printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
+  printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
   printf "DMG: %s\n" "${DMG_PATH}"
 }
 

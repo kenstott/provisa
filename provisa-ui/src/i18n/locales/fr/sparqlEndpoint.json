@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Point de terminaison",
+    "copyEndpoint": "Copier l’URL du point de terminaison",
+    "prefixes_one": "{{count}} préfixe",
+    "prefixes_other": "{{count}} préfixes",
+    "prefixName": "Préfixe",
+    "namespace": "Espace de noms",
+    "removePrefix": "Retirer le préfixe",
+    "invalidPrefix": "Lettres, chiffres, - et _ uniquement",
+    "addHint": "Remplissez la dernière ligne pour ajouter un préfixe. Les préfixes nomment les termes dans les résultats et les requêtes des pastilles ; une requête s’exécute telle qu’elle est écrite.",
+    "restore": "Restaurer les préfixes"
+  }
+}

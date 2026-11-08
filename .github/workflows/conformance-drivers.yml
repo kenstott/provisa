@@ -1,0 +1,305 @@
+name: Conformance (drivers)
+
+# REQ-2203 (stage 1): real PostgreSQL drivers' own upstream test suites against Provisa's pgwire,
+# one job per driver, each at a pinned upstream release:
+#
+#   * pgjdbc (github.com/pgjdbc/pgjdbc, BSD-2-Clause): its driver module's tests (`:postgresql:test`,
+#     JUnit 4 and 5 under Gradle), pointed at Provisa by build.local.properties, the file the suite
+#     reads its server, port, database and users from;
+#   * psycopg (github.com/psycopg/psycopg, LGPL-3.0): its tests/ directory under pytest, pointed at
+#     Provisa by PSYCOPG_TEST_DSN, the suite's own setting.
+#
+# Each driver's source is the release tarball, checked against its pinned SHA-256 before it is
+# unpacked, run in place and never vendored. Each suite writes JUnit XML; scripts/conformance/
+# driver_suite.py reads it against the driver's expected-failure list
+# (scripts/conformance/drivers/<driver>.yaml, test id -> reason: a skipped-by-design decision or an
+# open defect) and gives the four counts: passed, skipped by design, failed, not tested. A job
+# fails only when a test not on its list fails, a listed test passes (the list is corrected), no
+# test ran, or the Provisa instance did not start. The method is CockroachDB's roachtest ORM
+# suites' (each driver's own suite, compared with a list); no code or data is taken from it.
+#
+# Each job's results go to its job summary and to its artifact conformance-driver-<driver>: the
+# JSON and Markdown report, the suite's JUnit XML, the server log, and docs/conformance/drivers.md
+# with that driver's section filled (driver_suite.py fill-docs).
+#
+# The instance is every conformance job's (.github/actions/conformance-instance): the embedded
+# control plane and the DuckDB engine, password auth (basic provider, SCRAM-SHA-256), the job user
+# org_admin. Both suites open a connection per test, so the job user's password is stored at the
+# minimum bcrypt cost.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-drivers-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  PROVISA_API_PORT: "8901"
+  PROVISA_PGWIRE_PORT: "8906"
+  # The PostgreSQL service the instance's fixture source lives in. An ephemeral service on the
+  # runner: not a secret.
+  CONFORMANCE_PG_HOST: 127.0.0.1
+  CONFORMANCE_PG_PORT: "55432"
+  CONFORMANCE_PG_DATABASE: conformance
+  CONFORMANCE_PG_USER: postgres
+  CONFORMANCE_PG_PASSWORD: conformance
+  # pgwire's password auth: the break-glass account, the job user and the session signing key.
+  # Ephemeral, on a throwaway instance: not secrets.
+  PROVISA_SUPERUSER_USERNAME: conformance-su
+  PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+  CONFORMANCE_USER: conformance
+  CONFORMANCE_PASSWORD: conformance-password
+  CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+
+jobs:
+  pgjdbc:
+    name: pgjdbc's own suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PGJDBC_VERSION: REL42.7.14
+      PGJDBC_SHA256: ffcb07c7f25c5f4d67c904e434767b75e0d7c5cb11646bf5e565ce6dfbe17284
+      # A JUnit 5 test waiting on an answer that never comes fails alone, by name.
+      PGJDBC_TEST_TIMEOUT: "60 s"
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      # pgjdbc's own CI builds and tests on JDK 21 (its jdkBuildVersion default).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Fetch pgjdbc
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/pgjdbc.tar.gz" \
+            "https://github.com/pgjdbc/pgjdbc/archive/refs/tags/$PGJDBC_VERSION.tar.gz"
+          echo "$PGJDBC_SHA256  $RUNNER_TEMP/pgjdbc.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/pgjdbc"
+          tar -xzf "$RUNNER_TEMP/pgjdbc.tar.gz" -C "$RUNNER_TEMP/pgjdbc" --strip-components=1
+          head -n 3 "$RUNNER_TEMP/pgjdbc/LICENSE"
+          grep -q "PostgreSQL Global Development Group" "$RUNNER_TEMP/pgjdbc/LICENSE"
+
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+        with:
+          password-cost: "4"
+
+      # The suite reads build.properties, then build.local.properties over it
+      # (testkit/.../TestUtil.java loadPropertyFiles). There is no superuser on Provisa: the
+      # privileged user is the job user too.
+      - name: Point the suite at Provisa
+        run: |
+          cat > "$RUNNER_TEMP/pgjdbc/build.local.properties" <<EOF
+          test.url.PGHOST=127.0.0.1
+          test.url.PGPORT=$PROVISA_PGWIRE_PORT
+          test.url.PGDBNAME=provisa
+          user=$CONFORMANCE_USER
+          password=$CONFORMANCE_PASSWORD
+          privilegedUser=$CONFORMANCE_USER
+          privilegedPassword=$CONFORMANCE_PASSWORD
+          EOF
+
+      # A failing test is data: Gradle's own exit status is not the result (driver_suite.py's is).
+      # Autostyle stays on: with every style check skipped pgjdbc registers no `style` task, and
+      # benchmarks/build.gradle.kts, which names it, does not compile. :postgresql:test runs none
+      # of autostyle's tasks.
+      - name: Run pgjdbc's suite
+        continue-on-error: true
+        timeout-minutes: 90
+        run: |
+          cd "$RUNNER_TEMP/pgjdbc"
+          ./gradlew --no-daemon --no-parallel --continue :postgresql:test \
+            -PskipCheckstyle -PskipForbiddenApis -PskipJavadoc -PskipOpenrewrite \
+            -Porg.gradle.java.installations.auto-download=false \
+            "-Djunit.jupiter.execution.timeout.default=$PGJDBC_TEST_TIMEOUT" || true
+          test -n "$(ls pgjdbc/build/test-results/test/*.xml)"
+
+      - name: Summarise
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report/junit"
+          cp "$RUNNER_TEMP"/pgjdbc/pgjdbc/build/test-results/test/*.xml "$RUNNER_TEMP/report/junit/" || true
+          .venv/bin/python scripts/conformance/driver_suite.py summarise pgjdbc "$PGJDBC_VERSION" \
+            "$RUNNER_TEMP/report/junit" \
+            "$RUNNER_TEMP/report/conformance-driver-pgjdbc.json" "$RUNNER_TEMP/report/conformance-driver-pgjdbc.md" \
+            "pgjdbc's own tests (:postgresql:test)" || ran=$?
+          cat "$RUNNER_TEMP/report/conformance-driver-pgjdbc.md" >> "$GITHUB_STEP_SUMMARY"
+          .venv/bin/python scripts/conformance/driver_suite.py fill-docs "$RUNNER_TEMP/report/conformance-driver-pgjdbc.json"
+          cp docs/conformance/drivers.md "$RUNNER_TEMP/report/"
+          exit "${ran:-0}"
+
+      - name: Keep the server log
+        if: ${{ !cancelled() }}
+        run: mkdir -p "$RUNNER_TEMP/report" && cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-driver-pgjdbc
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+  psycopg:
+    name: psycopg's own suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      PSYCOPG_VERSION: "3.3.8"
+      PSYCOPG_SHA256: a415a90582e12af5d8b9b8de5e825535e2f57a3895beb3c8b92a6f109fde8055
+      PYTEST_TIMEOUT_VERSION: 2.3.1
+      # One test waiting on an answer that never comes fails alone, by name.
+      PSYCOPG_TEST_TIMEOUT_S: 60
+      # The pure-Python implementation over the runner's libpq, as psycopg's own CI's python leg.
+      PSYCOPG_IMPL: python
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      # The suite and its test dependencies in a virtualenv of their own, as psycopg's CI installs
+      # them (./psycopg[test] ./psycopg_pool), with the optional modules its tests skip without.
+      - name: Fetch psycopg
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/psycopg.tar.gz" \
+            "https://github.com/psycopg/psycopg/archive/refs/tags/$PSYCOPG_VERSION.tar.gz"
+          echo "$PSYCOPG_SHA256  $RUNNER_TEMP/psycopg.tar.gz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/psycopg"
+          tar -xzf "$RUNNER_TEMP/psycopg.tar.gz" -C "$RUNNER_TEMP/psycopg" --strip-components=1
+          head -n 2 "$RUNNER_TEMP/psycopg/LICENSE.txt"
+          grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "$RUNNER_TEMP/psycopg/LICENSE.txt"
+          python3 -m venv "$RUNNER_TEMP/psycopg-venv"
+          "$RUNNER_TEMP/psycopg-venv/bin/pip" install --quiet --upgrade pip
+          cd "$RUNNER_TEMP/psycopg"
+          "$RUNNER_TEMP/psycopg-venv/bin/pip" install --quiet "./psycopg[test]" ./psycopg_pool \
+            dnspython shapely numpy gevent "pytest-timeout==$PYTEST_TIMEOUT_VERSION"
+          "$RUNNER_TEMP/psycopg-venv/bin/python" -c 'import psycopg; print("psycopg", psycopg.__version__, psycopg.pq.__impl__, "libpq", psycopg.pq.version())'
+          "$RUNNER_TEMP/psycopg-venv/bin/pip" freeze
+
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+        with:
+          password-cost: "4"
+
+      # A failing test is data: pytest's own exit status is not the result (driver_suite.py's is).
+      # pytest-randomly is off, so the order is the suite's own. The suite's virtualenv is on PATH,
+      # as in psycopg's CI: its typing tests run mypy from it. As psycopg's CI runs it
+      # (tools/ci/ci_test.sh), the tests that failed run twice more, for its timing-based tests;
+      # each attempt writes its own JUnit, and a later one's report of a test replaces an
+      # earlier one's (driver_suite.py read_attempts).
+      - name: Run psycopg's suite
+        continue-on-error: true
+        timeout-minutes: 120
+        env:
+          PSYCOPG_TEST_DSN: host=127.0.0.1 port=${{ env.PROVISA_PGWIRE_PORT }} dbname=provisa user=${{ env.CONFORMANCE_USER }} password=${{ env.CONFORMANCE_PASSWORD }} sslmode=disable
+        run: |
+          cd "$RUNNER_TEMP/psycopg"
+          export PATH="$RUNNER_TEMP/psycopg-venv/bin:$PATH"
+          mkdir -p "$RUNNER_TEMP/psycopg-junit"
+          suite=(python -m pytest tests -p no:randomly --timeout="$PSYCOPG_TEST_TIMEOUT_S" -q -rN)
+          "${suite[@]}" --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-1.xml" || true
+          for attempt in 2 3; do
+            "${suite[@]}" --last-failed --last-failed-no-failures none \
+              --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-$attempt.xml" || true
+          done
+          test -s "$RUNNER_TEMP/psycopg-junit/attempt-1.xml"
+
+      - name: Summarise
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report/junit"
+          cp "$RUNNER_TEMP"/psycopg-junit/attempt-*.xml "$RUNNER_TEMP/report/junit/" || true
+          attempts=$(find "$RUNNER_TEMP/report/junit" -name 'attempt-*.xml' -size +0 | sort | paste -sd';')
+          .venv/bin/python scripts/conformance/driver_suite.py summarise psycopg "$PSYCOPG_VERSION" \
+            "$attempts" \
+            "$RUNNER_TEMP/report/conformance-driver-psycopg.json" "$RUNNER_TEMP/report/conformance-driver-psycopg.md" \
+            "psycopg's own tests (tests/)" || ran=$?
+          cat "$RUNNER_TEMP/report/conformance-driver-psycopg.md" >> "$GITHUB_STEP_SUMMARY"
+          .venv/bin/python scripts/conformance/driver_suite.py fill-docs "$RUNNER_TEMP/report/conformance-driver-psycopg.json"
+          cp docs/conformance/drivers.md "$RUNNER_TEMP/report/"
+          exit "${ran:-0}"
+
+      - name: Keep the server log
+        if: ${{ !cancelled() }}
+        run: mkdir -p "$RUNNER_TEMP/report" && cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-driver-psycopg
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi

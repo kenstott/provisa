@@ -745,3 +745,9 @@ def test_an_identity_no_request_bound_has_no_rights_to_read():
 
     with pytest.raises(RuntimeError, match="has no acting roles"):
         acting_claims(SimpleNamespace(user_id="u", roles=["editor"]))
+
+
+@pytest.fixture(autouse=True)
+def _declared_org_base_domain(monkeypatch):
+    """REQ-1276: a host names an org only under the deployment's declared base domain."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.dev")

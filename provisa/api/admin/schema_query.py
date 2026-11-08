@@ -19,7 +19,9 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
+from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 import strawberry
@@ -28,6 +30,7 @@ from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import (
+    data_products,
     domains,
     registered_tables,
     relationships,
@@ -43,8 +46,12 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import rls as rls_repo
-from provisa.security.inheritance import effective_capabilities
+from provisa.security import domain_tree
+from provisa.security.inheritance import held_by_role
+from provisa.security.rights import SQL_CATALOG_TABLES
+from provisa.security.row_filters import with_owner_grant
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
@@ -418,7 +425,10 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
 
     An assignment's domain comes from its object: a table or column from the registered table's
     domain; a relationship only when BOTH its source and target tables' domains are reachable; a command (tracked function or webhook)
-    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is). An
+    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is); a
+    data product from its domain (REQ-1634); a row rule from the domains it decides rows in, all
+    of which must be reachable (REQ-2208). A glossary term's tag is read as the term is
+    (REQ-2145), and a library document's or section's as the document is (REQ-2208). An
     object with no domain (an empty domain id, or a source with no ``allowed_domains``) is not
     restricted by a domain scope and stays visible. An assignment whose object cannot be found is
     dropped: it cannot be shown to be in scope.
@@ -453,6 +463,28 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             await conn.execute_core(select(registry.c.name, registry.c.domain_id))
         ).fetchall():
             command_domain[r.name] = r.domain_id
+    kinds = {r["object_type"] for r in rows}
+    from provisa.core.glossary import readable_term
+    from provisa.reference_library.retrieve import readable as library_readable
+
+    product_domain: dict[str, str] = {}
+    if "product" in kinds:  # REQ-1634
+        product_domain = {
+            r.id: r.domain_id
+            for r in (
+                await conn.execute_core(select(data_products.c.id, data_products.c.domain_id))
+            ).fetchall()
+        }
+    term_domain: dict[int, set[str]] = {}
+    if "term" in kinds:  # REQ-2145
+        from provisa.core.repositories.glossary import term_domains
+
+        term_domain = await term_domains(conn)
+    document_domains: dict[int, set[str]] = {}
+    if kinds & {"document", "section"}:  # REQ-2208
+        from provisa.reference_library import store
+
+        document_domains = {d.id: set(d.domains) for d in await store.documents(conn)}
 
     def reachable(domain: str) -> bool:
         return domain == "" or domain in scope
@@ -475,9 +507,85 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             return row["command_name"] in command_domain and reachable(
                 command_domain[row["command_name"]]
             )
-        return False
+        if kind == "product":
+            return row["product_id"] in product_domain and reachable(
+                product_domain[row["product_id"]]
+            )
+        if kind == "term":  # read as the term is (REQ-1593): its domains, or the whole org's
+            # A term absent from term_domains is unscoped, which every glossary reader reaches.
+            return readable_term(scope, term_domain.get(row["term_id"], set()))
+        if kind in ("document", "section"):  # read as the library document is (REQ-2185)
+            return row["document_id"] in document_domains and library_readable(
+                scope, document_domains[row["document_id"]]
+            )
+        if kind == "rls_rule":  # REQ-2208: the domains the rule decides rows in
+            return row["rls_rule_id"] in rule_domains and all(
+                reachable(d) for d in rule_domains[row["rls_rule_id"]]
+            )
+        # REQ-2208: a role is in no domain, and a metric is listed by its grant, not its domains
+        # (_assignments_on_readable).
+        return kind in ("role", "metric")
 
+    from provisa.api.admin.domain_guard import DomainLookupError
+    from provisa.api.admin.domain_guard import rule_domains as _rule_domains
+
+    rule_domains: dict[int, set[str]] = {}
+    for rule_id in {r["rls_rule_id"] for r in rows if r["object_type"] == "rls_rule"}:
+        try:
+            rule_domains[rule_id] = await _rule_domains(conn, rule_id)
+        except DomainLookupError:
+            continue
     return [r for r in rows if visible(r)]
+
+
+async def _readable_assignments(
+    info: StrawberryInfo, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2152, REQ-2208
+    """The one read gate on tag assignments: each is answered only when the caller may read the
+    object it is on. A table, column, relationship, command, source, data product, row rule,
+    glossary term, library document or section by the domains the caller reaches (None =
+    unrestricted: dev mode, single-domain mode, or a role whose domain_access is "*"), the same
+    scope the admin gates compute (:func:`_assignments_in_scope`); and a row rule, role or metric
+    by the right to read that rule, role definition or metric (:func:`_assignments_on_readable`).
+    """
+    scope = allowed_domains_request(info.context["request"])
+    if scope is not None:
+        rows = await _assignments_in_scope(conn, rows, scope)
+    return await _assignments_on_readable(info, conn, rows)
+
+
+async def _assignments_on_readable(
+    info: StrawberryInfo, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2152, REQ-2208
+    """The tag assignments whose object the caller may read: a tag on a row rule is read only by
+    a reader of row rules (access_config, the rules' own listing gate), one on a role only by
+    whoever may read the role's definition, one on a metric only by a caller the metric is
+    granted to. Every other assignment is left to the domain scope."""
+    from provisa.core.repositories import metric as metric_repo
+
+    kinds = {r["object_type"] for r in rows}
+    reads_rules = "rls_rule" not in kinds or has_capability(info, "access_config")
+    role_visible = None
+    if "role" in kinds:
+        request = info.context["request"]
+        identity = getattr(request.state, "identity", None)
+        role_visible = role_definitions_visible(request, getattr(identity, "roles", []))
+    metric_rows = (
+        {m["name"]: m for m in await metric_repo.list_all(conn)} if "metric" in kinds else {}
+    )
+
+    def readable(row: dict) -> bool:
+        kind = row["object_type"]
+        if kind == "rls_rule":
+            return reads_rules
+        if kind == "role":
+            return role_visible is not None and role_visible(row["role_id"])
+        if kind == "metric":
+            metric = metric_rows.get(row["metric_name"])
+            return metric is not None and _sees_metric(info, metric)
+        return True
+
+    return [r for r in rows if readable(r)]
 
 
 def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
@@ -952,14 +1060,14 @@ class Query:  # REQ-021, REQ-042
         from provisa.core.repositories import tag as tag_repo
 
         _resolve_admin_context(info)
-        # The domains the caller reaches (None = unrestricted: dev mode, single-domain mode, or a
-        # role whose domain_access is "*"), the same scope the admin gates compute.
-        scope = allowed_domains_request(info.context["request"])
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await tag_repo.list_assignments(cast("Connection", conn))
-            if scope is not None:
-                rows = await _assignments_in_scope(conn, rows, scope)
+            # REQ-2208: the model's, and the library's on its documents and their sections.
+            rows = [
+                *await tag_repo.list_assignments(cast("Connection", conn)),
+                *await tag_repo.list_library_assignments(cast("Connection", conn)),
+            ]
+            rows = await _readable_assignments(info, cast("Connection", conn), rows)
         return [
             TagAssignmentType(
                 tag_id=r["tag_id"],
@@ -969,10 +1077,18 @@ class Query:  # REQ-021, REQ-042
                 column_name=r["column_name"],
                 relationship_id=r["relationship_id"],
                 command_name=r["command_name"],
+                product_id=r["product_id"],  # REQ-1634
+                term_id=r["term_id"],  # REQ-2145
+                document_id=r.get("document_id"),  # REQ-2208: a library tag's
+                section_heading=r.get("section_heading"),
+                section_page=r.get("section_page"),
                 table_ref=r["table_ref"],
                 reason=r["reason"],
                 expires_on=r["expires_on"],
                 why=r.get("why"),  # REQ-2094
+                rls_rule_id=r.get("rls_rule_id"),  # REQ-2208
+                role_id=r.get("role_id"),
+                metric_name=r.get("metric_name"),
             )
             for r in rows
         ]
@@ -1013,7 +1129,10 @@ class Query:  # REQ-021, REQ-042
                 # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
                 listed = [
-                    r for r in rows if scope.lists_table(r["id"]) or r["id"] not in scope.compiled
+                    r
+                    for r in rows
+                    if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
+                    and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
                 ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
@@ -1096,6 +1215,8 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
+        from provisa.core.repositories import data_product as data_product_repo
+
         active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -1110,12 +1231,12 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
-            return [
-                _role_from_row(
-                    r, detail=full(r["id"]), effective=effective_capabilities(r["id"], rows)
-                )
-                for r in rows
-            ]
+            # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
+            owned = with_owner_grant(rows, await data_product_repo.owner_roles(conn))
+            held = held_by_role(
+                owned, domain_tree.parent_map(await domain_repo.list_all(cast("Connection", conn)))
+            )
+            return [_role_from_row(r, detail=full(r["id"]), effective=held[r["id"]]) for r in rows]
 
     @strawberry.field
     async def rls_rules(
@@ -2071,6 +2192,17 @@ class Query:  # REQ-021, REQ-042
         )
 
     @strawberry.field
+    async def jdbc_source_setup(self, info: StrawberryInfo) -> JdbcSourceSetupType:  # REQ-2191
+        """What a JDBC source's form offers: the engine its capabilities are set for, the
+        standard drivers (with whether that engine attaches each), the SQL dialects it may be
+        written in, and the capabilities."""
+        require_capability(info, "source_registration")
+        from provisa.api.admin.jdbc_source_admin import setup
+        from provisa.api.app import state
+
+        return setup(state.federation_engine)
+
+    @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
         """Identity of the durable materialization store (landed sources + MV cache)."""
         require_capability(info, "observability")
@@ -2093,7 +2225,7 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "observability")
         from provisa.api.admin.system_health import collect_system_health
 
-        return await collect_system_health()
+        return await collect_system_health(info.context["request"].app)
 
     # ── Admin: Scheduled Tasks ──
 
@@ -2791,7 +2923,7 @@ async def _introspect_available_columns(
             return await _cosmosdb_columns(source_id, table_name)
         if source_type == "qdrant":
             return await _qdrant_columns(source_id, table_name)
-        if source_type in ("node", "python"):
+        if source_type in CODE_SOURCE_TYPES:
             return await _code_columns(source_id, table_name)
         if source_type == "redis":
             return await _redis_columns(source_id, table_name)
@@ -2840,6 +2972,20 @@ async def _introspect_available_columns(
         ]
     if source_type == "logs":
         return await _logs_columns(source_id)
+    if source_type == "quickbooks":
+        # REQ-2197: an entity's columns are the catalog's, typed as QuickBooks' schema types them.
+        from provisa.api_source.persist import data_type_for_api_column
+        from provisa.quickbooks.entities import columns_of, entity
+
+        return [
+            AvailableColumnType(
+                name=c.name,
+                data_type=data_type_for_api_column(c.type),
+                comment=None,
+                is_primary_key=c.name == "id",
+            )
+            for c in columns_of(entity(table_name))
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
@@ -2897,7 +3043,8 @@ async def _introspect_available_columns(
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
-        from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+        from provisa.api.admin.introspect import openapi_parameter_columns
+        from provisa.openapi.register import _schema_to_columns
 
         spec = state.openapi_specs[source_id]["spec"]
         queries, _ = parse_spec(spec)
@@ -2908,30 +3055,7 @@ async def _introspect_available_columns(
         if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
             cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
         existing = {c["name"] for c in cols}
-        for p in q.path_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "path_param",
-                        "native_filter_required": True,
-                    }
-                )
-        for p in q.query_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        # A parameter's type is the spec's (array, object); a column's is one
-                        # the engine has, as the response's columns are typed.
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "query_param",
-                        "native_filter_required": p["required"],
-                    }
-                )
+        cols += [c for c in openapi_parameter_columns(q) if c["name"] not in existing]
         return [
             AvailableColumnType(
                 name=c["name"],
@@ -2967,7 +3091,7 @@ async def _introspect_available_columns(
                 source_id, source_type, schema_name, table_name, state.source_pools
             )
         pk_names = set(native_pks or [])
-        return [
+        listed = [
             AvailableColumnType(
                 name=name,
                 data_type=typing.data_type,
@@ -2980,6 +3104,23 @@ async def _introspect_available_columns(
             )
             for name, typing in native
         ]
+        if source_type == "jdbc":
+            # REQ-2191: each column offered as an optional column_value parameter, the floor's
+            # equality filter; a steward marks which are required.
+            from provisa.jdbc_source.table import parameters_of
+
+            listed += [
+                AvailableColumnType(
+                    name=p["name"],
+                    data_type=p["data_type"],
+                    comment=None,
+                    path=p["path"],
+                    native_filter_type=p["native_filter_type"],
+                    native_filter_required=p["native_filter_required"],
+                )
+                for p in parameters_of([{"name": c.name, "data_type": c.data_type} for c in listed])
+            ]
+        return listed
     # REQ-1912: the engine lists only a source it holds a live attach of. With none, a table the
     # driver listed and found no columns for has none to report; a source the driver cannot list
     # at all is refused, naming it.

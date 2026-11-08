@@ -175,6 +175,12 @@ def carried_labels(label: str) -> int:
 
 def set_values(values: list[Any], provided: dict[str, Any]) -> list[Any]:
     """Each value a write sets, a ``$name`` parameter's as the request supplies it."""
+    from provisa.cypher.params import CypherParamError  # noqa: PLC0415
     from provisa.cypher.write_translator import CypherParam  # noqa: PLC0415
 
+    missing = [v.name for v in values if isinstance(v, CypherParam) and v.name not in provided]
+    if missing:
+        raise CypherParamError(
+            f"Unbound Cypher parameters: {missing!r}. Provide values in the request's parameters."
+        )
     return [provided[v.name] if isinstance(v, CypherParam) else v for v in values]

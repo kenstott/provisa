@@ -24,7 +24,7 @@ import os
 import time
 import uuid
 from collections import deque
-from collections.abc import MutableMapping
+from collections.abc import Collection, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -81,6 +81,7 @@ from provisa.api.app_startup import (
     _seed_sandbox_org,
     _start_background_tasks,
     _start_scheduler,
+    _log_http_surfaces,
     _start_servers,
     _warmup_readiness,
 )
@@ -195,11 +196,10 @@ class AppState:
     # narrow it; the routed `response_cache_default_ttl` property below resolves the org's value
     # over this one. Assigned by _load_and_build, never read directly by the query path.
     deployment_cache_default_ttl: int = 300
-    # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
-    # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
-    mcp_catalog_index: Any = None
     _mv_refresh_task: LongLived | None = None
     _grpc_server: Any | None = None
+    # The names in system_health.HTTP_SURFACES mounted on the app; set when it starts.
+    http_surfaces: Collection[str] = frozenset()
     _flight_server: Any | None = None  # ProvisaFlightServer
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
@@ -233,6 +233,7 @@ class AppState:
     _replica_hot_task: LongLived | None = None  # REQ-826: the Hot promotion evaluation
     _temp_keeper_task: LongLived | None = None  # REQ-1926: the keeper of sessions' temp tables
     _graph_session_task: LongLived | None = None  # REQ-2176: the sweep of graph sessions
+    _term_scan_task: LongLived | None = None  # REQ-2179: the watch over document scans
     # Readiness (REQ /ready): False until the boot warmup probe has primed the lazy per-request paths
     # (materialize-store attach + a warm engine terminal). /ready returns 503 while this is False so a
     # launcher/orchestrator holds traffic — and the browser open — until the first interaction is warm.
@@ -622,6 +623,15 @@ class AppState:
         self._active_runtime().kafka_bootstrap = value
 
     @property
+    def kafka_declared(self) -> dict[str, dict]:
+        """Kafka source id → its entry as declared (REQ-147)."""
+        return self._active_runtime().kafka_declared
+
+    @kafka_declared.setter
+    def kafka_declared(self, value: dict[str, dict]) -> None:
+        self._active_runtime().kafka_declared = value
+
+    @property
     def kafka_table_configs(self) -> dict[str, KafkaTableConfig]:
         """Table name → its Kafka table config."""
         return self._active_runtime().kafka_table_configs
@@ -665,6 +675,15 @@ class AppState:
     @pg_enum_types.setter
     def pg_enum_types(self, value: dict) -> None:
         self._active_runtime().pg_enum_types = value
+
+    @property
+    def pg_source_enums(self) -> dict:
+        """REQ-2171: (schema, name) → the PostgreSQL enum a source declares."""
+        return self._active_runtime().pg_source_enums
+
+    @pg_source_enums.setter
+    def pg_source_enums(self, value: dict) -> None:
+        self._active_runtime().pg_source_enums = value
 
     @property
     def graphql_remote_sources(self) -> dict[str, dict]:
@@ -940,6 +959,15 @@ class AppState:
     @schemas.setter
     def schemas(self, value: dict[str, graphql.GraphQLSchema]) -> None:
         self._active_runtime().schemas = value
+
+    @property
+    def mcp_catalog_index(self) -> Any:
+        """REQ-1008: the bound org's MCP catalog search index; see OrgRuntime."""
+        return self._active_runtime().mcp_catalog_index
+
+    @mcp_catalog_index.setter
+    def mcp_catalog_index(self, value: Any) -> None:
+        self._active_runtime().mcp_catalog_index = value
 
     @property
     def contexts(self) -> MutableMapping[str, CompilationContext]:
@@ -1284,11 +1312,13 @@ retire_hooks.append(_stop_retired_runtime_listeners)
 
 # REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
 # platform config through core.request_context, never by importing this module.
+from provisa.core import model_row_rules  # noqa: E402
 from provisa.core.request_context import (  # noqa: E402
     register_active_engine_url_provider,
     register_org_store_provider,
     register_platform_config_provider,
 )
+from provisa.security.row_filters import MODEL_RW_RIGHTS, acting_model_rule  # noqa: E402
 
 
 # The platform config as last read, with the config generation it was read under. Asked on request
@@ -1324,6 +1354,25 @@ def _org_store_of(side: str) -> Database:
 
 register_org_store_provider(_org_store_of)
 register_platform_config_provider(_read_platform_config)
+
+
+def _model_rule(role: str, table: str, right: str) -> model_row_rules.ModelRule | None:  # REQ-2188
+    """The rule a write of ``table`` is held to. The store asks of every UPDATE and DELETE a
+    person's request makes, and only a semantic object's table can carry one (the meta domain's, or
+    a glossary term's), in an org whose runtime is built: a platform write, or an org's first build,
+    has no rule to read and must not be refused for having no runtime to read it from."""
+    from provisa.api.app_loaders import _META_TABLES
+    from provisa.core.request_context import current_env, current_org
+
+    org_id = current_org.get()
+    if (table not in _META_TABLES and table not in MODEL_RW_RIGHTS) or org_id is None:
+        return None
+    if state.org_registry.get(runtime_key(org_id, current_env.get())) is None:
+        return None
+    return acting_model_rule(state, role, table, right)
+
+
+model_row_rules.register_rule_provider(_model_rule)
 
 # REQ-1266: the domain mode is a tenant setting, so `provisa.core.domain_policy` keys its policy by
 # the org whose request is running. `core` cannot import this ContextVar, so the API layer installs
@@ -2015,7 +2064,9 @@ async def ensure_serving_runtime(org_id: str, env: str | None = None) -> None:  
     await ensure_org_runtime(org_id, env)
 
 
-async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:  # REQ-1266
+async def ensure_org_runtime(
+    org_id: str, env: str | None = None, *, model_cloned: bool = False
+) -> OrgRuntime:  # REQ-1266
     """Get the org ENVIRONMENT's data-plane runtime, building it (once, under the lock) on a miss.
 
     The single seam every entrypoint (HTTP middleware AND the pgwire/bolt/flight/gRPC/MCP protocol
@@ -2028,7 +2079,11 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     own runtime under its own key. The org-level lane flags are the ORG's — an environment is a
     copy of the model, not a second tenant, so a branch runs on the same engine, the same shard and
     the same storage its org does; what differs is the schema it reads and the bindings its sources
-    resolve through. ``None`` and ``prod`` are the same environment and the same key."""
+    resolve through. ``None`` and ``prod`` are the same environment and the same key.
+
+    ``model_cloned`` (REQ-2006): on a miss the build is a cloned one (build_org_runtime's): the
+    environment was provisioned and its model copied a moment ago, in this process, from one this
+    release built -- a demo sandbox's Test (synthetic) environment, landed in its open."""
 
     # REQ-1574: the org's key ring is resolved BEFORE anything reads its encrypted columns --
     # _read_org_flags decrypts the org's engine and storage DSNs, and those were written under
@@ -2036,7 +2091,8 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     await ensure_org_encryption(org_id)
 
     runtime = await state.org_registry.get_or_build(
-        runtime_key(org_id, env), lambda _key: build_on_its_lane(org_id, env)
+        runtime_key(org_id, env),
+        lambda _key: build_on_its_lane(org_id, env, model_cloned=model_cloned),
     )
     # REQ-2087: the org's redaction rules and the secrets its model reaches, loaded once.
     from provisa.api.redaction_load import ensure_loaded
@@ -2045,7 +2101,9 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     return runtime
 
 
-async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-1266, REQ-1922
+async def build_on_its_lane(  # REQ-1266, REQ-1922
+    org_id: str, env: str | None, *, model_cloned: bool = False
+) -> OrgRuntime:
     """Build the org environment's runtime on the lane its admin-plane row and, in a region
     deployment, its model name: the engine and store it runs on. ``ensure_org_runtime`` builds
     through it, and provisioning builds an org again through it once that build has seeded the
@@ -2105,6 +2163,7 @@ async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-
         storage_url=storage_url,
         data_mode=_data_mode,
         mutation_handling=_mutation_handling,
+        model_cloned=model_cloned,
     )
 
 
@@ -2162,9 +2221,6 @@ async def _region_lane_of(org_id: str, env: str):
     read from its model store before its runtime (and so its engine) is built. None with no
     platform regions."""
     from provisa.core import process_region
-    from provisa.core.config_loader import load_control_plane
-    from provisa.core.database import Capabilities, create_engine_from_url
-    from provisa.core.environments import org_schema
     from provisa.core.region_stores import region_lane
     from provisa.core.regions import DEFAULT_REGION
     from provisa.core.repositories.region import list_regions, list_stores
@@ -2172,6 +2228,22 @@ async def _region_lane_of(org_id: str, env: str):
     if process_region.region() == DEFAULT_REGION:
         # REQ-1922 amendment: the one implicit region names no engine; the lane decides as today.
         return None
+    async with org_model_store(org_id, env) as model_db:
+        async with model_db.acquire() as conn:
+            regions, stores = await list_regions(conn), await list_stores(conn)
+    return region_lane(org_id, regions, stores)
+
+
+@asynccontextmanager
+async def org_model_store(org_id: str, env: str):
+    """REQ-1922: the model store of ``org_id``'s environment ``env``, opened without building the
+    org's runtime: what the platform reads and writes of an org that this node may not serve (its
+    regions and stores). Its writes are committed to that environment's model (REQ-1524)."""
+    from provisa.core.config_loader import load_control_plane
+    from provisa.core.database import Capabilities, create_engine_from_url
+    from provisa.core.environments import org_schema
+    from provisa.core.model_change import ModelPlane
+
     shared = state.tenant_engine
     assert shared is not None, "tenant engine not built; _init_control_planes must run first"
     # A not-schema-capable backend keeps each org in its own file (see build_org_runtime).
@@ -2180,15 +2252,16 @@ async def _region_lane_of(org_id: str, env: str):
         cp = load_control_plane(config_path_str())
         owned = create_engine_from_url(cp.resolved_tenant_url(), pool_size=1, max_overflow=0)
     try:
-        model_db = Database(
-            owned or shared, name="org-model", search_path=org_schema(org_id, env), holds="model"
+        yield Database(
+            owned or shared,
+            name="org-model",
+            search_path=org_schema(org_id, env),
+            model=ModelPlane(org_id, env),
+            holds="model",
         )
-        async with model_db.acquire() as conn:
-            regions, stores = await list_regions(conn), await list_stores(conn)
     finally:
         if owned is not None:
             owned.dispose()
-    return region_lane(org_id, regions, stores)
 
 
 async def _sandbox_store(org_id: str, env: str, storage_url: str | None) -> str:
@@ -2345,13 +2418,27 @@ async def build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+    model_cloned: bool = False,
+    provisioned: bool = False,
 ) -> OrgRuntime:  # REQ-1266, REQ-1524
     """Build the org's runtime (``_build_org_runtime``) as one model change.
 
     A build writes the org's model — its role grants, the built-in and demo rows it loads — and
     it is reached from every surface: an HTTP request (whose change it joins), a protocol server
     or a background job (none open one). Every model change commits (REQ-1524), so the build
-    opens its own scope; under an outer one it is part of that one."""
+    opens its own scope; under an outer one it is part of that one.
+
+    ``model_cloned`` (REQ-2006): the org's schema was provisioned and its model cloned, a moment
+    ago in this process, from an org this release built -- a demo sandbox's first build, from its
+    template. The built-in seed makes only what the clone cannot carry
+    (startup_seed._seed_built_in_sources).
+
+    ``provisioned``: the org's schema was created a moment ago, in this process
+    (orgs_router._provision_org_task), and holds none of the built-in views, which the seed makes
+    as one script.
+
+    Whether the schema's script runs is the schema's own answer: its layout stamp
+    (_set_up_org_schema)."""
     async with model_change.scope(f"build org {org_id}/{env}"):
         return await _build_org_runtime(
             org_id,
@@ -2366,6 +2453,8 @@ async def build_org_runtime(
             engine_url=engine_url,
             shard=shard,
             storage_url=storage_url,
+            model_cloned=model_cloned,
+            provisioned=provisioned,
         )
 
 
@@ -2390,6 +2479,45 @@ def _shares_an_embedded_store(org_id: str, storage_url: str | None) -> bool:
     return configured_materialize_url() is None
 
 
+class _BuildClock:
+    """Each step of a runtime's build that was slow, at WARNING as a hosted tier logs: an open is
+    told apart by its "its runtime" stage alone, and that is its longest (REQ-2006)."""
+
+    _SLOW_S = 2.0
+
+    def __init__(self, key: str) -> None:
+        self._key = key
+        self._since = time.monotonic()
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        if now - self._since >= self._SLOW_S:
+            logging.getLogger(__name__).warning(
+                "runtime of %s: %s took %.1fs", self._key, step, now - self._since
+            )
+        self._since = now
+
+
+async def _set_up_org_schema(org_id: str, env: str) -> None:
+    """The org environment's schema as a build leaves it, in the model store bound now: its
+    ``schema.sql`` and audit schema unless its layout stamp says they are current
+    (org_provisioning.lay_out_schema), then its tenancy role grants, every time. A rebuild beside a
+    live runtime's reads (an org's region-lane build, REQ-1922) finds the schema current and takes
+    no lock its readers wait on."""
+    from provisa.core.db import apply_tenancy_role_grants
+    from provisa.core.org_provisioning import lay_out_schema
+
+    schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
+    if not schema_sql_path.exists():
+        raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
+    model_db = state.model_db
+    assert model_db is not None, "the org's model store is opened before its schema is set up"
+    await lay_out_schema(model_db, schema_sql_path.read_text(), org_id, env)
+    # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
+    # REQ-1623: asserted in the environment being built, whose roles table is its own.
+    await apply_tenancy_role_grants(model_db, org_id, multitenancy=state.multitenancy, env=env)
+
+
 async def _build_org_runtime(
     org_id: str,
     *,
@@ -2404,6 +2532,8 @@ async def _build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+    model_cloned: bool = False,
+    provisioned: bool = False,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -2428,6 +2558,7 @@ async def _build_org_runtime(
     # REQ-2006: a demo sandbox's runtime opens its DuckDB file, so it is built by the sandbox tier
     # alone, and an ordinary org's never by the sandbox tier.
     require_this_tier(org_id)
+    clock = _BuildClock(runtime_key(org_id, env))
     from provisa.security.sandbox_egress import confined
 
     if confined(org_id):
@@ -2444,8 +2575,6 @@ async def _build_org_runtime(
             set_seeded_demo(org_id, state.seed_config.sources)
         else:
             forget(org_id)
-    from provisa.core.db import apply_tenancy_role_grants, init_schema
-    from provisa.audit.query_log import init_audit_schema
 
     rt = OrgRuntime(
         org_id=org_id,
@@ -2639,18 +2768,8 @@ async def _build_org_runtime(
             org_schema(org_id, env), ModelPlane(org_id, env), model_engine=tenant_engine
         )
 
-        schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
-        if not schema_sql_path.exists():
-            raise RuntimeError(
-                f"control-plane schema.sql missing from the package: {schema_sql_path}"
-            )
-        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
-        # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
-        # REQ-1623: asserted in the environment being built, whose roles table is its own.
-        await apply_tenancy_role_grants(
-            state.model_db, org_id, multitenancy=state.multitenancy, env=env
-        )
-        await init_audit_schema(state.model_db, org_id=org_id, env=env)
+        await _set_up_org_schema(org_id, env)
+        clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
@@ -2664,8 +2783,16 @@ async def _build_org_runtime(
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
         await _seed_built_in_sources(
-            host or "", port, database, username or "", org_id=org_id, env=env
+            host or "",
+            port,
+            database,
+            username or "",
+            org_id=org_id,
+            env=env,
+            cloned=model_cloned,
+            provisioned=provisioned,
         )
+        clock.mark("its built-in sources")
         state.source_dsns["provisa-admin"] = colocation_key(
             host or "", port, database, username or "", _pw or ""
         )
@@ -2708,7 +2835,14 @@ async def _build_org_runtime(
                     # The org's catalog names the registrations resolve under (REQ-1266).
                     _populate_source_catalog_names(seed)
                     async with bound_to_request_org():
-                        await rebuild_from_config(seed, conn, state.federation_engine)
+                        if is_template_org(org_id):
+                            from provisa.api.demo_templates import rebuild_template
+
+                            await rebuild_template(
+                                seed_directory, seed, conn, state.federation_engine
+                            )
+                        else:
+                            await rebuild_from_config(seed, conn, state.federation_engine)
                     if is_template_org(org_id):
                         from provisa.api.demo_templates import write_declared_settings
 
@@ -2756,6 +2890,7 @@ async def _build_org_runtime(
                 )
             )
             await _resolve_pk_from_sources()
+        clock.mark("its sources")
 
         await _require_org_serves_here(org_id)  # REQ-1922
         await _bind_region_stores(org_id, env, initialise=True)
@@ -2779,15 +2914,10 @@ async def _build_org_runtime(
                 naming_override.get("default_domain", default),
             )
 
-        await _rebuild_schemas()
-        from provisa.api.sandbox_tier import is_template_org
-
-        if is_template_org(org_id) and env == PROD:
-            # REQ-2006: a demo template lands its replicas from the seed its bundle carries,
-            # before the wiring below starts its replica convergence.
-            from provisa.api.demo_templates import land_from_seed
-
-            await land_from_seed(org_id)
+        # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
+        await _rebuild_schemas(converge=False)
+        clock.mark("its schemas")
+        await _converge_after_seed(org_id, env)
 
         # REQ-1882 (amended 2026-09-29): the wiring below starts process-lifetime scheduler jobs and
         # listener tasks. Inline on the process loop; from a connection-thread loop (this org built
@@ -2868,9 +2998,38 @@ async def _build_org_runtime(
 # REQ-1882 (amended 2026-09-29): an org runtime built on first access from a pgwire/Bolt/Flight
 # connection thread rebuilds on that thread's own loop, so the serialization holds across loops.
 _rebuild_schemas_lock = CrossLoopLock()
+_SLOW_REBUILD_S = 2.0
 
 
-async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = True) -> None:
+def start_replica_convergence() -> None:
+    """REQ-1915: converge the bound org's replicas to the model just built, detached, in a process
+    that does background work (replica_converge.converge_logged)."""
+    from provisa.core import process_mode
+    from provisa.core.connection_loop import spawn_background
+    from provisa.federation.replica_converge import converge_logged
+
+    if process_mode.runs_background_work():
+        spawn_background(converge_logged(state), name="replica-converge")
+
+
+async def _converge_after_seed(org_id: str, env: str) -> None:
+    """In the runtime build of ``org_id``'s environment ``env``, its model built: a demo template
+    lands its replicas from the seed its bundle carries (REQ-2006), and only then is its replica
+    convergence started. Started before, it found no record of the seed's replicas and inserted a
+    requested one for each while the adoption deleted and inserted the same records: the two met
+    on replica_state's key and the template's provisioning failed."""
+    from provisa.api.sandbox_tier import is_template_org
+
+    if is_template_org(org_id) and env == PROD:
+        from provisa.api.demo_templates import land_from_seed
+
+        await land_from_seed(org_id)
+    start_replica_convergence()
+
+
+async def _rebuild_schemas(
+    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
+) -> None:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -2880,11 +3039,33 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
     # fetch happens after every prior rebuild's writes have committed and been published.
     #
     # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
+    # ``converge=False`` (REQ-2006) leaves the replica convergence to the caller: an org's runtime
+    # build starts it once a demo template's seed is adopted (_converge_after_seed).
+    #
+    # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
+    asked = time.monotonic()
     async with _rebuild_schemas_lock:
-        await _rebuild_schemas_impl(raw_config, announce=announce)
+        began = time.monotonic()
+        # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
+        # landed tables' reconcile and the routes it publishes alike.
+        from provisa.federation.replica_routing import one_model_read
+
+        with model_row_rules.unnarrowed(), one_model_read():
+            await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
+    # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
+    # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
+    if time.monotonic() - asked >= _SLOW_REBUILD_S:
+        logging.getLogger(__name__).warning(
+            "schema rebuild of %s: waited %.1fs for its turn, took %.1fs",
+            state._active_runtime().org_id,
+            began - asked,
+            time.monotonic() - began,
+        )
 
 
-async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
+async def _rebuild_schemas_impl(
+    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
+) -> None:
     # Rebuild per-role schemas from DB state. Column types come from the authoritative
     # table_columns store (introspect_tables does NOT query the engine), so this runs on any
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
@@ -2934,8 +3115,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # REQ-1914: the masking rules are NOT cleared here. Requests run on their own threads while
     # this build reads the control plane, and one that found the rules empty would be answered
     # unmasked; _load_masking_rules builds the new set aside and publishes it in one assignment.
-    # Invalidate the MCP catalog search index (REQ-1008) — the catalog is changing, so the
-    # server-lifetime HNSW index is stale; next search_catalog rebuilds it from the new catalog.
+    # Invalidate this org's MCP catalog search index (REQ-1008) — its catalog is changing, so the
+    # HNSW index is stale; its next search_catalog rebuilds it from the new catalog.
     state.mcp_catalog_index = None
 
     # REQ-1685: a graphql_remote source registered since boot (an applied import, the Sources
@@ -2995,7 +3176,9 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
             dict(r._mapping)
             for r in (
                 await conn.execute_core(
-                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement)
+                    select(_naming_rules_t.c.pattern, _naming_rules_t.c.replacement).order_by(
+                        _naming_rules_t.c.id  # REQ-2190: in the order the catalog's views apply
+                    )
                 )
             ).fetchall()
         ]
@@ -3186,20 +3369,37 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # the inherited grants under the acting role's own id.
         from provisa.security.inheritance import (
             expand_column_grants,
+            expand_meta_grants,
             expand_write_grants,
             flatten_role_dicts,
+            narrow_own_domain_grants,
             parent_map,
             role_chains,
+            with_own_domains,
         )
 
         role_chains_by_id = role_chains(roles)
         # REQ-2155: each role's parents, which the row-rule and write-grant folds resolve over.
         role_parents_by_id = parent_map(roles)
-        # REQ-1363: then down the domain tree -- a role that lists a domain reaches every domain
-        # under it. state.roles carries the flattened list, so every reader of a role's
+        # REQ-2188: naming a role in a product's Owner field gives it RW on data products, with the
+        # generated rules (row_filters.with_owner_grant); it folds to the role's children as a
+        # right does, and is gone from the next build once the role owns nothing.
+        from provisa.core.repositories import data_product as _data_product_repo
+        from provisa.security.row_filters import with_owner_grant
+
+        roles = with_owner_grant(roles, await _data_product_repo.owner_roles(conn))
+        # REQ-1363: down the domain tree before a role is narrowed -- a role that lists a domain
+        # reaches every domain under it, so a parent holds the subtree its child narrows
+        # (REQ-2155). state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
-        roles = _domain_tree.flatten_role_domains(flatten_role_dicts(roles), _domain_parents)
+        # REQ-2153: each role's own domain access is kept from before the tree, which an
+        # own-domain column's grant is narrowed by, once the grants are folded down the chains.
+        roles = flatten_role_dicts(
+            _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
+        )
         expand_column_grants(tables, role_chains_by_id)
+        narrow_own_domain_grants([*tables, *draft_tables], roles)
+        expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
 
@@ -3305,21 +3505,20 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         )
         # REQ-1677, REQ-2155: child-precedence RLS -- a role's own rule for a table (REQ-1679: or
         # an action) stands, else its parents' rules ORed.
-        from provisa.security.inheritance import expand_grants, materialize_rls
-
-        rls_rules = materialize_rls(
-            rls_rules, tables, role_parents_by_id, [*tracked_functions, *tracked_webhooks]
-        )
         # REQ-1384: one predicate per (role, table) — the table's own or its domain's rule,
         # AND-ed with every rule on a tag the table carries and (REQ-1363) with the rule on every
         # domain above the table's. Resolved here so the governance
         # path reads the one table-keyed rule it always has.
+        # REQ-2188: each right resolved on its own.
         from provisa.core.repositories import tag as _tag_repo
-        from provisa.security.row_filters import resolve_table_rules
+        from provisa.security.inheritance import expand_grants
+        from provisa.security.row_filters import resolve_rules_by_right
 
-        rls_rules = resolve_table_rules(
+        rls_rules = resolve_rules_by_right(
             rls_rules,
             tables,
+            role_parents_by_id,
+            [*tracked_functions, *tracked_webhooks],
             role_chains_by_id,
             await _tag_repo.list_assignments(conn),
             _domain_parents,
@@ -3486,14 +3685,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # longer declares is retired. This is the one place: the boot build, the build after this
     # worker's own change, and the reload of another worker's change all pass here, so no save
     # or delete path asks for a build or a drop itself. Detached: the model build must not
-    # wait on, or be stopped by, a replica store or a source.
-    from provisa.core import process_mode as _process_mode
-
-    if _process_mode.runs_background_work():
-        from provisa.core.connection_loop import spawn_background as _spawn_background
-        from provisa.federation.replica_converge import converge_logged as _converge_replicas
-
-        _spawn_background(_converge_replicas(state), name="replica-converge")
+    # wait on, or be stopped by, a replica store or a source. An org's runtime build starts it
+    # itself (``converge=False``), once its template's seed is adopted.
+    if converge:
+        start_replica_convergence()
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.
@@ -3506,82 +3701,68 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # engines and scheduler jobs. Run inline on the process loop; from a connection-thread loop (an
     # org runtime built on first pgwire/Bolt/Flight access) it is started on the process loop,
     # since the connection loop stops running when its request ends.
-    async def _rewire_lifecycle() -> None:
-        # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
-        # register_runtime's per-org build (that call site never fires for the default/single-tenant
-        # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
-        # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
-        # registered live through the Sources+Register Table forms never got its listener started or
-        # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
-        # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
-        # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
-        # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
-        # here is never harmful, only occasionally redundant with register_runtime's own call.
-        from provisa.events.push_wiring import wire_push_listeners
-
-        try:
-            await wire_push_listeners(state=state, log=logging.getLogger(__name__))
-        except Exception:
-            logging.getLogger(__name__).exception(
-                "wire_push_listeners failed during schema rebuild"
-            )
-        try:
-            await _init_ingest_engines()
-        except Exception:
-            logging.getLogger(__name__).exception(
-                "_init_ingest_engines failed during schema rebuild"
-            )
-        # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
-        # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
-        # function does not — a table registered against an already-running runtime (the common case
-        # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
-        # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
-        # every registered source's poll-job registration on EVERY schema rebuild (not just ones
-        # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
-        # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
-        # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
-        # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
-        # doesn't already have one, appending its processor into the SAME list object the running tick
-        # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
-        from provisa.events.app_wiring import wire_new_poll_jobs
-
-        try:
-            await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
-        except RuntimeNotBuilt as gone:
-            # The runtime this rebuild is for was dropped while it ran (a change of the
-            # environment's data, an engine wake): the one built in its place wires its own.
-            left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
-        except Exception:
-            logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
-
-        # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
-        # same posture as wire_push_listeners above (registered jobs are idempotent via
-        # replace_existing=True, and the row_materialize table set is derived fresh each call, not
-        # incrementally like wire_new_poll_jobs) — so a table that becomes row-level while the
-        # server runs (a config reload; no admin mutation or UI field sets the flag) gets its
-        # background jobs without requiring a restart.
-        _scheduler = getattr(state, "_scheduler", None)
-        if _scheduler is not None:
-            from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
-
-            _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
-            if _rm_cfg is not None:
-                try:
-                    await wire_row_materialize_background(
-                        _scheduler,
-                        state=state,
-                        log=logging.getLogger(__name__),
-                        tick_seconds=_rm_cfg.refresh_tick_seconds,
-                        reap_interval_seconds=_rm_cfg.reap_interval_seconds,
-                        reap_grace_period=_rm_cfg.reap_grace_period,
-                        reap_batch_size=_rm_cfg.reap_batch_size,
-                    )
-                except Exception:
-                    logging.getLogger(__name__).exception(
-                        "wire_row_materialize_background failed during schema rebuild"
-                    )
-
     await run_lifecycle_work(_rewire_lifecycle(), name="schema-rebuild-lifecycle")
+
+
+async def _rewire_lifecycle() -> None:
+    # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
+    # register_runtime's per-org build (that call site never fires for the default/single-tenant
+    # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
+    # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
+    # registered live through the Sources+Register Table forms never got its listener started or
+    # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
+    # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
+    # calls are idempotent by design (wire_push_listeners skips nodes already running;
+    # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
+    # here is never harmful, only occasionally redundant with register_runtime's own call.
+    from provisa.events.push_wiring import wire_push_listeners
+
+    # A step that fails is the rebuild's failure (J743): inline at boot it fails the rebuild;
+    # detached, spawn_background reports it by the task's name.
+    await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+    await _init_ingest_engines()
+    # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
+    # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
+    # function does not — a table registered against an already-running runtime (the common case
+    # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
+    # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
+    # every registered source's poll-job registration on EVERY schema rebuild (not just ones
+    # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
+    # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
+    # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
+    # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
+    # doesn't already have one, appending its processor into the SAME list object the running tick
+    # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
+    from provisa.events.app_wiring import wire_new_poll_jobs
+
+    try:
+        await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
+    except RuntimeNotBuilt as gone:
+        # The runtime this rebuild is for was dropped while it ran (a change of the
+        # environment's data, an engine wake): the one built in its place wires its own.
+        left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
+
+    # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
+    # same posture as wire_push_listeners above (registered jobs are idempotent via
+    # replace_existing=True, and the row_materialize table set is derived fresh each call, not
+    # incrementally like wire_new_poll_jobs) — so a table that becomes row-level while the
+    # server runs (a config reload; no admin mutation or UI field sets the flag) gets its
+    # background jobs without requiring a restart.
+    _scheduler = getattr(state, "_scheduler", None)
+    if _scheduler is not None:
+        from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+
+        _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+        if _rm_cfg is not None:
+            await wire_row_materialize_background(
+                _scheduler,
+                state=state,
+                log=logging.getLogger(__name__),
+                tick_seconds=_rm_cfg.refresh_tick_seconds,
+                reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                reap_grace_period=_rm_cfg.reap_grace_period,
+                reap_batch_size=_rm_cfg.reap_batch_size,
+            )
 
 
 class _DebugLogBufferHandler(logging.Handler):
@@ -3751,6 +3932,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     await _start_background_tasks(_log)
 
     await _start_servers(_log)
+    _log_http_surfaces(_app, _log)
+    from provisa.api.admin.system_health import serving_http_surfaces
+
+    state.http_surfaces = serving_http_surfaces(_app)
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
@@ -3892,6 +4077,8 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         await _stop_long_lived(state._replica_hot_task)
     if state._graph_session_task:
         await _stop_long_lived(state._graph_session_task)
+    if state._term_scan_task:
+        await _stop_long_lived(state._term_scan_task)
     if state._temp_keeper_task:
         await _stop_long_lived(state._temp_keeper_task)
     if state.hot_manager is not None:
@@ -4064,14 +4251,6 @@ def create_app() -> FastAPI:
     state.shared_federation_engine.write_config(config_path_str())
     _setup_otel(app)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     from fastapi import Request as _Request
     from fastapi.responses import JSONResponse as _JSONResponse
 
@@ -4131,6 +4310,34 @@ def create_app() -> FastAPI:
     async def _subtype_refused_handler(_req: _Request, exc: _SubtypeOperationRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         """REQ-2171: an operation on a subtyped column the routed dialect can neither run with the
         subtype's own semantics nor emulate. Refused by name, never answered over its text form."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.transpiler.function_macros import FunctionRefused as _FunctionRefused
+
+    @app.exception_handler(_FunctionRefused)
+    async def _function_refused_handler(_req: _Request, exc: _FunctionRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        """REQ-2167: a function the routed dialect neither has nor has a form of: refused by name,
+        never an engine's error."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.transpiler.metadata_functions import (
+        MetadataFunctionRefused as _MetadataFunctionRefused,
+    )
+    from provisa.transpiler.metadata_settings import CatalogViewRefused as _CatalogViewRefused
+
+    @app.exception_handler(_CatalogViewRefused)
+    @app.exception_handler(_MetadataFunctionRefused)
+    async def _catalog_read_refused_handler(  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        _req: _Request, exc: _CatalogViewRefused | _MetadataFunctionRefused
+    ):
+        """REQ-2190: a catalog view off the admin terminal, or a function that would read the
+        control plane itself: refused by name, on HTTP as on pgwire."""
         return _JSONResponse(
             status_code=422,
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
@@ -4274,6 +4481,36 @@ def create_app() -> FastAPI:
             },
         )
 
+    from provisa.compiler.write_admission import (
+        ReturningNotSupported as _ReturningNotSupported,
+        WriteFormNotSupported as _WriteFormNotSupported,
+    )
+
+    @app.exception_handler(_WriteFormNotSupported)
+    async def _write_form_not_supported_handler(_req: _Request, exc: _WriteFormNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1981: a statement form (MERGE, ON CONFLICT, UPDATE ... FROM ...) the table's write
+        # route does not carry, refused by name like any write its source cannot take.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.write_form_not_supported",
+                "params": {"table": exc.table, "form": exc.form},
+            },
+        )
+
+    @app.exception_handler(_ReturningNotSupported)
+    async def _returning_not_supported_handler(_req: _Request, exc: _ReturningNotSupported):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # A RETURNING the table's write route cannot answer, refused by name.
+        return _JSONResponse(
+            status_code=400,
+            content={
+                "detail": str(exc),
+                "code": "data.returning_not_supported",
+                "params": {"table": exc.table},
+            },
+        )
+
     from provisa.executor.errors import SystemCatalogUnavailable as _SystemCatalogUnavailable
 
     @app.exception_handler(_SystemCatalogUnavailable)
@@ -4304,6 +4541,34 @@ def create_app() -> FastAPI:
                 "detail": str(exc),
                 "code": "data.table_is_draft",
                 "params": {"table": exc.table},
+            },
+        )
+
+    from provisa.security.rights import MissingDomainCapability as _MissingDomainCapability
+
+    from provisa.security.rights import ListedOnly as _ListedOnly
+
+    @app.exception_handler(_ListedOnly)
+    async def _listed_only_handler(_req: _Request, exc: _ListedOnly):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: list means metadata only, and the refusal says so.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.listed_only",
+                "params": {"role": exc.role_id, "table": exc.table},
+            },
+        )
+
+    @app.exception_handler(_MissingDomainCapability)
+    async def _missing_domain_capability_handler(_req: _Request, exc: _MissingDomainCapability):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: a system domain is held as a capability, and the refusal names it.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.capability_required",
+                "params": {"capability": exc.capability, "domain": exc.domain_id},
             },
         )
 
@@ -4683,6 +4948,13 @@ def create_app() -> FastAPI:
     except ImportError:
         pass
 
+    # REQ-2193: the OData service. Its headers wrap the auth middleware, whose 401 carries none.
+    from provisa.api.odata.headers import ODataResponseHeaders
+    from provisa.api.odata.router import create_odata_router
+
+    app.include_router(create_odata_router(state))
+    app.add_middleware(ODataResponseHeaders)
+
     # Admin GraphQL API (Strawberry) at /admin/graphql
     async def _admin_graphql_context(request: HTTPConnection):
         # HTTPConnection, not Request: FastAPI supplies it to a WebSocket too, which the router
@@ -4785,6 +5057,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
 
     app.include_router(catalogs_router)
+    from provisa.api.admin.request_delivery_router import (  # REQ-2216
+        router as request_delivery_router,
+    )
+
+    app.include_router(request_delivery_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )
@@ -4793,6 +5070,16 @@ def create_app() -> FastAPI:
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
+    from provisa.api.admin.reference_library_router import (  # REQ-2185
+        router as reference_library_router,
+    )
+
+    app.include_router(reference_library_router)
+    from provisa.api.admin.term_finding_router import (  # REQ-2179
+        router as term_finding_router,
+    )
+
+    app.include_router(term_finding_router)
     from provisa.api.admin.report_router import router as model_report_router  # REQ-1592
 
     app.include_router(model_report_router)
@@ -4815,6 +5102,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_classifications_router)
+    from provisa.api.admin.erd_layouts_router import router as erd_layouts_router  # REQ-2189
+
+    app.include_router(erd_layouts_router)
     from provisa.api.admin.synthetic_router import router as synthetic_router  # REQ-1939
 
     app.include_router(synthetic_router)
@@ -4856,6 +5146,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.regions_router import router as regions_router
+
+    app.include_router(regions_router)  # REQ-1922
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
@@ -4887,6 +5180,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.debug_trace_router import router as debug_trace_router  # REQ-1910
 
     app.include_router(debug_trace_router)
+    from provisa.api.admin.data_addresses_router import router as data_addresses_router  # REQ-1916
+
+    app.include_router(data_addresses_router)
     from provisa.api.admin.audit_query_text_router import router as audit_text_router  # REQ-1910
 
     app.include_router(audit_text_router)
@@ -5069,6 +5365,15 @@ def create_app() -> FastAPI:
     from provisa.api.coordinator_gate import CoordinatorDataGate
 
     app.add_middleware(CoordinatorDataGate)
+    # REQ-1916 (amended 2026-11-02): the mirror -- a query node answers the UI's backend with its
+    # refusal, naming the UI's address (mail.base_url, read per refusal: the config can reload).
+    from provisa.api.query_gate import QueryUiGate, is_ui_path
+
+    app.add_middleware(
+        QueryUiGate,
+        refuses=is_ui_path,
+        ui_address=lambda: state.config.mail.base_url if state.config is not None else None,
+    )
 
     from provisa.core.request_thread import RequestThreadMiddleware
 
@@ -5078,5 +5383,17 @@ def create_app() -> FastAPI:
     from provisa.api.error_redaction import ErrorRedactionMiddleware
 
     app.add_middleware(ErrorRedactionMiddleware)
+
+    # REQ-1916 (amended 2026-11-02): a coordinator-served UI sends its data calls to a query node,
+    # cross-origin, with its bearer. Outermost, so a browser's preflight (which carries no token) is
+    # answered before auth asks for one, and every answer -- a gate's refusal, auth's 401 -- carries
+    # the headers the UI needs to read it.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     return app

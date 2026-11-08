@@ -100,7 +100,7 @@ async def test_a_supplied_message_is_kept(monkeypatch):
 @pytest.mark.asyncio
 async def test_turning_it_on_stamps_the_start_and_records_who(monkeypatch):
     conn = _wire(monkeypatch, None)
-    monkeypatch.setattr(mr, "require_platform_settings", lambda _r: None)
+    monkeypatch.setattr(mr, "require_deployment_settings", lambda _r: None)
     before = datetime.now(timezone.utc)
     result = await mr.set_maintenance(_request(), mr.NoticeBody(active=True))
     assert result["active"] is True
@@ -116,7 +116,7 @@ async def test_re_arming_an_open_window_does_not_restart_its_clock(monkeypatch):
     # the work only just began.
     started = datetime(2026, 8, 14, 10, tzinfo=timezone.utc)
     conn = _wire(monkeypatch, _row(started_at=started))
-    monkeypatch.setattr(mr, "require_platform_settings", lambda _r: None)
+    monkeypatch.setattr(mr, "require_deployment_settings", lambda _r: None)
     ends = started + timedelta(hours=2)
     await mr.set_maintenance(_request(), mr.NoticeBody(active=True, message="Longer", ends_at=ends))
     assert conn.row is not None
@@ -127,7 +127,7 @@ async def test_re_arming_an_open_window_does_not_restart_its_clock(monkeypatch):
 @pytest.mark.asyncio
 async def test_turning_it_off_clears_the_stamp_so_the_next_window_starts_its_own(monkeypatch):
     conn = _wire(monkeypatch, _row())
-    monkeypatch.setattr(mr, "require_platform_settings", lambda _r: None)
+    monkeypatch.setattr(mr, "require_deployment_settings", lambda _r: None)
     result = await mr.set_maintenance(_request(), mr.NoticeBody(active=False))
     assert result["active"] is False
     assert conn.row is not None
@@ -141,9 +141,9 @@ async def test_the_write_is_gated_before_anything_is_stored(monkeypatch):
     conn = _wire(monkeypatch, None)
 
     def deny(_request):
-        raise PermissionError("platform_settings capability required")
+        raise PermissionError("deployment settings are edited by a platform administrator")
 
-    monkeypatch.setattr(mr, "require_platform_settings", deny)
+    monkeypatch.setattr(mr, "require_deployment_settings", deny)
     with pytest.raises(PermissionError):
         await mr.set_maintenance(_request(), mr.NoticeBody(active=True))
     assert conn.row is None
