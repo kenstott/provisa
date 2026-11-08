@@ -33,6 +33,7 @@ import json as _json
 from provisa.compiler.sql_literals import sql_literal
 from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
 from provisa.api._pg_catalog_views import (
+    COLUMNS_OF_TABLES as _COLUMNS_OF_TABLES,
     CATALOG_BASE_VIEWS,
     CATALOG_COLUMN_VIEWS,
     CATALOG_KEY_VIEWS,
@@ -486,8 +487,8 @@ def _column_details_sql() -> str:
                     ELSE COALESCE(NULLIF(tc.description, '') || ' ', '') || '['
                          || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
                END AS comment
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id AND NOT rt.draft
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id AND NOT rt.draft
         LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
     """
 
@@ -655,9 +656,9 @@ def _table_keys_sql() -> str:
         FROM all_keys k
         JOIN tables t ON t.table_id = k.table_id
         JOIN tables r ON r.table_id = k.referenced_table_id
-        LEFT JOIN table_columns c
+        LEFT JOIN {_COLUMNS_OF_TABLES} c
           ON c.table_id = k.table_id AND c.column_name = k.column_name
-        LEFT JOIN table_columns rc
+        LEFT JOIN {_COLUMNS_OF_TABLES} rc
           ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
         WHERE (c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES})
           AND {asked}
@@ -841,21 +842,23 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
-        SELECT id, table_id, domain_id, column_name,
+        SELECT tc.id, tc.table_id, tc.domain_id, tc.column_name,
                -- the stable column identity the glossary binds to, and the join key of
                -- the registered glossary_term_refs -> table_columns edge (relationships is
                -- single-column, and table_columns.id is replaced wholesale by the table upsert).
-               CAST(table_id AS TEXT) || ':' || column_name AS column_key,
-               data_type, is_primary_key,
-               alias, description, path, scope,
-               masks,
-               native_filter_type, is_foreign_key, is_alternate_key,
-               object_fields,
-               visible_to,
-               tenant_id
-        FROM table_columns
-        -- nor are a draft table's columns.
-        WHERE table_id IN (SELECT id FROM registered_tables WHERE NOT draft)
+               CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS column_key,
+               tc.data_type, tc.is_primary_key,
+               tc.alias, tc.description, tc.path, tc.scope,
+               tc.masks,
+               tc.native_filter_type, tc.is_foreign_key, tc.is_alternate_key,
+               tc.object_fields,
+               tc.visible_to,
+               tc.tenant_id
+        -- registered_tables first: schema.sql locks it before table_columns (REQ-2190 lock order).
+        -- A draft table's columns are not listed.
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
+        WHERE NOT rt.draft
     """,
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
@@ -874,8 +877,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS id,
                rt.domain_id AS listed_domain, rt.table_name, tc.column_name,
                'meta' AS domain_id
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
         WHERE tc.scope = 'listed' AND NOT rt.draft
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
@@ -1033,7 +1036,7 @@ def _judgment_review_sql() -> str:
         FROM judgment_findings f
         LEFT JOIN tag_assignments ta
           ON f.object_type = 'tag_assignment' AND ta.base_tag_id || '@' || ta.object_key = f.object_key
-        LEFT JOIN table_columns tc
+        LEFT JOIN {_COLUMNS_OF_TABLES} tc
           ON f.object_type IN ('column', 'mask_entry')
          AND CAST(tc.table_id AS TEXT) || ':' || tc.column_name = SPLIT_PART(f.object_key, '#', 1)
         LEFT JOIN rls_rules rr
@@ -1167,8 +1170,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'column:' || CAST(tc.id AS TEXT), 'column',
                rt.table_name || '.' || tc.column_name, rt.domain_id,
                'missing_description'
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
         WHERE tc.description IS NULL OR tc.description = ''
         UNION ALL
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,

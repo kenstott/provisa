@@ -252,6 +252,16 @@ def _catalog_asked_tables() -> str:
 _VIRTUAL_TYPE = "'varchar'"
 
 
+# A view that reaches table_columns through a join it cannot reorder (a LEFT JOIN, or CTEs that read
+# registered_tables) names it as this: PostgreSQL locks a view's relations in the order of its
+# stored range table, and schema.sql locks registered_tables before table_columns, so a reader that
+# held table_columns while it waited for registered_tables would deadlock with it. Every
+# table_columns row has its registered table, so the join drops none.
+COLUMNS_OF_TABLES = (
+    "(SELECT tc0.* FROM registered_tables rt0 JOIN table_columns tc0 ON tc0.table_id = rt0.id)"
+)
+
+
 def registered_column_sql_name(column: str) -> str:
     """A registered column's SQL name, of its row ``column`` of table_columns."""
     return (
@@ -293,7 +303,7 @@ def _catalog_columns() -> str:
                        AS attnum,
                    {listed} AS listed_type, c.not_null
             FROM asked t
-            JOIN table_columns c ON c.table_id = t.table_id
+            JOIN {COLUMNS_OF_TABLES} c ON c.table_id = t.table_id
         ),
         virtual AS (
             SELECT t.relation_oid, t.table_id, t.schema_name, t.table_name, v.column_name,
@@ -302,7 +312,7 @@ def _catalog_columns() -> str:
                    {_VIRTUAL_TYPE} AS listed_type, FALSE AS not_null
             FROM asked t
             CROSS JOIN LATERAL (
-                SELECT COUNT(*) AS columns FROM table_columns o WHERE o.table_id = t.table_id
+                SELECT COUNT(*) AS columns FROM {COLUMNS_OF_TABLES} o WHERE o.table_id = t.table_id
             ) l
             CROSS JOIN LATERAL {_virtual_columns("t.table_id")}
             WHERE t.table_id IS NOT NULL AND v.place IS NOT NULL
@@ -339,7 +349,7 @@ def _catalog_keys() -> str:
         places AS (
             SELECT c.table_id, c.column_name,
                    ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS attnum
-            FROM table_columns c
+            FROM {COLUMNS_OF_TABLES} c
             WHERE c.table_id IN (SELECT table_id FROM keyed
                                  UNION SELECT referenced_table_id FROM keyed)
         ),
@@ -348,7 +358,7 @@ def _catalog_keys() -> str:
             FROM (SELECT table_id AS id FROM keyed
                   UNION SELECT referenced_table_id FROM keyed) t
             CROSS JOIN LATERAL (
-                SELECT COUNT(*) AS columns FROM table_columns o WHERE o.table_id = t.id
+                SELECT COUNT(*) AS columns FROM {COLUMNS_OF_TABLES} o WHERE o.table_id = t.id
             ) l
             CROSS JOIN LATERAL {_virtual_columns("t.id")}
             WHERE v.place IS NOT NULL
