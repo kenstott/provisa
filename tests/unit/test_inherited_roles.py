@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
@@ -20,6 +21,7 @@ from provisa.core.models import Role, flatten_roles
 from provisa.security.inheritance import materialize_rls
 from provisa.security.masking import MaskType, MaskingRule
 from provisa.security.row_filters import resolve_table_rules
+from tests.governed_pg import assert_same_rows, governed_database
 from tests.helpers import governed_for_role
 
 
@@ -76,6 +78,21 @@ def _inherited_rls(rules: list[dict], chains: dict[str, list[str]], role_id: str
     parents = {role: chain[1:2] for role, chain in chains.items()}  # each chain is one parent deep
     resolved = resolve_table_rules(materialize_rls(rules, tables, parents), tables, chains, [], {})
     return build_rls_context(resolved, role_id)
+
+
+#: What each governed read is answered over, on PostgreSQL (tests/governed_pg.py).
+_ROWS = {
+    "public.orders": [
+        {"id": 1, "amount": 50, "region": "us-east"},
+        {"id": 2, "amount": 150, "region": "us-east"},
+        {"id": 3, "amount": 150, "region": "eu-west"},
+    ]
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_inherited_roles")
 
 
 def _orders_ctx() -> CompilationContext:
@@ -155,7 +172,7 @@ class TestFlattenRoles:
 
 
 class TestInheritedRolesRLS:
-    def test_child_inherits_parent_rls(self):
+    def test_child_inherits_parent_rls(self, pg):
         """A child role with no rule of its own for a table reads under its parent's rule."""
         parent_rule = {
             "description": "Test rule.",
@@ -168,9 +185,11 @@ class TestInheritedRolesRLS:
             [parent_rule], {"parent": ["parent"], "child": ["child", "parent"]}, "child"
         )
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
-        assert result == f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\')'
+        assert assert_same_rows(
+            pg, result, f"{_ORDERS_SQL} WHERE \"region\" = 'us-east'", _ROWS
+        ) == [(1, 50, "us-east"), (2, 150, "us-east")]
 
-    def test_child_s_own_rule_is_anded_with_its_parent_s(self):
+    def test_child_s_own_rule_is_anded_with_its_parent_s(self, pg):
         """REQ-1677: a role reads no row its parent could not."""
         rules = [
             {
@@ -190,9 +209,8 @@ class TestInheritedRolesRLS:
         ]
         rls = _inherited_rls(rules, {"parent": ["parent"], "child": ["child", "parent"]}, "child")
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
-        assert result == (
-            f'{_ORDERS_SQL} WHERE (("orders"."amount" > 100) AND ("orders"."region" = \'us-east\'))'
-        )
+        expected = f'{_ORDERS_SQL} WHERE "amount" > 100 AND "region" = \'us-east\''
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(2, 150, "us-east")]
 
     def test_grandchild_inherits_two_levels(self):
         """Three-level chain: a role narrowing its parent narrows every role below it."""
@@ -208,7 +226,7 @@ class TestInheritedRolesRLS:
         assert by_id["child"].capabilities == ["aggregate"]
         assert by_id["child"].domain_access == ["support"]
 
-    def test_child_rls_sql_where_injected_correctly(self):
+    def test_child_rls_sql_where_injected_correctly(self, pg):
         """The row filter is placed before ORDER BY, on the table's alias."""
         result = governed_for_role(
             f'{_ORDERS_T0_SQL} ORDER BY "t0"."id"',
@@ -216,10 +234,13 @@ class TestInheritedRolesRLS:
             "child",
             rls={ORDERS_TABLE_ID: "\"region\" = 'us-east'"},
         )
-        assert result == (
-            'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" AS "t0" '
-            'WHERE ("t0"."region" = \'us-east\') ORDER BY "t0"."id"'
-        )
+        expected = f'{_ORDERS_T0_SQL} WHERE "t0"."region" = \'us-east\' ORDER BY "t0"."id"'
+        # Stored out of key order, so only the statement's own ORDER BY orders the answer.
+        unordered = {"public.orders": list(reversed(_ROWS["public.orders"]))}
+        assert assert_same_rows(pg, result, expected, unordered, ordered=True) == [
+            (1, 50),
+            (2, 150),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -228,7 +249,7 @@ class TestInheritedRolesRLS:
 
 
 class TestInheritedRolesMasking:
-    def test_child_overrides_parent_mask(self):
+    def test_child_overrides_parent_mask(self, pg):
         """The mask the child role is given for a column is the one its reads carry."""
         child_rule = MaskingRule(mask_type=MaskType.constant, value=999)
         child_masking: MaskingRules = {
@@ -240,14 +261,15 @@ class TestInheritedRolesMasking:
         result = governed_for_role(
             _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=child_masking
         )
-        assert result == ('SELECT "t0"."id", 999 AS "amount" FROM "public"."orders" AS "t0"')
+        expected = 'SELECT "t0"."id", 999 AS "amount" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, 999), (2, 999), (3, 999)]
 
-    def test_no_masking_rules_for_role_leaves_sql_unchanged(self):
+    def test_no_masking_rules_for_role_leaves_sql_unchanged(self, pg):
         """A role with no masking rules must not alter the compiled SQL."""
         result = governed_for_role(_ORDERS_T0_SQL, _orders_ctx(), "some-role", masking_rules={})
-        assert result == 'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, _ORDERS_T0_SQL, _ROWS) == [(1, 50), (2, 150), (3, 150)]
 
-    def test_parent_mask_applied_when_child_has_none(self):
+    def test_parent_mask_applied_when_child_has_none(self, pg):
         """The parent's mask, held by the child (it is not in the column's ``unmasked_to``),
         is applied to the child's read."""
         parent_rule = MaskingRule(mask_type=MaskType.constant, value=0)
@@ -257,4 +279,5 @@ class TestInheritedRolesMasking:
         result = governed_for_role(
             _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=inherited_masking
         )
-        assert result == 'SELECT "t0"."id", 0 AS "amount" FROM "public"."orders" AS "t0"'
+        expected = 'SELECT "t0"."id", 0 AS "amount" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, 0), (2, 0), (3, 0)]

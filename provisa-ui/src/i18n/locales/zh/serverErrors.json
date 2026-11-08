@@ -758,6 +758,9 @@
         "successor_retired": "继任者“{{successor}}”已停用。请选择一个正在使用的数据产品。",
         "successor_other_domain": "继任者“{{successor}}”属于域 {{domain}}。产品的成员与其共享同一个域，因此请选择同一域中的继任者。"
       },
+      "members": {
+        "domain_has_members": "数据产品 {{data_product}} 包含来自其他域的成员（{{members}}），因此无法移到域 {{domain}}。请先将这些成员从产品中移除。"
+      },
       "finding": {
         "no_members": "没有任何表、视图或命令属于此数据产品。",
         "member_deprecated": "成员表 {{table}} 已弃用。",

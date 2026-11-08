@@ -160,6 +160,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     microsoft_365_refusal,
     _stage_kaggle_if_needed,
     _sync_view_mv,
+    _view_products,
     _cache_prometheus_label_columns,
     _synthesize_mapping_dsl_tables,
     _upsert_source_with_domains,
@@ -564,6 +565,17 @@ async def _save_data_product(
                 code="schema.domain_not_found",
                 params={"domain": input.domain_id},
             )
+        if stored is not None and stored["domain_id"] != input.domain_id:
+            # REQ-1634: a member joins only products of its own domain.
+            try:
+                await data_product_repo.require_members_in_domain(conn, input.id, input.domain_id)
+            except data_product_repo.MembershipRefused as refused:
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code=f"data_product.members.{refused.code}",
+                    params=refused.params,
+                )
         model = DataProductModel(
             id=input.id,
             domain_id=input.domain_id,
@@ -608,6 +620,52 @@ async def _save_data_product(
     )
 
 
+async def _set_data_product_members(
+    info: StrawberryInfo, product_id: str, table_ids: list[int], command_names: list[str]
+) -> MutationResult:  # REQ-1634
+    """A data product's members replaced, by the product's domain's writer: the one place
+    membership changes. A member of another domain, one that does not exist, or a parameterized
+    table is refused by name (data_product.members.<code>) and nothing changes."""
+    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability(info, "data_product_rw")
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        conn = cast("Connection", conn)
+        stored = await data_product_repo.get(conn, product_id)
+        if stored is None:
+            return MutationResult(
+                success=False,
+                message=f"Data product {product_id!r} not found",
+                code="schema.data_product_not_found",
+                params={"data_product": product_id},
+            )
+        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
+        try:
+            await data_product_repo.set_members(
+                conn, product_id, table_ids=table_ids, commands=command_names
+            )
+        except data_product_repo.MembershipRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code=f"data_product.members.{refused.code}",
+                params={"data_product": product_id, **refused.params},
+            )
+    await _rebuild_schemas()  # membership is read by the runtime build (exports, meta, lineage)
+    return MutationResult(
+        success=True,
+        message=f"Data product {product_id!r} members set",
+        code="data_product.members.set",
+        params={
+            "data_product": product_id,
+            "tables": len(set(table_ids)),
+            "commands": len(set(command_names)),
+        },
+    )
+
+
 async def _save_data_contract(
     info: StrawberryInfo, table_id: int, contract: DataContractInput
 ) -> MutationResult:  # REQ-2158
@@ -641,16 +699,15 @@ async def _save_data_contract(
     async with pool.acquire() as conn:
         conn = cast("Connection", conn)
         stored = await table_repo.get(conn, table_id)
-        if stored is None or stored.get("product_id") is None:
+        if stored is None or not stored["product_ids"]:
             return MutationResult(
                 success=False,
                 message=f"Table {table_id} is no data product's member",
                 code="schema.data_contract_no_member",
                 params={"table_id": table_id},
             )
-        product = await data_product_repo.get(conn, stored["product_id"])
-        assert product is not None  # registered_tables.product_id is a foreign key
-        require_right_in_domains(info, "data_product_rw", {product["domain_id"]})
+        # REQ-1634: a member's products are all of its domain, the table's own.
+        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
         try:
             await data_product_repo.save_contract(conn, table_id, declared)
         except ContractRefused as refused:
@@ -3406,6 +3463,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _save_data_product(info, input, creating=False)
 
     @strawberry.mutation
+    async def set_data_product_members(
+        self,
+        info: StrawberryInfo,
+        id: str,
+        table_ids: list[int],
+        command_names: list[str],
+    ) -> MutationResult:  # REQ-1634
+        """The product's members become exactly these tables and commands."""
+        return await _set_data_product_members(info, id, table_ids, command_names)
+
+    @strawberry.mutation
     async def save_data_contract(
         self, info: StrawberryInfo, table_id: int, contract: DataContractInput
     ) -> MutationResult:  # REQ-2158
@@ -4468,7 +4536,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     preprocess=input.mv_preprocess,  # REQ-957
                     hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
                     table_id=table_id,  # REQ-2133
-                    product_id=input.product_id,  # REQ-2133
+                    product_ids=await _view_products(table_id),  # REQ-2133, REQ-1634
                     business_key=list(input.business_key),  # REQ-2109
                     valid_time=input.valid_time,  # REQ-2109
                     recorded_time=input.recorded_time,  # REQ-2109

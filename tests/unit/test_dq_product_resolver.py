@@ -49,21 +49,26 @@ def _table(**overrides: Any) -> RegisteredTableType:
     return RegisteredTableType(**fields)
 
 
-def _product(table: RegisteredTableType) -> str | None:
+def _products(table: RegisteredTableType) -> list[str]:
     # strawberry types the field as its return value; call the resolver the way the schema does.
-    return cast(Any, table).product_id()
+    return cast(Any, table).product_ids()
 
 
 def test_an_ordinary_table_answers_with_its_own_row():
     table = _table(
-        id=1, source_id="wh", schema_name="sales", table_name="orders", stored_product_id="p1"
+        id=1, source_id="wh", schema_name="sales", table_name="orders", stored_product_ids=["p1"]
     )
-    assert _product(table) == "p1"
+    assert _products(table) == ["p1"]
 
 
 def test_a_checker_table_answers_with_the_product_it_is_assigned_to():
-    assert _product(_table(dq_contract=CONTRACT, stored_product_id="quality")) == "quality"
+    assert _products(_table(dq_contract=CONTRACT, stored_product_ids=["quality"])) == ["quality"]
+
+
+def test_a_table_answers_every_product_it_is_a_member_of():
+    # REQ-1634: any number, read-only; set on each product.
+    assert _products(_table(stored_product_ids=["c360", "churn"])) == ["c360", "churn"]
 
 
 def test_a_checker_table_assigned_to_no_product_belongs_to_none():
-    assert _product(_table(dq_contract=CONTRACT, stored_product_id=None)) is None
+    assert _products(_table(dq_contract=CONTRACT, stored_product_ids=[])) == []

@@ -28,6 +28,11 @@ on:
         type: boolean
         required: false
         default: false
+      sha:
+        description: "The full commit the dispatched ref must be at, or the run is refused; empty takes whatever it is at"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -51,6 +56,17 @@ jobs:
       lanes: ${{ steps.plan.outputs.lanes }}
       tests: ${{ steps.plan.outputs.tests }}
     steps:
+      # Every suite below tests the commit the ref is at: a ref that moved tests something else.
+      - name: The commit asked for is the commit tested
+        if: inputs.sha != ''
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if [ "$SHA" != "$GITHUB_SHA" ]; then
+            echo "asked to verify $SHA but the ref is at $GITHUB_SHA"
+            exit 1
+          fi
+
       # Whole history: the changed paths are read against main's merge base.
       - uses: actions/checkout@v4
         with:

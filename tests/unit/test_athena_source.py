@@ -212,11 +212,13 @@ def _writes(fmt: str | None) -> tuple[frozenset, frozenset]:
 def test_an_iceberg_table_takes_every_write_and_a_hive_table_inserts_only():
     assert _writes("iceberg") == (
         frozenset({"insert", "update", "delete"}),
-        frozenset({"on_conflict", "update_from", "delete_using", "truncate"}),
+        frozenset({"on_conflict", "update_from", "delete_using", "truncate", "with_write"}),
     )
     assert _writes("hive") == (
         frozenset({"insert"}),
-        frozenset({"on_conflict", "update_from", "delete_using", "truncate", "merge"}),
+        frozenset(
+            {"on_conflict", "update_from", "delete_using", "truncate", "merge", "with_write"}
+        ),
     )
 
 

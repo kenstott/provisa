@@ -249,7 +249,10 @@ export function ConsumersList({
           <Text component="span" c="var(--text-muted)" ff="text" size="xs">
             {" "}
             ({t(`dataProductCore.consumerKind_${c.kind}`)}
-            {c.product_id ? ` · ${t("dataProductCore.inProduct", { product: c.product_id })}` : ""})
+            {c.product_ids.length > 0
+              ? ` · ${t("dataProductCore.inProduct", { product: c.product_ids.join(", ") })}`
+              : ""}
+            )
           </Text>
           {ports && (
             <Text
@@ -261,7 +264,9 @@ export function ConsumersList({
               {t("dataProductCore.consumerReads", {
                 ports: ports
                   .filter((p) =>
-                    c.reads.includes(relationName({ domainId: p.domainId, tableName: p.tableName })),
+                    c.reads.includes(
+                      relationName({ domainId: p.domainId, tableName: p.tableName }),
+                    ),
                   )
                   .map(modelName)
                   .join(", "),

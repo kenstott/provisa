@@ -204,7 +204,9 @@ export function NavBar() {
           </CapabilityGate>
           {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
               rendering it left a tab that swallowed the click and never navigated. */}
-          {NAV_GROUPS.filter((group) => entryItem(group, capabilities, billing)).map((group) => {
+          {NAV_GROUPS.filter(
+            (group) => group.id !== "admin" && entryItem(group, capabilities, billing),
+          ).map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
               <React.Fragment key={group.id}>
@@ -233,10 +235,6 @@ export function NavBar() {
               </React.Fragment>
             );
           })}
-          {/* Docs — ungated, available to everyone */}
-          <NavLink to="/docs" data-tour="nav-docs">
-            {t("navBar.docs")}
-          </NavLink>
         </div>
         <OrgSwitcher />
         <div className="navbar-role">
@@ -329,14 +327,8 @@ export function NavBar() {
                   </Menu.Label>
                 )}
                 <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
-                {/* REQ-1349: shown when the caller has ANY admin surface, and it opens the first
-                    one they hold — gating on the `admin` wildcard hid it from every org_admin, and
-                    the hardcoded /admin/overview needs `observability` the wildcard does not imply. */}
-                {adminEntry && (
-                  <Menu.Item onClick={() => navigate(adminEntry.to)}>
-                    {t("navBar.settings")}
-                  </Menu.Item>
-                )}
+                {/* REQ-1327: no Settings entry. For an admin it opened the same page as Admin, so
+                    Admin (below the divider) is the one way into administration. */}
                 {/* REQ-1469: the plan, the running bill and the next charge are the org's
                     commercial relationship, not an operational setting, so they sit with the
                     account rather than under Admin. Shown only where the deployment mounts
@@ -358,6 +350,18 @@ export function NavBar() {
                     {t("navBar.whatsNew")}
                   </Menu.Item>
                 )}
+                {/* Admin and Docs sit below a divider, not in the top navigation. Admin is offered
+                    to a caller holding an admin surface and opens the first one they hold; Docs is
+                    open to everyone. */}
+                <Menu.Divider data-testid="navbar-menu-divider" />
+                {adminEntry && (
+                  <Menu.Item onClick={() => navigate(adminEntry.to)} data-testid="navbar-admin">
+                    {t("navBar.groupAdmin")}
+                  </Menu.Item>
+                )}
+                <Menu.Item component={NavLink} to="/docs" data-testid="navbar-docs">
+                  {t("navBar.docs")}
+                </Menu.Item>
                 {authEnabled && (
                   <Menu.Item color="red" onClick={handleLogout}>
                     {t("navBar.logout")}

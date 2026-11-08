@@ -64,7 +64,7 @@ from provisa.transpiler.metadata_functions import (
     refuse_server_reads,
 )
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, metric_oid, table_oid
-from provisa.transpiler.metadata_settings import scope_ids_sql, statement_settings
+from provisa.transpiler.metadata_settings import scope_ids, statement_settings
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     LISTS_EVERY_SCHEMA,
@@ -73,6 +73,7 @@ from provisa.transpiler.metadata_views import (
     catalog_view_name,
 )
 from provisa.transpiler.transpile import transpile
+from tests.rules import holds, mentions, rule_of
 
 _VIEWS = ("table_details", "column_details", "table_keys")
 _FACTS = CatalogFacts("analyst", privileges=((16385, "SELECT"),))
@@ -404,11 +405,11 @@ def test_a_default_tier_role_reads_a_catalog_view_scoped_to_its_neighbourhood():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, tables, role, []
     )
-    ids = scope_ids_sql()
+    ids = scope_ids().sql(dialect="postgres")
     assert gov.meta_scope == "{1}"
-    assert gov.rls_rules[10] == f"table_id IN ({ids}) AND referenced_table_id IN ({ids})"
-    assert gov.rls_rules[11] == f"table_id IN ({ids})"
-    assert gov.rls_rules[12] == f"id IN ({ids})"
+    assert gov.rls_rules[10] == rule_of(f"table_id IN ({ids}) AND referenced_table_id IN ({ids})")
+    assert gov.rls_rules[11] == rule_of(f"table_id IN ({ids})")
+    assert gov.rls_rules[12] == rule_of(f"id IN ({ids})")
 
 
 def test_a_catalog_view_names_no_governance_column():
@@ -493,6 +494,22 @@ def _meta_context(*names: str):
     return ctx
 
 
+def _meta_tables(ctx, columns: list[str]) -> list[dict]:
+    """The catalog views of ``ctx`` as governance is handed a table, each registering
+    ``columns``: a view is read through a relation of its registered columns (REQ-039)."""
+    return [
+        {
+            "id": meta.table_id,
+            "domain_id": META_DOMAIN_ID,
+            "source_id": meta.source_id,
+            "schema_name": meta.schema_name,
+            "table_name": meta.table_name,
+            "columns": [{"column_name": c, "visible_to": []} for c in columns],
+        }
+        for meta in ctx.tables.values()
+    ]
+
+
 _ROLE = {"id": "analyst", "capabilities": [], "domain_access": ["sales"]}
 _TABLES = [
     {
@@ -513,11 +530,12 @@ def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    ids = scope_ids_sql()
+    ids = scope_ids().sql(dialect="postgres")
     assert gov.meta_scope == "{1}"
-    assert f"IN ({ids}), TRUE)" in gov.rls_rules[10]
-    assert gov.rls_rules[11] == f"COALESCE((provisa_table_id) IN ({ids}), TRUE)"
-    assert gov.rls_rules[12].count(ids) == 2  # both ends of a foreign key
+    assert isinstance(gov.rls_rules[10], exp.Coalesce) and holds(gov.rls_rules[10], ids)
+    assert gov.rls_rules[11] == rule_of(f"COALESCE((provisa_table_id) IN ({ids}), TRUE)")
+    # both ends of a foreign key
+    assert sum(node == rule_of(ids) for node in gov.rls_rules[12].walk()) == 2
 
 
 def test_a_table_under_two_names_is_scoped_once():
@@ -529,14 +547,15 @@ def test_a_table_under_two_names_is_scoped_once():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    assert gov.rls_rules[10].count("COALESCE") == 1
+    assert sum(isinstance(node, exp.Coalesce) for node in gov.rls_rules[10].walk()) == 1
 
 
 def test_the_scope_is_told_once_and_a_statement_not_told_it_reads_nothing_of_the_model():
     settings = statement_settings("analyst", False, "provisa", False, scope="{1,2}")
     assert settings["scope"] == "{1,2}"
     assert "scope" not in statement_settings("analyst", False, "provisa", False)
-    assert "UNNEST" in scope_ids_sql() and "provisa.catalog.scope" in scope_ids_sql()
+    assert isinstance(scope_ids().expressions[0], exp.Explode)
+    assert mentions(scope_ids(), "provisa.catalog.scope")
 
 
 def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
@@ -547,8 +566,15 @@ def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[10]
-    assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[11]
+    assert holds(
+        gov.rls_rules[10],
+        "(CAST(attrelid AS BIGINT), CAST(attname AS TEXT)) NOT IN ((16385, 'pets'))",
+    )
+    assert holds(
+        gov.rls_rules[11],
+        "(CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)) "
+        "NOT IN ((16385, 'pets'))",
+    )
 
 
 def test_a_whole_catalog_role_is_not_scoped():
@@ -560,6 +586,17 @@ def test_a_whole_catalog_role_is_not_scoped():
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, role, []
     )
     assert 10 not in gov.rls_rules
+
+
+def _relation_wheres(governed: str) -> dict[str, exp.Expression]:
+    """Each governed relation's row rule (the WHERE of the derived table put in a view's place),
+    by the alias the statement reads the view under."""
+    tree = sqlglot.parse_one(governed, read="postgres")
+    return {
+        sub.alias: sub.this.args["where"].this
+        for sub in tree.find_all(exp.Subquery)
+        if isinstance(sub.this, exp.Select) and sub.this.args.get("where") is not None
+    }
 
 
 @pytest.mark.parametrize(
@@ -576,13 +613,19 @@ def test_a_scope_survives_governance_on_an_aliased_read(view, column):
 
     ctx = _meta_context(view)
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst",
+        SimpleNamespace(rules={}, write_rules={}),
+        {},
+        ctx,
+        [*_TABLES, *_meta_tables(ctx, [column])],
+        _ROLE,
+        [],
     )
     governed = apply_governance(f"SELECT c.{column} FROM meta.{view} AS c", gov)
-    tree = sqlglot.parse_one(governed, read="postgres")
     assert "COALESCE" in governed and "provisa.catalog.scope" in governed
-    assert tree.args["where"] is not None
-    for reference in tree.args["where"].find_all(exp.Column):
+    # REQ-039: the scope is the row rule of the view's governed relation, read under its alias.
+    (where,) = _relation_wheres(governed).values()
+    for reference in where.find_all(exp.Column):
         assert reference.table == "c", reference.sql()
 
 
@@ -592,15 +635,23 @@ def test_a_scope_is_qualified_on_a_join_of_two_views():
 
     ctx = _meta_context("catalog_pg_class", "catalog_pg_namespace")
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst",
+        SimpleNamespace(rules={}, write_rules={}),
+        {},
+        ctx,
+        [*_TABLES, *_meta_tables(ctx, ["oid", "relname", "relnamespace"])],
+        _ROLE,
+        [],
     )
     governed = apply_governance(
         "SELECT c.relname FROM meta.catalog_pg_class c "
         "JOIN meta.catalog_pg_namespace n ON n.oid = c.relnamespace",
         gov,
     )
-    where = sqlglot.parse_one(governed, read="postgres").args["where"]
-    assert {reference.table for reference in where.find_all(exp.Column)} == {"c"}
+    wheres = _relation_wheres(governed)
+    assert "c" in wheres
+    for alias, where in wheres.items():
+        assert {reference.table for reference in where.find_all(exp.Column)} == {alias}
 
 
 def _schema_input_with_views():

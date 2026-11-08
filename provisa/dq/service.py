@@ -32,6 +32,7 @@ pipeline, so dq answers exactly what that role reads there, and nothing it does 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any
 from urllib.parse import unquote
 
@@ -47,7 +48,7 @@ def _lit(value: str) -> str:
 STATES = ("expectations", "promises", "related", "unattached")
 
 _CHECKER_COLUMNS = (
-    "id, domain_id, schema_name, table_name, alias, description, dq_contract, product_id, "
+    "id, domain_id, schema_name, table_name, alias, description, dq_contract, "
     "latest_outcome, latest_run_at"
 )
 
@@ -71,7 +72,7 @@ async def answer(grant: Any, role: str | None, method: str, sub: str, span: Any)
     token = set_current_org(grant.org_id)
     try:
         if kind == "dataset":
-            found = await dataset(name, role, grant.product_id)
+            found = await dataset(name, role, grant.product_ids)
         elif kind == "product":
             found = await product(name, role)
         else:
@@ -169,13 +170,29 @@ async def _latest_run(checker: dict, role: str) -> dict | None:
     }
 
 
-async def _checker(row: dict, role: str) -> dict:
+async def _products_of(table_ids: list[int], role: str) -> dict[int, list[str]]:
+    """The products each table is a member of (REQ-1634: any number), in id order, read as
+    ``role`` through the meta domain."""
+    if not table_ids:
+        return {}
+    listed = ", ".join(str(int(t)) for t in table_ids)
+    out: dict[int, list[str]] = {}
+    for row in await _read(
+        "SELECT table_id, product_id FROM meta.data_product_tables "
+        f"WHERE table_id IN ({listed}) ORDER BY table_id, product_id",
+        role,
+    ):
+        out.setdefault(int(row["table_id"]), []).append(row["product_id"])
+    return out
+
+
+async def _checker(row: dict, role: str, products: list[str]) -> dict:
     return {
         "checker_table": _name(row, role),
         "checker_table_id": row["id"],
         "description": row["description"],
         "contract": row["dq_contract"],
-        "assigned_product_id": row["product_id"],
+        "assigned_product_ids": products,
         "latest_run": await _latest_run(row, role),
     }
 
@@ -208,9 +225,10 @@ async def _profiles(dataset_id: int, role: str) -> list[dict]:
     return out
 
 
-async def dataset(name: str, role: str, view_product: str | None = None) -> dict | None:
+async def dataset(name: str, role: str, view_products: Sequence[str] = ()) -> dict | None:
     """Everything about the data quality of the dataset ``name`` (``domain.table`` or a table id)
-    that ``role`` can see; None when it can see no such dataset."""
+    that ``role`` can see; None when it can see no such dataset. ``view_products``: the products of
+    the view whose preflight asks (REQ-2133; REQ-1634: any number), each checker related to each."""
     found = await _dataset_row(name, role)
     if found is None or _meta(found, role) is None:
         return None
@@ -225,20 +243,24 @@ async def dataset(name: str, role: str, view_product: str | None = None) -> dict
         ),
         role,
     )
-    related: dict[int, str] = {}
-    if view_product is not None:
+    related: dict[str, dict[int, str]] = {}
+    for view_product in view_products:
         lists = await _product_dq(view_product, role) or {}
-        related = {
+        related[view_product] = {
             int(e["checker_table_id"]): name
             for name, entries in lists.items()
             for e in entries
             if int(e["checked_table_id"]) == dataset_id
         }
+    products = await _products_of([int(row["id"]) for row in checkers], role)
     checks = []
     for row in checkers:
-        check = await _checker(row, role)
-        if view_product is not None:
-            check["relation_to_view_product"] = related.get(int(row["id"]))
+        check = await _checker(row, role, products.get(int(row["id"]), []))
+        if view_products:
+            # product id -> promise, expectation, related or unattached; None: none of these.
+            check["relation_to_view_products"] = {
+                p: related[p].get(int(row["id"])) for p in view_products
+            }
         checks.append(check)
     return {
         "dataset": _name(found, role),
@@ -281,7 +303,10 @@ async def product(product_id: str, role: str) -> dict | None:
                 role,
             )
         }
+    products = await _products_of(sorted(rows), role)
     answer_: dict[str, Any] = {"product_id": product_id}
     for state in STATES:
-        answer_[state] = [await _checker(rows[i], role) for i in by_state[state] if i in rows]
+        answer_[state] = [
+            await _checker(rows[i], role, products.get(i, [])) for i in by_state[state] if i in rows
+        ]
     return answer_

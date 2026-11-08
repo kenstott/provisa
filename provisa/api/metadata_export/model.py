@@ -108,6 +108,8 @@ class TableAsset:  # REQ-1070
     # catalog publish, which exports nothing else; the model report builds over every registered
     # table and carries the flag as a column so a reviewer can filter on it in the spreadsheet.
     data_product: bool = False
+    # REQ-1634: the data products the table is a member of, any number, in id order.
+    product_ids: tuple[str, ...] = ()
     # REQ-2118: how fresh the table is kept -- its cache_ttl, else its source's (seconds; -1 never
     # expires); None when neither declares one, which a contract states as no freshness promise.
     cache_ttl: int | None = None
@@ -134,7 +136,8 @@ def listed(product: "DataProductAsset") -> bool:
 class DataProductAsset:  # REQ-1634
     """A named, owned bundle of member tables/views published as one catalog listing.
 
-    ``members`` are the exported TableAssets whose ``product_id`` names this product — the
+    ``members`` are the exported TableAssets the product lists as its members (REQ-1634: a table
+    may be a member of several) — the
     same domain-alignment Provisa enforces at save time (a member's domain_id always equals
     ``domain_id`` here). A product with no exported members does not build: publishing an
     empty listing would tell the catalog about a product with nothing behind it. A retired
@@ -416,11 +419,12 @@ class DataQualityAssertion:  # REQ-1443
     outcome: DataQualityOutcome = field(
         default_factory=lambda: DataQualityOutcome(status=DataQualityOutcome.NEVER_RUN)
     )
-    # REQ-2157: the product owning the check -- the one its checker table names; None for a
-    # checker table naming none. Whose check it is follows from this, never from which product
-    # the observed table belongs to: a product's check on its member is its promise, on its
-    # input its expectation, and another product's check there is neither.
-    owner_product_id: str | None = None
+    # REQ-2157: the products owning the check -- those its checker table is a member of
+    # (REQ-1634: any number); empty for a checker table in none. Whose check it is follows from
+    # this, never from which product the observed table belongs to: a product's check on its
+    # member is its promise, on its input its expectation, and another product's check there is
+    # neither.
+    owner_product_ids: tuple[str, ...] = ()
 
 
 @dataclass

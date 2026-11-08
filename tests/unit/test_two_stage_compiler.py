@@ -29,6 +29,12 @@ from provisa.compiler.stage2 import (
 from provisa.compiler.rls import RLSContext
 from provisa.security.masking import MaskingRule, MaskType
 from tests.helpers import governed_for_role
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_two_stage_compiler")
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +262,7 @@ class TestStage2:
 
 
 class TestFullPipeline:
-    def test_full_pipeline_graphql_to_governed_sql_rls(self):
+    def test_full_pipeline_graphql_to_governed_sql_rls(self, pg):
         """Stage1 output governed for a role with a row filter carries the filter."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
@@ -264,9 +270,9 @@ class TestFullPipeline:
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "region = 'us-east'"})
         governed = governed_for_role(compiled.sql, ctx, "analyst", rls=rls)
-        assert governed == f'{compiled.sql} WHERE ("orders"."region" = \'us-east\')'
+        assert_same_answer(pg, governed, f'{compiled.sql} WHERE ("orders"."region" = \'us-east\')')
 
-    def test_full_pipeline_graphql_to_governed_sql_masking(self):
+    def test_full_pipeline_graphql_to_governed_sql_masking(self, pg):
         """Stage1 output governed for a role with a mask on a column projects the mask."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
@@ -276,9 +282,9 @@ class TestFullPipeline:
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         masking_rules = {(ORDERS_TABLE_ID, "analyst"): {"id": (rule, "integer")}}
         governed = governed_for_role(compiled.sql, ctx, "analyst", masking_rules=masking_rules)
-        assert governed == 'SELECT NULL AS "id" FROM "public"."orders"'
+        assert_same_answer(pg, governed, 'SELECT NULL AS "id" FROM "public"."orders"')
 
-    def test_full_pipeline_rls_then_masking(self):
+    def test_full_pipeline_rls_then_masking(self, pg):
         """A role with a row filter and a mask gets both the WHERE and the masked projection."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
@@ -290,15 +296,17 @@ class TestFullPipeline:
         governed = governed_for_role(
             compiled.sql, ctx, "viewer", rls=rls, masking_rules=masking_rules
         )
-        assert governed == (
-            'SELECT NULL AS "id" FROM "public"."orders" WHERE ("orders"."region" = \'eu-west\')'
+        assert_same_answer(
+            pg,
+            governed,
+            ('SELECT NULL AS "id" FROM "public"."orders" WHERE ("orders"."region" = \'eu-west\')'),
         )
 
-    def test_full_pipeline_empty_rls_no_where(self):
+    def test_full_pipeline_empty_rls_no_where(self, pg):
         """Empty RLS context leaves SQL unchanged — no WHERE appended."""
         doc = _parse("{ orders { id } }")
         ctx = _basic_ctx()
         original_sql = compile_graphql(doc, ctx)[0].sql
 
         governed = governed_for_role(original_sql, ctx, "analyst", rls=RLSContext.empty())
-        assert governed == original_sql
+        assert_same_answer(pg, governed, original_sql)

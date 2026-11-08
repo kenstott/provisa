@@ -44,17 +44,13 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     )
     model_change.name("upsert", "command", func.name)  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
-    # REQ-1634: a DataProduct's member commands must all share its domain_id — same gate as
-    # table.py's upsert, so config load, admin GraphQL, and introspection are all covered.
-    if func.product_id is not None:
-        product = await data_product_repo.get(conn, func.product_id)
-        if product is None:
-            raise ValueError(f"data product {func.product_id!r} does not exist")
-        if product["domain_id"] != domain_id:
-            raise ValueError(
-                f"command {func.name} is in domain {domain_id!r} but data product "
-                f"{func.product_id!r} belongs to domain {product['domain_id']!r}"
-            )
+    # REQ-1634: a command keeps to the domain of every product it is a member of.
+    await data_product_repo.require_domain_of_products(
+        conn,
+        await data_product_repo.products_of_command(conn, func.name),
+        domain_id,
+        f"command {func.name}",
+    )
     vals = {
         "name": func.name,
         "source_id": func.source_id,
@@ -67,7 +63,6 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "domain_id": domain_id,
         "description": func.description,
         "kind": func.kind,
-        "product_id": func.product_id,  # REQ-1634
         "return_schema": return_schema,
         # REQ-1159: canonical IR-typed output dataset contract (return_schema is its GraphQL projection).
         # An empty list declares no outputs (a VOID command, REQ-2001); None declares none.
@@ -95,7 +90,6 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "domain_id",
         "description",
         "kind",
-        "product_id",
         "return_schema",
         "output_columns",
         "impl_kind",
@@ -274,7 +268,6 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         domain_id=d.get("domain_id", ""),
         description=d.get("description"),
         kind=d.get("kind", "mutation"),
-        product_id=d.get("product_id"),
         impl_kind=d.get("impl_kind", "source_procedure"),
         binding=d.get("binding") or {},
         materialize=bool(d.get("materialize", False)),
