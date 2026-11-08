@@ -25,8 +25,10 @@ from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.entitlements import runtime
 from provisa.entitlements.lists import HeldEntitlements, effective_lists
 from provisa.entitlements.mask import MaskCache, MemberInput, compute_mask
-from provisa.pgwire.governed_plan import plan_key
+from provisa.pgwire import _pipeline
+from provisa.pgwire.governed_plan import PlanSlot, plan_key
 from tests.unit.test_entitlement_lists import _index
+from tests.unit.test_governed_plan_stages import _slot_state
 
 NOW = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
 
@@ -501,3 +503,85 @@ def test_no_lists_and_no_names_table_is_unmasked(monkeypatch):
     identity = _bind(monkeypatch, {})
     with runtime.entitlements_scope(identity):
         assert runtime.request_mask(state, "viewer") is None
+
+
+# ── the mask and the session zone, side by side ────────────────────────────────────────────────
+
+
+def _cached_plan(zone):
+    return _pipeline._Plan(
+        route=None,
+        sql="SELECT 1",
+        source_id=None,
+        dialect="duckdb",
+        cache_opt_in=True,
+        response_cacheable=True,
+        role_id="viewer",
+        cache_sql="SELECT 1",
+        cache_params=[],
+        cache_zone=zone,
+    )
+
+
+def _response_entry(monkeypatch, mask, zone):
+    monkeypatch.setattr(runtime, "current_mask_hash", lambda state, role_id: mask)
+    return _pipeline._response_cache_key(_cached_plan(zone), wire_formats=None)
+
+
+def test_callers_differing_only_in_mask_get_separate_response_entries(monkeypatch):
+    """Neither part stands in for the other: the mask separates callers in one zone, on UTC or not."""
+    for zone in (None, "Asia/Tokyo"):
+        narrow = _response_entry(monkeypatch, "aaa", zone)
+        other = _response_entry(monkeypatch, "bbb", zone)
+        assert narrow is not None and other is not None
+        assert narrow != other
+        assert narrow == _response_entry(monkeypatch, "aaa", zone)
+
+
+def test_callers_differing_only_in_zone_get_separate_response_entries(monkeypatch):
+    """The zone separates callers holding one mask, narrowed or not."""
+    for mask in ("", "aaa"):
+        tokyo = _response_entry(monkeypatch, mask, "Asia/Tokyo")
+        new_york = _response_entry(monkeypatch, mask, "America/New_York")
+        assert tokyo is not None and new_york is not None
+        assert tokyo != new_york
+        assert tokyo == _response_entry(monkeypatch, mask, "Asia/Tokyo")
+
+
+def test_the_response_key_is_the_one_the_mask_and_zone_both_reach(monkeypatch):
+    entries = {
+        _response_entry(monkeypatch, m, z) for m in ("", "aaa") for z in (None, "Asia/Tokyo")
+    }
+    assert len(entries) == 4
+    assert _response_entry(monkeypatch, "aaa", "Asia/Tokyo") == raw_sql_cache_key(
+        "SELECT 1", [], "viewer", wire_formats=None, mask_hash="aaa", zone="Asia/Tokyo"
+    )
+
+
+def test_callers_differing_only_in_mask_get_separate_plan_entries(monkeypatch):
+    from provisa.pgwire import governed_plan
+
+    monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
+    state = _slot_state()
+    monkeypatch.setattr(runtime, "current_mask_hash", lambda state, role_id: "aaa")
+    PlanSlot(state, "sql", "analyst", "SELECT 1").keep("the plan governed for aaa")
+    assert PlanSlot(state, "sql", "analyst", "SELECT 1").cached() == "the plan governed for aaa"
+    monkeypatch.setattr(runtime, "current_mask_hash", lambda state, role_id: "bbb")
+    assert PlanSlot(state, "sql", "analyst", "SELECT 1").cached() is None
+
+
+async def test_callers_differing_only_in_zone_get_separate_engine_forms(monkeypatch):
+    """A kept plan's physical text serves every zone (REQ-2171); what is written for one zone is
+    its engine form, kept with the plan and derived again for another."""
+    memo: dict = {}
+    state = SimpleNamespace(federation_engine=object())
+    zone = {"now": "Asia/Tokyo"}
+    monkeypatch.setattr(_pipeline, "zone_cache_key", lambda: zone["now"])
+
+    async def derive():
+        return f"written for {zone['now']}"
+
+    tokyo = await _pipeline._kept_engine_form(memo, "SELECT 1", state, derive)
+    zone["now"] = "America/New_York"
+    new_york = await _pipeline._kept_engine_form(memo, "SELECT 1", state, derive)
+    assert (tokyo, new_york) == ("written for Asia/Tokyo", "written for America/New_York")
