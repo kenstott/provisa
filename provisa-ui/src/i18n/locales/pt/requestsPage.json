@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Violação de governança",
     "reasonOutOfScope": "Fora do escopo",
     "reasonEndpointUnreachable": "Endpoint inacessível",
-    "reasonSchemaMismatch": "Incompatibilidade de esquema"
+    "reasonSchemaMismatch": "Incompatibilidade de esquema",
+    "delivery": "Notificar por",
+    "deliveryHelp": "Como os membros das funções às quais uma solicitação é endereçada são informados dela. E-mail: o Provisa envia um aviso a cada um deles. Somente eventos: o Provisa não envia aviso; sua ferramenta de workflow assina ops.requests. Ambos: e-mail e eventos.",
+    "deliveryEmail": "E-mail",
+    "deliveryEvents": "Somente eventos",
+    "deliveryBoth": "Ambos"
   }
 }

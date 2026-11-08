@@ -256,19 +256,32 @@ glossary_terms:
   definition: 'The money drug makers, distributors and pharmacies agreed to pay states and local governments to settle the opioid lawsuits, paid out over many years and to be spent on abating the epidemic.'
   domains:
   - opioids
+- name: awarded
+  approve: true
+  definition: 'What the fund awarded to one allocation in USD.'
+  domains:
+  - opioids
   edges:
-  - to: awarded
-    rel_type: RELATED_TO
+  - to: opioid settlement fund
+    rel_type: PART_OF
+  - to: allocation
+    rel_type: PART_OF
 - name: abatement
   approve: true
   definition: 'What the settlements require the money be spent on: reducing the harm of the epidemic -- treatment, recovery, prevention and overdose reversal.'
   domains:
   - opioids
   edges:
-  - to: program area
-    rel_type: RELATED_TO
   - to: opioid settlement fund
     rel_type: RELATED_TO
+- name: program area
+  approve: true
+  definition: 'What an allocation pays for: treatment, recovery, prevention or naloxone.'
+  domains:
+  - opioids
+  edges:
+  - to: abatement
+    rel_type: PART_OF
 - name: treatment
   approve: true
   definition: 'Care for opioid use disorder, chiefly medication (buprenorphine, methadone, naltrexone) with counselling.'
@@ -282,19 +295,22 @@ glossary_terms:
   definition: 'An amount set aside for one county, program area and provider in one fiscal year.'
   domains:
   - opioids
-  edges:
-  - to: awarded
-    rel_type: RELATED_TO
 - name: expenditure
   approve: true
   definition: 'Money actually paid out of an allocation, as opposed to what was awarded; the gap between the two is what is still unspent.'
   domains:
   - opioids
   edges:
-  - to: spent
-    rel_type: RELATED_TO
   - to: allocation
     rel_type: RELATED_TO
+- name: spent
+  approve: true
+  definition: 'What has been spent of an allocation in USD.'
+  domains:
+  - opioids
+  edges:
+  - to: expenditure
+    rel_type: PART_OF
 - name: fiscal year
   approve: true
   definition: 'The state''s budget year, July to June, named for the June it ends in. The federal fiscal year runs October to September.'
@@ -307,7 +323,7 @@ glossary_terms:
   - opioids
   edges:
   - to: rate
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
 - name: suppressed count
   approve: true
   definition: 'A count of 1 to 9 that CDC does not publish, so no one can be identified; CDC publishes a modelled rate for the county instead.'

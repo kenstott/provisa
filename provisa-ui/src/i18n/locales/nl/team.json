@@ -90,6 +90,7 @@
       "saveEdit": "{{name}} opslaan",
       "cancelEdit": "Bewerken annuleren",
       "remove": "{{name}} verwijderen"
-    }
+    },
+    "localUsersHeading": "Lokale gebruikers"
   }
 }

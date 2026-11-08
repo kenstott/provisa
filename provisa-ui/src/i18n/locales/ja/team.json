@@ -90,6 +90,7 @@
       "saveEdit": "{{name}} を保存",
       "cancelEdit": "編集をキャンセル",
       "remove": "{{name}} を削除"
-    }
+    },
+    "localUsersHeading": "ローカルユーザー"
   }
 }

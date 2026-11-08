@@ -90,6 +90,7 @@
       "saveEdit": "儲存 {{name}}",
       "cancelEdit": "取消編輯",
       "remove": "移除 {{name}}"
-    }
+    },
+    "localUsersHeading": "本機使用者"
   }
 }
