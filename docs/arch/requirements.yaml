@@ -59210,7 +59210,9 @@
     to and removed from a product only on that product, in the Products page. A table''s own page lists
     the products it belongs to, read-only, each a link that opens the product, or shows that it belongs
     to none; it offers no control to set or change them. The note that a product is published to the catalog
-    and exported to catalogs belongs with the product, not the table (maintainer 2026-11-07).'
+    and exported to catalogs belongs with the product, not the table (maintainer 2026-11-07). (Amended 2026-11-07,
+    ONE CONTRACT PER TABLE:) A table in several data products carries one data contract, shared by every
+    product it belongs to; an owner of any of those products may change it (maintainer 2026-11-08).'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
