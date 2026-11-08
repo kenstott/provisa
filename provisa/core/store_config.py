@@ -372,9 +372,13 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
                         {
                             **row,
                             "successor": row["successor_id"],
+                            # A seeded table is not the model's (see ``internal``): the export
+                            # leaves it out, so a member list naming it would name a table the
+                            # file does not hold. As a relationship on one is left out.
                             "tables": sorted(
                                 name_of[t]
                                 for t in await data_product_repo.member_table_ids(conn, row["id"])
+                                if t not in internal
                             ),
                             "commands": await data_product_repo.member_command_names(
                                 conn, row["id"]
