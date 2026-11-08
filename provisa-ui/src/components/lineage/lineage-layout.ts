@@ -80,7 +80,8 @@ export interface LineageBox {
   collapsed: boolean;
   /** Columns of the relation no edge touches — counted in the header, not drawn. */
   unused: number;
-  /** REQ-1667: the swimlane, by distance from the lane-0 relations (negative = upstream). */
+  /** REQ-1667, REQ-2174: the swimlane (lanesFrom): 0 the lane-0 relations, -1 their inputs, -1 - n
+   *  n hops beyond the inputs, +1 a consumer. */
   lane: number | null;
   width: number;
   height: number;
@@ -95,6 +96,9 @@ export interface LineageDrawnEdge {
   /** The command a drawn edge's transform names (a call or a statement command's write). */
   commandName: string | null;
   count: number;
+  /** REQ-2174: the views this edge reads through (a view between an input and a member is folded
+   *  into the edge, not drawn), in the order the column passes through them, named as a box is. */
+  via: string[];
 }
 
 export interface LineageLayoutModel {
@@ -128,19 +132,22 @@ export interface LineageModelOptions {
   /** Draw every column as a row, not only the ones an edge touches (Complete Lineage: every column
    *  the role can see is in use, whether or not a registered view derives from it). */
   allColumns?: boolean;
-  /** REQ-1667: relations that define lane 0. Every other box takes the lane of its distance from
-   *  them — contributors -1, -2… by shortest upstream path, consumers +1. */
-  lanesAround?: ReadonlySet<string>;
+  /** REQ-1667, REQ-2174: the relations of lane 0 (``members``) and their inputs (``inputs``, lane
+   *  -1); every other box takes its lane from them (lanesFrom). */
+  lanesAround?: { members: ReadonlySet<string>; inputs: ReadonlySet<string> };
   /** How a box names its registered relation — a page that knows the catalog names it as the
    *  catalog does. Unset, a box is named by the relation the server reports. */
   relationLabel?: (relation: string) => string;
 }
 
 export function buildLineageModel(
-  graph: LineageGraphData,
+  source: LineageGraphData,
   collapsedRelations: ReadonlySet<string> | undefined,
   options: LineageModelOptions = {},
 ): LineageLayoutModel {
+  const graph = options.lanesAround
+    ? foldViewsOntoEdges(source, options.lanesAround, options.relationLabel ?? ((r) => r))
+    : source;
   const resultLabel = options.resultLabel ?? RESULT_BOX;
   const cycleClass: Record<string, string> = {};
   for (const c of graph.cycles ?? []) for (const n of c.nodes) cycleClass[n] = c.classification;
@@ -258,9 +265,9 @@ export function buildLineageModel(
 
   const rolled = new Map<string, LineageDrawnEdge>();
   for (const e of graph.edges) {
-    const source = drawnEnd(e.source);
+    const from = drawnEnd(e.source);
     const target = drawnEnd(e.target);
-    if (source === target) continue; // internal to one collapsed relation
+    if (from === target) continue; // internal to one collapsed relation
     const label = (e.ops ?? [])
       .filter((o) => o.kind !== "identity" && o.kind !== "constant")
       .map((o) => (o.args?.length ? `${o.name}(${o.args.join(", ")})` : o.name))
@@ -268,22 +275,24 @@ export function buildLineageModel(
     const command = (e.ops ?? []).some((o) => o.kind === "command");
     const commandName =
       (e.ops ?? []).find((o) => o.kind === "command" || o.kind === "command_write")?.name ?? null;
-    const key = `${source} ${target}`;
+    const key = `${from} ${target}`;
     const prior = rolled.get(key);
     if (prior) {
       prior.count += 1;
       prior.command = prior.command || command;
       prior.commandName = prior.commandName === commandName ? commandName : null;
+      prior.via = [...new Set([...prior.via, ...(e.via ?? [])])];
       prior.label = ""; // several transforms behind one drawn edge: report the count, not one formula
     } else {
       rolled.set(key, {
         id: `e${rolled.size}`,
-        source,
+        source: from,
         target,
         label,
         command,
         commandName,
         count: 1,
+        via: [...(e.via ?? [])],
       });
     }
   }
@@ -357,16 +366,14 @@ export function rowWidth(box: { width: number }): number {
   return box.width - 8;
 }
 
-// REQ-1667: lanes by distance from the lane-0 relations. A contributor's lane is its LONGEST
-// upstream path to lane 0 (a table that feeds a member both directly and through a view sits at
-// -2, so every edge runs rightward across lanes and none doubles back inside one); anything not
-// upstream that a lane-0 relation feeds directly is +1. A box the graph does not connect to lane 0
-// at all has no lane and is left to the layout.
+// REQ-1667, REQ-2174 (amended 2026-11-07): lanes around the lane-0 relations and their inputs
+// (lanesFrom). A box the graph does not connect to lane 0 at all has no lane and is left to the
+// layout.
 function assignLanes(
   boxes: Map<string, LineageBox>,
   nodeBox: Map<string, string>,
   graph: LineageGraphData,
-  around: ReadonlySet<string>,
+  around: { members: ReadonlySet<string>; inputs: ReadonlySet<string> },
 ): void {
   const links: [string, string][] = [];
   for (const e of graph.edges) {
@@ -374,17 +381,46 @@ function assignLanes(
     const tb = nodeBox.get(e.target);
     if (sb && tb) links.push([sb, tb]);
   }
-  const zero = [...boxes.values()]
-    .filter((b) => b.relation !== null && around.has(b.relation))
-    .map((b) => b.id);
-  const lane = lanesFrom(links, zero);
+  const of = (relations: ReadonlySet<string>) =>
+    [...boxes.values()]
+      .filter((b) => b.relation !== null && relations.has(b.relation))
+      .map((b) => b.id);
+  const lane = lanesFrom(links, of(around.members), of(around.inputs));
   for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
 }
 
-/** REQ-1667, REQ-2128: the lane of each node of a directed graph (``[from, to]`` links) by its
- * distance from ``zero`` (lane 0): upstream nodes by their longest path down to lane 0, negated;
- * a node a lane-0 node feeds directly, not upstream, +1. A node not so connected has no lane. */
-export function lanesFrom(links: [string, string][], zero: string[]): Map<string, number> {
+/** REQ-1667, REQ-2128, REQ-2174 (amended 2026-11-07, 2026-11-08): the lane of each node of a
+ * directed graph (``[from, to]`` links) upstream of ``zero`` (lane 0). Its ``inputs`` are lane -1
+ * wherever they sit; a node upstream of an input is -1 - n, n its LONGEST path down to an input
+ * (one that feeds an input both directly and through another sits a lane further left, so every
+ * edge runs rightward across lanes). A node a lane-0 node feeds directly, not upstream, is +1.
+ * A node not so connected, or upstream of lane 0 but of no input (a view between: viewsBetween,
+ * which is folded into an edge, not drawn), has no lane. */
+export function lanesFrom(
+  links: [string, string][],
+  zero: string[],
+  inputs: string[],
+): Map<string, number> {
+  const { lane } = analyseLanes(links, zero, inputs);
+  return lane;
+}
+
+/** REQ-2174 (amended 2026-11-08): the nodes upstream of lane 0 that are not an input and have no
+ * input beyond them in the graph's direction of flow: what lane 0 reads its inputs through, or reads
+ * from no input. They are not drawn; buildLineageModel folds each into the edges around it. */
+export function viewsBetween(
+  links: [string, string][],
+  zero: string[],
+  inputs: string[],
+): Set<string> {
+  return analyseLanes(links, zero, inputs).between;
+}
+
+function analyseLanes(
+  links: [string, string][],
+  zero: string[],
+  inputs: string[],
+): { lane: Map<string, number>; between: Set<string> } {
   const feeders = new Map<string, Set<string>>();
   const consumers = new Map<string, Set<string>>();
   for (const [sb, tb] of links) {
@@ -393,11 +429,12 @@ export function lanesFrom(links: [string, string][], zero: string[]): Map<string
     (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
   }
   const zeroSet = new Set(zero);
-  // Longest path DOWN to lane 0 from each upstream box, memoized; a cycle contributes nothing.
+  const inputSet = new Set(inputs.filter((id) => !zeroSet.has(id)));
+  // Longest path DOWN to an input from each box, memoized; a cycle contributes nothing.
   const depth = new Map<string, number>();
   const visiting = new Set<string>();
   const depthOf = (id: string): number => {
-    if (zeroSet.has(id)) return 0;
+    if (inputSet.has(id)) return 0;
     const known = depth.get(id);
     if (known !== undefined) return known;
     if (visiting.has(id)) return -Infinity;
@@ -422,15 +459,99 @@ export function lanesFrom(links: [string, string][], zero: string[]): Map<string
     }
   }
   const lane = new Map<string, number>();
+  const between = new Set<string>();
   for (const id of zero) lane.set(id, 0);
   for (const id of upstream) {
     const d = depthOf(id);
-    if (d !== -Infinity) lane.set(id, -d);
+    if (d === -Infinity) between.add(id);
+    else lane.set(id, -1 - d);
   }
   for (const id of zero) {
-    for (const c of consumers.get(id) ?? []) if (!lane.has(c)) lane.set(c, 1);
+    for (const c of consumers.get(id) ?? []) if (!lane.has(c) && !between.has(c)) lane.set(c, 1);
   }
-  return lane;
+  return { lane, between };
+}
+
+/** REQ-2174 (amended 2026-11-08): a view between an input and a member is not a node. Each column
+ * path that enters a between relation and leaves it again becomes one edge from the column that
+ * fed the first view to the column the last view feeds, carrying the transforms along the path and
+ * the views' names (``via``). Every other node and edge is kept. */
+function foldViewsOntoEdges(
+  graph: LineageGraphData,
+  around: { members: ReadonlySet<string>; inputs: ReadonlySet<string> },
+  name: (relation: string) => string,
+): LineageGraphData {
+  const relationOf = new Map(graph.nodes.map((n) => [n.id, n.relation ?? `\0${n.id}`]));
+  const links: [string, string][] = graph.edges.map((e) => [
+    relationOf.get(e.source) ?? e.source,
+    relationOf.get(e.target) ?? e.target,
+  ]);
+  const views = viewsBetween(links, [...around.members], [...around.inputs]);
+  if (views.size === 0) return graph;
+  const isView = (id: string) => views.has(relationOf.get(id) ?? id);
+
+  const leaving = new Map<string, LineageGraphData["edges"]>();
+  for (const e of graph.edges)
+    (leaving.get(e.source) ?? leaving.set(e.source, []).get(e.source)!).push(e);
+
+  const edges: LineageGraphData["edges"] = graph.edges.filter(
+    (e) => !isView(e.source) && !isView(e.target),
+  );
+  const folded = new Map<string, number>();
+  for (const first of graph.edges) {
+    if (isView(first.source) || !isView(first.target)) continue;
+    // Walk every column path through the views to the columns that leave them.
+    const walk = (
+      at: string,
+      ops: LineageGraphData["edges"][number]["ops"],
+      via: string[],
+      trail: Set<string>,
+    ) => {
+      for (const next of leaving.get(at) ?? []) {
+        if (trail.has(next.target)) continue; // a cycle among the views
+        const allOps = [...ops, ...next.ops];
+        if (isView(next.target)) {
+          const view = name(relationOf.get(next.target) as string);
+          walk(
+            next.target,
+            allOps,
+            via.includes(view) ? via : [...via, view],
+            new Set(trail).add(next.target),
+          );
+        } else {
+          const key = `${first.source} ${next.target} ${via.join(",")}`;
+          if (folded.has(key)) continue;
+          folded.set(key, edges.length);
+          edges.push({
+            source: first.source,
+            target: next.target,
+            transform: "",
+            ops: allOps,
+            via,
+          });
+        }
+      }
+    };
+    const view = name(relationOf.get(first.target) as string);
+    walk(first.target, first.ops, [view], new Set([first.target]));
+  }
+  const kept = new Set(graph.nodes.filter((n) => !isView(n.id)).map((n) => n.id));
+  return {
+    ...graph,
+    nodes: graph.nodes.filter((n) => kept.has(n.id)),
+    edges,
+    outputs: graph.outputs.filter((o) => kept.has(o)),
+    ...(graph.cycles
+      ? { cycles: graph.cycles.filter((c) => c.nodes.every((n) => kept.has(n))) }
+      : {}),
+  };
+}
+
+/** The text a drawn edge carries: its transform (or the count of columns behind it) and, when it
+ * reads through views, their names. */
+export function edgeText(e: Pick<LineageDrawnEdge, "label" | "count" | "via">): string {
+  const what = e.count > 1 ? `${e.count} columns` : e.label;
+  return e.via.length > 0 ? [what, `via ${e.via.join(", ")}`].filter(Boolean).join(" ") : what;
 }
 
 /** REQ-2116: the height of a native box's head -- one line per address part, the logo beside. */

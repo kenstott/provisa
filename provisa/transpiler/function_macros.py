@@ -2071,7 +2071,7 @@ _MENTIONED = re.compile(
     r"\b("
     + "|".join(sorted(_NAMES | pg_forms_textsearch.NAMES))
     + r")\"?\s*\(|"
-    + pg_forms_json.OPERATORS,
+    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}",
     re.IGNORECASE,
 )
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.

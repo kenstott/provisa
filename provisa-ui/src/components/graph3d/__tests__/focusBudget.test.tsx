@@ -170,7 +170,8 @@ describe("a focus's neighbourhood", () => {
 });
 
 describe("a product's neighbourhood", () => {
-  it("is counted from its member tables: members, their columns, the terms bound to those", async () => {
+  // REQ-2174 (amended 2026-11-07): counted from the product alone, no longer from its members too.
+  it("is counted from the product alone: its tables, their columns, the terms bound to those", async () => {
     const { visibleGraph, NO_FILTERS, ONTOLOGY_SCOPE } = await import("../graphModel");
     type K = "member" | "has_column" | "term_binding" | "term_edge" | "in_domain";
     const node = (id: string, type: string) => ({ id, type, label: id });
@@ -193,13 +194,19 @@ describe("a product's neighbourhood", () => {
       ],
     } as never;
     const layers = new Set(ONTOLOGY_SCOPE.layerOrder);
-    const drawn = (focus: string[]) =>
-      visibleGraph(data, layers as never, { ...NO_FILTERS, focus }, new Set(), ONTOLOGY_SCOPE)
+    const drawn = (focus: string[], depth: number) =>
+      visibleGraph(data, layers as never, { ...NO_FILTERS, focus }, new Set(), {
+        ...ONTOLOGY_SCOPE,
+        neighbourhood: { ...ONTOLOGY_SCOPE.neighbourhood, depth },
+      })
         .nodes.map((n) => n.id)
         .sort();
-    const ids = drawn(["p:x"]);
-    // Two hops from the members reaches the bound term; its neighbour is a third.
-    expect(ids).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a", "term:a"]));
-    expect(ids).not.toContain("term:b");
+    // Two hops from the product reach its table's column; the bound term is a third.
+    const two = drawn(["p:x"], 2);
+    expect(two).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a"]));
+    expect(two).not.toContain("term:a");
+    const three = drawn(["p:x"], 3);
+    expect(three).toContain("term:a");
+    expect(three).not.toContain("term:b");
   });
 });

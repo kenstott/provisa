@@ -4,7 +4,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${SCRIPT_DIR}/dist"
 IMAGES_DIR="${SCRIPT_DIR}/obs-images"
 DMG_NAME="Provisa-Obs.dmg"
@@ -27,6 +26,8 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\03
 info() { printf "${CYAN}[build-dmg-obs]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-dmg-obs]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-dmg-obs]${NC} %s\n" "$*" >&2; }
+# shellcheck source=packaging/macos/notary-lib.sh
+source "${SCRIPT_DIR}/notary-lib.sh"
 
 curl_retry() {
   local url="$1" out="$2"
@@ -113,7 +114,7 @@ check_prereqs() {
 save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
-  count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
+  count=$(find "$IMAGES_DIR" -maxdepth 1 -name '*.tar.gz' | wc -l | tr -d ' ')
   if [ "$count" -ge "${#OBS_IMAGES[@]}" ]; then
     info "Obs images pre-populated (${count} tarballs) — skipping docker pull."
     return
@@ -293,7 +294,7 @@ notarize_dmg() {
       Accepted) ok "Notarization accepted."; break ;;
       Invalid|Rejected)
         err "Notarization ${status}:"
-        xcrun notarytool log "$submission_id" "${notary_args[@]}" >&2 || true
+        notary_log_check "$submission_id" "${notary_args[@]}"
         exit 1 ;;
       *) info "  Status: ${status:-unknown} (poll $((poll+1))/${max_polls})" ;;
     esac
@@ -301,18 +302,19 @@ notarize_dmg() {
     poll=$((poll + 1))
   done
   [ "$status" = "Accepted" ] || { err "Notarization timed out."; exit 1; }
-  xcrun stapler staple "$DMG_PATH"
+  notary_log_check "$submission_id" "${notary_args[@]}"
+  staple_retry "$DMG_PATH"
   ok "DMG notarized and stapled."
 }
 
 main() {
-  printf "\n${BOLD}Provisa Obs DMG Builder${NC}\n"
+  printf '\n%bProvisa Obs DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
   check_prereqs
   save_images
   create_dmg
   notarize_dmg
-  printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
+  printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
   printf "DMG: %s\n" "${DMG_PATH}"
 }
 

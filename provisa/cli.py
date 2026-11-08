@@ -261,7 +261,9 @@ async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_bro
             ui_server.app,
             host=host,
             port=ui_port,
-            log_level="warning",
+            # The api server above configured the uvicorn loggers; this one must not reset them.
+            log_config=None,
+            log_level=None,
             timeout_keep_alive=KEEP_ALIVE_SECONDS,
         )
     )

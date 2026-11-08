@@ -27,6 +27,7 @@
     "domainsHelp": "תפקידים הקוראים את התחומים האלה נשענים על המסמך. ״הארגון כולו״ עומד לבדו.",
     "fieldSource": "מקור",
     "fieldStatus": "מצב",
+    "fieldTags": "תגיות",
     "fieldPassages": "קטעים",
     "fieldModel": "מודל embedding",
     "fieldAdded": "נוסף",

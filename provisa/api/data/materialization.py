@@ -103,10 +103,70 @@ class _StatementHot:
 
 
 def _statement_endpoints(state, table_ids: Iterable[int]) -> dict:
-    """The endpoints of the API tables the statement reads, by the names its SQL carries."""
+    """The endpoints of the API tables the statement reads, by the names its SQL carries. A table
+    answered from its replica (``api_answered_from_replica``) has none here: nothing fetches it,
+    and its reads go to its replica as a database-backed table's do."""
     from provisa.api_source.endpoints import statement_endpoints
 
-    return statement_endpoints(state, table_ids)
+    ids = set(table_ids)
+    replica_read = {
+        name
+        for t in getattr(state, "tables", None) or []
+        if t.get("id") in ids and api_answered_from_replica(state, t)
+        for name in (t["table_name"], _sql_name(t["table_name"]))
+    }
+    return {
+        name: ep
+        for name, ep in statement_endpoints(state, table_ids).items()
+        if name not in replica_read
+    }
+
+
+def _is_api_table(state, table: dict) -> bool:
+    """Whether ``table`` is registered as an API endpoint (OpenAPI and the sources built on it)."""
+    endpoints = getattr(state, "api_endpoints", None) or {}
+    return (table["source_id"], table["table_name"]) in endpoints
+
+
+def _never_expires(state, table: dict) -> bool:
+    """Whether ``table``'s cache_ttl -- its own, else its source's
+    (``replica_routing.resolved_cache_ttl``) -- never expires (REQ-2031)."""
+    from provisa.core.cache_ttl import NEVER_EXPIRES
+
+    own = table.get("cache_ttl")
+    if own is not None:
+        return own == NEVER_EXPIRES
+    sources = getattr(state, "source_cache", None) or {}
+    return sources.get(table["source_id"], {}).get("cache_ttl") == NEVER_EXPIRES
+
+
+def _kept_api_table(state, table: dict) -> bool:
+    """Whether API table ``table`` never expires and its replica has landed here (REQ-2031)."""
+    return (
+        _is_api_table(state, table)
+        and _never_expires(state, table)
+        and _kept_for_good(state, table)
+    )
+
+
+def api_answered_from_replica(state, table: dict) -> bool:
+    """REQ-2031, REQ-2089: whether API table ``table`` is answered from its replica, never from its
+    endpoint: it never expires and its replica has landed here (``_kept_for_good``) -- a demo's
+    declared rows, such as a Stripe source's. Refused (``ReplicaNotLanded``, naming it) when it
+    never expires, its source's rows are declared and it has not landed: its rows are the declared
+    ones, and the live service is never asked for them."""
+    if not _is_api_table(state, table) or not _never_expires(state, table):
+        return False
+    if _kept_for_good(state, table):
+        return True
+    from provisa.federation.declared_replica_rows import declares_rows
+    from provisa.federation.replica_state import ReplicaNotLanded
+
+    if declares_rows(table["source_id"]):
+        raise ReplicaNotLanded(
+            ".".join((table["source_id"], table["schema_name"], table["table_name"]))
+        )
+    return False
 
 
 def remote_arguments(gql_tbl: dict) -> list[dict]:
@@ -213,20 +273,20 @@ def _registrations(state, table_ids: Iterable[int]) -> dict[str, dict]:
 
 
 def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
-    """REQ-2031: each parameter of a native-read table the statement reads that is kept for good
-    (``_nf_<name>``), and the landed column its value filters: the table's column of the same
-    name, or None when it has none. Its rows are landed, never fetched under the parameter, so a
-    condition on the parameter filters them instead (``nf_extractor.extract_nf_args``)."""
+    """REQ-2031: each parameter of a native-read or API table the statement reads that is kept for
+    good (``_nf_<name>``; an API table's declared rows, REQ-2089), and the landed column its value
+    filters: the table's column of the same name, or None when it has none. Its rows are landed,
+    never fetched under the parameter, so a condition on the parameter filters them instead
+    (``nf_extractor.extract_nf_args``)."""
     from provisa.core.parameters import NF_PREFIX, is_parameter
 
     ids = set(table_ids)
     types = getattr(state, "source_types", None) or {}
     filters: dict[str, str | None] = {}
     for t in getattr(state, "tables", None) or []:
-        if (
-            t.get("id") not in ids
-            or not is_native_read(t, types, state)
-            or not _kept_for_good(state, t)
+        if t.get("id") not in ids or not (
+            (is_native_read(t, types, state) and _kept_for_good(state, t))
+            or _kept_api_table(state, t)
         ):
             continue
         landed = {c["column_name"] for c in t["columns"] if not is_parameter(c)}
@@ -577,8 +637,8 @@ async def drop_scratch(scratch, state) -> None:  # REQ-1986
 
 def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
     """The parameter columns of each registered table the statement reads, by its sql name. A
-    native-read table kept for good has none to give: its landed rows are read whole, a condition
-    on a parameter filtering them (``frozen_parameter_filters``, REQ-2031)."""
+    native-read or API table kept for good (REQ-2089) has none to give: its landed rows are read
+    whole, a condition on a parameter filtering them (``frozen_parameter_filters``, REQ-2031)."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.core.parameters import is_parameter
 
@@ -587,7 +647,11 @@ def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
     return {
         apply_sql_name(t["table_name"]): [c for c in t["columns"] if is_parameter(c)]
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and not (is_native_read(t, types, state) and _kept_for_good(state, t))
+        if t.get("id") in ids
+        and not (
+            (is_native_read(t, types, state) and _kept_for_good(state, t))
+            or _kept_api_table(state, t)
+        )
     }
 
 
@@ -768,7 +832,9 @@ def _lookup_gql_remote_table(state, table_name: str):
 
 
 def _lookup_grpc_remote_table(state, table_name: str):
-    """Find a grpc_remote query registration by its landed table name (<ns__>service__method).
+    """Find a grpc_remote query registration by its landed table name (<ns__>service__method) or
+    by the SQL name the naming convention gives it (REQ-325, REQ-194): SQL addresses the table by
+    its alias, so a read names it that way.
 
     Returns (source_id, reg, query) — the registration dict (see grpc_remote_router.py) carries
     no "source_id" key of its own, only its channel/queries/etc., so the source_id must come from
@@ -778,7 +844,8 @@ def _lookup_grpc_remote_table(state, table_name: str):
     for source_id, reg in grpc_srcs.items():
         prefix = f"{reg.get('namespace', '')}__" if reg.get("namespace") else ""
         for q in reg.get("queries", []):
-            if f"{prefix}{q.service}__{q.method}" == table_name:
+            landed = f"{prefix}{q.service}__{q.method}"
+            if table_name in (landed, _sql_name(landed)):
                 return source_id, reg, q
     return None, None, None
 
@@ -1605,7 +1672,8 @@ def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]
     because it has tables; it only returns False here once every one of those tables is checked
     and none is hot or registered as an API/graphql_remote/grpc_remote table (a
     row_materialize table is skipped). A table registered as a (non-hot) API endpoint is ALWAYS
-    live here: its TTL cache can go stale between calls.
+    live here: its TTL cache can go stale between calls -- unless it is answered from its replica
+    (``api_answered_from_replica``, REQ-2089), which is not an endpoint of the statement's.
     """
     from provisa.compiler.nf_extractor import find_api_table_names, read_base
 

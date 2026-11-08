@@ -1,19 +1,50 @@
 {
-  "version": "v0.1.0-alpha.505",
-  "previous": "v0.1.0-alpha.504",
-  "date": "2026-11-06",
+  "version": "v0.1.0-alpha.507",
+  "previous": "v0.1.0-alpha.506",
+  "date": "2026-11-07",
   "features": [],
   "changes": [
     {
-      "scope": "release",
+      "scope": "api",
       "entries": [
-        "Oauthlib 4.0.1 (CVE-2026-49272); keep openssl@4 headers out of the macOS PG build"
+        "A TTL -1 API table with declared rows is read from its replica, never fetched",
+        "Resolve a table's TTL before asking whether it is kept for good"
+      ]
+    },
+    {
+      "scope": "demo",
+      "entries": [
+        "Banksecrecy relationships get their own GraphQL field names"
+      ]
+    },
+    {
+      "scope": "guard",
+      "entries": [
+        "A union's branch choices are judged unexpanded, never listed as their product"
+      ]
+    },
+    {
+      "scope": "macos",
+      "entries": [
+        "Allow only the container-image unpack warning in Apple's notarization log"
+      ]
+    },
+    {
+      "scope": "packaging",
+      "entries": [
+        "Retry a dropped staple connection and fail on Apple's notarization log"
       ]
     },
     {
       "scope": "tags",
       "entries": [
-        "Row rules, roles and metrics carry tags"
+        "Library document and section tags kept with the library"
+      ]
+    },
+    {
+      "scope": "ui",
+      "entries": [
+        "The tags scope bar wraps its twelve object kinds"
       ]
     }
   ]

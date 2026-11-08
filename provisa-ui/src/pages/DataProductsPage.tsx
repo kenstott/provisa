@@ -39,6 +39,7 @@ import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
+import { isProductOwner } from "./data-products/productOwner";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchProductLineage, type ProductLineage } from "../api/lineage";
@@ -682,6 +683,7 @@ export function DataProductsPage() {
                                     canEdit={mayEdit(p)}
                                     canDelete={mayEdit(p)}
                                     owner={ownsProduct(p)}
+                                    seesConsumers={isProductOwner(p, selectedRoles)}
                                     lineageLoading={lineageLoading}
                                     lineageError={lineageError}
                                     lineageGraph={lineageGraph}
@@ -689,6 +691,7 @@ export function DataProductsPage() {
                                     lineageMembers={lineageMembers}
                                     describeColumn={describeColumn}
                                     relationLabel={relationLabel}
+                                    onTagsChanged={() => setCoreVersion((v) => v + 1)}
                                     onEdit={(focus) => openEdit(p, focus)}
                                     onDelete={() => handleDelete(p.id)}
                                     products={dataProducts}

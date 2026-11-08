@@ -271,6 +271,64 @@ def _extras(name: str, argtypes: tuple[str, ...]) -> tuple[tuple[str, ...], ...]
 _MOST = 48
 
 
+#: Texts past the parser's limits: a lexeme's 256th position, the last position, a long token.
+LIMIT_TEXTS = ("fat " * 300, "a " * 16390 + "fat rat", "x" * 2100 + " fat", "y" * 2046 + " fat")
+#: Words of ts_lexize past TEXTS: what the stemmer's steps turn on.
+WORDS = (
+    "", "''s", "'abc", "skies", "yyy", "ayyy", "sky", "Running", "generously", "the", "ab",
+    "caresses", "agreed", "hopping", "happily", "relational", "hopeful", "electricity",
+)  # fmt: skip
+
+
+def from_column(name: str, args: str, value: str | None) -> str:
+    """``name`` called with ``args``, ``c1`` among them: a text column holding ``value``."""
+    held = "NULL::text" if value is None else literal(value, "text")
+    return f'SELECT pg_catalog."{name}"({args}) AS v FROM (VALUES ({held})) AS t(c1)'
+
+
+def column_statements() -> list[str]:
+    """The calls of a text column: each reads its value row by row on the engine."""
+    texts = (*TEXTS, *LIMIT_TEXTS)
+    found = [from_column("to_tsvector", "c1", t) for t in (*texts, None)]
+    found += [
+        from_column("to_tsvector", f"'{c}'::regconfig, c1", t) for c in CONFIGS for t in texts
+    ]
+    for name in ("plainto_tsquery", "phraseto_tsquery"):
+        found += [from_column(name, "c1", t) for t in TEXTS]
+        found += [from_column(name, "'simple'::regconfig, c1", t) for t in TEXTS[:12]]
+    for dictionary in ("english_stem", "simple"):
+        found += [
+            from_column("ts_lexize", f"'{dictionary}'::regdictionary, c1", w)
+            for w in (*TEXTS, *WORDS, None)
+        ]
+    for search in SEARCHES[:6]:
+        found += [
+            from_column("ts_match_tt", f"c1, {literal(search, 'text')}", t) for t in TEXTS[:12]
+        ]
+    for query in QUERIES[:6]:
+        found += [
+            from_column("ts_match_tq", f"c1, {literal(query, 'tsquery')}", t) for t in TEXTS[:12]
+        ]
+    vector = 'pg_catalog."to_tsvector"(c1)'
+    for query in ("fat & rat", "fat | cat", "!fat", "fat <-> rat", "cat:*", "rat:A"):
+        q = literal(query, "tsquery")
+        found += [from_column("ts_match_vq", f"{vector}, {q}", t) for t in TEXTS[5:12]]
+        found += [from_column("ts_rank", f"{vector}, {q}", t) for t in TEXTS[5:12]]
+    nested = "pg_catalog.\"to_tsquery\"('english', 'rats & fat')"
+    found += [from_column("ts_match_vq", f"{vector}, {nested}", t) for t in TEXTS[5:9]]
+    rows = "('The Fat Rats'::text), (NULL::text), ('cats running'::text)"
+    found.append(f'SELECT pg_catalog."to_tsvector"(c1) AS v FROM (VALUES {rows}) AS t(c1)')
+    found.append(
+        f"SELECT {vector} @@ pg_catalog.\"plainto_tsquery\"('fat rats') AS v "
+        f"FROM (VALUES {rows}) AS t(c1)"
+    )
+    found.append(
+        f"SELECT {vector} @@ pg_catalog.\"to_tsquery\"('cats') OR c1 @@ 'running'::tsquery AS v "
+        f"FROM (VALUES {rows}) AS t(c1)"
+    )
+    return found
+
+
 def statements() -> list[str]:
     """Every statement, once, in a stable order."""
     seen: dict[str, None] = {}
@@ -287,4 +345,6 @@ def statements() -> list[str]:
         step = max(1, len(extras) // _MOST)
         for values in extras[::step]:
             seen[call(name, argtypes, values)] = None
+    for statement in column_statements():
+        seen[statement] = None
     return list(seen)

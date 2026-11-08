@@ -914,6 +914,10 @@ export interface PlatformSettings {
     subgraph_name: string;
     role: string | null;
   };
+  // REQ-194 (CLASH POLICY): how the org's names table settles a name clash.
+  names: {
+    clash_policy: "refuse" | "disambiguate";
+  };
   naming: {
     // Deployment-wide, so absent for an org administrator.
     domain_prefix?: boolean;

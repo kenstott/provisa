@@ -36,6 +36,8 @@ const NOT_DATA = [
   "canEdit",
   "canDelete",
   "owner",
+  // REQ-2174 (amended 2026-11-07), REQ-2219: whether the reader owns the product (its Consumers).
+  "seesConsumers",
   "viewer",
   "onEdit",
   "onDelete",
@@ -43,6 +45,7 @@ const NOT_DATA = [
   "onStatusFailed",
   "openProduct",
   "statusActions",
+  "onTagsChanged", // REQ-1634: the tag chip changed the product's tags; the page reads its core again
 ];
 /** Its lifecycle: the products a successor is chosen from, the members a retirement moves, and
  * its findings, read by the page for the list's own To review. */
@@ -163,6 +166,7 @@ function panelFromMetaAlone() {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       contractsVersion={0}
       lineageError=""
