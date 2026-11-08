@@ -156,7 +156,7 @@ def test_nested_claim_is_read_per_role_and_kind():
             "analyst": {"columns": ["sales.*"]},
         }
     }
-    assert parse_idp_entitlements(claims) == {
+    assert parse_idp_entitlements(claims, "provisa_entitlements") == {
         "viewer": {"tables": ("finance.revenue",), "relationships": ()},
         "analyst": {"columns": ("sales.*",)},
     }
@@ -172,14 +172,14 @@ def test_flat_form_is_read_from_any_list_claim():
         ],
         "email": "alice@example.com",
     }
-    assert parse_idp_entitlements(claims) == {
+    assert parse_idp_entitlements(claims, "provisa_entitlements") == {
         "viewer": {"tables": ("finance.revenue", "sales.*")},
         "analyst": {"columns": ("sales.orders.id",)},
     }
 
 
 def test_flat_empty_identifier_is_an_empty_list():
-    assert parse_idp_entitlements({"groups": ["provisa:viewer:tables:"]}) == {
+    assert parse_idp_entitlements({"groups": ["provisa:viewer:tables:"]}, None) == {
         "viewer": {"tables": ()}
     }
 
@@ -189,7 +189,10 @@ def test_nested_and_flat_forms_combine():
         "provisa_entitlements": {"viewer": {"tables": ["sales.*"]}},
         "groups": ["provisa:viewer:tables:finance.revenue"],
     }
-    assert parse_idp_entitlements(claims)["viewer"]["tables"] == ("sales.*", "finance.revenue")
+    assert parse_idp_entitlements(claims, "provisa_entitlements")["viewer"]["tables"] == (
+        "sales.*",
+        "finance.revenue",
+    )
 
 
 @pytest.mark.parametrize(
@@ -203,11 +206,11 @@ def test_nested_and_flat_forms_combine():
 )
 def test_a_malformed_claim_is_refused_and_never_read_as_no_list(claims):
     with pytest.raises(EntitlementClaimError):
-        parse_idp_entitlements(claims)
+        parse_idp_entitlements(claims, "provisa_entitlements")
 
 
 def test_no_claim_means_no_lists():
-    assert parse_idp_entitlements({"sub": "alice", "groups": ["analysts"]}) == {}
+    assert parse_idp_entitlements({"sub": "alice", "groups": ["analysts"]}, None) == {}
 
 
 def test_idp_hash_is_order_independent_and_tells_lists_apart():

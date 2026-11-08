@@ -27,8 +27,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 
-#: The claim carrying the nested form: {role: {kind: [identifier, ...]}}.
-ENTITLEMENTS_CLAIM = "provisa_entitlements"
+#: The identity provider setting naming the claim that carries the nested form,
+#: {role: {kind: [identifier, ...]}}. There is no default name: a provider with none set sends no
+#: nested lists.
+NESTED_CLAIM_SETTING = "entitlements_claim"
 
 #: The flat form: ``provisa:<role>:<kind>:<identifier>``, an entry of any list claim, for an
 #: identity provider that can emit only flat values such as groups. An empty identifier
@@ -48,19 +50,29 @@ class EntitlementClaimError(ValueError):
     taken for no list, which means the role's whole default."""
 
 
-def _nested(claim: object) -> IdpLists:
+def nested_claim_name(provider_settings: Mapping) -> str | None:
+    """The claim ``provider_settings`` names for the nested form; None when it names none."""
+    name = provider_settings.get(NESTED_CLAIM_SETTING)
+    if name is None:
+        return None
+    if not isinstance(name, str):
+        raise ValueError(f"{NESTED_CLAIM_SETTING} must be the name of a claim, got {name!r}")
+    return name.strip() or None
+
+
+def _nested(claim_name: str, claim: object) -> IdpLists:
     if not isinstance(claim, Mapping):
-        raise EntitlementClaimError(f"{ENTITLEMENTS_CLAIM} must be a map of roles to kinds")
+        raise EntitlementClaimError(f"{claim_name} must be a map of roles to kinds")
     out: IdpLists = {}
     for role, kinds in claim.items():
         if not isinstance(kinds, Mapping):
-            raise EntitlementClaimError(f"{ENTITLEMENTS_CLAIM}[{role!r}] must be a map of kinds")
+            raise EntitlementClaimError(f"{claim_name}[{role!r}] must be a map of kinds")
         for kind, identifiers in kinds.items():
             if not isinstance(identifiers, list) or not all(
                 isinstance(i, str) for i in identifiers
             ):
                 raise EntitlementClaimError(
-                    f"{ENTITLEMENTS_CLAIM}[{role!r}][{kind!r}] must be a list of identifiers"
+                    f"{claim_name}[{role!r}][{kind!r}] must be a list of identifiers"
                 )
             out.setdefault(str(role), {})[str(kind)] = tuple(identifiers)
     return out
@@ -78,13 +90,18 @@ def _flat(entry: str, out: IdpLists) -> None:
     kinds[kind] = (*held, identifier) if identifier else held
 
 
-def parse_idp_entitlements(claims: Mapping | None) -> IdpLists:
-    """The lists a token carries, per role and kind: its nested claim and every flat entry of its
-    list claims, together. A claim present but unreadable raises :class:`EntitlementClaimError`."""
+def parse_idp_entitlements(claims: Mapping | None, nested_claim: str | None) -> IdpLists:
+    """The lists a token carries, per role and kind: the claim its provider names for the nested
+    form (``nested_claim``; None reads no nested lists) and every flat entry of its list claims,
+    together. A claim present but unreadable raises :class:`EntitlementClaimError`."""
     claims = claims or {}
-    out: IdpLists = _nested(claims[ENTITLEMENTS_CLAIM]) if ENTITLEMENTS_CLAIM in claims else {}
+    out: IdpLists = (
+        _nested(nested_claim, claims[nested_claim])
+        if nested_claim is not None and nested_claim in claims
+        else {}
+    )
     for name, value in claims.items():
-        if name == ENTITLEMENTS_CLAIM or not isinstance(value, list):
+        if name == nested_claim or not isinstance(value, list):
             continue
         for entry in value:
             if isinstance(entry, str) and entry.startswith(FLAT_PREFIX):

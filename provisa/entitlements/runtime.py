@@ -64,7 +64,7 @@ _current: ContextVar[EntitlementRequest | None] = ContextVar("provisa_entitlemen
 def bind_entitlements(identity: Any) -> Token:
     """Bind ``identity``'s lists for the call being served in this context. A token whose lists
     cannot be read raises :class:`~provisa.entitlements.lists.EntitlementClaimError`."""
-    idp = parse_idp_entitlements(identity.raw_claims)
+    idp = parse_idp_entitlements(identity.raw_claims, identity.entitlements_claim)
     return _current.set(EntitlementRequest(identity.user_id, idp, idp_lists_hash(idp)))
 
 

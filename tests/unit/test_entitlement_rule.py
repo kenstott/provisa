@@ -205,6 +205,8 @@ def test_the_rule_is_first_on_every_governed_path(function):
     first_rule = calls.index("entitlement_violations")
     assert first_rule < calls.index("validate_sql")
     assert first_rule < calls.index("apply_governance") if "apply_governance" in calls else True
+    # Reading a view for this reader refuses a table it cannot reach: the mask speaks first.
+    assert first_rule < calls.index("semantic_statement")
 
 
 class _NothingInMask:
@@ -245,6 +247,52 @@ async def test_govern_statement_refuses_a_table_outside_the_mask_before_any_othe
     with pytest.raises(GovernanceRefused, match="E001") as refused:
         await _pipeline.govern_statement(_SQL, "r")
     assert "unnest" not in str(refused.value).lower()
+
+
+class _OnlyTheView(_NothingInMask):
+    """A mask holding one view and none of the tables it reads."""
+
+    def __init__(self, view_id):
+        self._view_id = view_id
+
+    def has_table(self, table_id):
+        return table_id == self._view_id
+
+    def has_column(self, table_id, _name):
+        return table_id == self._view_id
+
+
+@pytest.mark.asyncio
+async def test_a_view_in_the_mask_over_a_table_outside_it_is_refused_by_the_mask(monkeypatch):
+    """A view is judged whole for its reader, and the mask is what refuses it: reading the view's
+    body for this reader finds the table unreachable too, in words that say nothing of why."""
+    from provisa.compiler.sql_validator import GovernanceRefused
+    from provisa.pgwire import _pipeline
+    from tests.unit.test_view_inputs_in_service import (
+        _OVER_A_SERVED_TABLE,
+        _VIEW,
+        _build,
+        _view,
+    )
+
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    monkeypatch.setattr(runtime, "request_mask", lambda _state, _role: _OnlyTheView(_VIEW))
+
+    with pytest.raises(GovernanceRefused, match="E001"):
+        await _pipeline.govern_statement('SELECT * FROM "sales"."refund_notes" LIMIT 5', "r")
+
+
+@pytest.mark.asyncio
+async def test_a_view_outside_the_mask_is_refused_by_the_mask(monkeypatch):
+    from provisa.compiler.sql_validator import GovernanceRefused
+    from provisa.pgwire import _pipeline
+    from tests.unit.test_view_inputs_in_service import _OVER_A_SERVED_TABLE, _build, _view
+
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    monkeypatch.setattr(runtime, "request_mask", lambda _state, _role: _NothingInMask())
+
+    with pytest.raises(GovernanceRefused, match="E001"):
+        await _pipeline.govern_statement('SELECT * FROM "sales"."refund_notes" LIMIT 5', "r")
 
 
 # ── the cache keys ─────────────────────────────────────────────────────────────────────────────
@@ -320,7 +368,9 @@ def _bind(monkeypatch, claims, user="alice"):
     from tests.unit.test_entitlement_lists import _ctx
 
     monkeypatch.setattr(runtime, "_role_context", lambda state, role_id: _ctx())
-    identity = SimpleNamespace(user_id=user, raw_claims=claims)
+    identity = SimpleNamespace(
+        user_id=user, raw_claims=claims, entitlements_claim="provisa_entitlements"
+    )
     return identity
 
 
@@ -364,7 +414,9 @@ def test_a_qualifier_role_with_no_schema_adds_nothing_and_breaks_nothing(monkeyp
         runtime, "_role_context", lambda _s, r: None if r == "region__eu" else _ctx()
     )
     identity = SimpleNamespace(
-        user_id="alice", raw_claims={"groups": ["provisa:viewer:tables:finance.revenue"]}
+        user_id="alice",
+        raw_claims={"groups": ["provisa:viewer:tables:finance.revenue"]},
+        entitlements_claim=None,
     )
     with runtime.entitlements_scope(identity):
         mask = runtime.request_mask(state, meta)
