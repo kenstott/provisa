@@ -26725,3 +26725,17 @@ Maintainer 2026-11-07: an analyst queries a data product and sees a column maske
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2221 · Source Connectors {#REQ-2221}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-08. A code source ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-1993), [REQ-2200](#REQ-2200)) declares what it needs with a @requires tag beside @table and @command: a named value, which may be a secret. A CLI command, run offline in any CI, builds a connector from a git project: the language is detected from the project's standard files, so the project writes no build instructions, and a project that does not follow the pattern is refused saying what is missing. A connector entry may name a path within the repository, for a monorepo, and a build command that produces the one artifact, itself a standard project. It reuses the code source image build ([REQ-2098](#REQ-2098)), and its output is an image in the organization's container registry and a config block. The model's config lists the connectors the organization offers, each with its git project, ref and commit, its image pinned by digest, and its requires. Sources shows them beside the built-in connectors and builds the setup form from requires. A command updates all of an organization's connectors from the config: at the pinned commit by default, or at the latest of its ref. Whether a connector is up to date is the build system's answer: Provisa asks it to build, and takes what it produces. A command reports a connector behind its git ref. The connector's repository has its own code promotion, and the model's branches decide where a version runs, so Provisa has no publish right and no approval flow. The server never builds a connector or reads its build settings: where the CLI runs is the operator's choice.
+
+**Use case:** A data team merges a change to its CRM connector. Its CI builds and publishes the image, and the model's config names the new digest on a feature branch. Someone adds the connector as a source from Sources in that branch's environment, filling in what it requires, and promotion through dev, test and prod puts it in production.
+
+**Code:** —
+
+**Tests:** —
