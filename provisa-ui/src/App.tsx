@@ -662,7 +662,10 @@ function App() {
                                               ["/admin/auth", "platform_settings"],
                                               ["/admin/system-health", "observability"],
                                               ["/admin/observability", "observability"],
-                                              ["/admin/platform-observability", "platform_settings"], // REQ-1327
+                                              [
+                                                "/admin/platform-observability",
+                                                "platform_settings",
+                                              ], // REQ-1327
                                               // Deep-links onto the dashboard beside system health
                                               // (REQ-1008), so it opens on the dashboard's own right.
                                               ["/admin/mcp-server", "observability"],
@@ -713,7 +716,9 @@ function App() {
                                           {/* REQ-1327: local users are the org's people, on Team. */}
                                           <Route
                                             path="/admin/local-users"
-                                            element={<Navigate to="/team?section=local-users" replace />}
+                                            element={
+                                              <Navigate to="/team?section=local-users" replace />
+                                            }
                                           />
                                           {/* REQ-1922, REQ-1327: the deployment's engine is the platform's; where the
                                     org has regions, the engines assigned to it are read by the org. */}

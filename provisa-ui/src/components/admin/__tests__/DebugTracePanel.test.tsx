@@ -90,7 +90,6 @@ describe("DebugTracePanel", () => {
     render(<DebugTracePanel orgId="acme" />);
     const row = await screen.findByTestId("debug-trace-window-w1");
     expect(row.textContent).toContain("Role");
-    expect(row.textContent).toContain("acme");
     expect(row.textContent).toContain("analyst");
     expect(within(row).getByTestId("debug-trace-remaining-w1").textContent).toBe("2:05");
   });
@@ -209,7 +208,8 @@ describe("DebugTracePanel", () => {
       }),
     );
     render(<DebugTracePanel />);
-    await screen.findByTestId("debug-trace-window-wide");
+    const row = await screen.findByTestId("debug-trace-window-wide");
+    expect(row.textContent).toContain("acme");
     await waitFor(() =>
       expect(screen.getByTestId("debug-trace-org").querySelectorAll("option").length).toBe(2),
     );

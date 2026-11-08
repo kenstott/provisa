@@ -282,70 +282,70 @@ export function DebugTracePanel({ orgId: ownOrg }: { orgId?: string }) {
       {/* REQ-1327: a hint names a role in an org, so it is that org's administrator's. */}
       {!platform && (
         <>
-        <Title order={5}>{t("debugTracePanel.hintTitle")}</Title>
-        <Text c="dimmed" size="sm">
-          {t("debugTracePanel.hintIntro")}
-        </Text>
-        <FormLayout>
-          <FieldGroup row>
-            <FormField size="medium">
-              <TextInput
-                label={t("debugTracePanel.roleLabel")}
-                value={hintRole}
-                onChange={(e) => setHintRole(e.currentTarget.value)}
-                data-testid="debug-trace-hint-role"
-              />
-            </FormField>
-            <Button
-              onClick={permit}
-              disabled={busy || trimmedHintRole === ""}
-              data-testid="debug-trace-hint-permit"
-            >
-              {t("debugTracePanel.permit")}
-            </Button>
-          </FieldGroup>
-        </FormLayout>
-        {loaded && hintRoles.length === 0 && (
-          <Text c="dimmed" size="sm" data-testid="debug-trace-no-hint-roles">
-            {t("debugTracePanel.noHintRoles")}
+          <Title order={5}>{t("debugTracePanel.hintTitle")}</Title>
+          <Text c="dimmed" size="sm">
+            {t("debugTracePanel.hintIntro")}
           </Text>
-        )}
-        {hintRoles.length > 0 && (
-          <Table data-testid="debug-trace-hint-roles">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("debugTracePanel.roleLabel")}</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {hintRoles.map((r) => (
-                <Table.Tr key={`${r.org_id}/${r.role_id}`}>
-                  <Table.Td>{r.role_id}</Table.Td>
-                  <Table.Td>
-                    <Button
-                      size="xs"
-                      variant="default"
-                      disabled={busy}
-                      onClick={() =>
-                        run(() =>
-                          setDebugHintRole({
-                            org_id: r.org_id,
-                            role_id: r.role_id,
-                            permitted: false,
-                          }),
-                        )
-                      }
-                      data-testid={`debug-trace-hint-revoke-${r.org_id}-${r.role_id}`}
-                    >
-                      {t("debugTracePanel.revoke")}
-                    </Button>
-                  </Table.Td>
+          <FormLayout>
+            <FieldGroup row>
+              <FormField size="medium">
+                <TextInput
+                  label={t("debugTracePanel.roleLabel")}
+                  value={hintRole}
+                  onChange={(e) => setHintRole(e.currentTarget.value)}
+                  data-testid="debug-trace-hint-role"
+                />
+              </FormField>
+              <Button
+                onClick={permit}
+                disabled={busy || trimmedHintRole === ""}
+                data-testid="debug-trace-hint-permit"
+              >
+                {t("debugTracePanel.permit")}
+              </Button>
+            </FieldGroup>
+          </FormLayout>
+          {loaded && hintRoles.length === 0 && (
+            <Text c="dimmed" size="sm" data-testid="debug-trace-no-hint-roles">
+              {t("debugTracePanel.noHintRoles")}
+            </Text>
+          )}
+          {hintRoles.length > 0 && (
+            <Table data-testid="debug-trace-hint-roles">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("debugTracePanel.roleLabel")}</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        )}
+              </Table.Thead>
+              <Table.Tbody>
+                {hintRoles.map((r) => (
+                  <Table.Tr key={`${r.org_id}/${r.role_id}`}>
+                    <Table.Td>{r.role_id}</Table.Td>
+                    <Table.Td>
+                      <Button
+                        size="xs"
+                        variant="default"
+                        disabled={busy}
+                        onClick={() =>
+                          run(() =>
+                            setDebugHintRole({
+                              org_id: r.org_id,
+                              role_id: r.role_id,
+                              permitted: false,
+                            }),
+                          )
+                        }
+                        data-testid={`debug-trace-hint-revoke-${r.org_id}-${r.role_id}`}
+                      >
+                        {t("debugTracePanel.revoke")}
+                      </Button>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          )}
         </>
       )}
     </Stack>

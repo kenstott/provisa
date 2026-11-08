@@ -325,7 +325,9 @@ function OtelSettingsSection({
 
   const active = Boolean(otel.endpoint);
   // The endpoint the process is exporting to is the saved one, not what is being typed.
-  const { latest: tableLatest, failure: tableFailure } = useTracesTableLatest(Boolean(saved.endpoint));
+  const { latest: tableLatest, failure: tableFailure } = useTracesTableLatest(
+    Boolean(saved.endpoint),
+  );
   // A failed check leaves the last answer stale, so the failure is shown instead of it.
   const tableStale =
     tableFailure === null &&

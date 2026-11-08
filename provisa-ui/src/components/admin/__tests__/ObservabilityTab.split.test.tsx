@@ -17,7 +17,10 @@ import i18n from "../../../i18n";
 
 const t = i18n.getFixedT("en");
 
-const auth = vi.hoisted(() => ({ capabilities: [] as string[], activeOrgId: "acme" as string | null }));
+const auth = vi.hoisted(() => ({
+  capabilities: [] as string[],
+  activeOrgId: "acme" as string | null,
+}));
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../DebugTracePanel", () => ({
   DebugTracePanel: ({ orgId }: { orgId?: string }) => (
@@ -64,8 +67,12 @@ describe("the org's Observability page", () => {
 describe("the platform's Observability page", () => {
   it("holds the query engine's lifecycle and not the org's cluster recompute", () => {
     render(<PlatformObservabilityTab settings={{} as PlatformSettings} setSettings={vi.fn()} />);
-    expect(screen.getByRole("button", { name: t("observabilityTab.restartEngine") })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: t("observabilityTab.reloadCatalog") })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: t("observabilityTab.restartEngine") }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: t("observabilityTab.reloadCatalog") }),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("observability-recompute-clusters")).toBeNull();
   });
 });

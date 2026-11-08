@@ -31,7 +31,10 @@ vi.mock("../../../api/admin", async (importOriginal) => {
   };
 });
 
-import { ObservabilityTab as OrgObservabilityTab, PlatformObservabilityTab as ObservabilityTab } from "../ObservabilityTab";
+import {
+  ObservabilityTab as OrgObservabilityTab,
+  PlatformObservabilityTab as ObservabilityTab,
+} from "../ObservabilityTab";
 import type { PlatformSettings } from "../../../api/admin";
 
 function makeSettings(): PlatformSettings {
