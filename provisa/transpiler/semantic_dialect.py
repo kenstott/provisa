@@ -176,11 +176,18 @@ def _keyword_lambda_sql(
 DuckDB.Generator.lambda_sql = _keyword_lambda_sql  # type: ignore[method-assign]
 
 
+_duckdb_json_arrow = DuckDB.Generator.TRANSFORMS[exp.JSONExtract]
+
+
 def _json_extract_call(self: Generator, expression: exp.JSONExtract) -> str:
-    """DuckDB's JSON extraction as its function, never the arrow: sqlglot reads ``v -> '$.a'``
-    inside a call back as a lambda, which DuckDB 2.0 then binds as one (json_array_elements'
-    unnest of json_extract(v, '$[*]') was written ``UNNEST(LAMBDA v : '$[*]')``)."""
-    return self.func("JSON_EXTRACT", expression.this, expression.expression)
+    """DuckDB's JSON extraction. ``v -> p`` still means extraction on 2.0, a step of no stated
+    type keeps DuckDB's own operator, and the arrow answers as JSON_EXTRACT(v, p) does. Only where
+    it is a call's argument is it written as the function: sqlglot reads ``f(v -> p)`` back as a
+    lambda, which DuckDB 2.0 then binds as one (json_array_elements' unnest of
+    json_extract(v, '$[*]') was written ``UNNEST(LAMBDA v : '$[*]')``)."""
+    if isinstance(expression.parent, exp.Func):
+        return self.func("JSON_EXTRACT", expression.this, expression.expression)
+    return _duckdb_json_arrow(self, expression)
 
 
 DuckDB.Generator.TRANSFORMS[exp.JSONExtract] = _json_extract_call
