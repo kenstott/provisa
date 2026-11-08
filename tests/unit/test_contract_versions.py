@@ -522,6 +522,28 @@ async def test_a_table_save_keeps_the_versions_save_contract_made(plane):
     assert [v.contract.version for v in stored.versions] == ["0.1.0", "1.0.0"]
 
 
+async def test_a_resave_that_omits_a_stored_columns_type_snapshots_the_stored_type(plane):
+    """REQ-2158, REQ-1426: a table save need not restate a column's type; the version it records
+    snapshots the type the save writes, the stored one."""
+    restated = Table(
+        source_id="pg",
+        domain_id="sales",
+        schema_name="public",
+        table_name="orders",
+        product_id="p",
+        contract=DataContract(version="2.0.0"),
+        columns=[Column(name=c, visible_to=["analyst"]) for c in ("id", "amount")],
+    )
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, restated)
+        stored = await _stored(conn)
+    assert stored.versions[-1].contract.version == "2.0.0"
+    assert [(c.name, c.type) for c in stored.versions[-1].columns] == [
+        ("id", "integer"),
+        ("amount", "integer"),
+    ]
+
+
 async def test_a_refused_save_records_no_version(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
