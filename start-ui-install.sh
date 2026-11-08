@@ -963,12 +963,25 @@ start_backend() {
     _BACKEND_ENV+=( PROVISA_HTTP_LISTEN="0.0.0.0:$PROVISA_API_PORT" )
     _bind_args=( --uds "${TMPDIR:-/tmp}/provisa-supervisor-$$.sock" )
   fi
+  # Where this launch's output begins in the appended log, so a failure is read from this launch only.
+  _BACKEND_LOG_START=$(wc -c < "$LOG_DIR/backend.log" 2>/dev/null || echo 0)
   env "${_BACKEND_ENV[@]}" \
     "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
       "${_serve_args[@]}" \
       "${_bind_args[@]}" \
       >> "$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!
+}
+
+# This launch's log output, from where start_backend began it.
+backend_launch_log() {
+  tail -c +$(( ${_BACKEND_LOG_START:-0} + 1 )) "$LOG_DIR/backend.log"
+}
+
+# uvicorn logs this and, under its reloader or worker supervisor, keeps the process alive, so a
+# liveness check alone never sees a failed startup.
+backend_startup_failed() {
+  backend_launch_log | grep -q "Application startup failed"
 }
 
 restart_backend() {
@@ -1006,13 +1019,20 @@ pkill -f "tail -n0 -f ${LOG_DIR}/backend.log" 2>/dev/null || true
 # follower as a live child that the final `wait` then blocks on forever. Killing the
 # subshell's children (below) reaps both tail and grep.
 ( tail -n0 -f "$LOG_DIR/backend.log" 2>/dev/null \
-  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete" ) &
+  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete|Application startup failed" ) &
 BACKEND_TAIL_PID=$!
 _backend_ok=false
 for i in $(seq 1 90); do
   if curl -sf "http://localhost:$PROVISA_API_PORT/health" > /dev/null 2>&1; then
     _backend_ok=true
     break
+  fi
+  if backend_startup_failed; then
+    pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
+    kill "$BACKEND_TAIL_PID" 2>/dev/null || true
+    echo "Backend startup failed. The failure and its exception:"
+    backend_launch_log | tail -60
+    exit 1
   fi
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true

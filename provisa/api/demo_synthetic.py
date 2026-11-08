@@ -340,8 +340,7 @@ async def _land(
                 await conn.execute_core(delete(table))
             for table in _record_tables():
                 rows = [_restored(table, r, schema) for r in records[table.name]]
-                if rows:
-                    await conn.execute_core(insert(table).values(rows))
+                await conn.execute_core_many(insert(table), rows)
         await env_model.bind_generated(state, org_id, env)
     state.org_registry.invalidate(runtime_key(org_id, env))
     await _model_db(org_id, env, cloned=True)
@@ -459,8 +458,7 @@ async def _give(
                 await conn.execute_core(delete(_table_in(conn, table, env_schema)))
             for table in _record_tables():
                 rows = [_restored(table, r, schema) for r in records[table.name]]
-                if rows:
-                    await conn.execute_core(insert(_table_in(conn, table, env_schema)).values(rows))
+                await conn.execute_core_many(insert(_table_in(conn, table, env_schema)), rows)
             await env_data.bind_synthetic(
                 conn,
                 env_schema,

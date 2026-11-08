@@ -353,8 +353,9 @@ async def write_lineage_edges(conn, state) -> None:
             }
         )
     await conn.execute_core(delete(lineage_edges))
-    if rows:
-        await conn.execute_core(insert(lineage_edges).values(rows))
+    # executemany, not ``.values(rows)``: one multi-VALUES statement binds every cell and
+    # overflows Postgres's 65,535-parameter limit on a large model.
+    await conn.execute_core_many(insert(lineage_edges), rows)
 
 
 def _relation_of(domain_id: str, table_name: str) -> str:
