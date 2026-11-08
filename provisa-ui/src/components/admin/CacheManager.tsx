@@ -40,6 +40,7 @@ import {
   useToggleMV,
 } from "../../hooks/useAdminOpsQueries";
 import {
+  HotCacheStoreSettingsPanel,
   HotTablesSettingsPanel,
   MaterializedSettingsPanel,
   ResponseCacheSettingsPanel,
@@ -120,7 +121,7 @@ export function CacheManager() {
         </Tabs.List>
       </Tabs>
       {tab === "response" && <ResponseCacheTab platform={platform} />}
-      {tab === "hot" && <HotTablesTab platform={platform} />}
+      {tab === "hot" && <HotTablesTab />}
       {tab === "materialized" && <MaterializedStoreTab platform={platform} />}
       {tab === "redirect" && <RedirectSettingsCard />}
     </div>
@@ -233,7 +234,8 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
         )}
       </SimpleGrid>
 
-      <ResponseCacheSettingsPanel platform={platform} />
+      <ResponseCacheSettingsPanel />
+      {platform && <HotCacheStoreSettingsPanel />}
 
       {tables.length > 0 && (
         <Stack gap="sm">
@@ -322,7 +324,7 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
 }
 
 /** Exported for its component test. */
-export function HotTablesTab({ platform }: { platform: boolean }) {
+export function HotTablesTab() {
   const { t } = useTranslation();
   const unknown = t("cacheManager.hot.unknown");
   const { hotTables } = useHotTables();
@@ -429,7 +431,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
           )}
         />
       )}
-      {platform && <HotTablesSettingsPanel />}
+      <HotTablesSettingsPanel />
     </Stack>
   );
 }

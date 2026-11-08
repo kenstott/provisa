@@ -67,6 +67,7 @@ vi.mock("../../../api/admin", async (orig) => ({
 }));
 vi.mock("../CacheStorageTab", () => ({
   ResponseCacheSettingsPanel: () => null,
+  HotCacheStoreSettingsPanel: () => null,
   HotTablesSettingsPanel: () => null,
   MaterializedSettingsPanel: () => null,
 }));

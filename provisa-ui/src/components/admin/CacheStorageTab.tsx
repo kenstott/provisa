@@ -14,8 +14,10 @@
  * store connection with the response cache it backs, the promotion thresholds with the hot tables
  * they promote, the MV TTL and store URL with the materialized store.
  *
- * PUT /admin/cache-storage applies whichever blocks the body carries, so each panel sends only its
- * own; every panel is deployment-wide, which is why they render nothing without platform_settings.
+ * REQ-1327: the org's settings and the platform's are separate panels, each behind its own right.
+ * The response cache TTL and the hot-table and replicate settings are the org's
+ * (GET/PUT /admin/settings); the store connections and the materialized-view defaults are the
+ * platform's (GET/PUT /admin/cache-storage), rendered only for it.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -30,7 +32,7 @@ import { PlatformRequired } from "./PlatformRequired";
 import { isForbidden } from "./isForbidden";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
-type StorageBlock = "cache" | "hot_tables" | "replication" | "materialized_views" | "materialize";
+type StorageBlock = "cache" | "materialized_views" | "materialize";
 
 /** Load the cache-storage config and save back only `blocks`. */
 function useCacheStorage(blocks: StorageBlock[]) {
@@ -118,28 +120,11 @@ function StorageSaveRow({
   );
 }
 
-/**
- * Response Cache → Settings: the org's response TTL, and for a platform administrator the store
- * that TTL is written into. Two endpoints behind one Save, because a reader of this panel is
- * setting up one thing: where cached responses live and how long they last.
- */
-export function ResponseCacheSettingsPanel({ platform }: { platform: boolean }) {
+/** Response Cache → Settings: the org's response TTL. */
+export function ResponseCacheSettingsPanel() {
   const { t } = useTranslation();
-  const { settings, setSettings, save: saveSettings, saving, msg } = useSettingsBlocks(["cache"]);
-  const {
-    s,
-    setS,
-    save: saveStorage,
-    saving: savingStorage,
-    msg: storageMsg,
-    error,
-  } = useCacheStorage(["cache"]);
+  const { settings, setSettings, save, saving, msg } = useSettingsBlocks(["cache"]);
   if (!settings) return null;
-
-  const save = async () => {
-    await saveSettings();
-    if (platform && s) await saveStorage();
-  };
 
   return (
     <SettingsPanel testId="cache-ttl-settings">
@@ -153,63 +138,71 @@ export function ResponseCacheSettingsPanel({ platform }: { platform: boolean }) 
             }
           />
         </FormField>
-        {platform && s && (
-          <>
-            <Title order={5}>{t("cacheStorageTab.hotCacheHeading")}</Title>
-            <Text c="dimmed" size="sm">
-              {t("cacheStorageTab.hotCacheIntro")}
-            </Text>
-            <FormLayout>
-              <FormChecks>
-                <FormField size="short">
-                  <Checkbox
-                    label={t("cacheStorageTab.enableHotCache")}
-                    checked={s.cache.enabled}
-                    onChange={(e) =>
-                      setS({ ...s, cache: { ...s.cache, enabled: e.currentTarget.checked } })
-                    }
-                  />
-                </FormField>
-              </FormChecks>
-              <FormField size="long">
-                <TextInput
-                  label={t("cacheStorageTab.redisUrlLabel")}
-                  placeholder={t("cacheStorageTab.redisUrlPlaceholder")}
-                  value={s.cache.redis_url}
-                  onChange={(e) =>
-                    setS({ ...s, cache: { ...s.cache, redis_url: e.currentTarget.value } })
-                  }
-                />
-              </FormField>
-            </FormLayout>
-            <Alert color="yellow" icon={<TriangleAlert size={16} />}>
-              {s.restart_required_note}
-            </Alert>
-            {(storageMsg || error) && (
-              <Text c={error ? "red" : "green"} size="sm">
-                {error || storageMsg}
-              </Text>
-            )}
-          </>
-        )}
       </FormLayout>
-      <SaveRow save={save} saving={saving || savingStorage} msg={msg} />
+      <SaveRow save={save} saving={saving} msg={msg} />
+    </SettingsPanel>
+  );
+}
+
+/** Response Cache → the store connection that TTL is written into (the platform's, REQ-1327). */
+export function HotCacheStoreSettingsPanel() {
+  const { t } = useTranslation();
+  const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage(["cache"]);
+  if (forbidden) return <PlatformRequired />;
+  if (!s) return error ? <Alert color="red">{error}</Alert> : null;
+
+  return (
+    <SettingsPanel testId="hot-cache-store-settings">
+      <Title order={5}>{t("cacheStorageTab.hotCacheHeading")}</Title>
+      <Text c="dimmed" size="sm">
+        {t("cacheStorageTab.hotCacheIntro")}
+      </Text>
+      <FormLayout>
+        <FormChecks>
+          <FormField size="short">
+            <Checkbox
+              label={t("cacheStorageTab.enableHotCache")}
+              checked={s.cache.enabled}
+              onChange={(e) =>
+                setS({ ...s, cache: { ...s.cache, enabled: e.currentTarget.checked } })
+              }
+            />
+          </FormField>
+        </FormChecks>
+        <FormField size="long">
+          <TextInput
+            label={t("cacheStorageTab.redisUrlLabel")}
+            placeholder={t("cacheStorageTab.redisUrlPlaceholder")}
+            value={s.cache.redis_url}
+            onChange={(e) =>
+              setS({ ...s, cache: { ...s.cache, redis_url: e.currentTarget.value } })
+            }
+          />
+        </FormField>
+      </FormLayout>
+      <StorageSaveRow
+        save={save}
+        saving={saving}
+        msg={msg}
+        error={error}
+        note={s.restart_required_note}
+      />
     </SettingsPanel>
   );
 }
 
 /**
- * Hot Tables → Settings: the hot tier's promotion thresholds, and when a busy table is
- * replicated (REQ-826).
+ * Hot Tables → Settings: the org's hot-tier thresholds and when a busy table is replicated
+ * (REQ-826, REQ-1327).
  */
 export function HotTablesSettingsPanel() {
   const { t } = useTranslation();
-  const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage([
+  const { settings, setSettings, save, saving, msg } = useSettingsBlocks([
     "hot_tables",
     "replication",
   ]);
-  if (forbidden) return <PlatformRequired />;
-  if (!s) return error ? <Alert color="red">{error}</Alert> : null;
+  if (!settings) return null;
+  const { hot_tables: hot, replication } = settings;
 
   return (
     <SettingsPanel testId="hot-tables-settings">
@@ -217,24 +210,28 @@ export function HotTablesSettingsPanel() {
         <FormField size="short">
           <NumberInput
             label={t("cacheStorageTab.promoteThresholdLabel")}
-            value={s.hot_tables.auto_threshold}
+            value={hot.auto_threshold}
             onChange={(v) =>
-              setS({ ...s, hot_tables: { ...s.hot_tables, auto_threshold: Number(v) } })
+              setSettings({ ...settings, hot_tables: { ...hot, auto_threshold: Number(v) } })
             }
           />
         </FormField>
         <FormField size="short">
           <NumberInput
             label={t("cacheStorageTab.maxRowsLabel")}
-            value={s.hot_tables.max_rows}
-            onChange={(v) => setS({ ...s, hot_tables: { ...s.hot_tables, max_rows: Number(v) } })}
+            value={hot.max_rows}
+            onChange={(v) =>
+              setSettings({ ...settings, hot_tables: { ...hot, max_rows: Number(v) } })
+            }
           />
         </FormField>
         <FormField size="short">
           <NumberInput
             label={t("cacheStorageTab.maxBytesLabel")}
-            value={s.hot_tables.max_bytes}
-            onChange={(v) => setS({ ...s, hot_tables: { ...s.hot_tables, max_bytes: Number(v) } })}
+            value={hot.max_bytes}
+            onChange={(v) =>
+              setSettings({ ...settings, hot_tables: { ...hot, max_bytes: Number(v) } })
+            }
           />
         </FormField>
       </FormLayout>
@@ -249,9 +246,12 @@ export function HotTablesSettingsPanel() {
             label={t("cacheStorageTab.hotThresholdLabel")}
             data-testid="replication-hot-threshold"
             min={1}
-            value={s.replication.hot_threshold}
+            value={replication.hot_threshold}
             onChange={(v) =>
-              setS({ ...s, replication: { ...s.replication, hot_threshold: Number(v) } })
+              setSettings({
+                ...settings,
+                replication: { ...replication, hot_threshold: Number(v) },
+              })
             }
           />
         </FormField>
@@ -260,9 +260,9 @@ export function HotTablesSettingsPanel() {
             label={t("cacheStorageTab.hotIntervalLabel")}
             data-testid="replication-hot-interval"
             min={1}
-            value={s.replication.hot_interval}
+            value={replication.hot_interval}
             onChange={(v) =>
-              setS({ ...s, replication: { ...s.replication, hot_interval: Number(v) } })
+              setSettings({ ...settings, replication: { ...replication, hot_interval: Number(v) } })
             }
           />
         </FormField>
@@ -271,21 +271,14 @@ export function HotTablesSettingsPanel() {
             label={t("cacheStorageTab.hotMaxRowsLabel")}
             data-testid="replication-hot-max-rows"
             min={1}
-            value={s.replication.hot_max_rows}
+            value={replication.hot_max_rows}
             onChange={(v) =>
-              setS({ ...s, replication: { ...s.replication, hot_max_rows: Number(v) } })
+              setSettings({ ...settings, replication: { ...replication, hot_max_rows: Number(v) } })
             }
           />
         </FormField>
       </FormLayout>
-
-      <StorageSaveRow
-        save={save}
-        saving={saving}
-        msg={msg}
-        error={error}
-        note={s.restart_required_note}
-      />
+      <SaveRow save={save} saving={saving} msg={msg} />
     </SettingsPanel>
   );
 }
