@@ -373,7 +373,11 @@ def model_name_rows(  # REQ-194
                     tm.catalog_name,
                     tm.source_id,
                     f"source {tm.source_id}",
-                    scope=("catalog",),
+                    # Only a catalog named after its source is an address that source takes; a
+                    # catalog it is pinned to is shared by design and asks no uniqueness.
+                    scope=("catalog",)
+                    if naming.is_own_catalog(tm.catalog_name, tm.source_id)
+                    else (),
                 )
             )
         rows.extend(_table_rows(ctx, tm, t, sql_names.get(tm.table_id)))
