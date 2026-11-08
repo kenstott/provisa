@@ -451,7 +451,7 @@ def specs_from_config(
             engine,
             getattr(mv, "preprocess", None),
             preflight_inputs,
-            product_id=mv.product_id,
+            product_ids=mv.product_ids,
             hold=mv.hold_on_failing_checks,  # REQ-2133
             table_id=mv.table_id,
         )

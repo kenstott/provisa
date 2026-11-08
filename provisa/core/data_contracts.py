@@ -57,25 +57,22 @@ def created_as(previous: DataContract, contract: DataContract) -> DataContract:
 
 def for_save(
     *,
-    product_id: str | None,
+    products: list[str],
     is_checker: bool,
     declared: DataContract | None,
     stored: dict[str, Any] | None,
-    stored_product_id: str | None,
     checks: list[ContractCheck] | None = None,
     columns: list[VersionColumn],
 ) -> DataContract | None:
-    """The contract a table's save stores: none outside a product (or for a checker); the one
-    declared, else the one stored for the same product, else a draft, with the version this save
-    made recorded on it. ``checks``: the product's promises on the member; ``columns``: the member's
-    columns, snapshotted by the version."""
-    if product_id is None or is_checker:
+    """The contract a table's save stores. ``products``: the products it is a member of (REQ-1634,
+    any number). None for a checker; the one declared; else, for a member, the one stored, else a
+    draft; else none -- a table in no product is no output port. A table in several products has
+    one contract, kept whichever of them it is saved under. The version this save made is recorded
+    on it. ``checks``: the products' promises on the member; ``columns``: the member's columns,
+    snapshotted by the version."""
+    if is_checker or (not products and declared is None):
         return None
-    previous = (
-        DataContract.model_validate(stored)
-        if stored is not None and stored_product_id == product_id
-        else None
-    )
+    previous = DataContract.model_validate(stored) if stored is not None else None
     if previous is not None and declared is not None:
         declared = created_as(previous, declared)
     elif declared is not None and declared.created_at is None:

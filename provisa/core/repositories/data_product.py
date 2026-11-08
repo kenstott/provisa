@@ -13,18 +13,22 @@
 # Requirements: REQ-1634
 
 import logging
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete as _delete, func, select, update
+from sqlalchemy import delete as _delete, func, insert, select, update
 
 from provisa.core import model_change
 from provisa.core.models import ContractCheck, DataContract, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
     checker_targets,
+    data_product_commands,
+    data_product_tables,
     data_products,
     registered_tables,
     sources,
+    table_columns,
     tracked_functions,
 )
 
@@ -153,30 +157,42 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
 
 
 async def member_contracts(conn: "Connection", product_id: str | None = None) -> list[dict]:
-    """REQ-2158: each product member's contract, with its table's id and address: every product's,
-    or ``product_id``'s."""
-    query = select(
-        registered_tables.c.id,
-        registered_tables.c.product_id,
-        registered_tables.c.source_id,
-        registered_tables.c.schema_name,
-        registered_tables.c.table_name,
-        registered_tables.c.contract,
-    ).where(registered_tables.c.contract.is_not(None))
+    """REQ-2158: each product member's contract, with its table's id and address and the product it
+    is a member of: one row per product and member, every product's, or ``product_id``'s."""
+    query = (
+        select(
+            registered_tables.c.id,
+            data_product_tables.c.product_id,
+            registered_tables.c.source_id,
+            registered_tables.c.schema_name,
+            registered_tables.c.table_name,
+            registered_tables.c.contract,
+        )
+        .join(data_product_tables, data_product_tables.c.table_id == registered_tables.c.id)
+        .where(registered_tables.c.contract.is_not(None))
+    )
     if product_id is not None:
-        query = query.where(registered_tables.c.product_id == product_id)
-    result = await conn.execute_core(query.order_by(registered_tables.c.id))
+        query = query.where(data_product_tables.c.product_id == product_id)
+    result = await conn.execute_core(
+        query.order_by(registered_tables.c.id, data_product_tables.c.product_id)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def promised_checks(  # REQ-2158
-    conn: "Connection", product_id: str, table_id: int
+    conn: "Connection", table_id: int
 ) -> list[ContractCheck]:
-    """What the product promises of a member: the checks of the checker tables it owns that scan
-    it (REQ-2157), each as a contract version keeps it. A check another product owns, or none does,
-    is no promise of this one."""
+    """What the member's products promise of it: the checks of the checker tables that scan it
+    (REQ-2157) and are members of a product it is a member of, each as a contract version keeps it.
+    A check only another product owns, or none does, is no promise of these."""
     from provisa.dq.contract import check_severity
 
+    its_products = select(data_product_tables.c.product_id).where(
+        data_product_tables.c.table_id == table_id
+    )
+    owned = select(data_product_tables.c.table_id).where(
+        data_product_tables.c.product_id.in_(its_products)
+    )
     rows = (
         await conn.execute_core(
             select(registered_tables.c.dq_rules, sources.c.type)
@@ -184,7 +200,7 @@ async def promised_checks(  # REQ-2158
             .join(checker_targets, checker_targets.c.table_id == registered_tables.c.id)
             .where(
                 checker_targets.c.checked_table_id == table_id,
-                registered_tables.c.product_id == product_id,
+                registered_tables.c.id.in_(owned),
                 registered_tables.c.dq_rules.is_not(None),
             )
             .order_by(registered_tables.c.id)
@@ -217,22 +233,21 @@ async def save_contract(  # REQ-2158
                 select(registered_tables).where(registered_tables.c.id == table_id)
             )
         ).fetchone()
-        if row is None or row.product_id is None or row.contract is None:
+        products = await products_of_table(conn, table_id)
+        if row is None or not products or row.contract is None:
             raise data_contracts.ContractRefused(
                 f"table {table_id} is no data product's output port: it has no contract"
             )
-        # REQ-2188: a contract belongs to its product: the product's U rule holds its save.
-        await conn.require_admitted(
-            update(data_products).where(data_products.c.id == row.product_id)
-        )
-        cid = data_contracts.contract_id(row.product_id, row.schema_name, row.table_name)
+        # REQ-2188: a contract belongs to its products: each one's U rule holds its save.
+        await conn.require_admitted(update(data_products).where(data_products.c.id.in_(products)))
+        cid = data_contracts.contract_id(products[0], row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
         previous = DataContract.model_validate(row.contract)
         contract = data_contracts.created_as(previous, contract)
         contract = contract_versions.recorded(
             previous,
             contract,
-            await promised_checks(conn, row.product_id, table_id),
+            await promised_checks(conn, table_id),
             contract_versions.snapshot(await load_columns(conn, table_id)),
         )
         await conn.execute_core(
@@ -248,8 +263,8 @@ async def save_contract(  # REQ-2158
 # retire moves its members to a successor; restore undoes a deprecation, or brings a retired
 # product back a draft.
 
-#: Who holds a product's members: the tables and views, and the commands, that name it.
-_MEMBER_TABLES = (registered_tables, tracked_functions)
+#: Who holds a product's members: the tables and views, and the commands, that belong to it.
+_MEMBER_TABLES = (data_product_tables, data_product_commands)
 
 
 class StatusRefused(ValueError):
@@ -278,7 +293,7 @@ async def _status(conn: "Connection", product_id: str) -> str:
 
 
 async def member_count(conn: "Connection", product_id: str) -> int:
-    """How many tables, views and commands name the product."""
+    """How many tables, views and commands belong to the product."""
     total = 0
     for table in _MEMBER_TABLES:
         total += (
@@ -385,10 +400,7 @@ async def _retire(
             )
     else:
         await _check_successor(conn, product, successor)
-        for table in _MEMBER_TABLES:
-            await conn.execute_core(
-                update(table).where(table.c.product_id == product_id).values(product_id=successor)
-            )
+        await _move_members(conn, product_id, successor)
     await _set_status(
         conn,
         product_id,
@@ -398,6 +410,16 @@ async def _retire(
         retire_on=None,
         successor_id=successor,
     )
+
+
+async def _move_members(conn: "Connection", product_id: str, successor: str) -> None:
+    """Every member of ``product_id`` becomes a member of ``successor`` instead; one already a
+    member of the successor stays one, once."""
+    tables = await member_table_ids(conn, product_id)
+    commands = await member_command_names(conn, product_id)
+    for member in _MEMBER_TABLES:
+        await conn.execute_core(_delete(member).where(member.c.product_id == product_id))
+    await _add_members(conn, successor, tables, commands)
 
 
 async def _check_successor(conn: "Connection", product: dict, successor: str) -> None:
@@ -476,3 +498,328 @@ async def retire_due(conn: "Connection", today: "date") -> list[str]:
         )
         retired.append(r.id)
     return retired
+
+
+# REQ-1634: membership is many-to-many, a relation of its own (data_product_tables,
+# data_product_commands), and the product owns it: members are added to and removed from a product
+# only through set_members, the one write, for every surface.
+
+
+class MembershipRefused(ValueError):
+    """A member set refused by name: ``code`` (data_product.members.<code>) and ``params``."""
+
+    def __init__(self, code: str, message: str, **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
+
+
+async def member_table_ids(conn: "Connection", product_id: str) -> list[int]:
+    """The ids of the product's member tables and views, in id order."""
+    rows = await conn.execute_core(
+        select(data_product_tables.c.table_id)
+        .where(data_product_tables.c.product_id == product_id)
+        .order_by(data_product_tables.c.table_id)
+    )
+    return [int(r.table_id) for r in rows.fetchall()]
+
+
+async def member_command_names(conn: "Connection", product_id: str) -> list[str]:
+    """The names of the product's member commands, in name order."""
+    rows = await conn.execute_core(
+        select(data_product_commands.c.command_name)
+        .where(data_product_commands.c.product_id == product_id)
+        .order_by(data_product_commands.c.command_name)
+    )
+    return [r.command_name for r in rows.fetchall()]
+
+
+async def products_of_table(conn: "Connection", table_id: int) -> list[str]:
+    """The ids of the products the table or view is a member of, in id order."""
+    rows = await conn.execute_core(
+        select(data_product_tables.c.product_id)
+        .where(data_product_tables.c.table_id == table_id)
+        .order_by(data_product_tables.c.product_id)
+    )
+    return [r.product_id for r in rows.fetchall()]
+
+
+async def products_of_command(conn: "Connection", command_name: str) -> list[str]:
+    """The ids of the products the command is a member of, in id order."""
+    rows = await conn.execute_core(
+        select(data_product_commands.c.product_id)
+        .where(data_product_commands.c.command_name == command_name)
+        .order_by(data_product_commands.c.product_id)
+    )
+    return [r.product_id for r in rows.fetchall()]
+
+
+async def table_memberships(conn: "Connection") -> dict[int, list[str]]:
+    """Every member table's products: table id -> the product ids, in id order."""
+    rows = await conn.execute_core(
+        select(data_product_tables.c.table_id, data_product_tables.c.product_id).order_by(
+            data_product_tables.c.table_id, data_product_tables.c.product_id
+        )
+    )
+    out: dict[int, list[str]] = {}
+    for r in rows.fetchall():
+        out.setdefault(int(r.table_id), []).append(r.product_id)
+    return out
+
+
+async def command_memberships(conn: "Connection") -> dict[str, list[str]]:
+    """Every member command's products: command name -> the product ids, in id order."""
+    rows = await conn.execute_core(
+        select(data_product_commands.c.command_name, data_product_commands.c.product_id).order_by(
+            data_product_commands.c.command_name, data_product_commands.c.product_id
+        )
+    )
+    out: dict[str, list[str]] = {}
+    for r in rows.fetchall():
+        out.setdefault(r.command_name, []).append(r.product_id)
+    return out
+
+
+async def _require_member_tables(conn: "Connection", product: dict, table_ids: list[int]) -> None:
+    """Each table exists, is in the product's domain, and can be a member: a parameterized table
+    (a native-filter column) is a function f(args) -> rows that never lands, so it can back no
+    product's export."""
+    if not table_ids:
+        return
+    rows = {
+        int(r.id): r
+        for r in (
+            await conn.execute_core(
+                select(
+                    registered_tables.c.id,
+                    registered_tables.c.table_name,
+                    registered_tables.c.domain_id,
+                ).where(registered_tables.c.id.in_(table_ids))
+            )
+        ).fetchall()
+    }
+    parameterized = {
+        int(r.table_id)
+        for r in (
+            await conn.execute_core(
+                select(table_columns.c.table_id)
+                .where(table_columns.c.table_id.in_(table_ids))
+                .where(table_columns.c.native_filter_type.is_not(None))
+            )
+        ).fetchall()
+    }
+    for table_id in table_ids:
+        row = rows.get(table_id)
+        if row is None:
+            raise MembershipRefused(
+                "table_not_found", f"table {table_id} does not exist", table=table_id
+            )
+        if row.domain_id != product["domain_id"]:
+            raise MembershipRefused(
+                "other_domain",
+                f"table {row.table_name} is in domain {row.domain_id!r} but data product "
+                f"{product['id']!r} belongs to domain {product['domain_id']!r}",
+                table=row.table_name,
+                domain=row.domain_id,
+                product_domain=product["domain_id"],
+            )
+        if table_id in parameterized:
+            raise MembershipRefused(
+                "parameterized",
+                f"table {row.table_name} has a native-filter (parameterized) column and cannot "
+                f"be a member of data product {product['id']!r} — it is never landed",
+                table=row.table_name,
+            )
+
+
+async def _require_member_commands(conn: "Connection", product: dict, names: list[str]) -> None:
+    """Each command exists and is in the product's domain."""
+    if not names:
+        return
+    domains = {
+        r.name: r.domain_id
+        for r in (
+            await conn.execute_core(
+                select(tracked_functions.c.name, tracked_functions.c.domain_id).where(
+                    tracked_functions.c.name.in_(names)
+                )
+            )
+        ).fetchall()
+    }
+    for name in names:
+        if name not in domains:
+            raise MembershipRefused(
+                "command_not_found", f"command {name!r} does not exist", command=name
+            )
+        if domains[name] != product["domain_id"]:
+            raise MembershipRefused(
+                "other_domain",
+                f"command {name} is in domain {domains[name]!r} but data product "
+                f"{product['id']!r} belongs to domain {product['domain_id']!r}",
+                command=name,
+                domain=domains[name],
+                product_domain=product["domain_id"],
+            )
+
+
+async def _add_members(
+    conn: "Connection", product_id: str, table_ids: Iterable[int], commands: Iterable[str]
+) -> None:
+    """``product_id`` gains each table and command it does not hold yet; a table joining its first
+    product is given a draft contract (REQ-2158) when it has none."""
+    held_tables = set(await member_table_ids(conn, product_id))
+    held_commands = set(await member_command_names(conn, product_id))
+    for table_id in table_ids:
+        if table_id in held_tables:
+            continue
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id=product_id, table_id=table_id)
+        )
+        await _give_draft_contract(conn, table_id)
+    for name in commands:
+        if name not in held_commands:
+            await conn.execute_core(
+                insert(data_product_commands).values(product_id=product_id, command_name=name)
+            )
+
+
+async def _give_draft_contract(conn: "Connection", table_id: int) -> None:
+    """REQ-2158: a member with no contract is given a draft, its first version snapshotting the
+    member's columns as they are stored. A checker table (a data-quality contract's scan results)
+    has none."""
+    from provisa.core import contract_versions, data_contracts
+    from provisa.core.repositories.table import load_columns
+
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.contract, registered_tables.c.dq_contract).where(
+                registered_tables.c.id == table_id
+            )
+        )
+    ).fetchone()
+    if row is None or row.contract is not None or row.dq_contract is not None:
+        return
+    contract = contract_versions.recorded(
+        None,
+        data_contracts.draft(),
+        await promised_checks(conn, table_id),
+        contract_versions.snapshot(await load_columns(conn, table_id)),
+    )
+    await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id)
+        .values(contract=contract.model_dump(mode="json"))
+    )
+
+
+async def _drop_orphan_contracts(conn: "Connection", table_ids: Iterable[int]) -> None:
+    """REQ-2158: a table that is no product's member any more has no contract: it is no output
+    port."""
+    still = select(data_product_tables.c.table_id)
+    gone = list(table_ids)
+    if gone:
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id.in_(gone))
+            .where(registered_tables.c.id.not_in(still))
+            .values(contract=None)
+        )
+
+
+async def set_members(  # REQ-1634
+    conn: "Connection",
+    product_id: str,
+    *,
+    table_ids: Iterable[int],
+    commands: Iterable[str],
+) -> None:
+    """The product's members become exactly ``table_ids`` and ``commands``: THE membership write.
+    Refused (:class:`MembershipRefused`) when the product or a member does not exist, when a member
+    is in another domain, or when a table is parameterized; nothing changes then. A table may be a
+    member of any number of products; one leaving its last product loses its contract. One
+    transaction."""
+    wanted_tables = sorted(set(table_ids))
+    wanted_commands = sorted(set(commands))
+    model_change.name("upsert", "data product members", product_id)  # REQ-1524
+    async with conn.transaction():
+        product = await get(conn, product_id)
+        if product is None:
+            raise MembershipRefused(
+                "not_found", f"data product {product_id!r} not found", data_product=product_id
+            )
+        # REQ-2188: a product's membership is the product's: its U rule holds the write.
+        await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
+        await _require_member_tables(conn, product, wanted_tables)
+        await _require_member_commands(conn, product, wanted_commands)
+        held = await member_table_ids(conn, product_id)
+        dropped = [t for t in held if t not in set(wanted_tables)]
+        await conn.execute_core(
+            _delete(data_product_tables)
+            .where(data_product_tables.c.product_id == product_id)
+            .where(data_product_tables.c.table_id.not_in(wanted_tables))
+        )
+        await conn.execute_core(
+            _delete(data_product_commands)
+            .where(data_product_commands.c.product_id == product_id)
+            .where(data_product_commands.c.command_name.not_in(wanted_commands))
+        )
+        await _add_members(conn, product_id, wanted_tables, wanted_commands)
+        await _drop_orphan_contracts(conn, dropped)
+
+
+async def require_domain_of_products(  # REQ-1634
+    conn: "Connection", products: list[str], domain_id: str, member: str
+) -> None:
+    """A member saved in ``domain_id`` keeps to the domain of every product it belongs to: one moved
+    to another domain is refused by name while it is a member of a product there is not, as one
+    joining a product of another domain is (set_members). ``member`` names it ("table orders")."""
+    for product_id in products:
+        product = await get(conn, product_id)
+        if product is not None and product["domain_id"] != domain_id:
+            raise MembershipRefused(
+                "other_domain",
+                f"{member} is in domain {domain_id!r} but data product {product_id!r} belongs to "
+                f"domain {product['domain_id']!r}; take it out of the product first",
+                member=member,
+                domain=domain_id,
+                product_domain=product["domain_id"],
+            )
+
+
+async def require_members_in_domain(  # REQ-1634
+    conn: "Connection", product_id: str, domain_id: str
+) -> None:
+    """A product moved to ``domain_id`` holds no member of another domain: the move is refused by
+    name while it does, as a member moved out of its products' domain is
+    (require_domain_of_products), since a member joins only products of its own domain."""
+    tables = (
+        await conn.execute_core(
+            select(registered_tables.c.table_name)
+            .join(data_product_tables, data_product_tables.c.table_id == registered_tables.c.id)
+            .where(data_product_tables.c.product_id == product_id)
+            .where(registered_tables.c.domain_id != domain_id)
+            .order_by(registered_tables.c.table_name)
+        )
+    ).fetchall()
+    commands = (
+        await conn.execute_core(
+            select(tracked_functions.c.name)
+            .join(
+                data_product_commands,
+                data_product_commands.c.command_name == tracked_functions.c.name,
+            )
+            .where(data_product_commands.c.product_id == product_id)
+            .where(tracked_functions.c.domain_id != domain_id)
+            .order_by(tracked_functions.c.name)
+        )
+    ).fetchall()
+    members = [*(r.table_name for r in tables), *(r.name for r in commands)]
+    if members:
+        raise MembershipRefused(
+            "domain_has_members",
+            f"data product {product_id!r} cannot move to domain {domain_id!r} while it has members "
+            f"of another domain ({', '.join(members)}); take them out of the product first",
+            data_product=product_id,
+            domain=domain_id,
+            members=", ".join(members),
+        )

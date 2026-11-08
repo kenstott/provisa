@@ -31,6 +31,7 @@ from provisa.api.metadata_export import dataplex
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.dataplex import DataplexExport, member_resource, resource_id
 from provisa.api.metadata_export.registry import metadata_export, registered_providers
+from tests.unit.product_members import member_name, with_members
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -69,13 +70,17 @@ def _table(source: str, name: str, **extra: Any) -> Table:
         domain_id="sales",
         schema_name="public" if source == "pg" else "warehouse",
         table_name=name,
-        product_id="sales_360",
         columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
         **extra,
     )
 
 
 def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list | None = None):
+    tables = (
+        tables
+        if tables is not None
+        else [_table("bq", "sales"), _table("pg", "orders", cache_ttl=3600)]
+    )
     config = ProvisaConfig(
         sources=[
             Source(id="bq", type=SourceType.bigquery, database="proj-src", description="BQ"),
@@ -90,9 +95,7 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
             ),
         ],
         domains=[Domain(id="sales", description="Sales")],
-        tables=tables
-        if tables is not None
-        else [_table("bq", "sales"), _table("pg", "orders", cache_ttl=3600)],
+        tables=tables,
         data_products=[
             DataProduct(
                 id="sales_360",
@@ -103,6 +106,7 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
                 limitations="No refunds",
                 version="1.2.0",
                 status="live",
+                tables=[member_name(t) for t in tables],
             )
         ],
         roles=[],
@@ -371,6 +375,7 @@ def _glossary_snapshot(glossary: dict):
             ],
             domains=[Domain(id="sales", description="Sales")],
             tables=config_tables,
+            data_products=with_members([], {"sales_360": config_tables}),
             roles=[],
         ),
         org_id="acme",

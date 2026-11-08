@@ -115,7 +115,7 @@ function view(
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null, // REQ-1634
+    productIds: [], // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,

@@ -158,7 +158,6 @@ describe("the pickers of the domain something is put into", () => {
           domainHints={IDS}
           availableFunctions={[]}
           loadingFunctions={false}
-          dataProducts={[]}
           roleOptions={[]}
         />
       );

@@ -445,6 +445,11 @@ def hold_registered_tables(
         ],
     )
     monkeypatch.setattr(state, "contexts", {})
+    # ... and no model-wide context: the index also reads every table's semantic names from it
+    # (provisa/mv/view_inputs.py ModelIndex), so one a build earlier in the process left behind
+    # makes `orders` name that model's table as well -- "a reference more than one table or view
+    # answers to" in test_preflight_refresh (Unit run 42516337461).
+    monkeypatch.setattr(state, "view_context", None)
     # ... and no model store: the readable-inputs check (provisa/mv/readable_inputs.py) also asks
     # the store which registered tables keep rows by key. A store an earlier test left on the
     # state is another model's -- or a database since dropped: core 1/6 of run 37874425906 failed

@@ -131,12 +131,17 @@ async def read_latest_outcomes(
     """
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
+    from provisa.api.metadata_export.builder import product_memberships
+    from provisa.api.metadata_export.refs import table_ref
+
     checker_ids = {source.id for source in config.sources if source.type.value in CHECKERS}
+    owners = product_memberships(config) if product_id is not None else {}
     rows: list[dict] = []
     for table in config.tables:
         if table.source_id not in checker_ids or not table.dq_contract:
             continue
-        if product_id is not None and table.product_id != product_id:
+        # REQ-1634: a checker table is owned by each product it is a member of.
+        if product_id is not None and product_id not in owners.get(table_ref(table).parts, ()):
             continue
         plan = await _govern_and_route(
             latest_scan_sql(table.schema_name, table.table_name), _EXPORT_ROLE

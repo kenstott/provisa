@@ -20,6 +20,7 @@ import {
   CreateDataProduct,
   UpdateDataProduct,
   DeleteDataProduct,
+  SetDataProductMembers,
   SaveDataContract,
   PublishDataProduct,
   DeprecateDataProduct,
@@ -69,6 +70,23 @@ export function useUpdateDataProduct() {
     updateDataProduct: async (input: DataProductInput) => {
       const result = await updateDataProduct({ variables: { input } });
       return (result.data?.updateDataProduct ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useSetDataProductMembers() {
+  // REQ-1634: a product's members are set on the product, any number of tables and commands.
+  const [setMembers, { loading }] = useMutation<{ setDataProductMembers: MutationResult }>(
+    SetDataProductMembers,
+  );
+  return {
+    setDataProductMembers: async (id: string, tableIds: number[], commandNames: string[]) => {
+      const result = await setMembers({ variables: { id, tableIds, commandNames } });
+      return (result.data?.setDataProductMembers ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
     },
     loading,
   };

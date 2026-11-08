@@ -87,6 +87,20 @@ async def _run(
                 AsyncMock(return_value=data_products or []),
             )
         )
+        # REQ-1634: the stored membership relation — the fake connection holds none, so the test
+        # names a product's members here (empty unless given).
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.member_table_ids",
+                AsyncMock(return_value=[]),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.member_command_names",
+                AsyncMock(return_value=[]),
+            )
+        )
         # REQ-1919: every other section the store holds — none, unless a test gives some.
         stack.enter_context(
             patch(
