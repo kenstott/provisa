@@ -377,6 +377,26 @@ def test_the_arrow_pool_keeps_its_count_when_a_connect_fails() -> None:
     assert pool._created == 0
 
 
+def test_the_arrow_pool_connects_in_autocommit(monkeypatch) -> None:
+    """A pooled ADBC read must not leave a transaction open: its locks would block a DROP SCHEMA
+    of the temporary tables it read (a graph session's clear)."""
+    import adbc_driver_postgresql.dbapi as adbc_pg
+
+    from provisa.federation.pg_runtime import _AdbcConnectionPool
+
+    seen: list[dict[str, Any]] = []
+
+    def connect(dsn: str, **kwargs: Any) -> object:
+        seen.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(adbc_pg, "connect", connect)
+    pool = _AdbcConnectionPool("postgresql://x", minconn=1, maxconn=2)
+    pool.getconn()
+    pool.getconn()  # a connection made on demand, not only the ones made at startup
+    assert seen == [{"autocommit": True}, {"autocommit": True}]
+
+
 def _role_that_may_create_nothing(monkeypatch, found: object) -> None:
     """A role with no CREATE on the schema; ``found`` is what to_regprocedure answers it."""
     execute = _FakeCursor.execute

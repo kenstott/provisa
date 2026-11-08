@@ -236,7 +236,11 @@ class _AdbcConnectionPool:
     def __init__(self, dsn: str, *, minconn: int, maxconn: int) -> None:
         from adbc_driver_postgresql import dbapi as adbc_pg
 
-        self._connect = lambda: adbc_pg.connect(dsn)
+        # Autocommit: a pooled read connection never holds a transaction between borrows. ADBC
+        # opens one on the first statement otherwise, and a read left "idle in transaction"
+        # keeps its AccessShare lock on every relation it read -- a session's DROP SCHEMA
+        # CASCADE of its temporary tables then waits on it until the request times out.
+        self._connect = lambda: adbc_pg.connect(dsn, autocommit=True)
         self._maxconn = maxconn
         self._pool: list[Any] = [self._connect() for _ in range(minconn)]
         self._created = minconn
