@@ -465,7 +465,9 @@ def test_no_workflow_merges_the_release_or_needs_a_merge_token():
     for path in _WORKFLOWS.glob("*.yml"):
         text = path.read_text()
         assert "RELEASE_MERGE_TOKEN" not in text, path.name
-        assert "release_merge.py" not in text, path.name
+        for job in yaml.safe_load(text)["jobs"].values():
+            for step in job.get("steps", []):
+                assert "release_merge.py" not in step.get("run", ""), path.name
     leg = _load("release-publish.yml")
     assert "merge-release" not in leg["jobs"]
     assert "secrets" not in _on(leg)["workflow_call"]
@@ -517,7 +519,11 @@ def test_the_merge_works_from_a_clone_with_main_checked_out_and_leaves_it_alone(
 
 def test_the_merge_never_force_pushes():
     text = (_ROOT / "scripts" / "release_merge.py").read_text()
-    assert '"--force"' not in text and '"-f"' not in text
+    push = text[text.index('"push"') : text.index("finally:")]
+    assert "--force" not in push and '"-f"' not in push and '"+' not in push
+    # The one --force removes the script's own temporary worktree, whatever a failed merge left.
+    forced = [line for line in text.splitlines() if "--force" in line]
+    assert len(forced) == 1 and '"worktree", "remove"' in forced[0]
 
 
 def test_a_nightly_alpha_version_reads_the_same_way_at_the_cut():
