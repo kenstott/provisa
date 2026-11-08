@@ -49,7 +49,8 @@ _BUNDLE_PACKAGES = ("provisa_duckdb_ext", "provisa_duckdb_ext_warehouse", "provi
 
 #: What a connection needs that no connector declares, name -> from the community registry. postgres and
 #: sqlite back the base ATTACH connectors; httpfs and azure a file source's location (REQ-1997); vss the
-#: catalog index; avro is what iceberg loads when it loads; crypto backs sha224/384/512 (REQ-2171).
+#: catalog index; avro is what iceberg loads when it loads; crypto backs sha224/384/512 (REQ-2171); inet
+#: backs PostgreSQL's inet and cidr types and functions.
 _UNDECLARED_EXTENSIONS: dict[str, bool] = {
     "postgres": False,
     "sqlite": False,
@@ -57,6 +58,7 @@ _UNDECLARED_EXTENSIONS: dict[str, bool] = {
     "azure": False,
     "vss": False,
     "avro": False,
+    "inet": False,
     "crypto": True,
 }
 

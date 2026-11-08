@@ -77,6 +77,7 @@ def register(con: Any) -> None:
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )
+    load_staged(con, "inet")  # DuckDB's own error names it where a statement needs it (REQ-294)
     if not load_staged(con, "crypto"):  # refused by name at the call (REQ-2171)
         con.create_function(
             "crypto_hash", _refuse_digest, ["VARCHAR", "BLOB"], "BLOB", side_effects=False

@@ -53,6 +53,7 @@ PARTS: dict[str, tuple[str, ...]] = {
         "iceberg",
         "avro",
         "vss",
+        "inet",
         "crypto",
     ),
     "provisa-duckdb-ext-warehouse": (

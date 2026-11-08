@@ -100,7 +100,7 @@ RECORDED: dict[str, str | None] = {
 
 
 @pytest.fixture(scope="session")
-def crypto_extension(tmp_path_factory):
+def crypto_extension_directory(tmp_path_factory):
     """The crypto extension staged, as an install's step does: register only loads it."""
     directory = str(tmp_path_factory.mktemp("duckdb-extensions"))
     con = duckdb.connect(config={"extension_directory": directory})
@@ -108,10 +108,15 @@ def crypto_extension(tmp_path_factory):
     for extension in ("icu", "inet"):  # what a connection on this directory autoloads no more
         con.execute(f"INSTALL {extension}")
     con.close()
-    patch = pytest.MonkeyPatch()
-    patch.setenv("PROVISA_DUCKDB_EXT_DIR", directory)
-    yield directory
-    patch.undo()
+    return directory
+
+
+@pytest.fixture
+def crypto_extension(crypto_extension_directory, monkeypatch):
+    """That directory for one test: it holds only these extensions, so it must not outlive the test
+    (REQ-294: a connection opened elsewhere loads from it and installs nothing)."""
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", crypto_extension_directory)
+    return crypto_extension_directory
 
 
 @pytest.fixture
