@@ -81360,7 +81360,14 @@
     CARRY UPGRADE CODE:) Maintainer 2026-10-31: from the first beta release, each release that changes stored
     structure or the meaning of stored data carries the code that upgrades an existing install, keeping
     what it holds, and an upgrade test proves it on an older install. Until then no migrations are written,
-    and the first beta release is the baseline they start from.'
+    and the first beta release is the baseline they start from. (Amended 2026-11-08, A RELEASE MOVES THROUGH
+    STAGES:) Work moves feature, dev (main), test, pre-prod, prod. Each stage is a branch that only takes
+    what passed the stage before, so main is never frozen for a release and a landing on main cancels nothing
+    on the others. test runs the product''s suites on a commit chosen from main. pre-prod runs the whole
+    release build as a dry run, publishing nothing, and is where packaging and install are tested. A failure
+    on either stage is fixed on that branch and merged back to main, so a failed build costs no version.
+    The release is cut from pre-prod: its notes and tag are made on that commit, the release is published,
+    prod moves to it, and the notes merge back to main. (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
