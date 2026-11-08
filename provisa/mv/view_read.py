@@ -314,12 +314,13 @@ def semantic_statement(
         if not _answered_after_governance(view, view_sql_map, state, gov):
             require_inputs_reached(view_sql, gov)
             bodies[view] = _with_own_rules(view, view_sql, gov)
-    governed = expand_view_refs(sql, bodies)
-    # Validated with every view marked where it is expanded, here and below, so the guard reads
-    # each as the view it is (provisa.compiler.join_guard).
+    # Every view marked where it is expanded, in the statement governed and the one validated:
+    # governance reads a marked body as the administrator's (REQ-039: its select lists are judged
+    # against the reader, its other clauses may read what the reader is not served) and removes
+    # the marks; the guard reads each as the view it is (provisa.compiler.join_guard).
     marked = expand_view_refs(sql, bodies, mark=True)
     judged = {view: body for view, body in definitions.items() if view not in home_copies}
-    return governed, expand_view_refs(marked, judged, mark=True)
+    return marked, expand_view_refs(marked, judged, mark=True)
 
 
 def _class_bodies(

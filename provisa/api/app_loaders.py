@@ -1471,7 +1471,7 @@ async def _load_kept(conn: Any) -> None:  # REQ-1942
         return
     schema = org_schema(require_current_org(), runtime.env)
     tables = await logged(conn, schema)
-    kept: dict[int, tuple[str, list[str]]] = {}
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = {}
     for table_id in sorted(tables):
         rows = (
             await conn.execute_core(
@@ -1486,7 +1486,7 @@ async def _load_kept(conn: Any) -> None:  # REQ-1942
             raise RuntimeError(
                 f"table {table_id} has kept mutations but no primary key to apply them by"
             )
-        kept[table_id] = (f'"provisa_admin"."{schema}"."{log_name(table_id)}"', key)
+        kept[table_id] = (("provisa_admin", schema, log_name(table_id)), key)
     runtime.kept = kept
 
 

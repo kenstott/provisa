@@ -213,7 +213,7 @@ def data_view_from_state(
             for (tid, rid), columns in state.masking_rules.items()
             if rid == role_id
         },
-        row_rule=lambda tid, domain: (
+        row_rule=lambda tid, domain: _shown(
             None if rls is None else rls.rules.get(tid) or rls.domain_rules.get(domain)
         ),
         readable=readable,
@@ -277,3 +277,10 @@ def table_access(
         "table_name": table["table_name"],
         "columns": list(columns.values()),
     }
+
+
+def _shown(rule: Any) -> str | None:
+    """A row rule as the rights view shows it: written out, None for none (REQ-913)."""
+    from provisa.compiler.rls import rule_text
+
+    return None if rule is None else rule_text(rule)

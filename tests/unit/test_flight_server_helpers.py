@@ -210,6 +210,7 @@ class TestFlightSqlDispatchHopCount:
             staged=None,  # as _Plan: no CTE holding one (REQ-2131)
             two_step=None,  # as _Plan: written whole (REQ-2001)
             code_write=None,  # as _Plan: no code table written (REQ-2100)
+            keyed_write=None,  # as _Plan: not written in two steps by key (REQ-039)
             result_shape=None,  # as _Plan: built from no governed statement (REQ-1961)
             scratch=(),  # as _Plan: no scratch tables (REQ-1986)
             row_limit=None,  # as _Plan: no row limit bounds this read
@@ -264,6 +265,7 @@ class TestFlightSqlDispatchHopCount:
             staged=None,  # as _Plan: no CTE holding one (REQ-2131)
             two_step=None,  # as _Plan: written whole (REQ-2001)
             code_write=None,  # as _Plan: no code table written (REQ-2100)
+            keyed_write=None,  # as _Plan: not written in two steps by key (REQ-039)
             result_shape=None,  # as _Plan: built from no governed statement (REQ-1961)
             scratch=(),  # as _Plan: no scratch tables (REQ-1986)
             route=Route.ENGINE,

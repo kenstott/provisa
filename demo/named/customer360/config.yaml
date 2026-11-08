@@ -54,6 +54,7 @@ data_products:
     email) keeps the link the hub gives it
   sla: Rebuilt each time the customer master syncs from the four systems
   support_contact: kennethstott@gmail.com
+  tables: [master, hub_findings, hub_match_rate, renewal_risk_checked]
 domains:
 - id: customer360
   description: Halyard Software's customers across Salesforce, ServiceNow, Jira and Stripe, and the
@@ -385,7 +386,6 @@ views:
 # Stripe customer's, its support name the service desk's.
 - id: master
   domain_id: customer360
-  product_id: account_health
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -426,7 +426,6 @@ views:
 # gap; a hub link to a record the system no longer holds is stale.
 - id: hub_findings
   domain_id: customer360
-  product_id: account_health
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -480,7 +479,6 @@ views:
 # evidence confirms (it matches the record to the account of the same master).
 - id: hub_match_rate
   domain_id: customer360
-  product_id: account_health
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -532,7 +530,6 @@ views:
 # The question answered again through the corrected hub, and which answers the hub alone missed.
 - id: renewal_risk_checked
   domain_id: customer360
-  product_id: account_health
   enable_aggregates: true
   enable_group_by: true
   description: 'The accounts renewing this quarter with an open P1 incident, a blocked fix or an overdue

@@ -37,6 +37,7 @@ from sqlglot import exp
 
 from provisa.api_source.models import ApiColumnType, ApiEndpoint
 from provisa.codehost.residual import conjuncts, predicate
+from provisa.compiler.governed_relation import inline
 
 #: The form field a SPARQL 1.1 query is posted under, and the argument a narrowed query is
 #: sent as (``caller.prepare_call``): part of the call, so the answer is kept under it.
@@ -114,7 +115,8 @@ def narrowed_query(
     """``query_template`` narrowed by what the statement ``sql`` (postgres) asks of ``table``:
     ``columns`` maps each column's SQL name to its SPARQL variable and type. None when nothing is
     pushed."""
-    tree = sqlglot.parse_one(sql, read="postgres")
+    # A governed read: its governed relation read as the table, its row rules as conditions.
+    tree = inline(sqlglot.parse_one(sql, read="postgres"))
     reads = [t for t in tree.find_all(exp.Table) if t.name == table]
     if len(reads) != 1:
         return None  # read twice, the rows fetched serve both reads
