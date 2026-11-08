@@ -36,10 +36,19 @@ New coverage here:
 from __future__ import annotations
 
 
+import pytest
+
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
 from provisa.security.masking import MaskType, MaskingRule, build_mask_expression
 from tests.helpers import governed_for_role
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_masking_edge_cases")
+
 
 # ---------------------------------------------------------------------------
 # Shared table IDs and helper builders
@@ -82,7 +91,7 @@ def _ctx(
 
 
 class TestMaskedColumnInWhereClause:
-    def test_rls_where_and_masking_coexist(self):
+    def test_rls_where_and_masking_coexist(self, pg):
         """A role with a row filter and a mask on one table gets both: the projection is
         masked and the row filter, which reads the physical column, is intact."""
         ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
@@ -101,9 +110,13 @@ class TestMaskedColumnInWhereClause:
             rls={CUSTOMERS_TABLE_ID: "region = 'us-east'"},
             masking_rules=rules,
         )
-        assert result == (
-            'SELECT \'***\' AS "email", "t0"."region" FROM "public"."customers" AS "t0" '
-            'WHERE ("t0"."region" = \'us-east\')'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                'SELECT \'***\' AS "email", "t0"."region" FROM "public"."customers" AS "t0" '
+                'WHERE ("t0"."region" = \'us-east\')'
+            ),
         )
 
 
@@ -113,7 +126,7 @@ class TestMaskedColumnInWhereClause:
 
 
 class TestMaskedColumnInJoinCondition:
-    def test_join_on_predicate_not_rewritten_when_join_column_masked(self):
+    def test_join_on_predicate_not_rewritten_when_join_column_masked(self, pg):
         """A masked column of the joined table is masked in the SELECT; the JOIN ON
         predicate, over unmasked keys, is left as written. (A masked key in JOIN ON reads
         the mask — tests/unit/test_governance_whole_statement.py.)
@@ -149,13 +162,17 @@ class TestMaskedColumnInJoinCondition:
         }
         result = governed_for_role(sql, ctx, "analyst", masking_rules=rules)
 
-        assert result == (
-            'SELECT "t0"."id", PROVISA_REGEX_REPLACE("t1"."email", \'.*\', \'***\', \'****\') AS "email" '
-            'FROM "public"."orders" AS "t0" LEFT JOIN "public"."customers" AS "t1" '
-            'ON "t0"."customer_id" = "t1"."id"'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                'SELECT "t0"."id", PROVISA_REGEX_REPLACE("t1"."email", \'.*\', \'***\', \'****\') AS "email" '
+                'FROM "public"."orders" AS "t0" LEFT JOIN "public"."customers" AS "t1" '
+                'ON "t0"."customer_id" = "t1"."id"'
+            ),
         )
 
-    def test_join_root_column_not_masked_when_only_target_has_rule(self):
+    def test_join_root_column_not_masked_when_only_target_has_rule(self, pg):
         """The root table's column in SELECT must not be masked when masking rules
         only apply to the joined table's column."""
         orders_meta = _table_meta(ORDERS_TABLE_ID, "orders", "orders")
@@ -190,9 +207,14 @@ class TestMaskedColumnInJoinCondition:
         result = governed_for_role(sql, ctx, "analyst", masking_rules=rules)
 
         # email masked; amount untouched in SELECT
-        assert result == (
-            'SELECT "t0"."amount", \'HIDDEN\' AS "email" FROM "public"."orders" AS "t0" '
-            'LEFT JOIN "public"."customers" AS "t1" ON "t0"."customer_id" = "t1"."id"'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                'SELECT "t0"."amount", \'HIDDEN\' AS "email" FROM "public"."orders" AS "t0" '
+                'LEFT JOIN "public"."customers" AS "t1" ON "t0"."customer_id" = "t1"."id"'
+            ),
+            types={"id": "integer", "customer_id": "integer"},
         )
 
 
@@ -213,13 +235,13 @@ class TestMaskingDialectConsistency:
     def test_regex_mask_expression_is_ansi_regexp_replace(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*$", replace="$1***")
         expr = build_mask_expression(rule, '"col"', "varchar")
-        assert expr.startswith("provisa_regex_replace(")
+        assert expr.startswith("PROVISA_REGEX_REPLACE(")
 
     def test_truncate_mask_expression_is_ansi_date_trunc(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="day")
         expr = build_mask_expression(rule, '"ts"', "timestamp")
         assert expr.startswith("DATE_TRUNC(")
-        assert "'day'" in expr
+        assert "'DAY'" in expr
 
     def test_constant_integer_mask_is_bare_literal(self):
         """Constant integer mask must emit a bare numeric literal (no quotes)."""
@@ -253,14 +275,16 @@ class TestMaskingDialectConsistency:
         """varchar(255) must be treated as varchar for REGEXP_REPLACE emission."""
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
         expr = build_mask_expression(rule, '"col"', "varchar(255)")
-        assert expr.startswith("provisa_regex_replace(")
+        assert expr.startswith("PROVISA_REGEX_REPLACE(")
 
     def test_truncate_mask_preserves_precision_token(self):
-        """The precision token must be preserved exactly in the DATE_TRUNC call."""
+        """The precision token is preserved in the DATE_TRUNC call, spelled as the governed
+        statement spells a unit (upper case; every engine reads a unit in any case)."""
         for precision in ("year", "month", "day", "hour"):
             rule = MaskingRule(mask_type=MaskType.truncate, precision=precision)
             expr = build_mask_expression(rule, '"ts"', "timestamp")
-            assert f"'{precision}'" in expr, f"Precision '{precision}' not found in: {expr}"
+            unit = precision.upper()
+            assert f"'{unit}'" in expr, f"Precision '{unit}' not found in: {expr}"
 
     def test_max_constant_resolves_per_integer_subtype(self):
         """MAX sentinel resolves to the correct bound for each integer subtype."""
@@ -295,7 +319,7 @@ class TestMaskingDialectConsistency:
 
 
 class TestMaskingInjectionSideEffects:
-    def test_order_by_preserved_after_masking(self):
+    def test_order_by_preserved_after_masking(self, pg):
         """ORDER BY on an unmasked column survives masking of the projection unchanged."""
         rules: MaskingRules = {
             (ORDERS_TABLE_ID, "viewer"): {
@@ -308,9 +332,11 @@ class TestMaskingInjectionSideEffects:
             "viewer",
             masking_rules=rules,
         )
-        assert result == 'SELECT "id", 0 AS "amount" FROM "public"."orders" ORDER BY "id" DESC'
+        assert_same_answer(
+            pg, result, 'SELECT "id", 0 AS "amount" FROM "public"."orders" ORDER BY "id" DESC'
+        )
 
-    def test_limit_clause_preserved_after_masking(self):
+    def test_limit_clause_preserved_after_masking(self, pg):
         """LIMIT clause must not be removed or altered by masking."""
         ctx = _ctx(tables={"customers": _table_meta(CUSTOMERS_TABLE_ID, "customers", "customers")})
         rules: MaskingRules = {
@@ -324,7 +350,9 @@ class TestMaskingInjectionSideEffects:
             "analyst",
             masking_rules=rules,
         )
-        assert result == 'SELECT \'X\' AS "email" FROM "public"."customers" LIMIT 100'
+        assert_same_answer(
+            pg, result, 'SELECT \'X\' AS "email" FROM "public"."customers" LIMIT 100'
+        )
 
     def test_single_quote_in_constant_mask_value_escaped(self):
         """A constant mask value containing a single quote must be SQL-escaped."""

@@ -1,0 +1,15 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:customer360/1-renewal-risk.graphql",
+  "reads": [
+   "hub",
+   "jira",
+   "salesforce",
+   "servicenow",
+   "stripe"
+  ],
+  "root_field": "c__viewRenewalRiskHub"
+ }
+]

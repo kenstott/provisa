@@ -10,10 +10,19 @@
 
 """Column masks applied to compiled SQL by the one governed pipeline (compiler/stage2)."""
 
+import pytest
+
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.compiler.sql_gen import CompilationContext, JoinMeta, TableMeta
 from provisa.security.masking import MaskType, MaskingRule
+from tests.governed_pg import assert_same_answer, governed_database
 from tests.helpers import governed_for_role
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_mask_inject")
+
 
 _REGEX = "PROVISA_REGEX_REPLACE({}, '^(.{{2}}).*(@.*)$', '$1***$2', '****')"
 _EMAIL_MASK = _REGEX.format('"email"')
@@ -50,11 +59,13 @@ def _email_regex() -> MaskingRule:
 
 
 class TestInjectMasking:
-    def test_no_rules_returns_unchanged(self):
+    def test_no_rules_returns_unchanged(self, pg):
         sql = 'SELECT "email" FROM "public"."customers"'
-        assert governed_for_role(sql, _customers_ctx(), "analyst", masking_rules={}) == sql
+        assert_same_answer(
+            pg, governed_for_role(sql, _customers_ctx(), "analyst", masking_rules={}), sql
+        )
 
-    def test_regex_mask_on_simple_select(self):
+    def test_regex_mask_on_simple_select(self, pg):
         rules: MaskingRules = {(2, "analyst"): {"email": (_email_regex(), "varchar")}}
         result = governed_for_role(
             'SELECT "email" FROM "public"."customers"',
@@ -62,9 +73,11 @@ class TestInjectMasking:
             "analyst",
             masking_rules=rules,
         )
-        assert result == (f'SELECT {_EMAIL_MASK} AS "email" FROM "public"."customers"')
+        assert_same_answer(
+            pg, result, (f'SELECT {_EMAIL_MASK} AS "email" FROM "public"."customers"')
+        )
 
-    def test_constant_mask_replaces_column(self):
+    def test_constant_mask_replaces_column(self, pg):
         rules: MaskingRules = {
             (1, "viewer"): {
                 "amount": (MaskingRule(mask_type=MaskType.constant, value=0), "integer"),
@@ -73,9 +86,9 @@ class TestInjectMasking:
         result = governed_for_role(
             'SELECT "amount" FROM "public"."orders"', _ctx(), "viewer", masking_rules=rules
         )
-        assert result == 'SELECT 0 AS "amount" FROM "public"."orders"'
+        assert_same_answer(pg, result, 'SELECT 0 AS "amount" FROM "public"."orders"')
 
-    def test_truncate_mask(self):
+    def test_truncate_mask(self, pg):
         rules: MaskingRules = {
             (1, "analyst"): {
                 "created_at": (
@@ -91,12 +104,17 @@ class TestInjectMasking:
             masking_rules=rules,
         )
         # sqlglot canonicalizes the DATE_TRUNC unit to upper-case (same as transpile output).
-        assert result == (
-            'SELECT DATE_TRUNC(\'MONTH\', "t0"."created_at") AS "created_at" '
-            'FROM "public"."orders" AS "t0"'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                'SELECT DATE_TRUNC(\'MONTH\', "t0"."created_at") AS "created_at" '
+                'FROM "public"."orders" AS "t0"'
+            ),
+            types={"created_at": "timestamp"},
         )
 
-    def test_aliased_column_with_join(self):
+    def test_aliased_column_with_join(self, pg):
         orders_meta = _meta(table_id=1, field_name="orders", table_name="orders")
         customers_meta = _meta(table_id=2, field_name="customers", table_name="customers")
         ctx = _ctx(
@@ -121,13 +139,17 @@ class TestInjectMasking:
             masking_rules=rules,
         )
         # The joined table's column is masked; the root column is unchanged.
-        assert result == (
-            f'SELECT "t0"."id", {_T1_EMAIL_MASK} '
-            'AS "email" FROM "public"."orders" AS "t0" LEFT JOIN "public"."customers" AS "t1" '
-            'ON "t0"."customer_id" = "t1"."id"'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                f'SELECT "t0"."id", {_T1_EMAIL_MASK} '
+                'AS "email" FROM "public"."orders" AS "t0" LEFT JOIN "public"."customers" AS "t1" '
+                'ON "t0"."customer_id" = "t1"."id"'
+            ),
         )
 
-    def test_multiple_masked_columns(self):
+    def test_multiple_masked_columns(self, pg):
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (
@@ -148,13 +170,17 @@ class TestInjectMasking:
             "analyst",
             masking_rules=rules,
         )
-        assert result == (
-            "SELECT '***@***.***' AS \"email\", "
-            "PROVISA_REGEX_REPLACE(\"name\", '^(.).* (.).*$', '$1. $2.', '****') AS \"name\" "
-            'FROM "public"."customers"'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                "SELECT '***@***.***' AS \"email\", "
+                "PROVISA_REGEX_REPLACE(\"name\", '^(.).* (.).*$', '$1. $2.', '****') AS \"name\" "
+                'FROM "public"."customers"'
+            ),
         )
 
-    def test_unmasked_columns_unchanged(self):
+    def test_unmasked_columns_unchanged(self, pg):
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (MaskingRule(mask_type=MaskType.constant, value="HIDDEN"), "varchar"),
@@ -166,9 +192,11 @@ class TestInjectMasking:
             "analyst",
             masking_rules=rules,
         )
-        assert result == ('SELECT "id", \'HIDDEN\' AS "email", "region" FROM "public"."customers"')
+        assert_same_answer(
+            pg, result, ('SELECT "id", \'HIDDEN\' AS "email", "region" FROM "public"."customers"')
+        )
 
-    def test_no_masking_for_role_without_rules(self):
+    def test_no_masking_for_role_without_rules(self, pg):
         sql = 'SELECT "email" FROM "public"."customers"'
         rules: MaskingRules = {
             (2, "analyst"): {
@@ -176,9 +204,11 @@ class TestInjectMasking:
             }
         }
         # admin has no masking rules
-        assert governed_for_role(sql, _customers_ctx(), "admin", masking_rules=rules) == sql
+        assert_same_answer(
+            pg, governed_for_role(sql, _customers_ctx(), "admin", masking_rules=rules), sql
+        )
 
-    def test_where_clause_preserved(self):
+    def test_where_clause_preserved(self, pg):
         rules: MaskingRules = {
             (2, "analyst"): {
                 "email": (MaskingRule(mask_type=MaskType.constant, value="HIDDEN"), "varchar"),
@@ -190,6 +220,11 @@ class TestInjectMasking:
             "analyst",
             masking_rules=rules,
         )
-        assert result == (
-            'SELECT \'HIDDEN\' AS "email", "region" FROM "public"."customers" WHERE "region" = $1'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                'SELECT \'HIDDEN\' AS "email", "region" FROM "public"."customers" WHERE "region" = $1'
+            ),
+            params={"$1": "'region 1@v1.x'"},
         )

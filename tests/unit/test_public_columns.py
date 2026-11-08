@@ -39,6 +39,7 @@ from provisa.security.rights import (
 )
 from provisa.security.visibility import visible_tables
 from tests.role_state import RoleState
+from tests.rules import rule_of
 
 
 def _field(t: dict) -> str:
@@ -382,7 +383,7 @@ def test_a_row_rule_and_a_mask_on_a_published_table_still_apply():
     gov, _ = _sql_context(
         _role("seller", SALES), row_rule="id < 100", mask={"name": (rule, "varchar")}
     )
-    assert gov.rls_rules[1] == "id < 100"
+    assert gov.rls_rules[1] == rule_of("id < 100")
     assert gov.masking_rules[(1, "name")] == (rule, "varchar")
     unfiltered, _ = _sql_context(_role("seller", SALES))
     assert 1 not in unfiltered.rls_rules

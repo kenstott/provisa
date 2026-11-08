@@ -312,24 +312,21 @@ def _check_unreadable_shapes(  # REQ-039
     - a parenthesised FROM item that is no query -- ``(bank.customer CROSS JOIN v)``, or
       ``(bank.customer) x`` -- holding a registered relation: neither the column checks nor stage
       2 see the relation inside it, so its hidden columns, masks and row rules go unapplied;
-    - a data write anywhere but at the statement's root (a writable CTE): it is neither admitted
-      nor its RETURNING governed;
+    - a data write placed anywhere but where REQ-039 admits one -- the statement's root, or
+      ``WITH w AS (<write> RETURNING ...) SELECT ... FROM w`` -- or a second write
+      (:func:`~provisa.compiler.write_admission.the_write`);
     - a CTE named as a registered relation the statement reads: the column checks take the
       relation for the CTE."""
-    from provisa.compiler.write_admission import nested_writes
+    from provisa.compiler.write_admission import WriteNotAdmitted, the_write
 
     violations = [
         ValidationViolation("V006", parenthesised_join_message(tbl))
         for tbl in parenthesised_join_tables(tree, gov_ctx)
     ]
-    for node in nested_writes(tree):  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
-        violations.append(
-            ValidationViolation(
-                "V006",
-                f"{type(node).__name__.upper()} inside a statement is not supported: a data "
-                "write is run only as the statement itself",
-            )
-        )
+    try:
+        the_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    except WriteNotAdmitted as refused:
+        violations.append(ValidationViolation("V006", str(refused).removeprefix("[V006] ")))
     read = {
         tbl.name
         for tbl in tree.find_all(exp.Table)

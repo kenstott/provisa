@@ -263,7 +263,13 @@ async def test_a_plan_that_embeds_rows_does_not_stream_from_its_terminal():
     from provisa.vector.embed_fn import Folded
 
     plan = SimpleNamespace(
-        embedded=None, two_step=None, code_write=None, scratch=(), columns=None, staged=None
+        embedded=None,
+        two_step=None,
+        code_write=None,
+        keyed_write=None,
+        scratch=(),
+        columns=None,
+        staged=None,
     )
     assert streams_from_terminal(plan)  # type: ignore[arg-type]
     plan.embedded = Folded("SELECT 1", audit=({"id": "mini"},))

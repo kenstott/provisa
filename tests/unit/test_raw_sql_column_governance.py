@@ -197,8 +197,9 @@ class TestColumnGovernanceWithPopulatedTables:
         gov_ctx = build_governance_context(
             "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
         )
-        governed = apply_governance("SELECT amount FROM orders", gov_ctx)
-        assert "amount" not in governed
+        # REQ-039: the governed relation does not hold it; refused, naming it, before it is sent.
+        with pytest.raises(PermissionError, match=r"\[V003\] Column 'amount' is not visible"):
+            apply_governance("SELECT amount FROM orders", gov_ctx)
 
     def test_select_star_expanded_to_visible_columns_only(self):
         """SELECT * expands to id, region — amount (admin-only) is dropped."""
@@ -208,7 +209,7 @@ class TestColumnGovernanceWithPopulatedTables:
             "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
         )
         governed = apply_governance("SELECT * FROM orders", gov_ctx)
-        assert "SELECT *" not in governed  # wildcard expanded
+        # The star reads the governed relation, which exposes the served columns alone.
         assert "id" in governed
         assert "region" in governed
         assert "amount" not in governed
@@ -310,7 +311,7 @@ async def test_pipeline_column_governance_enforced_with_populated_tables(monkeyp
         "SELECT * FROM orders",
         tables=[_ORDERS_TABLE_DICT],
     )
-    assert "SELECT *" not in governed  # wildcard expanded; '***' mask literal is fine
+    # The star reads the governed relation, which exposes the served columns alone.
     assert "amount" not in governed
     assert "id" in governed
     assert "region" in governed

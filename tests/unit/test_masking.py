@@ -106,8 +106,9 @@ class TestBuildMaskExpression:
     def test_regex_expression(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*(@.*)$", replace="$1***$2")
         expr = build_mask_expression(rule, '"t0"."email"', "varchar")
+        # As the governed statement spells it (an expression built on the AST, REQ-913).
         assert (
-            expr == "provisa_regex_replace(\"t0\".\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****')"
+            expr == "PROVISA_REGEX_REPLACE(\"t0\".\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****')"
         )
 
     def test_constant_zero(self):
@@ -133,12 +134,12 @@ class TestBuildMaskExpression:
     def test_truncate_month(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
         expr = build_mask_expression(rule, '"t0"."created_at"', "timestamp")
-        assert expr == 'DATE_TRUNC(\'month\', "t0"."created_at")'
+        assert expr == 'DATE_TRUNC(\'MONTH\', "t0"."created_at")'
 
     def test_truncate_year(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="year")
         expr = build_mask_expression(rule, '"birthday"', "date")
-        assert expr == "DATE_TRUNC('year', \"birthday\")"
+        assert expr == "DATE_TRUNC('YEAR', \"birthday\")"
 
     def test_constant_max_integer(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="MAX")
