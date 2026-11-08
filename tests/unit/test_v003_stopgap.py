@@ -13,7 +13,9 @@
 Until every reference to a registered relation is governed by construction, a statement whose
 shape governance cannot read is refused rather than served: a parenthesised join group holding a
 registered relation, unless it is the leftmost FROM item, which is the flat join and governed as
-one (C3); a data write anywhere but at the statement's root (C4); and a CTE named as a registered
+one (C3); a data write anywhere but where REQ-039 admits one -- the statement's root, or
+``WITH w AS (<write> RETURNING ...) SELECT ... FROM w`` -- or a second write (C4); and a CTE
+named as a registered
 relation the statement reads (H2). An ORDER BY name matches an output only where
 PostgreSQL names one -- a real alias or a column -- so ``'ssn'`` names no output and ``ORDER BY
 ssn`` is the hidden input column (H1).
@@ -23,7 +25,10 @@ ssn`` is the hidden input column (H1).
 
 from __future__ import annotations
 
+import duckdb
 import pytest
+import sqlglot
+import sqlglot.expressions as exp
 
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_validator import validate_sql
@@ -75,8 +80,46 @@ def _codes(sql: str) -> list[str]:
 _ROW_RULE = {1: "id = 2"}
 
 
+@pytest.fixture(scope="module")
+def con():
+    """The registered tables, under both the names the tests write and a BI tool's."""
+    con = duckdb.connect()
+    for schema, customer, orders, regions in (
+        ("bank", "customer", "orders", "regions"),
+        ("public", "customers", "orders", "regions"),
+    ):
+        con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        con.execute(
+            f"CREATE TABLE {schema}.{customer} AS SELECT * FROM (VALUES "
+            "(1, 'ann', '111', 'a@x'), (2, 'bo', '222', 'b@x'), (3, 'cy', '333', 'c@x')) "
+            "t(id, name, ssn, email)"
+        )
+        con.execute(
+            f"CREATE TABLE {schema}.{orders} AS SELECT * FROM (VALUES "
+            "(1, 1), (2, 2), (3, 2), (4, 3)) t(id, customer_id)"
+        )
+        con.execute(
+            f"CREATE TABLE {schema}.{regions} AS SELECT * FROM (VALUES "
+            "(2, 'west'), (3, 'east')) t(customer_id, label)"
+        )
+    yield con
+    con.close()
+
+
 def _governed(sql: str) -> str:
-    return apply_governance(sql, _gov(rls_rules=_ROW_RULE)).replace('"', "")
+    return apply_governance(sql, _gov(rls_rules=_ROW_RULE))
+
+
+def _read(con, sql: str) -> tuple[list[str], list[tuple]]:
+    """What the role reads for ``sql``: the governed statement's column names and rows."""
+    cur = con.execute(_governed(sql))
+    return [d[0] for d in cur.description], sorted(cur.fetchall(), key=repr)
+
+
+def _no_join_group(sql: str) -> bool:
+    """Whether the governed statement has no parenthesised join group left: it was flattened."""
+    tree = sqlglot.parse_one(_governed(sql), read="postgres")
+    return not any(not isinstance(s.this, exp.Query) for s in tree.find_all(exp.Subquery))
 
 
 @pytest.mark.parametrize(
@@ -93,20 +136,34 @@ def test_a_leftmost_group_s_hidden_column_is_refused_as_in_the_flat_join(sql):
 
 
 @pytest.mark.parametrize(
-    "sql",
+    ("sql", "columns", "rows"),
     [
-        "SELECT id FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
-        "SELECT * FROM (bank.customer c CROSS JOIN (VALUES (1)) v)",
-        "SELECT id FROM (bank.customer c CROSS JOIN (VALUES (1)) v) WHERE c.ssn LIKE '1%'",
-        "SELECT * FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
+        ("SELECT id FROM (bank.customer CROSS JOIN (VALUES (1)) v)", ["id"], [(2,)]),
+        (
+            "SELECT * FROM (bank.customer c CROSS JOIN (VALUES (1)) v)",
+            ["id", "name", "email", "col0"],
+            [(2, "bo", "b@x", 1)],
+        ),
+        (
+            "SELECT * FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
+            ["id", "name", "email", "col0"],
+            [(2, "bo", "b@x", 1)],
+        ),
     ],
 )
-def test_a_leftmost_group_is_governed_as_the_flat_join(sql):
+def test_a_leftmost_group_is_governed_as_the_flat_join(con, sql, columns, rows):
+    # (DuckDB names a VALUES column col0, as PostgreSQL names it column0)
     assert _codes(sql) == []
-    governed = _governed(sql)
-    assert "customer" in governed and "(bank.customer" not in governed  # flattened
-    assert "id = 2" in governed  # the row rule
-    assert "ssn" not in governed  # the hidden column, served nowhere
+    assert _no_join_group(sql)  # flattened
+    # the row rule keeps only customer 2; the hidden ssn is served nowhere
+    assert _read(con, sql) == (columns, rows)
+
+
+def test_a_leftmost_group_s_hidden_column_in_where_is_refused_before_it_is_sent():
+    # REQ-039: a hidden column is refused in every clause, not read as NULL or left to the engine
+    sql = "SELECT id FROM (bank.customer c CROSS JOIN (VALUES (1)) v) WHERE c.ssn LIKE '1%'"
+    with pytest.raises(PermissionError, match=r"\[V003\] Column c\.ssn is not visible"):
+        _governed(sql)
 
 
 _TABLEAU = (
@@ -116,12 +173,11 @@ _TABLEAU = (
 )
 
 
-def test_a_bi_tool_left_deep_nested_join_runs_governed():
+def test_a_bi_tool_left_deep_nested_join_runs_governed(con):
     assert _codes(_TABLEAU) == []
-    governed = _governed(_TABLEAU)
-    assert "FROM bank.orders AS o INNER JOIN bank.customer AS c" in governed
-    assert "LEFT JOIN bank.regions AS r" in governed
-    assert "c.id = 2" in governed
+    assert _no_join_group(_TABLEAU)
+    # customer 2's orders only: the row rule on the inner-joined customer
+    assert _read(con, _TABLEAU) == (["id", "name", "label"], [(2, "bo", "west"), (3, "bo", "west")])
 
 
 def test_a_bi_tool_left_deep_nested_join_s_hidden_column_is_refused():
@@ -139,15 +195,12 @@ _TABLEAU_CLASSIC = (
 )
 
 
-def test_tableau_classic_joins_are_flattened_and_governed():
+def test_tableau_classic_joins_are_flattened_and_governed(con):
     assert _codes(_TABLEAU_CLASSIC) == []
-    governed = _governed(_TABLEAU_CLASSIC)
-    assert (
-        "FROM public.orders AS orders INNER JOIN public.customers AS customers ON "
-        "(orders.customer_id = customers.id) LEFT JOIN public.regions AS regions"
-    ) in governed
-    assert "customers.id = 2" in governed  # the row rule
-    assert governed.endswith("GROUP BY 1, 2")
+    assert _no_join_group(_TABLEAU_CLASSIC)
+    assert _governed(_TABLEAU_CLASSIC).endswith("GROUP BY 1, 2")  # the ordinal GROUP BY kept
+    # the row rule keeps customer 2, whose orders 2 and 3 sum to 5
+    assert _read(con, _TABLEAU_CLASSIC) == (["name", "label", "sum:amount:ok"], [("bo", "west", 5)])
 
 
 # Tableau's custom SQL as a join operand: a derived table with its own alias, not an aliased group.
@@ -158,11 +211,10 @@ _TABLEAU_CUSTOM_SQL = (
 )
 
 
-def test_tableau_custom_sql_as_a_join_operand_is_not_refused():
+def test_tableau_custom_sql_as_a_join_operand_is_not_refused(con):
     assert _codes(_TABLEAU_CUSTOM_SQL) == []
-    governed = _governed(_TABLEAU_CUSTOM_SQL)
-    assert "FROM (SELECT id AS n FROM bank.orders) AS Custom SQL Query INNER JOIN" in governed
-    assert "customers.id = 2" in governed
+    # the derived table joined to the governed customers: only customer 2 matches
+    assert _read(con, _TABLEAU_CUSTOM_SQL) == (["n", "name"], [(2, "bo")])
 
 
 def test_tableau_custom_sql_reading_a_hidden_column_is_refused():
@@ -172,19 +224,15 @@ def test_tableau_custom_sql_reading_a_hidden_column_is_refused():
     assert "V003" in _codes(sql)
 
 
-def test_an_odbc_left_group_is_flattened_and_governed():
+def test_an_odbc_left_group_is_flattened_and_governed(con):
     # MS Query / ODBC: the first join in parentheses, the next outside them
     sql = (
         "SELECT o.id FROM (bank.orders o INNER JOIN bank.customer c ON o.customer_id = c.id) "
         "INNER JOIN bank.regions r ON c.id = r.customer_id"
     )
     assert _codes(sql) == []
-    governed = _governed(sql)
-    assert (
-        "FROM bank.orders AS o INNER JOIN bank.customer AS c ON o.customer_id = c.id "
-        "INNER JOIN bank.regions AS r"
-    ) in governed
-    assert "c.id = 2" in governed
+    assert _no_join_group(sql)
+    assert _read(con, sql) == (["id"], [(2,), (3,)])  # customer 2's orders only
 
 
 _REFUSED_GROUPS = [
@@ -226,10 +274,10 @@ def test_a_derived_table_is_still_served():
     assert _codes("SELECT d.id FROM (SELECT id FROM bank.customer) AS d") == []
 
 
-# -- C4: a data write is admitted only as the statement itself -------------------------------------
+# -- C4: a data write stands at the statement's root or in a RETURNING CTE ------------------------
 
 
-_NESTED_WRITES = [
+_RETURNING_CTE_WRITES = [
     "WITH u AS (UPDATE bank.customer SET name = name RETURNING ssn) SELECT * FROM u",
     "WITH u AS (UPDATE bank.customer SET name = name WHERE ssn LIKE '1%' RETURNING id) "
     "SELECT * FROM u",
@@ -237,16 +285,63 @@ _NESTED_WRITES = [
     "WITH u AS (INSERT INTO bank.customer (id) VALUES (3) RETURNING id) SELECT * FROM u",
 ]
 
+_MISPLACED_WRITES = [
+    "WITH a AS (UPDATE bank.customer SET name = 'a' RETURNING id), "
+    "b AS (DELETE FROM bank.customer RETURNING id) SELECT * FROM a, b",
+    "WITH w AS (UPDATE bank.customer SET name = 'a') SELECT 1",
+    "SELECT * FROM (WITH w AS (UPDATE bank.customer SET name = 'a' RETURNING id) "
+    "SELECT * FROM w) d",
+    "WITH x AS (SELECT 1), w AS (WITH v AS (DELETE FROM bank.customer RETURNING id) "
+    "SELECT * FROM v) SELECT * FROM w",
+]
 
-@pytest.mark.parametrize("sql", _NESTED_WRITES)
-def test_a_data_write_inside_a_statement_is_refused(sql):
+
+@pytest.mark.parametrize("sql", _RETURNING_CTE_WRITES)
+def test_a_write_in_a_returning_cte_is_not_refused_for_its_placement(sql):
+    assert "V006" not in _codes(sql)
+
+
+def _writer() -> GovernanceContext:
+    """A role that may insert, update and delete ``bank.customer``'s served columns."""
+    ops = ("insert", "update", "delete")
+    gov = _gov(
+        write_ops={1: frozenset(ops)},
+        write_returns_rows={1: True},
+        write_refused_forms={1: frozenset()},
+    )
+    gov.can_write = True
+    gov.role_id = "teller"
+    gov.write_grants = {
+        1: {
+            op: {"operation": op, "role": "teller", "columns": ["id", "name", "email"]}
+            for op in ops
+        }
+    }
+    return gov
+
+
+@pytest.mark.parametrize("sql", _RETURNING_CTE_WRITES)
+def test_stage_2_takes_a_write_in_a_returning_cte_as_a_write(sql):
+    # Admitted where it stands; one that reads the hidden ssn is refused for that (V003), never
+    # for where it stands (V006).
+    gov = _writer()
+    try:
+        apply_governance(sql, gov)
+    except PermissionError as refused:
+        assert str(refused).startswith("[V003]"), refused
+    else:
+        assert gov.admitted_write is not None
+
+
+@pytest.mark.parametrize("sql", _MISPLACED_WRITES)
+def test_a_data_write_placed_elsewhere_is_refused(sql):
     assert "V006" in _codes(sql)
 
 
-@pytest.mark.parametrize("sql", _NESTED_WRITES)
-def test_stage_2_does_not_read_a_nested_write_as_a_read(sql):
-    gov = _gov(write_ops={1: frozenset({"insert", "update", "delete"})})
-    with pytest.raises(WriteNotAdmitted, match="inside"):
+@pytest.mark.parametrize("sql", _MISPLACED_WRITES)
+def test_stage_2_refuses_a_data_write_placed_elsewhere(sql):
+    gov = _writer()
+    with pytest.raises(WriteNotAdmitted, match="V006"):
         apply_governance(sql, gov)
 
 
@@ -302,9 +397,19 @@ def test_an_order_or_group_key_that_names_no_output_is_judged_as_the_input(sql):
     assert "V003" in _codes(sql)
 
 
-def test_stage_2_does_not_take_a_string_literal_for_an_output_name():
-    governed = apply_governance("SELECT 'ssn', id FROM bank.customer ORDER BY ssn DESC", _gov())
-    assert "ssn DESC" not in governed.replace('"', "")
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 'ssn', id FROM bank.customer ORDER BY ssn DESC",
+        "SELECT id FROM bank.customer ORDER BY ssn",
+        "SELECT count(*) FROM bank.customer GROUP BY ssn",
+        "SELECT name AS ssn FROM bank.customer GROUP BY ssn",
+    ],
+)
+def test_stage_2_does_not_take_a_string_literal_for_an_output_name(sql):
+    # The key is the hidden input column: refused, naming it, before anything is sent (REQ-039).
+    with pytest.raises(PermissionError, match=r"\[V003\] Column 'ssn' is not visible"):
+        apply_governance(sql, _gov())
 
 
 @pytest.mark.parametrize(
@@ -323,3 +428,18 @@ def test_an_order_key_naming_a_real_output_is_still_served(sql):
 def test_stage_2_keeps_an_order_key_naming_a_real_alias():
     governed = apply_governance("SELECT name AS ssn, id FROM bank.customer ORDER BY ssn", _gov())
     assert "ORDER BY ssn" in governed.replace('"', "")
+
+
+def test_stage_2_refuses_a_hidden_column_a_correlated_subquery_reads_from_outside():
+    # an inner scope that does not hold the name leaves it to the outer one, which hides it
+    sql = (
+        "SELECT id FROM bank.customer c WHERE EXISTS "
+        "(SELECT 1 FROM bank.orders o WHERE o.customer_id = c.id AND ssn = '1')"
+    )
+    with pytest.raises(PermissionError, match=r"\[V003\] Column 'ssn' is not visible"):
+        apply_governance(sql, _gov())
+
+
+def test_stage_2_keeps_a_group_key_naming_a_served_output(con):
+    sql = "SELECT name AS n, count(*) FROM bank.customer GROUP BY n ORDER BY n"
+    assert _read(con, sql) == (["n", "count_star()"], [("bo", 1)])

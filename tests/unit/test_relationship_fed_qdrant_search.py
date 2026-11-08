@@ -31,6 +31,7 @@ from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.executor.result import QueryResult
 from provisa.federation.replica_address import ReplicaRoutes
 from provisa.mongodb.pipeline_table import PipelineRead
+from tests.governed_pg import assert_same_answer, governed_database
 from tests.helpers import governed_for_role
 
 pytestmark = pytest.mark.unit
@@ -225,15 +226,24 @@ async def _searched(
     return searched, {**rewrites, **inlined}, governed
 
 
-async def test_each_line_is_searched_with_its_own_words_and_sonnet():
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    """What a governed read answers, on PostgreSQL (tests/governed_pg.py)."""
+    return governed_database(embedded_postgres, "test_relationship_fed_qdrant_search")
+
+
+async def test_each_line_is_searched_with_its_own_words_and_sonnet(pg):
     searched, put_in, governed = await _searched(_JOINED, [LINES, NEAR])
     assert sorted((s["query"], s["sonnet"]) for s in searched) == sorted(
         ([float(len(text))], sonnet) for _id, sonnet, text in _LINES
     )
     assert sorted(_searched.asked.embedded[0]) == sorted(t for _i, _s, t in _LINES)  # pyright: ignore[reportFunctionMemberAccess]
-    assert governed == [
-        'SELECT DISTINCT "text" AS "query", "sonnet_number" AS "sonnet" FROM "public"."line"'
-    ]
+    (read,) = governed
+    assert_same_answer(
+        pg,
+        read,
+        'SELECT DISTINCT "text" AS "query", "sonnet_number" AS "sonnet" FROM "public"."line"',
+    )
     assert set(put_in) == {"lines_like"}
 
 

@@ -339,37 +339,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     base = _q(sel_name)
                 _emit_root_json_cols(sel.selection_set.selections, base, sel_name, sel_name)
                 continue
-            # Scalar field — check for JSON path extraction
+            # Scalar field. A column registered at a path in its document is read by its own
+            # name: its governed relation serves it so (stage2; on Trino's MongoDB catalog the
+            # routed statement reads it at its path, sql_rewrite.read_document_paths).
             response_key = sel.alias.value if sel.alias else sel_name
             gql_field_name = response_key
-            col_path = ctx.column_paths.get((table.table_id, sel_name))
             phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             sql_name = ctx.physical_to_sql.get((table.table_id, phys_name), phys_name)
-            if col_path:
-                # path is "source_col.key1.key2" → PG JSON extraction, or just "key"
-                # when the column is aliased (phys_name is the JSON source column).
-                # Emits PG syntax; SQLGlot transpiles to the engine json_extract_scalar
-                path_parts = col_path.split(".")
-                if len(path_parts) == 1:
-                    # Single-key path: phys_name is the JSON column, col_path is the key.
-                    source_col = phys_name
-                    keys = [col_path]
-                else:
-                    source_col = path_parts[0]
-                    keys = path_parts[1:]
-                if use_aliases:
-                    assert root_alias is not None
-                    expr = f"{_q(root_alias)}.{_q(source_col)}"
-                else:
-                    expr = _q(source_col)
-                # Navigate with -> for intermediate keys, ->> for final (text extract)
-                for i, key in enumerate(keys):
-                    op = "->>" if i == len(keys) - 1 else "->"
-                    expr = f"{expr}{op}'{key}'"
-                if sel.alias:
-                    expr = f"{expr} AS {_q(response_key)}"
-                select_parts.append(expr)
-            elif phys_name in _VIRTUAL_COLS:
+            if phys_name in _VIRTUAL_COLS:
                 vval = (ctx.virtual_columns.get(table.table_id) or {}).get(phys_name, "")
                 expr = _sql_str_literal(vval)
                 select_parts.append(f"{expr} AS {_q(response_key)}")
@@ -391,10 +368,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
-                    # a path into a JSON column (col_path) is read as text (->>)
-                    json=not col_path and (table.table_id, phys_name.lower()) in ctx.json_columns,
-                    integer=not col_path
-                    and (table.table_id, phys_name.lower()) in ctx.integer_columns,
+                    json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 

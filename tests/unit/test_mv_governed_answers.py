@@ -185,6 +185,14 @@ def _answers_as_its_tables(con, governed: str, view: MVDefinition, **run) -> lis
     return tables
 
 
+def _tables_answer(con, governed: str, view: MVDefinition, **run) -> list:
+    """The view does not answer ``governed`` -- a LEFT JOIN whose ON carries the joined
+    relation's row rule, which reinject leaves to the tables, always safely -- and the tables
+    do; their rows."""
+    assert reinject(governed, [view], _ctx()) is None, "the view declines this statement"
+    return _rows(con, governed, **run)
+
+
 def _mask(kind: MaskType, data_type: str, **how) -> tuple[MaskingRule, str]:
     return MaskingRule(mask_type=kind, **how), data_type
 
@@ -289,25 +297,56 @@ _JOINED = (
 )
 
 
+# REQ-039: each table is read as its governed relation, filtered by the role's row rule before
+# the join, as PostgreSQL row security does: a LEFT JOIN keeps every left row, and a right row
+# the rule keeps out reads as NULL.
+
+_NO_NAME = [(1, 5), (2, 7), (3, 9), (4, 3), (5, 4), (6, 50), (7, 2)]
+
+
+def _named(names: dict[int, str]) -> list:
+    """Every order, with the customer name the role reads for it (None where it reads none)."""
+    return [(i, amount, names.get(i)) for i, amount in _NO_NAME]
+
+
 @pytest.mark.parametrize(
-    "rules",
+    ("rules", "answers", "expected"),
     [
-        {_CUSTOMERS_ID: "credit >= 60"},
-        {_CUSTOMERS_ID: "region <> 'EU'"},
-        {_ORDERS_ID: "flag = 1"},
-        {_ORDERS_ID: "region <> 'EU'", _CUSTOMERS_ID: "credit < 100"},
+        # a rule on the joined table: in the LEFT JOIN's ON, which the view leaves to the tables
+        (
+            {_CUSTOMERS_ID: "credit >= 60"},
+            False,
+            _named({3: "bo", 4: "cy", 5: "cy", 7: "bo"}),
+        ),
+        ({_CUSTOMERS_ID: "region <> 'EU'"}, False, _named({1: "ann", 2: "ann"})),
+        # a rule on the root table: in the WHERE, which the view answers
+        (
+            {_ORDERS_ID: "flag = 1"},
+            True,
+            [(1, 5, "ann"), (3, 9, "bo"), (4, 3, "cy"), (6, 50, None)],
+        ),
+        (
+            {_ORDERS_ID: "region <> 'EU'", _CUSTOMERS_ID: "credit < 100"},
+            False,
+            [(1, 5, "ann"), (2, 7, "ann"), (6, 50, None)],
+        ),
     ],
 )
-def test_a_row_rule_on_a_column_the_join_view_keeps_answers_as_its_tables(con, rules):
-    rows = _answers_as_its_tables(con, _governed(_JOINED, rules), _join_view())
-    assert len(rows) < 7  # the rule kept some rows out
+def test_a_row_rule_on_a_column_the_join_view_keeps_answers_as_its_tables(
+    con, rules, answers, expected
+):
+    governed = _governed(_JOINED, rules)
+    if answers:
+        rows = _answers_as_its_tables(con, governed, _join_view())
+    else:
+        rows = _tables_answer(con, governed, _join_view())
+    assert rows == expected
 
 
 def test_a_null_joined_column_is_kept_out_by_a_not_equal_rule_both_ways(con):
-    rows = _answers_as_its_tables(
-        con, _governed(_JOINED, {_CUSTOMERS_ID: "region <> 'EU'"}), _join_view()
-    )
-    assert [r[0] for r in rows] == [1, 2]  # no EU customer, no NULL region, no unmatched order
+    rows = _tables_answer(con, _governed(_JOINED, {_CUSTOMERS_ID: "region <> 'EU'"}), _join_view())
+    # no EU customer and no NULL-region customer is read; every order is, as the LEFT JOIN keeps it
+    assert rows == _named({1: "ann", 2: "ann"})
 
 
 def test_a_row_rule_on_a_column_the_join_view_does_not_keep_is_never_answered(con):
@@ -342,8 +381,8 @@ def test_a_row_rule_whose_subquery_reads_the_tables_by_the_statements_names_is_l
 
 def test_a_row_rule_whose_subquery_reads_by_its_own_names_answers_as_its_tables(con):
     rule = "region IN (SELECT a.region FROM pg.public.allowed AS a WHERE a.who = 'ann')"
-    rows = _answers_as_its_tables(con, _governed(_JOINED, {_CUSTOMERS_ID: rule}), _join_view())
-    assert [r[0] for r in rows] == [1, 2]
+    rows = _tables_answer(con, _governed(_JOINED, {_CUSTOMERS_ID: rule}), _join_view())
+    assert rows == _named({1: "ann", 2: "ann"})
 
 
 @pytest.mark.parametrize(
@@ -361,7 +400,8 @@ def test_a_mask_on_a_column_the_join_view_keeps_answers_as_its_tables(
     masks = {(table, column): _mask(MaskType.constant, data_type, value=value)}
     rows = _answers_as_its_tables(con, _governed(sql, masks=masks), _join_view())
     if column == "name":
-        assert {r[2] for r in rows} == {"X"}
+        # the mask is the matched customer's value; order 6 has no customer, and reads NULL
+        assert {r[0]: r[2] for r in rows} == {i: None if i == 6 else "X" for i, _ in _NO_NAME}
     if column == "amount":
         assert {r[1] for r in rows} == {0}
 
@@ -378,6 +418,6 @@ def test_a_mask_on_a_column_the_join_view_does_not_keep_is_never_answered(con):
 
 def test_a_session_variable_rule_on_a_joined_table_is_evaluated_per_query(con):
     governed = _governed(_JOINED, {_CUSTOMERS_ID: "region = current_setting('provisa.region')"})
-    us = _answers_as_its_tables(con, governed, _join_view(), session={"region": "us"})
-    eu = _answers_as_its_tables(con, governed, _join_view(), session={"region": "EU"})
-    assert [r[0] for r in us] == [1, 2] and [r[0] for r in eu] == [3, 7]
+    us = _tables_answer(con, governed, _join_view(), session={"region": "us"})
+    eu = _tables_answer(con, governed, _join_view(), session={"region": "EU"})
+    assert us == _named({1: "ann", 2: "ann"}) and eu == _named({3: "bo", 7: "bo"})

@@ -32,6 +32,7 @@ from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.compiler.write_admission import WriteNotAdmitted
+from provisa.core.db import fold_config_grants
 
 _WRITES = [
     "INSERT INTO users (id, name, email) VALUES (99981, 'E2E Cypher', 'e2e-cypher@example.com')",
@@ -40,13 +41,18 @@ _WRITES = [
 ]
 
 
-def _users() -> dict:
-    """The demo model's ``users`` table, as the governance stage is handed a table."""
-    config = yaml.safe_load(
+def _config() -> dict:
+    return yaml.safe_load(
         (Path(__file__).resolve().parents[2] / "config" / "provisa-install.yaml").read_text()
     )
+
+
+def _users(*, folded: bool = True) -> dict:
+    """The demo model's ``users`` table, as the governance stage is handed a table: its column
+    grants folded over each role's ancestors, as the runtime build folds them (REQ-2155)."""
+    config = _config()
     (table,) = [t for t in config["tables"] if t["table"] == "users"]
-    return {
+    users = {
         "id": 1,
         "domain_id": table["domain_id"],
         "source_id": table["source_id"],
@@ -68,10 +74,13 @@ def _users() -> dict:
         "write_returns_rows": True,
         "write_refused_forms": [],
     }
+    if folded:
+        fold_config_grants([users], config.get("roles") or [])
+    return users
 
 
-def _governance(role_id: str, capabilities: list[str]):
-    table = _users()
+def _governance(role_id: str, capabilities: list[str], *, folded: bool = True):
+    table = _users(folded=folded)
     ctx = CompilationContext()
     ctx.tables = {
         "users": TableMeta(
@@ -103,6 +112,25 @@ def test_org_admin_inserts_updates_and_deletes_a_user(statement):
     governed = apply_governance(statement, _governance("org_admin", ["write"]))
     assert governed.split()[0] == statement.split()[0]
     assert "users" in governed
+
+
+@pytest.mark.parametrize("column", ["id", "name"])
+def test_org_admin_is_served_what_it_writes_through_data_steward(column):
+    """REQ-039: a column a role sets or filters a write on is one it is served. The model grants
+    ``users.id`` and ``users.name`` to data_steward, never to org_admin by name; org_admin is
+    served them because it inherits data_steward, and its write over them is admitted."""
+    (raw,) = [t for t in _config()["tables"] if t["table"] == "users"]
+    granted = next(c["visible_to"] for c in raw["columns"] if c["name"] == column)
+    assert "data_steward" in granted
+    assert "org_admin" not in granted
+    gov = _governance("org_admin", ["write"])
+    served = gov.visible_columns[1]
+    assert served is None or column in served  # None: every column is served
+    statement = f"UPDATE users SET {column} = {column} WHERE id = 99981"
+    assert apply_governance(statement, gov).split()[0] == "UPDATE"
+    # Without the inheritance fold the grant names no role org_admin is: the write is refused.
+    with pytest.raises(PermissionError, match="V003"):
+        apply_governance(statement, _governance("org_admin", ["write"], folded=False))
 
 
 @pytest.mark.parametrize("statement", _WRITES)

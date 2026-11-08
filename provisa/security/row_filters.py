@@ -33,6 +33,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+import sqlglot.expressions as exp
+
+from provisa.compiler.rls import Rule, all_of, any_of, as_rule, read_rule_row
+
 
 #: REQ-2188: a rule's rights, and the capability RW on a model table is held by, by the table the
 #: store writes. A rule on a role without it does nothing; a member of a set of roles that holds it
@@ -49,7 +53,14 @@ _ONTOLOGY_MODEL_TABLES: dict[str, str] = {"_terms": "glossary_terms"}
 
 #: REQ-2188: what a role named in a product's Owner field is held to. Generated at every build from
 #: the Owner fields and stored nowhere, so it is not a rule Security can edit.
-OWNER_RULE = "owner_role IN (current_setting('provisa.acting_roles'))"
+OWNER_RULE = exp.In(
+    this=exp.column("owner_role"),
+    expressions=[
+        exp.Anonymous(
+            this="current_setting", expressions=[exp.Literal.string("provisa.acting_roles")]
+        )
+    ],
+)
 
 
 def tagged_table_ids(tag_assignments: Iterable[dict]) -> dict[str, set[int]]:
@@ -60,12 +71,6 @@ def tagged_table_ids(tag_assignments: Iterable[dict]) -> dict[str, set[int]]:
         if a["object_type"] == "table" and a["table_id"] is not None:
             out.setdefault(a["base_tag_id"], set()).add(a["table_id"])
     return out
-
-
-def _and(predicates: list[str]) -> str:
-    if len(predicates) == 1:
-        return predicates[0]
-    return " AND ".join(f"({p})" for p in predicates)
 
 
 def resolve_table_rules(
@@ -83,11 +88,11 @@ def resolve_table_rules(
     """
     from provisa.security.domain_tree import ancestors
 
-    table_rules: dict[tuple[str, int], str] = {}
-    domain_rules: dict[tuple[str, str], str] = {}
-    tag_rules: dict[tuple[str, str], str] = {}
+    table_rules: dict[tuple[str, int], Rule] = {}
+    domain_rules: dict[tuple[str, str], Rule] = {}
+    tag_rules: dict[tuple[str, str], Rule] = {}
     out: list[dict] = []
-    for rule in rls_rules:
+    for rule in map(read_rule_row, rls_rules):
         if rule.get("action_name"):
             out.append(rule)
         elif rule.get("tag_id"):
@@ -106,7 +111,7 @@ def resolve_table_rules(
     for rid, chain in chains.items():
         for t in tables:
             tid = t["id"]
-            predicates: list[str] = []
+            predicates: list[Rule] = []
             base = table_rules.get((rid, tid))
             if base is None:
                 base = domain_rules.get((rid, t.get("domain_id") or ""))
@@ -130,7 +135,7 @@ def resolve_table_rules(
                         "domain_id": None,
                         "action_name": None,
                         "tag_id": None,
-                        "filter_expr": _and(predicates),
+                        "filter_expr": all_of(predicates),
                     }
                 )
     return out
@@ -212,7 +217,7 @@ def _store_table(table: dict) -> str | None:
 
 def model_write_rules(
     resolved: Iterable[dict], tables: Iterable[dict], owner_held: Iterable[str] = ()
-) -> dict[tuple[str, str, str], str]:  # REQ-2188
+) -> dict[tuple[str, str, str], Rule]:  # REQ-2188
     """(role, table, right) -> predicate: the U and D rules that hold the model store. A semantic
     object's table is registered in the meta domain, by its own name, or (a glossary term) in the
     ontology domain as its definition table; a rule on any other table holds data, through write
@@ -221,7 +226,7 @@ def model_write_rules(
     inherited by a child holding RW of its own."""
     model = {t["id"]: store for t in tables if (store := _store_table(t)) is not None}
     rules = {
-        (r["role_id"], model[r["table_id"]], r["right"]): r["filter_expr"]
+        (r["role_id"], model[r["table_id"]], r["right"]): as_rule(r["filter_expr"])
         for r in resolved
         if r.get("right", "R") != "R" and r.get("table_id") in model
     }
@@ -239,7 +244,7 @@ def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any: 
     member with only R neither widens the set nor narrows it."""
     from provisa.core.model_row_rules import ModelRule
     from provisa.core.request_context import session_vars_for
-    from provisa.security.meta_role import _inlined, _or
+    from provisa.security.meta_role import _inlined
 
     inputs = state.role_build_inputs
     if not inputs:  # a first start: nothing is built, so no rule is in force
@@ -257,7 +262,7 @@ def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any: 
         held = only_read(state.roles.get(role_id) or {})
         predicate = None if held else rules.get((role_id, table, right))
     else:
-        terms: list[str] = []
+        terms: list[Rule] = []
         for member in members:
             role = state.roles[member]
             if only_read(role):
@@ -267,7 +272,7 @@ def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any: 
                 terms.append(_inlined(own, role.get("session_vars") or {}))
             elif rw is not None:
                 return None
-        predicate = _or(terms) if terms else None
+        predicate = any_of(terms)
     if predicate is None:
         return None
     return ModelRule(
