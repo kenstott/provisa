@@ -39,6 +39,7 @@ from provisa.core.schema_org import domains as domains_t
 from provisa.core.schema_org import registered_tables as registered_tables_t
 from provisa.core.schema_org import sources as sources_t
 from provisa.core.schema_org import table_columns as table_columns_t
+from provisa.security.inheritance import with_own_domains
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -123,12 +124,11 @@ async def org_plane(monkeypatch):
     monkeypatch.setattr(app_state, "role_build_inputs", {"draft_tables": []}, raising=False)
     monkeypatch.setattr(app_state, "tables", [], raising=False)
     monkeypatch.setattr(app_state, "contexts", {}, raising=False)
-    monkeypatch.setattr(
-        app_state,
-        "roles",
-        {"org_admin": {"capabilities": list(_ORG_ADMIN_CAPS), "domain_access": ["*"]}},
-        raising=False,
+    # The role as the build leaves it in state.roles: its own domain access kept (REQ-2153).
+    built = with_own_domains(
+        [{"id": "org_admin", "capabilities": list(_ORG_ADMIN_CAPS), "domain_access": ["*"]}]
     )
+    monkeypatch.setattr(app_state, "roles", {r["id"]: r for r in built}, raising=False)
     # A booted node always holds the deployment's config (set by the boot's load); this fixture
     # boots no app, so it gives the surface the config one with no sources of its own would hold.
     from provisa.core.config_loader import parse_config_dict
