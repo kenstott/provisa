@@ -22,7 +22,7 @@ from provisa.federation.pgwire_replica import (
     land_via_select,
     schema_name,
 )
-from provisa.runtime_deps import BundleResolver, bundle_spec_for
+from provisa.runtime_deps import BundleResolver, bundle_spec_for, download_release_asset
 
 START_SECONDS = 180
 
@@ -38,7 +38,7 @@ source = SimpleNamespace(
 )
 spec = bundle_spec_for("files")
 server = PgwireServer(
-    bundle_dir=BundleResolver().resolve(spec),
+    bundle_dir=BundleResolver(downloader=download_release_asset).resolve(spec),
     spec=spec,
     model=build_model_json(source, state_dir=state),
     ports=PortPair(pgwire_port=15433, calcite_child_host="127.0.0.1", calcite_child_port=15434),

@@ -286,3 +286,45 @@ def test_every_extension_of_the_bundle_is_assigned_to_a_distribution():
     assigned = {name for names in collect.PARTS.values() for name in names}
     assert {_ALL_BLOBS.get(n, n) for n in required_extensions()} <= assigned
     assert "motherduck_impl" in assigned  # brought in by LOAD motherduck
+
+
+# ---- SQLAlchemy duckdb:/// engines --------------------------------------------------------------
+
+
+def _engine_setting(engine, name: str):
+    with engine.connect() as conn:
+        return conn.exec_driver_sql("SELECT current_setting(?)", (name,)).fetchall()[0][0]
+
+
+def _store_engines(tmp_path: Path):
+    from provisa.core.database import create_engine_from_url, sync_engine_from_url
+
+    memory, on_disk = "duckdb:///:memory:", f"duckdb:///{tmp_path / 'store.db'}"
+    return {
+        "create_engine_from_url memory": create_engine_from_url(memory),
+        "create_engine_from_url file": create_engine_from_url(on_disk),
+        "sync_engine_from_url memory": sync_engine_from_url(memory),
+        "sync_engine_from_url file": sync_engine_from_url(f"duckdb:///{tmp_path / 'sync.db'}"),
+    }
+
+
+def test_a_duckdb_engine_has_auto_install_and_auto_load_off(tmp_path):
+    # An engine opened without connect_args runs DuckDB's default: auto-install on.
+    for label, engine in _store_engines(tmp_path).items():
+        try:
+            for name in ("autoinstall_known_extensions", "autoload_known_extensions"):
+                assert _engine_setting(engine, name) is False, f"{label}: {name}"
+        finally:
+            engine.dispose()
+
+
+def test_a_duckdb_engine_reads_the_extension_directory(tmp_path, monkeypatch):
+    # Load-only is only useful where the staged extensions are: the engine names the same directory.
+    staged = tmp_path / "ext"
+    staged.mkdir()
+    monkeypatch.setenv(engine_memory.EXT_DIR_ENV, str(staged))
+    for label, engine in _store_engines(tmp_path).items():
+        try:
+            assert _engine_setting(engine, "extension_directory") == str(staged), label
+        finally:
+            engine.dispose()

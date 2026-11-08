@@ -457,11 +457,10 @@ def connector_bundles() -> list[Any]:  # list[BundleSpec]
 
 
 def prefetch_connector_bundles() -> None:
-    """Download the demos' connector bundles into the runtime-deps cache now, outside any request,
-    so a visitor's first query finds them. A bundle is hundreds of megabytes: fetched inside a
-    request it was cut off by the request's deadline every time. A bundle that cannot be fetched
-    is logged by name; the request that needs it then starts its download again
-    (``BundleResolver.resolve``)."""
+    """Locate the demos' connector bundles in the runtime-deps cache at startup, outside any
+    request. They were staged at build or packaging time (``scripts/stage_pgwire_bundles.py``):
+    a runtime never fetches one (REQ-294). A bundle that is not staged is logged by name with the
+    fix; the request that needs it is refused the same way (``BundleResolver.resolve``)."""
     import logging
 
     from provisa.runtime_deps.pgwire_bundles import BundleResolver, BundleUnavailable
@@ -477,9 +476,7 @@ def prefetch_connector_bundles() -> None:
                 resolver.resolve(spec),
             )
         except BundleUnavailable:
-            log.exception(
-                "connector bundle %s %s was not fetched", spec.artifact_name, spec.version
-            )
+            log.exception("connector bundle %s %s is not staged", spec.artifact_name, spec.version)
 
 
 def embedding_models() -> list[Any]:  # list[VectorModelConfig]

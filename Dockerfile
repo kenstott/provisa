@@ -146,6 +146,12 @@ RUN python -c "import provisa._encoders.pgwire"
 ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
 COPY scripts/stage_duckdb_extensions.py /tmp/stage_duckdb_extensions.py
 RUN PYTHONPATH=/app python /tmp/stage_duckdb_extensions.py && rm /tmp/stage_duckdb_extensions.py
+# REQ-294: so is every pgwire connector bundle, fetched here and never by a running server; the
+# build stops if one is missing.
+ENV PROVISA_RUNTIME_DEPS_CACHE=/opt/provisa/runtime-deps
+COPY scripts/stage_pgwire_bundles.py /tmp/stage_pgwire_bundles.py
+RUN PYTHONPATH=/app python /tmp/stage_pgwire_bundles.py && rm /tmp/stage_pgwire_bundles.py \
+ && python -I -m provisa.runtime_deps.pgwire_bundles
 # REQ-2194: the wheel itself, kept for the code images this server builds: their PostgreSQL
 # front end writes its rows with the encoders the wheel carries (codesource/image_build.py takes
 # them from the wheel for the image's architecture, and refuses a build it has no wheel for).

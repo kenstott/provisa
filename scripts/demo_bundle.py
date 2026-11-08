@@ -1215,11 +1215,13 @@ def _prefetch_connector_bundles(demo: Path) -> None:
         BUNDLE_CONNECTOR,
         BundleResolver,
         bundle_spec_for,
+        download_release_asset,
     )
 
     raw = read_config_with_includes(demo / "config.yaml")
     types = {str(source["type"]) for source in raw.get("sources") or []}
-    resolver = BundleResolver()
+    # A build is where a bundle is fetched (REQ-294): the one resolver that is given a downloader.
+    resolver = BundleResolver(downloader=download_release_asset)
     for source_type in sorted(types & set(BUNDLE_CONNECTOR)):
         spec = bundle_spec_for(source_type)
         print(f"connector bundle {spec.artifact_name} {spec.version}: {resolver.resolve(spec)}")

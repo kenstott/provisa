@@ -114,7 +114,7 @@ jobs:
         if: ${{ !cancelled() && steps.service.outcome == 'success' }}
         run: |
           packaging/nixos/vm-run '
-            time uv run python -c "from provisa.runtime_deps.pgwire_bundles import BundleResolver, bundle_spec_for; print(BundleResolver().resolve(bundle_spec_for(\"govdata\")))"
+            time uv run python -c "from provisa.runtime_deps.pgwire_bundles import BundleResolver, bundle_spec_for, download_release_asset; print(BundleResolver(downloader=download_release_asset).resolve(bundle_spec_for(\"govdata\")))"
           '
 
       # What the host owes a live AskAmerica source (US government open data), against the service
