@@ -121,7 +121,7 @@ async def test_the_vocabulary_is_grounded_in_the_terms_the_columns_derive(loaded
         ("total insured value", "PART_OF", "accumulation"),
         ("accumulation", "KIND_OF", "exposure"),
         ("probable maximum loss", "RELATED_TO", "accumulation"),
-        ("expected annual loss", "RELATED_TO", "eal rating"),
+        ("eal rating", "DERIVED_FROM", "expected annual loss"),
         ("catastrophe peril", "RELATED_TO", "risk rating"),
         ("line of business", "SYNONYM_OF", "line"),
     } <= edges
