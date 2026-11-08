@@ -18406,7 +18406,12 @@
     naming the extension and the fix, and installing happens only at build or packaging time. A script run
     once on a connected machine writes a single per-platform local install (DuckDB extensions including
     those not in the wheel, wheels, FDWs, Trino plugins, container images, and a manifest with checksums),
-    and the Helm chart and Terraform modules consume its output (maintainer 2026-11-08).'
+    and the Helm chart and Terraform modules consume its output (maintainer 2026-11-08). (Amended 2026-11-08,
+    WHAT THE INSTALLERS CARRY:) No new package names are created to fit a size limit: provisa-duckdb-ext
+    stays one PyPI project with per-platform wheels under PyPI''s limit, and what does not fit is staged
+    at build time by the DMG, AppImage, Windows and Docker installers. A connector''s pgwire bundle is never
+    downloaded at runtime either: a missing one fails naming it and the staging command. The installers
+    carry every connector bundle except govdata, which is staged by a build or devops step (maintainer 2026-11-08).'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
