@@ -327,14 +327,8 @@ export function NavBar() {
                   </Menu.Label>
                 )}
                 <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
-                {/* REQ-1349: shown when the caller has ANY admin surface, and it opens the first
-                    one they hold — gating on the `admin` wildcard hid it from every org_admin, and
-                    the hardcoded /admin/overview needs `observability` the wildcard does not imply. */}
-                {adminEntry && (
-                  <Menu.Item onClick={() => navigate(adminEntry.to)}>
-                    {t("navBar.settings")}
-                  </Menu.Item>
-                )}
+                {/* REQ-1327: no Settings entry. For an admin it opened the same page as Admin, so
+                    Admin (below the divider) is the one way into administration. */}
                 {/* REQ-1469: the plan, the running bill and the next charge are the org's
                     commercial relationship, not an operational setting, so they sit with the
                     account rather than under Admin. Shown only where the deployment mounts
