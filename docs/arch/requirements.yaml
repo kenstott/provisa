@@ -81419,7 +81419,11 @@
     fix cascades to newer open releases and to main. (Maintainer 2026-11-08.) (Amended 2026-11-08, SMOKE
     READS THE DEMO''S SOURCES:) The sources the smoke check reads are those of the default demo, the first
     thing a developer meets, such as a Parquet file, SQLite, a remote GraphQL service, an OpenAPI service
-    and embedded PostgreSQL, each started without an external service. (Maintainer 2026-11-08.)'
+    and embedded PostgreSQL, each started without an external service. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, A MISSED DAY IS FINE:) A nightly alpha that is not ready does not ship, and missing a day
+    is acceptable: a release is never forced out to keep the schedule. One release branch goes through every
+    stage, tags track the stage, and a tag does not publish. A fix does not cascade without a test that
+    failed before it. (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
