@@ -28,7 +28,7 @@ from provisa.federation.duckdb_pg_functions import size_pretty
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.pg_functions import capture_groups
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
-from tests.unit.test_crypto_hashes import crypto_extension  # noqa: F401
+from tests.unit.test_crypto_hashes import crypto_extension, crypto_extension_directory  # noqa: F401
 
 pytestmark = pytest.mark.usefixtures("crypto_extension")
 
