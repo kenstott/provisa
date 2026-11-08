@@ -194,6 +194,49 @@ async def test_a_page_the_model_asked_for_is_not_delivered_as_a_file(monkeypatch
     assert not any(e["type"] == "artifact" for e in events)
 
 
+@pytest.mark.asyncio
+async def test_a_result_with_no_delivery_tells_the_model_no_file_exists(monkeypatch, sql_runs):
+    events, model_result = await _chat(
+        monkeypatch, "run_sql", {"sql": "SELECT n FROM t", "limit": 10}
+    )
+    assert not any(e["type"] == "artifact" for e in events)
+    told = json.loads(model_result["content"])
+    assert "redirect" not in told and "shown" not in told
+    assert "No file was delivered" in told["file"]
+
+
+@pytest.mark.asyncio
+async def test_a_delivered_result_is_the_only_one_that_says_a_file_exists(monkeypatch, sql_runs):
+    _, model_result = await _chat(
+        monkeypatch, "run_sql", {"sql": "SELECT n FROM t", "file_format": "csv"}
+    )
+    told = json.loads(model_result["content"])
+    assert told["redirect"] == _HANDLE and "shown" in told
+    assert "file" not in told
+
+
+@pytest.mark.asyncio
+async def test_a_failed_delivery_is_reported_as_failed(monkeypatch):
+    async def _run_sql(_state, _role, _sql, limit=None, offset=0, *, redirect=False, **_kw):
+        if redirect:
+            raise RuntimeError("the results store refused the write")
+        return {"columns": ["n"], "rows": [{"n": 1}], "row_count": 1, "truncated": False}
+
+    monkeypatch.setattr(mcp_tools, "run_sql", _run_sql)
+    events, model_result = await _chat(
+        monkeypatch, "run_sql", {"sql": "SELECT n FROM t", "file_format": "csv"}
+    )
+    assert not any(e["type"] == "artifact" for e in events)
+    assert model_result["is_error"] is True
+    assert "No file was delivered" in model_result["content"]
+    assert "the results store refused the write" in model_result["content"]
+
+
 def test_the_prompt_draws_a_graph_rather_than_asking_where():
     assert "never ask whether the user meant the chat or the Graph page" in chat_mod._SYSTEM
     assert "call run_sql with file_format" in chat_mod._SYSTEM
+
+
+def test_the_prompt_allows_a_file_claim_only_from_a_result_that_carries_one():
+    assert "Say a file or download exists only when" in chat_mod._SYSTEM
+    assert "No file was delivered" in chat_mod._SYSTEM

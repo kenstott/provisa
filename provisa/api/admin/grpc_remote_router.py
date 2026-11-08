@@ -354,6 +354,7 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
     (REQ-322). None writes a table for every query method, which is what a caller that states
     the whole set (a test of the stored shape) asks for.
     """
+    from provisa.compiler.naming import apply_sql_name
     from provisa.core.models import Table
     from provisa.core.repositories import table as table_repo
 
@@ -381,11 +382,17 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
             c.model_copy(update={"visible_to": grants[c.name]}) if c.name in grants else c
             for c in nf_cols
         ]
+        # REQ-325/REQ-194: SQL addresses a table by its alias, else its table_name. The proto's
+        # service and method names stay in table_name (the registered name); the alias is the
+        # name the SQL naming convention gives it, as register_table derives one -- left unset,
+        # this write would replace that alias with NULL.
+        sql_name = apply_sql_name(table_name)
         tbl = Table(
             source_id=source_id,
             domain_id=table_domain or "",
             schema_name="grpc_remote",
             table_name=table_name,
+            alias=None if sql_name == table_name else sql_name,
             columns=output_cols + nf_cols,
         )
         from provisa.api.admin.region_defaults import admin_registration_draft

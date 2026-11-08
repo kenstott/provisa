@@ -267,8 +267,8 @@ def _kept(pieces: list[_Piece]) -> tuple[_Piece, ...]:
     names -- the first piece of a set and the least apart from it. Kept whole, each disconnected
     choice was its own pieces, and a refused statement multiplied them as before."""
     ordered = sorted(pieces, key=lambda p: p.least)
-    final = [p for p in ordered if not p.seen][:2]
-    return tuple(p for p in ordered if p.seen or any(p is f for f in final))
+    final = [p for p in ordered if not p.seen and not p.reaches][:2]
+    return tuple(p for p in ordered if p.seen or p.reaches or any(p is f for f in final))
 
 
 class _Pieces:
@@ -280,7 +280,14 @@ class _Pieces:
     sharing and related to the same instances beyond -- are combined with anything else to the
     same pieces, so each choice is kept as its distinct pieces, and a combination never holds
     more of them than look different from beyond it. Nothing of the check is approximated: a
-    group's pieces are those its instances make, by the registered pairings among them alone."""
+    group's pieces are those its instances make, by the registered pairings among them alone.
+
+    ``views``, the marked views' own instances, asks only whether a set is one piece
+    (:meth:`connected`), and so keeps less of each piece. Its least instance only names it in a
+    refusal. And a relation between two pieces need be found from one end alone, the other piece
+    having it in ``reaches``: the end kept is a view's, which every branch of a union it reads
+    shares, so a union's branches are one way of looking from beyond rather than one each, and
+    views read side by side do not multiply them."""
 
     def __init__(
         self,
@@ -288,7 +295,10 @@ class _Pieces:
         edges: set[frozenset[int]],
         never_true: set[frozenset[int]],
         shared: set[int],
+        *,
+        views: frozenset[int] | None = None,
     ) -> None:
+        self._views = views
         self._members = members
         self._shared = frozenset(shared)
         self._related: dict[int, set[int]] = {m: set() for m in members}
@@ -305,8 +315,20 @@ class _Pieces:
 
     def _beyond_seen(self, instance: int, private: frozenset[int]) -> bool:
         """Whether something beyond the choice (outside ``private``) can be ``instance`` or be
-        related to it."""
-        return instance not in private or any(o not in private for o in self._near[instance])
+        related to it, where the relation is found from this end."""
+        return instance not in private or any(
+            o not in private and self._found_from(instance, o) for o in self._near[instance]
+        )
+
+    def _found_from(self, instance: int, other: int) -> bool:
+        """Whether a relation of ``instance`` to ``other`` is found from ``instance``'s end."""
+        views = self._views
+        return views is None or (instance in views, instance) > (other in views, other)
+
+    def _least(self, least: int, seen: frozenset[int], reaches: frozenset[int]) -> int:
+        """What a piece is ordered by: the instance a refusal names it by, or, asked only whether
+        a set is connected, what beyond it can find of it (0 for a piece nothing can)."""
+        return least if self._views is None else min(seen | reaches, default=0)
 
     def _split(self, instances: frozenset[int], private: frozenset[int]) -> tuple[_Piece, ...]:
         held = {i for i in instances if i in self._members}
@@ -322,12 +344,14 @@ class _Pieces:
                     frontier.append(other)
             least = min(piece)
             named = bool(self._partners[least] & held)
+            seen = frozenset(i for i in piece if self._beyond_seen(i, private))
+            reaches = frozenset(o for i in piece for o in self._related[i] if o not in private)
             pieces.append(
                 _Piece(
-                    least,
+                    self._least(least, seen, reaches),
                     named,
-                    frozenset(i for i in piece if self._beyond_seen(i, private)),
-                    frozenset(o for i in piece for o in self._related[i] if o not in private),
+                    seen,
+                    reaches,
                     frozenset()
                     if named
                     else frozenset(p for p in self._partners[least] if p not in private),
@@ -365,18 +389,20 @@ class _Pieces:
         out: list[_Piece] = []
         for together in grouped.values():
             lead = min(together, key=lambda p: p.least)
-            if len(together) == 1 and not lead.seen:
+            if len(together) == 1 and not lead.seen and not lead.reaches:
                 out.append(lead)  # final: nothing beyond it can change it
                 continue
             named = lead.named or any(p in holder for p in lead.partners)
             seen = frozenset().union(*(p.seen for p in together))
             reaches = frozenset().union(*(p.reaches for p in together)) - seen
+            still_seen = frozenset(i for i in seen if self._beyond_seen(i, private))
+            still_reaches = frozenset(o for o in reaches if o not in private)
             out.append(
                 _Piece(
-                    lead.least,
+                    self._least(lead.least, still_seen, still_reaches),
                     named,
-                    frozenset(i for i in seen if self._beyond_seen(i, private)),
-                    frozenset(o for o in reaches if o not in private),
+                    still_seen,
+                    still_reaches,
                     frozenset()
                     if named
                     else frozenset(p for p in lead.partners if p not in private),
@@ -414,6 +440,10 @@ class _Pieces:
         self._memo[key] = found
         return found
 
+    def connected(self, choice: _Choice) -> bool:
+        """Whether every set ``choice`` may be is one connected piece."""
+        return all(len(self._join(s, choice.reach)) < 2 for s in self.of(choice))
+
     def whole(self, choice: _Choice) -> list[tuple[tuple[int, bool], ...]]:
         """Each distinct set of pieces ``choice``'s sets make, nothing beyond them: each piece by
         its least instance, and whether that has a never-true partner in the set."""
@@ -438,7 +468,7 @@ class _Resolver:
         # a marked view's derived table, and each branch of its SQL -> (its instance, view id)
         self._view_scopes: dict[int, tuple[int, int]] = {}
         self._view_sources: set[int] = set()  # the marked derived tables themselves
-        self._view_instances: set[int] = set()  # each marked view's own instance
+        self.view_instances: set[int] = set()  # each marked view's own instance
         self.view_edges: set[frozenset[int]] = set()  # a view's instance and its SQL's instances
         self._layouts: dict[int, _Layout] = {}  # a scope -> its columns, read once (_Layout)
 
@@ -473,7 +503,7 @@ class _Resolver:
                     continue
                 instance = id(source.expression)
                 self.table_of[instance] = view_id
-                self._view_instances.add(instance)
+                self.view_instances.add(instance)
                 self._view_sources.add(id(source))
                 for body in _bodies(source):
                     self._view_scopes[id(body)] = (instance, view_id)
@@ -636,7 +666,8 @@ class _Resolver:
             for index, (branch, name) in enumerate(layout.by_position(column.name)):
                 for select in layout.named(index, name):
                     for inner in select.find_all(exp.Column):
-                        out |= self.touched(branch, inner, seen)
+                        if not _orders_a_window(inner, select):
+                            out |= self.touched(branch, inner, seen)
         return out
 
     def _projection(self, scope: Scope, name: str, seen: frozenset) -> set[_Base]:
@@ -672,7 +703,7 @@ class _Resolver:
         if (
             out
             and id(scope) in self._view_scopes
-            and all(b.instance in self._view_instances for b in out)
+            and all(b.instance in self.view_instances for b in out)
         ):
             # A constant a view reads from a view it reads is a constant it gives: a column of
             # the outermost view that gives it.
@@ -728,6 +759,21 @@ def unrelated_tables(
                 primary_keys or {},
             )
     return found
+
+
+def _orders_a_window(column: exp.Column, select: exp.Expr) -> bool:
+    """Whether ``column`` only partitions or orders a window function of ``select`` (REQ-603,
+    amended 2026-11-07). A filter on such a result -- ROW_NUMBER() ... = 1, the latest row per
+    group -- reads a rank of rows the window's own query already combined, where its joins are
+    held to the rule; it matches no rows of one table with another. A column the window function
+    takes as its argument (LAG(v.id)) is a value it gives, and still touches its table."""
+    node: exp.Expr = column
+    while node is not select and node.parent is not None:
+        parent = node.parent
+        if isinstance(parent, exp.Window) and node is not parent.this:
+            return True
+        node = parent
+    return False
 
 
 def _is_filter(query: exp.Expr) -> bool:
@@ -1097,7 +1143,13 @@ def _unrelated_in(
                 ):
                     related.add(frozenset({source, target}))
     pieces = _Pieces(members, related, never_true, resolver.shared)
+    # Never-true partners connect nothing and name a refusal, which this one makes none of.
+    connection = _Pieces(
+        members, related, set(), resolver.shared, views=frozenset(resolver.view_instances)
+    )
     for group in groups:
+        if connection.connected(group):
+            continue  # one piece, whichever set it is: nothing to refuse, nothing to name
         # Each set the group may be, as its connected pieces, the first holding its least
         # instance; a second piece is apart from it, named by its own least instance.
         for parts in pieces.whole(group):

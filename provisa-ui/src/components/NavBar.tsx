@@ -32,7 +32,7 @@ import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
 import { deleteSandboxAccount } from "../api/admin";
 import { notifications } from "@mantine/notifications";
-import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, entryItem, writeLastSubnav } from "./navGroups";
 import { Tip } from "./Tip";
 
 export function NavBar() {
@@ -386,9 +386,10 @@ export function NavBar() {
                     capability={item.capability}
                     orCapability={item.orCapability}
                     anyOf={item.anyOf}
+                    andCapability={item.andCapability}
                     navigable
                   >
-                    <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+                    <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
                   </CapabilityGate>
                 )}
               </span>

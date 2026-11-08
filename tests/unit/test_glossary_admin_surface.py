@@ -51,10 +51,12 @@ def _served(monkeypatch):
 
 def _request(org_id: str = "acme") -> "Request":
     fake = types.SimpleNamespace(
+        # REQ-2216: an approval reads its Idempotency-Key header; these calls send none.
+        headers={},
         state=types.SimpleNamespace(
             identity=types.SimpleNamespace(user_id="alice", roles=[], acting_roles=[]),
             active_org_id=org_id,
-        )
+        ),
     )
     return cast("Request", fake)
 

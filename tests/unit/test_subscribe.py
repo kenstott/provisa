@@ -196,7 +196,7 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", disconnect)
+        gen = _sse_generator(pool, f"{CHANNEL_PREFIX}orders", disconnect)
         task = asyncio.ensure_future(gen.__anext__())
         await asyncio.sleep(0)  # the listener is registered
 
@@ -215,7 +215,7 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", disconnect)
+        gen = _sse_generator(pool, f"{CHANNEL_PREFIX}orders", disconnect)
 
         # Patch wait_for to simulate timeout quickly
         async def fast_timeout(coro, timeout):
@@ -236,7 +236,9 @@ class TestSSEGenerator:
         disconnect = asyncio.Event()
         _governed(monkeypatch, {2: [{"id": 2, "region": "us"}]})  # the key reads id 2 only
 
-        stream = _governed_changes(_sse_generator(pool, "orders", disconnect), _KEY, _REF, ["id"])
+        stream = _governed_changes(
+            _sse_generator(pool, f"{CHANNEL_PREFIX}orders", disconnect), _KEY, _REF, ["id"]
+        )
         assert await stream.__anext__() == ": connected\n\n"
         pending = asyncio.ensure_future(stream.__anext__())
         await asyncio.sleep(0)
@@ -257,7 +259,9 @@ class TestSSEGenerator:
         disconnect = asyncio.Event()
         _governed(monkeypatch, {1: [{"id": 1, "ssn": "XXX-XX", "salary": "REDACTED"}]})
 
-        stream = _governed_changes(_sse_generator(pool, "orders", disconnect), _KEY, _REF, ["id"])
+        stream = _governed_changes(
+            _sse_generator(pool, f"{CHANNEL_PREFIX}orders", disconnect), _KEY, _REF, ["id"]
+        )
         await stream.__anext__()  # connected
         pending = asyncio.ensure_future(stream.__anext__())
         await asyncio.sleep(0)
@@ -277,7 +281,7 @@ class TestSSEGenerator:
         disconnect = asyncio.Event()
         disconnect.set()
 
-        gen = _sse_generator(pool, "orders", disconnect)
+        gen = _sse_generator(pool, f"{CHANNEL_PREFIX}orders", disconnect)
         # Exhaust the generator
         chunks = []
         async for chunk in gen:
@@ -295,7 +299,7 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", disconnect)
+        gen = _sse_generator(pool, f"{CHANNEL_PREFIX}orders", disconnect)
         first = asyncio.ensure_future(gen.__anext__())
         await asyncio.sleep(0)  # the listener is registered
 

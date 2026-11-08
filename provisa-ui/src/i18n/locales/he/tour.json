@@ -1932,6 +1932,74 @@
       "banksecrecyRecap": {
         "title": "מה ראיתם",
         "description": "החוק נקרא מכתובתו הציבורית, מונחיו נמצאו ועוגנו בטבלאות הבנק, והבנק שאל לפי מושג. ה-Currency Transaction Report מגיע לנתונים דרך העסקאות המרובות שלו, וכל תפקיד ראה את מה שמותר לו לראות."
+      },
+      "customer360Scenario": {
+        "title": "Customer 360 על פני ארבע מערכות",
+        "description": "Halyard Software מוכרת לעסקים, וכל לקוח חי בארבע מערכות: <strong>Salesforce</strong> מחזיקה את החשבון והחידושים שלו, <strong>ServiceNow</strong> את התקלות שלו, <strong>Jira</strong> את הבאגים של הפיתוח ו-<strong>Stripe</strong> את החשבוניות שלו. השאלה: <em>לאילו חשבונות שמתחדשים ברבעון הזה יש תקלות P1 פתוחות, תיקונים חסומים או חשבוניות באיחור?</em> בדרך: מקורות SaaS, מאגר לקוחות ראשי שנקרא בזמן אמת, קשרים, Data Lineage, Materialized View, ממצאי איכות נתונים ומוצר נתונים."
+      },
+      "customer360Systems": {
+        "title": "לכל מערכת מזהים משלה",
+        "description": "<strong>stripe</strong> הוא חשבון ה-Stripe של Halyard, שנקרא דרך ה-API המפורסם של Stripe. כמו Salesforce, ServiceNow ו-Jira, הוא מכיר לקוח רק לפי המזהה שלו: כאן <code>cus_…</code>, ב-Salesforce <code>001…</code>, ב-ServiceNow ה-<code>sys_id</code> של חברה, ובשדה Customer של Jira שם שהוקלד ידנית. אין מזהה משותף."
+      },
+      "customer360Hub": {
+        "title": "מאגר הלקוחות הראשי",
+        "description": "<strong>hub</strong> הוא מאגר הלקוחות הראשי (MDM) של Halyard, מסד Postgres שנקרא בזמן אמת. הוא מחזיק לקוח ראשי אחד לכל לקוח אמיתי, וטבלת מיפוי (crosswalk) מכל רשומה ראשית למזהה שלה בכל מערכת. הוא מערכת הרשומה לשאלה מי הוא מי."
+      },
+      "customer360Crosswalk": {
+        "title": "ה-crosswalk של ה-hub",
+        "description": "<strong>xref</strong> הוא ה-crosswalk: כל שורה היא המזהה של מערכת אחת עבור לקוח והרשומה הראשית שאליה הוא שייך, עם מי קישר אותו ומתי: הטעינה הראשונית, Steward, מוקד התמיכה או ייבוא המוני."
+      },
+      "customer360JiraCustomer": {
+        "title": "שדה ה-Customer של Jira",
+        "description": "טבלת Jira היא טופס: פרויקט וסוג פריט אחד, כאן הבאגים של פרויקט ENG. העמודה <strong>customer</strong> שלה קוראת את השדה המותאם <code>customfield_10050</code>, שם הלקוח כפי שמהנדס התמיכה הקליד אותו, ולכן אותו לקוח יכול להיכתב בכמה צורות."
+      },
+      "customer360Spoke": {
+        "title": "Hub and spoke",
+        "description": "<strong>IS_BILLED_AS</strong> מקשר שורת crosswalk ללקוח ה-Stripe שהיא מציינת. כל מערכת מקושרת כך ל-hub, לא למערכות האחרות: מערכת חמישית היא עוד קשר אחד, לא ארבעה."
+      },
+      "customer360FixedBy": {
+        "title": "התיקון של תקלה",
+        "description": "<strong>FIXED_BY</strong> עוקב אחרי ה-correlation id של תקלה ב-ServiceNow אל באג ה-Jira שמתקן אותה: הקישור ששני הצוותים כבר מנהלים."
+      },
+      "customer360Lineage": {
+        "title": "מאיפה מגיעה התשובה",
+        "description": "ה-Data Lineage של התשובה: כל עמודה מתוחקרת דרך <strong>renewal_risk_hub</strong> עד לשדות שהיא קוראת בהזדמנויות ובחשבונות של Salesforce, ב-crosswalk של ה-hub, בתקלות של ServiceNow, בבאגים של Jira ובחשבוניות של Stripe."
+      },
+      "customer360Answer": {
+        "title": "התשובה דרך ה-hub",
+        "description": "<strong>renewal_risk_hub</strong> עונה על השאלה: כל חשבון שהחידוש שלו נסגר ברבעון הזה, עם תקלות ה-P1 הפתוחות, התיקונים החסומים והחשבוניות באיחור של הרשומות שה-hub מקשר אליו. שבעה חשבונות. <em>הרבעון הזה</em> ו<em>באיחור</em> נמדדים מהסנכרון האחרון של ה-hub."
+      },
+      "customer360Graphql": {
+        "title": "אותה תשובה ב-GraphQL",
+        "description": "אותו View כשאילתת GraphQL, עם הלקוח הראשי שאליו שייך כל חשבון. כל טבלה ו-View הם שדה GraphQL, תחת אותה ממשל."
+      },
+      "customer360Graph": {
+        "title": "מחשבון לתקלה לתיקון",
+        "description": "המסלול שמאחורי כל P1 פתוח, כגרף: חשבון Salesforce, שורת ה-crosswalk שלו, הלקוח הראשי שלו, חברת ה-ServiceNow של הרשומה הראשית, תקלות ה-P1 שפתחה ובאג ה-Jira שמתקן כל אחת. כל צעד עובר דרך ה-hub."
+      },
+      "customer360Trust": {
+        "title": "עד כמה אפשר לסמוך על התשובה הזו?",
+        "description": "התשובה טובה רק כמו הקישורים של ה-hub. <strong>hub_match_rate</strong> גוזר מחדש כל קישור מהראיות ברשומות של המערכות עצמן ומציג, חודש אחר חודש, את החלק שהוא מאשר. הוא ירד אחרי הייבוא ההמוני."
+      },
+      "customer360Rules": {
+        "title": "כללי ה-crosswalk",
+        "description": "<strong>crosswalk</strong> מתאים כל רשומת מערכת לחשבון Salesforce לפי כלל שהוא מציין: דומיין האתר או הדוא\"ל, ואחרת השם המנורמל. שני לקוחות ה-Stripe של Larkspur מתאימים לפי דומיין הדוא\"ל, אחד ל-Larkspur Analytics ואחד ל-Larkspur Labs. <strong>master</strong> בונה את רשומת הזהב (golden record); המזהה שלה הוא hash של חשבון העוגן, כך שבנייה מחדש לעולם לא ממספרת אותה מחדש."
+      },
+      "customer360Findings": {
+        "title": "מה הבדיקה מוצאת",
+        "description": "<strong>hub_findings</strong> מפרט כל אי-התאמה: שני מיזוגים שגויים (הייבוא ההמוני החליף בין לקוחות ה-Stripe של Larkspur), לקוחות כפולים, פערי כיסוי (רשומות שאינן באף רשומה ראשית) וקישורים מיושנים (לרשומות שמערכת כבר לא מחזיקה). Crosswalk, master וממצאים הם מפל אחד של Materialized View."
+      },
+      "customer360Corrected": {
+        "title": "התשובה המתוקנת",
+        "description": "<strong>renewal_risk_checked</strong> שואל שוב דרך ה-hub כשהממצאים מוחלים. Larkspur Analytics מופיע: החשבונית האחרונה שלו באיחור, אבל ה-hub קישר אותו ללקוח ה-Stripe של Larkspur Labs, ולכן התשובה הראשונה החמיצה אותו."
+      },
+      "customer360Product": {
+        "title": "Account Health כמוצר",
+        "description": "<strong>Account Health</strong> הוא מוצר הנתונים: התשובה הנבדקת, רשומת הזהב של הלקוח, הממצאים ושיעור ההתאמה, עם מטרה, שימוש ומגבלות מוצהרים."
+      },
+      "customer360Recap": {
+        "title": "מה ראיתם",
+        "description": "ארבע מערכות SaaS ללא מזהה משותף, מחוברות דרך מאגר לקוחות ראשי; השאלה נענתה ב-SQL, GraphQL ו-Cypher; ואז נבדקה: כללים גזרו מחדש כל קישור מראיות ומצאו את המיזוג השגוי ואת החשבון שהסתיר. הסתכלו בעצמכם מדף ה-SQL."
       }
     },
     "status": {
@@ -2064,6 +2132,10 @@
       "banksecrecy": {
         "title": "דיווחי מזומן מתוך ה-Bank Secrecy Act",
         "summary": "בנק קורא את כלל הדיווח על מזומן של ה-Bank Secrecy Act מכתובתו הציבורית הרשמית, מוצא את מונחיו ומעגן אותם בטבלאות שלו. אחר כך הוא שואל לפי מושג איזה מזומן מחייב Currency Transaction Report ומי מפצל סכומים מעט מתחת ל-10,000 $. הבנק ולקוחותיו בדויים; התקנה אמיתית."
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "Salesforce, ServiceNow, Jira ו-Stripe מחוברים דרך מאגר לקוחות ראשי כדי למצוא חידושים בסיכון; אחר כך המאגר נבדק מול הראיות של כל מערכת, שמוצאות את החשבון שהוחמץ."
       }
     }
   }

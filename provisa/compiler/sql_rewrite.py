@@ -310,6 +310,13 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             from provisa.compiler.naming import domain_to_sql_name
 
             domain_sl = domain_to_sql_name(meta.domain_id).lower()
+            # The name the model serves it under, which an alias makes another than its physical
+            # one: left unresolved, its published columns are not lowered (_lower_column_aliases).
+            by_schema_name[(domain_sl, semantic_table_name(meta).lower())] = (
+                meta.catalog_name,
+                meta.schema_name,
+                meta.table_name,
+            )
             if domain_sl != sl:
                 by_schema_name[(domain_sl, nl)] = (
                     meta.catalog_name,

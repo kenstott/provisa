@@ -1,0 +1,62 @@
+sys_id	number	short_description	state	priority	opened_at	resolved_at	company	company__display	correlation_id
+3f64a20a9669c0678137433eecfa192c	INC1000101	Login failures after SSO change	7	1	2026-07-10 09:40:00	2026-07-12 09:40:00	b3da38a0d6dc585f38a446103a0fc7e0	Larkspur Analytics Inc.	\N
+9853f8ba8e6bfb831f1654321ba21e42	INC1000102	Dashboard slow to load	2	3	2026-10-18 14:10:00	\N	b3da38a0d6dc585f38a446103a0fc7e0	Larkspur Analytics Inc.	\N
+bb37e21f2e520debf753c11538f8acbb	INC1000103	Export job times out	7	2	2026-07-07 09:40:00	2026-07-09 09:40:00	e07cece342bc3275d73cef0be3533194	Larkspur Labs	\N
+8f4a62557ab1d103af17bb0bef227015	INC1000104	Webhook deliveries delayed	2	3	2026-10-17 14:10:00	\N	e07cece342bc3275d73cef0be3533194	Larkspur Labs	\N
+02af0d0f7109c8821a8ed0ba6ccdf13c	INC1000105	Dashboard slow to load	7	3	2026-07-04 09:40:00	2026-07-06 09:40:00	fc2cd3efd27d046546e18cd14df92d5b	Brightwater Health, Inc.	\N
+eecfd8ec4479bf3b6468b241adb075b9	INC1000106	Report totals do not match	2	3	2026-10-16 14:10:00	\N	fc2cd3efd27d046546e18cd14df92d5b	Brightwater Health, Inc.	\N
+2f09861b8b8747d33d0f548281ef7a03	INC1000107	Webhook deliveries delayed	7	1	2026-07-01 09:40:00	2026-07-03 09:40:00	043dc47d0422792559068dee3a924152	Cobalt Freight Inc.	\N
+2c7edfff0d9ecb82c22e1d67978484f7	INC1000108	API rate limit errors	2	3	2026-10-15 14:10:00	\N	043dc47d0422792559068dee3a924152	Cobalt Freight Inc.	\N
+94ef7e426f34d7e134a49890bccdeec5	INC1000109	P1: Export job times out	2	1	2026-10-31 03:20:00	\N	043dc47d0422792559068dee3a924152	Cobalt Freight Inc.	ENG-408
+adcc9fe17eec087027c4003cf2cbe736	INC1000110	Report totals do not match	7	2	2026-06-28 09:40:00	2026-06-30 09:40:00	d9eceabe0439d31588d3df0fc842070d	Ferncliff Retail Ltd	\N
+bc2abf17b4a004f6c706c696177ac769	INC1000111	Login failures after SSO change	2	3	2026-10-14 14:10:00	\N	d9eceabe0439d31588d3df0fc842070d	Ferncliff Retail Ltd	\N
+d1a4e306cc78d8ff1d8a392add6ab2fe	INC1000112	API rate limit errors	7	3	2026-06-25 09:40:00	2026-06-27 09:40:00	cc8bae8864fd3f20b5fbbd696366378e	Granite Ridge Bank	\N
+fb4db37c8dc80ae1b48ac49660e8aeb0	INC1000113	Export job times out	2	3	2026-10-13 14:10:00	\N	cc8bae8864fd3f20b5fbbd696366378e	Granite Ridge Bank	\N
+dcf2207b8016b94710ab1fe07ca37812	INC1000114	Login failures after SSO change	7	1	2026-06-22 09:40:00	2026-06-24 09:40:00	d3ddcaf733da0287563eefdb10d33cec	Halcyon Media	\N
+2e95426baf7295783678257b1ce2734e	INC1000115	Dashboard slow to load	2	3	2026-10-12 14:10:00	\N	d3ddcaf733da0287563eefdb10d33cec	Halcyon Media	\N
+9ea13139a2f5c3db9385211c77547337	INC1000116	Export job times out	7	2	2026-06-19 09:40:00	2026-06-21 09:40:00	3fad4022aa5ed68e093d07bc508f4516	Ironbark Energy Pty Ltd	\N
+496f39082c4c8c95c960ade9a89feb99	INC1000117	Webhook deliveries delayed	2	3	2026-10-11 14:10:00	\N	3fad4022aa5ed68e093d07bc508f4516	Ironbark Energy Pty Ltd	\N
+96ae25e13d8a0e8c51b5f8b52ee72dc1	INC1000118	P1: API rate limit errors	2	1	2026-11-01 03:20:00	\N	3fad4022aa5ed68e093d07bc508f4516	Ironbark Energy Pty Ltd	ENG-419
+77d772f7df79193b154df107216fa61d	INC1000119	Dashboard slow to load	7	3	2026-06-16 09:40:00	2026-06-18 09:40:00	a03c9599a9dab7a1333bb04ee7e1eb90	Juniper Logistics	\N
+abe0701e034cf4f1cdcff18ad2e5c6c6	INC1000120	Report totals do not match	2	3	2026-10-10 14:10:00	\N	a03c9599a9dab7a1333bb04ee7e1eb90	Juniper Logistics	\N
+d68c979fa0c22815f0d6416abcba2c4c	INC1000121	Webhook deliveries delayed	7	1	2026-06-13 09:40:00	2026-06-15 09:40:00	502736fd856e5fa8ac6361f18806c56d	Kestrel Aerospace Corp.	\N
+83bf136d20f51b57554021faafc2f2fa	INC1000122	API rate limit errors	2	3	2026-10-18 14:10:00	\N	502736fd856e5fa8ac6361f18806c56d	Kestrel Aerospace Corp.	\N
+ab627df68ad5c9e4b79a3bb5e7137eb8	INC1000123	Report totals do not match	7	2	2026-06-10 09:40:00	2026-06-12 09:40:00	bed6c3d3432510d9b328460527a857d4	Lumen Dental Group	\N
+94fef414e87170bb787ae5e58d972696	INC1000124	Login failures after SSO change	2	3	2026-10-17 14:10:00	\N	bed6c3d3432510d9b328460527a857d4	Lumen Dental Group	\N
+5083407d99038787560780120b85a16a	INC1000125	P1: Dashboard slow to load	2	1	2026-11-03 03:20:00	\N	bed6c3d3432510d9b328460527a857d4	Lumen Dental Group	ENG-426
+a8e739bcf78c9098e0f5a2fcbc3e2db3	INC1000126	API rate limit errors	7	3	2026-06-07 09:40:00	2026-06-09 09:40:00	49504e8ea9874c5295651bcc0949d386	Marlowe Insurance	\N
+d8ef0516f6ee200cdb2f476d8bbf6fb6	INC1000127	Export job times out	2	3	2026-10-16 14:10:00	\N	49504e8ea9874c5295651bcc0949d386	Marlowe Insurance	\N
+365f6637d7b7083fc9aa247b088118e7	INC1000128	P1: Webhook deliveries delayed	2	1	2026-11-02 03:20:00	\N	49504e8ea9874c5295651bcc0949d386	Marlowe Insurance	ENG-429
+ceb6c0cccf3a20f4d316fe90c77c3cc2	INC1000129	Login failures after SSO change	7	1	2026-06-04 09:40:00	2026-06-06 09:40:00	41385ba877ef59a56abfe67051ea70b7	Northgate Foods	\N
+e665ac44aa2da1ec7a7feba17bc0a182	INC1000130	Dashboard slow to load	2	3	2026-10-15 14:10:00	\N	41385ba877ef59a56abfe67051ea70b7	Northgate Foods	\N
+dc130cd13444bc5902fae1f656b381cd	INC1000131	Export job times out	7	2	2026-06-01 09:40:00	2026-06-03 09:40:00	36f4ac2c516d05cb2797842f1cf6e20c	Oakmont Legal LLP	\N
+eed022ee40c0a8ba875540af81258d99	INC1000132	Webhook deliveries delayed	2	3	2026-10-14 14:10:00	\N	36f4ac2c516d05cb2797842f1cf6e20c	Oakmont Legal LLP	\N
+a5068d283bd9b920f5d86df4e68e304a	INC1000133	Dashboard slow to load	7	3	2026-05-29 09:40:00	2026-05-31 09:40:00	dcd3486d8961f5c6c524658dd2c1dde9	Pinecrest Schools	\N
+14469c40572571015caa72afd606d7c3	INC1000134	Report totals do not match	2	3	2026-10-13 14:10:00	\N	dcd3486d8961f5c6c524658dd2c1dde9	Pinecrest Schools	\N
+4b7940a5c0126ce6247e72dd64cd8a13	INC1000135	Webhook deliveries delayed	7	1	2026-05-26 09:40:00	2026-05-28 09:40:00	74e023047c3baa288227a0b3fd5a8794	Quillon Systems GmbH	\N
+7308d571deede91c4345d11944febcd2	INC1000136	API rate limit errors	2	3	2026-10-12 14:10:00	\N	74e023047c3baa288227a0b3fd5a8794	Quillon Systems GmbH	\N
+362842b869ab6d6e6f123d256c5c0afd	INC1000137	Report totals do not match	7	2	2026-05-23 09:40:00	2026-05-25 09:40:00	60f15bd0400947f65e46bc8c4d3f06bb	Redfern Hotels	\N
+f4392c5abecbbb96fd40d8e0665ec4f0	INC1000138	Login failures after SSO change	2	3	2026-10-11 14:10:00	\N	60f15bd0400947f65e46bc8c4d3f06bb	Redfern Hotels	\N
+5ddd82a5d541116a79c3ac8b08025589	INC1000139	API rate limit errors	7	3	2026-05-20 09:40:00	2026-05-22 09:40:00	fe70671260640f99ae445f2204da9d35	Saltmarsh Brewing Co.	\N
+00c4965db92b8818d57bac12d121d918	INC1000140	Export job times out	2	3	2026-10-10 14:10:00	\N	fe70671260640f99ae445f2204da9d35	Saltmarsh Brewing Co.	\N
+49284bfc11d39a9f44dc3dd69eb28784	INC1000141	Login failures after SSO change	7	1	2026-05-17 09:40:00	2026-05-19 09:40:00	ac96512b1e6e7d4bc7c5313821e5e39c	Tamarack Mining Corp	\N
+ddb5a2183ec17f2011a84bd27f12f4f9	INC1000142	Dashboard slow to load	2	3	2026-10-18 14:10:00	\N	ac96512b1e6e7d4bc7c5313821e5e39c	Tamarack Mining Corp	\N
+09bbcec86a931e32c06c64b2a499b094	INC1000143	Export job times out	7	2	2026-05-14 09:40:00	2026-05-16 09:40:00	296e035c7b9a3abc2bac00d73269cf45	Umber Architecture	\N
+da5fd9bea64f769f273df7b0979a902c	INC1000144	Webhook deliveries delayed	2	3	2026-10-17 14:10:00	\N	296e035c7b9a3abc2bac00d73269cf45	Umber Architecture	\N
+2651d51737f0b95f77441b7bc8b9bf91	INC1000145	Dashboard slow to load	7	3	2026-05-11 09:40:00	2026-05-13 09:40:00	96d2ce8365aade08b99c78a1f0fe53b4	Vantage Payroll	\N
+ac420176cbcb059a4b59e153b9b4575c	INC1000146	Report totals do not match	2	3	2026-10-16 14:10:00	\N	96d2ce8365aade08b99c78a1f0fe53b4	Vantage Payroll	\N
+28bb97a8e4411e5a27a755f891ec236c	INC1000147	Webhook deliveries delayed	7	1	2026-05-08 09:40:00	2026-05-10 09:40:00	7a2e34ef81e13295e8a3c01426bb3150	Willow Creek Clinics	\N
+663522dd1416739088a43f82acf8bc42	INC1000148	API rate limit errors	2	3	2026-10-15 14:10:00	\N	7a2e34ef81e13295e8a3c01426bb3150	Willow Creek Clinics	\N
+d3aaab9232a2c438a51db38588b5b4bb	INC1000149	API rate limit errors	7	3	2026-05-02 09:40:00	2026-05-04 09:40:00	cf5d6d9241caaf3bc11f56e6f8f9e08f	Yarrow Insurance Brokers	\N
+9b1da4c8e2d669ea81c5db262e89bc2c	INC1000150	Export job times out	2	3	2026-10-13 14:10:00	\N	cf5d6d9241caaf3bc11f56e6f8f9e08f	Yarrow Insurance Brokers	\N
+792e67eb85925bccfc66f744d9cb0576	INC1000151	Login failures after SSO change	7	1	2026-04-29 09:40:00	2026-05-01 09:40:00	c641504ce2bff4d073239b39e931bc3c	Zephyr Telecom	\N
+c3c74b813377383237643ac2e7d0cc2d	INC1000152	Dashboard slow to load	2	3	2026-10-12 14:10:00	\N	c641504ce2bff4d073239b39e931bc3c	Zephyr Telecom	\N
+67029b94c6d370add093445b1b851690	INC1000153	Voice API outage in us-east	6	1	2026-10-26 07:55:00	2026-10-26 16:55:00	c641504ce2bff4d073239b39e931bc3c	Zephyr Telecom	\N
+41784f42a05a8316902461b83f9dbe19	INC1000154	Export job times out	7	2	2026-04-26 09:40:00	2026-04-28 09:40:00	902cfcdf0e8190bed970cd876c9d7f1e	Alder and Finch	\N
+69e07585cce27c48e863ebf1a0f7e22f	INC1000155	Webhook deliveries delayed	2	3	2026-10-11 14:10:00	\N	902cfcdf0e8190bed970cd876c9d7f1e	Alder and Finch	\N
+8566408ac60b8f0b4ced60c26c27be23	INC1000156	Dashboard slow to load	7	3	2026-04-23 09:40:00	2026-04-25 09:40:00	9e3883c2d7a0cca65cd1a15bb75656f1	Bramble Software	\N
+92a882aa886f65d87ec9883761858e73	INC1000157	Report totals do not match	2	3	2026-10-10 14:10:00	\N	9e3883c2d7a0cca65cd1a15bb75656f1	Bramble Software	\N
+90734dc3d8391fb1c0f4709e3ecb5aa9	INC1000158	Report totals do not match	7	2	2026-04-17 09:40:00	2026-04-19 09:40:00	d31e63f7847e4021e979d32015633e14	Driftwood Travel	\N
+8908f21900495107dc3c1aae42871567	INC1000159	Login failures after SSO change	2	3	2026-10-17 14:10:00	\N	d31e63f7847e4021e979d32015633e14	Driftwood Travel	\N
+3c00d7afcb266606d8aac067ecfa373d	INC1000160	API rate limit errors	7	3	2026-04-14 09:40:00	2026-04-16 09:40:00	dbfe02fd1fa581cc55f029bc775d8515	Elmstead Manufacturing Co.	\N
+7dbb13e584b7e6dedc8eb4f30b51c005	INC1000161	Export job times out	2	3	2026-10-16 14:10:00	\N	dbfe02fd1fa581cc55f029bc775d8515	Elmstead Manufacturing Co.	\N
