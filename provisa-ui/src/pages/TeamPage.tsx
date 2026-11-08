@@ -54,6 +54,7 @@ import { Tip } from "../components/Tip";
 import { SplitPane } from "../components/list/SplitPane";
 import { MemberAttributes } from "../components/admin/MemberAttributes";
 import { SuspendedAccess } from "../components/admin/SuspendedAccess";
+import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -605,6 +606,18 @@ export function TeamPage() {
               </Table.Tbody>
             </ListTable>
           </div>
+        </CollapsibleItem>
+
+        {/* REQ-1327: the org's people who sign in with a local account, on user_management as the
+            rest of this page is. Mounted only when open, so a closed section reads nothing. */}
+        <CollapsibleItem
+          value="local-users"
+          defaultOpen={false}
+          mountWhenOpen
+          controlTestId="team-section-local-users"
+          title={t("teamPage.localUsersHeading")}
+        >
+          <TeamLocalUsers />
         </CollapsibleItem>
 
         {/* REQ-2076: credentials suspended for naming a role that was not held, and the events

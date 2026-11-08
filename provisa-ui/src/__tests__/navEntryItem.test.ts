@@ -68,7 +68,9 @@ describe("entryItem", () => {
     // hosted is what removes it.
     remember("/admin/federation-engine");
     expect(entryItem(admin, ["platform_settings"], true)?.to).not.toBe("/admin/federation-engine");
-    expect(entryItem(admin, ["platform_settings"], false)?.to).toBe("/admin/federation-engine");
+    expect(entryItem(admin, ["platform_settings", "cross_org"], false)?.to).toBe(
+      "/admin/federation-engine",
+    );
   });
 
   it("clears the remembered item at session start so it cannot cross identities", () => {

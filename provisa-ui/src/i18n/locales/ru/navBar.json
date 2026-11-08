@@ -81,6 +81,7 @@
     "itemContainerRegistries": "Реестры контейнеров",
     "itemSparql": "SPARQL",
     "itemCatalogs": "Каталоги",
-    "itemReferenceLibrary": "Справочная библиотека"
+    "itemReferenceLibrary": "Справочная библиотека",
+    "itemPlatformObservability": "Наблюдаемость платформы"
   }
 }
