@@ -47,10 +47,12 @@ function reader(): MetaReader {
         }),
         type("DP", {
           id: s,
-          memberTables: list("RT"),
-          commands: list("TF"),
+          dataProductTables: list("DPT"),
+          dataProductCommands: list("DPC"),
           // No tags and no edges: this role reads neither.
         }),
+        type("DPT", { registeredTable: one("RT") }),
+        type("DPC", { trackedFunction: one("TF") }),
         type("RT", {
           id: s,
           sourceId: s,
@@ -111,13 +113,14 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql.replace(/\s+/g, " ")).toContain(
       'data_products: m__dataProducts(where: { id: { eq: "c360" } })',
     );
-    expect(q?.graphql).toContain("memberTables");
+    expect(q?.graphql).toContain("dataProductTables");
+    expect(q?.graphql).not.toContain("memberTables");
     // Built a selection a line, as the panel shows it.
     expect(q?.graphql.split("\n").slice(0, 4)).toEqual([
       "query DataProductPanel {",
       '  data_products: m__dataProducts(where: { id: { eq: "c360" } }) {',
       "    id",
-      "    memberTables {",
+      "    dataProductTables {",
     ]);
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
@@ -150,21 +153,30 @@ describe("the panel's meta reads", () => {
               data_products: [
                 {
                   id: "c360",
-                  memberTables: [
+                  // A member the role cannot read reaches no table.
+                  dataProductTables: [
                     {
-                      id: 1,
-                      sourceId: "pg",
-                      domainId: "sales",
-                      schemaName: "public",
-                      tableName: "customers",
-                      description: null,
-                      dqContract: null,
-                      tableColumns: [
-                        { columnName: "email", glossaryRef: [{ termId: 7, term: CUSTOMER }] },
-                      ],
+                      registeredTable: {
+                        id: 1,
+                        sourceId: "pg",
+                        domainId: "sales",
+                        schemaName: "public",
+                        tableName: "customers",
+                        description: null,
+                        dqContract: null,
+                        tableColumns: [
+                          { columnName: "email", glossaryRef: [{ termId: 7, term: CUSTOMER }] },
+                        ],
+                      },
                     },
+                    { registeredTable: null },
                   ],
-                  commands: [{ name: "refresh", description: null, domainId: "sales" }],
+                  dataProductCommands: [
+                    {
+                      trackedFunction: { name: "refresh", description: null, domainId: "sales" },
+                    },
+                    { trackedFunction: null },
+                  ],
                 },
               ],
             },
