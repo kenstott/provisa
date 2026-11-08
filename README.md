@@ -455,7 +455,7 @@ pytest tests/unit -n auto
 
 For the UI unit tests, run `npm run test:unit` in `provisa-ui`.
 
-To work on Provisa, clone `main`. To run it, install a release. A feature or fix starts from `main` and lands on `main`, and [docs/release-process.md](docs/release-process.md) explains how releases are cut from it. See [CONTRIBUTING.md](CONTRIBUTING.md) for the short version.
+To work on Provisa, clone `main`. To run it, install a release. A feature or fix starts from `main` and lands on `main`, and [docs/release-process.md](docs/release-process.md) explains how releases are cut from it. See [CONTRIBUTING.md](https://github.com/kenstott/provisa/blob/main/CONTRIBUTING.md) for the short version.
 
 ## License
 
