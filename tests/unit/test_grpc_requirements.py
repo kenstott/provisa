@@ -295,7 +295,7 @@ class TestREQ617RoleSelectionViaMetadata:
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = []
 
-        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders", "orders")]
+        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders")]
 
         assert rows == []
         context.abort.assert_awaited_once_with(
@@ -325,7 +325,7 @@ class TestREQ617RoleSelectionViaMetadata:
         )
         request = MagicMock()
         with pytest.raises(grpc.aio.AbortError):
-            async for _ in servicer._handle_query(request, context, "Orders", "orders"):
+            async for _ in servicer._handle_query(request, context, "Orders"):
                 pass
         context.abort.assert_awaited_once()
 
@@ -426,7 +426,7 @@ class TestREQ617RoleSelectionViaMetadata:
             ),
         ):
             rows_yielded = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 rows_yielded.append(msg)
 
         # One message per row: 3 rows → 3 messages

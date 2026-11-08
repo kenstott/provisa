@@ -952,6 +952,34 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-194: the names table of the last model version built
+# (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
+model_names = Table(
+    "model_names",
+    metadata,
+    Column("object_kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, nullable=False),
+    Column("physical_name", Text, nullable=False),
+    Column("label", Text, nullable=False),
+    Column("domain_id", Text, nullable=False, server_default=""),
+    Column("table_id", Integer),
+    Column("is_alias", Boolean, nullable=False, server_default=false()),
+    Column("warnings", JSON, nullable=False, server_default="[]"),
+)
+
+# REQ-194: the name clashes the last model build refused, each naming both objects.
+model_name_clashes = Table(
+    "model_name_clashes",
+    metadata,
+    Column("surface", Text, primary_key=True),
+    Column("name", Text, primary_key=True),
+    Column("holder", Text, nullable=False),
+    Column("newcomer", Text, primary_key=True),
+    Column("message", Text, nullable=False),
+)
+
 # REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
 # check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
 # A table with no row has never run. The dry run writes none.
@@ -1095,9 +1123,25 @@ creation_requests = Table(
     Column("resolved_at", DateTime(timezone=True)),
     Column("approvals", JSON, nullable=False, default=list, server_default="[]"),
     Column("required_approvals", Integer, nullable=False, server_default="1"),
+    # REQ-2217, REQ-2216, REQ-2215: see the matching block in schema.sql.
+    Column("environment", Text, nullable=False, server_default="prod"),
+    Column("addressed_roles", JSON, nullable=False, default=list, server_default="[]"),
+    Column("addressed_members", JSON, nullable=False, default=list, server_default="[]"),
+    Column("unresolved_roles", JSON, nullable=False, default=list, server_default="[]"),
     CheckConstraint(
         "status IN ('pending', 'executed', 'rejected')", name="creation_requests_status_check"
     ),
+)
+
+# REQ-2216: approve and decide calls already answered, by Idempotency-Key. See schema.sql.
+idempotent_calls = Table(
+    "idempotent_calls",
+    metadata,
+    Column("scope", Text, primary_key=True),
+    Column("actor", Text, primary_key=True),
+    Column("call_key", Text, primary_key=True),
+    Column("response", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 live_query_state = Table(
@@ -2146,6 +2190,42 @@ reference_passages = Table(
     Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
+)
+
+# REQ-2208: the registry's tags on library documents and their sections, kept with the library --
+# the environment's own, as the documents are -- rather than in tag_assignments, which travels with
+# the model: a tag follows its object's environment class. The columns are a tag assignment's; a
+# section is named by its heading, or by its page when it has none (a PDF's pages).
+reference_document_tags = Table(
+    "reference_document_tags",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("tag_id", Text, nullable=False),
+    Column("base_tag_id", Text, nullable=False),  # REQ-1467: the parameter stripped
+    Column("object_type", Text, nullable=False),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
+    Column("object_key", Text, nullable=False),
+    Column("reason", Text),
+    Column("expires_on", Text),
+    Column("purpose", Text),  # REQ-2094: the rest of the assignment's why, as tag_assignments'
+    Column("bases", JSON(none_as_null=True)),
+    Column("review_on", Text),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("evidence", JSON(none_as_null=True)),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("base_tag_id", "object_key"),
+    CheckConstraint(
+        "object_type IN ('document', 'section')",
+        name="reference_document_tags_object_type_check",
+    ),
 )
 
 # REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,

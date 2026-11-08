@@ -27,6 +27,7 @@
     "domainsHelp": "读取这些域的角色会依据该文档。“整个组织”须单独选择。",
     "fieldSource": "来源",
     "fieldStatus": "状态",
+    "fieldTags": "标签",
     "fieldPassages": "段落",
     "fieldModel": "嵌入模型",
     "fieldAdded": "添加时间",

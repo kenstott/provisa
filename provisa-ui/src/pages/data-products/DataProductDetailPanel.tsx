@@ -33,6 +33,7 @@ import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import { Tip } from "../../components/Tip";
+import { TagControl } from "../../components/TagControl";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
@@ -108,6 +109,8 @@ interface DataProductDetailPanelProps {
   describeColumn?: DescribeColumn;
   // A lineage relation as the catalog names its table.
   relationLabel?: (relation: string) => string;
+  /** REQ-1634: a tag was put on the product or taken off; its core is read again. */
+  onTagsChanged: () => void;
   /** Opens the edit form, on ``focus`` where given. */
   onEdit: (focus?: "supportContact") => void;
   /** REQ-2198: resolves once the product is deleted and the list read again (PanelDelete). */
@@ -164,6 +167,7 @@ export function DataProductDetailPanel({
   lineageMembers,
   describeColumn,
   relationLabel,
+  onTagsChanged,
   onEdit,
   onDelete,
   products,
@@ -488,7 +492,15 @@ export function DataProductDetailPanel({
             testId={`data-product-card-tags-${p.id}`}
             label={t("dataProductCore.tags")}
           >
-            {core.tags.length === 0 ? (
+            {/* REQ-1634: its editor puts tags on the product and takes them off with the chip
+                tables use; the list reads the same assignments, so the chip's change is read
+                again into it (onTagsChanged). */}
+            {canEdit ? (
+              <Group gap="xs" wrap="wrap">
+                {core.tags.length === 0 && <Empty text={t("dataProductCore.tagsEmpty")} />}
+                <TagControl objectType="product" productId={p.id} onChanged={onTagsChanged} />
+              </Group>
+            ) : core.tags.length === 0 ? (
               <Empty text={t("dataProductCore.tagsEmpty")} />
             ) : (
               <List size="sm" data-testid={`data-product-detail-tags-${p.id}`}>
@@ -678,9 +690,7 @@ export function DataProductDetailPanel({
                 {core.terms.map((term) => (
                   <List.Item key={term.id} ff="monospace">
                     {term.name}
-                    {term.isAbstract && (
-                      <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>
-                    )}
+                    {term.isAbstract && <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>}
                     {term.definition && <Muted>— {term.definition}</Muted>}
                   </List.Item>
                 ))}

@@ -243,6 +243,11 @@ query TagAssignmentsQuery {
     columnName
     relationshipId
     commandName
+    productId
+    termId
+    documentId
+    sectionHeading
+    sectionPage
     rlsRuleId
     roleId
     metricName

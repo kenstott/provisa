@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Governance-schending",
     "reasonOutOfScope": "Buiten scope",
     "reasonEndpointUnreachable": "Endpoint onbereikbaar",
-    "reasonSchemaMismatch": "Schema komt niet overeen"
+    "reasonSchemaMismatch": "Schema komt niet overeen",
+    "delivery": "Melden via",
+    "deliveryHelp": "Hoe de leden van de rollen waaraan een verzoek is gericht ervan op de hoogte worden gebracht. E-mail: Provisa stuurt elk van hen een melding. Alleen events: Provisa stuurt geen melding; uw workflowtool abonneert zich op ops.requests. Beide: e-mail en events.",
+    "deliveryEmail": "E-mail",
+    "deliveryEvents": "Alleen events",
+    "deliveryBoth": "Beide"
   }
 }

@@ -56,6 +56,7 @@ import {
 import { useDomains } from "../../hooks/useAdminQueries";
 import { PanelDelete } from "../list/PanelDelete";
 import { DetailFields } from "../detail/DetailFields";
+import { TagControl } from "../TagControl";
 import { FormField, FormFooter, FormLayout, LabelWithHelp } from "../form/FormLayout";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
@@ -231,6 +232,13 @@ function AddDocumentForm({
   );
 }
 
+/** Whether passage ``i`` is the first of its section: the one before it is of another section. */
+function opensSection(passages: LibraryDocumentDetail["passage_list"], i: number): boolean {
+  if (i === 0) return true;
+  const [before, p] = [passages[i - 1], passages[i]];
+  return before.section !== p.section || (!p.section && before.page !== p.page);
+}
+
 /** A document's facts, passages and actions, in the panel. */
 function DocumentDetail({
   doc,
@@ -385,6 +393,11 @@ function DocumentDetail({
               ),
           },
           { label: t("referenceLibrary.fieldStatus"), value: <StatusBadge status={doc.status} /> },
+          // REQ-2208: the registry's tags on the document, with the chip every taggable object has.
+          {
+            label: t("referenceLibrary.fieldTags"),
+            value: <TagControl objectType="document" documentId={doc.id} />,
+          },
           { label: t("referenceLibrary.fieldPassages"), value: String(doc.passages) },
           {
             label: t("referenceLibrary.fieldModel"),
@@ -435,13 +448,29 @@ function DocumentDetail({
         </Text>
       ) : (
         <Stack gap="xs" data-testid="reflib-passages">
-          {detail.passage_list.map((p) => (
+          {detail.passage_list.map((p, i) => (
             <div key={p.ordinal} className="reflib-passage">
-              <Text size="xs" c="dimmed">
-                {[p.section, p.page !== null ? t("referenceLibrary.page", { page: p.page }) : null]
-                  .filter(Boolean)
-                  .join(" · ") || t("referenceLibrary.noSection")}
-              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <Text size="xs" c="dimmed">
+                  {[
+                    p.section,
+                    p.page !== null ? t("referenceLibrary.page", { page: p.page }) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || t("referenceLibrary.noSection")}
+                </Text>
+                {/* REQ-2208: a section's tags, at the first of its passages. A section is named
+                    by its heading, or by its page when it has none; one with neither is the
+                    document's untitled opening, tagged as the document. */}
+                {opensSection(detail.passage_list, i) && (p.section || p.page !== null) && (
+                  <TagControl
+                    objectType="section"
+                    documentId={doc.id}
+                    sectionHeading={p.section || null}
+                    sectionPage={p.section ? null : p.page}
+                  />
+                )}
+              </Group>
               <Text size="sm" lineClamp={4} style={{ whiteSpace: "pre-wrap" }}>
                 {p.text}
               </Text>

@@ -126,6 +126,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_delta_ledger",
         "relationship_candidates",
         "creation_requests",
+        # REQ-2216: the approve and decide calls this environment already answered.
+        "idempotent_calls",
         "live_query_state",
         "file_source_mtimes",
         "node_ids",
@@ -162,6 +164,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "reference_documents",
         "reference_document_domains",
         "reference_passages",
+        # REQ-2208: the tags on its documents and their sections, which go where the documents go.
+        "reference_document_tags",
         # REQ-2185 (GRAPH RETRIEVAL): its glossary terms' embeddings, by its own vector model,
         # made again from its own terms wherever they are missing or stale.
         "glossary_term_vectors",
@@ -199,6 +203,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-194: its own names table and refused clashes, from its own model build.
+        "model_names",
+        "model_name_clashes",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
         # REQ-2147: its own scans for sensitive values inside text, and the hints they left.

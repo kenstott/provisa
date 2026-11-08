@@ -29,10 +29,10 @@ the text fields it matches with ``LIKE``.
 # Requirements: REQ-2197
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from provisa.api_source.models import ApiColumnType
+from provisa.compiler.naming import apply_convention
 
 # Kinds of field, as they are written below.
 TEXT = "text"
@@ -92,26 +92,26 @@ class Entity:
     has_active: bool = False
 
 
-def snake(name: str) -> str:
-    """A QuickBooks field name in snake case: ``TotalAmt`` -> ``total_amt``,
-    ``PrimaryEmailAddr`` -> ``primary_email_addr``, ``domain`` -> ``domain``."""
-    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", "_", name)
-    return spaced.lower()
-
-
 def columns_of(entity: Entity) -> list[Column]:
     """The columns of ``entity``'s table, in the order its fields are listed."""
     columns: list[Column] = []
     for f in entity.fields:
         if f.kind == REF:
-            base = snake(f.name)
+            base = apply_convention(f.name, "snake")
             columns.append(
                 Column(f"{base}_value", ApiColumnType.string, f.name, f.filterable, False, REF)
             )
             columns.append(Column(f"{base}_name", ApiColumnType.string, "", False, False, TEXT))
         else:
             columns.append(
-                Column(snake(f.name), _COLUMN_TYPES[f.kind], f.name, f.filterable, f.like, f.kind)
+                Column(
+                    apply_convention(f.name, "snake"),
+                    _COLUMN_TYPES[f.kind],
+                    f.name,
+                    f.filterable,
+                    f.like,
+                    f.kind,
+                )
             )
     for qb_name, column in _METADATA_FIELDS:
         columns.append(
@@ -617,7 +617,7 @@ def entity(name: str) -> Entity:
 
 def table_name(entity_name: str) -> str:
     """The table an entity is offered as: ``JournalEntry`` -> ``journal_entry``."""
-    return snake(entity_name)
+    return apply_convention(entity_name, "snake")
 
 
 _BY_TABLE = {table_name(e.name): e for e in _ENTITIES}

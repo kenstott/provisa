@@ -10,7 +10,7 @@
 
 """Integration tests for gRPC query execution (not just reflection).
 
-Pure-logic tests (_pascal_to_snake, ProvisaServicer.__getattr__, _get_role)
+Pure-logic tests (ProvisaServicer.__getattr__, _get_role)
 have been moved to tests/unit/test_grpc_server.py.
 
 Tests cover:
@@ -575,7 +575,7 @@ class TestGrpcQueryExecution:
 
         request = MagicMock()
         # Consume the async generator; abort is called internally
-        async for _ in servicer._handle_query(request, ctx, "UnknownType", "unknown_type"):
+        async for _ in servicer._handle_query(request, ctx, "UnknownType"):
             pass
 
         ctx.abort.assert_called_once()
