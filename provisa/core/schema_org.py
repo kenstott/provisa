@@ -230,6 +230,8 @@ data_products = Table(  # REQ-1634
     # REQ-2118: when the product was created, its ODPS productCreatedTs; set on insert, never
     # written by a save.
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2219: who created it, set on insert only; it grants nothing.
+    Column("created_by", Text),
 )
 
 naming_rules = Table(
@@ -519,8 +521,49 @@ roles = Table(
     # A grant of this role unused for this many days is removed (auth.role_grants); NULL = never.
     Column("inactivity_days", Integer),
     Column("relationship_guard", Boolean, nullable=False, server_default=true()),  # REQ-1919
+    # REQ-2219: what a holder gets with no list, {kind: [identifier, ...]}, written from
+    # domain_access when that is set; narrowed afterwards. Absent kinds are the whole role.
+    Column("default_entitlements", JSON(none_as_null=True)),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
     Column("tenant_id", Uuid),
+)
+
+# REQ-2219: the entitlement store. Append-only: a change appends a row whose valid_from ends the
+# row before it for the same principal, role, kind and capability; ``removed`` ends it with none.
+entitlements = Table(
+    "entitlements",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("source", Text, nullable=False),
+    Column("principal", Text),  # NULL on a role's own rows (source role)
+    Column("role_id", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("capability", Text),
+    Column("identifiers", JSON, nullable=False, default=list, server_default="[]"),
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("reason", Text),
+    Column("set_by", Text),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("source IN ('idp', 'provisa', 'role')", name="entitlements_source_check"),
+)
+
+# REQ-2219: one row per expiry rule on a person's grant; ``ends`` is {capability: [identifier,
+# ...]}, empty for the whole grant. Append-only: ``removed`` withdraws the rule named by rule_key.
+entitlement_expiries = Table(
+    "entitlement_expiries",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("rule_key", Text, nullable=False),
+    Column("principal", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("ends_at", DateTime(timezone=True), nullable=False),
+    Column("ends", JSON, nullable=False, default=dict, server_default="{}"),
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("reason", Text),
+    Column("set_by", Text),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 # REQ-2074: what each role may write to each table, per operation. rows_expr / check_expr are row

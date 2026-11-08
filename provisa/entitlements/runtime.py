@@ -50,27 +50,22 @@ _NOTHING_HELD = HeldEntitlements()
 
 @dataclass(frozen=True)
 class EntitlementRequest:
-    """One person's lists, as bound for a call."""
+    """One person's identity-provider lists, as bound for a call. What Provisa holds is read
+    where the mask is, in the org the request is bound to."""
 
+    user_id: str
     idp: IdpLists
     idp_hash: str
-    held: HeldEntitlements
-    held_version: str
 
 
 _current: ContextVar[EntitlementRequest | None] = ContextVar("provisa_entitlements", default=None)
 
 
-def _request_for(state: Any, identity: Any) -> EntitlementRequest:
-    idp = parse_idp_entitlements(identity.raw_claims)
-    held = state.held_entitlements.get(identity.user_id, _NOTHING_HELD)
-    return EntitlementRequest(idp, idp_lists_hash(idp), held, held_version(held))
-
-
-def bind_entitlements(state: Any, identity: Any) -> Token:
+def bind_entitlements(identity: Any) -> Token:
     """Bind ``identity``'s lists for the call being served in this context. A token whose lists
     cannot be read raises :class:`~provisa.entitlements.lists.EntitlementClaimError`."""
-    return _current.set(_request_for(state, identity))
+    idp = parse_idp_entitlements(identity.raw_claims)
+    return _current.set(EntitlementRequest(identity.user_id, idp, idp_lists_hash(idp)))
 
 
 def reset_entitlements(token: Token) -> None:
@@ -78,9 +73,9 @@ def reset_entitlements(token: Token) -> None:
 
 
 @contextmanager
-def entitlements_scope(state: Any, identity: Any) -> Iterator[None]:
+def entitlements_scope(identity: Any) -> Iterator[None]:
     """:func:`bind_entitlements` for the block."""
-    token = bind_entitlements(state, identity)
+    token = bind_entitlements(identity)
     try:
         yield
     finally:
@@ -88,12 +83,12 @@ def entitlements_scope(state: Any, identity: Any) -> Iterator[None]:
 
 
 def _role_context(state: Any, role_id: str) -> Any:
+    """The compilation context of ``role_id``'s schema, or None for a role with no schema (a
+    qualifier a meta-role carries, such as a region's derived role)."""
     from provisa.api.role_surface import role_surface  # noqa: PLC0415
 
     surface = role_surface(state, role_id)
-    if surface is None:
-        raise RuntimeError(f"role {role_id!r} has no surface to compute entitlements against")
-    return surface.context
+    return None if surface is None else surface.context
 
 
 def _role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
@@ -114,27 +109,36 @@ def _members(role_id: str) -> tuple[str, ...]:
 
 
 def _compute(
-    state: Any, role_id: str, request: EntitlementRequest, version: tuple, now: datetime
+    state: Any,
+    role_id: str,
+    request: EntitlementRequest,
+    held: HeldEntitlements,
+    version: tuple,
+    now: datetime,
 ) -> EntitlementMask:
     cache = state.entitlement_masks
     names = state.names_table
     products = tuple(state.data_product_refs)
 
-    def index_of(role: str) -> Any:
-        return cache.index(
-            (version, role), lambda: build_index(names, _role_context(state, role), products)
-        )
+    def index_of(role: str, context: Any) -> Any:
+        return cache.index((version, role), lambda: build_index(names, context, products))
 
+    context = _role_context(state, role_id)
+    if context is None:
+        raise RuntimeError(f"role {role_id!r} has no schema to compute entitlements against")
     model_index = cache.index((version, "*"), lambda: build_index(names, None, products))
     members: list[MemberInput] = []
     findings: list[Finding] = []
     for member in _members(role_id):
-        role = state.roles[member]
-        lists = effective_lists(member, request.idp, request.held, _role_defaults(role))
+        member_context = _role_context(state, member)
+        role = state.roles.get(member)
+        if member_context is None or role is None:
+            continue  # a qualifier with no schema of its own reaches nothing
+        lists = effective_lists(member, request.idp, held, _role_defaults(role))
         findings.extend(check_lists(member, role, lists, model_index))
-        expiries = tuple(r for r in request.held.expiries if r.role_id == member)
-        members.append(MemberInput(member, lists, index_of(member), expiries))
-    return compute_mask(role_id, index_of(role_id), members, version, now, tuple(findings))
+        expiries = tuple(r for r in held.expiries if r.role_id == member)
+        members.append(MemberInput(member, lists, index_of(member, member_context), expiries))
+    return compute_mask(role_id, index_of(role_id, context), members, version, now, tuple(findings))
 
 
 def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
@@ -144,18 +148,26 @@ def request_mask(state: Any, role_id: str) -> EntitlementMask | None:
     request = _current.get()
     if request is None:
         return None
+    held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
     if state.names_table is None:
-        if request.idp or request.held.lists:
+        if request.idp or held.lists:
             raise RuntimeError(
                 "entitlement lists are bound but this model has no names table to expand them"
             )
         return None
+    if (
+        not request.idp
+        and not held.lists
+        and not held.expiries
+        and not any(_role_defaults(state.roles.get(member, {})) for member in _members(role_id))
+    ):
+        return None  # a plain role grant: nothing narrows it and nothing needs computing
     version = (state.schema_boot_id, state.schema_version)
-    key = (role_id, request.idp_hash, request.held_version, version)
+    key = (role_id, request.idp_hash, held_version(held), version)
     now = datetime.now(UTC)
 
     def build() -> EntitlementMask:
-        mask = _compute(state, role_id, request, version, now)
+        mask = _compute(state, role_id, request, held, version, now)
         for finding in mask.findings:
             log.warning("entitlements: %s (%s)", finding.message, finding.code)
         return mask

@@ -81,17 +81,26 @@ def _column_violation(
     return None
 
 
+def _scope(select: exp.Select, scopes: dict[int, dict[str, int]]) -> dict[str, int]:
+    """Every alias ``select`` reads, its own over any enclosing select's: a correlated subquery
+    walks a relationship through an outer alias."""
+    outer = select.find_ancestor(exp.Select)
+    enclosing = {} if outer is None else _scope(outer, scopes)
+    return {**enclosing, **scopes.get(id(select), {})}
+
+
 def _join_violations(
     select: exp.Select, alias_to_tid: dict[str, int], gov: GovernanceContext, mask: Any
 ) -> list[ValidationViolation]:
     from provisa.compiler.stage2 import registered_name
 
     out: list[ValidationViolation] = []
-    for join in select.args.get("joins") or []:
-        on = join.args.get("on")
-        if on is None:
+    conditions = [join.args.get("on") for join in select.args.get("joins") or []]
+    conditions.append(select.args.get("where"))
+    for condition in conditions:
+        if condition is None:
             continue
-        for eq in on.find_all(exp.EQ):
+        for eq in condition.find_all(exp.EQ):
             left, right = eq.left, eq.right
             if not (isinstance(left, exp.Column) and isinstance(right, exp.Column)):
                 continue
@@ -141,19 +150,56 @@ def entitlement_violations(
                     )
                 )
     ctes = _statement_ctes(written)
-    for select in written.find_all(exp.Select):
-        alias_to_tid = {
+    scopes = {
+        id(select): {
             _alias_for(t): tid
             for t, tid in _get_tables_from_select(select, gov)
             if tid is not None and not _is_cte(t, ctes)
         }
-        if not alias_to_tid:
+        for select in written.find_all(exp.Select)
+    }
+    for select in written.find_all(exp.Select):
+        alias_to_tid = scopes[id(select)]
+        if alias_to_tid:
+            for col in select.find_all(exp.Column):
+                if col.find_ancestor(exp.Select) is not select:
+                    continue
+                found = _column_violation(col, alias_to_tid, gov, mask)
+                if found is not None and found not in out:
+                    out.append(found)
+        scope = _scope(select, scopes)
+        if scope:
+            out.extend(v for v in _join_violations(select, scope, gov, mask) if v not in out)
+    out.extend(v for v in _write_violations(written, gov, mask) if v not in out)
+    return out
+
+
+def _write_violations(
+    written: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    gov: GovernanceContext,
+    mask: Any,
+) -> list[ValidationViolation]:
+    """The columns a write names outside the mask: its INSERT list, or its SET and WHERE."""
+    from provisa.compiler.stage2 import _table_id_for_node, registered_name
+
+    out: list[ValidationViolation] = []
+    for write in written.find_all(exp.Insert, exp.Update):
+        target = write.find(exp.Table)
+        tid = None if target is None else _table_id_for_node(target, gov)
+        if tid is None or not mask.has_table(tid):
             continue
-        for col in select.find_all(exp.Column):
-            if col.find_ancestor(exp.Select) is not select:
-                continue
-            found = _column_violation(col, alias_to_tid, gov, mask)
-            if found is not None and found not in out:
-                out.append(found)
-        out.extend(v for v in _join_violations(select, alias_to_tid, gov, mask) if v not in out)
+        if isinstance(write, exp.Insert):
+            schema = write.this if isinstance(write.this, exp.Schema) else None
+            names = [] if schema is None else [i.name for i in schema.expressions]
+        else:
+            names = [
+                c.name for c in write.find_all(exp.Column) if c.find_ancestor(exp.Select) is None
+            ]
+        for name in names:
+            if not mask.has_column(tid, registered_name(gov, tid, name)):
+                out.append(
+                    ValidationViolation(
+                        "E002", f"Column {name!r} is outside this person's entitlements"
+                    )
+                )
     return out

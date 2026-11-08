@@ -146,6 +146,23 @@ def test_a_join_on_a_relationship_in_the_mask_passes():
     assert _violations(sql, mask)[1] == []
 
 
+def test_a_correlated_subquery_on_a_relationship_outside_the_mask_is_refused():
+    mask = _masked(tables=["sales.*"], relationships=[])
+    sql = (
+        "SELECT o.id, (SELECT c.id FROM customers c WHERE c.id = o.customer_id) AS c FROM orders o"
+    )
+    assert [v.code for v in _violations(sql, mask)[1]] == ["E003"]
+
+
+def test_an_update_of_a_column_outside_the_mask_is_refused():
+    mask = _masked(columns=["finance.revenue.id"])
+    _, found = _violations("UPDATE revenue SET amount = 1", mask)
+    assert [v.code for v in found] == ["E002"]
+    _, inserted = _violations("INSERT INTO revenue (amount) VALUES (1)", mask)
+    assert [v.code for v in inserted] == ["E002"]
+    assert _violations("UPDATE revenue SET id = 1", mask)[1] == []
+
+
 def test_a_full_mask_changes_nothing():
     gov = _governance()
     assert narrow_governance(gov, _masked()) is gov
@@ -188,6 +205,46 @@ def test_the_rule_is_first_on_every_governed_path(function):
     first_rule = calls.index("entitlement_violations")
     assert first_rule < calls.index("validate_sql")
     assert first_rule < calls.index("apply_governance") if "apply_governance" in calls else True
+
+
+class _NothingInMask:
+    """A mask that holds no table: enough to reach the refusal through the real pipeline."""
+
+    full = False
+    hash = "nothing"
+
+    def knows_table(self, _table_id):
+        return True
+
+    def has_table(self, _table_id):
+        return False
+
+    def has_column(self, _table_id, _name):
+        return False
+
+    def knows_relationship(self, _key):
+        return False
+
+    def has_relationship(self, *_key):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_govern_statement_refuses_a_table_outside_the_mask_before_any_other_rule(
+    monkeypatch,
+):
+    from provisa.compiler.sql_validator import GovernanceRefused
+    from provisa.pgwire import _pipeline
+    from tests.unit.test_v003_scope_pipeline import _SQL
+    from tests.unit.test_view_inputs_in_service import _OVER_A_SERVED_TABLE, _build, _view
+
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    monkeypatch.setattr(runtime, "request_mask", lambda _state, _role: _NothingInMask())
+
+    # _SQL also trips a validate_sql rule (the unnest refusal): the mask's refusal comes first.
+    with pytest.raises(GovernanceRefused, match="E001") as refused:
+        await _pipeline.govern_statement(_SQL, "r")
+    assert "unnest" not in str(refused.value).lower()
 
 
 # ── the cache keys ─────────────────────────────────────────────────────────────────────────────
@@ -273,19 +330,51 @@ def test_no_bound_principal_is_unmasked(monkeypatch):
     assert runtime.current_mask_hash(state, "viewer") == ""
 
 
-def test_a_principal_with_no_lists_on_a_plain_role_is_full(monkeypatch):
+def test_a_principal_with_no_lists_on_a_plain_role_needs_no_mask(monkeypatch):
     state = _runtime_state()
     identity = _bind(monkeypatch, {})
-    with runtime.entitlements_scope(state, identity):
-        mask = runtime.request_mask(state, "viewer")
-        assert mask.full
+    monkeypatch.setattr(runtime, "compute_mask", _never)
+    with runtime.entitlements_scope(identity):
+        assert runtime.request_mask(state, "viewer") is None
         assert runtime.current_mask_hash(state, "viewer") == ""
+
+
+def _never(*_a, **_k):
+    raise AssertionError("a plain role grant computes no mask")
+
+
+def test_a_deny_by_default_role_is_masked_with_no_lists(monkeypatch):
+    state = _runtime_state()
+    state.roles["viewer"]["default_entitlements"] = {"domains": []}
+    identity = _bind(monkeypatch, {})
+    with runtime.entitlements_scope(identity):
+        mask = runtime.request_mask(state, "viewer")
+        assert mask is not None and not mask.has_table(1)
+
+
+def test_a_qualifier_role_with_no_schema_adds_nothing_and_breaks_nothing(monkeypatch):
+    from provisa.security.meta_role import meta_role_id
+
+    from tests.unit.test_entitlements import _ctx
+
+    state = _runtime_state()
+    meta = meta_role_id(["viewer", "region__eu"])
+    state.roles[meta] = state.roles["viewer"]
+    monkeypatch.setattr(
+        runtime, "_role_context", lambda _s, r: None if r == "region__eu" else _ctx()
+    )
+    identity = SimpleNamespace(
+        user_id="alice", raw_claims={"groups": ["provisa:viewer:tables:finance.revenue"]}
+    )
+    with runtime.entitlements_scope(identity):
+        mask = runtime.request_mask(state, meta)
+        assert mask.has_table(1) and not mask.has_table(2)
 
 
 def test_a_principal_with_a_list_is_masked_and_hashed(monkeypatch):
     state = _runtime_state()
     identity = _bind(monkeypatch, {"groups": ["provisa:viewer:tables:finance.revenue"]})
-    with runtime.entitlements_scope(state, identity):
+    with runtime.entitlements_scope(identity):
         mask = runtime.request_mask(state, "viewer")
         assert mask.has_table(1) and not mask.has_table(2)
         assert runtime.current_mask_hash(state, "viewer") == mask.hash != ""
@@ -302,7 +391,7 @@ def test_the_mask_is_computed_once_per_key(monkeypatch):
         return real(*a, **k)
 
     monkeypatch.setattr(runtime, "compute_mask", counting)
-    with runtime.entitlements_scope(state, identity):
+    with runtime.entitlements_scope(identity):
         runtime.request_mask(state, "viewer")
         runtime.request_mask(state, "viewer")
     assert len(calls) == 1
@@ -319,7 +408,7 @@ def test_a_model_build_invalidates_the_request_mask(monkeypatch):
         return real(*a, **k)
 
     monkeypatch.setattr(runtime, "compute_mask", counting)
-    with runtime.entitlements_scope(state, identity):
+    with runtime.entitlements_scope(identity):
         runtime.request_mask(state, "viewer")
         state.schema_version = 2
         runtime.request_mask(state, "viewer")
@@ -329,10 +418,9 @@ def test_a_model_build_invalidates_the_request_mask(monkeypatch):
 def test_a_malformed_claim_is_refused_at_binding(monkeypatch):
     from provisa.entitlements.lists import EntitlementClaimError
 
-    state = _runtime_state()
     identity = _bind(monkeypatch, {"groups": ["provisa:viewer:tables"]})
     with pytest.raises(EntitlementClaimError):
-        with runtime.entitlements_scope(state, identity):
+        with runtime.entitlements_scope(identity):
             pass
 
 
@@ -340,7 +428,7 @@ def test_a_held_list_for_an_unknown_identifier_warns_once(monkeypatch, caplog):
     state = _runtime_state()
     identity = _bind(monkeypatch, {"groups": ["provisa:viewer:tables:finance.nope"]})
     with caplog.at_level("WARNING"):
-        with runtime.entitlements_scope(state, identity):
+        with runtime.entitlements_scope(identity):
             runtime.request_mask(state, "viewer")
             runtime.request_mask(state, "viewer")
     assert sum("finance.nope" in r.getMessage() for r in caplog.records) == 1
@@ -350,7 +438,7 @@ def test_lists_with_no_names_table_fail_closed(monkeypatch):
     state = _runtime_state()
     state.names_table = None
     identity = _bind(monkeypatch, {"groups": ["provisa:viewer:tables:finance.revenue"]})
-    with runtime.entitlements_scope(state, identity):
+    with runtime.entitlements_scope(identity):
         with pytest.raises(RuntimeError, match="names table"):
             runtime.request_mask(state, "viewer")
 
@@ -359,5 +447,5 @@ def test_no_lists_and_no_names_table_is_unmasked(monkeypatch):
     state = _runtime_state()
     state.names_table = None
     identity = _bind(monkeypatch, {})
-    with runtime.entitlements_scope(state, identity):
+    with runtime.entitlements_scope(identity):
         assert runtime.request_mask(state, "viewer") is None

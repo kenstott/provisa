@@ -70,6 +70,9 @@ TENANT_TABLES: dict[str, str] = {
     "roles": MODEL,
     # REQ-1382: read into the runtime build (state.user_attributes), so every worker reloads.
     "user_attributes": MODEL,
+    # REQ-2219: read into the runtime build (state.held_entitlements), so every worker reloads.
+    "entitlements": MODEL,
+    "entitlement_expiries": MODEL,
     "rls_rules": MODEL,
     "table_write_grants": MODEL,  # REQ-2074
     "tags": MODEL,

@@ -42,6 +42,8 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from provisa.api.role_surface import LazySurface, RoleSurface, SurfacePart, set_part
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from provisa.entitlements.lists import HeldEntitlements
+from provisa.entitlements.mask import MaskCache
 from provisa.core.connection_loop import CrossLoopLock
 from provisa.core.environments import PROD
 from provisa.executor.pool import SourcePool
@@ -229,6 +231,11 @@ class OrgRuntime:
     roles: dict[str, dict] = field(default_factory=dict)
     # REQ-1382: user id -> the attributes the org records for that member.
     user_attributes: dict[str, dict[str, str]] = field(default_factory=dict)
+    # REQ-2219: user id -> the entitlement lists Provisa holds for that member; the data products
+    # (id, domain id) a list can name; the masks computed for this runtime's requests.
+    held_entitlements: dict[str, HeldEntitlements] = field(default_factory=dict)
+    data_product_refs: tuple[tuple[str, str], ...] = ()
+    entitlement_masks: MaskCache = field(default_factory=MaskCache)
     # role id -> everything the role is served through, from ONE build (api/role_surface.py):
     # its schema, compilation context, row filters, REST path map and proto. A build installs a
     # role's surface whole, with one assignment; a request takes it once. Replaced, never

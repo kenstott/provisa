@@ -545,7 +545,14 @@ def _command_rows(commands: Iterable[Mapping]) -> list[NameRow]:
         label = f"command {c['name']}"
         out.append(
             NameRow(
-                "command", c["name"], "graphql_field", c["field"], c["name"], label, scope=(root,)
+                "command",
+                c["name"],
+                "graphql_field",
+                c["field"],
+                c["name"],
+                label,
+                domain_id=c.get("domain") or "",
+                scope=(root,),
             )
         )
         out.append(
@@ -605,7 +612,14 @@ def build_model_names(
     for c in [*si.functions, *si.webhooks]:
         field_name = binding_name(c, "graphql")
         if field_name is not None:
-            commands.append({"name": c["name"], "kind": c.get("kind"), "field": field_name})
+            commands.append(
+                {
+                    "name": c["name"],
+                    "kind": c.get("kind"),
+                    "field": field_name,
+                    "domain": c.get("domain_id"),
+                }
+            )
     enums = {
         pg_name: [v.value for v in enum_type.values.values()]
         for pg_name, enum_type in si.enum_types.items()
