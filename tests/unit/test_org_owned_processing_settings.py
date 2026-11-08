@@ -334,9 +334,8 @@ class TestAnOrgAdminEditsItsOwn:
 
         request = caller(*ORG_ADMIN)
         request.json = lambda: _coro({"naming": {"convention": "shouty"}})
-        with pytest.raises(ApiError) as exc:
-            await router.update_settings(request)
-        assert exc.value.status_code == 400
+        result = await router.update_settings(request)
+        assert result["success"] is False and "Invalid convention" in result["message"]
         assert app_state.settings_overrides == {}
 
     async def test_null_clears_back_to_the_deployments(self, caller, app_state):

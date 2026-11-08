@@ -75,11 +75,23 @@ function useCacheStorage(blocks: StorageBlock[]) {
   return { s, setS, save, saving, msg, error, forbidden };
 }
 
-function SettingsPanel({ testId, children }: { testId: string; children: React.ReactNode }) {
+function SettingsPanel({
+  testId,
+  title,
+  children,
+}: {
+  testId: string;
+  title?: string;
+  children: React.ReactNode;
+}) {
   const { t } = useTranslation();
   return (
     <Collapsibles id={`admin.cache-storage.${testId}`} testId={testId}>
-      <CollapsibleItem value="settings" defaultOpen={false} title={t("adminPage.settingsPanel")}>
+      <CollapsibleItem
+        value="settings"
+        defaultOpen={false}
+        title={title ?? t("adminPage.settingsPanel")}
+      >
         <Stack gap="md">{children}</Stack>
       </CollapsibleItem>
     </Collapsibles>
@@ -152,8 +164,7 @@ export function HotCacheStoreSettingsPanel() {
   if (!s) return error ? <Alert color="red">{error}</Alert> : null;
 
   return (
-    <SettingsPanel testId="hot-cache-store-settings">
-      <Title order={5}>{t("cacheStorageTab.hotCacheHeading")}</Title>
+    <SettingsPanel testId="hot-cache-store-settings" title={t("cacheStorageTab.hotCacheHeading")}>
       <Text c="dimmed" size="sm">
         {t("cacheStorageTab.hotCacheIntro")}
       </Text>

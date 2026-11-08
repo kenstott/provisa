@@ -386,6 +386,16 @@ def _org_processing_blocks() -> dict:
 _REDIRECT_ORG_KEYS = ("enabled", "threshold", "default_format", "ttl")
 
 
+def _invalid_convention(n: dict) -> str | None:
+    """Why a convention the body names cannot be saved, before anything in it is written."""
+    from provisa.compiler.naming import VALID_CONVENTIONS
+
+    for field in ("convention", "sql_convention"):
+        if n.get(field) is not None and n[field] not in VALID_CONVENTIONS:
+            return f"Invalid convention: {n[field]!r}"
+    return None
+
+
 def _graphql_remote_is_org_only(body: dict) -> bool:
     return set(body.get("graphql_remote") or {}) <= _GRAPHQL_REMOTE_ORG
 
@@ -433,7 +443,7 @@ def _org_federation(state, f: dict) -> dict:
 def _naming_block(n: dict, overrides: dict, updated: list) -> dict | None:  # REQ-1327
     """The org's whole ``naming`` row after this save: the fields ``n`` names applied over what it
     holds (its domain mode stays). A null clears a field back to the deployment's value."""
-    from provisa.compiler.naming import stored_convention, validation_error_for_convention
+    from provisa.compiler.naming import stored_convention
 
     unknown = set(n) - set(_NAMING_FIELDS)
     if unknown:
@@ -453,9 +463,6 @@ def _naming_block(n: dict, overrides: dict, updated: list) -> dict | None:  # RE
         elif field == "domain_prefix":
             merged[field] = bool(raw)
         else:
-            err = validation_error_for_convention(raw)
-            if err:
-                raise ApiError(400, "settings.invalid_convention", err, convention=str(raw))
             merged[field] = stored_convention(raw)
         updated.append(f"naming.{field}")
     return merged or None
@@ -850,6 +857,9 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
         require_org_settings(request)  # REQ-1349
     if _touches_deployment_blocks(body):
         require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
+    refused = _invalid_convention(body.get("naming") or {})
+    if refused is not None:
+        return {"success": False, "message": refused}
     await _apply_org_blocks(request, body, updated)
     # REQ-1327: the hot tier is built when the org's runtime is (as its deployment half is).
     if "hot_tables" in body:
