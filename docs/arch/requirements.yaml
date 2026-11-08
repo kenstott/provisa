@@ -18418,7 +18418,12 @@
     and connector bundles in a local directory outside the installed application. It runs once at install
     or first launch (for the container image, at image build). A directory already filled, as a devops step
     does for an air-gapped site, is used without fetching anything. DuckDB and the connectors never download
-    at runtime.'
+    at runtime. (Amended 2026-11-08, ONE PLACE TO FETCH FROM:) The DMG, AppImage, Windows and pip installs
+    fetch the DuckDB extensions and every connector bundle (govdata included) from one location, the project''s
+    own release assets, for that platform and DuckDB version; no install reaches DuckDB''s extension servers.
+    The provisa-duckdb-ext wheel is dropped from the install path. The container image is not an installer:
+    it is built with these assets inside it. An air-gapped site downloads the same files once and pre-fills
+    the local directory (maintainer 2026-11-08).'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
