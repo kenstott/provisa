@@ -155,6 +155,7 @@
     "draftUndefined": "Bozza: derivato dai nomi di colonne e tabelle. Dagli una definizione — è ciò che leggono agenti e cataloghi — poi approvalo. Il nome deriva dalle colonne qui sotto, e le colonne che si normalizzano allo stesso modo confluiscono in un unico termine: assegna un alias a una colonna nella pagina Tabelle per cambiare il termine che alimenta. Rinomina qui per cambiare solo la formulazione di questo termine.",
     "draftUngrounded": "Questo termine non raggiunge alcuna colonna fisica. Collegalo a un termine che ne ha una, così che nomini dati reali.",
     "piiLabel": "PII",
+    "tagsLabel": "Tag",
     "piiHelp": "Ogni colonna con questo significato porta PII, anche le future.",
     "piiPropertyOnly": "Solo una proprietà segna colonne: una classe o un concetto non ne significa nessuna.",
     "piiMarks_one": "Segna {{count}} colonna",

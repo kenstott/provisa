@@ -171,6 +171,7 @@ def create_catalog(
         return
     connector = _validate_identifier(trino_connector.trino_connector)
     props = _build_catalog_properties(source, resolved_password)
+    client_file_wait = 0.0
 
     if not props:
         from provisa.federation.trino_connectors import _TrinoJdbcConnector
@@ -207,6 +208,9 @@ def create_catalog(
             )
             return
 
+    if stype == "kafka":
+        props, client_file_wait = _with_kafka_client(source, props, catalog_name)
+
     if is_mapping_dsl_source(source):
         write_table_definitions(source, resolved_password, catalog_name)
         props = with_catalog_dirs(source, props, catalog_name)
@@ -221,8 +225,11 @@ def create_catalog(
     except TrinoQueryError as exc:
         raise drop_refused(catalog_name, exc) from exc
 
-    cur.execute(f"CREATE CATALOG {catalog_name} USING {connector} WITH ({props_sql})")
-    cur.fetchall()
+    _create_waiting_for_client_file(
+        conn,
+        f"CREATE CATALOG {catalog_name} USING {connector} WITH ({props_sql})",
+        client_file_wait,
+    )
 
     # REQ-1730: delta_lake/iceberg's shared metastore starts out empty — post_create is where
     # TrinoIcebergConnector/TrinoDeltaLakeConnector register the source's one table into it.
@@ -254,10 +261,46 @@ def create_kafka_catalog(
         return
     props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING kafka WITH ({props_sql})"
-    # REQ-2073: on an engine shard the client properties arrive through a Secret volume, which the
-    # kubelet syncs into the running pod some seconds after it is written; until then Trino refuses
-    # the catalog for naming a file that does not exist. That one refusal is waited out for
-    # ``client_file_wait`` seconds, and raised past it.
+    _create_waiting_for_client_file(conn, sql, client_file_wait)
+
+
+def _with_kafka_client(
+    source: "Source", props: dict[str, str], catalog: str
+) -> tuple[dict[str, str], float]:  # REQ-147, REQ-2073
+    """``props`` of a Kafka source's catalog, naming its client properties where it has any (a
+    secured cluster), and how long the catalog may wait for them to arrive. Trino's connector reads
+    TLS and SASL settings only from that file, so it is put where the engine reads it first."""
+    from provisa.core.engine_shard import bound_org_shard
+    from provisa.core.trino_catalog_files import (
+        KAFKA_CLIENT_PROPERTY,
+        kafka_client_path,
+        kafka_client_resource,
+        write_kafka_client_file,
+    )
+    from provisa.kafka.security import KafkaSecurity
+
+    client_props = KafkaSecurity.of_source(source).client_properties()
+    if client_props is None:
+        return props, 0.0
+    named = {**props, KAFKA_CLIENT_PROPERTY: kafka_client_resource(catalog)}
+    shard = bound_org_shard()
+    if shard is None:
+        write_kafka_client_file(kafka_client_path(catalog), client_props)
+        return named, 0.0
+    from provisa.federation.k8s_provisioner import put_kafka_client_on_shard
+
+    return named, put_kafka_client_on_shard(shard, catalog, client_props)
+
+
+def _create_waiting_for_client_file(
+    conn: TrinoConnection, sql: str, client_file_wait: float
+) -> None:  # REQ-2073
+    """Run a ``CREATE CATALOG``. On an engine shard the client properties arrive through a Secret
+    volume, which the kubelet syncs into the running pod some seconds after it is written; until
+    then Trino refuses the catalog for naming a file that does not exist. That one refusal is
+    waited out for ``client_file_wait`` seconds, and raised past it."""
+    from provisa.core.trino_catalog_files import KAFKA_CLIENT_PROPERTY
+
     deadline = time.monotonic() + client_file_wait
     while True:
         try:
@@ -266,7 +309,7 @@ def create_kafka_catalog(
             cur.fetchall()
             return
         except TrinoQueryError as exc:
-            if "kafka.config.resources" not in str(exc) or time.monotonic() >= deadline:
+            if KAFKA_CLIENT_PROPERTY not in str(exc) or time.monotonic() >= deadline:
                 raise
             time.sleep(2)
 

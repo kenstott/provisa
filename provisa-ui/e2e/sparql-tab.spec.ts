@@ -15,6 +15,9 @@
 import type { Page, Request } from "@playwright/test";
 import { test, expect } from "./coverage";
 
+/** The meta domain's Domains table's class, as a query names it: the pill's test id carries it. */
+const DOMAINS_CLASS = "meta:domains";
+
 /** The vocabulary's sections start closed: the meta domain's classes, opened. */
 async function openMetaClasses(page: Page) {
   const vocabulary = page.getByTestId("sparql-vocabulary");
@@ -31,9 +34,10 @@ test.describe("the SPARQL tab", () => {
     // The meta domain's Domains table: always readable, and needing no parameter (the first class
     // listed may be a parameterized table, which a read gives no value for and which is refused).
     await openMetaClasses(page);
-    const pill = vocabulary.getByTestId("sparql-class-meta:domains");
+    const pill = vocabulary.getByTestId(`sparql-class-${DOMAINS_CLASS}`);
     await expect(pill, "the role reads the meta domain's class").toBeVisible({ timeout: 30_000 });
-    const shown = (await pill.textContent())?.split("⊂")[0].trim() ?? "";
+    // The pill shows the class without its prefix (domains under meta); the query names it whole.
+    const shown = DOMAINS_CLASS;
     const asked = page.waitForRequest(
       (r: Request) => new URL(r.url()).pathname === "/data/sparql" && r.method() === "POST",
       { timeout: 60_000 },
@@ -62,11 +66,11 @@ test.describe("the SPARQL tab", () => {
     await openMetaClasses(page);
     const tableClass = page
       .getByTestId("sparql-vocabulary")
-      .getByTestId("sparql-class-meta:domains");
+      .getByTestId(`sparql-class-${DOMAINS_CLASS}`);
     await expect(tableClass, "the role reads the meta domain's table class").toBeVisible({
       timeout: 30_000,
     });
-    const shown = (await tableClass.textContent())?.split("⊂")[0].trim() ?? "";
+    const shown = DOMAINS_CLASS;
     const pillAsked = page.waitForRequest(
       (r: Request) => new URL(r.url()).pathname === "/data/sparql" && r.method() === "POST",
       { timeout: 60_000 },

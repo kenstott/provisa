@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "由事实表度量构建时从聚合派生",
     "fieldDescription": "描述",
     "fieldAiContext": "AI 上下文",
+    "fieldTags": "标签",
     "fieldAiContextPlaceholder": "供 AI 辅助查询生成的提示",
     "saveFailed": "保存失败。",
     "editMetric": "编辑指标 {{name}}",

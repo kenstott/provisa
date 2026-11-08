@@ -147,3 +147,52 @@ def test_the_manifest_is_fetched_with_credentials():
     assert re.search(
         r'<link rel="manifest" href="/site\.webmanifest" crossorigin="use-credentials"\s*/>', html
     )
+
+
+def test_the_ui_port_is_made_public_on_every_start():
+    # devcontainer.json has no field for port visibility and a public port reverts to private when
+    # the codespace restarts, so a postStartCommand sets it with the GitHub CLI.
+    config = _devcontainer()
+    _feature("github-cli")
+    assert "public-ui-port.sh" in config["postStartCommand"]
+    assert config["postStartCommand"].rstrip().endswith("&")
+    script = (DEVCONTAINER / "public-ui-port.sh").read_text()
+    assert 'gh codespace ports visibility "$UI_PORT:public" -c "$CODESPACE_NAME"' in script
+    assert "UI_PORT=3000" in script
+
+
+def test_the_public_port_script_does_nothing_outside_a_codespace(tmp_path):
+    import os
+    import subprocess
+
+    env = {k: v for k, v in os.environ.items() if k != "CODESPACE_NAME"}
+    run = subprocess.run(
+        ["bash", str(DEVCONTAINER / "public-ui-port.sh")], env=env, capture_output=True, timeout=30
+    )
+    assert run.returncode == 0
+    assert run.stdout == b"" and run.stderr == b""
+
+
+def test_the_public_port_script_warns_and_continues_when_gh_refuses(tmp_path):
+    import os
+    import subprocess
+
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/bin/bash\n"
+        'case "$2" in\n'
+        '  ports) if [ "${3:-}" = visibility ]; then echo "HTTP 403: denied" >&2; exit 1; fi;'
+        " echo 3000 ;;\n"
+        "esac\n"
+    )
+    gh.chmod(0o755)
+    env = {**os.environ, "CODESPACE_NAME": "x", "PATH": f"{tmp_path}:{os.environ['PATH']}"}
+    run = subprocess.run(
+        ["bash", str(DEVCONTAINER / "public-ui-port.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert run.returncode == 0
+    assert "WARNING" in run.stderr and "403" in run.stderr

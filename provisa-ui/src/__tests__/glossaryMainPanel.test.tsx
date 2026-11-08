@@ -20,10 +20,11 @@ import { readScreen } from "../mcp/screenState";
 import { runUiActions } from "../mcp/uiActions";
 import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
-vi.mock("../components/graph3d/GlossaryOntologyView", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../components/graph3d/GlossaryOntologyView")>()),
-  GlossaryOntologyView: () => <div data-testid="ontology-view" />,
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+  OntologyView: () => <div data-testid="ontology-view" />,
 }));
 vi.mock("../components/admin/StewardshipSummary", () => ({
   StewardshipSummary: () => <div data-testid="summary" />,

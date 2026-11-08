@@ -24,7 +24,9 @@ import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/GraphPanel", () => ({ GraphPanel: () => null }));
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
+}));
 const fetchProductContract = vi.fn<(id: string, member: string) => Promise<OdcsContract>>();
 const fetchContractVersions = vi.fn<(id: string, member: string) => Promise<ContractVersion[]>>();
 vi.mock("../../../api/dataProductContracts", () => ({

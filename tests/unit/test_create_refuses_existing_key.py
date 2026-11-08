@@ -131,7 +131,9 @@ async def test_a_tag_create_on_an_existing_id_is_refused_and_an_update_changes_i
     async def _nothing():
         return None
 
-    monkeypatch.setattr(schema_mutation, "_require_tag_editor", lambda _info: None)
+    monkeypatch.setattr(
+        schema_mutation, "_require_tag_editor", lambda _info, _object_type=None: None
+    )
     monkeypatch.setattr(schema_mutation, "require_capability", lambda *_a, **_k: None)
     monkeypatch.setattr(schema_mutation, "_refresh_config_tags", _nothing)
     mutation: Any = schema_mutation.Mutation()

@@ -47,6 +47,7 @@ DEPLOYMENT_ENDPOINTS = [
     "set_auth",
     "reload_query_engine_catalog",
     "restart_query_engine",
+    "get_traces_table_latest",
 ]
 
 

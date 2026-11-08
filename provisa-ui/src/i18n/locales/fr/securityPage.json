@@ -94,6 +94,7 @@
     "ruleDescription": "Description",
     "ruleDescriptionHelp": "À quoi sert la règle, telle qu'une revue des accès la lit.",
     "ruleRight": "Droit",
+    "tags": "Étiquettes",
     "ruleRightRead": "Lecture",
     "ruleRightUpdate": "Mise à jour",
     "ruleRightDelete": "Suppression",

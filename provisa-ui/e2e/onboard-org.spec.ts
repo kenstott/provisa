@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { Route } from "@playwright/test";
 import { test, expect } from "./coverage";
 
 /**
@@ -19,6 +20,16 @@ import { test, expect } from "./coverage";
  */
 
 const ORG_ID = "carolco";
+
+/** The shell's GraphQL reads, answered empty in the shape each asks: the AuthProvider's role and
+ * domain bootstrap, and the admin rail's RegionChoices (REQ-1921: no regions declared). A read
+ * answered without a field it asked for is an uncaught Apollo error in the page. */
+function answerShellGraphql(route: Route) {
+  const op = (route.request().postDataJSON() as { operationName?: string } | null)?.operationName;
+  if (op === "RegionChoices")
+    return route.fulfill({ json: { data: { regionChoices: { regions: [], connected: null } } } });
+  return route.fulfill({ json: { data: { roles: [], domains: [] } } });
+}
 
 test("member-less user onboards a new org with demo data and is routed into the app", async ({
   page,
@@ -67,9 +78,7 @@ test("member-less user onboards a new org with demo data and is routed into the 
     }),
   );
   // Silence the GraphQL role/domain bootstrap the AuthProvider fires and the shell's queries.
-  await page.route("**/admin/graphql", (route) =>
-    route.fulfill({ json: { data: { roles: [], domains: [] } } }),
-  );
+  await page.route("**/admin/graphql", answerShellGraphql);
 
   let createBody: Record<string, unknown> | null = null;
   await page.route("**/admin/orgs", (route) => {
@@ -154,9 +163,7 @@ test("member-less user joins an existing org with an invite code and is routed i
       },
     }),
   );
-  await page.route("**/admin/graphql", (route) =>
-    route.fulfill({ json: { data: { roles: [], domains: [] } } }),
-  );
+  await page.route("**/admin/graphql", answerShellGraphql);
 
   let redeemBody: Record<string, unknown> | null = null;
   await page.route("**/auth/redeem-invite", (route) => {

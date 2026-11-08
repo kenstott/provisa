@@ -1,34 +1,50 @@
 {
-  "version": "v0.1.0-alpha.501",
-  "previous": "v0.1.0-alpha.500",
-  "date": "2026-11-04",
+  "version": "v0.1.0-alpha.507",
+  "previous": "v0.1.0-alpha.506",
+  "date": "2026-11-07",
   "features": [],
   "changes": [
     {
-      "scope": "compiler",
+      "scope": "api",
       "entries": [
-        "Refuse shapes that hide a registered relation from governance",
-        "Stage 2 refuses a parenthesised join group with a registered relation",
-        "Govern a leftmost parenthesised join group as the flat join",
-        "Quote a request-given name as one identifier"
+        "A TTL -1 API table with declared rows is read from its replica, never fetched",
+        "Resolve a table's TTL before asking whether it is kept for good"
       ]
     },
     {
-      "scope": "cypher,compiler",
+      "scope": "demo",
       "entries": [
-        "Lower a write's WHERE from its tree; no SQL text rewrites"
+        "Banksecrecy relationships get their own GraphQL field names"
       ]
     },
     {
-      "scope": "meta",
+      "scope": "guard",
       "entries": [
-        "The meta seed retires the tables it no longer declares"
+        "A union's branch choices are judged unexpanded, never listed as their product"
+      ]
+    },
+    {
+      "scope": "macos",
+      "entries": [
+        "Allow only the container-image unpack warning in Apple's notarization log"
+      ]
+    },
+    {
+      "scope": "packaging",
+      "entries": [
+        "Retry a dropped staple connection and fail on Apple's notarization log"
+      ]
+    },
+    {
+      "scope": "tags",
+      "entries": [
+        "Library document and section tags kept with the library"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "page-level (?) help, first on the Reference library page"
+        "The tags scope bar wraps its twelve object kinds"
       ]
     }
   ]

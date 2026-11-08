@@ -44,10 +44,10 @@ from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import (
     allowed_domains_for_capability_request,
-    has_capability_request,
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
+from provisa.api.admin.table_read import table_for_steward
 from provisa.api.errors import ApiError
 
 router = APIRouter(prefix="/admin", tags=["admin", "profiler"])
@@ -261,29 +261,20 @@ async def list_kinds(request: Request) -> dict:
     from provisa.profiler import classifications
     from provisa.profiler.classify import catalogue
 
-    if not (
-        has_capability_request(request, _RIGHT) or has_capability_request(request, "org_settings")
-    ):
-        raise ApiError(
-            403,
-            "auth.missing_capability",
-            f"Listing classification kinds needs {_RIGHT} or org_settings",
-        )
+    # REQ-1327: classification is the steward's -- the kinds a column is tested for are what its
+    # decisions are made on, so the kinds' page and their switch are the decisions' own right.
+    require_capability_request(request, _RIGHT)
     disabled = classifications.disabled_of(await read_org_overrides(_db()))
-    return {
-        "kinds": [_kind_doc(k, k.id not in disabled) for k in catalogue()],
-        "canEdit": has_capability_request(request, "org_settings"),
-    }
+    return {"kinds": [_kind_doc(k, k.id not in disabled) for k in catalogue()]}
 
 
 @router.put("/classification-kinds")
 async def set_enabled_kinds(request: Request, body: EnabledKinds) -> dict:
-    from provisa.api.admin._platform_guard import require_org_settings
     from provisa.core.org_settings import write_org_overrides
     from provisa.profiler import classifications
     from provisa.profiler.classify import catalogue
 
-    require_org_settings(request)
+    require_capability_request(request, _RIGHT)
     ids = {k.id for k in catalogue()}
     unknown = set(body.enabled) - ids
     if unknown:
@@ -317,7 +308,6 @@ def _scan_doc(scan: dict) -> dict:
 
 @router.post("/tables/{table_id}/sensitive-scans")
 async def start_sensitive_scan(request: Request, table_id: int) -> dict:
-    from provisa.api.admin.table_read import table_for_steward
     from provisa.api.app import state
     from provisa.core.connection_loop import spawn_background
     from provisa.profiler import hints
@@ -335,7 +325,6 @@ async def start_sensitive_scan(request: Request, table_id: int) -> dict:
 @router.get("/tables/{table_id}/sensitive-scans/latest")
 async def latest_sensitive_scan(request: Request, table_id: int) -> dict:
     from provisa.api.admin.read_rights import served_columns_request
-    from provisa.api.admin.table_read import table_for_steward
     from provisa.api.app import state
     from provisa.profiler import hints
     from provisa.profiler.classify import kind_of

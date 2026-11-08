@@ -1138,3 +1138,9 @@ def test_a_default_org_role_sets_meta_role_is_built_in_the_environment_the_reque
     assert resp.json()["role"] == "meta:analyst+developer"
     assert built == [(("analyst", "developer"), ("default", "synthetic"))]
     assert ("default", "synthetic") in runtimes
+
+
+@pytest.fixture(autouse=True)
+def _declared_org_base_domain(monkeypatch):
+    """REQ-1276: a host names an org only under the deployment's declared base domain."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.org")

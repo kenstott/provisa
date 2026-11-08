@@ -94,6 +94,7 @@
     "ruleDescription": "説明",
     "ruleDescriptionHelp": "アクセスレビューが読む、このルールの目的。",
     "ruleRight": "権限",
+    "tags": "タグ",
     "ruleRightRead": "読み取り",
     "ruleRightUpdate": "更新",
     "ruleRightDelete": "削除",

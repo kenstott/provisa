@@ -34,7 +34,6 @@ from __future__ import annotations
 import base64
 import os
 import time
-import types
 
 import bcrypt
 import pytest
@@ -48,11 +47,14 @@ from provisa.api.admin.orgs_router import router as orgs_router
 from provisa.api.auth_router import router as auth_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.providers.basic import BasicAuthProvider
+from provisa.core import pgvector
 from provisa.core.database import Database, create_engine_from_url
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from provisa.core.schema_admin import REGISTRY_TABLES, local_users, orgs
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources
+from tests.served_config import served_config
 
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
@@ -116,6 +118,17 @@ def _prepare_sync():
                 )
             )
 
+        # REQ-2190: a node start creates the admin terminal's client role once per database
+        # (startup_seed._seed_catalog_client); provisioning grants it the new org's registry view.
+        conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
+        # REQ-2185: the org's library passages are pgvector columns; a node creates the extension
+        # in public before an org's schema is laid out (pgvector.require), as it is here.
+        conn.execute(text(f'CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA "{pgvector.SCHEMA}"'))
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn)
         # schema.sql seeds org_admin/analyst/platform_admin per org; provisioning is stubbed here, so
@@ -165,10 +178,12 @@ def planes(monkeypatch):
             "analyst": {"capabilities": ["query_development"]},
         },
     )
+    # A served app always holds its parsed config. Provisioning reads the platform's default region
+    # grant from it (REQ-1922), which a hand-built namespace does not carry.
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
+        served_config(auth={"provider": "basic"}, derived_roles=[]),
         raising=False,
     )
     monkeypatch.setattr(

@@ -36,9 +36,11 @@ test("variable-length cross-source path executes without FederationError", async
       nodeMap.set(`${node.label}:${node.id}`, node);
     }
   }
-  // 59 since pets-to-shelter-assignments became one-to-many: the path from an inquiry's pet
-  // now fans out over every assignment of the pet's breed before reaching the employees.
-  expect(nodeMap.size, `expected 59 unique nodes, got ${nodeMap.size}`).toBe(59);
+  // 65 since J750 removed the pets<->assignments breed_name relationships: an inquiry's pet now
+  // reaches the employees through animal_breeds (BREED_INFO, then ASSIGNMENT_BREED and
+  // ASSIGNMENT_EMPLOYEE), within the five hops. Observed alike in CI (run 42187604573, both
+  // attempts) and in a local core-lane run of this spec; not derived independently of the engine.
+  expect(nodeMap.size, `expected 65 unique nodes, got ${nodeMap.size}`).toBe(65);
 });
 
 test("variable-length path RETURN a, b returns node objects not flat columns", async ({ request }) => {

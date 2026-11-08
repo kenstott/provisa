@@ -5,10 +5,9 @@
     "identity": "Идентификация",
     "associations": "Связанные объекты",
     "load": "Управление нагрузкой и актуальностью",
-    "query": "Запрос",
+    "query": "API",
     "quality": "Качество",
     "columns": "Столбцы",
-    "writes": "Запись",
     "source": "Источник",
     "schema": "Схема",
     "table": "Таблица",
@@ -33,7 +32,6 @@
       "skipped": "Пропущено"
     },
     "classTerm": "Строки являются экземплярами",
-    "classTermPlaceholder": "Выберите термин",
     "noClassTerm": "Нет термина",
     "classTermUnreadable": "Не удалось прочитать его термин: {{error}}",
     "access": "Доступ"

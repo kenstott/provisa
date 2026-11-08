@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "फ़ैक्ट मेज़र से बनाए जाने पर एग्रीगेट से व्युत्पन्न",
     "fieldDescription": "विवरण",
     "fieldAiContext": "AI संदर्भ",
+    "fieldTags": "टैग",
     "fieldAiContextPlaceholder": "AI-सहायित क्वेरी जनरेशन के लिए संकेत",
     "saveFailed": "सहेजना विफल रहा।",
     "editMetric": "मेट्रिक {{name}} संपादित करें",

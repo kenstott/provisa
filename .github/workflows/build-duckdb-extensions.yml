@@ -28,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-14,        label: osx-arm64 }
+          - { runner: macos-15,        label: osx-arm64 }
           # osx-x64 (Intel mac) dropped: unsupported target; the macos-13 hosted runner is being
           # retired by GitHub and queues indefinitely. Apple Silicon (osx-arm64) is the Mac target.
           - { runner: ubuntu-22.04,    label: linux-x64 }

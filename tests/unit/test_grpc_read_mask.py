@@ -269,7 +269,7 @@ async def _run(servicer, request, context, result):
             "provisa.pgwire._pipeline._execute_plan", new_callable=AsyncMock, return_value=result
         ),
     ):
-        sent = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+        sent = [m async for m in servicer._handle_query(request, context, "Orders")]
     return govern, sent
 
 

@@ -237,6 +237,21 @@ async def test_run_builds_its_rows_off_the_event_loop(runtime, monkeypatch):
     assert loop_thread not in built_on
 
 
+@pytest.fixture
+def single_threaded_runtime(runtime):
+    """The runtime with its engine on one thread, for the tests of an error met mid-stream.
+
+    DuckDB 1.5.5/1.5.6 race when the error is met while a streamed batch is fetched with more than
+    one engine thread: the task that hits the error interrupts its sibling pipelines, and about
+    1.6% of the time under load the fetch reports that internal ``INTERRUPT Error: Interrupted!``
+    instead of the error itself (no ``interrupt()`` call involved; 0/1200 with ``threads = 1``).
+    These tests check how Provisa answers the error DuckDB reports, so they read on one thread
+    until DuckDB fixes the race. The client-facing mis-answer is tracked in
+    https://github.com/kenstott/provisa/issues/324 (upstream DuckDB issue: see there)."""
+    runtime._con.execute("SET threads = 1")
+    return runtime
+
+
 #: The row the engine raises PostgreSQL's own error on (pg_error.raising): past what DuckDB
 #: computes when the statement is run (about 128K rows), so it is met only as a batch is read.
 _LATE = 400_000
@@ -246,6 +261,7 @@ _LATE_ERROR = (
 )
 
 
+@pytest.mark.usefixtures("single_threaded_runtime")
 @pytest.mark.parametrize("face", ["rows", "arrow_batches"])
 def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
     """DuckDB's reader meets the engine's error only as it produces the batch that holds it, as
@@ -264,6 +280,7 @@ def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
     assert runtime.run_sync("select 42 as y").rows == [(42,)]
 
 
+@pytest.mark.usefixtures("single_threaded_runtime")
 def test_run_sync_raises_any_other_engine_error_as_duckdb_raises_it(runtime):
     """As the exception DuckDB raises for the same error met as the statement is run, so its
     SQLSTATE is known (pgwire.server._sqlstate_of)."""
