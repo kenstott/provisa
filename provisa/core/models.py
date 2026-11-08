@@ -626,7 +626,7 @@ class VersionColumn(BaseModel):  # REQ-2158
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
-    type: str | None = Field(default=None, min_length=1)  # null: the member declared none
+    type: str = Field(min_length=1)  # registration guarantees a data_type (REQ-1426)
     description: str | None = None
     required: bool = False  # ODCS: the column is never null
 

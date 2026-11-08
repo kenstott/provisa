@@ -124,10 +124,6 @@ def _check_weakened(before: ContractCheck, after: ContractCheck) -> bool:
     return False
 
 
-def _same_type(a: str | None, b: str | None) -> bool:
-    return a is not None and b is not None and a.lower() == b.lower()
-
-
 def _renames(
     removed: list[VersionColumn], added: list[VersionColumn]
 ) -> list[tuple[VersionColumn, VersionColumn]]:
@@ -137,11 +133,9 @@ def _renames(
         (gone, new)
         for gone in removed
         for new in added
-        if gone.type is not None
-        and new.type is not None
-        and gone.type.lower() == new.type.lower()
-        and sum(_same_type(c.type, gone.type) for c in removed) == 1
-        and sum(_same_type(c.type, gone.type) for c in added) == 1
+        if gone.type.lower() == new.type.lower()
+        and sum(c.type.lower() == gone.type.lower() for c in removed) == 1
+        and sum(c.type.lower() == gone.type.lower() for c in added) == 1
     ]
 
 
@@ -172,13 +166,7 @@ def _field_changes(before: list[VersionColumn], after: list[VersionColumn]) -> l
         was = old.get(name)
         if was is None:
             continue
-        # A type is only compared where both snapshots know it: going between none declared and a
-        # type is no incompatible change.
-        if (
-            was.type is not None
-            and column.type is not None
-            and not _same_type(was.type, column.type)
-        ):
+        if was.type.lower() != column.type.lower():
             changes.append(
                 ContractChange(
                     kind="field_type_changed",

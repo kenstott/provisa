@@ -150,7 +150,7 @@ export interface ContractChange {
 export interface ContractVersion {
   contract: { version: string; status: string };
   /** The member's columns when this version was saved; a contract holds none of its own. */
-  columns: { name: string; type: string | null; required: boolean; description: string | null }[];
+  columns: { name: string; type: string; required: boolean; description: string | null }[];
   changes: ContractChange[];
   saved_at: string;
   /** Who saved it; null when the system did (a configuration load). */

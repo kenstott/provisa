@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import insert, select, update
 
 from provisa.compiler.supertype import holds
@@ -57,7 +58,7 @@ def _contract(version: str = "1.0.0", *columns: VersionColumn, **kw) -> Contract
     )
 
 
-def _col(name: str, type_: str | None = "integer", **kw) -> VersionColumn:
+def _col(name: str, type_: str = "integer", **kw) -> VersionColumn:
     return VersionColumn(name=name, type=type_, **kw)
 
 
@@ -133,29 +134,10 @@ def test_a_type_changed_incompatibly_is_breaking():
     ) == {"field_type_changed": True}
 
 
-def test_a_column_with_no_declared_type_snapshots_a_null_type():
-    columns = contract_versions.snapshot(
-        [
-            {"column_name": "id", "data_type": "integer"},
-            {"column_name": "note", "data_type": None},
-        ]
-    )
-    assert [(c.name, c.type) for c in columns] == [("id", "integer"), ("note", None)]
-
-
-def test_a_type_going_between_null_and_a_type_is_not_breaking():
-    typed = _contract("1.0.0", _col("note", "text"))
-    untyped = _contract("2.0.0", _col("note", None))
-    assert _kinds(typed, untyped) == {}
-    assert _kinds(untyped, _contract("3.0.0", _col("note", "text"))) == {}
-    assert _kinds(untyped, _contract("3.0.0", _col("note", None))) == {}
-
-
-def test_an_untyped_field_is_never_taken_for_a_rename():
-    assert _kinds(_contract("1.0.0", _col("a", None)), _contract("2.0.0", _col("b", None))) == {
-        "field_removed": True,
-        "field_added": False,
-    }
+def test_a_version_column_refuses_a_null_type():
+    # REQ-1426 guarantees a registered column a type: a snapshot never holds one without.
+    with pytest.raises(ValidationError):
+        VersionColumn(name="note", type=None)
 
 
 def test_a_type_widened_is_recorded_and_breaks_nothing():
@@ -651,19 +633,23 @@ async def test_a_check_no_product_owns_is_no_promise(plane):
     assert stored.versions[-1].checks == []
 
 
-async def test_a_member_column_with_no_data_type_snapshots_a_null_type(plane):
+async def test_a_member_column_with_no_data_type_fails_the_save_and_records_no_version(plane):
     async with plane.acquire() as conn:
         table_id = await _orders_id(conn)
-        # table_repo.upsert refuses an untyped column (REQ-1426), but the store column is nullable
-        # and a row can hold none: the snapshot records what the store holds.
+        # table_repo.upsert refuses an untyped column (REQ-1426), so a row holding none is a
+        # corrupt store: the snapshot fails loudly rather than record a type nobody declared.
         await conn.execute_core(
             update(table_columns)
             .where(table_columns.c.table_id == table_id, table_columns.c.column_name == "amount")
             .values(data_type=None)
         )
-        await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
-        stored = await _stored(conn)
-    assert [(c.name, c.type) for c in stored.versions[-1].columns] == [
-        ("id", "integer"),
-        ("amount", None),
-    ]
+        with pytest.raises(ValidationError):
+            await data_product_repo.save_contract(conn, table_id, DataContract(version="1.0.0"))
+        row = (
+            await conn.execute_core(
+                select(registered_tables.c.contract).where(
+                    registered_tables.c.table_name == "orders"
+                )
+            )
+        ).fetchone()
+    assert [v["contract"]["version"] for v in row.contract["versions"]] == ["0.1.0"]
