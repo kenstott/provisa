@@ -207,6 +207,23 @@ current_acting_role: ContextVar[str | None] = ContextVar("current_acting_role", 
 _active_engine_url_provider: Callable[[], str | None] | None = None
 _platform_config_provider: Callable[[], dict] | None = None
 _org_store_provider: Callable[[str], Any] | None = None
+_org_overrides_provider: Callable[[], dict[str, Any]] | None = None
+
+
+def register_org_overrides_provider(fn: Callable[[], dict[str, Any]] | None) -> None:
+    """REQ-1327: the API layer's reader of the org settings rows of the org bound here."""
+    global _org_overrides_provider
+    _org_overrides_provider = fn
+
+
+def acting_org_overrides() -> dict[str, Any]:
+    """The ``org_settings`` rows of the org this work is bound to (REQ-1327): what the naming
+    module and the settings registry layer over the deployment's values. Empty when no org is
+    bound or no application registered a reader (tooling): nothing is the org's, so the
+    deployment's values are the answer -- the same inheritance an org with no rows gets."""
+    if _org_overrides_provider is None or current_org.get() is None:
+        return {}
+    return _org_overrides_provider()
 
 
 def register_org_store_provider(fn: Callable[[str], Any]) -> None:

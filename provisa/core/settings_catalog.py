@@ -238,6 +238,7 @@ DECLARED: list[Setting] = [
         effect="live",
         req="REQ-165",
         env="PROVISA_SAMPLE_SIZE",
+        org_owned=True,
         default=10000,
         min=1,
         unit="rows",
