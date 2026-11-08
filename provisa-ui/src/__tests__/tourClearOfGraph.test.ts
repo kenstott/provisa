@@ -32,7 +32,9 @@ describe("where a popover goes around a graph", () => {
     const at = clearPlace({ width: 460, height: 190 }, graph, view);
     expect(at).not.toBeNull();
     expect(at?.width).toBe(344);
-    expect(overlaps({ left: at!.left, top: at!.top, width: at!.width!, height: 190 }, graph)).toBe(false);
+    expect(overlaps({ left: at!.left, top: at!.top, width: at!.width!, height: 190 }, graph)).toBe(
+      false,
+    );
   });
 
   it("goes above where there is no room beside", () => {
@@ -65,7 +67,8 @@ describe("a step with a graph on its page", () => {
     graph.scrollIntoView = vi.fn();
     Object.defineProperty(popover, "offsetWidth", { value: 300 });
     Object.defineProperty(popover, "offsetHeight", { value: 190 });
-    graph.getBoundingClientRect = () => ({ left: 500, top: 400, width: 500, height: 300 }) as DOMRect;
+    graph.getBoundingClientRect = () =>
+      ({ left: 500, top: 400, width: 500, height: 300 }) as DOMRect;
     const abort = new AbortController();
     keepClearOf({ selector: ".graph", reveal: true }, abort.signal);
     expect(popover.style.left).toBe("184px");
@@ -81,10 +84,13 @@ describe("a step with a graph on its page", () => {
   });
 
   it("is asked of a named demo's term step and product step", () => {
-    const steps = demoTourSteps([
-      { key: "a", route: "/admin/ontology", term: "loss ratio" },
-      { key: "b", route: "/data-products", product: "c360" },
-    ] as never, []);
+    const steps = demoTourSteps(
+      [
+        { key: "a", route: "/admin/ontology", term: "loss ratio" },
+        { key: "b", route: "/data-products", product: "c360" },
+      ] as never,
+      [],
+    );
     expect(steps.map((s) => s.clearOf)).toEqual([
       { selector: ".g3d-panel-view", reveal: true },
       { selector: ".g3d-panel-view", reveal: false },

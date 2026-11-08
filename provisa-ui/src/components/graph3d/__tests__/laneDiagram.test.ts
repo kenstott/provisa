@@ -539,22 +539,29 @@ describe("where a hover card goes", () => {
     right,
     bottom,
   });
+  const point = (x: number, y: number) => box(x, y, x, y);
 
   it("goes to the side with nothing drawn", () => {
     const toRight = { boxes: [box(520, 300, 900, 500)], lines: [] };
-    expect(tipPlacement({ x: 500, y: 400 }, size, toRight, win).startsWith("left")).toBe(true);
+    expect(tipPlacement(point(500, 400), size, toRight, win).startsWith("left")).toBe(true);
     const toLeft = { boxes: [box(100, 300, 480, 500)], lines: [] };
-    expect(tipPlacement({ x: 500, y: 400 }, size, toLeft, win).startsWith("right")).toBe(true);
+    expect(tipPlacement(point(500, 400), size, toLeft, win).startsWith("right")).toBe(true);
   });
 
   it("stays off the lines as well as the nodes", () => {
     // A line running across the right of the pointer; nodes nowhere near.
     const lines: [At, At][] = [[{ x: 520, y: 300 }, { x: 900, y: 520 }]];
-    expect(tipPlacement({ x: 500, y: 400 }, size, { boxes: [], lines }, win).startsWith("right")).toBe(false);
+    expect(tipPlacement(point(500, 400), size, { boxes: [], lines }, win).startsWith("right")).toBe(false);
+  });
+
+  it("clears the node hovered, not just the pointer inside it", () => {
+    const node = box(520, 390, 640, 416);
+    const place = tipPlacement(node, size, { boxes: [node], lines: [] }, win);
+    expect(place).toBe("right-start");
   });
 
   it("never goes past the window, however empty that side is", () => {
     const left = { boxes: [box(100, 300, 880, 500)], lines: [] };
-    expect(tipPlacement({ x: 950, y: 400 }, size, left, win).startsWith("right")).toBe(false);
+    expect(tipPlacement(point(950, 400), size, left, win).startsWith("right")).toBe(false);
   });
 });

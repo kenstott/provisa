@@ -308,7 +308,8 @@ const hover = (id: string) => {
   const h = last().handlers.find(
     (x) => x.event === "mouseover" && x.selector.includes('node[kind = "more"]'),
   ) as Handler;
-  act(() => h.fn({ target: { id: () => id }, renderedPosition: { x: 10, y: 10 } }));
+  const box = () => ({ x1: 10, y1: 10, x2: 40, y2: 36 });
+  act(() => h.fn({ target: { id: () => id, renderedBoundingBox: box }, renderedPosition: { x: 10, y: 10 } }));
 };
 
 describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {

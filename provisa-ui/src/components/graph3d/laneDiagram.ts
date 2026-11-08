@@ -750,30 +750,31 @@ function clipped(a: At, b: At, r: Box): number {
   return hi <= lo ? 0 : (hi - lo) * Math.hypot(dx, dy);
 }
 
-/** A card of ``size`` beside the pointer at ``at`` covers this box in ``place``. */
-function placeBox(place: FloatingPosition, at: At, size: { width: number; height: number }): Box {
+/** A card of ``size`` beside the ``target`` box covers this box in ``place``. */
+function placeBox(place: FloatingPosition, target: Box, size: { width: number; height: number }): Box {
   const [side, align] = place.split("-") as [string, string | undefined];
-  const across = (start: number, length: number) =>
-    align === "start" ? start : align === "end" ? start - length : start - length / 2;
+  const across = (lo: number, hi: number, length: number) =>
+    align === "start" ? lo : align === "end" ? hi - length : (lo + hi - length) / 2;
   const left =
     side === "right"
-      ? at.x + TIP_GAP
+      ? target.right + TIP_GAP
       : side === "left"
-        ? at.x - TIP_GAP - size.width
-        : across(at.x, size.width);
+        ? target.left - TIP_GAP - size.width
+        : across(target.left, target.right, size.width);
   const top =
     side === "bottom"
-      ? at.y + TIP_GAP
+      ? target.bottom + TIP_GAP
       : side === "top"
-        ? at.y - TIP_GAP - size.height
-        : across(at.y, size.height);
+        ? target.top - TIP_GAP - size.height
+        : across(target.top, target.bottom, size.height);
   return { left, top, right: left + size.width, bottom: top + size.height };
 }
 
-/** Where beside the pointer a card of ``size`` covers least of the drawn graph: the first of
- * TIP_PLACES, among those inside the window, whose covered nodes and lines are fewest. */
+/** Where beside ``target`` (the node or the point hovered) a card of ``size`` covers least of the
+ * drawn graph: the first of TIP_PLACES, among those inside the window, covering fewest nodes and
+ * lines. */
 export function tipPlacement(
-  at: At,
+  target: Box,
   size: { width: number; height: number },
   drawn: DrawnGraph,
   win: { width: number; height: number },
@@ -796,7 +797,7 @@ export function tipPlacement(
   let best: FloatingPosition = TIP_PLACES[0];
   let least = Infinity;
   for (const p of TIP_PLACES) {
-    const r = placeBox(p, at, size);
+    const r = placeBox(p, target, size);
     if (!inWindow(r)) continue;
     const c = cover(r);
     if (c < least) {

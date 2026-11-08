@@ -71,11 +71,14 @@ const SHAPE: Record<Lane, string> = {
   product: "round-hexagon",
 };
 
-/** What is hovered and where the pointer is on the stage. */
+/** What is hovered and the box the card sits beside on the stage: the node, or the point on a
+ * line where the pointer is. */
 interface TipAt {
   h: GraphHover;
   x: number;
   y: number;
+  width: number;
+  height: number;
 }
 
 /** The card's padding and border around its content (the tip surface's). */
@@ -354,10 +357,15 @@ export function LaneStage({
       latest.current.onMore(evt.target.data("table") as string),
     );
     const enter = (h: GraphHover) => (evt: EventObject) => {
-      // A pointer event always carries where it happened on the canvas.
+      // A node's card sits beside the node; a line's beside the pointer on it.
+      const b = h.kind === "node" ? (evt.target as unknown as cytoscape.NodeSingular).renderedBoundingBox({}) : null;
       const at = evt.renderedPosition as cytoscape.Position;
       keepTip();
-      setTip({ h, x: at.x, y: at.y });
+      setTip(
+        b
+          ? { h, x: b.x1, y: b.y1, width: b.x2 - b.x1, height: b.y2 - b.y1 }
+          : { h, x: at.x, y: at.y, width: 0, height: 0 },
+      );
       latest.current.setHover(h);
     };
     cy.on("mouseover", 'node[kind = "node"], node[kind = "more"]', (evt: EventObject) =>
@@ -493,7 +501,12 @@ export function LaneStage({
     const stage = box.getBoundingClientRect();
     setTipSide(
       tipPlacement(
-        { x: stage.left + tip.x, y: stage.top + tip.y },
+        {
+          left: stage.left + tip.x,
+          top: stage.top + tip.y,
+          right: stage.left + tip.x + tip.width,
+          bottom: stage.top + tip.y + tip.height,
+        },
         {
           width: Math.max(tipEl.offsetWidth, TIP_MAX_WIDTH),
           height: tipEl.offsetHeight + TIP_FRAME,
@@ -594,7 +607,10 @@ export function LaneStage({
             </div>
           }
         >
-          <span className="g3d-tip-anchor" style={{ left: tip.x, top: tip.y }} />
+          <span
+            className="g3d-tip-anchor"
+            style={{ left: tip.x, top: tip.y, width: tip.width, height: tip.height }}
+          />
         </TipSurface>
       )}
       {!bare && (

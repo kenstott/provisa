@@ -51,8 +51,7 @@ export function clearPlace(
     const width = Math.min(size.width, roomRight);
     return { left: right + MARGIN, top, ...(width < size.width ? { width } : {}) };
   }
-  if (graph.top - 2 * MARGIN >= size.height)
-    return { left, top: graph.top - MARGIN - size.height };
+  if (graph.top - 2 * MARGIN >= size.height) return { left, top: graph.top - MARGIN - size.height };
   const bottom = graph.top + graph.height;
   if (view.height - bottom - 2 * MARGIN >= size.height) return { left, top: bottom + MARGIN };
   return null;
@@ -65,25 +64,45 @@ export interface ClearOf {
   reveal: boolean;
 }
 
-/** Moves the popover on screen clear of the step's graph, and again whenever driver.js would have
- * put it back (it places the popover anew on each scroll and resize), until ``signal`` aborts. The
- * returned function places it now; a step that lights its anchor again calls it. */
+/** Moves the popover on screen clear of the step's graph, and again whenever driver.js puts it
+ * back (it writes the popover's position again on each scroll and resize, and when it first shows
+ * it), until ``signal`` aborts. The returned function places it now; a step that lights its
+ * anchor again calls it. */
 export function keepClearOf(clearOf: ClearOf, signal: AbortSignal): () => void {
   let revealed = false;
+  let frame = 0;
+  // The popover this has written to: its own writes must not count as driver.js moving it.
+  let watched: HTMLElement | null = null;
+  let held = "";
+  const styleOf = (e: HTMLElement) => e.getAttribute("style") ?? "";
+  const observer = new MutationObserver((changes) => {
+    // driver.js replaces the popover (a child of the body) with each highlight.
+    if (changes.some((c) => c.type === "childList")) after();
+    else if (watched !== null && styleOf(watched) !== held) after();
+  });
   const place = () => {
     const popover = document.querySelector<HTMLElement>(".driver-popover");
     const graph = document.querySelector<HTMLElement>(clearOf.selector);
     if (!popover || !graph) return;
+    if (popover !== watched) {
+      observer.disconnect();
+      observer.observe(document.body, { childList: true });
+      observer.observe(popover, { attributes: true, attributeFilter: ["style"] });
+      watched = popover;
+    }
     if (clearOf.reveal && !revealed) {
       revealed = true;
       graph.scrollIntoView({ block: "nearest" });
     }
+    popover.style.width = "";
     const view = { width: window.innerWidth, height: window.innerHeight };
     const box = graph.getBoundingClientRect();
-    popover.style.width = "";
     const size = () => ({ width: popover.offsetWidth, height: popover.offsetHeight });
     const at = clearPlace(size(), box, view);
-    if (at === null) return;
+    if (at === null) {
+      held = styleOf(popover);
+      return;
+    }
     if (at.width !== undefined) popover.style.width = `${at.width}px`;
     // Narrowed, it is taller: placed again at the height it now has.
     const final = at.width !== undefined ? (clearPlace(size(), box, view) ?? at) : at;
@@ -92,8 +111,8 @@ export function keepClearOf(clearOf: ClearOf, signal: AbortSignal): () => void {
     popover.style.right = "auto";
     popover.style.bottom = "auto";
     popover.classList.add("tour-popover-clear");
+    held = styleOf(popover);
   };
-  let frame = 0;
   const after = () => {
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(place);
@@ -104,12 +123,21 @@ export function keepClearOf(clearOf: ClearOf, signal: AbortSignal): () => void {
     "abort",
     () => {
       cancelAnimationFrame(frame);
+      observer.disconnect();
       window.removeEventListener("resize", after);
       window.removeEventListener("scroll", after, true);
-      document.querySelector(".driver-popover")?.classList.remove("tour-popover-clear");
+      watched?.classList.remove("tour-popover-clear");
+      if (watched) watched.style.width = "";
     },
     { once: true },
   );
-  after();
+  // driver.js draws the popover after its highlight runs, and the page draws the graph when its
+  // data is in: wait for both, then the watch holds it.
+  const wait = () => {
+    if (document.querySelector(".driver-popover") && document.querySelector(clearOf.selector))
+      place();
+    else frame = requestAnimationFrame(wait);
+  };
+  frame = requestAnimationFrame(wait);
   return after;
 }
