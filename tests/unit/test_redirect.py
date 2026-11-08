@@ -69,5 +69,5 @@ class TestRedirectConfig:
     def test_from_env_defaults(self):
         config = RedirectConfig.from_env()
         assert not config.enabled  # default false
-        assert config.threshold == 1000
+        assert config.threshold == 100000
         assert config.ttl == 3600

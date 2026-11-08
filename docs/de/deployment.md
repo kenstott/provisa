@@ -817,7 +817,7 @@ Der Databricks-Connector übernimmt das von `requests` und braucht daher keine D
 | `PG_PASSWORD` | | PostgreSQL-Passwort |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Pfad zur Konfigurationsdatei |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Aktiviert das Redirect großer Ergebnisse nach S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Schwellenwert für die Zeilenanzahl beim Redirect |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Schwellenwert für die Zeilenanzahl beim Redirect |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3-Bucket |
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-kompatible Endpunkt-URL |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL der Presigned-URL (Sekunden) |
