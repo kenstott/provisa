@@ -1,17 +1,19 @@
 # Release: cut (REQ-1989)
 #
-# How a release is made. Work lands on dev; each release has its own branch, release/<version>,
-# cut from dev; main only ever takes a release. Run by hand on that branch (Actions -> Release:
+# How a release is made. A release starts from main on its own branch, release/<version>, takes
+# its landings from dev once, and then only fixes. Run by hand on that branch (Actions -> Release:
 # cut -> Run workflow, branch release/v0.1.0-alpha.480) with the version to cut
-# (v0.1.0-alpha.480). The suites run on the branch when it is pushed; the whole release build runs
-# there as a dry run, publishing nothing (build-dmg.yml dispatched on the branch with publish
-# false). A failure is fixed on the branch and merged back to dev, and no version is lost, because
-# the tag is made last. In order, and stopping at the first failure:
+# (v0.1.0-alpha.480). The suites run on the branch; the whole release build runs there as a dry
+# run, publishing nothing (build-dmg.yml dispatched on the branch with publish false). The nightly
+# alpha (alpha-nightly.yml) starts all of them itself. A failure is fixed on the branch and
+# cascades by merging it forward, and no version is lost, because the tag is made last. In order:
 #
 #   0. The run is on release/<version> for the version it names: any other ref is refused.
 #   1. If asked for (ui_gate), every UI e2e lane passed on the commit being cut.
-#   2. The suites and the dry-run build completed green on this commit of this branch. One that
-#      did not is named and the cut stops. This gate is not waivable.
+#   2. scripts/release_gate.py reads the suites and the dry-run build on this commit of this
+#      branch. For a beta or production release one not green stops the cut, by name, and is not
+#      waivable. An alpha ships at the end of its time box: each is reported and listed in step 5.
+#      requirements-ci is not in an alpha's gate.
 #   3. scripts/release_cut_check.py: the version is a release tag, its tag does not exist, no
 #      hand-written docs/releases/<version>.md would be overwritten, and the previous release's
 #      tag is found and is in this branch's history. A branch started while the release before
@@ -20,18 +22,19 @@
 #      nothing is committed and no tag is made. A release before the first one shown writes no
 #      page, and the cut stops too: a release's body is its page. A hand-written page under
 #      docs/releases that the generator changed or removed stops it as well (--written).
-#   5. The notes -- the UI's releaseNotes.json, docs/releases/<version>.md, mkdocs.yml and
-#      CHANGELOG.md -- are committed to the release branch, the annotated tag is made on that
-#      commit, and both are pushed in one atomic push. Nothing else may have changed.
+#   5. The notes -- the UI's releaseNotes.json, docs/releases/<version>.md (with an alpha's list
+#      of what failed), mkdocs.yml and CHANGELOG.md -- are committed to the release branch, the
+#      annotated tag is made on that commit, and both are pushed in one atomic push. Nothing else
+#      may have changed.
 #   6. A tag pushed with this workflow's token starts no workflow, so each workflow a v* tag
 #      starts is started here on the tag: build-dmg.yml (the release orchestrator) with
 #      publish=true, which it honours on a run started on the tag it names, and the others with
 #      no inputs. ensure-release takes the draft release's body from the tag's
 #      docs/releases/<version>.md.
 #
-# After the release is published, the release's last job (merge-release in release-publish.yml)
-# merges the branch to main and to dev and deletes it. A conflict stops there and is reported;
-# nothing is forced.
+# After the release is published, the lead runs scripts/release_merge.py --version <version>: it
+# merges the release to main and to dev and deletes the branch. A conflict stops it and is
+# reported; nothing is forced.
 #
 # A cut that failed before its atomic push is run again from the start: nothing of it reached the
 # branch. The next release can be started while this one publishes: its branch and this one share
@@ -122,28 +125,16 @@ jobs:
           done
           exit "$refused"
 
-      # The suites a push to the branch starts, and the dry run of the whole release build. A run
-      # counts only on this commit of this branch: failed, cancelled, running or never run refuses
-      # the cut, by name. The tag is made after this, so a failure here costs no version.
-      - name: Refuse unless the suites and the dry-run build are green on this commit
+      # The suites and the dry run of the whole release build (scripts/release_gate.py). A run
+      # counts only on this commit of this branch: failed, cancelled, running or never run is not
+      # green. A beta or production release refuses the cut, by name, so a failure costs no
+      # version. An alpha is not stopped: what is left goes into its notes below.
+      - name: Gate on the suites and the dry-run build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          refused=0
-          for workflow in unit-tests.yml ui-unit-tests.yml lint.yml requirements-ci.yml cve-audit.yml docker-image.yml build-dmg.yml; do
-            run="$(gh run list --workflow "$workflow" --branch "$GITHUB_REF_NAME" \
-              --commit "$GITHUB_SHA" --limit 1 --json status,conclusion,url \
-              --jq '.[0] // {} | "\(.status // "never run") \(.conclusion // "") \(.url // "")"')"
-            if [ "${run#completed success }" = "$run" ]; then
-              echo "::error::$workflow is not green on $GITHUB_REF_NAME at $GITHUB_SHA: $run"
-              refused=1
-            fi
-          done
-          if [ "$refused" -ne 0 ]; then
-            echo "A dry run is started from Actions -> Build Provisa Packages on $GITHUB_REF_NAME, version $VERSION, publish unchecked."
-          fi
-          exit "$refused"
+          python3 scripts/release_gate.py --version "$VERSION" --branch "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --out "$RUNNER_TEMP/gate-failures.md"
 
       - name: Check the release can be cut
         id: check
@@ -169,6 +160,12 @@ jobs:
         run: |
           set -euo pipefail
           printf '\n## Release gate\n\nThe UI end-to-end gate was waived for this release: %s\n' "$WAIVER_REASON" >> "docs/releases/$VERSION.md"
+
+      # An alpha ships at the end of its time box with what is left listed.
+      - name: List an alpha's failures in its notes
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/gate-failures.md" ]; then cat "$RUNNER_TEMP/gate-failures.md" >> "docs/releases/$VERSION.md"; fi
 
       - name: Commit the notes, tag the release and push both
         run: |

@@ -1,6 +1,6 @@
 # Release: attach and publish
 #
-# The release's publications after PyPI: the installers attached to the draft release and the release undrafted, the engine and Flight proxy images pushed. Both wheels go to PyPI from the orchestrator (build-dmg.yml) first. Once the release is published, its branch release/<version> merges to main and to dev and is deleted (merge-release).
+# The release's publications after PyPI: the installers attached to the draft release and the release undrafted, the engine and Flight proxy images pushed. Both wheels go to PyPI from the orchestrator (build-dmg.yml) first.
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
@@ -21,10 +21,6 @@ on:
       publish:
         description: Leave the run (draft release, attachments, image pushes). False on a dry run.
         type: boolean
-        required: true
-    secrets:
-      RELEASE_MERGE_TOKEN:
-        description: Pushes main and dev; a token with contents and workflows write (see merge-release).
         required: true
 
 env:
@@ -316,31 +312,6 @@ jobs:
             gh release edit "$TAG" --draft=false --prerelease --latest=false
           fi
           echo "Published $TAG with all ${#required[@]} required installers."
-
-  # The published release becomes main, reaches dev, and its branch goes (scripts/release_merge.py).
-  # A conflict, or a branch that moved after the tag, stops here and is reported by name; nothing is
-  # pushed and the release stays published. Resolve it by hand and re-run this job.
-  merge-release:
-    name: Merge the release to main and dev
-    if: inputs.publish
-    needs: [publish-release]
-    runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ inputs.version }}
-    steps:
-      # The run's own commit, which is the tag. Not the run's own token: GitHub refuses a push by
-      # it that changes a workflow file, and a release usually does.
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_MERGE_TOKEN }}
-
-      - name: Merge to main and dev, delete the branch
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          python3 scripts/release_merge.py --version "$VERSION"
 
   # ── SaaS federation-engine image ─────────────────────────────────────────────
 

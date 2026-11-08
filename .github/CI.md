@@ -41,12 +41,13 @@ and passes each leg the same `version` and `publish`.
 
 | Trigger | Workflows |
 | --- | --- |
-| push to `dev` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, Demo bundles, devcontainer-smoke |
-| push to `main` (a release merging) | Deploy Site |
+| push to `dev` | Unit Tests, UI Unit Tests, Lint, Requirements CI, Deploy Site (when `docs/**`, `site/**` or the like changed) |
+| push to `main` (a release merging) | Demo bundles (when a named demo changed) |
 | pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, devcontainer-smoke |
 | tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds |
 | push to `release/**` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke |
 | nightly | Integration suite, CVE Audit |
+| 17:00 America/New_York (schedule, from `main`) | Release: alpha nightly, which starts the alpha's suites and dry-run build on the new `release/<version>` (a workflow token's push starts nothing) |
 | push to `ci/**` touching `.github/` or `scripts/ci/` | CI leaf check |
 | push to `ci/**` touching the dev container | devcontainer-smoke |
 
@@ -78,6 +79,8 @@ lane's first step checks its secrets and fails naming the empty ones.
 marker and `tests/conftest.py` starts it; CI has nothing per source. Check which lane's marker
 expression in `scripts/ci/run_lane.py` now selects the test, and whether that lane's memory
 still holds the new container.
+
+**Finish a release.** After a release is published, the lead runs `python scripts/release_merge.py --version <tag>` from any clone. It merges the release to `main` and `dev`, deletes the branch, prints each ref's move, refuses on a conflict and never forces.
 
 **Add a release artifact.** Name it in `release-metadata`, build it in the leg for its platform,
 and add it to the one file list in `release-publish.yml` ("Release assets present"). Not yet

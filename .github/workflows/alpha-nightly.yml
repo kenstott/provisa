@@ -1,0 +1,68 @@
+# Release: the nightly alpha (REQ-1989)
+#
+# In alpha, the path of a release compressed and scheduled: start from main, merge all of dev,
+# converge for a time box, package, tag alpha.N with what is left listed, merge to main.
+#
+# This workflow is the start of it, at 17:00 America/New_York. scripts/release_nightly.py skips
+# the night when dev has not moved since the last alpha, picks the next alpha number, makes
+# release/<version> from main with dev merged, and pushes it. A push by this workflow's token
+# starts no workflow, so each of the alpha's suites and the dry-run build is started here, on the
+# new branch. The time box ends when the lead runs "Release: cut" on that branch, which reports
+# what is still failing and lists it in the notes; scripts/release_merge.py then takes the
+# published release to main and dev.
+#
+# A scheduled workflow runs from the default branch: this file is read from main. A cron is in
+# UTC and has no time zone, so there is one for each New York offset (21:00 UTC in daylight time,
+# 22:00 UTC in standard time) and the script keeps the one that is 17:00 now. It decides from the
+# cron that fired, not the clock, because GitHub starts a scheduled run late under load.
+name: "Release: alpha nightly"
+
+on:
+  schedule:
+    - cron: "0 21 * * *"
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+
+# One night at a time, and never cancelled half-way: a branch and its dispatches go together.
+concurrency:
+  group: release-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the release branch
+  actions: write # starting the suites on it
+
+jobs:
+  start:
+    name: Start the night's alpha
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The last alpha, main and dev, and whether one holds the other.
+          fetch-depth: 0
+
+      - name: Make the release branch
+        id: branch
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 scripts/release_nightly.py --schedule "$SCHEDULE" >> "$GITHUB_OUTPUT"
+
+      - name: Start the suites and the dry-run build
+        if: steps.branch.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.branch.outputs.version }}
+        run: |
+          set -euo pipefail
+          for workflow in $(python3 scripts/release_gate.py --version "$VERSION" --list); do
+            if [ "$workflow" = build-dmg.yml ]; then
+              gh workflow run build-dmg.yml --ref "release/$VERSION" -f version="$VERSION" -f publish=false
+            else
+              gh workflow run "$workflow" --ref "release/$VERSION"
+            fi
+          done

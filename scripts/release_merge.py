@@ -10,15 +10,20 @@
 
 """Merge a published release to main and to dev, and delete its branch.
 
-Run by the release's last job (.github/workflows/release-publish.yml), from a clone holding
-origin's refs. It stops, exiting 2 with the reason and pushing nothing, on:
+Run by the lead, after the release is published:
+
+    python scripts/release_merge.py --version v0.1.0-alpha.480
+
+It works in a temporary worktree, so any clone will do and its checkouts are left alone. It uses
+no CI secret: the push is the lead's. It prints what it did and stops, exiting 2 with the reason
+and pushing nothing, on:
 
 - a release branch that moved after the tag: deleting it would lose those commits;
 - a merge conflict, into main or into dev, naming the files;
 - a main that would not match the release afterwards: main only ever takes a release.
 
 main, dev and the branch's deletion go in one atomic push, so a refused push (a landing on dev
-that got in first) changes nothing and the job is re-run. Nothing is ever forced.
+that got in first) changes nothing and the script is run again. Nothing is ever forced.
 """
 
 # Requirements: REQ-1989
@@ -27,6 +32,7 @@ from __future__ import annotations
 import argparse
 import subprocess  # nosec B404 - argv-list git invocations only, never shell=True
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -47,31 +53,56 @@ def _required(repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
-def _merged_into(repo: Path, target: str, version: str) -> None:
-    """A merge commit of the release on a local ``target`` taken from origin's."""
-    _required(repo, "checkout", "-q", "-B", target, f"refs/remotes/origin/{target}")
+def _merged_into(repo: Path, target: str, version: str) -> str:
+    """The merge commit of the release on origin's ``target``, made in ``repo``'s detached HEAD."""
+    _required(repo, "checkout", "-q", "--detach", f"refs/remotes/origin/{target}")
     subject = f"chore(release): merge {version} into {target}"
-    if _git(repo, "merge", "-q", "--no-ff", "-m", subject, f"refs/tags/{version}").returncode == 0:
-        return
-    conflicts = _required(repo, "diff", "--name-only", "--diff-filter=U").split()
-    _required(repo, "merge", "--abort")
-    raise MergeRefused(f"merging into {target} conflicts in: {', '.join(conflicts)}")
+    if _git(repo, "merge", "-q", "--no-ff", "-m", subject, f"refs/tags/{version}").returncode != 0:
+        conflicts = _required(repo, "diff", "--name-only", "--diff-filter=U").split()
+        _required(repo, "merge", "--abort")
+        raise MergeRefused(f"merging into {target} conflicts in: {', '.join(conflicts)}")
+    return _required(repo, "rev-parse", "HEAD")
+
+
+def _short(sha: str) -> str:
+    return sha[:12]
 
 
 def merge(repo: Path, version: str) -> None:
     branch = f"release/{version}"
-    _required(repo, "fetch", "-q", "origin", "+refs/heads/*:refs/remotes/origin/*")
+    _required(repo, "fetch", "-q", "--tags", "origin", "+refs/heads/*:refs/remotes/origin/*")
     tagged = _required(repo, "rev-parse", "--verify", f"refs/tags/{version}^{{commit}}")
     tip = _required(repo, "rev-parse", "--verify", f"refs/remotes/origin/{branch}")
     if tip != tagged:
         raise MergeRefused(f"{branch} has commits after the tag {version}: {tagged}..{tip}")
-    _merged_into(repo, "main", version)
-    if _git(repo, "diff", "--quiet", f"refs/tags/{version}", "main").returncode != 0:
-        raise MergeRefused(
-            f"main would not match {version} after the merge: it holds something no release brought"
-        )
-    _merged_into(repo, "dev", version)
-    _required(repo, "push", "--atomic", "origin", "main", "dev", f":refs/heads/{branch}")
+    old_main = _required(repo, "rev-parse", "refs/remotes/origin/main")
+    old_dev = _required(repo, "rev-parse", "refs/remotes/origin/dev")
+    with tempfile.TemporaryDirectory(prefix="release-merge-") as parent:
+        tree = Path(parent) / "tree"
+        _required(repo, "worktree", "add", "-q", "--detach", str(tree), tagged)
+        try:
+            new_main = _merged_into(tree, "main", version)
+            if _git(tree, "diff", "--quiet", f"refs/tags/{version}", new_main).returncode != 0:
+                raise MergeRefused(
+                    f"main would not match {version} after the merge: "
+                    "it holds something no release brought"
+                )
+            new_dev = _merged_into(tree, "dev", version)
+            _required(
+                tree,
+                "push",
+                "-q",
+                "--atomic",
+                "origin",
+                f"{new_main}:refs/heads/main",
+                f"{new_dev}:refs/heads/dev",
+                f":refs/heads/{branch}",
+            )
+        finally:
+            _git(repo, "worktree", "remove", "--force", str(tree))
+    print(f"main: {_short(old_main)} -> {_short(new_main)} (merged {version})")
+    print(f"dev: {_short(old_dev)} -> {_short(new_dev)} (merged {version})")
+    print(f"deleted {branch}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -84,7 +115,6 @@ def main(argv: list[str] | None = None) -> int:
     except MergeRefused as refused:
         print(f"ERROR: {refused}", file=sys.stderr)
         return 2
-    print(f"{args.version} merged to main and dev; release/{args.version} deleted")
     return 0
 
 

@@ -195,5 +195,3 @@ jobs:
     with:
       version: ${{ inputs.version || github.ref_name }}
       publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
-    secrets:
-      RELEASE_MERGE_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN }}

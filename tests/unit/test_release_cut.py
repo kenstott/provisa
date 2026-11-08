@@ -278,36 +278,22 @@ def test_a_waived_ui_gate_needs_a_reason_and_is_written_into_the_notes():
 
 _VERSION = "v0.1.0-alpha.480"
 #: Every workflow a push to a release branch starts unconditionally, and the release build.
-_RELEASE_GATES = (
-    "unit-tests.yml",
-    "ui-unit-tests.yml",
-    "lint.yml",
-    "requirements-ci.yml",
-    "cve-audit.yml",
-    "docker-image.yml",
-    "build-dmg.yml",
-)
 _TRIGGERS = {
-    "cve-audit.yml": ["dev", "release/**"],
-    "docker-image.yml": ["dev", "release/**"],
+    "cve-audit.yml": ["release/**"],
+    "docker-image.yml": ["release/**"],
     "lint.yml": ["dev", "release/**"],
     "requirements-ci.yml": ["dev", "release/**"],
     "ui-unit-tests.yml": ["dev", "release/**"],
     "unit-tests.yml": ["dev", "release/**"],
-    "devcontainer-smoke.yml": ["dev", "release/**", "ci/**"],
-    # Publishes a demo on its own schedule and gates no release.
-    "demo-bundles.yml": ["dev"],
+    "devcontainer-smoke.yml": ["release/**", "ci/**"],
+    # Publishes a demo and gates no release; main is what shipped.
+    "demo-bundles.yml": ["main"],
 }
 
 
 @pytest.mark.parametrize("name", sorted(_TRIGGERS))
-def test_a_push_runs_the_workflow_on_dev_and_on_the_release_branches_it_gates(name):
+def test_a_push_runs_the_workflow_on_the_branches_the_release_lines_give_it(name):
     assert _on(_load(name))["push"]["branches"] == _TRIGGERS[name]
-
-
-def test_the_site_deploy_is_left_on_main():
-    # The maintainer is deciding where the site publishes from.
-    assert _on(_load("docs.yml"))["push"]["branches"] == ["main"]
 
 
 @pytest.mark.parametrize("name", sorted(_TRIGGERS))
@@ -355,15 +341,13 @@ def test_the_ref_is_refused_before_anything_else_runs():
 
 
 def test_the_tag_comes_after_the_suites_and_the_dry_run_build_passed_on_the_branch():
-    gate = _index("for workflow in " + " ".join(_RELEASE_GATES) + "; do")
+    gate = _index("scripts/release_gate.py")
     assert _index('gen_release_notes.py --from "$PREVIOUS"') > gate
     assert _index('git tag -a "$VERSION"') > gate
     script = _steps()[gate]["run"]
     assert script.startswith("set -euo pipefail")
-    assert '--branch "$GITHUB_REF_NAME"' in script and '--commit "$GITHUB_SHA"' in script
-    assert '"${run#completed success }" = "$run"' in script
-    assert 'exit "$refused"' in script
-    assert "if" not in _steps()[gate]  # not waivable, unlike the UI gate
+    assert '--branch "$GITHUB_REF_NAME"' in script and '--sha "$GITHUB_SHA"' in script
+    assert "if" not in _steps()[gate]  # a beta or production release cannot waive it
 
 
 def test_the_notes_commit_and_the_tag_reach_the_branch_together_and_nothing_is_forced():
@@ -531,20 +515,3 @@ def test_a_landing_on_dev_during_the_merge_refuses_the_whole_push(released, tmp_
     assert merging.main(["--version", _VERSION, "--repo", str(work)]) == 2
     assert _remote(origin, "refs/heads/main") == main_before
     assert _remote(origin, f"refs/heads/{_BRANCH}") != ""
-
-
-def test_the_merge_runs_after_the_release_is_published_and_never_on_a_dry_run():
-    leg = _load("release-publish.yml")
-    job = leg["jobs"]["merge-release"]
-    assert job["if"] == "inputs.publish"
-    assert job["needs"] == ["publish-release"]
-    # A push by the run's own token may not change a workflow file; a release usually does.
-    checkout = job["steps"][0]
-    assert checkout["uses"].startswith("actions/checkout@")
-    assert checkout["with"]["token"] == "${{ secrets.RELEASE_MERGE_TOKEN }}"
-    assert "ref" not in checkout["with"]  # a published run is started on the tag itself
-    assert checkout["with"]["fetch-depth"] == 0
-    assert 'scripts/release_merge.py --version "$VERSION"' in job["steps"][-1]["run"]
-    assert leg[True]["workflow_call"]["secrets"]["RELEASE_MERGE_TOKEN"]["required"] is True
-    caller = _load("build-dmg.yml")["jobs"]["publish"]
-    assert caller["secrets"] == {"RELEASE_MERGE_TOKEN": "${{ secrets.RELEASE_MERGE_TOKEN }}"}

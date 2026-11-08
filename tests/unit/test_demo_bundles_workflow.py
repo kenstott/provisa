@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""demo-bundles.yml: a demo changed on dev is rebuilt and published alone, and nothing of it
+"""demo-bundles.yml: a demo changed on main is rebuilt and published alone, and nothing of it
 goes into a release (REQ-2049)."""
 
 # Requirements: REQ-2049
@@ -29,7 +29,7 @@ def _load(name: str) -> dict:
 
 def test_a_push_to_dev_touching_a_demo_or_a_dispatch_naming_one_starts_it():
     on = _load("demo-bundles.yml")[True]
-    assert on["push"] == {"branches": ["dev"], "paths": ["demo/named/**"]}
+    assert on["push"] == {"branches": ["main"], "paths": ["demo/named/**"]}
     assert on["workflow_dispatch"]["inputs"]["demo"]["required"] is True
 
 

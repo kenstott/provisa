@@ -1187,15 +1187,15 @@ def test_a_job_checks_out_the_commit_its_workflow_came_from_or_the_one_it_was_as
 
 def test_no_workflow_is_started_by_a_push_to_a_branch_nobody_pushes_to():
     # `integration` was where work was pushed before main; nothing moves it now. A push starts a
-    # workflow on dev, on a release branch, or on a ci/** proving branch, and nowhere else: main
-    # takes only a release. The site deploy alone still names main (the maintainer's to move).
+    # workflow on dev, on a release branch, or on a ci/** proving branch. main takes only a
+    # release, and the demo bundles alone publish from it.
     allowed = {"dev", "release/**", "ci/**"}
     other = []
     for path in WORKFLOWS:
         triggers = yaml.safe_load(path.read_text())[True]
         push = triggers.get("push") if isinstance(triggers, dict) else None
         for branch in (push or {}).get("branches") or []:
-            if branch not in allowed and (path.name, branch) != ("docs.yml", "main"):
+            if branch not in allowed and (path.name, branch) != ("demo-bundles.yml", "main"):
                 other.append(f"{path.name}: {branch}")
     assert other == []
 
