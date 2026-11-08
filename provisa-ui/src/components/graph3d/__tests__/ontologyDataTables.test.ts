@@ -29,7 +29,12 @@ const ref = (table: number, column: string, domain: string, product: string | nu
   tableId: table,
   tableName: `t${table}`,
   domainId: domain,
-  registeredTable: { id: table, product: product ? { id: product, name: product, domainId: domain } : null },
+  registeredTable: {
+    id: table,
+    dataProductTables: product
+      ? [{ dataProduct: { id: product, name: product, domainId: domain } }]
+      : [],
+  },
 });
 
 const term = (
@@ -94,11 +99,12 @@ describe("the Ontology View's Data layer", () => {
 describe("the Ontology View's tables", () => {
   it("draws with Columns each column's table, the column joined to it", () => {
     const g = view(["ontology", "columns"]);
-    expect(g.nodes.filter((n) => n.type === "table").map((n) => n.id).sort()).toEqual([
-      "t:10",
-      "t:11",
-      "t:20",
-    ]);
+    expect(
+      g.nodes
+        .filter((n) => n.type === "table")
+        .map((n) => n.id)
+        .sort(),
+    ).toEqual(["t:10", "t:11", "t:20"]);
     expect(has(g, "has_column", "c:11:id", "t:11")).toBe(true);
     expect(has(g, "has_column", "c:20:name", "t:20")).toBe(true);
     // A table is a cylinder, the fourth shape.

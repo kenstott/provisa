@@ -22,7 +22,7 @@ const ref = (table: number, column: string) => ({
   tableId: table,
   tableName: `t${table}`,
   domainId: "pets",
-  registeredTable: { id: table, product: null },
+  registeredTable: { id: table, dataProductTables: [] },
 });
 
 const term = (id: number, name: string, refs: ReturnType<typeof ref>[] = []): TermRow => ({

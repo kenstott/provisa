@@ -207,7 +207,6 @@ def test_table_input_maps_consistency():
         mv_allowed_lateness=0.0,  # REQ-961
         mv_expected_events=None,  # REQ-961
         mv_business_day_grain=False,  # REQ-962
-        product_id=None,
         enable_aggregates=False,
         enable_group_by=False,
         modeling_role=None,  # REQ-1320

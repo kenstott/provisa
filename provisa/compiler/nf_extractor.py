@@ -135,6 +135,7 @@ def extract_nf_args(
                 f"{column.name} is a parameter of a table read from its landed rows, and they hold"
                 f" no column {column.name[len(_NF_PREFIX) :]!r} for it to filter"
             )
+        _expose_landed(ast, column, target)
         column.set("this", exp.to_identifier(target, quoted=True))
         renamed = True
     known = {p.lower() for p in parameters if p.startswith(_NF_PREFIX)} - set(landed)
@@ -165,7 +166,8 @@ def extract_nf_args(
         keep.append(cond)
 
     if not nf_args:
-        return (ast.sql(dialect="postgres") if renamed else sql), params, {}
+        dropped = _drop_unread_parameters(ast, known | set(landed))
+        return (ast.sql(dialect="postgres") if renamed or dropped else sql), params, {}
 
     new_condition = _rebuild_and(keep)
     if new_condition is None:
@@ -173,6 +175,7 @@ def extract_nf_args(
     else:
         where.set("this", new_condition)
 
+    _drop_unread_parameters(ast, known | set(landed))
     clean_sql = ast.sql(dialect="postgres")
 
     clean_params = [v for i, v in enumerate(params, 1) if i not in consumed_indices]
@@ -203,15 +206,77 @@ def read_base(table_name: str) -> str:
 
 def _own_sources(select: exp.Select) -> dict[str, exp.Table]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """The tables ``select`` itself reads in its FROM and JOINs, by the name a column qualifies
-    them with (their alias, else their name)."""
+    them with (their alias, else their name): a governed relation (REQ-039) as the table it
+    reads, under the same alias."""
+    from provisa.compiler.governed_relation import base_table
+
     found: dict[str, exp.Table] = {}  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     from_ = select.args.get("from") or select.args.get("from_")
     candidates = [from_.this] if from_ is not None else []
     candidates += [join.this for join in select.args.get("joins") or []]
     for node in candidates:
-        if isinstance(node, exp.Table) and node.name:
-            found[node.alias_or_name] = node
+        table = base_table(node)
+        if table is not None and table.name:
+            found[node.alias_or_name] = table
     return found
+
+
+def _drop_unread_parameters(ast: exp.Expr, parameters: Collection[str]) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Take each parameter column out of the governed relations (REQ-039) that expose it, once
+    nothing outside the relation reads it: a parameter is an argument of the read, not a column
+    of the rows it returns, so the engine's read holds no such column. Whether any was taken."""
+    from provisa.compiler.governed_relation import relations
+
+    names = {p.lower() for p in parameters}
+    if not names:
+        return False
+    found = relations(ast)
+    # What the statement reads: a column a governed relation's own body names is the relation's.
+    outside = {
+        c.name.lower()
+        for c in ast.find_all(exp.Column)
+        if not any(_within(c, r.relation) for r in found)
+    }
+    dropped = False
+    for relation in found:
+        body = relation.relation.this
+        for projection in list(body.expressions):
+            name = projection.alias_or_name.lower()
+            if name in names and name not in outside:
+                projection.pop()
+                dropped = True
+    return dropped
+
+
+def _within(node: exp.Expr, ancestor: exp.Expr) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    parent = node.parent
+    while parent is not None:
+        if parent is ancestor:
+            return True
+        parent = parent.parent
+    return False
+
+
+def _expose_landed(ast: exp.Expr, column: exp.Column, target: str) -> None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A frozen parameter's condition reads ``target``, the landed column its value filters
+    (REQ-2031): the governed relation the condition reads (REQ-039) exposes it under that name,
+    in the parameter's place, unless it already does."""
+    from provisa.compiler.governed_relation import relations
+
+    for relation in relations(ast):
+        if column.table and column.table != relation.alias:
+            continue
+        body = relation.relation.this
+        exposed = {p.alias_or_name for p in body.expressions}
+        for projection in list(body.expressions):
+            if projection.alias_or_name.lower() != column.name.lower():
+                continue
+            if target in exposed:
+                continue
+            value = projection.unalias()
+            if isinstance(value, exp.Column):
+                value = exp.column(target, table=value.table, quoted=True)
+            projection.replace(exp.alias_(value, target, quoted=True))
 
 
 def separate_parameter_reads(
@@ -276,6 +341,7 @@ def separate_parameter_reads(
             where.pop()
         else:
             where.set("this", rebuilt)
+    _drop_unread_parameters(ast, known)
     return ast.sql(dialect="postgres"), named
 
 

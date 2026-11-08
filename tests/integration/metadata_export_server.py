@@ -203,6 +203,12 @@ def model_config(
                 "domain_id": domain,
                 "name": product_name,
                 "status": status,
+                # REQ-1634: the product lists its members.
+                "tables": [
+                    f"{source}.{SCHEMA}.customers",
+                    f"{source}.{SCHEMA}.orders",
+                    f"__derived__.views.{VIEW}",
+                ],
             }
         ],
         "tables": [
@@ -215,7 +221,6 @@ def model_config(
                 # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
                 # cache_ttl; it is also the member's freshness in its contract.
                 "cache_ttl": MEMBER_TTL,
-                "product_id": product,
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
                     {
@@ -237,7 +242,6 @@ def model_config(
                 # REQ-1907: a member the engine lands (Snowflake, BigQuery) is re-read on its own
                 # cache_ttl; it is also the member's freshness in its contract.
                 "cache_ttl": MEMBER_TTL,
-                "product_id": product,
                 "columns": [
                     {
                         "name": "id",
@@ -287,7 +291,6 @@ def model_config(
                 "schema_name": "views",
                 "table_name": VIEW,
                 "description": "Each order's net total",
-                "product_id": product,
                 "view_sql": VIEW_SQL.replace(f'"{DOMAIN}"', f'"{domain}"'),
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},

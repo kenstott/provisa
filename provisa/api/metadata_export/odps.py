@@ -257,7 +257,8 @@ def _expectations(
             "outcome": assertion.outcome.status,
         }
         for assertion in snapshot.assertions
-        if assertion.owner_product_id == product.id and assertion.asset.parts[:3] == table.ref.parts
+        if product.id in assertion.owner_product_ids
+        and assertion.asset.parts[:3] == table.ref.parts
     ]
 
 
@@ -538,7 +539,8 @@ def _promises(
     return [
         assertion
         for assertion in snapshot.assertions
-        if assertion.owner_product_id == product.id and assertion.asset.parts[:3] == table.ref.parts
+        if product.id in assertion.owner_product_ids
+        and assertion.asset.parts[:3] == table.ref.parts
     ]
 
 

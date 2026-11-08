@@ -43,6 +43,7 @@ from provisa.core.request_context import (
     set_session_vars,
 )
 from provisa.core.schema_org import (
+    data_product_tables,
     data_products,
     domains,
     registered_tables,
@@ -51,6 +52,8 @@ from provisa.core.schema_org import (
     sources,
 )
 from provisa.security.inheritance import materialize_rls
+from tests.governed_pg import governed_database
+from tests.rules import holds, rule_of, rules_of
 from provisa.security.row_filters import (
     acting_model_rule,
     model_write_rules,
@@ -101,12 +104,15 @@ def test_read_compilation_reads_only_r_rules():
         _rule(filter_expr="region = 'd'", right="D"),
     ]
     ctx = build_rls_context(rules, "sales")
-    assert ctx.rules == {1: "region = 'eu'"}
-    assert ctx.write_rules == {"update": {1: "region = 'u'"}, "delete": {1: "region = 'd'"}}
+    assert ctx.rules == rules_of({1: "region = 'eu'"})
+    assert ctx.write_rules == {
+        "update": rules_of({1: "region = 'u'"}),
+        "delete": rules_of({1: "region = 'd'"}),
+    }
 
 
 def test_a_rule_row_with_no_right_stays_a_read_rule():
-    assert build_rls_context([_rule()], "sales").rules == {1: "region = 'eu'"}
+    assert build_rls_context([_rule()], "sales").rules == rules_of({1: "region = 'eu'"})
 
 
 def test_a_u_rule_alone_narrows_no_read():
@@ -127,22 +133,22 @@ def test_each_right_resolves_on_its_own():
     ]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     by_right = {r["right"]: r["filter_expr"] for r in out if r.get("table_id") == 1}
-    assert by_right == {"R": "x = 1", "U": "x = 2", "D": "x = 3"}
+    assert by_right == rules_of({"R": "x = 1", "U": "x = 2", "D": "x = 3"})
 
 
 def test_one_rule_of_several_rights_is_one_plain_predicate_for_each():
     rules = [{"role_id": "a", "table_id": 1, "filter_expr": "x = 1", "rights": "RUD"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     ctx = build_rls_context(out, "a")
-    assert ctx.rules == {1: "x = 1"}  # a plain filter, never a CASE
-    assert ctx.write_rules == {"update": {1: "x = 1"}, "delete": {1: "x = 1"}}
+    assert ctx.rules == rules_of({1: "x = 1"})  # a plain filter, never a CASE
+    assert ctx.write_rules == {"update": rules_of({1: "x = 1"}), "delete": rules_of({1: "x = 1"})}
 
 
 def test_a_domain_u_rule_reaches_the_tables_of_the_domain_as_an_r_rule_does():
     rules = [{"role_id": "a", "domain_id": "sales", "filter_expr": "x = 3", "rights": "U"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     ctx = build_rls_context(out, "a")
-    assert ctx.write_rules["update"] == {1: "x = 3"}
+    assert ctx.write_rules["update"] == rules_of({1: "x = 3"})
     assert ctx.rules == {}
 
 
@@ -150,7 +156,7 @@ def test_a_tag_d_rule_reaches_the_tables_carrying_the_tag():
     rules = [{"role_id": "a", "tag_id": "regional", "filter_expr": "x = 4", "rights": "D"}]
     tagged = [{"object_type": "table", "table_id": 1, "base_tag_id": "regional"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, tagged, {})
-    assert build_rls_context(out, "a").write_rules["delete"] == {1: "x = 4"}
+    assert build_rls_context(out, "a").write_rules["delete"] == rules_of({1: "x = 4"})
 
 
 def test_a_child_inherits_its_parents_u_rule_and_not_as_a_read_rule():
@@ -158,7 +164,7 @@ def test_a_child_inherits_its_parents_u_rule_and_not_as_a_read_rule():
     chains = {"p": ["p"], "c": ["c", "p"]}
     out = resolve_rules_by_right(rules, _TABLES, {"p": [], "c": ["p"]}, [], chains, [], {})
     ctx = build_rls_context(out, "c")
-    assert ctx.write_rules["update"] == {1: "x = 5"}
+    assert ctx.write_rules["update"] == rules_of({1: "x = 5"})
     assert ctx.rules == {}
 
 
@@ -178,6 +184,21 @@ def test_folding_only_r_rules_is_unchanged_from_before_rights():
 
 
 _COLUMNS = [("id", "integer"), ("region", "varchar"), ("owner_role", "varchar")]
+
+
+_ORDER_ROWS = {
+    "public.orders": [
+        {"id": 0, "region": "eu", "owner_role": "nobody"},
+        {"id": 1, "region": "eu", "owner_role": "pets_team"},
+        {"id": 2, "region": "eu", "owner_role": "sales_team"},
+        {"id": 3, "region": "us", "owner_role": "steward_only"},
+    ]
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_row_rule_rights")
 
 
 def _g(operation, columns=("region",), rows=None):
@@ -209,41 +230,53 @@ def _gov(*grants, rls=None, update=None, delete=None):
     return gov
 
 
-def test_a_u_rule_is_anded_into_an_update_beside_the_grant():
-    sql = apply_governance(
-        "UPDATE public.orders SET region = 'x' WHERE id = 1",
+def _changed(pg, governed: str, session: dict[str, str] | None = None) -> list[int]:
+    """The ids of the orders ``governed`` changes or removes, run on embedded PostgreSQL."""
+    after = pg.written(governed, _ORDER_ROWS, session=session).after["public.orders"]
+    before = sorted((r["id"], r["region"], r["owner_role"]) for r in _ORDER_ROWS["public.orders"])
+    return sorted({row[0] for row in set(before) - set(after)})
+
+
+def test_a_u_rule_is_anded_into_an_update_beside_the_grant(pg):
+    governed = apply_governance(
+        "UPDATE public.orders SET region = 'x' WHERE id IN (0, 1, 3)",
         _gov(_g("update", rows="id > 0"), update="region = 'eu'"),
     )
-    assert '"id" > 0' in sql and "\"region\" = 'eu'" in sql
+    # 0 is outside the grant's rows, 3 outside the U rule (it is 'us')
+    assert _changed(pg, governed) == [1]
 
 
-def test_a_u_rule_leaves_a_grant_that_states_no_rows_taking_the_read_filter():
-    sql = apply_governance(
-        "UPDATE public.orders SET region = 'x' WHERE id = 1",
-        _gov(_g("update"), rls="id > 5", update="region = 'eu'"),
+def test_a_u_rule_leaves_a_grant_that_states_no_rows_taking_the_read_filter(pg):
+    governed = apply_governance(
+        "UPDATE public.orders SET region = 'x'",
+        _gov(_g("update"), rls="id > 1", update="region = 'eu'"),
     )
-    assert '"id" > 5' in sql and "'eu'" in sql
+    assert _changed(pg, governed) == [2]  # 0 and 1 outside the read filter, 3 the U rule
 
 
-def test_a_d_rule_is_anded_into_a_delete():
-    sql = apply_governance(
-        "DELETE FROM public.orders WHERE id = 1",
+def test_a_d_rule_is_anded_into_a_delete(pg):
+    governed = apply_governance(
+        "DELETE FROM public.orders WHERE id < 3",
         _gov(_g("delete", rows="TRUE"), delete="region = 'eu'"),
     )
-    assert "'eu'" in sql
+    assert _changed(pg, governed) == [0, 1, 2]
+    governed = apply_governance(
+        "DELETE FROM public.orders", _gov(_g("delete", rows="TRUE"), delete="region = 'eu'")
+    )
+    assert _changed(pg, governed) == [0, 1, 2]  # 3 is 'us'
 
 
-def test_a_u_rule_does_not_touch_a_delete_nor_a_d_rule_an_update():
+def test_a_u_rule_does_not_touch_a_delete_nor_a_d_rule_an_update(pg):
     delete = apply_governance(
-        "DELETE FROM public.orders WHERE id = 1",
+        "DELETE FROM public.orders WHERE id = 3",
         _gov(_g("delete", rows="TRUE"), update="region = 'eu'"),
     )
-    assert "'eu'" not in delete
+    assert _changed(pg, delete) == [3]
     written = apply_governance(
-        "UPDATE public.orders SET region = 'x' WHERE id = 1",
+        "UPDATE public.orders SET region = 'x' WHERE id = 3",
         _gov(_g("update", rows="TRUE"), delete="region = 'eu'"),
     )
-    assert "'eu'" not in written
+    assert _changed(pg, written) == [3]
 
 
 def test_a_role_with_only_r_gets_nothing_from_a_u_or_d_rule():
@@ -308,13 +341,15 @@ def test_the_acting_roles_read_include_the_ancestors():
         reset_session_vars(token)
 
 
-def test_a_child_of_the_owner_role_is_admitted_by_a_rule_naming_it():
-    sql = apply_governance(
-        "UPDATE public.orders SET region = 'x' WHERE id = 1",
+def test_a_child_of_the_owner_role_is_admitted_by_a_rule_naming_it(pg):
+    session = session_vars_for({"acting_chain": ["steward", "pets_team"]})
+    governed = apply_governance(
+        "UPDATE public.orders SET region = 'x'",
         _gov(_g("update", rows="TRUE"), update=OWNS),
-        session_vars=session_vars_for({"acting_chain": ["steward", "pets_team"]}),
+        session_vars=session,
     )
-    assert "CAST('pets_team' AS VARCHAR)" in sql
+    # order 1 is pets_team's, which steward acts for; 2 is sales_team's
+    assert _changed(pg, governed, session) == [1]
 
 
 def test_a_client_cannot_supply_the_acting_roles():
@@ -326,33 +361,38 @@ def test_acting_roles_cannot_be_a_roles_constant():
     assert session_constant_problem("acting_roles") is not None
 
 
-def test_a_rule_reads_the_acting_roles_with_in():
-    sql = apply_governance(
-        "UPDATE public.orders SET region = 'x' WHERE id = 1",
+def test_a_rule_reads_the_acting_roles_with_in(pg):
+    session = {"acting_roles": "pets_team,sales_team"}
+    governed = apply_governance(
+        "UPDATE public.orders SET region = 'x'",
         _gov(_g("update", rows="TRUE"), update=OWNS),
-        session_vars={"acting_roles": "pets_team,sales_team"},
+        session_vars=session,
     )
-    assert "IN (CAST('pets_team' AS VARCHAR), CAST('sales_team' AS VARCHAR))" in sql
+    # each role of the list, not the list as one name
+    assert _changed(pg, governed, session) == [1, 2]
 
 
-def test_a_rule_with_no_acting_roles_bound_matches_nothing():
-    sql = apply_governance(
-        "UPDATE public.orders SET region = 'x' WHERE id = 1",
+def test_a_rule_with_no_acting_roles_bound_matches_nothing(pg):
+    governed = apply_governance(
+        "UPDATE public.orders SET region = 'x'",
         _gov(_g("update", rows="TRUE"), update=OWNS),
         session_vars={},
     )
     # Left for the pipeline, which resolves an unbound variable to NULL (REQ-1682).
-    assert "CURRENT_SETTING('provisa.acting_roles')" in sql
+    assert _changed(pg, governed, {}) == []
 
 
-def test_acting_roles_in_a_read_rule_is_expanded_too():
+def test_acting_roles_in_a_read_rule_is_expanded_too(pg):
     gov = _gov()
     gov.visible_columns = {_ORDERS: None}
     gov.rls_rules = {_ORDERS: "region IN (current_setting('provisa.acting_roles'))"}
-    sql = apply_governance(
-        "SELECT id FROM public.orders", gov, session_vars={"acting_roles": "a,b"}
-    )
-    assert "'a'" in sql and "'b'" in sql
+    session = {"acting_roles": "eu,us"}
+    governed = apply_governance("SELECT id FROM public.orders", gov, session_vars=session)
+    resolved = pg.written(governed, _ORDER_ROWS, session=session).returned
+    assert sorted(resolved) == [(0,), (1,), (2,), (3,)]
+    session = {"acting_roles": "us,ca"}
+    governed = apply_governance("SELECT id FROM public.orders", gov, session_vars=session)
+    assert sorted(pg.written(governed, _ORDER_ROWS, session=session).returned) == [(3,)]
 
 
 # --- which rule the store applies ----------------------------------------------------------------
@@ -370,7 +410,7 @@ def test_only_u_and_d_rules_on_model_tables_reach_the_store():
         {"role_id": "a", "table_id": 9, "filter_expr": "u", "right": "U"},
         {"role_id": "a", "table_id": 2, "filter_expr": "d", "right": "D"},
     ]
-    assert model_write_rules(resolved, _META_TABLES) == {("a", "data_products", "U"): "u"}
+    assert model_write_rules(resolved, _META_TABLES) == rules_of({("a", "data_products", "U"): "u"})
 
 
 def _model_state(rules, role_capabilities):
@@ -390,7 +430,8 @@ def _model_state(rules, role_capabilities):
 def test_a_role_with_a_rule_gets_it_with_the_view_its_columns_are_read_through():
     state = _model_state({("a", "data_products", "U"): OWNS}, {"a": ["data_product_rw"]})
     rule = acting_model_rule(state, "a", "data_products", "U")
-    assert rule is not None and rule.predicate == OWNS and rule.view == "data_products_meta"
+    assert rule is not None and rule.predicate == rule_of(OWNS)
+    assert rule.view == "data_products_meta"
 
 
 def test_a_role_with_no_rule_is_not_narrowed():
@@ -404,7 +445,7 @@ def test_a_set_of_roles_ors_its_members_rules():
         {"a": ["data_product_rw"], "b": ["data_product_rw"]},
     )
     rule = acting_model_rule(state, "meta:a+b", "data_products", "U")
-    assert rule is not None and "x = 1" in rule.predicate and "y = 2" in rule.predicate
+    assert rule is not None and holds(rule.predicate, "x = 1") and holds(rule.predicate, "y = 2")
 
 
 def test_a_member_holding_rw_with_no_rule_lifts_the_set():
@@ -421,7 +462,7 @@ def test_a_member_with_only_r_lifts_nothing():
         {"a": ["data_product_rw"], "b": ["data_product_read"]},
     )
     rule = acting_model_rule(state, "meta:a+b", "data_products", "U")
-    assert rule is not None and rule.predicate == "(x = 1)"
+    assert rule is not None and rule.predicate == rule_of("x = 1")
 
 
 # --- the model store -----------------------------------------------------------------------------
@@ -559,14 +600,16 @@ async def test_a_refused_retirement_moves_no_member(plane, rights):
                 status="live",
             )
         )
-        await conn.execute_core(
-            insert(registered_tables).values(
-                source_id="pg",
-                domain_id="pets",
-                schema_name="public",
-                table_name="m",
-                product_id="sales_p",
+        member = (
+            await conn.execute_core(
+                insert(registered_tables)
+                .values(source_id="pg", domain_id="pets", schema_name="public", table_name="m")
+                .returning(registered_tables.c.id)
             )
+        ).scalar_one()
+        # REQ-1634: membership is its own relation.
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id="sales_p", table_id=member)
         )
     token = _acting("pets_team")
     try:

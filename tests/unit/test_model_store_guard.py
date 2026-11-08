@@ -384,8 +384,11 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
 
 async def test_a_data_product_is_blocked_by_its_members(plane):
     await plane.add("data_products", id="dp", domain_id="sales", name="Sales")
-    member = await plane.table("orders", product_id="dp")
-    await plane.add("tracked_functions", name="refund", product_id="dp")
+    member = await plane.table("orders")
+    await plane.add("tracked_functions", name="refund")
+    # REQ-1634: membership is its own relation, one row per product and member.
+    await plane.add("data_product_tables", product_id="dp", table_id=member.id)
+    await plane.add("data_product_commands", product_id="dp", command_name="refund")
     assert await plane.blocking(ObjectRef("data_product", "dp")) == {
         member,
         ObjectRef("command", "refund"),

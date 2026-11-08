@@ -119,12 +119,14 @@ async def test_a_check_reaches_dq_as_the_builds_role_under_a_grant_revoked_after
     from provisa.core import region_admin
 
     answered.replies["dq/dataset/7"] = {"dataset": "sales.orders", "checker_tables": [{}]}
-    check = preflight_services.compile_check(_CHECK, subject="view orders_daily", product_id="p1")
+    check = preflight_services.compile_check(
+        _CHECK, subject="view orders_daily", product_ids=("p1",)
+    )
     verdict = await run_preflight(check, {}, _ctx())
     assert verdict.decision is Decision.ABORT and verdict.reason == "sales.orders"
     (call,) = answered.seen
     assert call["method"] == "GET" and call["role"] == region_admin.ROLE
-    assert call["grant"].org_id == "acme" and call["grant"].product_id == "p1"
+    assert call["grant"].org_id == "acme" and call["grant"].product_ids == ("p1",)
     assert call["grant"].source_id == "view orders_daily"
     assert services_mod._grants == {} or call["grant"] not in services_mod._grants.values()
     assert preflight_services.services_module()._transport.get() is None
@@ -199,7 +201,7 @@ def meta(monkeypatch):
     return SimpleNamespace(reads=reads, tables=tables, model=model, beyond=beyond, lists=lists)
 
 
-def _checker(id_, name, *, ran=True, product=None):
+def _checker(id_, name, *, ran=True):
     return {
         "id": id_,
         "domain_id": "dq",
@@ -208,7 +210,6 @@ def _checker(id_, name, *, ran=True, product=None):
         "alias": name,
         "description": f"{name} checks",
         "dq_contract": "checks for orders: []",
-        "product_id": product,
         "latest_outcome": "fail" if ran else None,
         "latest_run_at": "2026-10-21 10:00:00" if ran else None,
     }
@@ -226,9 +227,14 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
             {"id": 21, "domain_id": "p", "schema_name": _PHYSICAL, "table_name": "orders_7_profile_columns", "alias": None}
         ]),
         ('"p"."orders_7_profile_columns" WHERE run_time', [{"run_id": "r9", "column": "amount", "null_share": 0.0}]),
+        # REQ-1634: the soda checker is a member of two products, the gx checker of none.
+        ("FROM meta.data_product_tables", [
+            {"table_id": 11, "product_id": "p1"}, {"table_id": 11, "product_id": "p2"}
+        ]),
     ]  # fmt: skip
     meta.lists["p1"] = {"expectations": [{"checker_table_id": 11, "checked_table_id": 7}]}
-    found = await dq.dataset("sales.orders", "analyst", view_product="p1")
+    meta.lists["p2"] = {"related": [{"checker_table_id": 11, "checked_table_id": 7}]}
+    found = await dq.dataset("sales.orders", "analyst", view_products=("p1", "p2"))
     assert found["dataset"] == "sales.orders" and found["dataset_id"] == 7
     soda, gx = found["checker_tables"]
     # Named as the model names them -- domain and alias -- in what dq answers and in what it reads:
@@ -242,8 +248,11 @@ async def test_a_dataset_answers_its_checkers_their_latest_runs_and_its_profiles
     assert soda["latest_run"]["failing_checks"] == [
         {"check_name": "row_count > 0", "outcome": "fail"}
     ]
-    assert soda["relation_to_view_product"] == "expectations"
-    assert gx["latest_run"] is None and gx["relation_to_view_product"] is None
+    assert soda["assigned_product_ids"] == ["p1", "p2"] and gx["assigned_product_ids"] == []
+    # REQ-1634: related to each of the view's products, any number.
+    assert soda["relation_to_view_products"] == {"p1": "expectations", "p2": "related"}
+    assert gx["latest_run"] is None
+    assert gx["relation_to_view_products"] == {"p1": None, "p2": None}
     (profile,) = found["profiles"]
     assert profile["profile_table"] == "p.orders_7_profile_columns"
     assert profile["latest_run"][0]["run_id"] == "r9"
@@ -294,7 +303,7 @@ async def test_a_product_answers_each_check_by_how_it_shows_it(meta):
 async def test_dq_is_read_only_answers_a_role_and_names_what_it_cannot_find(meta):
     from provisa.core.request_context import reset_current_org, set_current_org
 
-    grant = SimpleNamespace(org_id="acme", product_id=None)
+    grant = SimpleNamespace(org_id="acme", product_ids=())
     span = SimpleNamespace(set_attribute=lambda *a: None)
     token = set_current_org("acme")
     try:
@@ -319,7 +328,7 @@ async def test_a_read_governance_refuses_is_a_refusal_naming_why(monkeypatch):
         raise PermissionError("[V006] Relation 'qa.x' is not a registered table")
 
     monkeypatch.setattr(dq, "_read", refused)
-    grant = SimpleNamespace(org_id="acme", product_id=None)
+    grant = SimpleNamespace(org_id="acme", product_ids=())
     span = SimpleNamespace(set_attribute=lambda *a: None)
     token = set_current_org("acme")
     try:

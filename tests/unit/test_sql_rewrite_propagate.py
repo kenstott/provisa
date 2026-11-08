@@ -491,3 +491,63 @@ def test_a_bind_parameter_bound_reads_once_where_the_engine_binds_by_number() ->
         sql, "postgres", _ELIGIBLE, _TYPES, allow_params=True, read_once=True
     )
     assert '"t2"."order_id" >= $1' in out and "LEFT JOIN (" in out
+
+
+# --- REQ-039: stage 2 reads every registered table through the role's governed relation ---
+
+# The perf bench's federated_join as stage 2 governs it: each table stands as a derived table
+# under its own alias. Propagation stopped here (the bench's federated_join went 95 -> 459 ms on
+# DuckDB): only a bare table was read as a table.
+_GOVERNED = (
+    'SELECT o.order_id, d.status FROM (SELECT "o"."order_id" AS "order_id", "o"."amount" AS '
+    '"amount" FROM "perf_bench"."orders" AS "o") AS o JOIN (SELECT "d"."order_id" AS "order_id", '
+    '"d"."status" AS "status" FROM "perf_bench"."order_docs" AS "d") AS d '
+    "ON d.order_id = o.order_id WHERE o.order_id BETWEEN 1 AND 1000"
+)
+
+
+def test_a_governed_relation_is_propagated_to_as_its_table() -> None:
+    out = propagate_literal_join_predicates(_GOVERNED, "postgres", _ELIGIBLE, _TYPES)
+    where = sqlglot.parse_one(out, read="postgres").args["where"].this.sql(dialect="postgres")
+    assert where == "o.order_id BETWEEN 1 AND 1000 AND d.order_id BETWEEN 1 AND 1000"
+
+
+def test_a_masked_join_column_is_not_propagated_to() -> None:
+    """A governed relation serving its join column masked: the predicate would be on the mask's
+    value, not the table's column."""
+    masked = _GOVERNED.replace(
+        '(SELECT "d"."order_id" AS "order_id"', '(SELECT "d"."order_id" % 10 AS "order_id"'
+    )
+    assert propagate_literal_join_predicates(masked, "postgres", _ELIGIBLE, _TYPES) == masked
+
+
+def test_a_renamed_join_column_is_typed_by_the_column_it_serves() -> None:
+    """The predicate lands on the far side's own join column, by the name the relation serves it
+    under, typed as the table column it is."""
+    renamed = _GOVERNED.replace('"d"."order_id" AS "order_id"', '"d"."order_id" AS "doc_order"')
+    renamed = renamed.replace("ON d.order_id = o.order_id", "ON d.doc_order = o.order_id")
+    out = propagate_literal_join_predicates(renamed, "postgres", _ELIGIBLE, _TYPES)
+    assert out.endswith("WHERE o.order_id BETWEEN 1 AND 1000 AND d.doc_order BETWEEN 1 AND 1000")
+
+
+def test_a_governed_relation_in_a_correlated_subquery_gets_the_outer_bounds() -> None:
+    sql = (
+        'SELECT t0.order_id, (SELECT max(t2.status) FROM (SELECT "t2"."order_id" AS "order_id", '
+        '"t2"."status" AS "status" FROM "perf_bench"."order_docs" AS "t2") AS t2 '
+        "WHERE t2.order_id = t0.order_id) AS d "
+        'FROM (SELECT "t0"."order_id" AS "order_id" FROM "perf_bench"."orders" AS "t0") AS t0 '
+        "WHERE t0.order_id BETWEEN 1 AND 1000"
+    )
+    out = propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES)
+    assert "t2.order_id = t0.order_id AND t2.order_id BETWEEN 1 AND 1000" in out
+
+
+def test_the_far_join_column_receives_the_predicate_by_its_own_name() -> None:
+    sql = (
+        'SELECT o.order_id FROM "perf_bench"."orders" AS o '
+        'JOIN "perf_bench"."order_docs" AS d ON d."DocOrder" = o.order_id '
+        "WHERE o.order_id = 5"
+    )
+    types = {**_TYPES, ("perf_bench", "order_docs", "docorder"): "integer"}
+    out = propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, types)
+    assert out.endswith('WHERE o.order_id = 5 AND d."DocOrder" = 5')

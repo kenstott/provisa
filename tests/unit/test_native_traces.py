@@ -44,7 +44,7 @@ from provisa.observability.ops_schema import (
     OPS_TABLES,
     REQUEST_SPAN_ATTR,
 )
-from provisa.pgwire._pipeline import _resolve_session_settings
+from provisa.pgwire._pipeline import resolve_settings
 from provisa.transpiler.transpile import transpile_to_duckdb, transpile_to_trino
 
 pytestmark = pytest.mark.unit
@@ -173,8 +173,8 @@ def test_each_org_reads_only_its_own_refreshes(tmp_path):
 
     def read(org: str | None, table: str) -> set[str]:
         with _serving(org):
-            rule = _resolve_session_settings(
-                ORG_SCOPED_SIGNALS_RULE, session_vars_for(None), "duckdb"
+            rule = resolve_settings(ORG_SCOPED_SIGNALS_RULE.copy(), session_vars_for(None)).sql(
+                dialect="duckdb"
             )
         column = "mv_id" if table == MV_REFRESH_LINEAGE_VIEW else "span_attributes ->> 'mv.id'"
         sql = f"SELECT {column} FROM otel.signals.{table} WHERE {rule}"

@@ -38,6 +38,7 @@ async def _seed(conn) -> None:
     from sqlalchemy import insert
 
     from provisa.core.schema_org import (
+        data_product_tables,
         data_products,
         domains,
         registered_tables,
@@ -59,21 +60,22 @@ async def _seed(conn) -> None:
             table_name="m",
             view_sql="SELECT pv.x AS x FROM s.pv pv",
             materialize=True,
-            product_id="q",
             **derived,
         ),
-        dict(
-            id=RV, table_name="rv", view_sql="SELECT m.x AS x FROM s.m m", product_id="r", **derived
-        ),
+        dict(id=RV, table_name="rv", view_sql="SELECT m.x AS x FROM s.m m", **derived),
     ]
     checkers = [(K_PROMISE, "q"), (K_EXPECTATION, "q"), (K_ORPHAN, "r"), (K_UNASSIGNED, None)]
     tables += [
-        dict(id=k, source_id="dq", table_name=f"k{k}", dq_contract="checks", product_id=pid)
-        for k, pid in checkers
+        dict(id=k, source_id="dq", table_name=f"k{k}", dq_contract="checks") for k, _pid in checkers
     ]
     for t in tables:
         await conn.execute_core(
             insert(registered_tables).values(domain_id="s", schema_name="public", **t)
+        )
+    # REQ-1634: membership is its own relation.
+    for pid, table_id in [("q", M), ("r", RV), *((p, k) for k, p in checkers if p is not None)]:
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id=pid, table_id=table_id)
         )
     for table_id in (S, PV, M, RV):
         await conn.execute_core(

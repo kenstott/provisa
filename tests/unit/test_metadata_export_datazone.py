@@ -99,7 +99,6 @@ def _snapshot(*, status="draft", members=True):
                 schema_name="public",
                 table_name="orders",
                 description="Orders placed",
-                product_id="sales_360" if members else None,
                 cache_ttl=3600,
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
@@ -115,6 +114,7 @@ def _snapshot(*, status="draft", members=True):
                 version="1.2.0",
                 status=status,
                 status_reason="Replaced." if status in ("deprecated", "retired") else None,
+                tables=["pg.public.orders"] if members else [],
             )
         ],
         roles=[],

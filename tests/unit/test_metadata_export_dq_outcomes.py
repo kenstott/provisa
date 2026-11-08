@@ -83,13 +83,12 @@ def _checker_config():
     from provisa.core.models import Column, DataProduct, Domain, ProvisaConfig, Source, SourceType
     from provisa.core.models import Table
 
-    def results(name: str, product_id: str | None) -> Table:
+    def results(name: str) -> Table:
         return Table(
             source_id="dq",
             domain_id="sales",
             schema_name="quality",
             table_name=name,
-            product_id=product_id,
             dq_contract="dataset: provisa/sales/orders\nchecks:\n  - row_count: {}\n",
             columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
         )
@@ -98,14 +97,10 @@ def _checker_config():
         sources=[Source(id="dq", type=SourceType.soda, description="quality")],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
         data_products=[
-            DataProduct(id="orders", domain_id="sales", name="Orders"),
-            DataProduct(id="billing", domain_id="sales", name="Billing"),
+            DataProduct(id="orders", domain_id="sales", name="Orders", tables=["orders_scans"]),
+            DataProduct(id="billing", domain_id="sales", name="Billing", tables=["billing_scans"]),
         ],
-        tables=[
-            results("orders_scans", "orders"),
-            results("billing_scans", "billing"),
-            results("loose_scans", None),
-        ],
+        tables=[results("orders_scans"), results("billing_scans"), results("loose_scans")],
         roles=[],
     )
 

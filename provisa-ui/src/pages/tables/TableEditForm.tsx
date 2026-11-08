@@ -31,9 +31,8 @@ import { TableSectionTabs } from "./TableSectionTabs";
 import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useSetTableWriteGrants } from "../../hooks/useWriteGrants";
 import { useTableSection, type TableSection } from "./tableSections";
-import { TableAssociations } from "./TableAssociations";
 import { IdentityRead, LoadRead, QualityRead, QueryRead } from "./TableSectionsRead";
-import { dataProductField, isCheckerSource } from "./tableSectionFields";
+import { isCheckerSource } from "./tableSectionFields";
 import { TableIdentitySection } from "./TableIdentitySection";
 import { TableAssociationsSection } from "./TableAssociationsSection";
 import { TableLoadSection } from "./TableLoadSection";
@@ -182,21 +181,13 @@ export function TableEditForm({
             describe={creating ? undefined : () => generateTableDescription(editingTable.id)}
           />
         ))}
-      {section === "associations" &&
-        (hidingOnly ? (
-          <TableAssociations
-            table={editingTable}
-            relationships={relationships}
-            leading={[dataProductField(t, editingTable, dataProducts)]}
-          />
-        ) : (
-          <TableAssociationsSection
-            editingTable={editingTable}
-            setEditingTable={setEditingTable}
-            dataProducts={dataProducts}
-            relationships={relationships}
-          />
-        ))}
+      {section === "associations" && (
+        <TableAssociationsSection
+          editingTable={editingTable}
+          dataProducts={dataProducts}
+          relationships={relationships}
+        />
+      )}
       {section === "load" &&
         (hidingOnly ? (
           <LoadRead table={editingTable} source={editSource} />

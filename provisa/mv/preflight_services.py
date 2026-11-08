@@ -32,7 +32,7 @@ import importlib.util
 import inspect
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -78,7 +78,7 @@ def _transport(token: str) -> Callable[[str, str, bytes | None, dict], tuple[int
 class _Bound:
     """The services bound for one run of a check: a grant for the view, routed to in-process."""
 
-    def __init__(self, subject: str, role: str, product_id: str | None) -> None:
+    def __init__(self, subject: str, role: str, product_ids: Sequence[str]) -> None:
         from provisa.api.app import state
         from provisa.codesource.services import ServiceGrant, issue
         from provisa.core.request_context import require_current_org
@@ -89,7 +89,7 @@ class _Bound:
                 source_id=subject,
                 admin_db=state.admin_db,
                 role=role,
-                product_id=product_id,
+                product_ids=tuple(product_ids),
             )
         )
         self._set = services_module()._transport.set(_transport(self._token))
@@ -102,15 +102,15 @@ class _Bound:
 
 
 def bind_services(
-    fn: Callable[..., Any], *, subject: str, role: str, product_id: str | None = None
+    fn: Callable[..., Any], *, subject: str, role: str, product_ids: Sequence[str] = ()
 ) -> Callable[..., Any]:
     """``fn``, a compiled check that imports ``provisa_services``, run with the services bound:
     dq answering as ``role`` (the role the view's build runs as) and relating checkers to
-    ``product_id`` (the view's product). ``subject`` names the view in what the calls record."""
+    ``product_ids`` (the view's products, REQ-1634: any number). ``subject`` names the view in what the calls record."""
     if inspect.iscoroutinefunction(fn):
 
         async def checked_async(streams: Any, ctx: Any) -> Any:
-            bound = _Bound(subject, role, product_id)
+            bound = _Bound(subject, role, product_ids)
             try:
                 return await fn(streams, ctx)
             finally:
@@ -119,7 +119,7 @@ def bind_services(
         return checked_async
 
     def checked(streams: Any, ctx: Any) -> Any:
-        bound = _Bound(subject, role, product_id)
+        bound = _Bound(subject, role, product_ids)
         try:
             return fn(streams, ctx)
         finally:
@@ -129,7 +129,7 @@ def bind_services(
 
 
 def compile_check(
-    source: str | None, *, subject: str, product_id: str | None = None
+    source: str | None, *, subject: str, product_ids: Sequence[str] = ()
 ) -> Callable[..., Any] | None:
     """The compiled check ``source`` (None: no check), with Provisa's services bound when it
     imports them: dq answers as the role every build runs as, the region's administrator."""
@@ -139,4 +139,4 @@ def compile_check(
     fn = compile_preprocess(source)
     if fn is None or not uses_services(source):
         return fn
-    return bind_services(fn, subject=subject, role=region_admin.ROLE, product_id=product_id)
+    return bind_services(fn, subject=subject, role=region_admin.ROLE, product_ids=product_ids)

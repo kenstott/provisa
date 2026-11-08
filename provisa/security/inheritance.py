@@ -38,6 +38,7 @@ materialized ones.
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterable, Mapping
+from typing import Any
 
 from provisa.core.column_scope import SCOPE_OWN_DOMAIN, SCOPE_PUBLIC
 from provisa.security.rights import (
@@ -450,15 +451,13 @@ def _resolved(
     return found
 
 
-def _ored(exprs: Iterable[str | None]) -> str | None:
+def _ored(exprs: Iterable[Any]) -> Any:
     """The OR of the predicates given, each once; None stands for no predicate and contributes
-    nothing (REQ-2155). One predicate is returned as it is."""
-    distinct = list(dict.fromkeys(e for e in exprs if e))
-    if not distinct:
-        return None
-    if len(distinct) == 1:
-        return distinct[0]
-    return " OR ".join(f"({e})" for e in distinct)
+    nothing (REQ-2155). One predicate is returned as it is. A predicate given as text is a rule
+    entering (a stored grant's), read once here; each is an expression (REQ-913)."""
+    from provisa.compiler.rls import any_of, as_rule
+
+    return any_of(as_rule(e) for e in exprs if e is not None)
 
 
 def expand_write_grants(tables: Iterable[dict], parents: dict[str, list[str]]) -> None:  # REQ-2074
@@ -504,8 +503,10 @@ def holds_grant(role_id: str, granted: Iterable[str], chains: dict[str, list[str
     )
 
 
-def _anded(left: str, right: str) -> str:
-    return f"({left}) AND ({right})"
+def _anded(left: Any, right: Any) -> Any:
+    from provisa.compiler.rls import all_of
+
+    return all_of([left, right])
 
 
 def materialize_rls(
@@ -524,6 +525,11 @@ def materialize_rls(
     without parents, and every rule its role's parents do not narrow, pass through unchanged, so a
     role's own domain rule still covers a table registered after this build the way it did before.
     """
+    from provisa.compiler.rls import read_rule_row
+
+    # REQ-913: each stored rule is read once, here, where it enters; every rule from here on is
+    # an expression.
+    rls_rules = [read_rule_row(r) for r in rls_rules]
     table_rules: dict[tuple[str, int], dict] = {}
     domain_rules: dict[tuple[str, str], dict] = {}
     action_rules: dict[tuple[str, str], dict] = {}
@@ -540,9 +546,9 @@ def materialize_rls(
     def rows_of(
         rid: str,
         own: Callable[[str], dict | None],
-        memo: dict[str, tuple[str | None, list[tuple[str, dict]]]],
+        memo: dict[str, tuple[Any, list[tuple[str, dict]]]],
         path: tuple[str, ...] = (),
-    ) -> tuple[str | None, list[tuple[str, dict]]]:
+    ) -> tuple[Any, list[tuple[str, dict]]]:
         """``rid``'s predicate, None for every row, and the (role, rule) it was made from."""
         if rid in memo:
             return memo[rid]
@@ -588,7 +594,7 @@ def materialize_rls(
         # domain rule for the action's domain, and what its parents resolve.
         aname = a["name"]
         a_domain = a.get("domain_id") or ""
-        memo: dict[str, tuple[str | None, list[tuple[str, dict]]]] = {}
+        memo: dict[str, tuple[Any, list[tuple[str, dict]]]] = {}
 
         def own_action(rid: str, aname: str = aname, a_domain: str = a_domain) -> dict | None:
             return action_rules.get((rid, aname)) or domain_rules.get((rid, a_domain))
