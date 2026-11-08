@@ -26,6 +26,7 @@ from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.model import AssetKind
 from provisa.api.metadata_export.refs import UnknownTableError, UnqualifiedLineageError
 from provisa.core.models import Column, Domain, ProvisaConfig, Source, SourceType, Table
+from tests.unit.product_members import with_members
 
 
 def _cols(*names: str) -> list[Column]:
@@ -41,8 +42,6 @@ def _table(table_name: str, columns: list[Column], view_sql: str | None = None) 
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
-        # Marked so the table publishes: only Data Product tables enter the snapshot.
-        product_id="prod",
     )
 
 
@@ -51,6 +50,8 @@ def _config(tables: list[Table]) -> ProvisaConfig:
         sources=[Source(id="wh", type=SourceType.postgresql)],
         domains=[Domain(id="sales", description="Sales", steward="s")],
         tables=tables,
+        # Members of a product so the tables publish: only Data Product tables enter the snapshot.
+        data_products=with_members([], {"prod": tables}),
         roles=[],
     )
 

@@ -101,12 +101,18 @@ def test_every_dangling_reference_is_reported_not_only_the_first():
     tree = _tree()
     del tree["sales/tables/Customer.yaml"]
     tree["sales/tables/Order.yaml"]["source_id"] = "gone"
-    tree["sales/tables/Order.yaml"]["product_id"] = "no-such-product"
+    # REQ-1634: membership is the product's, so the product names its member tables
+    tree["data-products/orders.yaml"] = {
+        "origin": "admin",
+        "domain_id": "sales",
+        "name": "O",
+        "tables": [{"table": "sales/tables/Gone.yaml"}],
+    }
     problems = _problems(tree, roles=frozenset())
     said = " | ".join(problems)
     assert "sales/tables/Customer.yaml" in said  # the relationship's target
     assert "'gone'" in said  # the source
-    assert "'no-such-product'" in said  # the data product
+    assert "'sales/tables/Gone.yaml'" in said  # the data product's member table
     assert "'analyst'" in said  # the role
     assert len(problems) == 4
 

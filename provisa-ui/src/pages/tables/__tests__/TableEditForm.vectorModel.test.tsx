@@ -83,7 +83,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,

@@ -8,11 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1443 clause 10: a checker table's data-product membership is inherited from the table its
-// contract scans — the form shows it read-only and the update payload never carries it.
+// REQ-1634: a table belongs to any number of data products, set on the product only: the form lists
+// them read-only, each a link that opens the product, and the update payload never carries them.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "../../../test-utils/render";
+import { render, screen, within } from "../../../test-utils/render";
 
 // The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
 vi.mock("../TableClassTerm", () => ({ TableClassTerm: () => <span>class term</span> }));
@@ -48,7 +48,6 @@ import { TableEditForm } from "../TableEditForm";
 import { buildTableUpdateInput } from "../helpers";
 import type { DataProduct, RegisteredTable, Source } from "../../../types/admin";
 import i18n from "../../../i18n";
-import { exportProviderName } from "../../../lib/exportProviders";
 
 const t = i18n.getFixedT("en");
 
@@ -108,7 +107,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: "orders-product", // the product the checker table is assigned to
+    productIds: ["orders-product", "returns-product"], // the products the checker table is in
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -158,42 +157,29 @@ function renderForm(table: RegisteredTable, sources: Source[]) {
   );
 }
 
-describe("TableEditForm — checker table product assignment (REQ-1443 PRODUCT ASSIGNMENT)", () => {
-  it("offers a checker table the same editable product picker as any member", () => {
+describe("TableEditForm — the products a table belongs to are read-only (REQ-1634)", () => {
+  it("lists each product of a checker table, a link that opens it, with no picker", () => {
     renderForm(makeTable(), [CHECKER_SOURCE]);
-    const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
-    expect(control).not.toBeDisabled();
-    expect(control.value).toBe("Orders");
-    expect(
-      screen.getByText(
-        t("tableEditForm.dataProductDesc", { atlan: exportProviderName("atlan", "Atlan", t) }),
-      ),
-    ).toBeTruthy();
+    const field = screen.getByTestId("table-read-view-product");
+    const links = within(field).getAllByRole("link");
+    expect(links.map((l) => l.textContent)).toEqual(["Orders", "returns-product"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "/data-products?product=orders-product",
+      "/data-products?product=returns-product",
+    ]);
+    expect(screen.queryByTestId("table-edit-product-id")).toBeNull();
   });
 
-  it("shows no product on a checker table assigned to none", () => {
-    renderForm(makeTable({ productId: null }), [CHECKER_SOURCE]);
-    const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
-    expect(control.value).toBe("");
-    expect(control).not.toBeDisabled();
+  it("says a table that is in no product belongs to none", () => {
+    renderForm(makeTable({ productIds: [], sourceId: "wh", dqContract: null }), [PLAIN_SOURCE]);
+    const field = screen.getByTestId("table-read-view-product");
+    expect(within(field).queryAllByRole("link")).toEqual([]);
+    expect(field).toHaveTextContent(t("tableEditForm.dataProductNone"));
   });
 
-  it("keeps the editable picker for an ordinary table", () => {
-    renderForm(makeTable({ sourceId: "wh", dqContract: null, productId: null }), [PLAIN_SOURCE]);
-    const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
-    expect(control).not.toBeDisabled();
-    expect(
-      screen.getByText(
-        t("tableEditForm.dataProductDesc", { atlan: exportProviderName("atlan", "Atlan", t) }),
-      ),
-    ).toBeTruthy();
-  });
-
-  it("sends a checker table's chosen productId", () => {
-    expect(buildTableUpdateInput(makeTable()).productId).toBe("orders-product");
-  });
-
-  it("sends the chosen productId for an ordinary table", () => {
-    expect(buildTableUpdateInput(makeTable({ dqContract: null })).productId).toBe("orders-product");
+  it("sends no product with a table's update: membership is set on the product", () => {
+    const input = buildTableUpdateInput(makeTable()) as Record<string, unknown>;
+    expect(input).not.toHaveProperty("productId");
+    expect(input).not.toHaveProperty("productIds");
   });
 });

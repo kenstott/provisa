@@ -22,7 +22,7 @@ import {
   Title,
 } from "@mantine/core";
 import { X } from "lucide-react";
-import type { Source, ListedTable, DataProduct } from "../../types/admin";
+import type { Source, ListedTable } from "../../types/admin";
 import type { TableMetadata } from "../../api/admin";
 import type { ActionArg, InlineField, DatasetColumn } from "../../api/actions";
 import {
@@ -63,8 +63,6 @@ interface CommandFormFieldsProps {
   domainHints: string[];
   availableFunctions: TableMetadata[];
   loadingFunctions: boolean;
-  // REQ-1634: optional data-product membership picker, scoped to the command's domain.
-  dataProducts: DataProduct[];
   // REQ-2059: the roles an output column's mask entries may name.
   roleOptions: { id: string; label: string }[];
 }
@@ -78,7 +76,6 @@ export function CommandFormFields({
   domainHints,
   availableFunctions,
   loadingFunctions,
-  dataProducts,
   roleOptions,
 }: CommandFormFieldsProps): React.ReactElement {
   const { t } = useTranslation();
@@ -663,24 +660,6 @@ export function CommandFormFields({
                   value={form.kind}
                   onChange={(val) => setForm({ ...form, kind: val ?? "mutation" })}
                   allowDeselect={false}
-                />
-              </FormField>
-            )}
-            {form.actionType === "function" && (
-              <FormField size="medium">
-                <Select
-                  label={t("commandFormFields.dataProduct")}
-                  placeholder={t("commandFormFields.dataProductPlaceholder")}
-                  // REQ-1634: a command may only join a data product owned by its own domain.
-                  data={dataProducts
-                    .filter((dp) => dp.domainId === form.domainId)
-                    .map((dp) => ({ value: dp.id, label: dp.name }))}
-                  value={form.productId || null}
-                  onChange={(val) => setForm({ ...form, productId: val ?? "" })}
-                  disabled={!form.domainId}
-                  clearable
-                  searchable
-                  data-testid="command-data-product-select"
                 />
               </FormField>
             )}

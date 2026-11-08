@@ -72,6 +72,11 @@ _META: dict[str, str] = {
     # REQ-2188
     "metric_definitions": "Every governed metric — a named aggregate expression with no grain of its own, "
     "the roles that read it, and the fact it was registered from",
+    # REQ-1634
+    "data_product_tables": "Every data product's member tables and views — one row per product "
+    "and member; a table may be a member of any number of products of its domain",
+    "data_product_commands": "Every data product's member commands — one row per product and "
+    "member command",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
@@ -209,7 +214,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "gql_naming_convention": "Casing convention applied to this table's GraphQL names",
         "watermark_column": "Column whose high value marks how far incremental refresh has read",
         "view_sql": "Defining SQL, for a Provisa-managed virtual view rather than a source table",
-        "product_id": "The DataProduct this table is published as a member of, if any",
         "materialize": "Whether Provisa maintains a materialization of this table",
         "mv_refresh_interval": "How often the materialization is refreshed",
         "l1_cluster": "Top-level semantic cluster, computed from the table's relationships",
@@ -268,6 +272,15 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "column_sql_name": "The name a statement queries that column by",
         "referenced_column": "Physical name of the column a foreign key column references",
         "referenced_column_sql_name": "The name a statement queries that column by",
+    },
+    # REQ-1634
+    "data_product_tables": {
+        "product_id": "The data product",
+        "table_id": "A table or view that is a member of it",
+    },
+    "data_product_commands": {
+        "product_id": "The data product",
+        "command_name": "A command that is a member of it",
     },
     # REQ-2126
     "data_product_edges": {
@@ -471,7 +484,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the function does, shown to consumers",
         "created_at": "When the function was registered",
         "updated_at": "When the registration was last changed",
-        "product_id": "The data product the function is a member of, if any",  # REQ-2125
     },
     "tags": {
         "id": "Tag name, e.g. pii or deprecated",

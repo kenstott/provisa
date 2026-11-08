@@ -52,6 +52,7 @@ from provisa.api.admin._table_settings import (
 from provisa.api.admin.schema_common import (
     _queue_creation_request,
     _sync_view_mv,
+    _view_products,
     check_view_mv,
 )
 
@@ -810,7 +811,7 @@ async def register_table(
             preprocess=input.mv_preprocess,  # REQ-957
             hold_on_failing_checks=input.mv_hold_on_failing_checks,  # REQ-2133
             table_id=table_id,  # REQ-2133
-            product_id=input.product_id,  # REQ-2133
+            product_ids=await _view_products(table_id),  # REQ-2133, REQ-1634
             business_key=list(input.business_key),  # REQ-2109
             valid_time=input.valid_time,  # REQ-2109
             recorded_time=input.recorded_time,  # REQ-2109

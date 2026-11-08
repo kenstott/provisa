@@ -39,7 +39,7 @@ const fn: TrackedFunction = {
   materialize: true,
   requiresApproval: true,
   writesTable: "public.orders",
-  productId: "p1",
+  productIds: ["p1", "p2"],
   outputColumns: [
     {
       name: "card",
@@ -78,13 +78,13 @@ const wh: TrackedWebhook = {
 
 describe("a function's read view", () => {
   it("shows every value, with the fields of its implementation", () => {
-    render(<FunctionRead fn={fn} productName="Refunds" />);
+    render(<FunctionRead fn={fn} productNames={["Refunds", "Payouts"]} />);
     expect(fields("function-read-fields")).toEqual([
       ["Name", "refund_order"],
       ["Type", "DB Function"],
       ["Kind", "Mutation"],
       ["Domain", "sales"],
-      ["Data Product (optional)", "Refunds"],
+      ["Data products", "Refunds, Payouts"],
       ["Implementation", "HTTP endpoint"],
       ["Endpoint URL", "https://pay.example.com/refund"],
       ["Method", "POST"],
@@ -110,13 +110,13 @@ describe("a function's read view", () => {
     render(
       <FunctionRead
         fn={{ ...fn, implKind: "source_procedure", binding: {}, returns: "public.refunds" }}
-        productName={null}
+        productNames={[]}
       />,
     );
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Source"]).toBe("sales-pg");
     expect(shown["Schema"]).toBe("public");
-    expect(shown["Data Product (optional)"]).toBe("—");
+    expect(shown["Data products"]).toBe("—");
     expect(shown["Return Type"]).toBe("Registered Table");
     expect(shown["Returns (table)"]).toBe("public.refunds");
     expect(shown["Endpoint URL"]).toBeUndefined();
@@ -175,7 +175,7 @@ describe("a statement command's panel (REQ-2001)", () => {
   };
 
   it("shows what its statement declares", () => {
-    render(<FunctionRead fn={statement} productName={null} />);
+    render(<FunctionRead fn={statement} productNames={[]} />);
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Declares"]).toBe(
       "reads support.tickets, writes kb.docs (upsert), returns a row count",
@@ -190,7 +190,7 @@ describe("a statement command's panel (REQ-2001)", () => {
       ...statement,
       contract: { ...contract, broken: "Column 'subject' could not be resolved" },
     };
-    render(<FunctionRead fn={broken} productName={null} />);
+    render(<FunctionRead fn={broken} productNames={[]} />);
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Broken"]).toBe("Column 'subject' could not be resolved");
     expect(shown["Declares"]).toBeUndefined();

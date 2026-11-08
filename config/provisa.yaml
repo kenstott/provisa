@@ -19,12 +19,15 @@ data_products:
 - purpose: "Pet health records \u2014 inventory and referral vets for care history"
   domain_id: pet-store
   id: pet_health
+  tables: [pets, vets]
+  commands: [add_pet]
   name: Pet Health
   owner: org_admin
   support_contact: kennethstott@gmail.com
 - purpose: "Shelter staffing \u2014 employee roster and shift coverage"
   domain_id: shelter
   id: workforce_ops
+  tables: [assignments, employees, schedules]
   name: Workforce Ops
   owner: org_admin
   support_contact: kennethstott@gmail.com
@@ -369,7 +372,6 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
-  product_id: pet_health
   schema: pet_store
   source_id: pet-store-pg
   table: pets
@@ -445,7 +447,6 @@ tables:
     - data_steward
   description: "Veterinarians the store refers pets to"
   domain_id: pet-store
-  product_id: pet_health
   schema: pet_store
   source_id: pet-store-pg
   table: vets
@@ -1065,7 +1066,6 @@ tables:
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
-  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: employees
@@ -1173,7 +1173,6 @@ tables:
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
-  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: assignments
@@ -1317,7 +1316,6 @@ tables:
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
-  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: schedules
@@ -1377,7 +1375,6 @@ functions:
   domain_id: pet-store
   kind: mutation
   impl_kind: python
-  product_id: pet_health
   source_id: ""
   function_name: add_pet
   returns: ""

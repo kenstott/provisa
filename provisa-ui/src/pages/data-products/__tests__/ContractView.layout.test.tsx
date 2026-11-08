@@ -29,7 +29,7 @@ const promise = (id: number, table: string, outcome: "pass" | "fail" | null): Pr
   table_name: `${table}_quality`,
   alias: null,
   description: `Quality scan of ${table}`,
-  owner_product_id: "pet_health",
+  owner_product_ids: ["pet_health"],
   checked_table_id: id + 100,
   checked_table: { id: id + 100, domain_id: "pet-store", table_name: table, alias: null },
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
@@ -51,13 +51,7 @@ const PORT = {
 
 function renderView() {
   render(
-    <ContractView
-      contract={CONTRACT}
-      versions={[]}
-      tableId={7}
-      promises={PROMISES}
-      {...PORT}
-    />,
+    <ContractView contract={CONTRACT} versions={[]} tableId={7} promises={PROMISES} {...PORT} />,
   );
 }
 

@@ -32,6 +32,7 @@ from provisa.api.metadata_export.atlas import (
 )
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.core.models import Column, Domain, ProvisaConfig, Source, SourceType, Table
+from tests.unit.product_members import with_members
 
 
 def _config(**kwargs) -> ProvisaConfig:
@@ -45,7 +46,6 @@ def _config(**kwargs) -> ProvisaConfig:
                 schema_name="default",
                 table_name="find_pets_by_status",
                 alias="pets",
-                product_id="prod",
                 columns=[
                     Column(
                         name="pet_id",
@@ -59,6 +59,8 @@ def _config(**kwargs) -> ProvisaConfig:
         "roles": [],
     }
     base.update(kwargs)
+    # REQ-1634: every table is a member of "prod", so it publishes.
+    base["data_products"] = with_members(base.get("data_products", []), {"prod": base["tables"]})
     return ProvisaConfig(**base)
 
 
@@ -69,8 +71,14 @@ def _snapshot():
 def test_native_entities_state_what_the_model_holds():
     entities = to_native_entities(_snapshot())
     by_type = {e.type_name: e for e in entities}
-    # No rdbms masquerade, no instance/db split — source, table, column.
-    assert set(by_type) == {PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE}
+    # No rdbms masquerade, no instance/db split — source, table, column, and the data product the
+    # table publishes through (REQ-1634).
+    assert set(by_type) == {
+        PROVISA_SOURCE_TYPE,
+        PROVISA_TABLE_TYPE,
+        PROVISA_COLUMN_TYPE,
+        PROVISA_DATA_PRODUCT_TYPE,
+    }
     source = by_type[PROVISA_SOURCE_TYPE]
     assert source.attributes["sourceType"] == "openapi"
     assert source.attributes["name"] == "petstore-api"
@@ -135,7 +143,6 @@ def test_governance_document_rides_the_typed_attribute():
                 domain_id="pet-store",
                 schema_name="default",
                 table_name="orders",
-                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
         ],
@@ -230,6 +237,7 @@ def test_atlan_keeps_builtin_types_and_merges_classifications_on_its_own_routes(
         "Table",
         "Column",
         "Process",
+        "DataProduct",  # REQ-1634: the product the table publishes through
     }
 
 
@@ -274,7 +282,6 @@ def test_a_view_member_sits_in_the_derived_layers_container():  # REQ-2119
         domain_id="pet-store",
         schema_name="views",
         table_name="pet_names",
-        product_id="prod",
         view_sql='SELECT p.petId AS id FROM "pet-store"."pets" p',
         columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
     )

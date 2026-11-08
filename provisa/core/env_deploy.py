@@ -536,7 +536,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
 
     known_sources = {_name_of(p)[0] for p in tree if table_of(p) == "sources"}
     known_domains = {_domain_id_of(p) for p in tree if table_of(p) == "domains"}
-    known_products = {_name_of(p)[0] for p in tree if table_of(p) == "data_products"}
+    known_commands = {_name_of(p)[0] for p in tree if table_of(p) == COMMANDS_DIR}
 
     def resolve_table(path: str, inside: str, what: str) -> int:
         if path not in table_id:
@@ -628,7 +628,6 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                     f"domain{SUFFIX} for it"
                 )
             named(path, "source", own.get("source_id"), known_sources)
-            named(path, "data product", own.get("product_id"), known_products)
             rows["registered_tables"].append({**own, "id": tid, "domain_id": domain})
             for column in nested["columns"]:
                 rows["table_columns"].append({**column, "table_id": tid, "domain_id": domain})
@@ -730,7 +729,7 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             rows["tag_assignments"].extend(_tags(nested["tags"], path, problems, source_id=source))
 
         elif table == "data_products":
-            own, nested = _split(body, "tags")
+            own, nested = _split(body, "tags", "tables", "commands")
             product = _name_of(path)[0]
             if own.get("domain_id") not in known_domains:
                 problems.append(
@@ -738,6 +737,17 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                     f"domain{SUFFIX} for it"
                 )
             rows["data_products"].append({**own, "id": product})
+            # REQ-1634: its members, a table by its path and a command by its name.
+            for member in nested["tables"]:
+                rows["data_product_tables"].append(
+                    {
+                        "product_id": product,
+                        "table_id": resolve_table(member["table"], path, "member table"),
+                    }
+                )
+            for member in nested["commands"]:
+                named(path, "member command", member.get("command_name"), known_commands)
+                rows["data_product_commands"].append({**member, "product_id": product})
             rows["tag_assignments"].extend(
                 _tags(nested["tags"], path, problems, product_id=product)
             )
@@ -777,7 +787,6 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             own, nested = _split(body, "tags", "row_policies")
             name = _name_of(path)[0]
             registry = "tracked_functions" if _FUNCTION_MARKER in own else "tracked_webhooks"
-            named(path, "data product", own.get("product_id"), known_products)
             rows[registry].append(
                 {**own, "name": name, "id": ids.of("commands", f"{registry}/{name}")}
             )
