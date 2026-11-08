@@ -24,12 +24,15 @@ concurrency:
 
 jobs:
   # Four shards side by side, each its own runner with xdist across its cores. The files split by
-  # their paths' hashes (scripts/ci/unit_shard.py), so a file added moves no other file. Each
-  # shard writes the test ids it collected for the check below.
+  # recorded seconds (scripts/ci/unit_file_seconds.json, rewritten from a run's unit-junit-N
+  # artifacts by `unit_shard.py timings`), so the four take about the same time; a file with no
+  # record goes by its path's hash. Each shard writes the test ids it collected for the check below.
   shard:
     name: pytest tests/unit ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
-    # A shard takes about four minutes. Without a limit a run that stops making progress held
+    # A shard takes a quarter of the suite's test time, about fifteen to twenty minutes, plus
+    # four minutes before the first test runs. The limit is not the budget: a shard near it
+    # means the recorded times are out of date. Without a limit a run that stops making progress held
     # its runner for the hosted default of six hours.
     timeout-minutes: 30
     strategy:
