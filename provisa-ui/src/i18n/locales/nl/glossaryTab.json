@@ -155,6 +155,7 @@
     "draftUndefined": "Ontwerp: afgeleid van de kolom- en tabelnamen. Geef het een definitie — die lezen agents en catalogi — en keur het daarna goed. De naam komt van de kolommen hieronder, en kolommen die gelijk normaliseren komen bij één term uit: geef een kolom een alias op de pagina Tabellen om te veranderen welke term hij voedt. Hernoem hier om alleen de formulering van deze term te veranderen.",
     "draftUngrounded": "Deze term bereikt geen fysieke kolom. Verbind hem met een term die er een heeft, zodat hij echte data benoemt.",
     "piiLabel": "PII",
+    "tagsLabel": "Tags",
     "piiHelp": "Elke kolom met deze betekenis draagt PII, ook toekomstige.",
     "piiPropertyOnly": "Alleen een eigenschap markeert kolommen: een klasse of concept betekent er geen.",
     "piiMarks_one": "Markeert {{count}} kolom",

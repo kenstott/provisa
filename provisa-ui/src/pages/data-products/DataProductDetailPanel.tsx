@@ -33,12 +33,14 @@ import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import { Tip } from "../../components/Tip";
+import { TagControl } from "../../components/TagControl";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
 import type { MetaReader } from "../../api/metaGraph";
-import { GraphPanel } from "../../components/graph3d/GraphPanel";
+import { OntologySnippet } from "../../components/graph3d/OntologyGraph";
+import { productPreset } from "../../components/graph3d/ontologyPresets";
 import type { ContractViewer } from "./ContractView";
 import { ProductContracts } from "./ProductContracts";
 import {
@@ -56,7 +58,6 @@ import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
-  coreGraph,
   modelName,
   restModelName,
   type CoreEdge,
@@ -108,6 +109,8 @@ interface DataProductDetailPanelProps {
   describeColumn?: DescribeColumn;
   // A lineage relation as the catalog names its table.
   relationLabel?: (relation: string) => string;
+  /** REQ-1634: a tag was put on the product or taken off; its core is read again. */
+  onTagsChanged: () => void;
   /** Opens the edit form, on ``focus`` where given. */
   onEdit: (focus?: "supportContact") => void;
   /** REQ-2198: resolves once the product is deleted and the list read again (PanelDelete). */
@@ -164,6 +167,7 @@ export function DataProductDetailPanel({
   lineageMembers,
   describeColumn,
   relationLabel,
+  onTagsChanged,
   onEdit,
   onDelete,
   products,
@@ -252,8 +256,6 @@ export function DataProductDetailPanel({
   const outputTables = core.tables?.filter((tb) => tb.dqContract == null);
   const dqTables = core.tables?.filter((tb) => tb.dqContract != null);
   const profiled = outputTables?.filter((tb) => (tb.profileResults ?? []).length > 0);
-  // The graph card is drawn from this read, as every other card is.
-  const graph = coreGraph(core);
   // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
   // the indirect relationship rows are the product graph's, not the panel's.
   const related = core.edges?.filter((e) => e.kind === "related");
@@ -490,7 +492,15 @@ export function DataProductDetailPanel({
             testId={`data-product-card-tags-${p.id}`}
             label={t("dataProductCore.tags")}
           >
-            {core.tags.length === 0 ? (
+            {/* REQ-1634: its editor puts tags on the product and takes them off with the chip
+                tables use; the list reads the same assignments, so the chip's change is read
+                again into it (onTagsChanged). */}
+            {canEdit ? (
+              <Group gap="xs" wrap="wrap">
+                {core.tags.length === 0 && <Empty text={t("dataProductCore.tagsEmpty")} />}
+                <TagControl objectType="product" productId={p.id} onChanged={onTagsChanged} />
+              </Group>
+            ) : core.tags.length === 0 ? (
               <Empty text={t("dataProductCore.tagsEmpty")} />
             ) : (
               <List size="sm" data-testid={`data-product-detail-tags-${p.id}`}>
@@ -680,9 +690,7 @@ export function DataProductDetailPanel({
                 {core.terms.map((term) => (
                   <List.Item key={term.id} ff="monospace">
                     {term.name}
-                    {term.isAbstract && (
-                      <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>
-                    )}
+                    {term.isAbstract && <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>}
                     {term.definition && <Muted>— {term.definition}</Muted>}
                   </List.Item>
                 ))}
@@ -856,7 +864,8 @@ export function DataProductDetailPanel({
           testId={`data-product-card-graph-${p.id}`}
           label={t("graph3d.panelTitle")}
         >
-          <GraphPanel productId={p.id} productName={product.name} graph={graph} />
+          {/* REQ-2174: the ontology, focused on the product. */}
+          <OntologySnippet preset={productPreset(p.id)} name={product.name} testId="graph-panel" />
         </DetailCard>
       </div>
       {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws

@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL (1 van 9 oppervlakken)",
-        "description": "SQL leeft in de SQL-verkenner. Standaard-SQL gefedereerd over elke bron: verbind Postgres met Mongo met een CSV in één statement. De eigen metadata van het model en elk activiteitenspoor zijn hier ook bevraagbare tabellen, dus je kunt je auditlog of lineage rechtstreeks aan live data koppelen.<p>🔌 Dezelfde governed SQL draait naast deze verkenner via meerdere wire-protocollen; je tool kiest degene die hij al spreekt:</p><ul><li><strong>pgwire</strong>: elke Postgres-compatibele client (psql, DBeaver, Tableau, Power BI) verbindt out of the box.</li><li><strong>JDBC</strong>: sluit aan op elke Java/JVM-app, ETL-pipeline of JDBC-geschikte BI-tool.</li><li><strong>Arrow Flight SQL</strong>: kolomgeoriënteerde streaming voor ADBC-clients, zonder rij-hercodering, gebouwd voor grote resultaatsets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa vanuit DuckDB en bevraag de governed federatie ter plekke.</li></ul>"
+        "description": "SQL leeft in de SQL-verkenner. Standaard-SQL gefedereerd over elke bron: verbind Postgres met Mongo met een CSV in één statement. De eigen metadata van het model en elk activiteitenspoor zijn hier ook bevraagbare tabellen, dus je kunt je auditlog of lineage rechtstreeks aan live data koppelen.<p>🔌 Hetzelfde governed model wordt naast deze verkenner via meerdere protocollen aangeboden; je tool kiest degene die hij al spreekt:</p><ul><li><strong>pgwire</strong>: elke Postgres-compatibele client (psql, DBeaver, Tableau, Power BI) verbindt out of the box.</li><li><strong>JDBC</strong>: sluit aan op elke Java/JVM-app, ETL-pipeline of JDBC-geschikte BI-tool.</li><li><strong>Arrow Flight SQL</strong>: kolomgeoriënteerde streaming voor ADBC-clients, zonder rij-hercodering, gebouwd voor grote resultaatsets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa vanuit DuckDB en bevraag de governed federatie ter plekke.</li><li><strong>OData</strong>: Excel en Power BI verbinden via hun ingebouwde OData-feed en lezen governed tabellen rechtstreeks.</li></ul>"
       },
       "step7": {
         "title": "GraphQL (2 van 9 oppervlakken)",
@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "Traces en debug-tracing",
-        "description": "🔭 Tracing legt één span per verzoek vast. Het tabblad Debug-tracing voegt een span toe per pijplijnfase en per bronaanroep, met SQL-tekst. Het kost belasting, dus zet het voor een bepaalde tijd aan voor één organisatie, rol of bron; het gaat vanzelf uit als de tijd om is."
+        "description": "🔭 Elke aanvraag wordt getraceerd, met telkens één span. De tracefeed toont uw meest recente traces: u kunt ze filteren, de lijst pauzeren of een trace openen om de spans te zien. Waar uw rol instellingen mag wijzigen, voegt het tabblad Debug-tracing voor een ingestelde tijd een span toe per pipelinefase en per bronaanroep."
       },
       "stepCache": {
         "title": "Caches en replica's",
@@ -1704,22 +1704,6 @@
         "title": "Waar deze demo over gaat",
         "description": "Een Praagse bank leent aan bedrijven en legt van elk bedrijf de eigenaar vast met diens Legal Entity Identifier (LEI). EU-regels beperken wat zij mag lenen aan één klant, of aan een groep bedrijven die één eigenaar beheerst, tot 25% van haar tier 1-kapitaal. De vraag: bij welke groepen zit de bank boven die grens? Haar boeken noemen de eigenaar van elke kredietnemer, niet van wie die eigenaar is. De bank, haar kredietnemers en haar leningen zijn verzonnen; de concerns die hen bezitten zijn echt."
       },
-      "groupexposureJoin": {
-        "title": "Gekoppeld via de LEI",
-        "description": "De eigenarentabel van de bank en de tabellen uit Wikidata delen de LEI van de eigenaar, en deze relaties koppelen ze. De gegevens van de bank blijven in haar database en die van Wikidata in de replica; de koppeling gebeurt in de query."
-      },
-      "groupexposureAnswer": {
-        "title": "Het antwoord in SQL",
-        "description": "De view group_exposure brengt elke faciliteit via de LEI van de eigenaar en Wikidata onder bij het concern van de kredietnemer. De concerns Veolia en Vinci komen elk boven 25% van het tier 1-kapitaal, en een joint venture van Veolia en EPH telt bij beide mee. Noch de boeken van de bank noch Wikidata laten dat alleen zien. De kredietnemers en hun leningen zijn verzonnen."
-      },
-      "groupexposureExample": {
-        "title": "Het antwoord in GraphQL",
-        "description": "Dezelfde view in GraphQL: de concerns waaraan de bank het meest leent, hun kredietnemers, wat is toegezegd en of elk boven de grens zit."
-      },
-      "groupexposureRecap": {
-        "title": "Wat u hebt gezien",
-        "description": "Het leningenboek van een verzonnen bank en openbare linked data uit Wikidata, via LEI gekoppeld in één beheerst model. De eigendomsketens uit Wikidata maken van veel kleine leningen een paar grote groepsblootstellingen, en het antwoord wordt geleverd in SQL, GraphQL en REST."
-      },
       "groupexposureWikidata": {
         "title": "Van wie de eigenaren zijn, uit Wikidata",
         "description": "Wikidata, de openbare kennisgraaf, legt van elk bedrijf de LEI en de moederorganisatie vast. Deze bron leest dat via de SPARQL-querydienst van Wikidata. De tabellen zijn één keer geladen, toen de demo werd gebouwd, dus de demo roept Wikidata nooit aan terwijl u hem gebruikt."
@@ -1732,6 +1716,10 @@
         "title": "Het concern van elke eigenaar",
         "description": "Voor elke eigenaar die de bank vastlegt, het bedrijf bovenaan de keten van moederorganisaties in Wikidata, gevonden met één SPARQL-eigenschapspad. Wikidata weet dat een Tsjechische holding bij Veolia of E.ON hoort, ook al weten de boeken van de bank dat niet."
       },
+      "groupexposureJoin": {
+        "title": "Gekoppeld via de LEI",
+        "description": "De eigenarentabel van de bank en de tabellen uit Wikidata delen de LEI van de eigenaar, en deze relaties koppelen ze. De gegevens van de bank blijven in haar database en die van Wikidata in de replica; de koppeling gebeurt in de query."
+      },
       "groupexposureTerms": {
         "title": "In gewone woorden",
         "description": "De woordenlijst legt de termen uit waarmee een risicomanager werkt: grote blootstelling, tier 1-kapitaal, Legal Entity Identifier en moederorganisatie. Een groep verbonden cliënten is een set bedrijven die één risico vormen omdat één ervan de andere beheerst."
@@ -1740,9 +1728,21 @@
         "title": "Alleen de boeken",
         "description": "De eigen blootstelling van elke kredietnemer, zoals de boeken van de bank die zien. De grootste ligt onder 10% van het tier 1-kapitaal, dus geen enkele kredietnemer komt in de buurt van de grens van 25%."
       },
+      "groupexposureAnswer": {
+        "title": "Het antwoord in SQL",
+        "description": "De view group_exposure brengt elke faciliteit via de LEI van de eigenaar en Wikidata onder bij het concern van de kredietnemer. De concerns Veolia en Vinci komen elk boven 25% van het tier 1-kapitaal, en een joint venture van Veolia en EPH telt bij beide mee. Noch de boeken van de bank noch Wikidata laten dat alleen zien. De kredietnemers en hun leningen zijn verzonnen."
+      },
+      "groupexposureExample": {
+        "title": "Het antwoord in GraphQL",
+        "description": "Dezelfde view in GraphQL: de concerns waaraan de bank het meest leent, hun kredietnemers, wat is toegezegd en of elk boven de grens zit."
+      },
       "groupexposureRest": {
         "title": "Hetzelfde antwoord via REST",
         "description": "De view is ook een REST-endpoint, hier gegroepeerd op of een concern boven de grens zit en op de server opgeteld, klaar voor een risicorapport of een spreadsheet."
+      },
+      "groupexposureRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "Het leningenboek van een verzonnen bank en openbare linked data uit Wikidata, via LEI gekoppeld in één beheerst model. De eigendomsketens uit Wikidata maken van veel kleine leningen een paar grote groepsblootstellingen, en het antwoord wordt geleverd in SQL, GraphQL en REST."
       },
       "agentdataScenario": {
         "title": "Geef een agent je data",

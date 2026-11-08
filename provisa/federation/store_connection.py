@@ -37,6 +37,7 @@ from typing import Any
 
 from sqlalchemy.schema import CreateSchema, CreateTable
 
+from provisa.core import engine_memory
 from provisa.core.change_signal import APPEND, select_landing_shape
 from provisa.federation.materialize_exec import build_table
 from provisa.federation.replica_guard import require_duckdb_replica_table
@@ -588,17 +589,21 @@ def filter_fetched_at_duckdb_native(
     """When the filter ``filter_hash`` was last fetched into the row-level replica ``table``
     (REQ-1915), or None when it never was (or no filter has been recorded at all)."""
     record = filter_record_table(table)
-    exists = con.execute(
-        "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? "
-        "AND table_name = ?",
-        [catalog, schema, record],
-    ).fetchone()
+    exists = engine_memory.first_row(
+        con.execute(
+            "SELECT 1 FROM duckdb_tables() WHERE database_name = ? AND schema_name = ? "
+            "AND table_name = ?",
+            [catalog, schema, record],
+        )
+    )
     if exists is None:
         return None
-    row = con.execute(
-        f"SELECT fetched_at FROM {_qualified(catalog, schema, record)} WHERE filter_hash = ?",
-        [filter_hash],
-    ).fetchone()
+    row = engine_memory.first_row(
+        con.execute(
+            f"SELECT fetched_at FROM {_qualified(catalog, schema, record)} WHERE filter_hash = ?",
+            [filter_hash],
+        )
+    )
     return None if row is None else row[0]
 
 

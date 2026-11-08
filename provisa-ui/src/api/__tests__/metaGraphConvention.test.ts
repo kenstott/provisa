@@ -25,9 +25,8 @@ import {
   type Introspection,
   type MetaReader,
 } from "../metaGraph";
-import { ontologyCountQuery, ontologyQuery } from "../../components/graph3d/glossaryGraphData";
+import { ontologyCountQuery, ontologyQuery } from "../../components/graph3d/ontologyData";
 import type { QueryScope } from "../../components/graph3d/graphModel";
-import { productGraphQuery } from "../../components/graph3d/productGraphData";
 import { listQuery, panelQueries } from "../../pages/data-products/productCore";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
@@ -144,20 +143,32 @@ const SCOPE: QueryScope = {
   sensitivities: [],
   orphans: true,
   search: ["party"],
+  focus: null,
+  depth: 2,
 };
 
-const FILTERS = {
-  domains: ["sales"],
-  tags: ["pii"],
-  sensitivities: ["confidential"],
-  edgeTypes: [],
+/** REQ-2174 (ONE GRAPH, RULES PER PRESET): the Product map, with every layer of its own. */
+const PRODUCT_MAP: QueryScope = {
+  ...SCOPE,
+  layers: new Set([
+    "ontology",
+    "domains",
+    "data",
+    "columns",
+    "ownerTables",
+    "commands",
+    "quality",
+    "productLinks",
+  ]),
+  search: [],
+  products: true,
 };
 
 const BUILDERS: [string, (m: MetaReader) => string | null][] = [
   ["the Ontology View", (m) => ontologyQuery(m, SCOPE)],
   ["the Ontology View's count", (m) => ontologyCountQuery(m, SCOPE)],
-  ["the product graph", (m) => productGraphQuery(m, null, FILTERS)],
-  ["one product's graph", (m) => productGraphQuery(m, "1", FILTERS)],
+  ["the Product map", (m) => ontologyQuery(m, PRODUCT_MAP)],
+  ["one product's snippet", (m) => ontologyQuery(m, { ...PRODUCT_MAP, focus: "p:1" })],
   ["the product list", listQuery],
   ["a product's panel", (m) => panelQueries(m, "1")?.graphql ?? null],
 ];

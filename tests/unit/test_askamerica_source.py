@@ -788,6 +788,7 @@ def _replica_of(source_type: str = "govdata") -> pr.ConnectorReplica:
     replica._server = None
     replica._retired = False
     replica._discovery_reads = 0
+    replica._request_waiting_until = 0.0
     return replica
 
 
@@ -832,6 +833,123 @@ def test_a_discovery_read_that_fails_frees_the_server():
             raise OSError("connection refused")
     with replica.discovery_read():
         pass
+
+
+# -- a read on a request goes before the catalog index's next read ------------------------------
+#
+# Saving a source starts its catalog index (catalog_cache.index_source), which lists every schema
+# the source serves, one read after another, on the server's one discovery slot. A Register Table
+# listing refused while one of those reads held the slot found it taken again by the next: on a
+# cold AskAmerica server (weather, ref, geo) the listing of "weather" was refused for the whole
+# walk -- 76 s here, past the minute the form gives it in CI (core lane run 42260219138) -- though
+# "weather" itself had been read 54 s before it got through.
+
+
+def test_a_background_read_yields_the_server_to_a_refused_request_read():
+    replica = _replica_of()
+    with pr.background_discovery():
+        with replica.discovery_read():  # the index reads "weather"
+            with pytest.raises(pr.SourceStillStartingError) as refused:
+                with _request_read(replica):
+                    raise AssertionError("a request read was sent behind the index's")
+            assert refused.value.answering_read
+        # The index's next read ("ref") waits: the refused request read goes first.
+        with pytest.raises(pr.SourceStillStartingError) as deferred:
+            with replica.discovery_read():
+                raise AssertionError("the index took the server back from a waiting request")
+        assert deferred.value.answering_read
+    with replica.discovery_read():  # the request read, asked again: sent
+        pass
+    with pr.background_discovery():
+        with replica.discovery_read():  # and then the index's
+            pass
+
+
+@contextlib.contextmanager
+def _request_read(replica: pr.ConnectorReplica):
+    """A discovery read on a request, made while the caller runs a background one."""
+    token = pr._BACKGROUND_DISCOVERY.set(False)
+    try:
+        with replica.discovery_read():
+            yield
+    finally:
+        pr._BACKGROUND_DISCOVERY.reset(token)
+
+
+def test_a_request_that_does_not_ask_again_holds_off_the_index_for_a_bounded_time(monkeypatch):
+    monkeypatch.setattr(pr, "REQUEST_READ_PRIORITY_SECONDS", 0.05)
+    replica = _replica_of()
+    with pr.background_discovery():
+        with replica.discovery_read():
+            with pytest.raises(pr.SourceStillStartingError):
+                with _request_read(replica):
+                    pass
+        time.sleep(0.1)  # the request went away
+        with replica.discovery_read():  # the index goes on
+            pass
+
+
+def test_background_discovery_is_scoped_to_its_block():
+    assert not pr.in_background_discovery()
+    with pr.background_discovery():
+        assert pr.in_background_discovery()
+    assert not pr.in_background_discovery()
+
+
+@pytest.mark.asyncio
+async def test_a_listing_polled_during_the_index_walk_is_answered_after_one_read(monkeypatch):
+    """The index walks weather, ref and geo on a cold server, each read slow; the Register Table
+    form polls "weather". The poll is answered once the read in flight when it was first refused
+    is answered -- not after the whole walk."""
+    import asyncio
+
+    replica = _replica_of()
+    replica._catalog_ready, replica._catalog_error, replica._catalog_thread = False, None, None
+    replica.endpoint = lambda *, timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)
+    gates = {schema: asyncio.Event() for schema in ("weather", "ref", "geo")}
+    sent: list[str] = []
+
+    class _Cold:
+        async def fetch(self, sql, *args, timeout=None):
+            schema = sql.split("table_schema = '")[1].split("'")[0]
+            sent.append(schema)
+            if len(sent) <= 3:  # the walk's reads are cold; the poll's, later, is warm
+                await gates[schema].wait()
+            return [(f"{schema}_t",)]
+
+        async def close(self):
+            pass
+
+    async def _connect(host, port, password):
+        return _Cold()
+
+    async def _index_walk():
+        with pr.background_discovery():
+            for schema in ("weather", "ref", "geo"):
+                while True:
+                    try:
+                        await pr.adapter_tables(_source(), schema)
+                        break
+                    except pr.SourceStillStartingError:
+                        await asyncio.sleep(0.01)  # catalog_cache's INDEX_STARTING_POLL_SECONDS
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    walk = asyncio.create_task(_index_walk())
+    while sent != ["weather"]:
+        await asyncio.sleep(0)
+    with pytest.raises(pr.SourceStillStartingError):  # the form's first poll, refused
+        await pr.adapter_tables(_source(), "weather")
+    gates["weather"].set()  # the index's "weather" is answered
+    while replica._discovery_reads:
+        await asyncio.sleep(0)
+    await asyncio.sleep(0.03)  # the index asks for "ref" meanwhile, and is held off
+    assert sent == ["weather"]
+    assert await pr.adapter_tables(_source(), "weather") == ["weather_t"]  # the form's next poll
+    gates["ref"].set()
+    gates["geo"].set()
+    await asyncio.wait_for(walk, 5)
+    assert sent == ["weather", "weather", "ref", "geo"]
 
 
 @pytest.mark.asyncio

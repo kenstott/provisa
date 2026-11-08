@@ -5,10 +5,9 @@
     "identity": "Identité",
     "associations": "Associations",
     "load": "Gestion de la charge et fraîcheur",
-    "query": "Requête",
+    "query": "API",
     "quality": "Qualité",
     "columns": "Colonnes",
-    "writes": "Écritures",
     "source": "Source",
     "schema": "Schéma",
     "table": "Table",
@@ -33,7 +32,6 @@
       "skipped": "Ignoré"
     },
     "classTerm": "Les lignes sont des instances de",
-    "classTermPlaceholder": "Choisir un terme",
     "noClassTerm": "Aucun terme",
     "classTermUnreadable": "Son terme n’a pas pu être lu : {{error}}",
     "access": "Accès"

@@ -22,12 +22,13 @@ from typing import Any
 
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_text_search_answers import RECORDED
 
 _NO_FORM = "has no form on"
-_BOOL, _FLOAT4 = 16, 700
+_BOOL, _FLOAT4, _JSONB = 16, 700, 3802
 _NEEDS_QUOTES = re.compile(r'[\s,{}"\\]')
 _CALLED = re.compile(r'pg_catalog\."(\w+)"')
 
@@ -67,6 +68,8 @@ def _text(value: Any, oid: int) -> str | None:
         return "{" + ",".join(_item(v) for v in value) + "}"
     if oid == _FLOAT4:
         return _float4(float(value))
+    if oid == _JSONB:
+        return jsonb_out(value)  # as pgwire writes a jsonb column (cast_types)
     return str(value)
 
 

@@ -160,6 +160,7 @@ async def continue_live_landing(template_org: str, org_id: str, config: Any) -> 
     copied, so a message landed in between is read again and upserted by key, never missed."""
     from provisa.events.push_wiring import kafka_bootstrap, listener_group
     from provisa.kafka import landed_offsets
+    from provisa.kafka.security import KafkaSecurity
 
     for _table, source, topic in _live_topics(config):
         await landed_offsets.carry(
@@ -167,6 +168,7 @@ async def continue_live_landing(template_org: str, org_id: str, config: Any) -> 
             listener_group(template_org, None, source.id),
             landed_offsets.landed_group_of(org_id, None, source.id),
             topic,
+            security=KafkaSecurity.of_source(source),  # REQ-147
         )
 
 
@@ -175,12 +177,17 @@ async def live_topic_ends(config: Any) -> dict[str, dict[int, int]]:
     lands to before it is ready."""
     from provisa.events.push_wiring import kafka_bootstrap
     from provisa.kafka import landed_offsets
+    from provisa.kafka.security import KafkaSecurity
 
     return {
         topic: {
             tp.partition: offset
             for tp, offset in (
-                await landed_offsets.end_offsets(kafka_bootstrap(source), topic)
+                await landed_offsets.end_offsets(
+                    kafka_bootstrap(source),
+                    topic,
+                    security=KafkaSecurity.of_source(source),  # REQ-147
+                )
             ).items()
         }
         for _table, source, topic in _live_topics(config)
@@ -194,11 +201,15 @@ async def live_landing_waits(
     (:func:`live_topic_ends`), saying how far it has; empty once every one has."""
     from provisa.events.push_wiring import kafka_bootstrap, listener_group
     from provisa.kafka import landed_offsets
+    from provisa.kafka.security import KafkaSecurity
 
     waits = []
     for table, source, topic in _live_topics(config):
         landed = await landed_offsets.recorded(
-            kafka_bootstrap(source), listener_group(template_org, None, source.id), topic
+            kafka_bootstrap(source),
+            listener_group(template_org, None, source.id),
+            topic,
+            security=KafkaSecurity.of_source(source),  # REQ-147
         )
         for partition, end in sorted(ends.get(topic, {}).items()):
             if landed.get(partition, 0) < end:

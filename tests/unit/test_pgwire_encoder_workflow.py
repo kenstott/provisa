@@ -41,7 +41,7 @@ RUST = "1.95.0"
 PLATFORMS = {
     "linux-x86_64": ("ubuntu-latest", "manylinux_2_28_x86_64"),
     "linux-aarch64": ("ubuntu-24.04-arm", "manylinux_2_28_aarch64"),
-    "macos-arm64": ("macos-14", r"macosx_\d+_\d+_arm64"),
+    "macos-arm64": ("macos-15", r"macosx_\d+_\d+_arm64"),
     "windows-x64": ("windows-latest", "win_amd64"),
 }
 

@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import functools
 from dataclasses import dataclass, replace
-from itertools import product
 from typing import Any
 
 import sqlglot.expressions as exp
@@ -207,11 +206,232 @@ class _Layout:
         return self.branches[index][2].get(name, [])
 
 
+_ONE, _ANY_OF, _ALL_OF = "one", "any_of", "all_of"
+
+
+@dataclass(frozen=True, eq=False)
+class _Choice:
+    """The sets of instances a scope may combine, unexpanded: ONE set (``instances``), each set of
+    ANY OF ``parts`` (a union's branches), or one set of each of ALL OF ``parts`` combined (the
+    sources of one FROM). ``reach``: every instance any of its sets holds."""
+
+    kind: str
+    instances: frozenset[int]
+    parts: tuple["_Choice", ...]
+    reach: frozenset[int]
+
+
+def project(
+    choice: _Choice, among: frozenset[int] | set[int] | None, memo: dict | None = None
+) -> list[frozenset[int]]:
+    """Each set ``choice`` may combine, cut to the instances ``among`` (all of each, for None) --
+    as a list of the sets expanded and then cut would hold them, each once, in the order it first
+    comes. Each combination is cut and made distinct as it is built, so cut to a few instances it
+    never holds more than the sets of those few."""
+    memo = {} if memo is None else memo
+    key = id(choice)
+    if key in memo:
+        return memo[key]
+    found: list[frozenset[int]]
+    if among is not None and not choice.reach & among:
+        found = [frozenset()]
+    elif choice.kind == _ONE:
+        found = [choice.instances if among is None else choice.instances & among]
+    elif choice.kind == _ANY_OF:
+        found = list(dict.fromkeys(s for p in choice.parts for s in project(p, among, memo)))
+    else:
+        found = [frozenset()]
+        for part in choice.parts:
+            sets = project(part, among, memo)
+            found = list(dict.fromkeys(a | b for a in found for b in sets))
+    memo[key] = found
+    return found
+
+
+@dataclass(frozen=True)
+class _Piece:
+    """One connected piece of a set of instances, as what lies beyond the choice it is drawn
+    from sees it: all that decides whether, combined with more, it is connected, and how a
+    refusal names it."""
+
+    least: int  # its least instance: the one a refusal names the piece by
+    named: bool  # ``least`` has a never-true partner among what it is combined with
+    seen: frozenset[int]  # its instances something beyond can be, or be related to
+    reaches: frozenset[int]  # instances beyond it it is related to
+    partners: frozenset[int]  # ``least``'s never-true partners beyond it, while not ``named``
+
+
+def _kept(pieces: list[_Piece]) -> tuple[_Piece, ...]:
+    """``pieces`` by least instance, all that can decide a refusal kept: a piece nothing beyond
+    can be or be related to is final, and of those only the two least can be the two a refusal
+    names -- the first piece of a set and the least apart from it. Kept whole, each disconnected
+    choice was its own pieces, and a refused statement multiplied them as before."""
+    ordered = sorted(pieces, key=lambda p: p.least)
+    final = [p for p in ordered if not p.seen][:2]
+    return tuple(p for p in ordered if p.seen or any(p is f for f in final))
+
+
+class _Pieces:
+    """Each set a group combines, as the connected pieces the registered pairings make of it.
+
+    A group's sets are a product of its unions' branches: reading the same unions again and again
+    (a view reading a view of a UNION, read three times), far too many to list (#329). Two sets
+    of one choice that look the same from beyond it -- the same pieces, by least instance, each
+    sharing and related to the same instances beyond -- are combined with anything else to the
+    same pieces, so each choice is kept as its distinct pieces, and a combination never holds
+    more of them than look different from beyond it. Nothing of the check is approximated: a
+    group's pieces are those its instances make, by the registered pairings among them alone."""
+
+    def __init__(
+        self,
+        members: set[int],
+        edges: set[frozenset[int]],
+        never_true: set[frozenset[int]],
+        shared: set[int],
+    ) -> None:
+        self._members = members
+        self._shared = frozenset(shared)
+        self._related: dict[int, set[int]] = {m: set() for m in members}
+        self._partners: dict[int, set[int]] = {m: set() for m in members}
+        for edge, into in [(e, self._related) for e in edges] + [
+            (e, self._partners) for e in never_true
+        ]:
+            if len(edge) == 2 and edge <= members:
+                a, b = tuple(edge)
+                into[a].add(b)
+                into[b].add(a)
+        self._near = {m: self._related[m] | self._partners[m] for m in members}
+        self._memo: dict[int, list[tuple[_Piece, ...]]] = {}
+
+    def _beyond_seen(self, instance: int, private: frozenset[int]) -> bool:
+        """Whether something beyond the choice (outside ``private``) can be ``instance`` or be
+        related to it."""
+        return instance not in private or any(o not in private for o in self._near[instance])
+
+    def _split(self, instances: frozenset[int], private: frozenset[int]) -> tuple[_Piece, ...]:
+        held = {i for i in instances if i in self._members}
+        pieces: list[_Piece] = []
+        left = set(held)
+        while left:
+            start = left.pop()
+            piece, frontier = {start}, [start]
+            while frontier:
+                for other in self._related[frontier.pop()] & left:
+                    left.discard(other)
+                    piece.add(other)
+                    frontier.append(other)
+            least = min(piece)
+            named = bool(self._partners[least] & held)
+            pieces.append(
+                _Piece(
+                    least,
+                    named,
+                    frozenset(i for i in piece if self._beyond_seen(i, private)),
+                    frozenset(o for i in piece for o in self._related[i] if o not in private),
+                    frozenset()
+                    if named
+                    else frozenset(p for p in self._partners[least] if p not in private),
+                )
+            )
+        return _kept(pieces)
+
+    def _join(self, pieces: tuple[_Piece, ...], private: frozenset[int]) -> tuple[_Piece, ...]:
+        """``pieces`` of sets combined, connected where they share or are related to an
+        instance, as seen from beyond ``private``."""
+        top = list(range(len(pieces)))
+
+        def root(i: int) -> int:
+            while top[i] != i:
+                top[i] = top[top[i]]
+                i = top[i]
+            return i
+
+        # Each instance something beyond can see, to the piece holding it: two pieces holding
+        # the same one, or one related to an instance the other holds, are connected.
+        holder: dict[int, int] = {}
+        for i, piece in enumerate(pieces):
+            for instance in piece.seen:
+                other = holder.setdefault(instance, i)
+                if other != i:
+                    top[root(i)] = root(other)
+        for i, piece in enumerate(pieces):
+            for instance in piece.reaches:
+                other = holder.get(instance)
+                if other is not None:
+                    top[root(i)] = root(other)
+        grouped: dict[int, list[_Piece]] = {}
+        for i, piece in enumerate(pieces):
+            grouped.setdefault(root(i), []).append(piece)
+        out: list[_Piece] = []
+        for together in grouped.values():
+            lead = min(together, key=lambda p: p.least)
+            if len(together) == 1 and not lead.seen:
+                out.append(lead)  # final: nothing beyond it can change it
+                continue
+            named = lead.named or any(p in holder for p in lead.partners)
+            seen = frozenset().union(*(p.seen for p in together))
+            reaches = frozenset().union(*(p.reaches for p in together)) - seen
+            out.append(
+                _Piece(
+                    lead.least,
+                    named,
+                    frozenset(i for i in seen if self._beyond_seen(i, private)),
+                    frozenset(o for o in reaches if o not in private),
+                    frozenset()
+                    if named
+                    else frozenset(p for p in lead.partners if p not in private),
+                )
+            )
+        return _kept(out)
+
+    def of(self, choice: _Choice) -> list[tuple[_Piece, ...]]:
+        """Each distinct way ``choice``'s sets look from beyond it, in the order each first
+        comes. Beyond it: every instance outside its reach, and those another part of a
+        combination can read as well (``shared``)."""
+        key = id(choice)
+        if key in self._memo:
+            return self._memo[key]
+        private = choice.reach - self._shared
+        if choice.kind == _ONE:
+            found = [self._split(choice.instances, private)]
+        elif choice.kind == _ANY_OF:
+            found = list(
+                dict.fromkeys(self._join(s, private) for p in choice.parts for s in self.of(p))
+            )
+        else:
+            parts = choice.parts
+            after = [frozenset()] * (len(parts) + 1)  # what the parts after each can read
+            for i in range(len(parts) - 1, -1, -1):
+                after[i] = after[i + 1] | parts[i].reach
+            done = parts[0].reach
+            mine = done - after[1] - self._shared
+            found = list(dict.fromkeys(self._join(s, mine) for s in self.of(parts[0])))
+            for i in range(1, len(parts)):
+                done = done | parts[i].reach
+                mine = done - after[i + 1] - self._shared
+                more = self.of(parts[i])
+                found = list(dict.fromkeys(self._join(a + b, mine) for a in found for b in more))
+        self._memo[key] = found
+        return found
+
+    def whole(self, choice: _Choice) -> list[tuple[tuple[int, bool], ...]]:
+        """Each distinct set of pieces ``choice``'s sets make, nothing beyond them: each piece by
+        its least instance, and whether that has a never-true partner in the set."""
+        return list(
+            dict.fromkeys(
+                tuple((p.least, p.named) for p in self._join(s, choice.reach))
+                for s in self.of(choice)
+            )
+        )
+
+
 class _Resolver:
     def __init__(self, resolve_table_id: Any, columns_of: Any) -> None:
         self._table_id = resolve_table_id
         self._columns_of = columns_of
-        self._instances: dict[int, list[frozenset[int]]] = {}
+        self._choices: dict[int, _Choice] = {}
+        # Instances two parts of one combination can both read (_Choice.private).
+        self.shared: set[int] = set()
         # first branch's query -> (that branch's scope, the union's scope), for every union
         self._unions: dict[int, tuple[Scope, Scope]] = {}
         self.table_of: dict[int, int] = {}  # instance -> table id
@@ -284,40 +504,65 @@ class _Resolver:
         self.table_of[id(table)] = table_id
         return _Base(id(table), table_id, "")
 
-    def alternatives(self, scope: Scope) -> list[frozenset[int]]:
+    def one(self, instances: frozenset[int]) -> _Choice:
+        """The one set ``instances``."""
+        return _Choice(_ONE, instances, (), instances)
+
+    def any_of(self, parts: list[_Choice]) -> _Choice:
+        """Each set of any of ``parts``: the branches of a union."""
+        if len(parts) == 1:
+            return parts[0]
+        return _Choice(
+            _ANY_OF, frozenset(), tuple(parts), frozenset().union(*(p.reach for p in parts))
+        )
+
+    def all_of(self, parts: list[_Choice]) -> _Choice:
+        """One set of each of ``parts``, combined: the sources of one FROM."""
+        if not parts:
+            return self.one(frozenset())
+        if len(parts) == 1:
+            return parts[0]
+        seen: set[int] = set()
+        for part in parts:
+            # An instance two parts can both read (a CTE read twice) is not either part's own.
+            self.shared |= seen & part.reach
+            seen |= part.reach
+        return _Choice(_ALL_OF, frozenset(), tuple(parts), frozenset(seen))
+
+    def choices(self, scope: Scope) -> _Choice:
         """The sets of instances ``scope`` combines: one set, or one per choice of branch where it
-        reads a UNION (the branches of a union are alternatives, never combined with each other)."""
+        reads a UNION (the branches of a union are alternatives, never combined with each other),
+        unexpanded -- a statement reading the same unions again and again has a product of them
+        far too many to list (#329: 4 ** 12)."""
         key = id(scope)
-        if key in self._instances:
-            return self._instances[key]
-        self._instances[key] = [frozenset()]  # a recursive CTE reads itself: nothing more
+        if key in self._choices:
+            return self._choices[key]
+        # A recursive CTE reads itself: nothing more.
+        self._choices[key] = self.one(frozenset())
         if scope.set_operation_scopes:
-            found = [
-                alt for branch in scope.set_operation_scopes for alt in self.alternatives(branch)
-            ]
+            found = self.any_of([self.choices(branch) for branch in scope.set_operation_scopes])
         else:
-            per_source: list[list[frozenset[int]]] = []
+            per_source: list[_Choice] = []
             for _name, (_node, source) in scope.selected_sources.items():
                 if isinstance(source, exp.Table):
                     base = self._base(source)
-                    per_source.append([frozenset({base.instance})] if base else [frozenset()])
+                    per_source.append(self.one(frozenset({base.instance}) if base else frozenset()))
                 elif isinstance(source, Scope):
-                    alts = self.alternatives(self._rows_of(source))
+                    alts = self.choices(self._rows_of(source))
                     if id(source) in self._view_sources:
                         # Read as the view: its own instance beside what its SQL reads. Only
                         # here, where it is read -- inside, its SQL is checked as written.
                         instance, _view_id = self._view_scopes[id(source)]
-                        for alt in alts:
-                            self.view_edges.update(frozenset({instance, i}) for i in alt)
-                        alts = [alt | {instance} for alt in alts]
+                        self.view_edges.update(frozenset({instance, i}) for i in alts.reach)
+                        alts = self.all_of([alts, self.one(frozenset({instance}))])
                     per_source.append(alts)
-            found = [frozenset().union(*choice) for choice in product(*per_source)]
-        # Alternatives are a set: two branches reading the same instances (none, for a graph
-        # session's tables, which are no registered table) are one choice. Kept as a list of
-        # each, a pattern of unions multiplies them hop by hop (arms ** hops of the same set).
-        found = list(dict.fromkeys(found))
-        self._instances[key] = found
+            found = self.all_of(per_source)
+        self._choices[key] = found
         return found
+
+    def alternatives(self, scope: Scope) -> list[frozenset[int]]:
+        """Each set of instances ``scope`` combines, listed (:meth:`choices`, expanded)."""
+        return project(self.choices(scope), None)
 
     def _has_column(self, source: Any, name: str) -> bool:
         source = self._columns_from(source)
@@ -391,7 +636,8 @@ class _Resolver:
             for index, (branch, name) in enumerate(layout.by_position(column.name)):
                 for select in layout.named(index, name):
                     for inner in select.find_all(exp.Column):
-                        out |= self.touched(branch, inner, seen)
+                        if not _orders_a_window(inner, select):
+                            out |= self.touched(branch, inner, seen)
         return out
 
     def _projection(self, scope: Scope, name: str, seen: frozenset) -> set[_Base]:
@@ -485,6 +731,21 @@ def unrelated_tables(
     return found
 
 
+def _orders_a_window(column: exp.Column, select: exp.Expr) -> bool:
+    """Whether ``column`` only partitions or orders a window function of ``select`` (REQ-603,
+    amended 2026-11-07). A filter on such a result -- ROW_NUMBER() ... = 1, the latest row per
+    group -- reads a rank of rows the window's own query already combined, where its joins are
+    held to the rule; it matches no rows of one table with another. A column the window function
+    takes as its argument (LAG(v.id)) is a value it gives, and still touches its table."""
+    node: exp.Expr = column
+    while node is not select and node.parent is not None:
+        parent = node.parent
+        if isinstance(parent, exp.Window) and node is not parent.this:
+            return True
+        node = parent
+    return False
+
+
 def _is_filter(query: exp.Expr) -> bool:
     """Whether ``query`` is the subquery of an IN / NOT IN / EXISTS / NOT EXISTS: one that
     decides which rows of the statement around it appear, and gives it none of its own."""
@@ -565,12 +826,12 @@ def _unrelated_in(
     resolver.unions_of(scopes)
     for scope in scopes:  # outermost last in traverse(): an inner filter's instances keep theirs
         if _is_filter(scope.expression):
-            for alt in resolver.alternatives(scope):
-                for instance in alt:
-                    filter_of.setdefault(instance, id(scope))
+            for instance in resolver.choices(scope).reach:
+                filter_of.setdefault(instance, id(scope))
     by_query = {id(s.expression): s for s in scopes}
     edges: set[frozenset[int]] = set()  # registered pairings, by instance pair
-    groups: list[frozenset[int]] = []
+    # Each set of instances combined, by the choice of union branches it may be (_Choice).
+    groups: list[_Choice] = []
     found: list[Unrelated] = []
     table_of = resolver.table_of
 
@@ -661,9 +922,9 @@ def _unrelated_in(
             refuse(Unrelated(tables[0], tables[-1], NOT_EQUALITY))
 
     for scope in scopes:
-        own = resolver.alternatives(scope)
-        groups += own
-        reach = frozenset().union(*own)
+        own = resolver.choices(scope)
+        groups.append(own)
+        reach = own.reach
         mine = {id(c) for c in _own_columns(scope)}
         query = scope.expression
         while not isinstance(query, (exp.Select, exp.SetOperation)):
@@ -678,12 +939,10 @@ def _unrelated_in(
                 if isinstance(on, exp.Boolean) and on.this is False:
                     # Joined on FALSE: what a pattern naming a relationship that does not
                     # connect its two tables lowers to.
-                    inside = resolver.alternatives(scope)
                     joined_source = scope.sources.get(join.this.alias_or_name)
                     if isinstance(joined_source, exp.Table) and id(joined_source) in table_of:
-                        for alt in inside:
-                            for other in alt - {id(joined_source)}:
-                                never_true.add(frozenset({id(joined_source), other}))
+                        for other in reach - {id(joined_source)}:
+                            never_true.add(frozenset({id(joined_source), other}))
                 named = [u.name for u in join.args.get("using") or []]
                 joined = join.this
                 source = scope.sources.get(joined.alias_or_name)
@@ -740,8 +999,7 @@ def _unrelated_in(
                         if isinstance(only, exp.Column):
                             given |= resolver.resolve(branch, only)
                             given_said = given_said or _derived_side(branch, only)
-                        for alt in resolver.alternatives(branch):
-                            drawn |= alt
+                        drawn |= resolver.choices(branch).reach
                     mine_plain = (
                         resolver.resolve(scope, left) if isinstance(left, exp.Column) else set()
                     )
@@ -749,9 +1007,11 @@ def _unrelated_in(
                     for column in left.find_all(exp.Column):
                         touching |= resolver.touched(scope, column)
                     # x IN (SELECT y ...) matches the rows around it with the rows selected.
-                    for outer_alt, inner_alt in product(own, resolver.alternatives(inner)):
-                        if touching & outer_alt:
-                            groups.append(frozenset(touching & outer_alt) | inner_alt)
+                    for outer_part in project(own, touching):
+                        if outer_part:
+                            groups.append(
+                                resolver.all_of([resolver.one(outer_part), resolver.choices(inner)])
+                            )
                     if mine_plain and given:
                         sides = (
                             _derived_side(scope, left) if isinstance(left, exp.Column) else None,
@@ -814,17 +1074,16 @@ def _unrelated_in(
             # Judged within each choice of union branch: a condition on a union's output touches
             # one instance per branch, and the branches are alternatives, never matched together.
             beyond = touching - reach
-            for alt in own:
-                other_matching((touching & alt) | beyond)
+            for part in project(own, touching):
+                other_matching(set(part) | beyond)
         # A column of the statement around it: a correlated subquery is combined with the
         # instance it reaches out to.
         for column in _own_columns(scope):
             for instance in resolver.touched(scope, column):
                 if instance in reach:
                     continue  # one of its own, whichever branch of a union it reads it from
-                for alt in own:
-                    if alt:
-                        groups.append(alt | {instance})
+                if own.reach:
+                    groups.append(resolver.all_of([own, resolver.one(frozenset({instance}))]))
 
     # A view is combined with the instances its own SQL reads (that SQL is checked as written).
     edges |= resolver.view_edges
@@ -840,39 +1099,31 @@ def _unrelated_in(
 
     # Tables a statement combines must be connected by its registered pairings: one combined
     # with nothing relating it to the rest is a product of the two.
+    members = {i for i in table_of if not exempt(i)}
+    related = set(edges)
+    # A relationship registered with a constant source: the target's rows held to that
+    # constant are related to every row of the source it is combined with.
+    for target, held in held_to.items():
+        if target not in members:
+            continue
+        for form, constant in held:
+            for source in members:
+                if source != target and (
+                    (table_of[source], table_of[target], constant, form) in constants
+                ):
+                    related.add(frozenset({source, target}))
+    pieces = _Pieces(members, related, never_true, resolver.shared)
     for group in groups:
-        members = sorted(i for i in group if i in table_of and not exempt(i))
-        if len(members) < 2:
-            continue
-        component = {i: i for i in members}
-
-        def top(i: int, component: dict[int, int] = component) -> int:
-            while component[i] != i:
-                i = component[i]
-            return i
-
-        for edge in edges:
-            a, b = tuple(edge)
-            if a in component and b in component:
-                component[top(a)] = top(b)
-        # A relationship registered with a constant source: the target's rows held to that
-        # constant are related to every row of the source it is combined with.
-        for target in members:
-            for form, constant in held_to.get(target, ()):
-                for source in members:
-                    if (table_of[source], table_of[target], constant, form) in constants:
-                        component[top(source)] = top(target)
-        first = top(members[0])
-        apart = next((m for m in members[1:] if top(m) != first), None)
-        if apart is None:
-            continue
-        tables = sorted((table_of[members[0]], table_of[apart]))
-        # Already refused for how it relates them: said once, as that.
-        if not any({f.left_table, f.right_table} == set(tables) for f in found):
-            said = frozenset({members[0], apart}) in never_true or any(
-                apart in pair and (pair - {apart}) <= set(members) for pair in never_true
-            )
-            refuse(Unrelated(tables[0], tables[1], NEVER_TRUE if said else NO_CONDITION))
+        # Each set the group may be, as its connected pieces, the first holding its least
+        # instance; a second piece is apart from it, named by its own least instance.
+        for parts in pieces.whole(group):
+            if len(parts) < 2:
+                continue
+            (first, _), (apart, said) = parts[0], parts[1]
+            tables = sorted((table_of[first], table_of[apart]))
+            # Already refused for how it relates them: said once, as that.
+            if not any({f.left_table, f.right_table} == set(tables) for f in found):
+                refuse(Unrelated(tables[0], tables[1], NEVER_TRUE if said else NO_CONDITION))
     return found
 
 

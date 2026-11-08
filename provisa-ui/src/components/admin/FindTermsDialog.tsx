@@ -57,7 +57,7 @@ import { useScanProgress } from "./useScanProgress";
 import { documentMark } from "../../lib/documentMark";
 
 /** The files the reference library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xlsx,.xml";
 /** How often the list is read again while a scan in it is running, in milliseconds. */
 const POLL_MS = 2000;
 

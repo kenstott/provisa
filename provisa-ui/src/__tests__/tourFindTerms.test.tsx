@@ -33,6 +33,8 @@ vi.mock("../api/glossary", () => ({ generateGlossaryRelationships: vi.fn() }));
 const library = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
   fetchLibraryDocument: vi.fn(),
+  fetchRetrieval: vi.fn(),
+  saveRetrieval: vi.fn(),
   addLibraryDocument: vi.fn(),
   setLibraryDomains: vi.fn(),
   keepLibraryDocument: vi.fn(),
@@ -124,7 +126,7 @@ const STEPS = demoTourSteps(
   [
     { key: "find", route: "/admin/ontology", capability: "glossary_read", find_terms: RULE },
     { key: "scan", scan: RULE },
-    { key: "lib", route: "/admin/reference-library", capability: "org_settings", library: RULE },
+    { key: "lib", route: "/admin/reference-library", capability: "glossary_rw", library: RULE },
   ],
   [],
 );
@@ -256,6 +258,7 @@ describe("a scan step", () => {
 describe("a library step", () => {
   it("points at the document's row on the Reference library page, by its address", async () => {
     const [, , lib] = STEPS;
+    library.fetchRetrieval.mockResolvedValue("passage");
     library.fetchLibrary.mockResolvedValue([
       {
         id: 4,

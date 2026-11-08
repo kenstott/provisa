@@ -560,3 +560,9 @@ async def test_a_demo_that_declares_no_library_retrieval_clears_it(monkeypatch):
     """REQ-2185: a setting the configuration does not declare is cleared (REQ-1919)."""
     updates = await _declared_settings(monkeypatch, "sonnets")
     assert updates["reference_library"] is None
+
+
+@pytest.fixture(autouse=True)
+def _declared_org_base_domain(monkeypatch):
+    """REQ-1276: a host names an org only under the deployment's declared base domain."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.dev")

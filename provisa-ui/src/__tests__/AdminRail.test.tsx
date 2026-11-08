@@ -23,6 +23,7 @@ const auth = {
   // either held or absent; the demonstration path is covered in CapabilityGate.test.tsx.
   demonstrated: [] as string[],
   billing: false,
+  activeOrgId: null as string | null,
 };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 
@@ -38,9 +39,9 @@ function renderAt(path: string) {
 
 describe("AdminRail", () => {
   it("stands on an admin route", () => {
-    renderAt("/admin/tags");
+    renderAt("/admin/domains");
     expect(screen.getByTestId("admin-rail")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/admin/tags");
+    expect(screen.getByRole("link", { name: "Domains" })).toHaveAttribute("href", "/admin/domains");
   });
 
   it("is absent everywhere else, so no other page loses its width to it", () => {

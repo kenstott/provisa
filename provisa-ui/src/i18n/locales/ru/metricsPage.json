@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Выводится из агрегата при построении из меры факта",
     "fieldDescription": "Описание",
     "fieldAiContext": "Контекст ИИ",
+    "fieldTags": "Теги",
     "fieldAiContextPlaceholder": "Подсказки для генерации запросов с помощью ИИ",
     "saveFailed": "Не удалось сохранить.",
     "editMetric": "Редактировать метрику {{name}}",

@@ -24,6 +24,7 @@
     "layer_relationships": "Relaciones entre miembros",
     "layer_outside": "Relaciones con tablas externas",
     "layer_lineage": "Linaje",
+    "layer_productLinks": "Vínculos con otros productos",
     "filterDomain": "Dominios",
     "filterTag": "Etiquetas",
     "filterSensitivity": "Sensibilidad",
@@ -78,6 +79,7 @@
     "ontologyView": "Vista de ontología",
     "orphans": "Huérfanos",
     "columnsToggle": "Columnas",
+    "tablesToggle": "Tablas",
     "allEdgeTypes": "Todos los tipos de arista",
     "someEdgeTypes": "{{count}} de {{total}} tipos de arista",
     "allDomains": "Todos los dominios",
@@ -146,6 +148,8 @@
     "factOwner": "Propietario",
     "factMembers": "Tablas miembro",
     "factColumns": "Columnas",
+    "depth": "Profundidad",
+    "lateral": "Aristas laterales",
     "grounding_grounded": "Anclado",
     "grounding_grounded_pending": "Anclado, a través de un borrador"
   }

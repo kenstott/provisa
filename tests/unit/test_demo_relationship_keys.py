@@ -86,3 +86,49 @@ def test_seeded_graphql_demo_relationships_key_on_landed_columns(path):
                 f"{sorted(cols[tgt_tbl])}"
             )
     assert checked, f"{path}: no seeded relationship had a statically-configured source table"
+
+
+@pytest.mark.parametrize("path", _CONFIGS)
+def test_no_relationship_makes_breed_name_a_key_of_pets_or_assignments(path):
+    """The replica build keys the "one" side of every relationship, and failed with "The key
+    (breed_name) could not be built: the source repeats its values" because pets and assignments
+    were joined on breed_name, a column that repeats on both. Pets reach assignments through
+    animal_breeds; the landed keys computed from the config and the boot-time seeds must name
+    breed_name only on animal_breeds."""
+    from provisa.api.app_startup import _DEMO_GRAPHQL_RELATIONSHIPS
+    from provisa.federation.landed_keys import relationship_edges
+
+    cfg = yaml.safe_load(Path(path).read_text())
+    seeded = [
+        {
+            "id": rel_id,
+            "source_table_id": src,
+            "target_table_id": tgt,
+            "source_column": src_col,
+            "target_column": tgt_col,
+            "cardinality": cardinality,
+        }
+        for rel_id, src, tgt, src_col, tgt_col, cardinality, _alias in _DEMO_GRAPHQL_RELATIONSHIPS
+    ]
+    declared = [r for r in cfg["relationships"] if not r.get("via_table")]
+    tables = {r[k] for r in [*declared, *seeded] for k in ("source_table_id", "target_table_id")}
+    ids = {name: i for i, name in enumerate(sorted(tables))}
+    by_id = {i: name for name, i in ids.items()}
+    rels = [
+        {
+            **r,
+            "source_table_id": ids[r["source_table_id"]],
+            "target_table_id": ids[r["target_table_id"]],
+        }
+        for r in [*declared, *seeded]
+    ]
+    edges, _skipped = relationship_edges(rels, by_id)
+    keyed = {
+        (edge.referenced, column)
+        for edge in edges
+        for column in edge.referenced_columns
+        if column == "breed_name"
+    }
+    assert not keyed & {("pets", "breed_name"), ("assignments", "breed_name")}, (
+        f"{path}: breed_name is a replica key of {sorted(keyed)}"
+    )

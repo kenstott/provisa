@@ -9,6 +9,7 @@ import https from "https";
 import { spawnSync } from "child_process";
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
+import { isAssignableDomain } from "../src/lib/internalDomains";
 import { addSourceOfType } from "./source-to-query-helpers";
 
 const SOURCE_ID = "e2e-splunk";
@@ -107,8 +108,12 @@ async function waitForSplunk(timeoutMs = 420_000): Promise<void> {
 async function getDomainId(): Promise<string> {
   const res = await gql(`{ domains { id } }`);
   const domains: Array<{ id: string }> = res.data?.domains ?? [];
-  const d = domains.find((d) => d.id !== "meta" && d.id !== "ops") ?? domains[0];
-  return d?.id ?? "pet-store";
+  // The first domain a table may be put into: the form offers no internal one (meta, ontology, ops).
+  const d = domains.find((d) => isAssignableDomain(d.id));
+  if (!d) {
+    throw new Error(`no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`);
+  }
+  return d.id;
 }
 
 async function cleanupSource() {

@@ -27,6 +27,7 @@
     "domainsHelp": "Rollen, die diese Domänen lesen, stützen sich auf das Dokument. Gesamte Organisation steht allein.",
     "fieldSource": "Quelle",
     "fieldStatus": "Status",
+    "fieldTags": "Tags",
     "fieldPassages": "Passagen",
     "fieldModel": "Embedding-Modell",
     "fieldAdded": "Hinzugefügt",

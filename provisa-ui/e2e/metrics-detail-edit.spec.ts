@@ -153,9 +153,10 @@ test("REQ-1324: builder composes AGG(fact.column); delete lives inside detail", 
   // Delete from within the detail panel (REQ-1323).
   await page.getByTestId(`metric-detail-delete-${BUILT_METRIC}`).click();
   // Assert on the confirm button: Mantine's Modal-root wrapper (which carries the
-  // testid) has an empty bounding box, so Playwright reads it as hidden.
-  await expect(page.getByTestId("metric-delete-confirm")).toBeVisible();
-  await page.getByTestId("metric-delete-confirm").click();
+  // testid) has an empty bounding box, so Playwright reads it as hidden. The dialog is the shared
+  // PanelDelete's (REQ-2198): its confirm button is the dialog's test id with -confirm.
+  await expect(page.getByTestId("metric-delete-modal-confirm")).toBeVisible();
+  await page.getByTestId("metric-delete-modal-confirm").click();
   await expect(page.getByTestId(`metrics-row-${BUILT_METRIC}`)).toHaveCount(0, {
     timeout: 15000,
   });

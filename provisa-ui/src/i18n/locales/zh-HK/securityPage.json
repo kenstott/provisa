@@ -94,6 +94,7 @@
     "ruleDescription": "描述",
     "ruleDescriptionHelp": "規則的用途，即存取審查所讀到的內容。",
     "ruleRight": "權限",
+    "tags": "標籤",
     "ruleRightRead": "讀取",
     "ruleRightUpdate": "更新",
     "ruleRightDelete": "刪除",

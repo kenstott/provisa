@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.quickbooks.entities import METADATA, snake
+from provisa.compiler.naming import apply_convention
+from provisa.quickbooks.entities import METADATA
 
 #: The response normalizer a QuickBooks table's endpoint names (``api_source.normalizers``).
 NORMALIZER = "quickbooks_query"
@@ -52,11 +53,11 @@ def row(record: dict) -> dict:
             for field, column in _METADATA_COLUMNS.items():
                 out[column] = value.get(field)
         elif key.endswith("Ref") and isinstance(value, dict):
-            base = snake(key)
+            base = apply_convention(key, "snake")
             out[f"{base}_value"] = value.get("value")
             out[f"{base}_name"] = value.get("name")
         else:
-            out[snake(key)] = value
+            out[apply_convention(key, "snake")] = value
     return out
 
 

@@ -764,6 +764,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN glossary_term_refs r ON r.term_id = ta.term_id
         JOIN glossary_terms gt ON gt.id = ta.term_id
         WHERE ta.object_type = 'term'
+          -- only the tags that reach columns pass to them (provisa.core.term_tags.FLOWING_TAGS)
+          AND ta.base_tag_id IN ('pii')
           -- only a defined, in-service term governs its columns (provisa.core.term_tags.governs)
           AND COALESCE(TRIM(gt.definition), '') <> '' AND NOT gt.retired
     """,

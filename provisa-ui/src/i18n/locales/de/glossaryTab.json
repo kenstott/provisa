@@ -155,6 +155,7 @@
     "draftUndefined": "Entwurf: aus den Spalten- und Tabellennamen abgeleitet. Geben Sie ihm eine Definition – sie ist es, was Agents und Kataloge lesen – und geben Sie ihn dann frei. Der Name stammt aus den Spalten unten, und Spalten, die gleich normalisiert werden, landen bei einem Begriff: Vergeben Sie auf der Seite Tabellen einen Alias für eine Spalte, um zu ändern, welchen Begriff sie speist. Benennen Sie hier um, um nur den Wortlaut dieses Begriffs zu ändern.",
     "draftUngrounded": "Dieser Begriff erreicht keine physische Spalte. Verknüpfen Sie ihn mit einem Begriff, der eine hat, damit er echte Daten benennt.",
     "piiLabel": "PII",
+    "tagsLabel": "Tags",
     "piiHelp": "Jede Spalte mit dieser Bedeutung trägt PII, auch künftige.",
     "piiPropertyOnly": "Nur eine Eigenschaft markiert Spalten: Eine Klasse oder ein Konzept bedeutet keine.",
     "piiMarks_one": "Markiert {{count}} Spalte",

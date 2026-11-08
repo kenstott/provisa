@@ -46,6 +46,7 @@ function renderPanel(props: Partial<Parameters<typeof WriteGrantsPanel>[0]> = {}
       <WriteGrantsPanel
         grants={GRANTS}
         columns={["id", "customer_id", "status", "ship_to"]}
+        sourceWriteOps={["insert", "update", "delete"]}
         roles={[
           { id: "customer", label: "customer" },
           { id: "support", label: "support" },
