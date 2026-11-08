@@ -35,7 +35,7 @@ import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
-from provisa.core import config_stamp, deployment_settings, domain_policy
+from provisa.core import config_stamp, deployment_settings, domain_policy, model_change
 from provisa.core.config_watch import NOT_RELOADED, Target
 from provisa.core.environments import PROD
 from provisa.core.request_context import (
@@ -410,6 +410,9 @@ def targets() -> list[Target]:
                 loaded=lambda rt=rt: rt.model_stamp,
                 watched=lambda rt=rt: _held(rt),
                 reload=lambda rt=rt: reload_model(rt),
+                saves=lambda rt=rt: model_change.saves_in_flight(
+                    model_change.ModelPlane(rt.org_id, rt.env)
+                ),
             )
         )
         out.append(
