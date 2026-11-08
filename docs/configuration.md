@@ -1830,7 +1830,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight server port |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC server port |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket for redirected results |
 | `PROVISA_REDIRECT_ENDPOINT` | — | S3-compatible endpoint URL |

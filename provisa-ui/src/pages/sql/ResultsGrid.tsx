@@ -13,7 +13,7 @@
 // viewer, and the table preview modal.
 
 import { columnLabel } from "../../lib/columnKeys";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Anchor, Badge, Button, Select, Text, TextInput } from "@mantine/core";
@@ -69,6 +69,9 @@ interface ResultsGridProps {
   selectedRow?: (row: Record<string, unknown>) => boolean;
   /** REQ-1386: the page a cell opens, by its column and value; null leaves the cell as text. */
   cellHref?: (column: string, value: unknown) => string | null;
+  /** REQ-029: shown where the rows would be when the result was written to the results store
+      instead of coming back. The toolbar stays, so the reader can narrow the query and run again. */
+  notice?: ReactNode;
 }
 
 export function ResultsGrid({
@@ -82,6 +85,7 @@ export function ResultsGrid({
   onRowClick,
   selectedRow,
   cellHref,
+  notice,
 }: ResultsGridProps) {
   const { t } = useTranslation();
   // REQ-2115: Polly's read_screen reports the grid's columns and row count, never its rows.
@@ -393,263 +397,267 @@ export function ResultsGrid({
         </div>
       )}
       <div style={{ flex: 1, overflow: "auto" }}>
-        <table
-          className="data-table sql-results-table"
-          style={{
-            fontSize: "0.78rem",
-            tableLayout: "fixed",
-            width: "max-content",
-            minWidth: "100%",
-          }}
-        >
-          <thead>
-            <tr>
-              {displayColumns.map((c) => {
-                const sortIdx = sorts.findIndex((s) => s.col === c);
-                const sortEntry = sortIdx !== -1 ? sorts[sortIdx] : null;
-                const isGroupable = groupable && baseColumns.includes(c);
-                const groupLevel = groupBy.indexOf(c);
-                const isGrouped = groupLevel !== -1;
-                return (
-                  <th
-                    key={c}
-                    className={sortEntry ? "col-sorted" : undefined}
-                    style={{
-                      width: colWidths[c] ?? autoWidths[c] ?? 140,
-                      minWidth: COL_MIN,
-                    }}
-                  >
-                    <div className="th-label" onClick={() => handleSort(c)}>
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          flex: 1,
-                        }}
-                      >
-                        {columnLabel(c)}
-                      </span>
-                      {isGroupable && (
-                        <Tip
-                          text={
-                            isGrouped
-                              ? t("sqlResultsPanel.ungroupLevel", { level: groupLevel + 1 })
-                              : t("sqlResultsPanel.groupByCol", { label: columnLabel(c) })
-                          }
-                          named
+        {notice ?? (
+          <table
+            className="data-table sql-results-table"
+            style={{
+              fontSize: "0.78rem",
+              tableLayout: "fixed",
+              width: "max-content",
+              minWidth: "100%",
+            }}
+          >
+            <thead>
+              <tr>
+                {displayColumns.map((c) => {
+                  const sortIdx = sorts.findIndex((s) => s.col === c);
+                  const sortEntry = sortIdx !== -1 ? sorts[sortIdx] : null;
+                  const isGroupable = groupable && baseColumns.includes(c);
+                  const groupLevel = groupBy.indexOf(c);
+                  const isGrouped = groupLevel !== -1;
+                  return (
+                    <th
+                      key={c}
+                      className={sortEntry ? "col-sorted" : undefined}
+                      style={{
+                        width: colWidths[c] ?? autoWidths[c] ?? 140,
+                        minWidth: COL_MIN,
+                      }}
+                    >
+                      <div className="th-label" onClick={() => handleSort(c)}>
+                        <span
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            flex: 1,
+                          }}
                         >
-                          <ActionIcon
-                            component="span"
-                            variant="transparent"
-                            size="xs"
-                            data-testid={`results-group-${c}`}
-                            aria-label={
+                          {columnLabel(c)}
+                        </span>
+                        {isGroupable && (
+                          <Tip
+                            text={
                               isGrouped
                                 ? t("sqlResultsPanel.ungroupLevel", { level: groupLevel + 1 })
                                 : t("sqlResultsPanel.groupByCol", { label: columnLabel(c) })
                             }
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleGroupBy(c);
-                            }}
-                            style={{ opacity: isGrouped ? 1 : 0.35, flexShrink: 0 }}
+                            named
                           >
-                            <Layers
-                              size={11}
-                              color={isGrouped ? "var(--primary, #6366f1)" : undefined}
-                              aria-hidden="true"
-                            />
-                          </ActionIcon>
-                        </Tip>
-                      )}
-                      {isGroupable && isGrouped && (
-                        <Text span fz="0.65rem" c="var(--primary, #6366f1)">
-                          {groupLevel + 1}
-                        </Text>
-                      )}
-                      {sortEntry ? (
-                        <span
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "0.1rem",
-                            flexShrink: 0,
-                            fontSize: "0.62rem",
-                            color: "var(--primary)",
-                          }}
-                        >
-                          {sorts.length > 1 && <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>}
-                          <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: "0.6rem",
-                            color: "var(--text-muted)",
-                            opacity: 0.3,
-                          }}
-                        >
-                          ⇅
-                        </span>
-                      )}
-                    </div>
-                    {baseColumns.includes(c) && (
-                      <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
-                        <Tip text={t("columnFilter.syntaxHint")}>
-                          <TextInput
-                            style={{ flex: 1 }}
-                            size="xs"
-                            variant="unstyled"
-                            className="th-filter"
-                            aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${columnLabel(c)}`}
-                            value={filters[c] ?? ""}
-                            onChange={(e) => {
-                              // Read before the updater: React runs a functional updater on a later
-                              // render pass, when the synthetic event has been pooled and
-                              // currentTarget is null — typing a filter threw there.
-                              const next = e.currentTarget.value;
-                              setFilterText(c, next);
+                            <ActionIcon
+                              component="span"
+                              variant="transparent"
+                              size="xs"
+                              data-testid={`results-group-${c}`}
+                              aria-label={
+                                isGrouped
+                                  ? t("sqlResultsPanel.ungroupLevel", { level: groupLevel + 1 })
+                                  : t("sqlResultsPanel.groupByCol", { label: columnLabel(c) })
+                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleGroupBy(c);
+                              }}
+                              style={{ opacity: isGrouped ? 1 : 0.35, flexShrink: 0 }}
+                            >
+                              <Layers
+                                size={11}
+                                color={isGrouped ? "var(--primary, #6366f1)" : undefined}
+                                aria-hidden="true"
+                              />
+                            </ActionIcon>
+                          </Tip>
+                        )}
+                        {isGroupable && isGrouped && (
+                          <Text span fz="0.65rem" c="var(--primary, #6366f1)">
+                            {groupLevel + 1}
+                          </Text>
+                        )}
+                        {sortEntry ? (
+                          <span
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.1rem",
+                              flexShrink: 0,
+                              fontSize: "0.62rem",
+                              color: "var(--primary)",
                             }}
-                            onClick={(e) => e.stopPropagation()}
-                            placeholder={t("sqlResultsPanel.filterPlaceholder")}
-                          />
-                        </Tip>
-                        <ColumnFilterMenu
-                          col={c}
-                          kind={columnKinds[c] ?? "text"}
-                          current={activeFilters.find((f) => f.col === c)?.spec ?? null}
-                          values={valuesOf(c)}
-                          valuesFromPage={rowsPartial || serverPaged}
-                          rowsHeld={rowsHeld}
-                          onApply={(spec) => setFilterSpec(c, spec)}
-                        />
+                          >
+                            {sorts.length > 1 && (
+                              <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>
+                            )}
+                            <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: "0.6rem",
+                              color: "var(--text-muted)",
+                              opacity: 0.3,
+                            }}
+                          >
+                            ⇅
+                          </span>
+                        )}
                       </div>
-                    )}
-                    <div
-                      role="separator"
-                      aria-label={t("sqlResultsPanel.resizeColumn")}
-                      onMouseDown={(e) => handleResizeStart(c, e)}
-                      style={{
-                        position: "absolute",
-                        insetInlineEnd: 0,
-                        top: 0,
-                        bottom: 0,
-                        width: "5px",
-                        cursor: "col-resize",
-                      }}
-                    />
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {/* REQ-1436: an empty page says so inside the table, under the live header row, so the
-                filter that emptied it stays on screen and can be cleared. */}
-            {pagedItems.length === 0 && (
-              <tr data-testid="results-grid-empty">
-                <td
-                  colSpan={displayColumns.length}
-                  style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-dim)" }}
-                >
-                  <Text size="sm" c="dimmed">
-                    {t("tablePreview.noRows")}
-                  </Text>
-                </td>
-              </tr>
-            )}
-            {pagedItems.map((item, i) =>
-              item.type === "group" ? (
-                <tr
-                  key={item.key}
-                  className="clickable"
-                  data-testid={`group-row-${item.col}-${item.value}`}
-                  onClick={() => toggleGroupCollapsed(item.key)}
-                  style={{ background: "var(--surface)", cursor: "pointer" }}
-                >
-                  <td colSpan={displayColumns.length} style={{ fontWeight: 600 }}>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.3rem",
-                        paddingInlineStart: `${item.level * 16}px`,
-                      }}
-                    >
-                      {collapsedGroups.has(item.key) ? (
-                        <ChevronRight size={12} aria-hidden="true" />
-                      ) : (
-                        <ChevronDown size={12} aria-hidden="true" />
+                      {baseColumns.includes(c) && (
+                        <div style={{ display: "flex", alignItems: "stretch", gap: 0 }}>
+                          <Tip text={t("columnFilter.syntaxHint")}>
+                            <TextInput
+                              style={{ flex: 1 }}
+                              size="xs"
+                              variant="unstyled"
+                              className="th-filter"
+                              aria-label={`${t("sqlResultsPanel.filterPlaceholder")} ${columnLabel(c)}`}
+                              value={filters[c] ?? ""}
+                              onChange={(e) => {
+                                // Read before the updater: React runs a functional updater on a later
+                                // render pass, when the synthetic event has been pooled and
+                                // currentTarget is null — typing a filter threw there.
+                                const next = e.currentTarget.value;
+                                setFilterText(c, next);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              placeholder={t("sqlResultsPanel.filterPlaceholder")}
+                            />
+                          </Tip>
+                          <ColumnFilterMenu
+                            col={c}
+                            kind={columnKinds[c] ?? "text"}
+                            current={activeFilters.find((f) => f.col === c)?.spec ?? null}
+                            values={valuesOf(c)}
+                            valuesFromPage={rowsPartial || serverPaged}
+                            rowsHeld={rowsHeld}
+                            onApply={(spec) => setFilterSpec(c, spec)}
+                          />
+                        </div>
                       )}
-                      <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                        {columnLabel(item.col)}:
-                      </span>
-                      {item.value}
-                      <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
-                        ({item.count})
-                      </span>
-                    </span>
+                      <div
+                        role="separator"
+                        aria-label={t("sqlResultsPanel.resizeColumn")}
+                        onMouseDown={(e) => handleResizeStart(c, e)}
+                        style={{
+                          position: "absolute",
+                          insetInlineEnd: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: "5px",
+                          cursor: "col-resize",
+                        }}
+                      />
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {/* REQ-1436: an empty page says so inside the table, under the live header row, so the
+                filter that emptied it stays on screen and can be cleared. */}
+              {pagedItems.length === 0 && (
+                <tr data-testid="results-grid-empty">
+                  <td
+                    colSpan={displayColumns.length}
+                    style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-dim)" }}
+                  >
+                    <Text size="sm" c="dimmed">
+                      {t("tablePreview.noRows")}
+                    </Text>
                   </td>
                 </tr>
-              ) : (
-                <tr
-                  key={i}
-                  className={
-                    [onRowClick ? "clickable" : "", selectedRow?.(item.row) ? "row-selected" : ""]
-                      .filter(Boolean)
-                      .join(" ") || undefined
-                  }
-                  aria-selected={selectedRow ? selectedRow(item.row) : undefined}
-                  onClick={onRowClick ? () => onRowClick(item.row) : undefined}
-                  style={onRowClick ? { cursor: "pointer" } : undefined}
-                >
-                  {displayColumns.map((c) => {
-                    const v = item.row[c];
-                    const isNum = typeof v === "number";
-                    // REQ-1437: an instant reaches the grid in the engine's wire form. formatCell
-                    // renders it for a reader — no T, no fractional seconds, no zone suffix — and
-                    // leaves every other value exactly as it arrived.
-                    const text = formatCell(v);
-                    const kind = telemetryIdKind(c);
-                    const href = text === null ? null : (cellHref?.(columnLabel(c), v) ?? null);
-                    return (
-                      <td
-                        key={c}
-                        className={isNum ? "col-num" : undefined}
+              )}
+              {pagedItems.map((item, i) =>
+                item.type === "group" ? (
+                  <tr
+                    key={item.key}
+                    className="clickable"
+                    data-testid={`group-row-${item.col}-${item.value}`}
+                    onClick={() => toggleGroupCollapsed(item.key)}
+                    style={{ background: "var(--surface)", cursor: "pointer" }}
+                  >
+                    <td colSpan={displayColumns.length} style={{ fontWeight: 600 }}>
+                      <span
                         style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                          paddingInlineStart: `${item.level * 16}px`,
                         }}
                       >
-                        {text === null ? (
-                          <span className="null-val">{t("sqlResultsPanel.nullValue")}</span>
-                        ) : href !== null ? (
-                          <Anchor component={Link} to={href} inherit>
-                            {text}
-                          </Anchor>
-                        ) : kind !== null && TELEMETRY_ID_RE.test(text) ? (
-                          <Tip text={t("traceDetails.openDetails")}>
-                            <Anchor
-                              component="button"
-                              type="button"
-                              inherit
-                              onClick={() => setDetail({ kind, id: text })}
-                            >
+                        {collapsedGroups.has(item.key) ? (
+                          <ChevronRight size={12} aria-hidden="true" />
+                        ) : (
+                          <ChevronDown size={12} aria-hidden="true" />
+                        )}
+                        <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                          {columnLabel(item.col)}:
+                        </span>
+                        {item.value}
+                        <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>
+                          ({item.count})
+                        </span>
+                      </span>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr
+                    key={i}
+                    className={
+                      [onRowClick ? "clickable" : "", selectedRow?.(item.row) ? "row-selected" : ""]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
+                    aria-selected={selectedRow ? selectedRow(item.row) : undefined}
+                    onClick={onRowClick ? () => onRowClick(item.row) : undefined}
+                    style={onRowClick ? { cursor: "pointer" } : undefined}
+                  >
+                    {displayColumns.map((c) => {
+                      const v = item.row[c];
+                      const isNum = typeof v === "number";
+                      // REQ-1437: an instant reaches the grid in the engine's wire form. formatCell
+                      // renders it for a reader — no T, no fractional seconds, no zone suffix — and
+                      // leaves every other value exactly as it arrived.
+                      const text = formatCell(v);
+                      const kind = telemetryIdKind(c);
+                      const href = text === null ? null : (cellHref?.(columnLabel(c), v) ?? null);
+                      return (
+                        <td
+                          key={c}
+                          className={isNum ? "col-num" : undefined}
+                          style={{
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {text === null ? (
+                            <span className="null-val">{t("sqlResultsPanel.nullValue")}</span>
+                          ) : href !== null ? (
+                            <Anchor component={Link} to={href} inherit>
                               {text}
                             </Anchor>
-                          </Tip>
-                        ) : (
-                          text
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ),
-            )}
-          </tbody>
-        </table>
+                          ) : kind !== null && TELEMETRY_ID_RE.test(text) ? (
+                            <Tip text={t("traceDetails.openDetails")}>
+                              <Anchor
+                                component="button"
+                                type="button"
+                                inherit
+                                onClick={() => setDetail({ kind, id: text })}
+                              >
+                                {text}
+                              </Anchor>
+                            </Tip>
+                          ) : (
+                            text
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ),
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
       {detail !== null && (
         <TraceDetailsModal kind={detail.kind} id={detail.id} onClose={() => setDetail(null)} />

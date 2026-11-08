@@ -118,7 +118,12 @@ export function GovernedTableViewer({
   }> => {
     if (!role) return Promise.resolve({ columns: [], rows: [], error: "No active role" });
     if (!table.draft) {
-      return runSql(pagedViewerSql(table, params, filters, sorts, groupBy, pageNo, size), role);
+      return runSql(
+        pagedViewerSql(table, params, filters, sorts, groupBy, pageNo, size),
+        role,
+        false,
+        true,
+      );
     }
     return previewTable(
       table.id,
@@ -302,15 +307,13 @@ export function GovernedTableViewer({
           <Loader size="sm" />
           <Text size="sm">{result.error}</Text>
         </Group>
-      ) : result?.redirect ? (
-        <ResultRedirectNotice redirect={result.redirect} />
       ) : result?.error ? (
         <Alert color="red" data-testid="table-preview-error">
           <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
             {result.error}
           </pre>
         </Alert>
-      ) : result != null && result.columns.length === 0 ? (
+      ) : result != null && !result.redirect && result.columns.length === 0 ? (
         // REQ-1436: only a relation with no projection at all gets bare text. An empty PAGE keeps
         // the grid: replacing it took the header row away, and with it the filter inputs, so a
         // filter that matched nothing could no longer be cleared.
@@ -321,6 +324,11 @@ export function GovernedTableViewer({
         <div style={{ flex: 1, overflow: "hidden", opacity: loading ? 0.6 : 1 }}>
           <ResultsGrid
             grid={grid}
+            // A result written to the results store keeps the toolbar (page size, page, filters):
+            // the notice stands where the rows would be, so the reader can narrow and run again.
+            notice={
+              result.redirect ? <ResultRedirectNotice redirect={result.redirect} /> : undefined
+            }
             totalRowCount={result.rows.length}
             provenance={provenanceFor(activeParams)}
             fetchAllRows={fetchAllRows}
