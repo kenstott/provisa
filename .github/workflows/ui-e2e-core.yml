@@ -44,8 +44,7 @@ on:
         description: "Record every backend of the Playwright core job with py-spy, uploaded with its report (diagnostics)"
         type: boolean
         required: false
-        # WIP (J957): on while ci-test.sh, which passes only `specs`, profiles this branch.
-        default: true
+        default: false
   # Callable: by an orchestrator, and by the proof of the CI's own structure. Every secret its two
   # jobs read, by name; the caller passes each one and nothing is inherited. No live cloud
   # warehouse's (Snowflake, Databricks, BigQuery, Fabric, Google Sheets): maintainer 2026-10-29,
