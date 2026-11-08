@@ -90,6 +90,7 @@
       "saveEdit": "{{name}} speichern",
       "cancelEdit": "Bearbeitung abbrechen",
       "remove": "{{name}} entfernen"
-    }
+    },
+    "localUsersHeading": "Lokale Benutzer"
   }
 }

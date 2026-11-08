@@ -9787,5 +9787,11 @@
   "fr/graph3d.json::graph3d.hopsFrom": "Hops from {{focus}}",
   "fr/graph3d.json::graph3d.hopsFromMatches": "Hops from the matches",
   "fr/graph3d.json::graph3d.relatedTables": "Related tables",
-  "fr/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}"
+  "fr/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}",
+  "fr/navBar.json::navBar.itemPlatformObservability": "Platform Observability",
+  "fr/securityManager.json::securityManager.tabs.secretsService": "Secrets Service",
+  "fr/team.json::teamPage.localUsersHeading": "Local users",
+  "fr/observabilityTab.json::observabilityTab.schemaClustersTitle": "Schema clusters",
+  "fr/debugTracePanel.json::debugTracePanel.introPlatform": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one organization as a whole for a set time; it turns itself off when the time is up. Tracing a named role or source is that organization's administrator's.",
+  "fr/debugTracePanel.json::debugTracePanel.introOrg": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one role or source for a set time; it turns itself off when the time is up."
 }

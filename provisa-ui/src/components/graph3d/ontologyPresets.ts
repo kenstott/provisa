@@ -30,6 +30,8 @@ export interface OntologyPreset {
   focus: string | null;
   depth: number;
   products: boolean;
+  /** Drawn in 2D until the reader chooses otherwise. */
+  flat?: boolean;
 }
 
 /** A snippet's preset: it has a focus. */
@@ -41,12 +43,16 @@ export const WHOLE: OntologyPreset = { focus: null, depth: NEIGHBOURHOOD.depth, 
 /** The whole ontology with every product among it, as the Product map shows it. */
 export const PRODUCT_MAP: OntologyPreset = { ...WHOLE, products: true };
 
+/** A term's graph opens at what the term touches, its hops raised from there. */
+export const TERM_GRAPH_DEPTH = 1;
+
 /** A term's page: the ontology focused on the term -- its ancestors and descendants, and the
- * columns, tables and products it reaches. */
+ * columns, tables and products it reaches -- in 2D, at one hop. */
 export const termPreset = (term: number): SnippetPreset => ({
   focus: termNode(term),
-  depth: NEIGHBOURHOOD.depth,
+  depth: TERM_GRAPH_DEPTH,
   products: false,
+  flat: true,
 });
 
 /** REQ-2174 (amended 2026-11-07): a product's panel opens at its tables, matching its Related

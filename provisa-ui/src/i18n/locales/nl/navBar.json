@@ -81,6 +81,7 @@
     "itemContainerRegistries": "Containerregisters",
     "itemSparql": "SPARQL",
     "itemCatalogs": "Catalogi",
-    "itemReferenceLibrary": "Referentiebibliotheek"
+    "itemReferenceLibrary": "Referentiebibliotheek",
+    "itemPlatformObservability": "Platform-observability"
   }
 }

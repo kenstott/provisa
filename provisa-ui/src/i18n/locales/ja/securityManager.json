@@ -5,7 +5,8 @@
       "encryption": "暗号化",
       "authentication": "認証",
       "localUsers": "ローカルユーザー",
-      "secrets": "シークレット"
+      "secrets": "シークレット",
+      "secretsService": "シークレットサービス"
     }
   }
 }
