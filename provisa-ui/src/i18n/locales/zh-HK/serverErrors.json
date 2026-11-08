@@ -758,6 +758,9 @@
         "successor_retired": "繼任者「{{successor}}」已停用。請選擇一個正在使用的數據產品。",
         "successor_other_domain": "繼任者「{{successor}}」屬於網域 {{domain}}。產品的成員與其共用同一網域，因此請選擇同一網域中的繼任者。"
       },
+      "members": {
+        "domain_has_members": "數據產品 {{data_product}} 包含來自其他網域的成員（{{members}}），因此無法移到網域 {{domain}}。請先將這些成員從產品中移除。"
+      },
       "finding": {
         "no_members": "沒有任何表格、檢視或指令屬於此數據產品。",
         "member_deprecated": "成員表格 {{table}} 已棄用。",

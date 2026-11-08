@@ -70,7 +70,10 @@ def test_the_install_configs_add_pet_is_the_petstore_apis_add_pet_operation():
         "petstore-api",
         "addPet",
     )
-    assert add_pet.product_id == "pet_health"
+    # REQ-1634: the product lists the command among its members.
+    config = parse_config(_REPO / "config/provisa-install.yaml")
+    [pet_health] = [p for p in config.data_products if p.id == "pet_health"]
+    assert "add_pet" in pet_health.commands
     assert [a.name for a in add_pet.arguments] == ["body"]
 
 

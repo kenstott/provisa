@@ -32,26 +32,26 @@ from provisa.lineage.native import native_address, native_table, served
 
 # orders (1, base) → v_orders (2, B) → mart (3, the product's member); mart_dq checks mart.
 TABLES = [
-    {"id": 1, "table_name": "orders", "source_id": "crm", "product_id": None, "dq_contract": None},
+    {"id": 1, "table_name": "orders", "source_id": "crm", "product_ids": [], "dq_contract": None},
     {
         "id": 2,
         "table_name": "v_orders",
         "source_id": DERIVED_SOURCE_ID,
-        "product_id": None,
+        "product_ids": [],
         "dq_contract": None,
     },
     {
         "id": 3,
         "table_name": "mart",
         "source_id": DERIVED_SOURCE_ID,
-        "product_id": "p1",
+        "product_ids": ["p1"],
         "dq_contract": None,
     },
     {
         "id": 6,
         "table_name": "mart_dq",
         "source_id": "soda",
-        "product_id": "p1",
+        "product_ids": ["p1"],
         "dq_contract": "checks: []",
     },
 ]
@@ -173,7 +173,7 @@ CHECKERS = [
         "table_name": "mart_dq",
         "alias": None,
         "description": "Amounts are present",
-        "product_id": "p1",
+        "product_ids": ["p1"],
         "checked_table_id": 3,
         "checked_table": {"id": 3, "domain_id": "sales", "table_name": "mart", "alias": None},
         "rule_columns": ["amount"],
@@ -187,7 +187,7 @@ CHECKERS = [
         "table_name": "orders_dq",
         "alias": None,
         "description": "Costs are positive",
-        "product_id": None,
+        "product_ids": [],
         "checked_table_id": 1,
         "checked_table": {"id": 1, "domain_id": "sales", "table_name": "orders", "alias": None},
         "rule_columns": ["cost"],
@@ -242,11 +242,11 @@ def test_a_checker_is_no_part_of_the_products_lineage(wired) -> None:
 
 def test_the_inputs_are_the_nearest_physical_datasets_of_the_cut_graph(wired) -> None:
     (only,) = _lineage("analyst")["inputs"]
-    assert (only["relation"], only["kind"], only["table_id"], only["product_id"]) == (
+    assert (only["relation"], only["kind"], only["table_id"], only["product_ids"]) == (
         "sales.orders",
         "source_table",
         1,
-        None,
+        [],
     )
 
 
@@ -289,14 +289,14 @@ def test_an_unknown_product_is_not_found(wired) -> None:
 
 
 def test_an_input_that_is_another_products_member_names_that_product(wired, monkeypatch) -> None:
-    tables = [{**t, "product_id": "p0"} if t["id"] == 1 else t for t in TABLES]
+    tables = [{**t, "product_ids": ["p0"]} if t["id"] == 1 else t for t in TABLES]
 
     async def other(state):
         return tables
 
     monkeypatch.setattr(lineage_router, "_fetch_tables", other)
     (only,) = _lineage("analyst")["inputs"]
-    assert (only["relation"], only["product_id"]) == ("sales.orders", "p0")
+    assert (only["relation"], only["product_ids"]) == ("sales.orders", ["p0"])
 
 
 def _dq(role: str) -> dict[str, list[int]]:
@@ -330,7 +330,7 @@ def test_a_consumer_one_hop_downstream_is_listed_cut_to_the_reader(wired, monkey
             "id": 8,
             "table_name": "report",
             "source_id": DERIVED_SOURCE_ID,
-            "product_id": "p2",
+            "product_ids": ["p2"],
             "dq_contract": None,
             "domain_id": "sales",
             "alias": None,
@@ -359,11 +359,11 @@ def test_a_consumer_one_hop_downstream_is_listed_cut_to_the_reader(wired, monkey
         app_module.state.contexts, "owner", _context({1: ["amount"], 3: ["amount"], 8: ["amount"]})
     )
     (only,) = _lineage("owner")["consumers"]
-    assert (only["relation"], only["kind"], only["table_id"], only["product_id"]) == (
+    assert (only["relation"], only["kind"], only["table_id"], only["product_ids"]) == (
         "sales.report",
         "materialized_view",
         8,
-        "p2",
+        ["p2"],
     )
     # REQ-2158: the members it reads, so each contract counts its own port's consumers.
     assert only["reads"] == ["sales.mart"]

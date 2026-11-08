@@ -758,6 +758,9 @@
         "successor_retired": "後継 '{{successor}}' は廃止されています。利用中のデータプロダクトを選んでください。",
         "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選んでください。"
       },
+      "members": {
+        "domain_has_members": "データプロダクト {{data_product}} は、別のドメインのメンバー({{members}})を含んでいる間は、ドメイン {{domain}} に移せません。先にそれらをプロダクトから外してください。"
+      },
       "finding": {
         "no_members": "このデータプロダクトに属するテーブル、ビュー、コマンドはありません。",
         "member_deprecated": "メンバーテーブル {{table}} は非推奨です。",

@@ -758,6 +758,9 @@
         "successor_retired": "El sucesor '{{successor}}' está retirado. Elige un producto de datos que esté en servicio.",
         "successor_other_domain": "El sucesor '{{successor}}' está en el dominio {{domain}}. Los miembros de un producto comparten su dominio, así que elige un sucesor del mismo dominio."
       },
+      "members": {
+        "domain_has_members": "El producto de datos {{data_product}} no puede pasar al dominio {{domain}} mientras tenga miembros de otro dominio: {{members}}. Quítelos primero del producto."
+      },
       "finding": {
         "no_members": "Ninguna tabla, vista ni comando pertenece a este producto de datos.",
         "member_deprecated": "La tabla miembro {{table}} está obsoleta.",

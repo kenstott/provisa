@@ -208,7 +208,8 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     expect(data).not.toContain("data_products");
     const refs = data!.slice(data!.indexOf("refs {"));
     expect(refs).toContain("registeredTable {");
-    expect(refs).toContain("product {");
+    expect(refs).toContain("dataProductTables {");
+    expect(refs).toContain("dataProduct {");
     expect(refs).not.toContain("source_relationships");
     expect(refs).not.toContain("_meta");
   });
@@ -254,9 +255,11 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     const [, map] = productLayerScopes().find(([k]) => k === "layers=data+related")!;
     const mapped = ontologyQuery(m, map) as string;
     expect(mapped).toContain("m__dataProducts");
-    expect(mapped).toContain("memberTables");
+    expect(mapped).toMatch(/dataProductTables[^{]*\{\s*registeredTable \{/);
     expect(mapped).toContain("sourceRelationships");
     expect(mapped).toMatch(/sourceRelationships \{[^]*targetTable \{/);
+    // The product holding a related table is read through the membership junction.
+    expect(mapped).toMatch(/targetTable \{[^]*dataProductTables[^{]*\{\s*dataProduct \{/);
   });
 
   it("each read the system catalog's real root fields", () => {

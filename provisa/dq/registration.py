@@ -58,8 +58,9 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
         already registered under that name keeps it and its alias;
       * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added.
 
-    Its ``product_id`` is its own, as any member's is (REQ-1443 PRODUCT ASSIGNMENT): it names the
-    product whose owner controls the check, whatever the check scans.
+    The products it is a member of are its own, as any member's are (REQ-1443 PRODUCT ASSIGNMENT;
+    REQ-1634: any number, set on each product): they name the products whose owners control the
+    check, whatever the check scans.
 
     Raises :class:`ValueError` naming the table on any of those. The declared columns are read ONLY
     for their ``visible_to`` and are then replaced; ``visible_to`` must be unanimous, because one

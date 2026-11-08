@@ -17,26 +17,29 @@ from __future__ import annotations
 
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.core.models import Column, Domain, ProvisaConfig, Source, SourceType, Table
+from tests.unit.product_members import with_members
 
 
-def _table(table_name: str, *, product_id: str | None = "prod", columns: list[str] | None = None):
+def _table(table_name: str, *, columns: list[str] | None = None):
     return Table(
         source_id="wh",
         domain_id="sales",
         schema_name="public",
         table_name=table_name,
-        product_id=product_id,
         columns=[
             Column(name=c, data_type="integer", visible_to=["admin"]) for c in (columns or ["id"])
         ],
     )
 
 
-def _config(tables: list[Table]) -> ProvisaConfig:
+def _config(tables: list[Table], *, members: list[Table] | None = None) -> ProvisaConfig:
+    """``members``: the tables in product "prod" (REQ-1634), which alone publish; every table when
+    left out."""
     return ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="warehouse")],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
         tables=tables,
+        data_products=with_members([], {"prod": tables if members is None else members}),
         roles=[],
     )
 
@@ -109,12 +112,8 @@ def _glossary() -> dict:
 
 
 def test_terms_follow_the_data_product_filter():
-    config = _config(
-        [
-            _table("orders", columns=["cust_id"]),
-            _table("staging", product_id=None, columns=["hidden_id"]),
-        ]
-    )
+    orders = _table("orders", columns=["cust_id"])
+    config = _config([orders, _table("staging", columns=["hidden_id"])], members=[orders])
     snapshot = build_snapshot(
         config, org_id="acme", dialect="postgres", contexts={}, glossary=_glossary()
     )
@@ -253,18 +252,22 @@ def test_a_class_term_is_rooted_for_export_through_its_published_tables():
     is what roots it; with every grounded table withheld it does not publish."""
     tables = [
         _table("orders", columns=["cust_id"]),
-        _table("staging", product_id=None, columns=["hidden_id"]),
+        _table("staging", columns=["hidden_id"]),
     ]
     snapshot = build_snapshot(
-        _config(tables), org_id="acme", dialect="postgres", contexts={}, glossary=_class_glossary()
+        _config(tables, members=tables[:1]),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        glossary=_class_glossary(),
     )
     order = next(t for t in snapshot.glossary_terms if t.name == "order")
     assert order.refs == ()
     assert [t.parts for t in order.tables] == [("wh", "public", "orders")]
 
-    withheld = [_table("orders", product_id=None, columns=["cust_id"]), tables[1]]
+    withheld = [_table("orders", columns=["cust_id"]), tables[1]]
     snapshot = build_snapshot(
-        _config(withheld),
+        _config(withheld, members=[]),
         org_id="acme",
         dialect="postgres",
         contexts={},
@@ -310,12 +313,8 @@ def test_axioms_ride_along_with_the_terms_they_state():
     they state -- one about a withheld term, or naming one, does not."""
     from provisa.sparql_query.vocabulary import OWL, RDF, RDFS, XSD
 
-    config = _config(
-        [
-            _table("orders", columns=["cust_id"]),
-            _table("staging", product_id=None, columns=["hidden_id"]),
-        ]
-    )
+    orders = _table("orders", columns=["cust_id"])
+    config = _config([orders, _table("staging", columns=["hidden_id"])], members=[orders])
     glossary = _glossary()
     glossary["axioms"] = [
         {

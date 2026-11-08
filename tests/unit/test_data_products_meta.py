@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.api._meta_seed import META_RELATIONSHIPS
+from provisa.api._meta_seed import META_JUNCTION_RELATIONSHIPS, META_RELATIONSHIPS
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS, ONTOLOGY_TABLE_VIEWS
 from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
@@ -55,6 +55,8 @@ PRODUCT_FIELDS = [
 
 _VIEWS = (
     "data_products",
+    "data_product_tables",
+    "data_product_commands",
     "registered_tables",
     "table_columns",
     "tracked_functions",
@@ -96,6 +98,30 @@ async def _follow(conn, rel_id: str, keys: list, column: str = "id") -> list[dic
     return [dict(r._mapping) for r in rows.fetchall()]
 
 
+def _junction(rel_id: str) -> tuple[str, str, str, str, str, str, str]:
+    """(source, source column, target column, target, junction, junction's source end, junction's
+    target end) of a seeded junction-backed meta edge (REQ-1634: membership)."""
+    for row in META_JUNCTION_RELATIONSHIPS:
+        if row[0] == rel_id:
+            return row[2], row[3], row[4], row[7], row[8], row[9], row[10]
+    raise AssertionError(f"no seeded junction meta relationship {rel_id!r}")
+
+
+async def _follow_via(conn, rel_id: str, keys: list, column: str = "id") -> list[dict]:
+    """The rows a junction-backed edge reaches from source rows whose ``column`` is in ``keys``:
+    through the junction the seeded row names, nothing else."""
+    from sqlalchemy import bindparam, text
+
+    src, src_col, tgt_col, tgt, via, via_src, via_tgt = _junction(rel_id)
+    rows = await conn.execute_core(
+        text(
+            f"SELECT t.* FROM {_relation(src)} s JOIN {_relation(via)} j ON j.{via_src} = s.{src_col} "
+            f"JOIN {_relation(tgt)} t ON t.{tgt_col} = j.{via_tgt} WHERE s.{column} IN :keys"
+        ).bindparams(bindparam("keys", value=keys, expanding=True))
+    )
+    return [dict(r._mapping) for r in rows.fetchall()]
+
+
 async def _seed(conn) -> None:
     """customer_360 in sales: a member table, a member checker table with a dq_contract, a
     member command, a tag on the product, a term bound to a member column, and the member table
@@ -104,6 +130,8 @@ async def _seed(conn) -> None:
     from sqlalchemy import insert
 
     from provisa.core.schema_org import (
+        data_product_commands,
+        data_product_tables,
         data_products,
         domains,
         glossary_term_refs,
@@ -134,21 +162,17 @@ async def _seed(conn) -> None:
             id=1,
             source_id="crm",
             table_name="customers",
-            product_id="customer_360",
             profiler_source_id="prof",
         ),
         dict(
             id=2,
             source_id="dq",
             table_name="customers_checks",
-            product_id="customer_360",
             dq_contract="checks for customers:\n  - row_count > 0",
         ),
         dict(id=3, source_id="crm", table_name="regions"),
         dict(id=4, source_id="prof", table_name="customers_1_profile_runs"),
-        dict(
-            id=5, source_id="crm", table_name="draft_member", product_id="customer_360", draft=True
-        ),
+        dict(id=5, source_id="crm", table_name="draft_member", draft=True),
     ]
     for t in tables:
         await conn.execute_core(
@@ -161,8 +185,16 @@ async def _seed(conn) -> None:
             )
         )
     await conn.execute_core(
-        insert(tracked_functions).values(
-            name="refresh_customer", domain_id="sales", product_id="customer_360"
+        insert(tracked_functions).values(name="refresh_customer", domain_id="sales")
+    )
+    # REQ-1634: membership is its own relation, one row per product and member.
+    for table_id in (1, 2, 5):
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id="customer_360", table_id=table_id)
+        )
+    await conn.execute_core(
+        insert(data_product_commands).values(
+            product_id="customer_360", command_name="refresh_customer"
         )
     )
     await conn.execute_core(
@@ -209,7 +241,7 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
 
             # Both member tables, the checker told apart by its contract; the draft member is in
             # no catalog and the table in no product is reached by nothing.
-            members = await _follow(conn, "meta:data_products:registered_tables", key)
+            members = await _follow_via(conn, "meta:data_products:member_tables", key)
             assert {m["table_name"]: m["dq_contract"] is not None for m in members} == {
                 "customers": False,
                 "customers_checks": True,
@@ -226,13 +258,17 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
             checked_by = await _follow(conn, "meta:registered_tables:checked_by", [1])
             assert [t["table_name"] for t in checked_by] == ["customers_checks"]
 
-            # Back from a member to its product.
-            back = await _follow(conn, "meta:registered_tables:data_products", member_ids)
+            # Back from a member to its products.
+            back = await _follow_via(conn, "meta:registered_tables:products", member_ids)
             assert {b["id"] for b in back} == {"customer_360"}
 
             # The command and the tag.
-            commands = await _follow(conn, "meta:data_products:tracked_functions", key)
+            commands = await _follow_via(conn, "meta:data_products:commands", key)
             assert [c["name"] for c in commands] == ["refresh_customer"]
+            back = await _follow_via(
+                conn, "meta:tracked_functions:products", ["refresh_customer"], column="name"
+            )
+            assert [b["id"] for b in back] == ["customer_360"]
             tags = await _follow(conn, "meta:data_products:tag_assignments", key)
             assert [(t["tag_id"], t["object_type"]) for t in tags] == [("certified", "product")]
 
@@ -266,10 +302,6 @@ def test_the_product_view_is_a_meta_table_whose_relationships_are_all_seeded():
     for rel_id in (
         "meta:data_products:domains",
         "meta:domains:data_products",
-        "meta:data_products:registered_tables",
-        "meta:registered_tables:data_products",
-        "meta:data_products:tracked_functions",
-        "meta:tracked_functions:data_products",
         "meta:data_products:tag_assignments",
         "meta:tag_assignments:data_products",
         "meta:registered_tables:profile_results",
@@ -279,6 +311,15 @@ def test_the_product_view_is_a_meta_table_whose_relationships_are_all_seeded():
     ):
         src, *_, tgt = _edge(rel_id)
         assert {src, tgt} <= set(_META_TABLES), rel_id
+    # REQ-1634: membership, many-to-many, through its own relation, both ways.
+    for rel_id in (
+        "meta:data_products:member_tables",
+        "meta:registered_tables:products",
+        "meta:data_products:commands",
+        "meta:tracked_functions:products",
+    ):
+        src, _sc, _tc, tgt, via, _vs, _vt = _junction(rel_id)
+        assert {src, tgt, via} <= set(_META_TABLES), rel_id
 
 
 def test_each_view_keeps_its_own_tiers():

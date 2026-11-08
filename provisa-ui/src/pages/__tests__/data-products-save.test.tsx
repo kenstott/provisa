@@ -89,6 +89,15 @@ const products = [
     customProperties: {},
   },
   {
+    id: "care_ops",
+    domainId: "care",
+    name: "Care Ops",
+    purpose: "Care operations",
+    limitations: "",
+    usage: "",
+    customProperties: {},
+  },
+  {
     id: "workforce_ops",
     domainId: "ops",
     name: "Workforce Ops",
@@ -106,12 +115,19 @@ const DOMAINS = [{ id: "care", description: "" }];
 const saves = vi.hoisted(() => ({
   create: vi.fn<(input: Record<string, unknown>) => Promise<Record<string, unknown>>>(),
   update: vi.fn<(input: Record<string, unknown>) => Promise<Record<string, unknown>>>(),
+  members:
+    vi.fn<
+      (id: string, tableIds: number[], commands: string[]) => Promise<Record<string, unknown>>
+    >(),
+  // The tables the page lists, each with the products it belongs to (REQ-1634).
+  tables: [] as unknown[],
 }));
 
 vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: saves.create, loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: saves.update, loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
+  useSetDataProductMembers: () => ({ setDataProductMembers: saves.members, loading: false }),
   useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
@@ -125,7 +141,7 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: vi.fn() }),
-  useTables: () => ({ tables: none, loading: false, refetch: vi.fn() }),
+  useTables: () => ({ tables: saves.tables, loading: false, refetch: vi.fn() }),
   useSources: () => ({ sources: none, loading: false, refetch: vi.fn() }),
   useRelationships: () => ({ relationships: none, loading: false, refetch: vi.fn() }),
   useRoles: () => ({ roles: none, loading: false, refetch: vi.fn() }),
@@ -139,6 +155,8 @@ describe("Data Products: saving (REQ-1634)", () => {
     localStorage.clear();
     saves.create.mockReset();
     saves.update.mockReset();
+    saves.members.mockReset();
+    saves.tables = [];
   });
 
   it("saves an open product as an update, never a create", async () => {
@@ -178,5 +196,80 @@ describe("Data Products: saving (REQ-1634)", () => {
     );
     expect(saves.update).not.toHaveBeenCalled();
     expect(screen.getByTestId("data-product-form")).toBeInTheDocument();
+  });
+
+  // REQ-1634: a table is in any number of products. Two tables in the "care" domain: "pets" is in
+  // both Pet Health and Care Ops, "vets" in Care Ops alone.
+  const table = (id: number, tableName: string, productIds: string[]) => ({
+    id,
+    domainId: "care",
+    schemaName: "care",
+    tableName,
+    alias: null,
+    dqContract: null,
+    productIds,
+    columns: [],
+  });
+  const openEditor = async (product: string) => {
+    render(<DataProductsPage />, { initialEntries: [`/data-products?product=${product}`] });
+    fireEvent.click(await screen.findByTestId(`edit-${product}`));
+    return screen.findByTestId("data-product-tables-input");
+  };
+
+  it("shows a table that is in two products as a member of each", async () => {
+    saves.tables = [table(1, "pets", ["pet_health", "care_ops"]), table(2, "vets", ["care_ops"])];
+    const picker = await openEditor("pet_health");
+    const field = picker.closest(".mantine-InputWrapper-root") as HTMLElement;
+    expect(field).toHaveTextContent("pets");
+    expect(field).not.toHaveTextContent("vets");
+  });
+
+  it("shows the other product's members too: the shared table is under it as well", async () => {
+    saves.tables = [table(1, "pets", ["pet_health", "care_ops"]), table(2, "vets", ["care_ops"])];
+    const picker = await openEditor("care_ops");
+    const field = picker.closest(".mantine-InputWrapper-root") as HTMLElement;
+    expect(field).toHaveTextContent("pets");
+    expect(field).toHaveTextContent("vets");
+  });
+
+  it("saves no membership when the members are as they were", async () => {
+    saves.update.mockResolvedValueOnce({ success: true, message: "updated" });
+    saves.tables = [table(1, "pets", ["pet_health", "care_ops"])];
+    await openEditor("pet_health");
+    fireEvent.click(await screen.findByTestId("data-product-save-button"));
+    await waitFor(() => expect(saves.update).toHaveBeenCalledTimes(1));
+    expect(saves.members).not.toHaveBeenCalled();
+  });
+
+  it("sets the product's whole member list on the product, leaving other products' alone", async () => {
+    saves.update.mockResolvedValueOnce({ success: true, message: "updated" });
+    saves.members.mockResolvedValueOnce({ success: true, message: "set" });
+    saves.tables = [table(1, "pets", ["pet_health", "care_ops"]), table(2, "vets", ["care_ops"])];
+    const picker = await openEditor("pet_health");
+    fireEvent.focus(picker);
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("option", { name: /vets/, hidden: true }));
+    fireEvent.click(screen.getByTestId("data-product-save-button"));
+    await waitFor(() => expect(saves.members).toHaveBeenCalledTimes(1));
+    // Both tables, as numbers; "pets" stays in Care Ops, which this save does not name.
+    expect(saves.members).toHaveBeenCalledWith("pet_health", [1, 2], []);
+  });
+
+  it("keeps the form open, saying why, when the membership is refused", async () => {
+    saves.update.mockResolvedValueOnce({ success: true, message: "updated" });
+    saves.members.mockResolvedValueOnce({
+      success: false,
+      message: "table 2 is in another domain",
+      code: "data_product.members.domain",
+    });
+    saves.tables = [table(1, "pets", ["pet_health"]), table(2, "vets", [])];
+    const picker = await openEditor("pet_health");
+    fireEvent.focus(picker);
+    fireEvent.click(picker);
+    fireEvent.click(await screen.findByRole("option", { name: /vets/, hidden: true }));
+    fireEvent.click(screen.getByTestId("data-product-save-button"));
+    expect(await screen.findByTestId("data-product-form-error")).toHaveTextContent(
+      "table 2 is in another domain",
+    );
   });
 });

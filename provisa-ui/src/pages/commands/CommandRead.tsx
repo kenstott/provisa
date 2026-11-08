@@ -128,11 +128,11 @@ function useCommonFields(c: TrackedFunction | TrackedWebhook, type: "function" |
 
 export function FunctionRead({
   fn,
-  productName,
+  productNames,
 }: {
   fn: TrackedFunction;
-  /** The data product it belongs to, by name; null when it belongs to none. */
-  productName: string | null;
+  /** The data products it belongs to, by name; none when it belongs to none. Set on the product. */
+  productNames: string[];
 }) {
   const { t } = useTranslation();
   const common = useCommonFields(fn, "function");
@@ -185,7 +185,7 @@ export function FunctionRead({
         testId="function-read-fields"
         fields={[
           ...common.head,
-          { label: t("commandFormFields.dataProduct"), value: productName },
+          { label: t("commandFormFields.dataProduct"), value: productNames.join(", ") },
           {
             label: t("commandFormFields.implementation"),
             value: IMPL_KINDS.find((k) => k.value === impl)?.label ?? impl,

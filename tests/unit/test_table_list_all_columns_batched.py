@@ -82,8 +82,9 @@ async def test_every_table_is_listed_with_its_columns_in_a_fixed_number_of_queri
     # The same columns, in the same order, as each table read on its own.
     assert {t["id"]: t["columns"] for t in listed} == one_by_one
     assert [c["column_name"] for c in listed[1]["columns"]] == ["zeta", "alpha", "c2"]
-    # Tables, columns and write grants: three statements, whatever the number of tables.
-    assert counting.statements <= 3
+    # Tables, columns, write grants and (REQ-1634) the products each table is a member of, read as
+    # one table_memberships query: four statements, whatever the number of tables.
+    assert counting.statements <= 4
 
 
 class _CountingFetch(_Counting):

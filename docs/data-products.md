@@ -4,17 +4,17 @@ A data product is a named, owned bundle of tables published together for consump
 
 ## Domain ownership rule
 
-Every data product is owned by exactly one domain (`domain_id` is a required field). A table may join a data product only when both share the same `domain_id`. The UI scopes the table picker to the product's domain; the backend rejects a `product_id` assignment whose domain does not match the product's at save time.
+Every data product is owned by exactly one domain (`domain_id` is a required field). A table may join a data product only when both share the same `domain_id`. The UI scopes the table picker to the product's domain; the backend refuses a member whose domain does not match the product's when the product's members are saved.
 
 A product that needs data from another domain must bring that data in as a domain view first, then include the view as a member.
 
 ## Output ports
 
-The tables and commands assigned to a data product are its **output ports**, the queryable surface consumers see. Assigning a table sets `Table.product_id`; clearing it removes the membership. A table belongs to at most one product. Commands in the same domain may also be assigned as members.
+The tables and commands that are members of a data product are its **output ports**, the queryable surface consumers see. Membership is many-to-many: a table, view or command may belong to any number of products in its domain, and a product to any number of members. Members are added and removed on the product only: the `setDataProductMembers` mutation (or the product's `tables` and `commands` lists in configuration). A table's own page lists the products it belongs to, read-only.
 
 ## Contracts
 
-Each member table is an output port with its own data contract, in the ODCS format. A table gets a draft contract at version `0.1.0` when it joins a product. A contract's schema is its member table's columns: it has no column selection of its own. To offer a subset of a table, make a view of that subset the product's member. The contract has its own version, separate from the product's. A checker table that a product owns is not an output port and has no contract.
+Each member table is an output port with its own data contract, in the ODCS format. A table gets a draft contract at version `0.1.0` when it joins its first product; a table in several products has one contract, which each of its products lists. A table that leaves its last product loses its contract. A contract's schema is its member table's columns: it has no column selection of its own. To offer a subset of a table, make a view of that subset the product's member. The contract has its own version, separate from the product's. A checker table that a product owns is not an output port and has no contract.
 
 A contract holds:
 
@@ -30,14 +30,19 @@ A contract's promises are the product's data quality checks on the member. A col
 
 A product's contracts advertise it. Every role that can see the product sees each contract, its schema included, whether or not it can read the member's data. A contract grants nothing: reading the member still needs a grant.
 
-Edit contracts on the product's form, in its Contracts panel, or declare them in configuration on the table:
+Edit contracts on the product's form, in its Contracts panel, or declare them in configuration on the table, which the product lists by name:
 
 ```yaml
+data_products:
+  - id: revenue
+    domain_id: finance
+    name: Revenue
+    tables: [daily_revenue]
 tables:
   - source_id: warehouse
+    domain_id: finance
     schema_name: public
     table_name: daily_revenue
-    product_id: revenue
     contract:
       version: 1.0.0
       status: active

@@ -41,6 +41,7 @@ from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
     checker_targets,
+    data_product_tables,
     domains,
     registered_tables,
     sources,
@@ -380,11 +381,10 @@ def _for_save(**kw) -> DataContract | None:
         kw = {**kw, "declared": declared.contract, "columns": declared.columns}
     args = {
         "columns": [],
-        "product_id": "p",
+        "products": ["p"],
         "is_checker": False,
         "declared": None,
         "stored": None,
-        "stored_product_id": None,
     }
     return data_contracts.for_save(**{**args, **kw})
 
@@ -398,20 +398,15 @@ def test_a_reload_keeps_the_versions_of_a_contract_it_does_not_declare():
     members = [_col("id", "integer")]
     first = _for_save(declared=_contract("1.0.0", *members))
     stored = first.model_dump(mode="json")
-    assert (
-        _for_save(stored=stored, stored_product_id="p", columns=members).versions == first.versions
-    )
+    assert _for_save(stored=stored, columns=members).versions == first.versions
 
 
 def test_a_member_whose_columns_changed_makes_no_version_until_a_version_is_saved():
     first = _for_save(declared=_contract("1.0.0", _col("id"), _col("note")))
-    reloaded = _for_save(
-        stored=first.model_dump(mode="json"), stored_product_id="p", columns=[_col("id")]
-    )
+    reloaded = _for_save(stored=first.model_dump(mode="json"), columns=[_col("id")])
     assert reloaded.versions == first.versions
     next_version = _for_save(
         stored=reloaded.model_dump(mode="json"),
-        stored_product_id="p",
         declared=DataContract(version="2.0.0"),
         columns=[_col("id")],
     )
@@ -423,7 +418,7 @@ def test_a_member_whose_columns_changed_makes_no_version_until_a_version_is_save
 def test_a_declared_contract_cannot_supply_its_own_history():
     first = _for_save(declared=_contract("1.0.0", _col("id", "integer")))
     forged = DataContract(version="2.0.0", versions=[_contract("9.9.9")])
-    saved = _for_save(stored=first.model_dump(mode="json"), stored_product_id="p", declared=forged)
+    saved = _for_save(stored=first.model_dump(mode="json"), declared=forged)
     assert [v.contract.version for v in saved.versions] == ["1.0.0", "2.0.0"]
 
 
@@ -449,7 +444,6 @@ def _table_model(*columns: str, contract: DataContract | None = None) -> Table:
         domain_id="sales",
         schema_name="public",
         table_name="orders",
-        product_id="p",
         contract=contract,
         columns=[Column(name=c, visible_to=["analyst"], data_type="integer") for c in columns],
     )
@@ -463,6 +457,10 @@ async def plane(control_plane) -> Database:
         await conn.execute_core(insert(domains).values(id="sales"))
         await data_product_repo.upsert(conn, DataProduct(id="p", domain_id="sales", name="P"))
         await table_repo.upsert(conn, _table_model("id", "amount"))
+        # REQ-1634: the table joins the product on the product.
+        await data_product_repo.set_members(
+            conn, "p", table_ids=[await _orders_id(conn)], commands=[]
+        )
     return db
 
 
@@ -530,7 +528,6 @@ async def test_a_resave_that_omits_a_stored_columns_type_snapshots_the_stored_ty
         domain_id="sales",
         schema_name="public",
         table_name="orders",
-        product_id="p",
         contract=DataContract(version="2.0.0"),
         columns=[Column(name=c, visible_to=["analyst"]) for c in ("id", "amount")],
     )
@@ -611,7 +608,6 @@ async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
                 domain_id="sales",
                 schema_name="dq",
                 table_name="orders_quality",
-                product_id=owner,
                 dq_contract="dataset: a/b/c",
                 dq_rules=[
                     {
@@ -628,6 +624,10 @@ async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
     await conn.execute_core(
         insert(checker_targets).values(table_id=checker, checked_table_id=table_id)
     )
+    if owner is not None:  # REQ-1634: the checker table is a member of its owning product
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id=owner, table_id=checker)
+        )
 
 
 async def test_a_version_holds_the_products_promised_checks_on_the_member(plane):
