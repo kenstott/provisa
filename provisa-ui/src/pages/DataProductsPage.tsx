@@ -16,11 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, Paper, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus, Package } from "lucide-react";
-import {
-  useDomains,
-  useTables,
-  useRoles,
-} from "../hooks/useAdminQueries";
+import { useDomains, useTables, useRoles } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
@@ -345,7 +341,8 @@ export function DataProductsPage() {
     // member list, only when it differs from the current one. A checker table is a member as any
     // other is (REQ-1443).
     const productId = form.id.trim();
-    const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+    const sameSet = (a: string[], b: string[]) =>
+      a.length === b.length && a.every((x) => b.includes(x));
     const currentTables = memberTables(productId).map((tb) => String(tb.id));
     const currentFns = memberFunctions(productId).map((fn) => fn.name);
     const membersChanged =

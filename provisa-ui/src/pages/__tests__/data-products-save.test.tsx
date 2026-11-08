@@ -115,7 +115,10 @@ const DOMAINS = [{ id: "care", description: "" }];
 const saves = vi.hoisted(() => ({
   create: vi.fn<(input: Record<string, unknown>) => Promise<Record<string, unknown>>>(),
   update: vi.fn<(input: Record<string, unknown>) => Promise<Record<string, unknown>>>(),
-  members: vi.fn<(id: string, tableIds: number[], commands: string[]) => Promise<Record<string, unknown>>>(),
+  members:
+    vi.fn<
+      (id: string, tableIds: number[], commands: string[]) => Promise<Record<string, unknown>>
+    >(),
   // The tables the page lists, each with the products it belongs to (REQ-1634).
   tables: [] as unknown[],
 }));

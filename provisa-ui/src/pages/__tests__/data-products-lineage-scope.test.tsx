@@ -228,7 +228,7 @@ const input = (relation: string, over: Partial<ProductInput> = {}): ProductInput
   domain_id: "pet-store",
   table_name: relation.split(".")[1],
   alias: null,
-  product_id: null,
+  product_ids: [],
   source_id: null,
   source_type: null,
   source_schema: null,

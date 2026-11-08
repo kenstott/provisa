@@ -76,9 +76,9 @@ function renderView(promises = PROMISES) {
       versions={[]}
       tableId={7}
       table={{ domainId: "pet-store", tableName: "pets", alias: null }}
-        reader={null}
-        viewer={{ held: new Set<string>(), acting: "analyst" }}
-        promises={promises}
+      reader={null}
+      viewer={{ held: new Set<string>(), acting: "analyst" }}
+      promises={promises}
     />,
   );
 }
@@ -164,9 +164,9 @@ describe("a contract's promises table", () => {
           versions={[]}
           tableId={7}
           table={{ domainId: "pet-store", tableName: "pets", alias: null }}
-        reader={null}
-        viewer={{ held: new Set<string>(), acting: "analyst" }}
-        promises={[promise(9, [rule("expect_something_new", "")])]}
+          reader={null}
+          viewer={{ held: new Set<string>(), acting: "analyst" }}
+          promises={[promise(9, [rule("expect_something_new", "")])]}
         />,
       ),
     ).toThrow(/expect_something_new/);

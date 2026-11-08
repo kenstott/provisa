@@ -84,7 +84,7 @@ describe("a function's read view", () => {
       ["Type", "DB Function"],
       ["Kind", "Mutation"],
       ["Domain", "sales"],
-      ["Data Product (optional)", "Refunds, Payouts"],
+      ["Data products", "Refunds, Payouts"],
       ["Implementation", "HTTP endpoint"],
       ["Endpoint URL", "https://pay.example.com/refund"],
       ["Method", "POST"],
@@ -116,7 +116,7 @@ describe("a function's read view", () => {
     const shown = Object.fromEntries(fields("function-read-fields"));
     expect(shown["Source"]).toBe("sales-pg");
     expect(shown["Schema"]).toBe("public");
-    expect(shown["Data Product (optional)"]).toBe("—");
+    expect(shown["Data products"]).toBe("—");
     expect(shown["Return Type"]).toBe("Registered Table");
     expect(shown["Returns (table)"]).toBe("public.refunds");
     expect(shown["Endpoint URL"]).toBeUndefined();

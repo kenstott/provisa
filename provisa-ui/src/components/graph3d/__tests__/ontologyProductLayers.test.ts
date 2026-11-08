@@ -160,7 +160,13 @@ const PRODUCTS: ProductRow[] = [
 describe("the product layers' graph", () => {
   const g = productMapGraph([], [], PRODUCTS);
   const drawn = (layers: LayerId[]) =>
-    visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE);
+    visibleGraph(
+      g,
+      new Set<LayerId>(["ontology", ...layers]),
+      NO_FILTERS,
+      new Set(),
+      PRODUCT_MAP_SCOPE,
+    );
   const ids = (layers: LayerId[]) => drawn(layers).nodes.map((n) => n.id);
 
   it("draws a product's commands under Commands", () => {
@@ -206,7 +212,7 @@ const input = (over: Partial<ProductInput>): ProductInput => ({
   domain_id: "raw",
   table_name: "d",
   alias: null,
-  product_id: null,
+  product_ids: [],
   source_id: null,
   source_type: null,
   source_schema: null,
@@ -228,6 +234,37 @@ const lineageOf = (over: Partial<ProductLineage>): ProductLineage => ({
 describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
   const base = productMapGraph([], [], PRODUCTS);
 
+  it("draws one product node for each product an input is a member of, the focus product excluded", () => {
+    const g = withProductLineage(
+      base,
+      "p1",
+      lineageOf({
+        inputs: [
+          input({
+            relation: "mart.e",
+            domain_id: "mart",
+            table_name: "e",
+            product_ids: ["p1", "p2", "p3"],
+          }),
+          input({
+            relation: "raw.only_here",
+            domain_id: "raw",
+            table_name: "only_here",
+            product_ids: ["p1"],
+          }),
+        ],
+      }),
+      [],
+    );
+    expect(g.nodes.some((n) => n.id === "l:mart.e")).toBe(false);
+    expect(g.nodes.some((n) => n.id === "l:raw.only_here")).toBe(true);
+    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
+      ["p:p2", "p:p1"],
+      ["p:p3", "p:p1"],
+      ["l:raw.only_here", "p:p1"],
+    ]);
+  });
+
   it("draws the endpoint's inputs feeding the product, each named as its reader knows it", () => {
     const g = withProductLineage(
       base,
@@ -244,7 +281,7 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
             source_schema: "public",
             source_table: "Orders",
           }),
-          input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_id: "p2" }),
+          input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_ids: ["p2"] }),
         ],
       }),
       [],
@@ -260,8 +297,13 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
       ["p:p2", "p:p1"],
     ]);
     const on = (layers: LayerId[]) =>
-      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE)
-        .nodes.map((n) => n.id);
+      visibleGraph(
+        g,
+        new Set<LayerId>(["ontology", ...layers]),
+        NO_FILTERS,
+        new Set(),
+        PRODUCT_MAP_SCOPE,
+      ).nodes.map((n) => n.id);
     expect(on(["data"])).not.toContain("l:pet_store.pets");
     expect(on(["data", "lineage"])).toContain("l:pet_store.pets");
   });
@@ -306,8 +348,13 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
     expect(label("lc:native:raw.d.Name")).toBe("crm · public.D.Name");
     // A column lineage alone reaches is Lineage's: Columns does not draw it.
     const on = (layers: LayerId[]) =>
-      visibleGraph(g, new Set<LayerId>(["ontology", ...layers]), NO_FILTERS, new Set(), PRODUCT_MAP_SCOPE)
-        .nodes.map((n) => n.id);
+      visibleGraph(
+        g,
+        new Set<LayerId>(["ontology", ...layers]),
+        NO_FILTERS,
+        new Set(),
+        PRODUCT_MAP_SCOPE,
+      ).nodes.map((n) => n.id);
     expect(on(["data", "columns"])).not.toContain("c:9:name");
     // The ontology draws columns as themselves: column lineage needs no table expanded.
     expect(on(["data", "lineage"])).toEqual(expect.arrayContaining(["c:9:name", "c:3:name"]));

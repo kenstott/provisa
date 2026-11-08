@@ -91,8 +91,8 @@ export interface ProductInput {
   domain_id: string;
   table_name: string;
   alias: string | null;
-  // The product the input belongs to, when it is another product's member: built from it.
-  product_id: string | null;
+  // Every product the input is a member of: a product is built from each of them.
+  product_ids: string[];
   source_id: string | null;
   source_type: string | null;
   source_schema: string | null;

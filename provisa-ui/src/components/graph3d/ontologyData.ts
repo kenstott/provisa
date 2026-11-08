@@ -667,9 +667,7 @@ export interface ProductRow {
   status?: string | null;
   ownerRole?: string | null;
   // Under Commands.
-  dataProductCommands?:
-    | { trackedFunction?: { name: string; domainId: string } | null }[]
-    | null;
+  dataProductCommands?: { trackedFunction?: { name: string; domainId: string } | null }[] | null;
   // Under Product links: its relationship rows to other products.
   edges?:
     | {
@@ -1004,7 +1002,13 @@ export function productMapGraph(
             })
           : {}),
       });
-      edge(tid, cid, "has_column", undefined, inProduct ? ["data", "ownerTables"] : ["ownerTables"]);
+      edge(
+        tid,
+        cid,
+        "has_column",
+        undefined,
+        inProduct ? ["data", "ownerTables"] : ["ownerTables"],
+      );
       // glossary.py's physical refs: the term IS this column.
       edge(id, cid, "term_binding", "IS", held);
       // A product read for its column's look alone (Data off) has neither name nor domain and is
@@ -1089,7 +1093,9 @@ export function productMapGraph(
         layers: ["productLinks"],
       });
       edge(productNode(p.id), z, "product_link", e.aliases ?? undefined);
-      const link = out.get(`product_link:${productNode(p.id)}>${z}${e.aliases ? `:${e.aliases}` : ""}`);
+      const link = out.get(
+        `product_link:${productNode(p.id)}>${z}${e.aliases ? `:${e.aliases}` : ""}`,
+      );
       if (link) link.paths = e.pathCount;
     }
   termEdgesDrawn(b, edges);
@@ -1131,17 +1137,23 @@ export function withProductLineage(
   const nodes = new Map(g.nodes.map((n) => [n.id, n]));
   const edges = new Map(g.edges.map((e) => [e.id, e]));
   for (const i of lineage.inputs) {
-    const from =
-      i.product_id && i.product_id !== product ? productNode(i.product_id) : `l:${i.relation}`;
-    if (!nodes.has(from))
-      nodes.set(
-        from,
-        from === `l:${i.relation}`
-          ? { id: from, type: "relation", label: inputLabel(i), domains: [i.domain_id] }
-          : { id: from, type: "product", label: i.product_id as string, domains: [i.domain_id] },
-      );
-    const id = `lineage:${from}>${pid}`;
-    if (!edges.has(id)) edges.set(id, { id, a: from, b: pid, kind: "lineage" });
+    // An input that is another product's member stands for each such product; the focus product
+    // is not drawn as its own input. An input in no other product stands for itself.
+    const others = i.product_ids.filter((p) => p !== product);
+    const sources = others.length > 0 ? others.map(productNode) : [`l:${i.relation}`];
+    for (const from of sources) {
+      if (!nodes.has(from)) {
+        const other = others.find((p) => productNode(p) === from);
+        nodes.set(
+          from,
+          other === undefined
+            ? { id: from, type: "relation", label: inputLabel(i), domains: [i.domain_id] }
+            : { id: from, type: "product", label: other, domains: [i.domain_id] },
+        );
+      }
+      const id = `lineage:${from}>${pid}`;
+      if (!edges.has(id)) edges.set(id, { id, a: from, b: pid, kind: "lineage" });
+    }
   }
   const tableOf = new Map<string, number>([
     ...tables.map((t) => [relationName(t), t.id] as [string, number]),

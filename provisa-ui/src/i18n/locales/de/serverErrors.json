@@ -758,6 +758,9 @@
         "successor_retired": "Der Nachfolger '{{successor}}' ist ausgemustert. Wählen Sie ein Datenprodukt, das in Gebrauch ist.",
         "successor_other_domain": "Der Nachfolger '{{successor}}' liegt in der Domäne {{domain}}. Die Mitglieder eines Produkts teilen seine Domäne; wählen Sie also einen Nachfolger in derselben Domäne."
       },
+      "members": {
+        "domain_has_members": "Datenprodukt {{data_product}} kann nicht in die Domäne {{domain}} wechseln, solange es Mitglieder aus einer anderen Domäne enthält: {{members}}. Nehmen Sie diese zuerst aus dem Produkt heraus."
+      },
       "finding": {
         "no_members": "Zu diesem Datenprodukt gehört keine Tabelle, keine Sicht und kein Befehl.",
         "member_deprecated": "Die Mitgliedstabelle {{table}} ist veraltet.",

@@ -51,13 +51,7 @@ const PORT = {
 
 function renderView() {
   render(
-    <ContractView
-      contract={CONTRACT}
-      versions={[]}
-      tableId={7}
-      promises={PROMISES}
-      {...PORT}
-    />,
+    <ContractView contract={CONTRACT} versions={[]} tableId={7} promises={PROMISES} {...PORT} />,
   );
 }
 

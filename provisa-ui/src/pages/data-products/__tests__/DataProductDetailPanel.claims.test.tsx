@@ -90,7 +90,7 @@ const input = (id: number, relation: string): ProductInput => ({
   domain_id: relation.split(".")[0],
   table_name: relation.split(".")[1],
   alias: null,
-  product_id: null,
+  product_ids: [],
   source_id: null,
   source_type: null,
   source_schema: null,
