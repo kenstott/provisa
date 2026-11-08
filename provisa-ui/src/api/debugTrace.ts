@@ -17,7 +17,8 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
  *
  * Tracing is lean by default; debug detail is switched on for an org, a role or a source for a
  * stated window that ends on its own, and a single request may ask for it with a hint the
- * operator permits per role. Every call here needs the deployment-wide `platform_settings` right.
+ * operator permits per role. REQ-1327: an org-wide window is the platform's (the deployment check);
+ * a window naming a role or source, and the hint, are the org's (`org_settings` in that org).
  */
 export type DebugTraceScope = "org" | "role" | "source";
 

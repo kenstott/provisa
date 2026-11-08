@@ -48,7 +48,7 @@ import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
-import { ObservabilityTab } from "../components/admin/ObservabilityTab";
+import { ObservabilityTab, PlatformObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import { MaintenanceTab } from "../components/admin/MaintenanceTab"; // REQ-1466
@@ -106,6 +106,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   // owning a nav entry of its own; the old route still deep-links there.
   "/admin/mcp-server": "Dashboard",
   "/admin/observability": "Observability",
+  "/admin/platform-observability": "Platform Observability", // REQ-1327: the deployment's telemetry
   "/admin/orgs": "Orgs",
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
@@ -118,24 +119,21 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
   "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
-  // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
+  // Consolidated Security area — posture, encryption, auth, and the secrets service as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",
   "/admin/encryption": "Security",
   "/admin/auth": "Security",
-  "/admin/local-users": "Security",
   // REQ-1560: one vault per surface, each named for whose it is.
   "/admin/secrets": "Org Secrets",
   "/admin/my-secrets": "Your Secrets",
 };
 
 // Which Security sub-tab a route opens on.
-const SECURITY_SUBTAB: Record<string, "posture" | "encryption" | "authentication" | "localUsers"> =
-  {
-    "/admin/encryption": "encryption",
-    "/admin/auth": "authentication",
-    "/admin/local-users": "localUsers",
-  };
+const SECURITY_SUBTAB: Record<string, "encryption" | "authentication"> = {
+  "/admin/encryption": "encryption",
+  "/admin/auth": "authentication",
+};
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
@@ -148,13 +146,6 @@ export function AdminPage() {
   // REQ-1337: administering orgs other than the active one is the `cross_org` RIGHT. "platform_admin"
   // was never a capability — it was a role id folded in as a pseudo-right, which this rule forbids.
   const canAdministerAllOrgs = capabilities.includes("cross_org");
-  // REQ-1361: /admin/secrets serves whichever half the caller may reach, and the heading says which.
-  // Without a literal `org_settings` there is no org vault on the page -- only the DEPLOYMENT's
-  // choice of secrets service -- and the platform wildcard does not stand in for the org right here.
-  const heading =
-    activeTab === "Org Secrets" && !capabilities.includes("org_settings")
-      ? "Platform Secrets"
-      : activeTab;
   const [stats, setStats] = useState<Record<string, number>>({});
   const [addingDomain, setAddingDomain] = useState(false);
   const [newDomainId, setNewDomainId] = useState("");
@@ -169,7 +160,6 @@ export function AdminPage() {
   // subject they are (settingsCards.tsx); what is left is the domain mode, which decides whether
   // the Domains tab shows a domain catalog at all.
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
-  const [allDomains, setAllDomains] = useState<string[]>([]);
 
   // Pagination state
   const [domainPage, setDomainPage] = useState(0);
@@ -206,7 +196,6 @@ export function AdminPage() {
         Roles: allRoles.length,
         "RLS Rules": rlsRules.length,
       });
-      setAllDomains(domains.filter((d) => d.id !== "").map((d) => d.id));
     }
   }, [
     sources,
@@ -335,7 +324,7 @@ export function AdminPage() {
       {activeTab !== "Glossary" && (
         <PageTitle icon={Settings} mb="md">
           {/* Reads as a breadcrumb: the area, then the section within it. */}
-          {t("adminPage.title")} — {heading}
+          {t("adminPage.title")} — {activeTab}
         </PageTitle>
       )}
 
@@ -575,16 +564,13 @@ export function AdminPage() {
         {activeTab === "Deployment settings" && <SettingsCatalogPanel />}
         {activeTab === "Billing" && <BillingTab />}
         {activeTab === "Security" && (
-          <SecurityManager
-            allRoles={allRoles}
-            allDomains={allDomains}
-            initialTab={SECURITY_SUBTAB[location.pathname]}
-          />
+          <SecurityManager initialTab={SECURITY_SUBTAB[location.pathname]} />
         )}
         {activeTab === "Org Secrets" && <SecretsTab />}
         {activeTab === "Your Secrets" && <MySecretsTab />}
-        {activeTab === "Observability" && settings && (
-          <ObservabilityTab settings={settings} setSettings={setSettings} />
+        {activeTab === "Observability" && <ObservabilityTab />}
+        {activeTab === "Platform Observability" && settings && (
+          <PlatformObservabilityTab settings={settings} setSettings={setSettings} />
         )}
         {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
         {activeTab === "AI Models" && <AiModelsTab />}

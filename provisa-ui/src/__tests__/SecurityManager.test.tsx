@@ -26,11 +26,11 @@ vi.mock("../components/admin/EncryptionTab", () => ({
   EncryptionTab: () => <div>encryption panel</div>,
 }));
 vi.mock("../components/admin/AuthTab", () => ({ AuthTab: () => <div>auth panel</div> }));
-vi.mock("../components/admin/LocalUsersTab", () => ({
-  LocalUsersTab: () => <div>local users panel</div>,
+vi.mock("../components/admin/SecretsTab", () => ({
+  SecretsServicePanel: () => <div>secrets service panel</div>,
 }));
 
-const DEPLOYMENT = ["posture", "encryption", "authentication", "localUsers"];
+const DEPLOYMENT = ["posture", "encryption", "authentication", "secretsService"];
 
 function tabs() {
   return DEPLOYMENT.filter((k) => screen.queryByTestId(`security-tab-${k}`));
@@ -38,24 +38,26 @@ function tabs() {
 
 describe("Security section membership", () => {
   beforeEach(() => {
-    auth.capabilities = ["platform_settings"];
+    auth.capabilities = ["platform_settings", "cross_org"];
   });
 
-  it("is the four deployment tabs, and secrets is not among them", () => {
-    render(<SecurityManager allRoles={[]} allDomains={[]} />);
+  it("is the four deployment tabs, and neither vault nor local users is among them", () => {
+    // REQ-1327: local users moved to Team, the org's; the secrets service came here, the platform's.
+    render(<SecurityManager />);
     expect(tabs()).toEqual(DEPLOYMENT);
     expect(screen.queryByTestId("security-tab-secrets")).toBeNull();
+    expect(screen.queryByTestId("security-tab-localUsers")).toBeNull();
     expect(screen.getByText("posture panel")).toBeInTheDocument();
   });
 
   it("opens the sub-tab a legacy route deep-links to", () => {
-    render(<SecurityManager allRoles={[]} allDomains={[]} initialTab="encryption" />);
+    render(<SecurityManager initialTab="encryption" />);
     expect(screen.getByText("encryption panel")).toBeInTheDocument();
     expect(screen.queryByText("posture panel")).not.toBeInTheDocument();
   });
 
   it("opens on posture when no route named a sub-tab", () => {
-    render(<SecurityManager allRoles={[]} allDomains={[]} />);
+    render(<SecurityManager />);
     expect(screen.getByText("posture panel")).toBeInTheDocument();
   });
 });

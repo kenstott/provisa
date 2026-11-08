@@ -14,7 +14,9 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
-import { setStored } from "../../../lib/browserStorage";
+import { getStored, setStored } from "../../../lib/browserStorage";
+import { TourRunningContext } from "../../../tour/tourRunning";
+import { TERM_GRAPH_DEPTH, termPreset } from "../ontologyPresets";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
 const made = vi.hoisted(() => ({ scenes: [] as Calls[] }));
@@ -259,5 +261,66 @@ describe("what the reader sets on the graph, after a reload", () => {
     await scene();
     expect(screen.getByTestId("x-filter-domain").textContent).toBe(said);
     expect(said).not.toContain("procurement");
+  });
+});
+
+describe("the term graph's opening", () => {
+  const key = { kind: "ontology-snippet", subject: "term:1" };
+  const term = () =>
+    render(
+      <GraphExplorer
+        data={DATA}
+        scope={ONTOLOGY_SCOPE}
+        preset="ontology"
+        depth={TERM_GRAPH_DEPTH}
+        focus="term:1"
+        snippet
+        opensFlat
+        settingsKey={key}
+        exportName="term"
+        testId="snip"
+      />,
+    );
+
+  it("opens in 2D at one hop for someone with nothing remembered", async () => {
+    term();
+    expect(await screen.findByTestId("x-lanes")).toBeInTheDocument();
+    expect(made.scenes).toHaveLength(0);
+    expect(screen.getByRole("radio", { name: "1" })).toBeChecked();
+    expect(termPreset(1)).toMatchObject({ depth: 1, flat: true });
+  });
+
+  it("keeps 3D for someone who chose it", async () => {
+    setStored("graph3d.ontology-snippet.term:1", JSON.stringify({ flat: false }));
+    term();
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(screen.queryByTestId("x-lanes")).not.toBeInTheDocument();
+  });
+
+  it("shows 2D under a tour, leaving what was remembered as it was", async () => {
+    setStored("graph3d.ontology-snippet.term:1", JSON.stringify({ flat: false }));
+    render(
+      <TourRunningContext.Provider value>
+        <GraphExplorer
+          data={DATA}
+          scope={ONTOLOGY_SCOPE}
+          preset="ontology"
+          depth={TERM_GRAPH_DEPTH}
+          focus="term:1"
+          snippet
+          opensFlat
+          settingsKey={key}
+          exportName="term"
+          testId="snip"
+        />
+      </TourRunningContext.Provider>,
+    );
+    expect(await screen.findByTestId("x-lanes")).toBeInTheDocument();
+    expect(made.scenes).toHaveLength(0);
+    fireEvent.click(screen.getByRole("radio", { name: "3D" }));
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(screen.getByRole("radio", { name: "2D" }));
+    await screen.findByTestId("x-lanes");
+    expect(JSON.parse(getStored("graph3d.ontology-snippet.term:1") as string)).toEqual({ flat: false });
   });
 });

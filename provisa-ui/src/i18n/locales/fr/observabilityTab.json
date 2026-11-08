@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "Les tables de traces de Provisa n'ont pas pu être vérifiées ({{reason}}). On ignore si elles reçoivent des lignes ; la vérification se répète toutes les 30 secondes.",
     "tracesTableEmpty": "Un endpoint est défini, mais les tables de traces de Provisa ne contiennent encore aucune ligne. Si l'endpoint est un fournisseur externe et non le collecteur de Provisa, déplacez-le dans les exportateurs du collecteur.",
-    "tracesTableStale": "Un endpoint est défini, mais les tables de traces de Provisa n'ont reçu aucune ligne ces {{minutes}} dernières minutes. Si Provisa est resté inactif, c'est normal. Sinon, vérifiez que l'endpoint est le collecteur de Provisa et non un fournisseur externe."
+    "tracesTableStale": "Un endpoint est défini, mais les tables de traces de Provisa n'ont reçu aucune ligne ces {{minutes}} dernières minutes. Si Provisa est resté inactif, c'est normal. Sinon, vérifiez que l'endpoint est le collecteur de Provisa et non un fournisseur externe.",
+    "schemaClustersTitle": "Clusters de schéma"
   }
 }
