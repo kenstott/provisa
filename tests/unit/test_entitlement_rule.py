@@ -26,7 +26,7 @@ from provisa.entitlements import runtime
 from provisa.entitlements.lists import HeldEntitlements, effective_lists
 from provisa.entitlements.mask import MaskCache, MemberInput, compute_mask
 from provisa.pgwire.governed_plan import plan_key
-from tests.unit.test_entitlements import _index
+from tests.unit.test_entitlement_lists import _index
 
 NOW = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
 
@@ -303,7 +303,7 @@ def test_the_governance_stage_is_never_keyed_by_the_mask(monkeypatch):
 
 
 def _runtime_state(held=None):
-    from tests.unit.test_entitlements import _names
+    from tests.unit.test_entitlement_lists import _names
 
     return SimpleNamespace(
         schema_boot_id="b",
@@ -317,7 +317,7 @@ def _runtime_state(held=None):
 
 
 def _bind(monkeypatch, claims, user="alice"):
-    from tests.unit.test_entitlements import _ctx
+    from tests.unit.test_entitlement_lists import _ctx
 
     monkeypatch.setattr(runtime, "_role_context", lambda state, role_id: _ctx())
     identity = SimpleNamespace(user_id=user, raw_claims=claims)
@@ -355,7 +355,7 @@ def test_a_deny_by_default_role_is_masked_with_no_lists(monkeypatch):
 def test_a_qualifier_role_with_no_schema_adds_nothing_and_breaks_nothing(monkeypatch):
     from provisa.security.meta_role import meta_role_id
 
-    from tests.unit.test_entitlements import _ctx
+    from tests.unit.test_entitlement_lists import _ctx
 
     state = _runtime_state()
     meta = meta_role_id(["viewer", "region__eu"])
