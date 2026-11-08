@@ -798,7 +798,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/overview",
     capability: "observability",
-    element: '[data-tour="nav-admin"]',
+    // Admin is in the user menu, closed on every page, so the step points at the page it opens.
+    element: '[data-tour="admin-content"]',
     readySelector: '[data-tour="admin-content"]',
     key: "step23",
   },
