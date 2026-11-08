@@ -417,6 +417,7 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 | Admin API | [docs/admin.md](docs/admin.md) |
 | Deployment (Docker Compose, Kubernetes, macOS) | [docs/deployment.md](docs/deployment.md) |
 | Hasura v2 / DDN import | [docs/import.md](docs/import.md) |
+| How a change becomes a release | [docs/release-process.md](docs/release-process.md) |
 | Release workflow (alpha/beta/stable tags) | [docs/releasing.md](docs/releasing.md) |
 
 ## Sizing
@@ -453,6 +454,8 @@ pytest tests/unit -n auto
 ```
 
 For the UI unit tests, run `npm run test:unit` in `provisa-ui`.
+
+To work on Provisa, clone `main`. To run it, install a release. A feature or fix starts from `main` and lands on `main`, and [docs/release-process.md](docs/release-process.md) explains how releases are cut from it. See [CONTRIBUTING.md](CONTRIBUTING.md) for the short version.
 
 ## License
 
