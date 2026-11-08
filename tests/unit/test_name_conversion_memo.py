@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 3a777b91-c061-4bec-9d83-542bdb9f49bd
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -78,3 +79,25 @@ def test_the_type_tests_answer_as_before():
     assert not sql_types.is_json_type("text") and not sql_types.is_json_type(None)
     assert sql_types.is_integer_type("BIGINT") and not sql_types.is_integer_type("decimal")
     assert not sql_types.is_integer_type(None)
+
+
+def test_a_column_types_graphql_type_is_mapped_once_per_spelling(monkeypatch):
+    """A role's schema maps every column's type; the mapping is pure and memoized like the names."""
+    from graphql import GraphQLInt, GraphQLString
+
+    from provisa.compiler import type_map
+    from provisa.core import ir_types
+
+    type_map.column_type_to_graphql.cache_clear()
+    canonicals = {"n": 0}
+    real_to_ir = ir_types.to_ir
+
+    def _counting_to_ir(spelling):
+        canonicals["n"] += 1
+        return real_to_ir(spelling)
+
+    monkeypatch.setattr(ir_types, "to_ir", _counting_to_ir)
+    for _ in range(20):
+        assert type_map.column_type_to_graphql("character varying(20)") is GraphQLString
+        assert type_map.column_type_to_graphql("INTEGER") is GraphQLInt
+    assert canonicals["n"] == 1, "a repeated spelling was mapped again"
