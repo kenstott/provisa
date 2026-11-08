@@ -38,7 +38,6 @@ from __future__ import annotations
 import base64
 import os
 import time
-import types
 
 import bcrypt
 import pytest
@@ -52,6 +51,7 @@ from provisa.api.admin.orgs_router import router as orgs_router
 from provisa.api.auth_router import router as auth_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.providers.basic import BasicAuthProvider
+from provisa.core.config_loader import parse_config_dict
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import (
     REGISTRY_TABLES,
@@ -175,12 +175,21 @@ def planes(monkeypatch):
             "analyst": {"capabilities": ["query_development"]},
         },
     )
-    # register (/auth/register) reads config.auth.provider; unused here (accounts are seeded) but the
-    # app singleton must expose it consistently.
+    # A booted node always holds the deployment's config: register (/auth/register) reads
+    # config.auth.provider (unused here, accounts are seeded) and provisioning reads the platform's
+    # default grant from it (REQ-1922).
     monkeypatch.setattr(
         app_state,
         "config",
-        types.SimpleNamespace(auth={"provider": "basic"}, derived_roles=[]),
+        parse_config_dict(
+            {
+                "sources": [],
+                "domains": [],
+                "tables": [],
+                "roles": [],
+                "auth": {"provider": "basic"},
+            }
+        ),
         raising=False,
     )
     # REQ-1290: /auth/claim-bootstrap resolves the bootstrap flag from state.auth_config — the same
