@@ -74,10 +74,11 @@ class ExtensionNotStaged(RuntimeError):
     (REQ-294, AIR-GAPPED IS LOCAL FIRST)."""
 
 
-#: How to put an extension in place: the two install steps that exist. Named in every refusal.
+#: How to put an extension in place: the install steps that exist. Named in every refusal.
 STAGE_FIX = (
-    "install provisa[embedded] (or use a Provisa installer), or on a source checkout run "
-    "`python scripts/stage_duckdb_extensions.py` once on a connected machine"
+    "run `python -m provisa.federation.stage_duckdb_extensions` once on a connected machine "
+    "(it stages what the provisa[embedded] wheel could not hold), or on a source checkout "
+    "`python scripts/stage_duckdb_extensions.py`; the Provisa installers hold every extension"
 )
 
 

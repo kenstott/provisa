@@ -104,6 +104,9 @@ function Native-Env([string]$ControlPlaneUrl) {
   if (-not $env:PROVISA_MCP_PORT) { $e['PROVISA_MCP_PORT'] = '8009' }
   if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
   if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'admin' }
+  # REQ-294: what the installer unpacked at first launch (provisa.runtime_deps.installer_assets).
+  $e['PROVISA_DUCKDB_EXT_DIR']     = Join-Path $ProvisaHome 'duckdb-ext'
+  $e['PROVISA_RUNTIME_DEPS_CACHE'] = Join-Path $ProvisaHome 'runtime-deps'
   # MCP stays plain HTTP: Claude Desktop reaches a LOCAL server only via the claude_desktop_config
   # stdio bridge (mcp-proxy), which works over http. Its "Add custom connector" URL path is brokered
   # from Anthropic's servers (needs a public internet HTTPS endpoint), so TLS buys nothing locally.

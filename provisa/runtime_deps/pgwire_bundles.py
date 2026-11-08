@@ -13,17 +13,19 @@
 The pgwire bundles are NOT bundled with Provisa and a running Provisa never fetches one: AIR-GAPPED
 IS LOCAL FIRST. A bundle is located locally (the folder its connector's setting names, else the
 runtime-deps cache root) and was staged there at build or packaging time, by
-``scripts/stage_pgwire_bundles.py``, from the PINNED github.com/kenstott/calcite release
-(``RELEASE_TAG``), so Provisa release cycles stay decoupled from the connector releases.
+``python -m provisa.runtime_deps.stage_pgwire_bundles``, from the PINNED github.com/kenstott/calcite
+release (``RELEASE_TAG``), so Provisa release cycles stay decoupled from the connector releases.
 
 Resolution FAILS LOUD (project rule): an unknown source type, or a bundle that is not staged,
 raises ``BundleUnavailable`` (``BundleNotStaged`` for the latter, naming the bundle and the fix) --
 never a download, a fallback to an unpinned version, a partial bundle, or an empty snapshot.
-``python -m provisa.runtime_deps.pgwire_bundles`` is the install-time check that every bundle is staged.
+``python -m provisa.runtime_deps.pgwire_bundles`` is the install-time check that every bundle is staged;
+``--except <connector>`` names a bundle deliberately left to a later staging step.
 """
 
 from __future__ import annotations
 
+import argparse
 import os
 import platform
 import shutil
@@ -34,7 +36,7 @@ import threading
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
-from typing import IO, Callable, cast
+from typing import IO, Callable, Iterable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
@@ -96,8 +98,9 @@ class BundleUnavailable(Exception):  # REQ-956
 
 #: How to put a bundle in place: the one staging step that exists. Named in every refusal.
 STAGE_FIX = (
-    "stage it on a connected machine with `python scripts/stage_pgwire_bundles.py` "
-    "(PROVISA_RUNTIME_DEPS_CACHE names the directory), or name a built bundle with the connector's "
+    "stage it on a connected machine with `python -m provisa.runtime_deps.stage_pgwire_bundles` "
+    "(scripts/stage_pgwire_bundles.py on a source checkout; PROVISA_RUNTIME_DEPS_CACHE names the "
+    "directory), or name a built bundle with the connector's "
     "bundle_dir setting"
 )
 
@@ -394,19 +397,41 @@ class BundleResolver:  # REQ-956
         raise BundleDownloading(spec)
 
 
-def missing_bundles(cache_root: str | Path | None = None) -> list[BundleSpec]:
-    """The bundle of every source type that is not staged (its launcher is absent), once each,
-    in connector order. Honors a connector's ``bundle_dir`` setting as the resolver does."""
+#: The connector bundles left out of the Provisa installers and the container image: staged by a
+#: build or devops step (REQ-294; docs/deployment.md). Named, never skipped silently.
+INSTALLER_EXCEPTED = ("govdata",)
+
+
+def checked_connectors(excepted: Iterable[str] = ()) -> list[str]:
+    """Every connector with a bundle, less ``excepted``, in order. A name that is no connector is
+    refused: a typo must not read as a passing check."""
+    connectors = set(BUNDLE_CONNECTOR.values())
+    unknown = sorted(set(excepted) - connectors)
+    if unknown:
+        raise BundleUnavailable(
+            f"--except names no connector: {', '.join(unknown)} (known: {sorted(connectors)})"
+        )
+    return sorted(connectors - set(excepted))
+
+
+def missing_bundles(
+    cache_root: str | Path | None = None, excepted: Iterable[str] = ()
+) -> list[BundleSpec]:
+    """The bundle of every connector, less ``excepted``, that is not staged (its launcher is
+    absent), once each, in connector order. Honors a connector's ``bundle_dir`` setting as the
+    resolver does."""
     resolver = BundleResolver(cache_root=cache_root)
-    specs = {c: bundle_spec_for(t) for t, c in sorted(BUNDLE_CONNECTOR.items())}
-    return [spec for _, spec in sorted(specs.items()) if not resolver.is_cached(spec)]
+    connectors = checked_connectors(excepted)
+    source_types = {c: t for t, c in BUNDLE_CONNECTOR.items()}
+    specs = [bundle_spec_for(source_types[c]) for c in connectors]
+    return [spec for spec in specs if not resolver.is_cached(spec)]
 
 
-def verify_staged(cache_root: str | Path | None = None) -> None:
-    """REQ-294, the install-time check: every connector's bundle is staged. Raises
+def verify_staged(cache_root: str | Path | None = None, excepted: Iterable[str] = ()) -> None:
+    """REQ-294, the install-time check: every connector's bundle but ``excepted`` is staged. Raises
     ``BundleNotStaged`` naming each one that is not."""
     root = Path(cache_root) if cache_root is not None else default_cache_root()
-    absent = missing_bundles(root)
+    absent = missing_bundles(root, excepted)
     if absent:
         refused = BundleNotStaged(absent[0], root)
         names = ", ".join(f"{s.artifact_name} ({s.version})" for s in absent)
@@ -414,9 +439,29 @@ def verify_staged(cache_root: str | Path | None = None) -> None:
         raise refused
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Check that the pgwire bundles are staged.")
+    parser.add_argument(
+        "--except",
+        dest="excepted",
+        action="append",
+        default=[],
+        metavar="CONNECTOR",
+        help="a connector whose bundle is left to a later staging step; repeat for more",
+    )
+    excepted: list[str] = parser.parse_args(argv).excepted
     try:
-        verify_staged()
-    except BundleNotStaged as refused:
-        sys.exit(f"pgwire bundle check failed: {refused}")
-    print(f"{len(set(BUNDLE_CONNECTOR.values()))} pgwire bundles staged")
+        verify_staged(excepted=excepted)
+        count = len(checked_connectors(excepted))
+    except BundleUnavailable as refused:
+        print(f"pgwire bundle check failed: {refused}", file=sys.stderr)
+        return 1
+    print(
+        f"{count} pgwire bundles staged"
+        + (f"; excepted: {', '.join(excepted)}" if excepted else "")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

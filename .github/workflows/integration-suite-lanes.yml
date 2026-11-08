@@ -728,6 +728,10 @@ jobs:
           cache: "true"
           client: "true"
 
+      # REQ-294: a running Provisa never fetches a bundle; this one is staged here, for the lane.
+      - name: Stage the salesforce pgwire bundle
+        run: uv run --no-sync python scripts/stage_pgwire_bundles.py --only salesforce
+
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
@@ -926,6 +930,10 @@ jobs:
         run: |
           bash pgwire-calcite/packaging/build-bundle.sh servicenow linux-x86_64 "$RUNNER_TEMP/pgw"
           echo "PROVISA_PGWIRE_BUNDLE_SERVICENOW=$RUNNER_TEMP/pgw/pgwire-servicenow-dev-linux-x86_64" >> "$GITHUB_ENV"
+
+      # REQ-294: the build above is the bundle this lane reads; the check proves its launcher is there.
+      - name: Check the servicenow pgwire bundle is staged
+        run: uv run --no-sync python scripts/stage_pgwire_bundles.py --only servicenow
 
       - name: Stack slots on this runner
         run: bash scripts/ci/lanes/suite-prepare.sh

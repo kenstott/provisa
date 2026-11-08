@@ -148,10 +148,6 @@ provisa/_graph_render
 # provisa-duckdb-ext blobs are built per-platform by CI (build-duckdb-extensions), not committed.
 packaging/duckdb-ext/provisa_duckdb_ext/_ext/**
 !packaging/duckdb-ext/provisa_duckdb_ext/_ext/.gitkeep
-packaging/duckdb-ext-warehouse/provisa_duckdb_ext_warehouse/_ext/**
-!packaging/duckdb-ext-warehouse/provisa_duckdb_ext_warehouse/_ext/.gitkeep
-packaging/duckdb-ext-saas/provisa_duckdb_ext_saas/_ext/**
-!packaging/duckdb-ext-saas/provisa_duckdb_ext_saas/_ext/.gitkeep
 
 # MkDocs build output (generated homepage + build dir)
 docs/index.md

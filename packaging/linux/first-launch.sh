@@ -1526,6 +1526,22 @@ setup_native_venv() {
   ok "Native environment ready."
 }
 
+# ── REQ-294: the connector bundles and DuckDB extensions the AppImage holds ────
+# Under PROVISA_HOME, where scripts/provisa points the runtime at them (PROVISA_DUCKDB_EXT_DIR,
+# PROVISA_RUNTIME_DEPS_CACHE). The step records the archive, so launching again does nothing.
+stage_native_assets() {
+  local assets; assets="$(_find_payload assets 'provisa-assets.tar.gz')" || {
+    err "The AppImage holds no connector bundles or DuckDB extensions — reinstall Provisa."
+    exit 1
+  }
+  info "Staging connector bundles and DuckDB extensions..."
+  "${PROVISA_HOME}/venv/bin/python3" -I -m provisa.runtime_deps.installer_assets \
+    unpack "${assets}/provisa-assets.tar.gz" "$PROVISA_HOME" || {
+    err "The AppImage's connector bundles and DuckDB extensions did not unpack (see above)."
+    exit 1
+  }
+}
+
 # ── Write config ───────────────────────────────────────────────────────────────
 write_config() {
   mkdir -p "$PROVISA_HOME"
@@ -1782,6 +1798,7 @@ main() {
     info "Setting up Provisa (native — no Docker)..."
     ROLE=primary
     setup_native_venv
+    stage_native_assets
     write_config          # runtime=native
     install_cli
 

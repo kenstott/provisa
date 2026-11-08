@@ -254,6 +254,7 @@ bundle_native_payload() {
   local base="${NATIVE_PAYLOAD_DIR}/python-base"
   local wheels="${NATIVE_PAYLOAD_DIR}/wheels"
   local ui="${NATIVE_PAYLOAD_DIR}/ui-dist"
+  local assets="${NATIVE_PAYLOAD_DIR}/assets"
 
   # ── 1. Bare python-build-standalone interpreter (no provisa install) ──
   if [ -x "${base}/bin/python3" ]; then
@@ -306,13 +307,15 @@ bundle_native_payload() {
   # (manylinux_2_28, with provisa._encoders and its notices); first-launch imports the module.
   "${base}/bin/python3" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "$wheels"/provisa-*.whl \
     --tag manylinux_2_28_x86_64 --import
-  # REQ-294: the runtime never downloads a DuckDB extension, so a wheelhouse without all of them
-  # stops here. Installed as first launch installs it: from the wheelhouse alone.
+  # REQ-294: the runtime fetches neither a DuckDB extension nor a pgwire bundle, so everything but
+  # the bundles INSTALLER_EXCEPTED names is staged and checked here, or the build stops. Run from
+  # the wheelhouse alone, as first launch installs it.
   local check_venv
   check_venv="$(mktemp -d)"
   "${base}/bin/python3" -m venv "$check_venv"
   "$check_venv/bin/pip" install --quiet --no-index --find-links "$wheels" "$(ls "$wheels"/provisa-*.whl)[embedded]"
-  "$check_venv/bin/python" -I -m provisa.federation.duckdb_extensions
+  rm -rf "$assets"; mkdir -p "$assets"
+  "$check_venv/bin/python" -I -m provisa.runtime_deps.installer_assets build "${assets}/provisa-assets.tar.gz"
   rm -rf "$check_venv"
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
@@ -331,10 +334,11 @@ bundle_native_payload() {
 
   # ── Copy the cached payload into the (freshly-built) AppDir ──
   info "Copying native payload into AppDir..."
-  rm -rf "${APPDIR}/python-base" "${APPDIR}/wheels" "${APPDIR}/ui-dist"
+  rm -rf "${APPDIR}/python-base" "${APPDIR}/wheels" "${APPDIR}/ui-dist" "${APPDIR}/assets"
   cp -R "$base"   "${APPDIR}/python-base"
   cp -R "$wheels" "${APPDIR}/wheels"
   cp -R "$ui"     "${APPDIR}/ui-dist"
+  cp -R "$assets" "${APPDIR}/assets"
   chmod -R u+rwX "${APPDIR}/python-base"
   ok "Native payload bundled into AppDir."
 }
@@ -355,6 +359,19 @@ require_static_runtime() {
 }
 
 # ── Create AppImage ────────────────────────────────────────────────────────────
+# ── GitHub's limit on a release asset ─────────────────────────────────────────
+# The AppImage holds the connector bundles and DuckDB extensions (REQ-294), which brings it near
+# 2 GiB. One past it builds here and fails only when the release uploads it, so it fails here.
+require_release_size() {
+  local appimage="$1" limit=$((2 * 1024 * 1024 * 1024)) size
+  size="$(wc -c < "$appimage" | tr -d ' ')"
+  if [ "$size" -ge "$limit" ]; then
+    err "The AppImage is ${size} bytes, past GitHub's 2 GiB release asset limit."
+    exit 1
+  fi
+  ok "AppImage size ${size} bytes is under GitHub's 2 GiB release asset limit."
+}
+
 create_appimage() {
   info "Fetching appimagetool..."
   if [ ! -f "$APPIMAGETOOL" ]; then
@@ -367,6 +384,7 @@ create_appimage() {
   APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 \
     "$APPIMAGETOOL" "$APPDIR" "${OUT_DIR}/Provisa.AppImage"
   require_static_runtime "${OUT_DIR}/Provisa.AppImage"
+  require_release_size "${OUT_DIR}/Provisa.AppImage"
   ok "AppImage created: ${OUT_DIR}/Provisa.AppImage"
 }
 

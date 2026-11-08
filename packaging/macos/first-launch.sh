@@ -508,6 +508,16 @@ stage_native_runtime() {
   codesign --force --sign - "${venv}/bin/python3" 2>/dev/null || true
   printf '%s' "$bundle_ver" > "${venv}/.runtime-version"
 
+  # REQ-294: every DuckDB extension and connector bundle the installer holds. scripts/provisa points
+  # the runtime at them (PROVISA_DUCKDB_EXT_DIR, PROVISA_RUNTIME_DEPS_CACHE).
+  info "Staging connector bundles and DuckDB extensions..."
+  "${venv}/bin/python3" -I -m provisa.runtime_deps.installer_assets \
+    unpack "${venv}/provisa-assets.tar.gz" "$PROVISA_HOME" || {
+    err "The installer's connector bundles and DuckDB extensions did not unpack (see above)."
+    exit 1
+  }
+  rm -f "${venv}/provisa-assets.tar.gz"
+
   install_dq_checker
   ok "Native runtime ready."
 }

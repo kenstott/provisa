@@ -109,11 +109,14 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
             notes.append(
                 "duckdb extensions: provisa-duckdb-ext not installed; loading from DuckDB's per-user "
                 "directory, and a missing extension is refused by name (install provisa[embedded], "
-                "or run scripts/stage_duckdb_extensions.py once on a source checkout)"
+                "and on a source checkout run scripts/stage_duckdb_extensions.py once)"
             )
         else:
             os.environ["PROVISA_DUCKDB_EXT_DIR"] = str(ext_dir)
-            notes.append(f"duckdb extensions: staged offline (no network) -> {ext_dir}")
+            notes.append(
+                f"duckdb extensions: staged offline (no network) -> {ext_dir}; what the wheel "
+                "could not hold comes from `python -m provisa.federation.stage_duckdb_extensions`"
+            )
     return notes
 
 

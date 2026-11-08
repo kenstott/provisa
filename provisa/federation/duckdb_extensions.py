@@ -11,8 +11,9 @@
 """Load + probe the DuckDB extensions that back federation connectors (REQ-899, REQ-904, REQ-294).
 
 Each DuckDB connector that needs an extension declares it (``Connector.extension``). The binary is put in
-DuckDB's extension directory at build or packaging time, never at runtime: the wheels of provisa[embedded],
-a Provisa installer, the container image, or ``scripts/stage_duckdb_extensions.py`` on a source checkout.
+DuckDB's extension directory at build or packaging time, never at runtime: a Provisa installer, the
+container image, the provisa[embedded] wheel with ``python -m provisa.federation.stage_duckdb_extensions``
+for what it cannot hold, or ``scripts/stage_duckdb_extensions.py`` on a source checkout.
 At runtime an extension is only LOADed (:func:`load_extension`), and one that isn't staged is refused by
 name. ``probe`` is LOAD-ONLY too: it verifies the extension loads and registers its scanner/attach symbol;
 it never opens a live connection to a source. That answers "is this connector's engine capability
@@ -43,9 +44,9 @@ from provisa.core import engine_memory
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine
 
-#: The distributions that together carry every extension: one wheel of every platform's extensions
-#: passes PyPI's 100 MB per-file limit, so they are split (packaging/duckdb-ext/collect.py, PARTS).
-_BUNDLE_PACKAGES = ("provisa_duckdb_ext", "provisa_duckdb_ext_warehouse", "provisa_duckdb_ext_saas")
+#: The distribution carrying what fits of the extensions under PyPI's 100 MB per-file limit
+#: (packaging/duckdb-ext/collect.py, WHEEL_PRIORITY).
+_BUNDLE_PACKAGE = "provisa_duckdb_ext"
 
 #: What a connection needs that no connector declares, name -> from the community registry. postgres and
 #: sqlite back the base ATTACH connectors; httpfs and azure a file source's location (REQ-1997); vss the
@@ -107,15 +108,9 @@ def stage_bundled_extensions(target: str | Path) -> Path:
     with ``scripts/stage_duckdb_extensions.py``), and ``BundledExtensionsMissing`` when the package is present but has no blobs for this exact DuckDB
     version + platform.
     """
-    importlib.import_module(_BUNDLE_PACKAGES[0])  # ModuleNotFoundError propagates by design
+    package = importlib.import_module(_BUNDLE_PACKAGE)  # ModuleNotFoundError propagates by design
     raw_version, platform = _version_and_platform()
-    blobs: list[Path] = []
-    for package in _BUNDLE_PACKAGES:
-        try:
-            ext_root = importlib.import_module(package).ext_root
-        except ModuleNotFoundError:
-            continue  # an older bundle without this part: verify_bundle names what that leaves out
-        blobs += sorted((ext_root() / raw_version / platform).glob("*.duckdb_extension"))
+    blobs = sorted((package.ext_root() / raw_version / platform).glob("*.duckdb_extension"))
     if not blobs:
         raise BundledExtensionsMissing(
             f"provisa-duckdb-ext has no DuckDB extensions for {platform} @ {raw_version}; "
@@ -251,7 +246,7 @@ def verify_bundle() -> None:
         if missing:
             raise BundledExtensionsMissing(
                 f"this install lacks DuckDB extensions for {platform} @ {raw_version}: "
-                f"{', '.join(missing)}. Install provisa-duckdb-ext for duckdb {raw_version}."
+                f"{', '.join(missing)}. To fix it: {engine_memory.STAGE_FIX}."
             )
         failed: list[str] = []
         for name in sorted(required_extensions()):

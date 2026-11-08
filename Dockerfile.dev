@@ -68,6 +68,10 @@ RUN cp /encoders/* ./provisa/ && rm -rf /encoders && python -c "import provisa._
 ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
 COPY scripts/stage_duckdb_extensions.py /tmp/stage_duckdb_extensions.py
 RUN PYTHONPATH=/app python /tmp/stage_duckdb_extensions.py && rm /tmp/stage_duckdb_extensions.py
+# REQ-294: so is every connector pgwire bundle but govdata's (Dockerfile does the same).
+ENV PROVISA_RUNTIME_DEPS_CACHE=/opt/provisa/runtime-deps
+RUN python -m provisa.runtime_deps.stage_pgwire_bundles --except govdata \
+ && python -m provisa.runtime_deps.pgwire_bundles --except govdata
 # REQ-2194: the wheel, for the code images this server builds (codesource/image_build.py).
 COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
 ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels

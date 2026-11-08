@@ -82,6 +82,8 @@ def test_no_runtime_code_fetches_a_bundle():
             continue
         if path == runtime / "runtime_deps" / "__init__.py":
             continue
+        if path == runtime / "runtime_deps" / "stage_pgwire_bundles.py":
+            continue  # the staging step, packaged so an install can run it; the server never imports it
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (isinstance(node, ast.Name) and node.id == "download_release_asset") or (
                 isinstance(node, ast.Attribute) and node.attr == "download_release_asset"

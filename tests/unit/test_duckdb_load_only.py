@@ -41,7 +41,13 @@ _ALL_BLOBS = {"postgres": "postgres_scanner", "sqlite": "sqlite_scanner"}
 
 
 def _runtime_sources() -> list[Path]:
-    return sorted(p for p in _RUNTIME.rglob("*.py") if "_ui" not in p.parts)
+    # The staging step is packaged so a pip user can run it; nothing the server runs imports it
+    # (test_installer_assets.test_nothing_the_server_runs_imports_a_staging_step).
+    return sorted(
+        p
+        for p in _RUNTIME.rglob("*.py")
+        if "_ui" not in p.parts and p.name != "stage_duckdb_extensions.py"
+    )
 
 
 def _docstrings(tree: ast.Module) -> set[int]:
@@ -276,14 +282,14 @@ def test_verify_bundle_refuses_an_install_lacking_extensions(tmp_path, monkeypat
     assert "firebird" in str(refused.value) and "airport" in str(refused.value)
 
 
-def test_every_extension_of_the_bundle_is_assigned_to_a_distribution():
+def test_every_extension_of_the_bundle_is_listed_for_the_wheel():
     spec = importlib.util.spec_from_file_location(
         "collect", _REPO / "packaging" / "duckdb-ext" / "collect.py"
     )
     assert spec is not None and spec.loader is not None
     collect: types.ModuleType = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(collect)
-    assigned = {name for names in collect.PARTS.values() for name in names}
+    assigned = {name for group in collect.WHEEL_PRIORITY for name in group}
     assert {_ALL_BLOBS.get(n, n) for n in required_extensions()} <= assigned
     assert "motherduck_impl" in assigned  # brought in by LOAD motherduck
 

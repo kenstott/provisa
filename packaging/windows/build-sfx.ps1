@@ -114,9 +114,10 @@ if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
 $env:RUSTUP_TOOLCHAIN = '1.95.0'
 & $RuntimePy -m pip install --quiet --find-links $NotebookDir "${RepoRoot}[embedded]" uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
-# REQ-294: the runtime never downloads a DuckDB extension, so a build without all of them stops here.
-& $RuntimePy -I -m provisa.federation.duckdb_extensions
-if ($LASTEXITCODE -ne 0) { throw "the native runtime lacks DuckDB extensions (see above)" }
+# REQ-294: the runtime fetches neither a DuckDB extension nor a pgwire bundle, so everything but the
+# bundles INSTALLER_EXCEPTED names is staged and checked here, or the build stops.
+& $RuntimePy -I -m provisa.runtime_deps.installer_assets build (Join-Path $RuntimeDst 'provisa-assets.tar.gz')
+if ($LASTEXITCODE -ne 0) { throw "the installer's connector bundles and DuckDB extensions did not stage (see above)" }
 # -I: from the repository root, -c would import the checkout's provisa (no compiled module)
 # in place of the runtime's.
 & $RuntimePy -I -c "import provisa, provisa._encoders.pgwire, pathlib; assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES').is_file()" 2>&1 | Out-Null
@@ -209,7 +210,8 @@ UninstallDisplayName=Provisa
 UninstallDisplayIcon={app}\provisa.ico
 
 [Files]
-Source: "$BuildDir\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "$BuildDir\*"; DestDir: "{app}"; Excludes: "provisa-assets.tar.gz"; Flags: recursesubdirs createallsubdirs
+Source: "$BuildDir\runtime\provisa-assets.tar.gz"; DestDir: "{app}\runtime"; Flags: nocompression
 
 [Icons]
 Name: "{group}\Provisa"; Filename: "wscript.exe"; Parameters: "/nologo ""{app}\launch-gui.vbs"""; IconFilename: "{app}\provisa.ico"

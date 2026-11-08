@@ -100,6 +100,12 @@ function Stage-Runtime {
     Write-Info 'Reset the native control plane for the new schema.'
   }
   if ($bundleVer -ne '') { Set-Content -Path $stagedVerF -Value $bundleVer -Encoding ASCII }
+  # REQ-294: every DuckDB extension and connector bundle the installer holds. provisa-native.ps1
+  # points the runtime at them (PROVISA_DUCKDB_EXT_DIR, PROVISA_RUNTIME_DEPS_CACHE).
+  $assets = Join-Path $RuntimeDst 'provisa-assets.tar.gz'
+  & $dstPy -I -m provisa.runtime_deps.installer_assets unpack $assets $ProvisaHome
+  if ($LASTEXITCODE -ne 0) { Write-Err "The installer's connector bundles and DuckDB extensions did not unpack (see above)."; exit 1 }
+  Remove-Item -Force $assets
   Write-Ok 'Native runtime staged.'
 }
 

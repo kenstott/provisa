@@ -441,13 +441,26 @@ OVERLAY_EXT="/root/.provisa/extensions/overlay/docker-compose.overlay.yml"
 # The hub cache of the embedding models the app and the sandbox tier load (a demo's own, REQ-2006).
 HF_CACHE_DIR="/root/.provisa/hf-cache"
 # The runtime-deps cache: the connector bundles (hundreds of megabytes each) a source reads
-# through, fetched once rather than at every recreate (provisa/runtime_deps/pgwire_bundles.py).
+# through, mounted over the image's own (govdata's bundle is not in the image) and staged once by
+# stage_runtime_deps, before the containers that read it start (provisa/runtime_deps/pgwire_bundles.py).
 RUNTIME_DEPS_DIR="/root/.provisa/runtime-deps"
 
 # The rest of the overlay of a node running the regions tier's other nodes: only the sandbox VM,
 # whose compose push_compose has brought up to them. An overlay naming a service a node's compose
 # does not have stops that node's stack.
 REGIONS_NODES_OVERLAY=""
+
+# REQ-294: every connector's bundle (govdata's too, which the image does not hold), into the host
+# directory the overlay mounts. Staged by the running image's own Python against the deployed tree,
+# so its pins are the deployed ones. Fetches only what is not yet there.
+stage_runtime_deps() {
+  echo "== runtime deps: staging connector bundles"
+  ssh_node "set -e; IMG=\$(sudo docker inspect -f '{{.Config.Image}}' $API_CONTAINER) \
+    && sudo mkdir -p $RUNTIME_DEPS_DIR \
+    && sudo docker run --rm -w /app -e PROVISA_RUNTIME_DEPS_CACHE=/deps \
+         -v $RUNTIME_DEPS_DIR:/deps -v $OVERLAY_DIR/provisa:/app/provisa \
+         \$IMG python -m provisa.runtime_deps.stage_pgwire_bundles"
+}
 
 push_overlay() {
   local ORG_BASE
@@ -469,7 +482,7 @@ services:
       # A huggingface embedding model is fetched into the hub cache at its first use; on the host,
       # a recreate does not fetch it again.
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
-      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
+      - ${RUNTIME_DEPS_DIR}:/opt/provisa/runtime-deps
   provisa-ui:
     environment:
       VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
@@ -487,7 +500,7 @@ services:
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
-      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
+      - ${RUNTIME_DEPS_DIR}:/opt/provisa/runtime-deps
     # Where the tier is published (first-launch.sh's PROVISA_SANDBOX_PUBLISH): on a sandbox VM its
     # VPC address, where the coordinator reaches it. A VM set up by a release from before that
     # variable has no port in its compose, and its systemd unit passes no such variable through.
@@ -519,7 +532,7 @@ services:
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
-      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
+      - ${RUNTIME_DEPS_DIR}:/opt/provisa/runtime-deps
 ${REGIONS_NODES_OVERLAY}
 YAML
   local want have
@@ -529,6 +542,7 @@ YAML
   have="$(ssh_node "sudo shasum -a 256 $OVERLAY_EXT 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
   if [ "$want" = "$have" ]; then
     echo "== host overlay: up to date"
+    stage_runtime_deps
     return
   fi
   # Seeded from the IMAGE, through a created (never started) container of it. A bind mount hides
@@ -547,6 +561,7 @@ YAML
            && sudo docker cp \$SEED:/app/\$d $OVERLAY_DIR/\$d \
            && echo \"seeded \$d=\$(sudo ls $OVERLAY_DIR/\$d | wc -l)\"; \
        done"
+  stage_runtime_deps
   echo "== host overlay: installing overlay"
   scp_node "$STAGE/docker-compose.overlay.yml" /tmp/docker-compose.overlay.yml
   ssh_node "sudo mkdir -p $(dirname $OVERLAY_EXT) \
@@ -1364,7 +1379,7 @@ deploy_sandbox_vm() {
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
-      - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"
+      - ${RUNTIME_DEPS_DIR}:/opt/provisa/runtime-deps"
   push_demo_stores; push_demo_stores_env; push_compose; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }

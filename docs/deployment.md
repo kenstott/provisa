@@ -29,7 +29,22 @@ Every production path needs the Provisa artifacts before any deployment can run.
 
 **Terraform path.** Upload the AppImage to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot through their IAM role, so they need outbound access to S3, directly or through a VPC gateway endpoint. Apply the same scanning policy as for the AppImage path.
 
-**DuckDB extensions.** Every installer, the container image and `pip install provisa[embedded]` hold every DuckDB extension for the DuckDB version they run, and DuckDB never fetches one at runtime. `python -m provisa.federation.duckdb_extensions` checks an install and names anything missing. An extension declared by a [custom connector](../config/custom_connectors.yaml) isn't bundled; stage it into `PROVISA_DUCKDB_EXT_DIR` yourself. A MotherDuck source needs its service reachable: the extension asks `api.motherduck.com` for its build when it loads.
+**DuckDB extensions.** The macOS, Windows and Linux installers and the container image hold every DuckDB extension for the DuckDB version they run, and DuckDB never fetches one at runtime. `pip install provisa[embedded]` holds what fits in its wheel, in the order of `WHEEL_PRIORITY` in `packaging/duckdb-ext/collect.py`; stage the rest once, on a connected machine, with `python -m provisa.federation.stage_duckdb_extensions`. A missing extension fails naming that command. `python -m provisa.federation.duckdb_extensions` checks an install and names anything missing. An extension declared by a [custom connector](../config/custom_connectors.yaml) isn't bundled; stage it into `PROVISA_DUCKDB_EXT_DIR` yourself. A MotherDuck source needs its service reachable: the extension asks `api.motherduck.com` for its build when it loads.
+
+**Connector bundles.** A connector that reads through the pgwire server (file, SharePoint, Salesforce, ServiceNow, Jira, CloudOps, Splunk, GovData) needs its bundle staged, and a running Provisa never fetches one: a missing bundle fails naming it and the staging command. The installers and the container image hold every bundle except GovData's. The first launch of a native installer unpacks bundles and extensions into `~/.provisa`, with `PROVISA_RUNTIME_DEPS_CACHE` and `PROVISA_DUCKDB_EXT_DIR` set to match.
+
+**GovData and air-gapped sites.** Pre-download what the install doesn't hold, once, on a connected machine of the same OS and architecture, with the same Provisa version:
+
+```bash
+# Into the cache of an install on this machine:
+PROVISA_RUNTIME_DEPS_CACHE=~/.provisa/runtime-deps python -m provisa.runtime_deps.stage_pgwire_bundles --only govdata
+
+# For a site with no connection, stage into a directory you carry there:
+PROVISA_RUNTIME_DEPS_CACHE=./runtime-deps python -m provisa.runtime_deps.stage_pgwire_bundles --only govdata
+PROVISA_DUCKDB_EXT_DIR=./duckdb-ext python -m provisa.federation.stage_duckdb_extensions
+```
+
+Copy each directory to the matching one on the target (`~/.provisa/runtime-deps` and `~/.provisa/duckdb-ext` for a native install, `/opt/provisa/runtime-deps` for the container image), keeping its layout. The check `python -m provisa.runtime_deps.pgwire_bundles` confirms it; it fails naming every absent bundle, so run it with `--except govdata` where GovData is deliberately left out. On a `pip` install, the same two commands stage everything before first run.
 
 **Helm / Kubernetes path.** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
 
@@ -75,7 +90,7 @@ Provisa never downloads a DuckDB extension while it runs. It only loads what's a
 python scripts/stage_duckdb_extensions.py
 ```
 
-It installs every extension into DuckDB's per-user directory, or into `PROVISA_DUCKDB_EXT_DIR` when that's set, then loads each to confirm it. `pip install provisa[embedded]`, the installers and the container image already hold them.
+It installs every extension into DuckDB's per-user directory, or into `PROVISA_DUCKDB_EXT_DIR` when that's set, then loads each to confirm it. The installers and the container image already hold them; `pip install provisa[embedded]` holds what fits in its wheel, and `python -m provisa.federation.stage_duckdb_extensions` stages the rest.
 
 ### Manual steps (backend only, no UI)
 
