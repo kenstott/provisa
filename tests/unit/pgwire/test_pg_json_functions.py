@@ -119,6 +119,36 @@ def test_a_read_stays_the_engines_own_operator_with_nothing_per_row(sql: str, di
 
 
 @pytest.mark.parametrize("dialect", _ENGINES)
+@pytest.mark.parametrize("op", ["->", "->>"])
+def test_a_key_the_rows_hold_is_a_key_never_a_path(dialect: str, op: str):
+    """A text step is an object's key whatever it spells: '$.b' names a key, not a path. The
+    engine's own operator, and Trino's json_extract, read a text as a path."""
+    written = _write(f"SELECT a {op} k::text FROM t", dialect)
+    assert "REPLACE(" in written.upper() or dialect == "clickhouse"
+    assert "JSONEXTRACTRAW(A, CAST(K" in written.upper() or dialect != "clickhouse"
+
+
+@pytest.mark.parametrize("dialect", _ENGINES)
+def test_an_index_the_rows_hold_is_an_arrays_index(dialect: str):
+    written = _write("SELECT a -> i::int FROM t", dialect).upper()
+    assert "JSON_ARRAY_ELEMENT" in written  # the row's form, named for the function
+
+
+@pytest.mark.parametrize("dialect", ("trino", "clickhouse"))
+@pytest.mark.parametrize("op", ["->", "->>"])
+def test_a_step_of_no_stated_type_is_refused_where_the_engine_reads_it_as_a_path(
+    dialect: str, op: str
+):
+    with pytest.raises(FunctionRefused) as refused:
+        _write(f"SELECT a {op} k FROM t", dialect)
+    assert refused.value.params == {"function": op, "dialect": dialect}
+
+
+def test_a_step_of_no_stated_type_stays_duckdbs_own_operator():
+    assert _write("SELECT a -> i FROM t", "duckdb") == "SELECT a -> i FROM t"
+
+
+@pytest.mark.parametrize("dialect", _ENGINES)
 def test_a_read_of_a_column_is_not_typed_so_nothing_is_written_per_row_at_the_wire(dialect: str):
     assert result_casts("SELECT a -> 'b', a ->> 'c' FROM t") == (None, None)
 

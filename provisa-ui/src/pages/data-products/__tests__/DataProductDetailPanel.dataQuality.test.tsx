@@ -107,6 +107,7 @@ function renderPanel(tables: CoreTable[], dq: ProductDq = { ...NO_DQ, promises: 
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       contractsVersion={0}
       lineageError=""

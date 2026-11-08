@@ -147,8 +147,28 @@ export const ENTERPRISE_DOMAIN = "*";
 
 /** A relationship declared from a table: its name is the Cypher type it is served under
  * (relationships.cypher_type), as the Relationships page shows it. Its id is configuration, never
- * a label. */
-const RELATIONSHIP: Selection = { fields: ["id", "cypher_type", "target_table_id"] };
+ * a label. REQ-2174 (amended 2026-11-07): the table it reaches, named, with the product that
+ * holds it -- a related table is drawn with its products and nothing of its own. */
+const RELATIONSHIP: Selection = {
+  fields: ["id", "cypher_type", "target_table_id"],
+  rels: {
+    targetTable: {
+      sel: {
+        fields: ["id", "table_name", "domain_id"],
+        rels: {
+          dataProductTables: {
+            sel: {
+              fields: [],
+              rels: {
+                dataProduct: { sel: { fields: ["id", "name", "domain_id", ...PRODUCT_FACTS] } },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 /** The term standings ``hidden`` leaves out, as conditions on the ontology's status column
  * (REQ-1387: set by people). */
@@ -163,15 +183,12 @@ const all = (conds: Where[]): Where | undefined =>
 const inDomains = (domains: string[], column = "domain_id"): Where | undefined =>
   domains.length === 0 ? undefined : { [column]: { in: domains } };
 
-/** A relationship served under one of the Cypher ``types``. */
-const named = (types: string[]): Where | undefined =>
-  types.length === 0 ? undefined : { cypher_type: { in: types } };
-
-/** The relationships declared from a table drawn: the Product map's, under Tables with Columns.
- * The Ontology preset draws none (REQ-2130, AN ONTOLOGY VIEW, NOT A DATA-FLOW VIEW). */
+/** The relationships declared from a table drawn: the Product map's, under Related tables (REQ-2174,
+ * amended 2026-11-07), whatever the Term relationships filter keeps. The Ontology preset draws
+ * none (REQ-2130, AN ONTOLOGY VIEW, NOT A DATA-FLOW VIEW). */
 function relationships(s: QueryScope): NonNullable<Selection["rels"]> {
-  return s.products && s.layers.has("ownerTables") && s.layers.has("columns")
-    ? { sourceRelationships: { sel: RELATIONSHIP, where: named(s.edgeTypes) } }
+  return s.products && s.layers.has("related")
+    ? { sourceRelationships: { sel: RELATIONSHIP } }
     : {};
 }
 
@@ -611,6 +628,13 @@ interface RelationshipRow {
   // Every relationship has its served type stored (relationship_names.store_effective_names).
   cypherType: string;
   targetTableId: number | null;
+  // Absent where the role cannot read the table it reaches.
+  targetTable?: {
+    id: number;
+    tableName: string;
+    domainId: string;
+    dataProductTables?: Memberships;
+  } | null;
 }
 
 export interface TermRow {
@@ -953,10 +977,10 @@ export function productMapGraph(
     node(productNodeOf(id, name, domain, row));
     if (nodes.has(`d:${domain}`)) edge(productNode(id), `d:${domain}`, "in_domain");
   };
+  // Related tables are drawn last, so a table or product read as itself keeps its own layers.
+  const related: [number, RelationshipRow][] = [];
   const relationships = (from: number, rows: RelationshipRow[] | null | undefined) => {
-    for (const r of rows ?? [])
-      if (r.targetTableId !== null)
-        edge(`t:${from}`, `t:${r.targetTableId}`, "relationship", r.cypherType, ["ownerTables"]);
+    for (const r of rows ?? []) related.push([from, r]);
   };
 
   termNodes(b, terms);
@@ -1098,6 +1122,31 @@ export function productMapGraph(
       );
       if (link) link.paths = e.pathCount;
     }
+  // REQ-2174 (amended 2026-11-07): each table related to a table drawn, named by the relationship,
+  // with the product holding it: Related tables', one step, nothing of the related table's own.
+  for (const [from, r] of related) {
+    const to = r.targetTable;
+    // A table the role cannot read has no end to draw.
+    if (!to) continue;
+    const tid = `t:${to.id}`;
+    node({
+      id: tid,
+      type: "table",
+      label: catalogTableName(to),
+      domains: [to.domainId],
+      stored: true,
+      layers: [],
+    });
+    edge(`t:${from}`, tid, "relationship", r.cypherType, ["related"]);
+    for (const p of productsOf(to.dataProductTables)) {
+      // The relationship's read names every product it reaches.
+      node({
+        ...productNodeOf(p.id, p.name as string, p.domainId as string, p),
+        layers: ["related"],
+      });
+      edge(productNode(p.id), tid, "member", undefined, ["related"]);
+    }
+  }
   termEdgesDrawn(b, edges);
   return b.graph();
 }
@@ -1121,26 +1170,32 @@ function sourceObject(n: {
   return object ? `${n.source_id} · ${object}` : (n.source_id as string);
 }
 
-/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): ``g`` with ``product``'s lineage on the Lineage
- * layer, from the product lineage endpoint (REQ-2156, cut to what the reader can read): each input
- * feeds the product; an input that is another product's member stands for that product, which
- * the product is built from. Its column lineage (REQ-2129) joins the columns it names: a member's
- * or an input's column by its table, any other by its relation. ``tables`` gives the relation each
- * of the product's member tables is served under. */
+/** REQ-2174 (amended 2026-11-07, WHAT THE GRAPH DRAWS): ``g`` with ``product``'s inputs on the
+ * Inputs layer (LayerId "lineage"), from the product lineage endpoint (REQ-2156, cut to what the
+ * reader can read): where the product comes from, never who consumes it. Each input links to the
+ * member table that reads it (the member whose lineage, walked upstream, reaches it first); an
+ * input that is other products' member stands for each of them. Its column lineage (REQ-2129)
+ * joins the columns it names: a member's or an input's column by its table, any other by its
+ * relation. ``tables`` gives the relation each of the product's member tables is served under. */
 export function withProductLineage(
   g: GraphData,
   product: string,
   lineage: ProductLineage,
   tables: { id: number; domainId: string; tableName: string }[],
 ): GraphData {
-  const pid = productNode(product);
   const nodes = new Map(g.nodes.map((n) => [n.id, n]));
   const edges = new Map(g.edges.map((e) => [e.id, e]));
+  const readers = inputReaders(lineage);
+  const memberTable = new Map(tables.map((t) => [relationName(t), t.id]));
   for (const i of lineage.inputs) {
     // An input that is another product's member stands for each such product; the focus product
     // is not drawn as its own input. An input in no other product stands for itself.
     const others = i.product_ids.filter((p) => p !== product);
     const sources = others.length > 0 ? others.map(productNode) : [`l:${i.relation}`];
+    const members = readers.get(i.relation);
+    // The endpoint finds each input upstream of a member: one no member reaches is not its input.
+    if (!members || members.size === 0)
+      throw new Error(`product ${product}'s input ${i.relation} is read by none of its members`);
     for (const from of sources) {
       if (!nodes.has(from)) {
         const other = others.find((p) => productNode(p) === from);
@@ -1151,8 +1206,14 @@ export function withProductLineage(
             : { id: from, type: "product", label: other, domains: [i.domain_id] },
         );
       }
-      const id = `lineage:${from}>${pid}`;
-      if (!edges.has(id)) edges.set(id, { id, a: from, b: pid, kind: "lineage" });
+      for (const m of members) {
+        const tid = memberTable.get(m);
+        // A member the read leaves out (another domain's, under the domain filter) has no end to
+        // draw.
+        if (tid === undefined) continue;
+        const id = `lineage:${from}>t:${tid}`;
+        if (!edges.has(id)) edges.set(id, { id, a: from, b: `t:${tid}`, kind: "lineage" });
+      }
     }
   }
   const tableOf = new Map<string, number>([
@@ -1165,7 +1226,7 @@ export function withProductLineage(
     const id = tid === undefined ? `lc:${n.id}` : `c:${tid}:${n.column}`;
     columnOf.set(n.id, id);
     // A column the ontology's read did not draw stands alone, named by where it is read from,
-    // drawn by Lineage alone.
+    // drawn only as the end of a column lineage edge (on an unfolded table).
     if (!nodes.has(id))
       nodes.set(id, {
         id,
@@ -1175,7 +1236,7 @@ export function withProductLineage(
             ? `${sourceObject(n)}.${n.column}`
             : `${n.relation === null ? "" : `${n.relation}.`}${n.column}`,
         inProduct: false,
-        layers: ["lineage"],
+        layers: [],
       });
   }
   for (const e of lineage.edges) {
@@ -1188,4 +1249,32 @@ export function withProductLineage(
     if (!edges.has(id)) edges.set(id, { id, a, b, kind: "column_lineage" });
   }
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
+}
+
+/** Each input's readers: the member relations whose lineage, walked upstream, reaches the input
+ * before any other member (the endpoint's nearest-inputs walk, REQ-2126). */
+export function inputReaders(lineage: ProductLineage): Map<string, Set<string>> {
+  const members = new Set(lineage.members);
+  const inputs = new Set(lineage.inputs.map((i) => i.relation));
+  const relation = new Map(lineage.nodes.map((n) => [n.id, n.relation]));
+  const up = new Map<string, string[]>();
+  for (const e of lineage.edges) up.set(e.target, [...(up.get(e.target) ?? []), e.source]);
+  const out = new Map<string, Set<string>>();
+  for (const n of lineage.nodes) {
+    if (n.relation === null || !members.has(n.relation)) continue;
+    const member = n.relation;
+    const seen = new Set([n.id]);
+    const stack = [n.id];
+    while (stack.length > 0) {
+      for (const p of up.get(stack.pop() as string) ?? []) {
+        if (seen.has(p)) continue;
+        seen.add(p);
+        const r = relation.get(p) ?? null;
+        if (r !== null && members.has(r)) continue;
+        if (r !== null && inputs.has(r)) out.set(r, (out.get(r) ?? new Set()).add(member));
+        else stack.push(p);
+      }
+    }
+  }
+  return out;
 }

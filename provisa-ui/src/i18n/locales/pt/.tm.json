@@ -9743,5 +9743,14 @@
   "pt/requestsPage.json::requestsPage.deliveryEmail": "Email",
   "pt/requestsPage.json::requestsPage.deliveryEvents": "Events only",
   "pt/requestsPage.json::requestsPage.deliveryBoth": "Both",
-  "pt/serverErrors.json::serverErrors.data_product.members.domain_has_members": "Data product {{data_product}} cannot move to domain {{domain}} while it has members from another domain: {{members}}. Take them out of the product first."
+  "pt/serverErrors.json::serverErrors.data_product.members.domain_has_members": "Data product {{data_product}} cannot move to domain {{domain}} while it has members from another domain: {{members}}. Take them out of the product first.",
+  "pt/dataProductsTab.json::dataProductsTab.detail.inputsLineageLink": "See column lineage",
+  "pt/dataProductsTab.json::dataProductsTab.detail.lineageLaneInputs": "Inputs",
+  "pt/dataProductsTab.json::dataProductsTab.detail.lineageLaneTables": "This product's tables",
+  "pt/dataProductsTab.json::dataProductsTab.detail.lineageTitle": "Column lineage: where this product comes from",
+  "pt/graph3d.json::graph3d.hopsFrom": "Hops from {{focus}}",
+  "pt/graph3d.json::graph3d.hopsFromMatches": "Hops from the matches",
+  "pt/graph3d.json::graph3d.relatedTables": "Related tables",
+  "pt/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, {{atlan}} and others.",
+  "pt/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}"
 }

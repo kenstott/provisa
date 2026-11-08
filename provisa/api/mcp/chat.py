@@ -1272,7 +1272,10 @@ _SYSTEM = (
     "navigate to /graph instead. Asked for data as a file (CSV or Parquet), call run_sql with "
     "file_format. A run_sql result that carries `redirect` was delivered as a file the user "
     "can download in the chat: say how many rows it holds and that the download is there, "
-    "never list its rows.\n"
+    "never list its rows. Say a file or download exists only when a run_sql result in this "
+    "reply carries `redirect`: a result that says 'No file was delivered', a failed call, no "
+    "call at all and a download mentioned earlier in the conversation are not one. Asked for a "
+    "file with none delivered, call run_sql with file_format; if that fails, say it failed.\n"
     "The Graph page's view -- group by, collapse every group, layout, max nodes -- is set through "
     "navigate's state.view, never by rewriting the query: asked to group the graph on screen by "
     "an attribute, navigate to /graph with only state.view.groupBy (the node property name) and "
@@ -1455,6 +1458,11 @@ async def _resolve_model(state: Any) -> str | None:
     return "claude-opus-4-8" if await _resolve_vendor(state) == "anthropic" else None
 
 
+#: What a run_sql result says when it carries no file: the model may claim a download only from a
+#: result that has one.
+_NO_FILE = "No file was delivered."
+
+
 async def _run_sql(state: Any, role: str, sql: str, args: dict) -> dict:
     """run_sql for the chat. The model always gets the result's first rows: a file delivery alone
     answers only how many rows it holds, and a model that asked for a file it did not need read
@@ -1474,13 +1482,23 @@ async def _run_sql(state: Any, role: str, sql: str, args: dict) -> dict:
         else None
     )
     if deliver_as is not None:
-        delivered = await mcp_tools.run_sql(
-            state, role, sql, redirect=True, redirect_format=deliver_as
-        )
+        try:
+            delivered = await mcp_tools.run_sql(
+                state, role, sql, redirect=True, redirect_format=deliver_as
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the model as the failed delivery it is
+            raise ValueError(
+                f"{_NO_FILE} The delivery failed: {exc}. Tell the user it failed."
+            ) from exc
         result["redirect"] = delivered["redirect"]
     if "redirect" in result:
         result["artifact"] = {"kind": "file", **result["redirect"]}
         result["shown"] = "The user has a download for this file in the chat."
+    else:
+        result["file"] = (
+            f"{_NO_FILE} There is no download in the chat from this call. If the user asked for "
+            "a file, call run_sql with file_format."
+        )
     return result
 
 

@@ -132,6 +132,9 @@ function productLayerScopes(): [string, QueryScope][] {
     ["data", ...parts],
     ["ownerTables"],
     ["data", "ownerTables"],
+    // REQ-2174 (amended 2026-11-07): the tables related to those drawn, with their products.
+    ["related"],
+    ["data", "related"],
   ];
   return sets.map((layers) => [
     `layers=${layers.join("+")}`,
@@ -239,15 +242,24 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     const ontology = [...ontologyScopes(), ...snippetScopes()].filter(([, s]) => !s.products);
     expect(ontology.length).toBeGreaterThan(10);
     for (const [, s] of ontology) {
-      const q = ontologyQuery(m, { ...s, layers: new Set([...s.layers, "ownerTables"]) }) as string;
+      const q = ontologyQuery(m, {
+        ...s,
+        layers: new Set([...s.layers, "ownerTables", "related"]),
+      }) as string;
       expect(q).not.toContain("m__dataProducts");
       expect(q).not.toContain("sourceRelationships");
     }
-    const [, map] = productLayerScopes().find(([k]) => k === "layers=data+ownerTables")!;
+    // The Product map reads relationships only under Related tables, each with the table it reaches.
+    const [, tables] = productLayerScopes().find(([k]) => k === "layers=data+ownerTables")!;
+    expect(ontologyQuery(m, tables) as string).not.toContain("sourceRelationships");
+    const [, map] = productLayerScopes().find(([k]) => k === "layers=data+related")!;
     const mapped = ontologyQuery(m, map) as string;
     expect(mapped).toContain("m__dataProducts");
     expect(mapped).toMatch(/dataProductTables[^{]*\{\s*registeredTable \{/);
     expect(mapped).toContain("sourceRelationships");
+    expect(mapped).toMatch(/sourceRelationships \{[^]*targetTable \{/);
+    // The product holding a related table is read through the membership junction.
+    expect(mapped).toMatch(/targetTable \{[^]*dataProductTables[^{]*\{\s*dataProduct \{/);
   });
 
   it("each read the system catalog's real root fields", () => {

@@ -201,7 +201,7 @@ describe("the product layers' graph", () => {
   it("offers Lineage wherever a product is drawn, without reading it", () => {
     expect(availableLayers(g, PRODUCT_MAP_SCOPE).has("lineage")).toBe(true);
     expect(availableLayers(productMapGraph([], []), PRODUCT_MAP_SCOPE).has("lineage")).toBe(false);
-    expect(PRODUCT_MAP_SCOPE.readWhenOn).toEqual({ lineage: "product" });
+    expect(PRODUCT_MAP_SCOPE.readWhenOn).toEqual({ lineage: "product", related: "table" });
   });
 });
 
@@ -231,14 +231,32 @@ const lineageOf = (over: Partial<ProductLineage>): ProductLineage => ({
   ...over,
 });
 
-describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
+describe("the Inputs layer (REQ-2156, REQ-2129; REQ-2174 amended 2026-11-07)", () => {
   const base = productMapGraph([], [], PRODUCTS);
+  const col = (id: string, relation: string, kind: LineageNode["kind"] = "source") => ({
+    id,
+    relation,
+    column: id.slice(id.lastIndexOf(".") + 1),
+    kind,
+    materialized: false,
+  });
+  const feeds = (source: string, target: string) => ({ source, target, transform: "", ops: [] });
 
   it("draws one product node for each product an input is a member of, the focus product excluded", () => {
     const g = withProductLineage(
       base,
       "p1",
       lineageOf({
+        members: ["sales.pets"],
+        nodes: [
+          col("sales.pets.name", "sales.pets", "derived"),
+          col("mart.e.name", "mart.e"),
+          col("raw.only_here.name", "raw.only_here"),
+        ],
+        edges: [
+          feeds("mart.e.name", "sales.pets.name"),
+          feeds("raw.only_here.name", "sales.pets.name"),
+        ],
         inputs: [
           input({
             relation: "mart.e",
@@ -254,22 +272,37 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
           }),
         ],
       }),
-      [],
+      memberTablesOf(PRODUCTS[0]),
     );
     expect(g.nodes.some((n) => n.id === "l:mart.e")).toBe(false);
     expect(g.nodes.some((n) => n.id === "l:raw.only_here")).toBe(true);
     expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
-      ["p:p2", "p:p1"],
-      ["p:p3", "p:p1"],
-      ["l:raw.only_here", "p:p1"],
+      ["p:p2", "t:3"],
+      ["p:p3", "t:3"],
+      ["l:raw.only_here", "t:3"],
     ]);
   });
 
-  it("draws the endpoint's inputs feeding the product, each named as its reader knows it", () => {
+  it("links each input to the member table that reads it, each named as its reader knows it", () => {
     const g = withProductLineage(
       base,
       "p1",
       lineageOf({
+        members: ["sales.pets"],
+        nodes: [
+          col("sales.pets.name", "sales.pets", "derived"),
+          col("pet_store.pets.name", "pet_store.pets"),
+          col("native:sales.orders.id", "native:sales.orders", "native"),
+          // An input reached through a view between it and the member.
+          col("mart.v.name", "mart.v", "derived"),
+          col("mart.e.name", "mart.e"),
+        ],
+        edges: [
+          feeds("pet_store.pets.name", "sales.pets.name"),
+          feeds("native:sales.orders.id", "sales.pets.name"),
+          feeds("mart.e.name", "mart.v.name"),
+          feeds("mart.v.name", "sales.pets.name"),
+        ],
         inputs: [
           input({ relation: "pet_store.pets", domain_id: "pet-store", table_name: "pets" }),
           input({
@@ -284,17 +317,18 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
           input({ relation: "mart.e", domain_id: "mart", table_name: "e", product_ids: ["p2"] }),
         ],
       }),
-      [],
+      memberTablesOf(PRODUCTS[0]),
     );
     const label = (id: string) => g.nodes.find((n) => n.id === id)?.label;
     expect(label("l:pet_store.pets")).toBe("pet-store.pets");
     expect(label("l:native:sales.orders")).toBe("shop · public.Orders");
-    // Another product's member stands for that product: p1 is built from p2.
+    // Another product's member stands for that product: p1 is built from p2. Every input links to
+    // the member reading it (sales.pets, t:3), never to the product, and nothing it feeds is drawn.
     expect(g.nodes.some((n) => n.id === "l:mart.e")).toBe(false);
     expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
-      ["l:pet_store.pets", "p:p1"],
-      ["l:native:sales.orders", "p:p1"],
-      ["p:p2", "p:p1"],
+      ["l:pet_store.pets", "t:3"],
+      ["l:native:sales.orders", "t:3"],
+      ["p:p2", "t:3"],
     ]);
     const on = (layers: LayerId[]) =>
       visibleGraph(
@@ -308,7 +342,18 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
     expect(on(["data", "lineage"])).toContain("l:pet_store.pets");
   });
 
-  it("joins the column lineage to the columns it names, by their tables, drawn as itself", () => {
+  it("throws on an input no member reads: the endpoint finds every input upstream of a member", () => {
+    expect(() =>
+      withProductLineage(
+        base,
+        "p1",
+        lineageOf({ members: ["sales.pets"], inputs: [input({})] }),
+        memberTablesOf(PRODUCTS[0]),
+      ),
+    ).toThrow(/read by none of its members/);
+  });
+
+  it("joins the column lineage to the columns it names, by their tables, on unfolded tables", () => {
     const node = (id: string, relation: string, column: string, kind: LineageNode["kind"]) => ({
       id,
       relation,
@@ -335,6 +380,7 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
           { source: "raw.d.name", target: "sales.pets.name", transform: "", ops: [] },
         ],
         inputs: [input({})],
+        members: ["sales.pets"],
       }),
       memberTablesOf(PRODUCTS[0]),
     );
@@ -347,16 +393,20 @@ describe("the Lineage layer (REQ-2156, REQ-2129)", () => {
     expect(label("c:9:name")).toBe("raw.d.name");
     expect(label("lc:native:raw.d.Name")).toBe("crm · public.D.Name");
     // A column lineage alone reaches is Lineage's: Columns does not draw it.
-    const on = (layers: LayerId[]) =>
+    const on = (layers: LayerId[], expanded: string[] = []) =>
       visibleGraph(
         g,
         new Set<LayerId>(["ontology", ...layers]),
         NO_FILTERS,
-        new Set(),
+        new Set(expanded),
         PRODUCT_MAP_SCOPE,
       ).nodes.map((n) => n.id);
     expect(on(["data", "columns"])).not.toContain("c:9:name");
-    // The ontology draws columns as themselves: column lineage needs no table expanded.
-    expect(on(["data", "lineage"])).toEqual(expect.arrayContaining(["c:9:name", "c:3:name"]));
+    // Column lineage stays on unfolded tables: the input's link to its member stands for it until
+    // the member's columns are shown.
+    expect(on(["data", "lineage"])).not.toContain("c:9:name");
+    expect(on(["data", "lineage"], ["t:3"])).toEqual(
+      expect.arrayContaining(["c:9:name", "c:3:name"]),
+    );
   });
 });

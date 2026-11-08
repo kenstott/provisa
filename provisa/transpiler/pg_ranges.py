@@ -932,6 +932,22 @@ class _Writer:
             return _call("array_join", _call("array_agg", text), _string(","))
         return exp.GroupConcat(this=text.copy(), separator=_string(","))
 
+    def joined_items(self, items: exp.Expr) -> exp.Expr:
+        """A list of texts joined by commas, a NULL item left out."""
+        if self.dialect == "clickhouse":
+            return _call("arrayStringConcat", items, _string(","))
+        return exp.ArrayToString(this=items.copy(), expression=_string(","))
+
+    def has_null_item(self, items: exp.Expr) -> exp.Expr:
+        name = self.fresh("x")
+        kept = exp.Lambda(
+            this=_not(_is_null(exp.column(name))), expressions=[exp.to_identifier(name)]
+        )
+        present = exp.ArrayFilter(this=items.copy(), expression=kept)
+        return exp.NEQ(
+            this=exp.ArraySize(this=items.copy()), expression=exp.ArraySize(this=present)
+        )
+
     def _matches(self, text: exp.Expr, pattern: str) -> exp.Expr:
         name = _REGEX_LIST[self.dialect]
         if self.dialect == "clickhouse":  # its arrays are never Nullable
@@ -1449,6 +1465,10 @@ class _Rewrite:
 
     def _beside(self, node: exp.Expr, partner: _Value | None) -> _Value | None:
         assert partner is not None
+        if _null_value(node):  # an untyped NULL is of its partner's type
+            if isinstance(partner, _M):
+                return _M(partner.rtype, exp.true(), _null())
+            return self.writer.null_range(partner.rtype)
         written = _string_literal(node)
         if written is None:
             return None
@@ -1469,6 +1489,8 @@ class _Rewrite:
             write = {"+": self.writer.union, "*": self.writer.intersect, "-": self.writer.minus}
             return write[operator](a, b)
         left, right = self._both_multirange(a), self._both_multirange(b)
+        if _is_true(left.null) or _is_true(right.null):
+            return _M(left.rtype, exp.true(), _null())  # strict: NULL on any dialect
         if left.literal is not None and right.literal is not None:
             fold_m = {"+": pg_range.mr_union, "*": pg_range.mr_intersect, "-": pg_range.mr_minus}
             return self.writer.literal_multirange(fold_m[operator](left.literal, right.literal))
@@ -1506,6 +1528,8 @@ class _Rewrite:
             return _M(rtype, exp.true(), _null())  # VARIADIC NULL: strict, of no array at all
         if len(args) == 1 and isinstance(_variadic_array(args[0]), exp.Array):
             args = _variadic_items(args[0])
+        elif len(args) == 1 and (given := _variadic_array(args[0])) is not None:
+            return self._of_array(rtype, self.rewritten(given))
         parts = [self._as(a, rtype) for a in args]
         if not parts:
             return self.writer.literal_multirange(Multirange(rtype))
@@ -1524,6 +1548,18 @@ class _Rewrite:
             exp.false(),
         )
         return _M(rtype, null, self.writer.canonical(_concat(*pieces), rtype, rtype.multirange))
+
+    def _of_array(self, rtype: RangeType, array: exp.Expr) -> _M:
+        """A multirange of an array only the rows hold, its items each a range's text: strict, and
+        a NULL item refused as PostgreSQL refuses it."""
+        w = self.writer
+        null = w.refusal(
+            _and(_not(_is_null(array)), w.has_null_item(array)),
+            "22004",
+            "multirange values cannot contain null members",
+            _is_null(array),
+        )
+        return _M(rtype, null, w.canonical(w.joined_items(array), rtype, rtype.multirange))
 
     # -- predicates ---------------------------------------------------------------------------
 
@@ -1866,13 +1902,22 @@ class _Rewrite:
         return None
 
     def _multirange_cmp(self, a: _M, b: _M) -> exp.Expr:
-        """multirange_cmp where the statement holds both values or a NULL: SQL here compares a
-        multirange's ranges in turn nowhere, so any other is refused by name."""
+        """multirange_cmp: -1, 0 or 1 as the multiranges' sort keys order, as ``<`` and ``>``
+        compare them; answered here where the statement holds both values."""
         if _is_true(a.null) or _is_true(b.null):
             return exp.cast(_null(), "INT")
-        if a.literal is None or b.literal is None:
-            raise SubtypeOperationRefused(a.rtype.multirange, "multirange_cmp", self.dialect)
-        return _int(pg_range.mr_cmp(a.literal, b.literal))
+        if a.literal is not None and b.literal is not None:
+            return _int(pg_range.mr_cmp(a.literal, b.literal))
+        first = self.writer.multirange_sort_key(a, "multirange_cmp")
+        second = self.writer.multirange_sort_key(b, "multirange_cmp")
+        return _case(
+            [
+                (_or(a.null, b.null), _null()),
+                (exp.LT(this=first, expression=second), _int(-1)),
+                (exp.GT(this=first.copy(), expression=second.copy()), _int(1)),
+            ],
+            _int(0),
+        )
 
     def _aggregate(self, name: str, argument: exp.Expr) -> exp.Expr:
         value = self.value(argument)

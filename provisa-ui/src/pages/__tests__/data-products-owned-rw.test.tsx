@@ -41,7 +41,9 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "vet_lead", capabilities: [] },
-    selectedRoles: [{ id: "vet_lead", parents: ["care_owner"] }],
+    selectedRoles: [
+      { id: "vet_lead", parents: ["care_owner"], effectiveCapabilities: [], domain_access: [] },
+    ],
     availableRoles: [{ id: "vet_lead", parents: ["care_owner"] }],
   }),
 }));
