@@ -11,8 +11,12 @@
 
 """The unit suite's shards (unit-tests.yml), and the check that they run every test once.
 
-``files K/N`` prints the test files of shard K of N: each file of tests/unit goes to the shard its
-path's hash names, so a file added or removed moves no other file. Loaded as a pytest plugin
+``files K/N`` prints the test files of shard K of N. Files with a recorded time
+(unit_file_seconds.json) are dealt out longest first, each to the shard with the least time so far,
+so the shards take about the same time; a hash split left one shard with nearly three times the
+work of another. A file with no recorded time goes to the shard its path's hash names, so a file
+added moves no other file. ``timings JUNIT...`` rewrites the recorded times from shards' junit
+files (the unit-junit-N artifacts of a run). Loaded as a pytest plugin
 (``-p unit_shard``) with PROVISA_COLLECTED_IDS set, it writes the ids pytest collected and kept
 after deselection, one per line. ``check FULL SHARD...`` compares the shards' ids with a full
 collection's and fails naming any test missing from every shard or in more than one.
@@ -28,6 +32,7 @@ import hashlib
 import json
 import os
 import sys
+import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 
@@ -35,6 +40,8 @@ REPO = Path(__file__).resolve().parents[2]
 ROOT = "tests/unit"
 # pyproject.toml [tool.pytest.ini_options] python_files.
 PATTERNS = ("test_*.py", "*_test.py", "steps_*.py")
+# Seconds of test time per file, summed over a run's tests (``timings``).
+TIMINGS = Path(__file__).with_name("unit_file_seconds.json")
 
 
 def test_files() -> list[str]:
@@ -49,11 +56,53 @@ def shard_of(path: str, total: int) -> int:
     return int(hashlib.sha256(path.encode()).hexdigest(), 16) % total + 1
 
 
+def recorded_seconds() -> dict[str, float]:
+    return json.loads(TIMINGS.read_text())
+
+
+def assign(paths: list[str], seconds: dict[str, float], total: int) -> dict[str, int]:
+    """The 1-based shard of ``total`` for each path: the timed ones longest first to the shard with
+    the least time so far (ties to the lower shard, equal times in path order), the rest by hash."""
+    load = [0.0] * total
+    out: dict[str, int] = {}
+    for path in sorted((p for p in paths if p in seconds), key=lambda p: (-seconds[p], p)):
+        shard = min(range(total), key=lambda i: (load[i], i))
+        load[shard] += seconds[path]
+        out[path] = shard + 1
+    for path in paths:
+        out.setdefault(path, shard_of(path, total))
+    return out
+
+
 def files(spec: str) -> list[str]:
     index, total = (int(x) for x in spec.split("/"))
     if not 1 <= index <= total:
         raise ValueError(f"shard {spec} is out of range")
-    return [f for f in test_files() if shard_of(f, total) == index]
+    paths = test_files()
+    placed = assign(paths, recorded_seconds(), total)
+    return [f for f in paths if placed[f] == index]
+
+
+def _junit_file(classname: str) -> str | None:
+    """The test file a junit classname (``tests.unit.sub.test_x.TestY``) names."""
+    parts = classname.split(".")
+    for end in range(len(parts), 0, -1):
+        candidate = "/".join(parts[:end]) + ".py"
+        if (REPO / candidate).is_file():
+            return candidate
+    return None
+
+
+def timings(junits: list[Path]) -> dict[str, float]:
+    """Seconds per test file over the junit files; a test whose file is not found fails loudly."""
+    seconds: Counter[str] = Counter()
+    for junit in junits:
+        for case in ET.parse(junit).getroot().iter("testcase"):
+            file = _junit_file(case.get("classname", ""))
+            if file is None:
+                raise ValueError(f"{junit}: no test file for {case.get('classname')!r}")
+            seconds[file] += float(case.get("time", 0))
+    return {f: round(t, 1) for f, t in sorted(seconds.items())}
 
 
 def pytest_collection_finish(session) -> None:
@@ -98,6 +147,11 @@ def main(argv: list[str]) -> int:
     if argv[:1] == ["files"] and len(argv) == 2:
         print("\n".join(files(argv[1])))
         return 0
+    if argv[:1] == ["timings"] and len(argv) >= 2:
+        result = timings([Path(p) for p in argv[1:]])
+        TIMINGS.write_text(json.dumps(result, indent=1) + "\n")
+        print(f"{len(result)} files, {sum(result.values()):.0f} s")
+        return 0
     if argv[:1] == ["check"] and len(argv) >= 3:
         full, shards = Path(argv[1]), [Path(p) for p in argv[2:]]
         problems = check(full, shards)
@@ -113,7 +167,7 @@ def main(argv: list[str]) -> int:
         print(f"{count} test files listed; {len(argv) - 2} shards; {len(problems)} problems")
         return 1 if problems else 0
     print(
-        "usage: unit_shard.py files K/N | check FULL SHARD... | check-vitest FILES SHARD...",
+        "usage: unit_shard.py files K/N | timings JUNIT... | check FULL SHARD... | check-vitest FILES SHARD...",
         file=sys.stderr,
     )
     return 2
