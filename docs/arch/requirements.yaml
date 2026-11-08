@@ -81377,7 +81377,17 @@
     passes the product''s suites and then the whole release build as a dry run, publishing nothing, where
     packaging and install are tested. A failure is fixed on that branch and merged back to dev, and no version
     is lost, because the tag is made last. The notes and the tag are made on the release branch, the release
-    is published, the branch merges to main and to dev, and it is deleted. (Maintainer 2026-11-08.)'
+    is published, the branch merges to main and to dev, and it is deleted. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, THE RULE OF THE RELEASE LINES:) A feature lands on dev when its unit tests, its UI unit
+    tests when it touches the UI, and its own tests pass; dev runs no integration or end-to-end suite. While
+    in alpha a schedule cuts a release branch from dev every night; beta and production are cut deliberately.
+    A release branch never takes a feature. It runs integration, end-to-end and conformance, and each failure
+    becomes a bug fix branched from it and landed on it, so its bugs wind down. Then the release build runs
+    on it as a dry run, the pre-production step, where packaging and install are tested. An alpha ships
+    at the end of its time box with what is left listed; beta and production ship at zero bugs. Every fix
+    on a release branch cascades, by merging that branch forward, to every newer open release and to dev,
+    so the next release has it. When a release is published its branch merges to main, so main is always
+    the current release. (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
