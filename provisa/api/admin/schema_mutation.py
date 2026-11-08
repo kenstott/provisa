@@ -528,13 +528,13 @@ async def _save_data_product(
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
     # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2188: the role's
     # U rule, not this gate, says which products it edits (core.model_row_rules).
-    from provisa.api.admin.capabilities import require_right_in_domains
+    from provisa.api.admin.capabilities import _identity_from_info, require_right_in_domains
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
 
-    _request = info.context["request"]
-    _user_id = getattr(getattr(_request.state, "identity", None), "user_id", None)
+    # No identity is dev mode (the gates above read it the same way): no creator to record.
+    _user_id = getattr(_identity_from_info(info), "user_id", None)
     creator = None if _user_id is None or _user_id == "anonymous" else str(_user_id)
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -608,10 +608,11 @@ async def _save_data_product(
         await data_product_repo.upsert(conn, model)
         if stored is None and creator is not None:
             # REQ-2219: creating a product grants its creator read-write on it, as an entitlement.
+            from provisa.api.admin.capabilities import acting_role_of
             from provisa.entitlements.store import record_product_creator
 
             await record_product_creator(
-                conn, creator, str(_request.state.role), input.domain_id, input.id
+                conn, creator, acting_role_of(info), input.domain_id, input.id
             )
     if (None if stored is None else stored["owner_role"]) != model.owner_role:
         await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
