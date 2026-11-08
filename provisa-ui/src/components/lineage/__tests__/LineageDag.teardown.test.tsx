@@ -46,7 +46,8 @@ const { cytoscape, pending } = vi.hoisted(() => {
           },
           run: () =>
             pending.push(() => {
-              if (destroyed) throw new TypeError("Cannot read properties of null (reading 'notify')");
+              if (destroyed)
+                throw new TypeError("Cannot read properties of null (reading 'notify')");
               stop?.();
             }),
         };
@@ -85,7 +86,10 @@ const GRAPH = {
 describe("LineageDag torn down mid-layout", () => {
   it("ends without ELK's answer throwing", () => {
     const { unmount } = render(
-      <LineageDag graph={GRAPH} lanes={{ members: new Set(["t.b"]), title: (l) => String(l) }} />,
+      <LineageDag
+        graph={GRAPH}
+        lanes={{ members: new Set(["t.b"]), inputs: new Set(["raw.a"]), title: (l) => String(l) }}
+      />,
     );
     expect(pending).toHaveLength(1);
     unmount();

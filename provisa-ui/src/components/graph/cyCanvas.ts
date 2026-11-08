@@ -16,8 +16,8 @@
 // inside the host; ended while a layout is pending, its div leaves the page at once, the core is
 // unmounted (a renderer that draws nothing) and destroyed when the last layout ends.
 
-/** What of a cytoscape core its end needs. */
-export interface EndingCore {
+/** What of a cytoscape core its end needs; cytoscape's typings leave out its ``unmount``. */
+interface EndingCore {
   destroy(): void;
   unmount(): void;
 }
@@ -34,7 +34,7 @@ export interface CyCanvas {
   /** Runs ``layout``; ``then`` once it has placed the nodes, unless the core has ended. */
   run(layout: RunningLayout, then?: () => void): void;
   /** The core's end: at once, or -- a layout pending -- when the last one ends. */
-  end(cy: EndingCore): void;
+  end(cy: { destroy(): void }): void;
 }
 
 export function cyCanvas(host: HTMLElement): CyCanvas {
@@ -43,7 +43,7 @@ export function cyCanvas(host: HTMLElement): CyCanvas {
   container.style.height = "100%";
   host.appendChild(container);
   let pending = 0;
-  let ended: EndingCore | null = null;
+  let ended: { destroy(): void } | null = null;
   return {
     container,
     run(layout, then) {
@@ -60,7 +60,7 @@ export function cyCanvas(host: HTMLElement): CyCanvas {
       if (pending === 0) cy.destroy();
       else {
         ended = cy;
-        cy.unmount();
+        (cy as EndingCore).unmount();
       }
     },
   };

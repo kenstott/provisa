@@ -288,7 +288,11 @@ export function LaneStage({
           // A rank link is laid out broader term first (above); its arrow points the link's own
           // way, from the narrower term to the broader.
           selector: 'edge[rank = "yes"]',
-          style: { "target-arrow-shape": "none", "source-arrow-shape": "triangle", "source-arrow-color": line },
+          style: {
+            "target-arrow-shape": "none",
+            "source-arrow-shape": "triangle",
+            "source-arrow-color": line,
+          },
         },
         {
           selector: 'edge[arc = "yes"]',

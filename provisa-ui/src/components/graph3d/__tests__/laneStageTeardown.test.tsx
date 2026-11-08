@@ -53,7 +53,8 @@ vi.mock("cytoscape", () => {
           // ELK answers later: the test lets it.
           run: () =>
             cys.pending.push(() => {
-              if (destroyed) throw new TypeError("Cannot read properties of null (reading 'notify')");
+              if (destroyed)
+                throw new TypeError("Cannot read properties of null (reading 'notify')");
               stop?.();
             }),
         };

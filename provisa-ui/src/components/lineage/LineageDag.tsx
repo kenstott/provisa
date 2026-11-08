@@ -73,9 +73,14 @@ interface LineageDagProps {
   // REQ-1665: draw every column as a row. Complete Lineage is read from a role's vantage point and
   // every column that role can see is in use, so none is folded into "+N unused".
   allColumns?: boolean;
-  // REQ-1667: swimlanes by distance from `members` (lane 0), separated by dotted rules and titled
-  // by `title(lane)`. Every box is laid out in its lane; nothing is shelf-packed.
-  lanes?: { members: ReadonlySet<string>; title: (lane: number) => string };
+  // REQ-1667, REQ-2174: swimlanes around `members` (lane 0) and their `inputs` (lane -1)
+  // (lanesFrom), separated by dotted rules and titled by `title(lane)` (null: no title). Every box
+  // is laid out in its lane; nothing is shelf-packed.
+  lanes?: {
+    members: ReadonlySet<string>;
+    inputs: ReadonlySet<string>;
+    title: (lane: number) => string | null;
+  };
   // The role key, floated over the canvas's bottom-left corner.
   legend?: boolean;
   // Column and edge counts, floated over the bottom-right corner.
@@ -164,7 +169,7 @@ export function LineageDag({
     const model = buildLineageModel(graph, collapsedRelations, {
       resultLabel,
       allColumns,
-      lanesAround: lanes?.members,
+      lanesAround: lanes,
       relationLabel,
     });
 
@@ -556,7 +561,10 @@ export function LineageDag({
     const connected = laned ? boxNodes : boxNodes.filter((n) => connectedIds.has(n.id()));
     const isolated = laned ? cy.collection() : boxNodes.filter((n) => !connectedIds.has(n.id()));
     const laneOf = (n: NodeSingular): number => boxById.get(n.id())?.lane ?? 0;
-    const minLane = laned ? Math.min(0, ...model.boxes.map((b) => b.lane ?? 0)) : 0;
+    // ELK's partitions are whole numbers, left to right: a lane's is its place among the lanes.
+    const partitionOf = new Map(
+      [...new Set(model.boxes.map((b) => b.lane ?? 0))].sort((a, b) => a - b).map((l, i) => [l, i]),
+    );
 
     // Dotted rules between adjacent lanes and a title over each, as inert nodes: they pan, zoom
     // and export with the graph. Drawn once the boxes are placed, from their extents per lane.
@@ -578,12 +586,19 @@ export function LineageDag({
       const top = y1 - 44;
       const bottom = y2 + 16;
       cy.add(
-        ordered.map(([l, ex]) => ({
-          data: { id: `lane-title-${l}`, laneTitle: "yes", label: lanes.title(l) },
-          position: { x: (ex.x1 + ex.x2) / 2, y: top },
-          selectable: false,
-          grabbable: false,
-        })),
+        ordered.flatMap(([l, ex]) => {
+          const label = lanes.title(l);
+          return label === null
+            ? []
+            : [
+                {
+                  data: { id: `lane-title-${l}`, laneTitle: "yes", label },
+                  position: { x: (ex.x1 + ex.x2) / 2, y: top },
+                  selectable: false,
+                  grabbable: false,
+                },
+              ];
+        }),
       );
       // Each rule is a 1px dotted EDGE between two invisible anchors — a node's border would be
       // drawn on both sides of its width and come out 2-3px.
@@ -760,7 +775,7 @@ export function LineageDag({
           // A box's lane is its ELK partition: partitions are placed strictly left to right.
           const partition =
             laned && n.data("box") === "yes"
-              ? { "elk.partitioning.partition": String(laneOf(n) - minLane) }
+              ? { "elk.partitioning.partition": String(partitionOf.get(laneOf(n))) }
               : {};
           return n.isParent()
             ? {
