@@ -49,10 +49,14 @@ export const termPreset = (term: number): SnippetPreset => ({
   products: false,
 });
 
+/** REQ-2174 (amended 2026-11-07): a product's panel opens at its tables, matching its Related
+ * Tables card: one hop, with Related tables on (snippetLayers). */
+export const PRODUCT_PANEL_DEPTH = 1;
+
 /** A product's panel: the ontology focused on the product, by the Product map's rules. */
 export const productPreset = (product: string): SnippetPreset => ({
   focus: productNode(product),
-  depth: NEIGHBOURHOOD.depth,
+  depth: PRODUCT_PANEL_DEPTH,
   products: true,
 });
 
@@ -61,6 +65,9 @@ export const scopeOf = (p: Pick<OntologyPreset, "products">): GraphScope =>
   p.products ? PRODUCT_MAP_SCOPE : ONTOLOGY_SCOPE;
 
 /** A snippet's layers: the terms, the columns they bind, those columns' tables and the products
- * holding them; under the Product map's rules the tables' relationships too (Tables). */
+ * holding them; under the Product map's rules the tables related to the tables drawn too
+ * (Related tables, on in a product's panel). */
 export const snippetLayers = (p: Pick<OntologyPreset, "products">): LayerId[] =>
-  p.products ? ["ontology", "columns", "ownerTables", "data"] : ["ontology", "columns", "data"];
+  p.products
+    ? ["ontology", "columns", "ownerTables", "data", "related"]
+    : ["ontology", "columns", "data"];
