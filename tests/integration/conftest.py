@@ -525,7 +525,7 @@ def _pgw_build_state(pool):
             "description": "Test role.",
             "id": "admin",
             "domain_access": ["*"],
-            "capabilities": [],
+            "capabilities": ["usage"],
         },
         domains=[{"id": _PGW_SCHEMA, "graphql_alias": None}],
     )
@@ -545,7 +545,7 @@ def _pgw_build_state(pool):
         "admin": {
             "description": "Test role.",
             "id": "admin",
-            "capabilities": [],
+            "capabilities": ["usage"],
             "domain_access": ["*"],
         }
     }

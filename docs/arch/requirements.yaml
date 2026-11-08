@@ -1502,31 +1502,67 @@
   type: behavioral
   description: 'V002 relationship governance: every JOIN ON condition in SQL and Cypher queries must match
     an approved, registered relationship (source_col = target_col). SQL and Cypher queries that traverse
-    a join not backed by a registered relationship are rejected at compile time. GraphQL queries that
-    traverse relationships defined in the SDL are always pre-approved and exempt from the V002 check.
-
-
-    (Amended 2026-10-04, THE COMPILED STAGE:) The check runs where a statement is governed, on the raw-SQL
-    stage and on the compiled stage alike. A compiled statement built from a GraphQL document (HTTP GraphQL,
-    REST, JSON:API, gRPC, NL''s GraphQL-shaped targets, GraphQL over Arrow Flight) has its joins from the
-    SDL and is exempt; a compiled Cypher statement (Bolt, Cypher over HTTP, Cypher over Arrow Flight) and
-    the native gRPC table read are checked. ignore_relationships lifts the check on the compiled stage
-    as on the raw one, except in high-security mode (REQ-693).
-
-
-    (Amended 2026-10-07, maintainer: ANY ROW MATCHING; this replaces "every JOIN ON condition" above as the
-    statement of what is checked:) Two registered tables are related whenever rows of one are matched or filtered
-    against rows of the other by comparing their columns, however that is written: a join of any spelling (ON, USING,
-    NATURAL, a comma or CROSS JOIN with the condition in WHERE), through a CTE or a derived table, IN and NOT IN with
-    a subquery, EXISTS and NOT EXISTS, a correlated scalar subquery, LATERAL. Every such pairing must be a registered
-    relationship between those two tables on those columns; a pairing that is anything other than an equality of
-    their plain columns, and two tables combined with no pairing, are refused, naming the tables and columns. A
-    column is the base column it comes from through CTE and derived-table boundaries; an expression over it is not.
-    A registered view is its own table. Not relating, and so allowed without a relationship: the branches of UNION,
-    INTERSECT and EXCEPT, and a subquery that refers to nothing outside itself. A relationship type that is not
-    registered is refused on every Cypher surface alike. Found 2026-10-07: the check read only ON equalities between
-    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined to itself on equality of its whole registered primary key re-reads the same row and relates nothing; it needs no relationship. A table with no registered key has no such exemption. (Maintainer ruling 2026-10-08, after the any-row rule refused ordinary same-table subqueries and the profiler''s own sampling:) A table paired with itself needs no relationship in exactly two cases: the same row, as above; and a filter (IN, NOT IN, EXISTS or NOT EXISTS) over the same table, whose rows do not come out and which only decides which outer rows appear. Anything that brings out a second copy of the table on other columns -- a self-join of any spelling, a CTE, derived table or LATERAL of the table joined back, a correlated scalar subquery, a recursive walk -- needs a relationship registered from the table to itself, like any pair; a bare product of a table with itself stays refused. Pairings inside a recursive branch are judged like any other. A statement the product writes for itself -- the data profiler''s sampling -- is not a role''s query: it states so at its one call site and the relationship guard is not applied to it, every other check still is, and no surface can state it for a role''s SQL. (Amended 2026-10-24, maintainer, natural-language queries:) Non-strict NL''s generated SQL carries the opt-out comment (-- relationship-guard=false), so the one bypass rule decides it: for a role whose flag allows the bypass, V002 does not apply to non-strict NL; for a role without it, it does. There is no NL-only bypass. Strict NL never carries the comment. Every other control -- row filters, masking, column visibility, domain scope -- still applies. A role that may not bypass uses strict NL only: the NL page''s Strict switch is held on and says why (this role may only use approved relationships), and a non-strict request from it is run as strict, never refused; with several roles selected, the same rule decides as for the bypass itself. In non-strict NL, SQL, GraphQL and Cypher are each generated independently from the question, each the closest query its language can express; Cypher is no longer derived from the SQL. Strict is unchanged: the GraphQL is canonical, the SQL is compiled from it and the Cypher printed from its IR, exact or not available. gRPC, JSON:API and OpenAPI are derived from the GraphQL in both modes. No NL panel shows a query that has an error: each generated query is run through the governed path it would run on -- parse, translation, governance including V002, and execution -- before it is shown. A failure is given to the generation loop as the specific error to fix, within its existing bounds; in non-strict, an error saying the language cannot express part of the question is answered with the closest expressible query. A panel with no valid query shows only Not available: <reason>, in the user''s terms.
-    (Amended 2026-10-24, A REFUSAL AS WRITTEN AND THE PATH THERE:) A V002 refusal for a side read through a derived table, a CTE or a view names the condition as the statement writes it and what that side reads ("Invalid JOIN: w.region = c.region (w.region reads orders.region) — no approved relationship exists between orders.region and customers.region"), in a join, a correlated subquery and an IN alike; a condition between two plain tables is named as before. A relationship''s join is accepted whichever way round it is written. A natural-language query refused V002 is retried with, for each pair of tables the refusal names, the shortest registered path between them (up to four hops) as the JOINs that walk it, or that no relationship relates them; a strict query refused for good answers "Not available" with the same text, naming the tables and the path the question needs.'
+    a join not backed by a registered relationship are rejected at compile time. GraphQL queries that traverse
+    relationships defined in the SDL are always pre-approved and exempt from the V002 check. (Amended 2026-10-04,
+    THE COMPILED STAGE:) The check runs where a statement is governed, on the raw-SQL stage and on the compiled
+    stage alike. A compiled statement built from a GraphQL document (HTTP GraphQL, REST, JSON:API, gRPC,
+    NL''s GraphQL-shaped targets, GraphQL over Arrow Flight) has its joins from the SDL and is exempt; a
+    compiled Cypher statement (Bolt, Cypher over HTTP, Cypher over Arrow Flight) and the native gRPC table
+    read are checked. ignore_relationships lifts the check on the compiled stage as on the raw one, except
+    in high-security mode (REQ-693). (Amended 2026-10-07, maintainer: ANY ROW MATCHING; this replaces "every
+    JOIN ON condition" above as the statement of what is checked:) Two registered tables are related whenever
+    rows of one are matched or filtered against rows of the other by comparing their columns, however that
+    is written: a join of any spelling (ON, USING, NATURAL, a comma or CROSS JOIN with the condition in
+    WHERE), through a CTE or a derived table, IN and NOT IN with a subquery, EXISTS and NOT EXISTS, a correlated
+    scalar subquery, LATERAL. Every such pairing must be a registered relationship between those two tables
+    on those columns; a pairing that is anything other than an equality of their plain columns, and two
+    tables combined with no pairing, are refused, naming the tables and columns. A column is the base column
+    it comes from through CTE and derived-table boundaries; an expression over it is not. A registered view
+    is its own table. Not relating, and so allowed without a relationship: the branches of UNION, INTERSECT
+    and EXCEPT, and a subquery that refers to nothing outside itself. A relationship type that is not registered
+    is refused on every Cypher surface alike. Found 2026-10-07: the check read only ON equalities between
+    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined
+    to itself on equality of its whole registered primary key re-reads the same row and relates nothing;
+    it needs no relationship. A table with no registered key has no such exemption. (Maintainer ruling 2026-10-08,
+    after the any-row rule refused ordinary same-table subqueries and the profiler''s own sampling:) A table
+    paired with itself needs no relationship in exactly two cases: the same row, as above; and a filter
+    (IN, NOT IN, EXISTS or NOT EXISTS) over the same table, whose rows do not come out and which only decides
+    which outer rows appear. Anything that brings out a second copy of the table on other columns -- a self-join
+    of any spelling, a CTE, derived table or LATERAL of the table joined back, a correlated scalar subquery,
+    a recursive walk -- needs a relationship registered from the table to itself, like any pair; a bare
+    product of a table with itself stays refused. Pairings inside a recursive branch are judged like any
+    other. A statement the product writes for itself -- the data profiler''s sampling -- is not a role''s
+    query: it states so at its one call site and the relationship guard is not applied to it, every other
+    check still is, and no surface can state it for a role''s SQL. (Amended 2026-10-24, maintainer, natural-language
+    queries:) Non-strict NL''s generated SQL carries the opt-out comment (-- relationship-guard=false),
+    so the one bypass rule decides it: for a role whose flag allows the bypass, V002 does not apply to non-strict
+    NL; for a role without it, it does. There is no NL-only bypass. Strict NL never carries the comment.
+    Every other control -- row filters, masking, column visibility, domain scope -- still applies. A role
+    that may not bypass uses strict NL only: the NL page''s Strict switch is held on and says why (this
+    role may only use approved relationships), and a non-strict request from it is run as strict, never
+    refused; with several roles selected, the same rule decides as for the bypass itself. In non-strict
+    NL, SQL, GraphQL and Cypher are each generated independently from the question, each the closest query
+    its language can express; Cypher is no longer derived from the SQL. Strict is unchanged: the GraphQL
+    is canonical, the SQL is compiled from it and the Cypher printed from its IR, exact or not available.
+    gRPC, JSON:API and OpenAPI are derived from the GraphQL in both modes. No NL panel shows a query that
+    has an error: each generated query is run through the governed path it would run on -- parse, translation,
+    governance including V002, and execution -- before it is shown. A failure is given to the generation
+    loop as the specific error to fix, within its existing bounds; in non-strict, an error saying the language
+    cannot express part of the question is answered with the closest expressible query. A panel with no
+    valid query shows only Not available: <reason>, in the user''s terms. (Amended 2026-10-24, A REFUSAL
+    AS WRITTEN AND THE PATH THERE:) A V002 refusal for a side read through a derived table, a CTE or a view
+    names the condition as the statement writes it and what that side reads ("Invalid JOIN: w.region = c.region
+    (w.region reads orders.region) — no approved relationship exists between orders.region and customers.region"),
+    in a join, a correlated subquery and an IN alike; a condition between two plain tables is named as before.
+    A relationship''s join is accepted whichever way round it is written. A natural-language query refused
+    V002 is retried with, for each pair of tables the refusal names, the shortest registered path between
+    them (up to four hops) as the JOINs that walk it, or that no relationship relates them; a strict query
+    refused for good answers "Not available" with the same text, naming the tables and the path the question
+    needs. (Amended 2026-11-07, A WINDOW RESULT IS NOT A MATCH:) A filter on the result of a window function
+    (ROW_NUMBER, RANK, DENSE_RANK and the like) computed over rows already joined by registered equalities
+    is not a match between those tables, and the guard lets it through, as in picking the latest row per
+    group with WHERE n = 1. A condition comparing columns of two joined tables other than by a registered
+    equality (a.x <> b.y, a.x < b.y) is still refused (maintainer 2026-11-07).'
   use_case: V002 enforces approved navigation paths so joins between sensitive tables require explicit
     steward registration and approval, providing an audit surface for cross-table data access.
   code:
@@ -59166,7 +59202,17 @@
     links to its contracts), as ODPS versions a product. Its edit form''s actions are Save, Save version
     and Cancel, as for contracts (REQ-2158) and term definitions (REQ-1387): Save writes the edit in place
     on the current version, Save version writes it as the next version and keeps the current one read-only,
-    and Cancel discards it. The product page steps back through earlier versions.'
+    and Cancel discards it. The product page steps back through earlier versions. (Amended 2026-11-07, MEMBERSHIP
+    IS MANY-TO-MANY AND EDITED ON THE PRODUCT:) A table or command may belong to any number of data products,
+    and a product to any number of tables and commands: membership is a relation of its own (one row per
+    product and member), replacing the single product_id on registered_tables and tracked_functions. A member
+    still joins only products owned by its own domain. A data product owns its membership: members are added
+    to and removed from a product only on that product, in the Products page. A table''s own page lists
+    the products it belongs to, read-only, each a link that opens the product, or shows that it belongs
+    to none; it offers no control to set or change them. The note that a product is published to the catalog
+    and exported to catalogs belongs with the product, not the table (maintainer 2026-11-07). (Amended 2026-11-07,
+    ONE CONTRACT PER TABLE:) A table in several data products carries one data contract, shared by every
+    product it belongs to; an owner of any of those products may change it (maintainer 2026-11-08).'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
@@ -74027,7 +74073,54 @@
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: 'A model or governance change reaches every worker and every instance. A change made through any admin surface (registering or changing a source, table, column, relationship or materialized view; a role, a column-visibility rule, a row-level-security rule, a masking rule; any other input the governed model is built from) takes effect in every worker process of every instance that shares the control plane, not only in the process that served the change. The control plane holds a model generation that every such change advances in the same transaction as the change. [SUPERSEDED by REQ-1914 amendment, 2026-10-01 -- the mechanism is a version stamp that every process monitors; a notification is an optional accelerator, not the mechanism. Kept here for history; do not implement against it.] On a Postgres control plane the change also sends a notification, and every process listening rebuilds its model at once; every process also compares its own generation with the control plane''s on a short interval, as the backstop for a missed notification and as the only path where the control plane cannot notify. [END SUPERSEDED BLOCK] A process that is behind rebuilds before it serves its next request on the changed model, and its per-process caches (kept plans, compiled queries, routing, registered-table views) are keyed on the shared generation so nothing built under an older generation is served. The interval is an operator setting with a UI surface (REQ-1913). The health endpoint reports each worker''s generation and the control plane''s, so a worker that is behind is visible. (Amended 2026-10-01, a version stamp every process monitors -) The mechanism is one stamp held in the control plane for the model and its governance. Every change writes a new stamp in the same transaction as the change, and the value is assigned by the control plane itself, so it is one stored value that every process reads. No process compares it with its own clock, and nothing depends on the clocks of different machines agreeing. Every process that holds the model (each query node worker, the coordinator, anything else that builds from it) remembers the stamp it loaded, reads the stored stamp on a short interval, and when the two differ reloads before it serves on the changed model. A request reads nothing from the control plane for this; it runs against what its process has loaded. The interval is an operator setting. The same pattern, with its own stamp, carries the other things a process must reapply when they change -- operator settings applied live in each worker, the telemetry exporters, the naming and remote-GraphQL settings -- so a change of one kind does not reload another. A push notification from the control plane may be added later to shorten the wait; it is not required and the stamp must be correct without it. (Amended 2026-10-01, updates carry a concurrency check -) Every update to configuration (the model, governance rules, operator settings, the config file, anything the stamp covers) is checked against what it was based on. The editor, whether a person in the UI, an API client or an automated process, sends with the update the version of the thing it read before changing it. The control plane compares that with the stored version inside the same transaction that would apply the update, and applies it only when they match. When they do not match, somebody else changed it in the meantime, so the update is refused with a conflict error that names what changed, and nothing is written; it is never applied over the newer state and never merged silently. An update that sends no version is refused. The UI then shows the current state so the editor can reapply the change on top of it. The two are separate and neither is used for the job of the other. The config stamp is used strictly for reloading: any update advances it, and its only purpose is to tell every process that it must reload. Concurrency is checked at the level of the object. Each object that can be edited (a source, a table, a role, a rule, a setting, and so on) carries its own version or timestamp, the editor sends the one it read, and the update is compared against that. The config stamp is never what an update is checked against, so two editors changing unrelated objects do not block each other. (Amended 2026-10-03, A NAMED BOOT ORG RELOADS UNDER ITS OWN ID:) A boot org named by `ORG_ID` is reloaded under that id. Before 2026-10-03 a watcher reload of a boot org not named `default` reloaded nothing. The multi-worker sync tests cover a named boot org.'
+  description: 'A model or governance change reaches every worker and every instance. A change made through
+    any admin surface (registering or changing a source, table, column, relationship or materialized view;
+    a role, a column-visibility rule, a row-level-security rule, a masking rule; any other input the governed
+    model is built from) takes effect in every worker process of every instance that shares the control
+    plane, not only in the process that served the change. The control plane holds a model generation that
+    every such change advances in the same transaction as the change. [SUPERSEDED by REQ-1914 amendment,
+    2026-10-01 -- the mechanism is a version stamp that every process monitors; a notification is an optional
+    accelerator, not the mechanism. Kept here for history; do not implement against it.] On a Postgres control
+    plane the change also sends a notification, and every process listening rebuilds its model at once;
+    every process also compares its own generation with the control plane''s on a short interval, as the
+    backstop for a missed notification and as the only path where the control plane cannot notify. [END
+    SUPERSEDED BLOCK] A process that is behind rebuilds before it serves its next request on the changed
+    model, and its per-process caches (kept plans, compiled queries, routing, registered-table views) are
+    keyed on the shared generation so nothing built under an older generation is served. The interval is
+    an operator setting with a UI surface (REQ-1913). The health endpoint reports each worker''s generation
+    and the control plane''s, so a worker that is behind is visible. (Amended 2026-10-01, a version stamp
+    every process monitors -) The mechanism is one stamp held in the control plane for the model and its
+    governance. Every change writes a new stamp in the same transaction as the change, and the value is
+    assigned by the control plane itself, so it is one stored value that every process reads. No process
+    compares it with its own clock, and nothing depends on the clocks of different machines agreeing. Every
+    process that holds the model (each query node worker, the coordinator, anything else that builds from
+    it) remembers the stamp it loaded, reads the stored stamp on a short interval, and when the two differ
+    reloads before it serves on the changed model. A request reads nothing from the control plane for this;
+    it runs against what its process has loaded. The interval is an operator setting. The same pattern,
+    with its own stamp, carries the other things a process must reapply when they change -- operator settings
+    applied live in each worker, the telemetry exporters, the naming and remote-GraphQL settings -- so a
+    change of one kind does not reload another. A push notification from the control plane may be added
+    later to shorten the wait; it is not required and the stamp must be correct without it. (Amended 2026-10-01,
+    updates carry a concurrency check -) Every update to configuration (the model, governance rules, operator
+    settings, the config file, anything the stamp covers) is checked against what it was based on. The editor,
+    whether a person in the UI, an API client or an automated process, sends with the update the version
+    of the thing it read before changing it. The control plane compares that with the stored version inside
+    the same transaction that would apply the update, and applies it only when they match. When they do
+    not match, somebody else changed it in the meantime, so the update is refused with a conflict error
+    that names what changed, and nothing is written; it is never applied over the newer state and never
+    merged silently. An update that sends no version is refused. The UI then shows the current state so
+    the editor can reapply the change on top of it. The two are separate and neither is used for the job
+    of the other. The config stamp is used strictly for reloading: any update advances it, and its only
+    purpose is to tell every process that it must reload. Concurrency is checked at the level of the object.
+    Each object that can be edited (a source, a table, a role, a rule, a setting, and so on) carries its
+    own version or timestamp, the editor sends the one it read, and the update is compared against that.
+    The config stamp is never what an update is checked against, so two editors changing unrelated objects
+    do not block each other. (Amended 2026-10-03, A NAMED BOOT ORG RELOADS UNDER ITS OWN ID:) A boot org
+    named by `ORG_ID` is reloaded under that id. Before 2026-10-03 a watcher reload of a boot org not named
+    `default` reloaded nothing. The multi-worker sync tests cover a named boot org. (Amended 2026-11-08,
+    THE WATCHER WAITS FOR THE SAVE:) When a model change comes from a save in this process, the config watcher
+    does not start its rebuild until that save''s model commit has finished, so a save never competes with
+    the rebuild it caused; a change from outside the process is picked up as before (maintainer 2026-11-08).'
   use_case: An operator who revokes access or adds a filter must be able to rely on it being enforced
     everywhere, on a deployment with several workers or several instances, without restarting anything.
   related_reqs:
@@ -90687,7 +90780,39 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     shown term reaches is drawn, and no relationship, join or lineage edge between tables or columns is
     drawn. The Product map preset and the product panels'' snippets keep the product layers (commands, quality,
     product links, lineage) and the member tables, so nothing the product graph showed is lost. The owner-tables
-    relationship layer is not offered in the Ontology preset.'
+    relationship layer is not offered in the Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:)
+    The graph''s columns are Products, Tables, Columns and Terms, and a hop is one step across them, counted
+    from the focus item alone (a product''s count no longer also starts from its member tables). The hop
+    control is labelled with its focus, ''Hops from <focus>: 1 2 3 4'': 1 its tables and commands, 2 their
+    columns, 3 the terms those columns are tied to, 4 other columns tied to the same terms. A ''Related
+    tables'' checkbox draws the tables directly related to the drawn tables by relationships, named on the
+    link, and the products those tables belong to; it follows one step only, never a related table''s own
+    columns, terms or relationships. The Terms, Domains and Tags filters stay; the filter of term-to-term
+    link types is named ''Term relationships''. A product''s panel opens at 1 hop with Related tables on,
+    matching its Related Tables card; the full graph opens at 2 hops with Related tables off. A table''s
+    columns not tied to a term shown fold into one node labelled ''N columns with no term in this view''.
+    Reset view folds every table back as well as resetting the camera. The 2D view is the simple one: Product,
+    its tables, their columns and the terms those columns are tied to, left to right, with the links between
+    terms (filtered by Term relationships), and nothing else -- no related tables and no lineage. Its hop
+    control, ''Hops from <product>'', counts along that path: 1 the product''s tables, 2 their columns,
+    3 the terms those columns are tied to, and each hop beyond 3 one more step through term-to-term links;
+    a table''s columns not tied to a term fold into one node. Hops, Related tables, Term relationships and
+    every other layer belong to the 3D view, where table relationships and term relationships are told apart
+    by more than colour (a table link solid and named by the relationship, a term link dashed and named
+    by its type). The graph''s Lineage layer is named ''Inputs'' and shows where the product comes from,
+    never who consumes it: the graph is read by a consumer or prospective consumer. Each input links to
+    the member table that reads it (not to the product), an input that is another product''s member stands
+    for that product, and column lineage stays on unfolded tables. A product page''s Lineage panel is titled
+    ''Column lineage: where this product comes from'', its lanes named Inputs and This product''s tables
+    (Upstream hop n beyond the inputs), with no downstream lanes; its hint states what it draws (each published
+    column and the input column it comes from), and the Input Ports card links to it. A product''s Consumers
+    card is shown only to those who own the product: a session acting as the product''s owner_role, or holding
+    data_product_rw with entitlements (REQ-2219) that reach that product, which its creator holds from creation;
+    no one else sees it (maintainer 2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE
+    IS ON THE EDGE:) On a product page''s column lineage, a view between an input and the product''s table
+    is not drawn as its own box: the input''s column links straight to the table''s column, and the link
+    names the views it reads through (for example ''via sales.v_customers''). The panel''s lanes stay Inputs
+    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08).'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -93539,7 +93664,40 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     of upcoming expiries with extend. Where every list comes from the identity provider, these person views
     are read-only and the shortcuts and rule editor do not appear. On a desktop or dev install with no identity
     provider and no Provisa-held lists, a role simply gets its default entitlements, so nothing needs configuring
-    there (maintainer 2026-11-07).'
+    there (maintainer 2026-11-07). (Amended 2026-11-07, OWNERSHIP IS AN ENTITLEMENT:) Data products are
+    an entitlement kind of their own, under their domain (domain contains products as it contains tables).
+    Owning is a capability of its own, distinct from read-write: data_product_owner on data products, relationship_owner
+    on relationships and judgment_basis_owner on judgment bases (judgment bases being an entitlement kind
+    too). An owner answers for the object: sees a product''s consumers, approves access requests to it,
+    grants read-write on it and hands ownership over, changes its status, and is the owner shown on its
+    page and in catalog exports. domain_steward on domains: it replaces domains.steward, a domain serves
+    governed data only while some role holds domain_steward on it (the REQ-609 gate, now read from entitlements),
+    and the built-in ops domain is seeded with org_admin holding it (REQ-1386); and term_owner on glossary
+    terms: questions about a term and proposed changes to its definition go to the holders of term_owner
+    on it (routed as REQ-2216 addresses requests to every holder of a capability), and they approve those
+    changes; it replaces the term''s expert list (glossary_term_experts kind expert), whose author rows
+    stay as a record of who wrote the definition and grant nothing. Creating a product, a relationship,
+    a judgment basis or a term records, in the entitlement store with source provisa, the owner capability
+    and the matching read-write on that object for the creator; that is all product ownership means, and
+    it is granted, changed and expired like any other entitlement. The creator is also kept on the product
+    itself (data_products.created_by, set on insert only, beside created_at) and shown on the product, whatever
+    later happens to that entitlement; it grants nothing, and an erased creator is tombstoned there as in
+    the audit logs (REQ-1312). The entitlement is the authority: data_products.owner_role is removed, a
+    team that owns a product being that role holding the entitlement. The same holds everywhere an owner,
+    owner role or steward field stands in for an entitlement (a product''s owner_role, a relationship''s
+    owner, a judgment basis''s owner, a domain''s steward, and any other found): the field is removed, who
+    may act is decided by entitlements, and what exports or shows an owner (catalog exports'' owners, a
+    product''s or domain''s page) reads it from the entitlements of the right capability on that object.
+    A field that only records a fact (who created, who changed) stays as a record and grants nothing (maintainer
+    2026-11-07). (Amended 2026-11-07, A ROLE IS OFFERED TO DOMAINS:) A role''s domains (the role form''s
+    ''Offered to domains'', formerly Domain Access) say which domains the role is offered to, as a source''s
+    allowed_domains say which domains a source is offered to: the role''s capabilities are never used outside
+    them, whoever holds the role and whatever the identity provider sends; ''*'' offers it everywhere. They
+    are the role author''s permanent statement of where the role is meant to be used, changed only by editing
+    the role. They are the role''s ceiling: defaults, grants and identity-provider lists all stay inside
+    them, and there is no separate ceiling. As a shortcut, setting them also writes the role''s default
+    entitlements, every capability the role holds scoped to those domains, which can then be narrowed (maintainer
+    2026-11-07).'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
