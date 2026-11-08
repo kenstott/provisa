@@ -83,6 +83,21 @@
        }
       },
       {
+       "name": "m__dataProductCommands",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProductCommands"
+         }
+        }
+       }
+      },
+      {
        "name": "m__dataProductEdges",
        "type": {
         "kind": "LIST",
@@ -93,6 +108,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__DataProductEdges"
+         }
+        }
+       }
+      },
+      {
+       "name": "m__dataProductTables",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProductTables"
          }
         }
        }
@@ -642,13 +672,6 @@
        }
       },
       {
-       "name": "productId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "profiledTableId",
        "type": {
         "kind": "SCALAR",
@@ -754,13 +777,6 @@
        "type": {
         "kind": "OBJECT",
         "name": "ON_Terms"
-       }
-      },
-      {
-       "name": "product",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
        }
       },
       {
@@ -1773,21 +1789,6 @@
        }
       },
       {
-       "name": "memberTables",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__RegisteredTables"
-         }
-        }
-       }
-      },
-      {
        "name": "tags",
        "type": {
         "kind": "LIST",
@@ -1798,21 +1799,6 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__TagAssignments"
-         }
-        }
-       }
-      },
-      {
-       "name": "commands",
-       "type": {
-        "kind": "LIST",
-        "name": null,
-        "ofType": {
-         "kind": "NON_NULL",
-         "name": null,
-         "ofType": {
-          "kind": "OBJECT",
-          "name": "M__TrackedFunctions"
          }
         }
        }
@@ -2371,13 +2357,6 @@
        }
       },
       {
-       "name": "productId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
        "name": "returnSchema",
        "type": {
         "kind": "SCALAR",
@@ -2432,13 +2411,6 @@
          "kind": "SCALAR",
          "name": "String"
         }
-       }
-      },
-      {
-       "name": "product",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
        }
       },
       {
@@ -3677,6 +3649,88 @@
     {
      "fields": [
       {
+       "name": "commandName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "productId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__DataProductCommands"
+    },
+    {
+     "fields": [
+      {
+       "name": "productId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "tableId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Int"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      }
+     ],
+     "name": "M__DataProductTables"
+    },
+    {
+     "fields": [
+      {
        "name": "columnName",
        "type": {
         "kind": "SCALAR",
@@ -4182,8 +4236,18 @@
   },
   {
    "domain_id": "meta",
+   "graphql_field": "m__dataProductCommands",
+   "table_name": "data_product_commands"
+  },
+  {
+   "domain_id": "meta",
    "graphql_field": "m__dataProductEdges",
    "table_name": "data_product_edges"
+  },
+  {
+   "domain_id": "meta",
+   "graphql_field": "m__dataProductTables",
+   "table_name": "data_product_tables"
   },
   {
    "domain_id": "meta",
