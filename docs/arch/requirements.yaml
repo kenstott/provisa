@@ -44891,7 +44891,13 @@
     the caller holds. The tag list stays readable by every admin surface that shows tags, as model metadata;
     changing tags keeps its own rights. A role''s data_residency capability is added or removed by the org
     admin with the role (user_management); which regions it covers (its residency values) is set by the
-    steward and asks access_config.'
+    steward and asks access_config. (Amended 2026-11-08, NAMING IS THE ORG''S; CDC GROUP IS THE DEPLOYMENT''S:)
+    Naming conventions are an org''s setting: the acting org''s convention reaches the naming module through
+    the compile context, not a process-wide value. Default sample size and the remote GraphQL row limit
+    are also an org''s. The CDC consumer group stays with the deployment: it is one Debezium receiver''s
+    identity for the process (maintainer 2026-11-08). (Amended 2026-11-08, ADMIN AND DOCS ARE IN THE USER
+    MENU:) Admin and Docs leave the top navigation for the user menu, below a divider after Profile, Settings
+    and What''s new; Admin is shown only to a caller with an admin right (maintainer 2026-11-08).'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
