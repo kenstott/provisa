@@ -185,6 +185,26 @@ def test_a_test_reported_twice_is_failed_when_any_report_failed(tmp_path):
     assert results["a.Q::u"]["outcome"] == "passed"
 
 
+def test_a_later_attempt_replaces_an_earlier_one_for_the_tests_it_reran(tmp_path):
+    first = _junit(
+        tmp_path / "1.xml",
+        [
+            ("a.P", "flaky", "failure", "late"),
+            ("a.P", "broken", "failure", "x"),
+            ("a.P", "ok", None, ""),
+        ],
+    )
+    second = _junit(
+        tmp_path / "2.xml", [("a.P", "flaky", None, ""), ("a.P", "broken", "failure", "y")]
+    )
+    results = ds.read_attempts(f"{first};{second}")
+    assert results == {
+        "a.P::flaky": {"outcome": "passed", "message": ""},
+        "a.P::broken": {"outcome": "failed", "message": "y"},
+        "a.P::ok": {"outcome": "passed", "message": ""},
+    }
+
+
 def test_a_message_is_its_first_line_and_bounded(tmp_path):
     run = [("a.P", "t", "failure", "x" * 500)]
     results = ds.read_results(str(_junit(tmp_path / "r.xml", run)))
@@ -282,6 +302,53 @@ def test_main_writes_the_report_and_its_exit_status_is_the_gate(tmp_path, monkey
     monkeypatch.setattr(ds, "PAGE", page)
     assert ds.main(["fill-docs", str(out_json)]) == 0
     assert "## pgjdbc" in page.read_text()
+
+
+# --- seeding a list from a run ----------------------------------------------------------------------
+
+
+def test_a_defect_masks_the_values_that_vary_and_keeps_the_names():
+    message = "org.opentest4j.AssertionFailedError: expected: <12> but was: <3.5> in 'tbl_7'"
+    assert ds._defect(message) == (
+        "org.opentest4j.AssertionFailedError: expected: <N> but was: <N> in '…'"
+    )
+
+
+def test_a_seeded_list_names_every_failure_and_keeps_the_reasons_it_had(tmp_path):
+    lists = _list(tmp_path, _LIST)
+    run = [
+        *_RUN,
+        ("a.New", "testBrokenToo", "failure", "unexpected EOF&#10;at line 9"),
+        ("a.Odd", "testOther", "error", "KeyError: 'x'"),
+    ]
+    results = ds.read_results(str(_junit(tmp_path / "run.xml", run)))
+    ds.seed("pgjdbc", "REL42.7.14", results, lists)
+    seeded = yaml.safe_load((lists / "pgjdbc.yaml").read_text())
+    expected = ds.load("pgjdbc", lists)
+    # A failure the list named keeps its reason, a decision above all.
+    assert expected.tests["a.WriteTest::testCreate"] == "writes"
+    assert expected.tests["a.CursorTest::testHold"] == "hold-cursor"
+    assert expected.reasons["writes"].requirement == "REQ-2203"
+    # A failure it did not name is an open defect, one per error the suite saw, never a decision.
+    new = {expected.tests["a.New::testBroken"], expected.tests["a.New::testBrokenToo"]}
+    assert len(new) == 1 and expected.reasons[new.pop()].defect == "unexpected EOF"
+    assert not expected.reasons[expected.tests["a.Odd::testOther"]].by_design
+    # A test that passed, was skipped or did not run is no longer listed.
+    for gone in ("a.Fixed::testNowPasses", "a.Skips::testSkipped", "a.Gone::testRemoved"):
+        assert gone not in seeded["expected"]
+    doc = ds.summarise(expected, "REL42.7.14", results, "s")
+    assert not doc["unexpected_failures"] and not doc["unexpected_passes"]
+    # Seeding moves nothing out of failed: every new entry is a defect.
+    assert doc["failed"] == 4 and doc["by_design"] == 2
+
+
+def test_seed_is_a_command_that_writes_the_drivers_list(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "LISTS", _list(tmp_path, {**_LIST, "version": "REL42.7.13"}))
+    junit = _junit(tmp_path / "run.xml", _RUN)
+    assert ds.main(["seed", "pgjdbc", "REL42.7.14", str(junit)]) == 0
+    text = (tmp_path / "pgjdbc.yaml").read_text()
+    assert text.startswith("# pgjdbc's expected-failure list")
+    assert ds.load("pgjdbc", tmp_path).version == "REL42.7.14"
 
 
 # --- the repository's lists, page and workflow ------------------------------------------------------

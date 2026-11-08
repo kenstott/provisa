@@ -125,6 +125,13 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await expect(legend).toContainText("data product");
     await expect(legend).toContainText("table");
     await expect(page.getByTestId("graph-panel-depth")).toBeVisible();
+    // REQ-2174 (amended 2026-11-07): its hops are named by the product they count from, and it
+    // opens at 1 hop with Related tables on.
+    await expect(page.getByTestId("graph-panel-depth-label")).toHaveText("Hops from Pet Health");
+    await expect(
+      page.getByTestId("graph-panel-depth").getByRole("radio", { name: "1" }),
+    ).toBeChecked();
+    await expect(page.getByTestId("graph-panel-related")).toBeChecked();
     await expect(page.getByTestId("graph-panel-layers-menu")).toHaveCount(0);
 
     await page.getByTestId("graph-panel-expand").click();

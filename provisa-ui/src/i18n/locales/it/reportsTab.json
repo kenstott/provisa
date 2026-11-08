@@ -14,6 +14,8 @@
     "deleteConfirm": "Eliminare il report {{name}}?",
     "deleted": "Report {{name}} eliminato.",
     "empty": "Nessun report registrato nel dominio ops.",
+    "filterPlaceholder": "Filtra i report…",
+    "noMatch": "Nessun report corrisponde",
     "resize": "Ridimensiona l'elenco dei report",
     "drift": {
       "title": "Deriva dal periodo precedente",

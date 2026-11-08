@@ -145,6 +145,7 @@ from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, NamedTuple, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from provisa.compiler.names_table import NamesTable
     from provisa.compiler.compiled_query_cache import CompiledQueryCache
     from provisa.cache.hot_tables import HotTableManager
     from provisa.core.tenant_context import TenantContextCache
@@ -1120,6 +1121,15 @@ class AppState:
     @view_context.setter
     def view_context(self, value: CompilationContext | None) -> None:
         self._active_runtime().view_context = value
+
+    @property
+    def names_table(self) -> "NamesTable | None":
+        """This model version's names table (OrgRuntime.names_table, REQ-194)."""
+        return self._active_runtime().names_table
+
+    @names_table.setter
+    def names_table(self, value: "NamesTable | None") -> None:
+        self._active_runtime().names_table = value
 
     @property
     def view_path_map(self) -> dict | None:
@@ -2102,7 +2112,7 @@ async def ensure_org_runtime(
 
 
 async def build_on_its_lane(  # REQ-1266, REQ-1922
-    org_id: str, env: str | None, *, model_cloned: bool = False, schema_current: bool = False
+    org_id: str, env: str | None, *, model_cloned: bool = False
 ) -> OrgRuntime:
     """Build the org environment's runtime on the lane its admin-plane row and, in a region
     deployment, its model name: the engine and store it runs on. ``ensure_org_runtime`` builds
@@ -2164,7 +2174,6 @@ async def build_on_its_lane(  # REQ-1266, REQ-1922
         data_mode=_data_mode,
         mutation_handling=_mutation_handling,
         model_cloned=model_cloned,
-        schema_current=schema_current,
     )
 
 
@@ -2421,7 +2430,6 @@ async def build_org_runtime(
     storage_url: str | None = None,
     model_cloned: bool = False,
     provisioned: bool = False,
-    schema_current: bool = False,
 ) -> OrgRuntime:  # REQ-1266, REQ-1524
     """Build the org's runtime (``_build_org_runtime``) as one model change.
 
@@ -2432,17 +2440,15 @@ async def build_org_runtime(
 
     ``model_cloned`` (REQ-2006): the org's schema was provisioned and its model cloned, a moment
     ago in this process, from an org this release built -- a demo sandbox's first build, from its
-    template. Its schema's script is not run again, and the built-in seed makes only what the
-    clone cannot carry (startup_seed._seed_built_in_sources).
+    template. The built-in seed makes only what the clone cannot carry
+    (startup_seed._seed_built_in_sources).
 
     ``provisioned``: the org's schema was created a moment ago, in this process
     (orgs_router._provision_org_task), and holds none of the built-in views, which the seed makes
     as one script.
 
-    ``schema_current`` (REQ-1922): the org's schema was laid out by this release a moment ago, in
-    this process, by its provisioning and the build this one replaces (orgs_router.
-    on_its_region_lane). Its script is not run again: that build's lifecycle wiring, detached from
-    it, still reads the org's model, and the script's ALTER TABLEs deadlock against it."""
+    Whether the schema's script runs is the schema's own answer: its layout stamp
+    (_set_up_org_schema)."""
     async with model_change.scope(f"build org {org_id}/{env}"):
         return await _build_org_runtime(
             org_id,
@@ -2459,7 +2465,6 @@ async def build_org_runtime(
             storage_url=storage_url,
             model_cloned=model_cloned,
             provisioned=provisioned,
-            schema_current=schema_current,
         )
 
 
@@ -2503,24 +2508,24 @@ class _BuildClock:
         self._since = now
 
 
-async def _set_up_org_schema(org_id: str, env: str, *, run_script: bool) -> None:
+async def _set_up_org_schema(org_id: str, env: str) -> None:
     """The org environment's schema as a build leaves it, in the model store bound now: its
-    ``schema.sql`` and audit schema when ``run_script``, then its tenancy role grants."""
-    from provisa.audit.query_log import init_audit_schema
-    from provisa.core.db import apply_tenancy_role_grants, init_schema
+    ``schema.sql`` and audit schema unless its layout stamp says they are current
+    (org_provisioning.lay_out_schema), then its tenancy role grants, every time. A rebuild beside a
+    live runtime's reads (an org's region-lane build, REQ-1922) finds the schema current and takes
+    no lock its readers wait on."""
+    from provisa.core.db import apply_tenancy_role_grants
+    from provisa.core.org_provisioning import lay_out_schema
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if not schema_sql_path.exists():
         raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
     model_db = state.model_db
     assert model_db is not None, "the org's model store is opened before its schema is set up"
-    if run_script:
-        await init_schema(model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
+    await lay_out_schema(model_db, schema_sql_path.read_text(), org_id, env)
     # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
     # REQ-1623: asserted in the environment being built, whose roles table is its own.
     await apply_tenancy_role_grants(model_db, org_id, multitenancy=state.multitenancy, env=env)
-    if run_script:
-        await init_audit_schema(model_db, org_id=org_id, env=env)
 
 
 async def _build_org_runtime(
@@ -2539,7 +2544,6 @@ async def _build_org_runtime(
     storage_url: str | None = None,
     model_cloned: bool = False,
     provisioned: bool = False,
-    schema_current: bool = False,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -2774,8 +2778,7 @@ async def _build_org_runtime(
             org_schema(org_id, env), ModelPlane(org_id, env), model_engine=tenant_engine
         )
 
-        # Either was laid out a moment ago (org_provisioning.provision_org).
-        await _set_up_org_schema(org_id, env, run_script=not (model_cloned or schema_current))
+        await _set_up_org_schema(org_id, env)
         clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
@@ -3053,7 +3056,11 @@ async def _rebuild_schemas(
     asked = time.monotonic()
     async with _rebuild_schemas_lock:
         began = time.monotonic()
-        with model_row_rules.unnarrowed():
+        # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
+        # landed tables' reconcile and the routes it publishes alike.
+        from provisa.federation.replica_routing import one_model_read
+
+        with model_row_rules.unnarrowed(), one_model_read():
             await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
     # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
     # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
@@ -3594,23 +3601,32 @@ async def _rebuild_schemas_impl(
     # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
     # phase: it runs with this rebuild's connection given back, so concurrent requests and the
     # health probe are not kept waiting at the connection gate for all of it.
-    _checked = _build_and_register_schemas(
-        roles=roles,
-        tables=tables,
-        relationships=relationships,
-        col_types_converted=col_types_converted,
-        naming_rules=naming_rules,
-        domains=domains,
-        domain_prefix=domain_prefix,
-        kafka_physical=kafka_physical,
-        tracked_functions=tracked_functions,
-        tracked_webhooks=tracked_webhooks,
-        gql_object_cols=_gql_object_cols,
-        rls_rules=rls_rules,
-        metrics=_metric_dicts,  # REQ-1319
-        field_numbers=_field_numbers,
-        draft_tables=draft_tables,  # REQ-1921
-    )
+    from provisa.compiler.names_table import NamesClashRefused
+    from provisa.core.repositories import model_names as _model_names
+
+    try:
+        _checked = _build_and_register_schemas(
+            roles=roles,
+            tables=tables,
+            relationships=relationships,
+            col_types_converted=col_types_converted,
+            naming_rules=naming_rules,
+            domains=domains,
+            domain_prefix=domain_prefix,
+            kafka_physical=kafka_physical,
+            tracked_functions=tracked_functions,
+            tracked_webhooks=tracked_webhooks,
+            gql_object_cols=_gql_object_cols,
+            rls_rules=rls_rules,
+            metrics=_metric_dicts,  # REQ-1319
+            field_numbers=_field_numbers,
+            draft_tables=draft_tables,  # REQ-1921
+        )
+    except NamesClashRefused as refused:
+        # REQ-194: the clashes are kept for the names report, each naming both objects.
+        async with state.model_db.acquire() as conn:
+            await _model_names.write_refused_clashes(conn, refused.clashes)
+        raise
 
     async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
@@ -3624,6 +3640,12 @@ async def _rebuild_schemas_impl(
         from provisa.dq.registration import write_checker_targets
 
         await write_checker_targets(conn, _checked)
+
+        # REQ-194: this build's names table, for the meta domain and the names report, and each
+        # name the disambiguate policy derived kept as its object's alias.
+        assert state.names_table is not None, "the build stores the names table it built"
+        await _model_names.write_names_table(conn, state.names_table.rows)
+        await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
 
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
     # its roles) is ended.
@@ -3715,19 +3737,15 @@ async def _rewire_lifecycle() -> None:
     # registered live through the Sources+Register Table forms never got its listener started or
     # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
     # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
-    # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
+    # calls are idempotent by design (wire_push_listeners skips nodes already running;
     # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
     # here is never harmful, only occasionally redundant with register_runtime's own call.
     from provisa.events.push_wiring import wire_push_listeners
 
-    try:
-        await wire_push_listeners(state=state, log=logging.getLogger(__name__))
-    except Exception:
-        logging.getLogger(__name__).exception("wire_push_listeners failed during schema rebuild")
-    try:
-        await _init_ingest_engines()
-    except Exception:
-        logging.getLogger(__name__).exception("_init_ingest_engines failed during schema rebuild")
+    # A step that fails is the rebuild's failure (J743): inline at boot it fails the rebuild;
+    # detached, spawn_background reports it by the task's name.
+    await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+    await _init_ingest_engines()
     # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
     # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
     # function does not — a table registered against an already-running runtime (the common case
@@ -3748,8 +3766,6 @@ async def _rewire_lifecycle() -> None:
         # The runtime this rebuild is for was dropped while it ran (a change of the
         # environment's data, an engine wake): the one built in its place wires its own.
         left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
-    except Exception:
-        logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
 
     # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
     # same posture as wire_push_listeners above (registered jobs are idempotent via
@@ -5066,6 +5082,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
 
     app.include_router(catalogs_router)
+    from provisa.api.admin.request_delivery_router import (  # REQ-2216
+        router as request_delivery_router,
+    )
+
+    app.include_router(request_delivery_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )

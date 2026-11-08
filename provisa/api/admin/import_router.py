@@ -33,14 +33,94 @@ import yaml
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from provisa.api.admin._platform_guard import require_org_settings
+from provisa.api.admin.capabilities import has_capability_request
 from provisa.api.errors import ApiError
 from provisa.core.models import ProvisaConfig
+from provisa.security.rights import Capability
 from provisa.import_shared.upload import DDN, HASURA_V2, UploadError, staged_upload
 from provisa.import_shared.warnings import WarningCollector, in_report_order
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/import/hasura", tags=["admin", "import"])
+
+# REQ-1327: an import writes objects of several layers, so it asks, for each kind of object the
+# config declares, the right that object's own admin edit asks -- never one right for all of
+# them. One entry per model section an apply writes (store_config.MODEL_SECTIONS), plus the
+# naming rules held inside the ``naming`` block.
+_C = Capability
+SECTION_RIGHTS: dict[str, tuple[str, ...]] = {
+    # The platform's: where the org's data may live and in which stores (require_deployment_settings).
+    "stores": (_C.PLATFORM_SETTINGS.value, _C.CROSS_ORG.value),
+    "regions": (_C.PLATFORM_SETTINGS.value, _C.CROSS_ORG.value),
+    "sources": (_C.SOURCE_REGISTRATION.value,),
+    "kafka_sources": (_C.SOURCE_REGISTRATION.value,),
+    "domains": (_C.ORG_SETTINGS.value,),
+    "roles": (_C.USER_MANAGEMENT.value,),
+    "data_products": (_C.DATA_PRODUCT_RW.value,),
+    "glossary_terms": (_C.GLOSSARY_RW.value,),
+    "calendars": (_C.TABLE_REGISTRATION.value,),
+    "tables": (_C.TABLE_REGISTRATION.value,),
+    "relationships": (_C.CREATE_RELATIONSHIP.value,),
+    "metrics": (_C.TABLE_REGISTRATION.value,),
+    "tags": (_C.TABLE_REGISTRATION.value,),
+    "tag_assignments": (_C.TABLE_REGISTRATION.value,),
+    "rls_rules": (_C.MASKING_CONFIG.value,),
+    "functions": (_C.TABLE_REGISTRATION.value,),
+    "webhooks": (_C.TABLE_REGISTRATION.value,),
+    "scheduled_triggers": (_C.ORG_SETTINGS.value,),
+    "naming": (_C.TABLE_REGISTRATION.value,),
+}
+
+#: The rights that open the Import page and its preview: any one of the org's object rights.
+#: The platform's pair is not among them -- the platform holds no data capability -- and the UI's
+#: route and nav entry name this same list (navGroups.ts IMPORT_RIGHTS).
+IMPORT_RIGHTS: tuple[str, ...] = tuple(
+    sorted(
+        {r for rights in SECTION_RIGHTS.values() for r in rights}
+        - {
+            _C.PLATFORM_SETTINGS.value,
+            _C.CROSS_ORG.value,
+        }
+    )
+)
+
+
+def _declared_sections(config: ProvisaConfig) -> list[str]:
+    """The sections of ``config`` that declare at least one object, in SECTION_RIGHTS order."""
+    return [
+        section
+        for section in SECTION_RIGHTS
+        if (config.naming.rules if section == "naming" else getattr(config, section))
+    ]
+
+
+def _require_an_import_right(request: Request) -> None:
+    if any(has_capability_request(request, right) for right in IMPORT_RIGHTS):
+        return
+    raise ApiError(
+        403,
+        "import.right_required",
+        f"importing needs one of {', '.join(IMPORT_RIGHTS)}",
+        rights=", ".join(IMPORT_RIGHTS),
+    )
+
+
+def _require_section_rights(request: Request, config: ProvisaConfig) -> None:
+    """Refuse an apply declaring an object whose own right the caller lacks, naming each."""
+    declared = _declared_sections(config)
+    missing = sorted(
+        {r for s in declared for r in SECTION_RIGHTS[s] if not has_capability_request(request, r)}
+    )
+    if not missing:
+        return
+    lacking = [s for s in declared if any(r in missing for r in SECTION_RIGHTS[s])]
+    raise ApiError(
+        403,
+        "import.rights_required",
+        f"this import declares {', '.join(lacking)}, which need {', '.join(missing)}",
+        sections=", ".join(lacking),
+        rights=", ".join(missing),
+    )
 
 
 class ImportPreviewRequest(BaseModel):
@@ -204,7 +284,7 @@ def _convert(req: ImportPreviewRequest) -> tuple[str, ProvisaConfig, WarningColl
 @router.post("/preview", response_model=ImportPreviewResponse)
 async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportPreviewResponse:
     """Convert an upload and return the config for review. Writes nothing."""
-    require_org_settings(request)  # REQ-1483: an org owns its own semantic layer
+    _require_an_import_right(request)  # REQ-1327: preview writes nothing
     try:
         flavor, config, collector, discovered = _convert(req)
     except UploadError as exc:
@@ -299,7 +379,7 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
     """Apply the approved config to the acting org as an explicit one-time seed: it adds and
     updates what the config declares and removes nothing (REQ-1919). The settled config→org
     sequence (``app_loaders.apply_configuration``), not a second loader."""
-    require_org_settings(request)  # REQ-1483
+    _require_an_import_right(request)  # REQ-1327
     from provisa.api.app import state
     from provisa.api.app_loaders import apply_configuration
     from provisa.core.config_loader import parse_config_dict
@@ -324,7 +404,7 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             409, "import.no_active_org", "no org is bound to this request; sign in to an org first"
         )
 
-    from provisa.api.admin.capabilities import has_capability_request
+    _require_section_rights(request, config)  # REQ-1327: each object's own right
     from provisa.security.sensitive import SENSITIVE_DATA, config_changes, refusal
 
     if not has_capability_request(request, SENSITIVE_DATA):  # REQ-1943

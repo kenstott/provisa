@@ -1894,12 +1894,18 @@ async def role_conflicts(conn: "Connection") -> dict:
                     "columns": columns,
                 }
             )
-    # REQ-2145: a tag stays on a term that has stopped being a Property, and is reported.
+    # REQ-2145: a tag that flows to columns stays on a term that has stopped being a Property, and
+    # is reported. Any other tag on a term is the term's own, whatever its role.
+    from provisa.core.term_tags import FLOWING_TAGS
+
     tag_rows = (
         await conn.execute_core(
             select(tag_assignments.c.tag_id, glossary_terms.c.id, glossary_terms.c.name)
             .join(glossary_terms, glossary_terms.c.id == tag_assignments.c.term_id)
-            .where(tag_assignments.c.object_type == "term")
+            .where(
+                tag_assignments.c.object_type == "term",
+                tag_assignments.c.base_tag_id.in_(FLOWING_TAGS),
+            )
             .order_by(glossary_terms.c.name, tag_assignments.c.tag_id)
         )
     ).fetchall()

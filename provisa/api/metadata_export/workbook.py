@@ -103,7 +103,17 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "tags",
     ),
     VIEWS: ("id", "name", "domain", "source", "tags", "definition", "description"),
-    METRICS: ("id", "metric", "expression", "datatype", "description", "ai context", "from fact"),
+    # REQ-2208: a metric carries registry tags like any other governed object.
+    METRICS: (
+        "id",
+        "metric",
+        "expression",
+        "datatype",
+        "tags",
+        "description",
+        "ai context",
+        "from fact",
+    ),
     MATERIALIZED_VIEWS: (
         "id",
         "name",
@@ -385,6 +395,10 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
     """
     from provisa.compiler.metric_expand import metric_reference_tables
 
+    tagged: dict[str, list[str]] = {}
+    for assignment in config.tag_assignments:  # REQ-2208
+        if assignment.object_type == "metric" and assignment.metric_name is not None:
+            tagged.setdefault(assignment.metric_name, []).append(assignment.tag_id)
     rows: list[list[Any]] = []
     for metric in config.metrics:
         referenced = set(metric_reference_tables(metric.name, metric.expression))
@@ -396,6 +410,7 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
                 metric.name,
                 metric.expression,
                 metric.datatype or "",
+                ", ".join(tagged.get(metric.name, [])),
                 metric.description or "",
                 metric.ai_context or "",
                 metric.from_fact or "",
@@ -490,7 +505,8 @@ def _products_rows(
 
 def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
     """Each output port's contract: a member of a product the workbook shows, with the contract
-    its owner declared. A promised column the reader is not served is not named."""
+    its owner declared. Its schema is its member's columns, those the reader is served
+    (REQ-2158)."""
     product_of = {
         member: product for product in snapshot.data_products for member in product.members
     }
@@ -500,7 +516,6 @@ def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
         product = product_of.get(table.ref)
         if contract is None or product is None:
             continue
-        served = {column.name for column in table.columns}
         rows.append(
             [
                 table.semantic_uri,
@@ -511,11 +526,7 @@ def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
                 contract.description or "",
                 contract.terms.usage or "",
                 contract.terms.limitations or "",
-                ", ".join(
-                    f"{column.name} ({column.type}{', required' if column.required else ''})"
-                    for column in contract.columns
-                    if column.name in served
-                ),
+                ", ".join(f"{column.name} ({column.data_type})" for column in table.columns),
             ]
         )
     return rows

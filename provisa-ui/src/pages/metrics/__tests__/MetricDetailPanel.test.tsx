@@ -45,6 +45,7 @@ describe("a metric's read view", () => {
       ["Datatype", "decimal"],
       ["Description", "Booked revenue"],
       ["AI Context", "Excludes refunds"],
+      ["Tags", ""],
       ["Source fact", "orders"],
       ["Visible to", "analyst, finance"],
       ["Dependent metric views", "sales_by_month"],

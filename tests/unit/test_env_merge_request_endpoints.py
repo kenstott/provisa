@@ -79,6 +79,9 @@ def _row(request_id: int = 7, **over) -> dict:
 
 
 class _Request:
+    # REQ-2216: a decision reads its Idempotency-Key header; these calls send none.
+    headers: dict[str, str] = {}
+
     """Only ``state.identity`` is read by the guards, and every guard here is monkeypatched."""
 
     class state:  # noqa: N801 -- mirrors starlette's attribute name

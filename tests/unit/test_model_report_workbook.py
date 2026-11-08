@@ -34,6 +34,7 @@ from provisa.core.models import (
     ProvisaConfig,
     Source,
     SourceType,
+    TagAssignment,
     Table,
     ViewMetricsSpec,
 )
@@ -185,11 +186,36 @@ def test_a_taggable_row_carries_one_comma_delimited_tags_cell():
     by_name = {row[1]: row[tags] for row in rows[wb.TABLES]}
     assert "fact" in by_name["orders"].split(", ")
     assert by_name["staging"] == ""
-    for sheet in (wb.SOURCES, wb.COLUMNS, wb.RELATIONSHIPS, wb.VIEWS, wb.MATERIALIZED_VIEWS):
+    # REQ-2208: a metric carries tags like any other governed object.
+    for sheet in (
+        wb.SOURCES,
+        wb.COLUMNS,
+        wb.RELATIONSHIPS,
+        wb.VIEWS,
+        wb.MATERIALIZED_VIEWS,
+        wb.METRICS,
+    ):
         assert "tags" in wb.HEADERS[sheet], sheet
     # Neither is taggable — `applies_to` never names them, so a tags column would always be blank.
-    for sheet in (wb.METRICS, wb.ONTOLOGY, wb.DATA_PRODUCTS):
+    for sheet in (wb.ONTOLOGY, wb.DATA_PRODUCTS):
         assert "tags" not in wb.HEADERS[sheet], sheet
+
+
+def test_a_metrics_tags_are_in_its_row():  # REQ-2208
+    config = _config()
+    config.tag_assignments = [
+        TagAssignment(tag_id="reviewed", object_type="metric", metric_name="revenue"),
+        TagAssignment(tag_id="decision-traced", object_type="metric", metric_name="revenue"),
+    ]
+    snapshot = build_snapshot(
+        config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
+    )
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
+    )
+    tags = wb.HEADERS[wb.METRICS].index("tags")
+    by_name = {row[1]: row[tags] for row in rows[wb.METRICS]}
+    assert by_name == {"revenue": "reviewed, decision-traced", "held": ""}
 
 
 def test_an_omitted_sheet_is_absent_rather_than_empty():
@@ -1079,14 +1105,15 @@ def test_the_ontology_sheet_states_each_terms_axioms():
 
 def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_served_columns():
     """REQ-1592 (2026-10-27): each output port's contract (REQ-2158) -- version, status, purpose,
-    usage, limitations and the columns it promises, a column the caller is not served absent."""
+    usage, limitations and its schema: the member's columns the caller is served (a contract
+    selects none of its own)."""
     from provisa.api.metadata_export.model import (
         AssetKind,
         AssetRef,
         DataProductAsset,
         MetadataSnapshot,
     )
-    from provisa.core.models import ContractColumn, ContractTerms, DataContract, DataProduct
+    from provisa.core.models import ContractTerms, DataContract, DataProduct
 
     orders = dataclasses.replace(
         _asset_table("orders", ["id", "total"]),
@@ -1096,11 +1123,6 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
             status="active",
             description="every order placed",
             terms=ContractTerms(usage="reporting", limitations="no PII"),
-            columns=[
-                ContractColumn(name="id", type="integer", required=True),
-                ContractColumn(name="total", type="decimal"),
-                ContractColumn(name="margin", type="decimal"),  # not served to this caller
-            ],
         ),
     )
     drafts = _asset_table("drafts", ["id"])  # a member with no contract declared
@@ -1144,6 +1166,6 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
             "purpose": "every order placed",
             "usage": "reporting",
             "limitations": "no PII",
-            "columns": "id (integer, required), total (decimal)",
+            "columns": "id (int), total (int)",
         }
     ]

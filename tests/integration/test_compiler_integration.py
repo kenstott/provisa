@@ -440,7 +440,7 @@ class TestAggregates:
         role_no_agg = {
             "id": "analyst",
             "description": "Test role.",
-            "capabilities": [],
+            "capabilities": ["usage"],
             "domain_access": ["*"],
             "no_aggregations": True,
         }

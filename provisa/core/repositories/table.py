@@ -14,7 +14,7 @@
 
 from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
 from provisa.core import model_change
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 
 from sqlalchemy import delete as _delete, select
@@ -406,11 +406,12 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     refuse_taken_sql_addresses([*others, candidate], rules)
 
 
-async def _contract_for_save(conn: "Connection", table: Table) -> DataContract | None:
-    """REQ-2158: the contract the table's save stores, checked against the stored one and the
-    columns it saves (provisa.core.data_contracts)."""
-    from provisa.core import data_contracts
-    from provisa.core.ir_types import base_type
+async def _contract_for_save(
+    conn: "Connection", table: Table, types: dict[str, str]
+) -> DataContract | None:
+    """REQ-2158: the contract the table's save stores (provisa.core.data_contracts). ``types``: each
+    column's resolved type, the one the save writes (REQ-1426)."""
+    from provisa.core import contract_versions, data_contracts
 
     stored = (
         await conn.execute_core(
@@ -425,17 +426,6 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
             )
         )
     ).fetchone()
-    existing = await stored_column_types(conn, table.source_id, table.schema_name, table.table_name)
-    column_types: dict[str, str] = {}
-    for col in table.columns:
-        declared_type = getattr(col, "data_type", None) or existing.get(col.name)
-        if not declared_type:
-            continue  # refused by name where the columns are written (REQ-1426)
-        try:
-            # REQ-2171: a contract promises the stored type, a subtype's base.
-            column_types[col.name] = stored_type_of(base_type(declared_type))
-        except ReportedNumericMalformed as malformed:
-            raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
     product_id = getattr(table, "product_id", None)
     is_checker = getattr(table, "dq_contract", None) is not None
     promised = (
@@ -446,13 +436,21 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
     return data_contracts.for_save(
         product_id=product_id,
         is_checker=is_checker,
-        schema_name=table.schema_name,
-        table_name=table.table_name,
         declared=getattr(table, "contract", None),
         stored=None if stored is None else stored.contract,
         stored_product_id=None if stored is None else stored.product_id,
-        column_types=column_types,
         checks=promised,
+        columns=contract_versions.snapshot(
+            [
+                {
+                    "column_name": c.name,
+                    "data_type": types[c.name],
+                    "description": c.description,
+                    "not_null": c.not_null,
+                }
+                for c in table.columns
+            ]
+        ),
     )
 
 
@@ -495,7 +493,52 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 f"table {table.table_name} is in domain {domain_id!r} but data product "
                 f"{product_id!r} belongs to domain {product['domain_id']!r}"
             )
-    contract = await _contract_for_save(conn, table)  # REQ-2158
+    # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
+    # resolved (by the type-introspection user-assist) survives a config reload even though the YAML
+    # carries no type. Capture the currently-stored types before the column replace and reuse any
+    # that the incoming config leaves unset (REQ-471) — never null a resolved type back out.
+    _existing_rows = (
+        await conn.execute_core(
+            select(
+                table_columns.c.column_name,
+                table_columns.c.data_type,
+                table_columns.c.is_foreign_key,
+                table_columns.c.is_alternate_key,
+                table_columns.c.not_null,
+                table_columns.c.array_depth,
+                table_columns.c.element_type,
+                table_columns.c.native_type,
+                table_columns.c.native_platform,
+                table_columns.c.subtype,
+            )
+            .select_from(
+                table_columns.join(
+                    registered_tables, table_columns.c.table_id == registered_tables.c.id
+                )
+            )
+            .where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+            )
+        )
+    ).fetchall()
+    _existing_types = {r.column_name: r.data_type for r in _existing_rows}
+    # REQ-1426: a column without a type is not registrable. Every writer resolves the type before
+    # it gets here (source introspection, SQLGlot annotation for views, the remote mappers' own
+    # type maps); persisting NULL made the catalog render "unknown" and left the SQL layer with no
+    # type to compile against. Refused here, naming the column, before the contract snapshots the
+    # types and before anything is written (REQ-2158).
+    _resolved_types: dict[str, str] = {}
+    for col in table.columns:
+        _resolved = getattr(col, "data_type", None) or _existing_types.get(col.name)
+        if not _resolved:
+            raise ValueError(
+                f"column {table.table_name}.{col.name} has no data_type; "
+                "resolve the type at registration — an untyped column cannot be persisted"
+            )
+        _resolved_types[col.name] = _resolved
+    contract = await _contract_for_save(conn, table, _resolved_types)  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -650,27 +693,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         update_columns=_update_columns,
     )
 
-    # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
-    # resolved (by the type-introspection user-assist) survives a config reload even though the YAML
-    # carries no type. Capture the currently-stored types before the column replace and reuse any
-    # that the incoming config leaves unset (REQ-471) — never null a resolved type back out.
-    _existing_rows = (
-        await conn.execute_core(
-            select(
-                table_columns.c.column_name,
-                table_columns.c.data_type,
-                table_columns.c.is_foreign_key,
-                table_columns.c.is_alternate_key,
-                table_columns.c.not_null,
-                table_columns.c.array_depth,
-                table_columns.c.element_type,
-                table_columns.c.native_type,
-                table_columns.c.native_platform,
-                table_columns.c.subtype,
-            ).where(table_columns.c.table_id == table_id)
-        )
-    ).fetchall()
-    _existing_types = {r.column_name: r.data_type for r in _existing_rows}
     # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that
     # restates the stored base keeps it.
     _existing_subtypes = {
@@ -805,16 +827,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         object_fields = [
             f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw
         ]
-        _data_type = getattr(col, "data_type", None) or _existing_types.get(col.name)
-        # REQ-1426: a column without a type is not registrable. Every writer resolves the type
-        # before it gets here (source introspection, SQLGlot annotation for views, the remote
-        # mappers' own type maps); persisting NULL made the catalog render "unknown" and left the
-        # SQL layer with no type to compile against. Refuse loudly at the last gate.
-        if not _data_type:
-            raise ValueError(
-                f"column {table.table_name}.{col.name} has no data_type; "
-                "resolve the type at registration — an untyped column cannot be persisted"
-            )
+        _data_type = _resolved_types[col.name]
         # REQ-1961: a numeric's precision and scale are stored in one spelling, whoever writes
         # the registration and however they spelled it; a size no numeric can have is refused
         # here, the one place a column's type is written.
@@ -1025,31 +1038,35 @@ async def find_by_table_name(
     return dict(rows[0]._mapping)
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-013, REQ-016
+async def list_all(
+    conn: "Connection", *, parts_of: "Callable[[dict], bool] | None" = None
+) -> list[dict]:  # REQ-013, REQ-016
+    """Every registered table's row with its ``columns`` and ``write_grants``. ``parts_of``, when
+    given, says which tables' parts are read: a table it refuses is its row alone, with neither
+    key — for a reader that needs no more of it than its row (``store_model``'s seeded tables)."""
     from provisa.core.repositories import write_grant as write_grant_repo
 
     result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
-    rows = result.fetchall()
+    rows = [dict(row._mapping) for row in result.fetchall()]
+    with_parts = [r["id"] for r in rows if parts_of is None or parts_of(r)]
     # Every table's columns in one read, each table's in registration order (as _load_columns
     # reads one table's): a rebuild lists every table, and a query per table was a query for each.
+    columns_read = select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
+        table_columns.c.table_id, table_columns.c.id
+    )
+    if parts_of is not None:
+        columns_read = columns_read.where(table_columns.c.table_id.in_(with_parts))
     columns: dict[int, list[dict]] = {}
-    for c in (
-        await conn.execute_core(
-            select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
-                table_columns.c.table_id, table_columns.c.id
-            )
-        )
-    ).fetchall():
+    for c in (await conn.execute_core(columns_read)).fetchall():
         column = dict(c._mapping)
         columns.setdefault(column.pop("table_id"), []).append(column)
     grants = await write_grant_repo.by_table(conn)
-    out = []
-    for row in rows:
-        r = dict(row._mapping)
-        r["columns"] = columns.get(r["id"], [])
-        r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
-        out.append(r)
-    return out
+    wanted = set(with_parts)
+    for r in rows:
+        if r["id"] in wanted:
+            r["columns"] = columns.get(r["id"], [])
+            r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
+    return rows
 
 
 async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-1918

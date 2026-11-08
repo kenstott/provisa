@@ -238,7 +238,7 @@ class TestSchemaVisibility:
             "id": ROLE_ANALYST,
             "description": "Test role.",
             "domain_access": ["*"],
-            "capabilities": [],
+            "capabilities": ["usage"],
         }
         result = visible_tables(tables, role)
         assert result == [], "REQ-039: table with no visible columns must be excluded from schema"
@@ -259,7 +259,7 @@ class TestSchemaVisibility:
             "id": ROLE_ANALYST,
             "description": "Test role.",
             "domain_access": ["*"],
-            "capabilities": [],
+            "capabilities": ["usage"],
         }
         result = visible_tables(tables, role)
         assert len(result) == 1

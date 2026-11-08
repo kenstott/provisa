@@ -220,6 +220,14 @@ def _typed(value: exp.Expression, kind: str) -> exp.Expression:
     return exp.Cast(this=value, to=exp.DataType.build(_spelled(kind), dialect="postgres"))
 
 
+def _held_table(name: str) -> exp.Table:
+    """The session table ``name``, quoted: named exactly as the session holds it, so neither
+    PostgreSQL's folding of an unquoted name (the engine's, and governance's reading of the
+    statement as the engine runs it, REQ-039) reads ``cypher__anchor__Person`` as another table.
+    (``exp.to_table(name, quoted=True)`` quotes nothing: it sets an argument of the table.)"""
+    return exp.Table(this=exp.to_identifier(name, quoted=True))
+
+
 def _session_table(
     name: str, alias: str, session: TempSession, fixed: list[tuple[str, str]]
 ) -> exp.Expr:
@@ -227,7 +235,7 @@ def _session_table(
     (REQ-2176: tables are created as statements write): it reads as no rows of its known columns,
     ``fixed`` (name, session type), not as an engine error."""
     if name in session.tables:
-        return exp.alias_(exp.to_table(name, quoted=True), alias)
+        return exp.alias_(_held_table(name), alias)
     empty = exp.select(
         *(exp.alias_(_typed(exp.null(), kind), column, quoted=True) for column, kind in fixed)
     ).where(exp.false())
@@ -409,7 +417,7 @@ def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
             _col("to_id", "_r"),
             *(_col(p, "_p") for p in props),
         )
-        .from_(exp.alias_(exp.to_table(store.RELS, quoted=True), "_r"))
+        .from_(exp.alias_(_held_table(store.RELS), "_r"))
         .join(
             _session_table(store.rel_table(rel_type), "_p", session, [(store.REL_ID, "text")]),
             on=exp.EQ(this=_col(store.REL_ID, "_p"), expression=_col(store.REL_ID, "_r")),

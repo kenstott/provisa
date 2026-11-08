@@ -11,7 +11,7 @@
 import { useState } from "react";
 
 /**
- * A registered table's details, in eight sections: the same tabs in its read view and its edit
+ * A registered table's details, in seven sections: the same tabs in its read view and its edit
  * form, so what is read in one is found in the same place in the other.
  */
 export type TableSection =
@@ -21,7 +21,6 @@ export type TableSection =
   | "query"
   | "quality"
   | "columns"
-  | "writes" // REQ-2074: what each role may write
   | "access"; // REQ-2162: who can read or write each column
 export const TABLE_SECTIONS: TableSection[] = [
   "identity",
@@ -30,7 +29,6 @@ export const TABLE_SECTIONS: TableSection[] = [
   "query",
   "quality",
   "columns",
-  "writes",
   "access",
 ];
 

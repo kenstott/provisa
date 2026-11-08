@@ -476,10 +476,10 @@ class _Kept:
     """``rows`` as DuckDB reads them, what fails as they are read kept in ``failed``: DuckDB,
     reading them, reports it inside an error of its own, and the answer raises it as it was.
 
-    DuckDB scans a reader through Arrow's read-ahead, which goes on pulling the rows on Arrow's
-    threads after the statement has failed: :meth:`stop` ends that -- the function is read no
-    further -- and returns once no pull is in progress, so no Arrow thread is left in Python (a
-    host exiting with one hung, or in a built image crashed)."""
+    A table read once is DuckDB's as the reader's Arrow C stream, pulled on the statement's own
+    threads, never through Arrow's read-ahead pool (:func:`answer_reads`). A table read twice is
+    held whole first. :meth:`stop` ends the reading when the answer ends -- the function is read
+    no further -- and returns once no pull is in progress."""
 
     def __init__(self, rows: pa.RecordBatchReader, failed: list[BaseException]) -> None:
         self._rows = rows
@@ -532,7 +532,7 @@ def answer_reads(
     to a table reads its rows, under the name the statement gives it. The answer, a batch at a
     time as DuckDB makes it."""
     tree = sqlglot.parse_one(sql, read=dialect)
-    relations: dict[str, pa.RecordBatchReader | pa.Table] = {}
+    relations: dict[str, pa.Table | object] = {}  # a table, or a reader's Arrow C stream
     failed: list[BaseException] = []
     kept: list[_Kept] = []
     for i, (table, held) in enumerate(rows.items()):
@@ -541,7 +541,16 @@ def answer_reads(
         typed_rows = _Kept(typed(_reader(held)), failed)
         kept.append(typed_rows)
         # A reader is scanned once: a table the statement reads twice has its rows held for it.
-        relations[relation] = typed_rows.reader.read_all() if len(reads) > 1 else typed_rows.reader
+        # One read once is DuckDB's as an Arrow C stream, not a pyarrow reader: DuckDB scans a
+        # reader through pyarrow's dataset Scanner, whose read-ahead pulls the rows on Arrow's
+        # thread pool, a thread the statement does not end -- one coming back into Python as the
+        # interpreter finalizes is ended there mid-task, and Arrow's pool then waits at exit for
+        # it forever. A stream DuckDB pulls on the statement's own threads.
+        relations[relation] = (
+            typed_rows.reader.read_all()
+            if len(reads) > 1
+            else typed_rows.reader.__arrow_c_stream__()
+        )
         for read in reads:
             alias = read.alias_or_name
             read.replace(exp.alias_(exp.to_table(relation), alias, table=True))

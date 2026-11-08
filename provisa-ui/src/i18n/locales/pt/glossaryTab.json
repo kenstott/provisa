@@ -155,6 +155,7 @@
     "draftUndefined": "Rascunho: derivado dos nomes de colunas e tabelas. Dê-lhe uma definição — é o que os agentes e catálogos leem — e depois aprove-o. O nome vem das colunas abaixo, e colunas que se normalizam da mesma forma convergem num só termo: atribua um alias a uma coluna na página Tabelas para mudar o termo que ela alimenta. Mude o nome aqui para alterar apenas a redação deste termo.",
     "draftUngrounded": "Este termo não alcança nenhuma coluna física. Relacione-o com um termo que tenha uma, para que nomeie dados reais.",
     "piiLabel": "PII",
+    "tagsLabel": "Tags",
     "piiHelp": "Cada coluna com este significado leva PII, também as futuras.",
     "piiPropertyOnly": "Só uma propriedade marca colunas: uma classe ou um conceito não significa nenhuma.",
     "piiMarks_one": "Marca {{count}} coluna",

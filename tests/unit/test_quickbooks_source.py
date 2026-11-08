@@ -32,7 +32,7 @@ from provisa.api_source.oauth_grants import CredentialRefused
 from provisa.quickbooks import entities, query
 from provisa.quickbooks import read as qb_read
 from provisa.quickbooks import token as qb_token
-from provisa.quickbooks.entities import columns_of, entity, snake
+from provisa.quickbooks.entities import columns_of, entity
 from provisa.quickbooks.persist import QuickBooksTableRefused, build_endpoint, table_paging
 from provisa.quickbooks.pushdown import pushed_arguments
 from provisa.quickbooks.rows import page_rows
@@ -67,12 +67,21 @@ def test_the_named_entities_are_all_offered():
 
 
 def test_field_names_are_written_in_snake_case():
-    assert snake("TotalAmt") == "total_amt"
-    assert snake("PrimaryEmailAddr") == "primary_email_addr"
-    assert snake("APAccountRef") == "ap_account_ref"
-    assert snake("AllowOnlineACHPayment") == "allow_online_ach_payment"
-    assert snake("domain") == "domain"
-    assert snake("Id") == "id"
+    from provisa.quickbooks.rows import row
+
+    names = ["TotalAmt", "PrimaryEmailAddr", "APAccount", "AllowOnlineACHPayment", "domain", "Id"]
+    assert list(row(dict.fromkeys(names, 1))) == [
+        "total_amt",
+        "primary_email_addr",
+        "ap_account",
+        "allow_online_ach_payment",
+        "domain",
+        "id",
+    ]
+    assert list(row({"APAccountRef": {"value": "1", "name": "AP"}})) == [
+        "ap_account_ref_value",
+        "ap_account_ref_name",
+    ]
 
 
 def test_a_reference_is_two_columns_and_line_items_one_json_column():

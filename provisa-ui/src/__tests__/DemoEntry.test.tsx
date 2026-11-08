@@ -28,6 +28,7 @@ import {
   ORG_SELECTION_REQUIRED,
   orgSelectionRequired,
 } from "../lib/orgSelection";
+import { onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 vi.mock("../api/setup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/setup")>()),
@@ -61,6 +62,8 @@ function renderApp() {
 
 const assign = vi.fn();
 const realLocation = window.location;
+// cloud.provisa.dev, which declares provisa.dev: a sandbox is reached at its own subdomain of it.
+onDeclaredBaseDomain("provisa.dev");
 const nativeFetch = window.fetch;
 
 function at(pathname: string) {

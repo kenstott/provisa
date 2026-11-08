@@ -64,6 +64,14 @@ def enter_client_role() -> str:
     return f"SET LOCAL ROLE {CLIENT_ROLE}"
 
 
+#: A client statement on the control plane is not compiled to machine code. Its plan inlines the
+#: catalog views a form reads, once for each place the form names an argument: thousands of
+#: expressions, which PostgreSQL's JIT (on in the control-plane image, off in pgserver's) compiles
+#: anew for every statement, and slower than it runs them -- minutes for one privilege function's
+#: call, and memory its backend keeps.
+WITHOUT_JIT = "SET LOCAL jit = off"
+
+
 def setting_expr(name: str) -> exp.Expression:  # REQ-913
     """Reading setting ``name``: NULL or empty on a statement that was not given it."""
     assert name in NAMES, name

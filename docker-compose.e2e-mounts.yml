@@ -48,6 +48,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
+      # A worker reads the source's splits with the coordinator's catalog, so the certificate is
+      # at the same host path here too (see trino's mount above).
+      - ${PROVISA_E2E_SHAREPOINT_CERT_HOST:?set PROVISA_E2E_SHAREPOINT_CERT_HOST to the absolute path of the certificate}:${PROVISA_E2E_SHAREPOINT_CERT_HOST}:ro
       - ./sharepoint.pfx:/certs/sharepoint.pfx:ro
   hive-metastore:
     volumes:

@@ -40,6 +40,7 @@ from sqlalchemy.exc import DBAPIError
 
 from provisa.api._meta_views import (
     _META_TABLE_VIEWS,
+    _OPS_LOG_BASE_TABLE,
     _OPS_LOG_TABLE_ALIAS,
     _OPS_LOG_TABLE_VIEWS,
     _OPS_REPORT_VIEWS,
@@ -553,7 +554,9 @@ async def _seed_ops_domain(
         # PKs from the physical table; exposed columns from the curated view.
         pk_cols = {
             c["column_name"]
-            for c in await conn.reflect_columns(tbl, schema=schema_name)
+            for c in await conn.reflect_columns(
+                _OPS_LOG_BASE_TABLE.get(tbl, tbl), schema=schema_name
+            )
             if c["is_primary_key"]
         }
         cols = await conn.reflect_columns(view_name, schema=schema_name)
@@ -1321,7 +1324,10 @@ async def _resolve_pk_from_sources() -> None:
         _admin_schemas: dict[str, list[str]] = {}
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] != ONTOLOGY_DOMAIN_ID:
-                _admin_schemas.setdefault(_pk_t["schema_name"], []).append(_pk_t["table_name"])
+                _registered_as = str(_pk_t["table_name"])
+                _admin_schemas.setdefault(_pk_t["schema_name"], []).append(
+                    _OPS_LOG_BASE_TABLE.get(_registered_as, _registered_as)
+                )
         _admin_columns = {
             _schema: await _pk_conn.reflect_columns_many(_names, schema=_schema)
             for _schema, _names in _admin_schemas.items()
@@ -1336,16 +1342,23 @@ async def _resolve_pk_from_sources() -> None:
                 continue
             primary: list[str]
             alternate: frozenset[str] = frozenset()
-            try:
-                if _pk_t["source_id"] == "provisa-admin":
-                    # Control-plane self-catalog: its tables live in the CP connection, so reflect
-                    # there portably (the abstraction ignores the schema on schema-less backends).
-                    primary = [
-                        c["column_name"]
-                        for c in _admin_columns[_pk_t["schema_name"]][_pk_t["table_name"]]
-                        if c["is_primary_key"]
-                    ]
-                else:
+            if _pk_t["source_id"] == "provisa-admin":
+                # Control-plane self-catalog: its tables live in the CP connection, so reflect
+                # there portably (the abstraction ignores the schema on schema-less backends). An
+                # ops log shown over another table (``requests``) has that table's key. A table
+                # registered here with no relation to read is a defect of the seed, not a source
+                # that cannot be reached now: it is named, not skipped.
+                _registered_as = str(_pk_t["table_name"])
+                _relation = _OPS_LOG_BASE_TABLE.get(_registered_as, _registered_as)
+                _reflected = _admin_columns[_pk_t["schema_name"]].get(_relation)
+                if _reflected is None:
+                    raise RuntimeError(
+                        f"provisa-admin table {_pk_t['schema_name']}.{_pk_t['table_name']} is "
+                        f"registered but has no relation {_relation!r} to read its keys from"
+                    )
+                primary = [c["column_name"] for c in _reflected if c["is_primary_key"]]
+            else:
+                try:
                     declared = await declared_keys(
                         state.source_pools,
                         _pk_t["source_type"],
@@ -1353,20 +1366,20 @@ async def _resolve_pk_from_sources() -> None:
                         _pk_t["schema_name"],
                         _pk_t["table_name"],
                     )
-                    if declared is None:
-                        continue  # no driver for the source here: nothing is read
-                    primary, alternate = list(declared.primary_key), declared.alternate_columns
-            except Exception:
-                # One source that cannot be read now does not stop the others' keys being read
-                # (startup_resilience); it is named, and read again at the next start.
-                _startup_log.warning(
-                    "declared keys of %s.%s.%s could not be read",
-                    _pk_t["source_id"],
-                    _pk_t["schema_name"],
-                    _pk_t["table_name"],
-                    exc_info=True,
-                )
-                continue
+                except Exception:
+                    # One source that cannot be read now does not stop the others' keys being read
+                    # (startup_resilience); it is named, and read again at the next start.
+                    _startup_log.warning(
+                        "declared keys of %s.%s.%s could not be read",
+                        _pk_t["source_id"],
+                        _pk_t["schema_name"],
+                        _pk_t["table_name"],
+                        exc_info=True,
+                    )
+                    continue
+                if declared is None:
+                    continue  # no driver for the source here: nothing is read
+                primary, alternate = list(declared.primary_key), declared.alternate_columns
             for _mark, _columns in (("is_primary_key", primary), ("is_alternate_key", alternate)):
                 if _columns:
                     await _pk_conn.execute_core(

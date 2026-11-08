@@ -34,6 +34,8 @@ const hooks = vi.hoisted(() => {
         "observability",
         "access_config",
       ],
+      // What the real AuthContext always carries: the rights a role is shown but not given.
+      demonstrated: [] as string[],
       selectedRoles: ["org_admin"],
       user: { id: "u", username: "u" },
       activeOrgId: "acme",
@@ -64,6 +66,8 @@ vi.mock("../api/admin", async (orig) => ({
   // The server always answers its otel block (settings_router), which the Observability page reads.
   fetchSettings: vi.fn(async () => ({
     naming: { use_domains: true },
+    // REQ-194: the org's clash policy, which the Domains tab's settings show.
+    names: { clash_policy: "refuse" },
     federation: { enabled: false, subgraph_name: "provisa", role: null },
     otel: {
       endpoint: "http://otel-collector:4317",

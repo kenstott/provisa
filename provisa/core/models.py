@@ -619,13 +619,14 @@ CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
 FIRST_CONTRACT_VERSION = "0.1.0"
 
 
-class ContractColumn(BaseModel):  # REQ-2158
-    """A column an output port promises: the member's column, of the type it is stored as."""
+class VersionColumn(BaseModel):  # REQ-2158
+    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
+    what a version's field differences compare is what the member's columns were when it was saved."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
-    type: str = Field(min_length=1)
+    type: str = Field(min_length=1)  # registration guarantees a data_type (REQ-1426)
     description: str | None = None
     required: bool = False  # ODCS: the column is never null
 
@@ -692,8 +693,9 @@ class ContractChange(BaseModel):  # REQ-2158
 
 
 class DataContract(BaseModel):  # REQ-2158
-    """A data product member's ODCS contract: its output port, versioned on its own. Its promises
-    are the checks the product owns on the member (REQ-2157), read when the contract is."""
+    """A data product member's ODCS contract: its output port, versioned on its own. Its schema
+    is its member table's columns, never a selection of its own; its promises are the checks the
+    product owns on the member (REQ-2157), read when the contract is."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -702,7 +704,6 @@ class DataContract(BaseModel):  # REQ-2158
     description: str | None = None
     terms: ContractTerms = Field(default_factory=ContractTerms)
     sla: list[ContractSlaProperty] = Field(default_factory=list)
-    columns: list[ContractColumn] = Field(default_factory=list)
     # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
     # every later version (data_contracts.for_save).
     created_at: datetime | None = None
@@ -719,6 +720,8 @@ class ContractVersion(BaseModel):  # REQ-2158
     model_config = ConfigDict(extra="forbid")
 
     contract: DataContract
+    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
+    columns: list[VersionColumn] = Field(default_factory=list)
     checks: list[ContractCheck] = Field(default_factory=list)
     changes: list[ContractChange] = Field(default_factory=list)
     saved_at: datetime
@@ -818,7 +821,28 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
         return data
 
 
-TAG_OBJECT_TYPES = ("source", "table", "column", "relationship", "command", "product", "term")
+# REQ-2208: a reference library document, and a section of one, carry registry tags as columns and
+# terms do (a pii policy section tagged as the pii columns are).
+TAG_OBJECT_TYPES = (
+    "source",
+    "table",
+    "column",
+    "relationship",
+    "command",
+    "product",
+    "term",
+    "rls_rule",  # REQ-2208
+    "role",  # REQ-2208
+    "metric",  # REQ-2208
+    "document",
+    "section",
+)
+
+# REQ-2208: the object types whose tags live with the reference library (reference_document_tags),
+# the environment's own as the documents are; every other type's live in tag_assignments, with the
+# model. A tag follows its object's environment class.
+LIBRARY_TAG_OBJECT_TYPES = ("document", "section")
+MODEL_TAG_OBJECT_TYPES = tuple(t for t in TAG_OBJECT_TYPES if t not in LIBRARY_TAG_OBJECT_TYPES)
 
 
 TAG_FIELD_POLICIES = ("hidden", "optional", "required")
@@ -941,7 +965,9 @@ SYSTEM_TAGS: tuple[Tag, ...] = (
         # REQ-2145: pii is on columns, and on a Property term, whose every column -- those it
         # holds now and those it comes to hold -- carries it. Never a source, table, Class or
         # Concept: a column is what holds a person's data, and a Property is what a column means.
-        applies_to=["column", "term"],
+        # REQ-2208: and on reference library documents and their sections, so the policy sections
+        # about personal data carry the same tag as the columns.
+        applies_to=["column", "term", "document", "section"],
         is_system=True,
         reason_policy="required",  # REQ-2145: a column marked pii by hand says why
         expires_policy="hidden",  # pii does not lapse
@@ -1052,6 +1078,20 @@ class TagParamValue(BaseModel):  # REQ-1467
     description: str = ""
 
 
+class RowRuleRef(BaseModel):  # REQ-2208
+    """A row rule as a configuration names it: its role, its target (a table by name, a domain,
+    an action or a tag, as :class:`RLSRule` names it) and its rights. A role holds a right in at
+    most one rule on a target (REQ-2188), so the three name one rule in every environment, where
+    the rule's serial names it in one."""
+
+    role_id: str
+    table_id: str | None = None
+    domain_id: str | None = None
+    action_name: str | None = None
+    tag_id: str | None = None
+    rights: list[str] = Field(default_factory=lambda: ["R"])
+
+
 class TagAssignment(BaseModel):  # REQ-1377
     tag_id: str
     object_type: str  # one of TAG_OBJECT_TYPES
@@ -1080,6 +1120,19 @@ class TagAssignment(BaseModel):  # REQ-1377
     # loader as table_ref is.
     term_id: int | None = None
     term: str | None = None
+    # REQ-2208: a library document the tag is on (object_type "document"), or the document a
+    # tagged section is in (object_type "section"), the section named by its heading, or by its
+    # page when it has none (a PDF's sections are its pages).
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
+    # REQ-2208: a row rule (its serial, and its config-vocabulary identity ``rls_rule``: the rule's
+    # role, target and rights, which a load resolves as it resolves table_ref), a role (its id) or
+    # a governed metric (its name) the tag is on.
+    rls_rule_id: int | None = None
+    rls_rule: RowRuleRef | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
     def base_tag_id(self) -> str:
         """The registry tag this assignment refers to, parameter stripped (REQ-1467)."""
@@ -1101,6 +1154,20 @@ class TagAssignment(BaseModel):  # REQ-1377
             return f"command:{self.command_name}"
         if self.object_type == "term":
             return f"term:{self.term_id}"
+        if self.object_type == "product":  # REQ-1634
+            return f"product:{self.product_id}"
+        if self.object_type == "document":  # REQ-2208
+            return f"document:{self.document_id}"
+        if self.object_type == "section":  # REQ-2208
+            if self.section_heading is not None:
+                return f"section:{self.document_id}:heading:{self.section_heading}"
+            return f"section:{self.document_id}:page:{self.section_page}"
+        if self.object_type == "rls_rule":  # REQ-2208
+            return f"rls_rule:{self.rls_rule_id}"
+        if self.object_type == "role":
+            return f"role:{self.role_id}"
+        if self.object_type == "metric":
+            return f"metric:{self.metric_name}"
         return f"relationship:{self.relationship_id}"
 
 
@@ -1837,7 +1904,7 @@ class Table(
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
     # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
-    # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
+    # none is given a draft at FIRST_CONTRACT_VERSION; its schema is the member's columns.
     contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a

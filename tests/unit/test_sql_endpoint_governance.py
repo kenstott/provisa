@@ -148,6 +148,10 @@ async def sql_client(monkeypatch):
         }
     ]
     app_mod.state.source_pools = MagicMock()
+    # A served app with a role's schema has its build cache, the registry's column types in it
+    # (app._build_and_register_schemas); /data/sql types a registered column by them (REQ-1961).
+    _prev_schema_build_cache = app_mod.state.schema_build_cache
+    app_mod.state.schema_build_cache = {"column_types": {}}
 
     transport = ASGITransport(app=the_app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -166,6 +170,7 @@ async def sql_client(monkeypatch):
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {}
     app_mod.state.source_dialects = {}
+    app_mod.state.schema_build_cache = _prev_schema_build_cache
     app_mod.state.source_pools = SourcePool()
 
 

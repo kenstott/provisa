@@ -947,6 +947,8 @@ export function GlossaryTab() {
                       otherTermOptions={otherTermOptions}
                       relLabel={relLabel}
                       navigateToTerm={navigateToTerm}
+                      canEdit={canEdit}
+                      onTagsChanged={() => void loadDetail(detail.id, true)}
                     />
                   )}
                 </Stack>

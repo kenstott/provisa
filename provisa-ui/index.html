@@ -14,6 +14,9 @@
          before the app bundle. A 404 in dev (no ui_server) is harmless — lib/firebase.ts
          then falls back to the VITE_FIREBASE_* build-time env. -->
     <script src="/firebase-config.js"></script>
+    <!-- The base domain org subdomains live under (REQ-1276), from the node env the same way;
+         sets window.__PROVISA_ORG_BASE_DOMAIN__. Absent or null, the host names no org. -->
+    <script src="/deployment-config.js"></script>
     <script>
       // Set the Mantine color-scheme attribute before first paint to avoid a
       // light/dark flash (REQ-1011). Mirrors @mantine/core's ColorSchemeScript

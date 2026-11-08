@@ -23,6 +23,7 @@ import {
   type GlossaryTermDetail,
 } from "../../api/glossary";
 import { DetailFields } from "../detail/DetailFields";
+import { TagControl } from "../TagControl";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { GlossaryGroundedTables } from "./GlossaryGroundedTables";
@@ -40,12 +41,18 @@ export function TermReadView({
   otherTermOptions,
   relLabel,
   navigateToTerm,
+  canEdit,
+  onTagsChanged,
 }: {
   term: GlossaryTermDetail;
   relTypeOptions: Option[];
   otherTermOptions: Option[];
   relLabel: (options: Option[], relType: string) => string;
   navigateToTerm: (termId: number) => void;
+  /** The reader curates the glossary: the term's tags are changed here, with the chip. */
+  canEdit: boolean;
+  /** A tag was put on the term or taken off; the term is read again. */
+  onTagsChanged: () => void;
 }) {
   const { t } = useTranslation();
   const yesNo = (v: boolean) => (v ? t("detailFields.yes") : t("detailFields.no"));
@@ -89,6 +96,19 @@ export function TermReadView({
                 },
               ]
             : []),
+          // REQ-2145, REQ-2208: the term's registry tags, with the chip every taggable object
+          // has. Which tags a term may take, the server says.
+          {
+            label: t("glossaryTab.tagsLabel"),
+            value: (
+              <TagControl
+                objectType="term"
+                termId={term.id}
+                readOnly={!canEdit}
+                onChanged={onTagsChanged}
+              />
+            ),
+          },
           {
             label: t("glossaryTab.statusLabel"),
             value: <TermStatusBadge status={term.status} testId="glossary-detail-status" />,
