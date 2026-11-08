@@ -644,11 +644,13 @@ class _SyncedStore:
 
         def _do(con: Any) -> None:
             if primary:
-                held = con.execute(
-                    "SELECT 1 FROM duckdb_constraints() WHERE database_name = ? "
-                    "AND schema_name = ? AND table_name = ? AND constraint_type = 'PRIMARY KEY'",
-                    [_MAT_STORE_ALIAS, schema, table],
-                ).fetchone()
+                held = engine_memory.first_row(
+                    con.execute(
+                        "SELECT 1 FROM duckdb_constraints() WHERE database_name = ? "
+                        "AND schema_name = ? AND table_name = ? AND constraint_type = 'PRIMARY KEY'",
+                        [_MAT_STORE_ALIAS, schema, table],
+                    )
+                )
                 if held is None:
                     try:
                         con.execute(f"ALTER TABLE {replica} ADD PRIMARY KEY ({cols})")
@@ -723,9 +725,9 @@ class _SyncedStore:
             con.execute(f'CREATE SCHEMA IF NOT EXISTS {_MAT_STORE_ALIAS}."{schema}"')
             for stmt in plan(_table_columns(con, schema, table)):
                 con.execute(stmt)
-            row = con.execute(
-                f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
-            ).fetchone()
+            row = engine_memory.first_row(
+                con.execute(f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"')
+            )
             assert row is not None  # COUNT(*) always yields a row
             return int(row[0])
 

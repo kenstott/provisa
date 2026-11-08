@@ -56,3 +56,53 @@ def test_a_view_the_reader_is_served_is_read_through_its_body():
         "SELECT person FROM view_review", {"view_review": _BODY}, _STATE, _gov(served=True)
     )
     assert "FROM cash AS c" in governed
+
+
+# A view's stored name is what the view map keys it by; a reader's table map names it bare by its
+# SEMANTIC name, which the naming rules may make differ from the stored one: a leading underscore
+# is dropped, an alias renames it. Served or not is the reader's grant, never whether the two
+# names happen to agree.
+_STORED_VIEW = "_view_review"
+
+
+def _gov_renamed(*, served: bool) -> GovernanceContext:
+    gov = GovernanceContext()
+    gov.table_map = {"bank.cash": 1, "cash": 1, f"bank.{_STORED_VIEW}": 2}
+    gov.all_columns = {
+        1: [("person", "varchar"), ("amount", "numeric")],
+        2: [("person", "varchar")],
+    }
+    gov.visible_columns = {1: None, 2: None if served else frozenset()}
+    if served:
+        gov.table_map["view_review"] = 2  # its semantic name, bare
+    return gov
+
+
+def test_a_served_view_whose_semantic_name_differs_from_its_stored_name_is_read():
+    governed, _validated = semantic_statement(
+        f"SELECT person FROM {_STORED_VIEW}",
+        {_STORED_VIEW: _BODY},
+        _STATE,
+        _gov_renamed(served=True),
+    )
+    assert "FROM cash AS c" in governed
+
+
+def test_an_unserved_view_whose_semantic_name_differs_from_its_stored_name_is_refused():
+    with pytest.raises(PermissionError, match=_STORED_VIEW):
+        semantic_statement(
+            f"SELECT person FROM {_STORED_VIEW}",
+            {_STORED_VIEW: _BODY},
+            _STATE,
+            _gov_renamed(served=False),
+        )
+
+
+def test_a_view_registered_with_no_column_is_served_nothing():
+    # No column, so no compilation context holds it, and governance reads its (empty) column list
+    # as all visible: served nothing all the same.
+    gov = _gov_renamed(served=False)
+    gov.visible_columns[2] = None
+    gov.all_columns[2] = []
+    with pytest.raises(PermissionError, match=_STORED_VIEW):
+        semantic_statement(f"SELECT person FROM {_STORED_VIEW}", {_STORED_VIEW: _BODY}, _STATE, gov)

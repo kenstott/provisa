@@ -58,21 +58,22 @@ glossary_terms:
   definition: The act of sending a pet to an outside veterinary practice for care beyond in-house capability.
   domains:
   - pet-store
-  edges:
-  - to: clinic
-    rel_type: RELATED_TO
-  - to: specialty
-    rel_type: RELATED_TO
 - name: clinic
   approve: true
   definition: The outside veterinary practice a pet is referred to.
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: specialty
   approve: true
   definition: The area of veterinary care a referral clinic focuses on.
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: personnel record
   approve: true
   definition: An employee's role and tenure at the shelter, held for staffing and HR reporting.
@@ -100,28 +101,30 @@ glossary_terms:
     and handoff planning.
   domains:
   - shelter
-  edges:
-  - to: shift start
-    rel_type: RELATED_TO
-  - to: shift end
-    rel_type: RELATED_TO
-  - to: schedule location
-    rel_type: RELATED_TO
 - name: shift start
   approve: true
   definition: The time a scheduled shift begins.
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 - name: shift end
   approve: true
   definition: The time a scheduled shift ends.
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 - name: schedule location
   approve: true
   definition: The place a scheduled shift takes place.
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 domains:
 - description: Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries
     (SQLite) federated into one virtual database
@@ -346,12 +349,6 @@ relationships:
   source_table_id: pets
   target_column: pet_id
   target_table_id: inquiries
-- cardinality: one-to-many
-  id: pets-to-shelter-assignments
-  source_column: breed_name
-  source_table_id: pets
-  target_column: breed_name
-  target_table_id: assignments
 - alias: BREED_INFO
   cardinality: many-to-one
   id: pets-to-shelter-breed
@@ -359,6 +356,11 @@ relationships:
   source_table_id: pets
   target_column: name
   target_table_id: animal_breeds
+# No relationship joins pets to assignments on breed_name. Either direction makes breed_name a
+# replica key (the "one" side holds it), and breed_name repeats on both tables -- several keepers per
+# breed, many pets per breed -- so the replica build failed with "The key (breed_name) could not be
+# built: the source repeats its values". Pets reach assignments through animal_breeds instead:
+# BREED_INFO (pets -> animal_breeds) and ASSIGNMENT_BREED (assignments -> animal_breeds).
 - alias: ASSIGNMENT_BREED
   cardinality: many-to-one
   graphql_alias: breed
@@ -374,12 +376,6 @@ relationships:
   source_table_id: assignments
   target_column: id
   target_table_id: employees
-- cardinality: one-to-many
-  id: shelter-assignments-to-pets
-  source_column: breed_name
-  source_table_id: assignments
-  target_column: breed_name
-  target_table_id: pets
 - alias: PETS_OF_BREED
   cardinality: one-to-many
   id: shelter-breed-to-pets

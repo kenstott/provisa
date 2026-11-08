@@ -159,7 +159,7 @@ class BoltAdapter(TransportAdapter):
         return self.run_return(role, ret)
 
     def run_return(self, role, return_clause: str) -> tuple[list[str], list[tuple]]:
-        """Run `MATCH (o:orders) RETURN <return_clause>` as `role`, normalized to
+        """Run `MATCH (o:Orders) RETURN <return_clause>` as `role`, normalized to
         (columns, rows). Role travels as the Bolt auth principal (pgwire's trust
         model). Used for both the canonical read and metamorphic probes."""
         from neo4j import GraphDatabase
@@ -169,7 +169,7 @@ class BoltAdapter(TransportAdapter):
         try:
             with driver.session() as sess:
                 try:
-                    result = sess.run(f"MATCH (o:orders) RETURN {return_clause}")
+                    result = sess.run(f"MATCH (o:Orders) RETURN {return_clause}")
                     records = list(result)
                     keys = list(result.keys())
                 except Neo4jError as exc:

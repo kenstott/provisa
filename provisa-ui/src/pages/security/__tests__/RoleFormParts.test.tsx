@@ -14,7 +14,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, within } from "../../../test-utils/render";
+import { render, screen } from "../../../test-utils/render";
 import { FormLayout } from "../../../components/form/FormLayout";
 import { MultiSelect } from "../../../components/MultiSelect";
 import { ResidencyGrant } from "../../../components/admin/ResidencyGrant";
@@ -22,8 +22,12 @@ import { CapabilityNames } from "../CapabilityNames";
 import { CapabilityGrid } from "../RoleFormParts";
 import type { Capability } from "../../../types/auth";
 
-const box = (capability: string) =>
-  within(screen.getByTestId(`capability-tick-${capability}`)).getByRole("checkbox");
+// The options live in the dropdown: opened once, then each is read through its tick.
+const tick = (capability: string) => screen.getByTestId(`capability-tick-${capability}`);
+const box = (capability: string) => screen.getByTestId(`capability-box-${capability}`);
+const ticked = (capability: string) => box(capability).hasAttribute("data-checked");
+const disabled = (capability: string) => box(capability).hasAttribute("data-disabled");
+const open = () => userEvent.click(screen.getByRole("textbox", { name: "Capabilities" }));
 
 function grid(value: Capability[], held: ReadonlySet<string> | null, onToggle = vi.fn()) {
   render(
@@ -37,25 +41,38 @@ function grid(value: Capability[], held: ReadonlySet<string> | null, onToggle = 
 describe("the capability grid", () => {
   it("shows what a parent holds selected, to unselect", async () => {
     const onToggle = grid(["usage"], new Set(["usage"]));
-    expect(box("usage")).toBeChecked();
-    await userEvent.click(box("usage"));
+    await open();
+    expect(ticked("usage")).toBe(true);
+    expect(ticked("write")).toBe(false);
+    await userEvent.click(tick("usage"));
     expect(onToggle).toHaveBeenCalledWith("usage");
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("disables a capability no parent holds", () => {
+  it("selects a capability not yet held", async () => {
+    const onToggle = grid(["usage"], null);
+    await open();
+    await userEvent.click(tick("write"));
+    expect(onToggle).toHaveBeenCalledExactlyOnceWith("write");
+  });
+
+  it("disables a capability no parent holds", async () => {
     grid([], new Set(["usage"]));
-    expect(box("write")).toBeDisabled();
-    expect(box("usage")).toBeEnabled();
+    await open();
+    expect(disabled("write")).toBe(true);
+    expect(disabled("usage")).toBe(false);
   });
 
-  it("disables nothing for a role with no parents", () => {
+  it("disables nothing for a role with no parents", async () => {
     grid([], null);
-    expect(box("write")).toBeEnabled();
+    await open();
+    expect(disabled("write")).toBe(false);
   });
 
   it("says why a capability is disabled", async () => {
     grid([], new Set(["usage"]));
-    await userEvent.hover(screen.getByTestId("capability-tick-write"));
+    await open();
+    await userEvent.hover(tick("write"));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "No parent of this role holds this capability.",
     );
@@ -63,7 +80,8 @@ describe("the capability grid", () => {
 
   it("says what a capability allows", async () => {
     grid([], null);
-    await userEvent.hover(screen.getByTestId("capability-tick-write"));
+    await open();
+    await userEvent.hover(tick("write"));
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "Write data, where the role has a write grant.",
     );

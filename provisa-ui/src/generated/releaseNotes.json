@@ -1,153 +1,50 @@
 {
-  "version": "v0.1.0-alpha.502",
-  "previous": "v0.1.0-alpha.501",
-  "date": "2026-11-05",
+  "version": "v0.1.0-alpha.507",
+  "previous": "v0.1.0-alpha.506",
+  "date": "2026-11-07",
   "features": [],
   "changes": [
     {
-      "scope": "admin",
+      "scope": "api",
       "entries": [
-        "admin-layer API gates match",
-        "The invite gate names no role id"
-      ]
-    },
-    {
-      "scope": "control-plane",
-      "entries": [
-        "Create the embedded data directory parent; report the real start failure"
+        "A TTL -1 API table with declared rows is read from its replica, never fetched",
+        "Resolve a table's TTL before asking whether it is kept for good"
       ]
     },
     {
       "scope": "demo",
       "entries": [
-        "Declare the audit demo's Assistance Listing and state joins",
-        "Banking config region description quote breaks YAML",
-        "The audit demo requires Provisa 0.1.0a497"
+        "Banksecrecy relationships get their own GraphQL field names"
       ]
     },
     {
-      "scope": "demos",
+      "scope": "guard",
       "entries": [
-        "Banksecrecy shows the glossary walk -- structuring and SAR passages scanned, a Polly step asks for them"
+        "A union's branch choices are judged unexpanded, never listed as their product"
       ]
     },
     {
-      "scope": "devcontainer",
+      "scope": "macos",
       "entries": [
-        "One container, no compose stack, so Codespaces creates it",
-        "The environment is the checkout.venv, on a volume",
-        "Forward the UI and API ports; fetch the manifest with credentials",
-        "Singleton killer no longer kills the shell that launched the script"
+        "Allow only the container-image unpack warning in Apple's notarization log"
       ]
     },
     {
-      "scope": "erd",
+      "scope": "packaging",
       "entries": [
-        "Save as keeps the new layout current in the link"
+        "Retry a dropped staple connection and fail on Apple's notarization log"
       ]
     },
     {
-      "scope": "fakes",
+      "scope": "tags",
       "entries": [
-        "propose_fakes for named columns; testdata tour asks Polly for a fake"
-      ]
-    },
-    {
-      "scope": "federation-ui",
-      "entries": [
-        "A tab per region on Admin > Federation, each its engine store"
-      ]
-    },
-    {
-      "scope": "llm",
-      "entries": [
-        "Term scans turn reasoning off where the wire has a switch; other vendors keep their default"
-      ]
-    },
-    {
-      "scope": "main",
-      "entries": [
-        "The full unit suite green after today's focused-only landings"
-      ]
-    },
-    {
-      "scope": "mv",
-      "entries": [
-        "A join view never answers a subquery that shadows a covered table"
-      ]
-    },
-    {
-      "scope": "profiler",
-      "entries": [
-        "regex-declared classification kinds, 15 new sensitive kinds",
-        "Scan text columns for sensitive values held inside them; hints on the column access settings and in the coverage report",
-        "contained_pattern for kinds searched inside text; in-sentence hint noun"
-      ]
-    },
-    {
-      "scope": "reference-library",
-      "entries": [
-        "Neighbours in governed retrieval",
-        "Graph retrieval over the glossary"
-      ]
-    },
-    {
-      "scope": "regions",
-      "entries": [
-        "Admin routes for platform regions and an org's stores and regions",
-        "The platform grants regions and assigns stores; a region is an id, description, purposes and data addresses"
-      ]
-    },
-    {
-      "scope": "regions-ui",
-      "entries": [
-        "Platform page grants and regions, read-only Admin > Regions, sandbox note, purposes legend"
-      ]
-    },
-    {
-      "scope": "reports",
-      "entries": [
-        "Sensitive coverage is a seeded ops report",
-        "The list highlights the report shown, a linked or default one included"
-      ]
-    },
-    {
-      "scope": "retail-demo",
-      "entries": [
-        "Title the GDPR demo \"A Tale of Two Regions\""
-      ]
-    },
-    {
-      "scope": "retail-tour",
-      "entries": [
-        "Show where regions are defined before the residency queries"
-      ]
-    },
-    {
-      "scope": "sandbox",
-      "entries": [
-        "Prepare every published demo at once when the sandbox tier starts"
-      ]
-    },
-    {
-      "scope": "term_finding",
-      "entries": [
-        "Ask the vendor for one JSON object on every scan call"
-      ]
-    },
-    {
-      "scope": "tour",
-      "entries": [
-        "Testdata coverage step opens the sensitive coverage report"
+        "Library document and section tags kept with the library"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "Page help opens on hover and stays open once clicked",
-        "own-domain in the column scope selects",
-        "Open a live demo outside the login's identity bootstrap",
-        "Replace ~grounded with plain words in glossary strings"
+        "The tags scope bar wraps its twelve object kinds"
       ]
     }
   ]

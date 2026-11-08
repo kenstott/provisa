@@ -27,6 +27,7 @@
     "domainsHelp": "I ruoli che leggono questi domini si basano sul documento. Intera organizzazione va da sola.",
     "fieldSource": "Origine",
     "fieldStatus": "Stato",
+    "fieldTags": "Tag",
     "fieldPassages": "Passaggi",
     "fieldModel": "Modello di embedding",
     "fieldAdded": "Aggiunto",

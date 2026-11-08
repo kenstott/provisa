@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "ファクトメジャーから作成する場合は集計から導出されます",
     "fieldDescription": "説明",
     "fieldAiContext": "AIコンテキスト",
+    "fieldTags": "タグ",
     "fieldAiContextPlaceholder": "AI支援クエリ生成のためのヒント",
     "saveFailed": "保存に失敗しました。",
     "editMetric": "メトリクス {{name}} を編集",

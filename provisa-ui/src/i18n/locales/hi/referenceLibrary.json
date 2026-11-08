@@ -27,6 +27,7 @@
     "domainsHelp": "जो भूमिकाएँ ये डोमेन पढ़ती हैं वे इस दस्तावेज़ पर भरोसा करती हैं। पूरा संगठन अकेले चुना जाता है।",
     "fieldSource": "स्रोत",
     "fieldStatus": "स्थिति",
+    "fieldTags": "टैग",
     "fieldPassages": "अंश",
     "fieldModel": "एम्बेडिंग मॉडल",
     "fieldAdded": "जोड़ा गया",

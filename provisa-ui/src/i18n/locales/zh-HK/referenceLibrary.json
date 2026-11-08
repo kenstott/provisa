@@ -27,6 +27,7 @@
     "domainsHelp": "讀取這些網域的角色會依據此文件。「整個組織」須單獨選擇。",
     "fieldSource": "來源",
     "fieldStatus": "狀態",
+    "fieldTags": "標籤",
     "fieldPassages": "段落",
     "fieldModel": "嵌入模型",
     "fieldAdded": "新增時間",

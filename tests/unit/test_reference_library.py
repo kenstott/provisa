@@ -196,6 +196,40 @@ def test_a_pdf_or_word_file_that_is_not_one_is_refused_by_name(media, name, says
         extract.read(b"not a document", media, name)
 
 
+def _workbook() -> bytes:
+    import io
+
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    limits = book.active
+    assert limits is not None
+    limits.title = "Limits"
+    limits.append(["Region", "Limit"])
+    limits.append(["EU", 500])
+    limits.append(["US", 250])
+    plain = book.create_sheet("Notes")
+    plain.append(["Review annually", 2026])
+    plain.append([None, "Owner: Risk"])
+    data = io.BytesIO()
+    book.save(data)
+    return data.getvalue()
+
+
+def test_an_excel_workbook_is_read_a_sheet_to_a_section_and_a_row_to_a_paragraph():
+    assert extract.media_type_of_name("limits.xlsx") == extract.EXCEL
+    document = extract.read(_workbook(), extract.EXCEL, "limits.xlsx")
+    assert [(s.heading, s.paragraphs) for s in document.sections] == [
+        ("Limits", ["Region: EU · Limit: 500", "Region: US · Limit: 250"]),
+        ("Notes", ["A: Review annually · B: 2026", "B: Owner: Risk"]),
+    ]
+
+
+def test_an_excel_file_that_is_not_one_is_refused_by_name():
+    with pytest.raises(extract.UnreadableDocument, match="'x.xlsx' is not an Excel workbook"):
+        extract.read(b"not a workbook", extract.EXCEL, "x.xlsx")
+
+
 ECFR = Path(__file__).resolve().parents[1] / "fixtures" / "ecfr"
 
 
@@ -556,6 +590,24 @@ async def test_the_admin_api_adds_lists_rescopes_and_removes_a_document(api):
     with pytest.raises(ApiError) as gone:
         await router.get_document(added["id"], _request())
     assert gone.value.status_code == 404 and gone.value.code == "reference_library.not_found"
+
+
+@pytest.mark.parametrize(
+    ("held", "admitted"),
+    [({"glossary_rw"}, True), ({"org_settings"}, False), (set(), False)],
+)
+def test_the_admin_api_is_the_glossary_curators(monkeypatch, held, admitted):
+    """The library is curated with the glossary, so its page asks glossary_rw and nothing in its
+    place: org_settings alone is refused."""
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda _identity, _state: held)
+    if admitted:
+        assert router._guard(_request()) == "default"
+        return
+    with pytest.raises(ApiError) as refused:
+        router._guard(_request())
+    assert refused.value.status_code == 403 and "glossary_rw" in str(refused.value.detail)
 
 
 async def test_the_admin_api_refuses_by_name(api):

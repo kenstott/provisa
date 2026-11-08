@@ -10,6 +10,7 @@
 
 import { test, expect, type Page } from "./coverage";
 import type { Locator } from "@playwright/test";
+import { addLateralEdge } from "./ontology-lateral-edge";
 
 /**
  * REQ-2130: the Glossary page's Ontology View, against the real backend and its real meta views
@@ -96,23 +97,30 @@ test.describe("the Glossary page's Ontology View, read from the meta domain", ()
   });
 
   test("Taxonomy keeps the is-a and part-of edges, and the view expands", async ({ page }) => {
-    const refused = recordRefusals(page);
-    await page.goto("/admin/ontology");
-    await shows(page.getByTestId("glossary-search"), refused, 90_000);
-    await page.getByTestId("glossary-ontology-toggle").click();
-    await shows(page.locator('[data-testid="ontology-stage"][data-ready]'), refused, 60_000);
+    // A third edge type for Taxonomy to leave out: with PART_OF alone in the config, its two
+    // types are every type there is, and the filter rightly says "All edge types".
+    const removeLateralEdge = await addLateralEdge(page.request);
+    try {
+      const refused = recordRefusals(page);
+      await page.goto("/admin/ontology");
+      await shows(page.getByTestId("glossary-search"), refused, 90_000);
+      await page.getByTestId("glossary-ontology-toggle").click();
+      await shows(page.locator('[data-testid="ontology-stage"][data-ready]'), refused, 60_000);
 
-    await page.getByTestId("ontology-preset").getByText("Taxonomy", { exact: true }).click();
-    // The preset chooses its two edge types; the filter says so on one line.
-    await expect(page.getByTestId("ontology-filter-edge-type")).toHaveText(/2/);
-    await page.getByTestId("ontology-filter-edge-type").click();
-    await expect(page.getByTestId("ontology-filter-edge-type-option-PART_OF")).toBeVisible();
-    await page.keyboard.press("Escape");
+      await page.getByTestId("ontology-preset").getByText("Taxonomy", { exact: true }).click();
+      // The preset chooses its two edge types; the filter says so on one line.
+      await expect(page.getByTestId("ontology-filter-edge-type")).toHaveText(/2/);
+      await page.getByTestId("ontology-filter-edge-type").click();
+      await expect(page.getByTestId("ontology-filter-edge-type-option-PART_OF")).toBeVisible();
+      await page.keyboard.press("Escape");
 
-    await page.getByTestId("ontology-expand").click();
-    await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    await expect(
-      page.getByTestId("graph3d-modal").getByRole("heading", { name: "Ontology", exact: true }),
-    ).toBeVisible();
+      await page.getByTestId("ontology-expand").click();
+      await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
+      await expect(
+        page.getByTestId("graph3d-modal").getByRole("heading", { name: "Ontology", exact: true }),
+      ).toBeVisible();
+    } finally {
+      await removeLateralEdge();
+    }
   });
 });

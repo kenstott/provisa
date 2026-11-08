@@ -18,9 +18,11 @@ reproduce the real JDBC wire behaviour (pgjdbc pins param OIDs, uses the extende
 protocol, and drives DatabaseMetaData). This test drives the ACTUAL pgjdbc driver
 in-process via jpype, so it exercises exactly the calls DataGrip and DBeaver make.
 
-The backend is the shared un-stubbed, real-Postgres pgwire server (``pgwire_pg_backend``
-fixture in conftest) — introspection answers come from the real catalog and the data
-read runs the real DIRECT pipeline.
+Introspection runs against a real Provisa server (``IsolatedServer``, pgwire enabled): a
+pgwire catalog statement is addressed to the meta domain and governed as an ordinary read of it
+(REQ-2190), which a hand-built state with no meta domain cannot answer. The data read runs on the
+shared un-stubbed, real-Postgres pgwire server (``pgwire_pg_backend`` fixture in conftest) and the
+real DIRECT pipeline.
 
 The pgjdbc jar is fetched once from Maven Central into ~/.cache/provisa-test-jars;
 the test skips if it cannot be provisioned or the JVM cannot start.
@@ -28,17 +30,19 @@ the test skips if it cannot be provisioned or the JVM cannot start.
 
 from __future__ import annotations
 
+import asyncio
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 import pytest
+import yaml
+
+from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
 # `isolated`: pgjdbc runs in a jpype JVM, which is process-global and cannot be
-# restarted with a new classpath. Another jpype test (e.g. govdata) starting the
-# JVM first with a different classpath makes pgjdbc classes unresolvable here.
-# Deselected from the default lane and run in its own pytest process by
-# scripts/test-all so the JVM is always fresh for this module.
+# restarted. Deselected from the default lane; the isolated lane runs it in one process
+# with the other isolated modules, so pgjdbc has a class loader of its own (jvm()).
 pytestmark = [pytest.mark.integration, pytest.mark.isolated]
 
 jpype = pytest.importorskip("jpype", reason="jpype required to drive the real pgjdbc driver")
@@ -63,50 +67,113 @@ def _ensure_pgjdbc_jar() -> str:
     return str(_JAR_PATH)
 
 
+_PGJDBC: dict[str, object] = {}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def jvm():
-    """Start the JVM once with pgjdbc on the classpath. jpype cannot restart a JVM,
-    so this is session-scoped and never shut down within the run."""
+    """pgjdbc, in the process's one JVM. The isolated lane runs every isolated module in one
+    process, and test_jdbc_source_jar_e2e may start the JVM first, without pgjdbc on its
+    classpath; jpype cannot restart it. So pgjdbc is loaded by a class loader of its own, as
+    Provisa loads a customer's driver (provisa.jdbc_source.jdbc), and connected to directly."""
     jar = _ensure_pgjdbc_jar()
+    # jpype.dbapi2 (the JDBC source's) makes java.sql.SQLException's Python class derive from its
+    # Error, which it can only do before that class is first made -- and a PSQLException this
+    # module's driver raises makes it. Register dbapi2 first, whichever module runs first.
+    import jpype.dbapi2  # noqa: F401
+
     if not jpype.isJVMStarted():
-        jpype.startJVM(classpath=[jar])
-    # Register the driver explicitly (JDBC 4 autoloading may not fire under jpype).
-    jpype.JClass("java.lang.Class").forName("org.postgresql.Driver")
+        jpype.startJVM()
+    url = jpype.JClass("java.io.File")(jar).toURI().toURL()
+    parent = jpype.JClass("java.lang.ClassLoader").getSystemClassLoader()
+    loader = jpype.JClass("java.net.URLClassLoader")([url], parent)
+    driver = jpype.JClass("java.lang.Class").forName("org.postgresql.Driver", True, loader)
+    _PGJDBC["driver"] = driver.getDeclaredConstructor().newInstance()
     yield
 
 
-def _connect(port: int):
-    DriverManager = jpype.JClass("java.sql.DriverManager")
+def _pgjdbc_connect(port: int, user: str, password: str):
     url = f"jdbc:postgresql://127.0.0.1:{port}/provisa"
     props = jpype.JClass("java.util.Properties")()
-    props.setProperty("user", "admin")
-    props.setProperty("password", "x")
-    return DriverManager.getConnection(url, props)
+    props.setProperty("user", user)
+    props.setProperty("password", password)
+    return _PGJDBC["driver"].connect(url, props)  # type: ignore[attr-defined]
 
 
-def test_jdbc_getTables_lists_governed_table(pgwire_pg_backend):
+def _connect(port: int):
+    return _pgjdbc_connect(port, "admin", "x")
+
+
+_ORG = "jdbc_introspection"
+_REPO_ROOT = Path(__file__).parents[2]
+_ROLE = "jdbc_introspector"
+_SCHEMA = "sales_analytics"  # domain sales-analytics, as the catalog names it
+_TABLE = "orders"
+
+
+def _config(tmp_dir: Path) -> str:
+    """sample_config.yaml plus a role reaching every domain and every column."""
+    with open(_REPO_ROOT / "tests" / "fixtures" / "sample_config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    cfg["roles"].append(
+        {
+            "id": _ROLE,
+            "parents": ["developer"],
+            "description": "Test role.",
+            "capabilities": ["catalog_read", "data_product_read", "query_development", "usage"],
+            "domain_access": ["*"],
+        }
+    )
+    for table in cfg["tables"]:
+        for column in table["columns"]:
+            column["visible_to"] = [*column["visible_to"], _ROLE]
+    path = tmp_dir / "jdbc-introspection.yaml"
+    path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    return str(path)
+
+
+@pytest.fixture(scope="module")
+def server(tmp_path_factory):
+    srv = IsolatedServer(
+        _ORG,
+        engine="duckdb",
+        enable_pgwire=True,
+        config=_config(tmp_path_factory.mktemp("jdbc-introspection")),
+        control_plane="own",
+    )
+    srv.start(timeout=240)
+    try:
+        yield srv
+    finally:
+        srv.stop_process()
+        asyncio.run(drop_org_schema(_ORG))
+
+
+def _connect_as(port: int, user: str):
+    return _pgjdbc_connect(port, user, "provisa")
+
+
+def test_jdbc_getTables_lists_governed_table(server):
     """DatabaseMetaData.getTables — the first call DataGrip/DBeaver make per schema."""
-    be = pgwire_pg_backend
-    conn = _connect(be["port"])
+    conn = _connect_as(server.pgwire_port, _ROLE)
     try:
         md = conn.getMetaData()
-        rs = md.getTables(None, be["schema"], be["table"], jpype.JArray(jpype.JString)(["TABLE"]))
+        rs = md.getTables(None, _SCHEMA, _TABLE, jpype.JArray(jpype.JString)(["TABLE"]))
         found = []
         while rs.next():
             found.append(str(rs.getString("TABLE_NAME")))
         rs.close()
     finally:
         conn.close()
-    assert be["table"] in found
+    assert _TABLE in found
 
 
-def test_jdbc_getColumns_reports_column_types(pgwire_pg_backend):
+def test_jdbc_getColumns_reports_column_types(server):
     """DatabaseMetaData.getColumns — drives the ER-diagram / column-tree introspection."""
-    be = pgwire_pg_backend
-    conn = _connect(be["port"])
+    conn = _connect_as(server.pgwire_port, _ROLE)
     try:
         md = conn.getMetaData()
-        rs = md.getColumns(None, be["schema"], be["table"], None)
+        rs = md.getColumns(None, _SCHEMA, _TABLE, None)
         cols = {}
         while rs.next():
             cols[str(rs.getString("COLUMN_NAME"))] = str(rs.getString("TYPE_NAME"))
