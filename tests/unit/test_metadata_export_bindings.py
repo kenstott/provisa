@@ -485,7 +485,8 @@ async def test_collibra_reports_a_capture_lookup_that_finds_nothing(snapshot, mo
     result = await CollibraExport(_config("collibra")).publish(snapshot)
     assert not result.ok
     assert any("found no asset" in e.message for e in result.errors)
-    assert result.bindings == {}
+    # The table the lookup did not find is not bound; the product it publishes through is.
+    assert set(result.bindings) == {snapshot.data_products[0].semantic_uri}
 
 
 # --- DataHub --------------------------------------------------------------------------------

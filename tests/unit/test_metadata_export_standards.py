@@ -481,9 +481,13 @@ async def test_openmetadata_publish_upserts_every_entity(snapshot, monkeypatch):
     assert result.published["domain"] == 2
     assert result.published["user"] == 1
     assert all(url.startswith("https://catalog.example/api/v1/") for url in seen)
+    assert result.published["data_product"] == 1  # REQ-1634: the product the tables publish through
     # The custom-property registration is a schema change on the target, not an asset, so it
-    # is sent but never counted as something published.
-    assert result.total_published() == len([url for url in seen if "/metadata/types/" not in url])
+    # is sent but never counted as something published; nor is a product's member-asset call,
+    # part of publishing the product (REQ-1634).
+    assert result.total_published() == len(
+        [url for url in seen if "/metadata/types/" not in url and "/assets/" not in url]
+    )
 
 
 @pytest.mark.asyncio
@@ -500,11 +504,15 @@ async def test_openmetadata_publish_reports_the_rejected_entity(snapshot, monkey
     # Two failures, not one: the rejected table, and the lineage edge into it — which is
     # reported rather than sent, because an edge whose endpoint the catalog never accepted has
     # no id to address and would come back as a confusing second table-level error.
+    # The product holding the rejected table is reported too (REQ-1634): it cannot address that
+    # member, as the edge cannot.
     assert [e.asset.fqn() for e in result.errors] == [
         "wh.public.order_totals",
+        "prod",
         "wh.public.order_totals.net",
     ]
-    assert "was not upserted" in result.errors[1].message
+    assert "member 'wh.default.public.order_totals' was not upserted" in result.errors[1].message
+    assert "was not upserted" in result.errors[2].message
     assert result.published["table"] == 2
     assert "lineage" not in result.published
 
