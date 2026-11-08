@@ -302,5 +302,9 @@ def test_json_text_paths():
 
 
 def test_zz_tally():
+    """The tally is per process and xdist spreads a file's tests across workers, so this test may
+    run on a worker that ran none of the others: it drives one case itself, which also proves
+    compare counts what it runs."""
+    gql(pa.table({"id": [1]}), [C("id")])
     print(f"\nTALLY {dict(TALLY)}")
     assert TALLY["graphql.cases"] > 0
