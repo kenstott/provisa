@@ -81397,7 +81397,13 @@
     a beta: feature complete. The beta goes through the packaging and install testing of the pre-production
     step and then it is gold: tag, published, merged to main. During alpha the nightly is the same path,
     compressed and scheduled: start from main, merge all of dev, converge for a time box, package, tag alpha.N
-    with what is left listed, and merge to main, so main is the latest alpha. (Maintainer 2026-11-08.)'
+    with what is left listed, and merge to main, so main is the latest alpha. (Maintainer 2026-11-08.) (Amended
+    2026-11-08, MANUAL TESTING AND REQUIREMENTS DEFECTS:) main is what shipped, because the repository is
+    public; every other branch is an interim state. A converged release is packaged first and then tested
+    by hand as a beta on the installed product. Manual testing can find a defect in a requirement rather
+    than in the code: it is recorded as a requirement amendment first, and the maintainer decides whether
+    a small change goes on the release branch like a fix or the change goes to dev for the next release.
+    (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
