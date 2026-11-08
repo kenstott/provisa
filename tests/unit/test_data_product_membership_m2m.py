@@ -181,7 +181,8 @@ async def test_a_table_has_one_contract_while_it_is_a_member_of_any_product(cont
         await repo.set_members(conn, "c360", table_ids=[1], commands=[])
         drafted = await _contract(conn, 1)
         assert drafted["version"] == "0.1.0"
-        assert [c["name"] for c in drafted["columns"]] == ["id"]
+        # REQ-2158: a contract holds no columns; its latest saved version snapshots the member's
+        assert [c["name"] for c in drafted["versions"][-1]["columns"]] == ["id"]
 
         await repo.set_members(conn, "churn", table_ids=[1], commands=[])
         assert await _contract(conn, 1) == drafted  # joining a second product keeps it
