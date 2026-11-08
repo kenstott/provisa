@@ -1,0 +1,56 @@
+key	id	summary	status	created	updated	priority	customer
+ENG-401	10401	Login failures after SSO change (Larkspur Analytics)	Done	2026-09-08 12:00:00	2026-09-11 12:00:00	Medium	Larkspur Analytics
+ENG-402	10402	API rate limit errors (Larkspur Analytics)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Larkspur Analytics
+ENG-403	10403	Export job times out (Larkspur Labs)	Done	2026-08-28 12:00:00	2026-08-31 12:00:00	Medium	larkspur labs
+ENG-404	10404	Login failures after SSO change (Larkspur Labs)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	larkspur labs
+ENG-405	10405	Dashboard slow to load (Brightwater Health)	Done	2026-08-17 12:00:00	2026-08-20 12:00:00	Medium	Brightwater
+ENG-406	10406	Export job times out (Brightwater Health)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Brightwater
+ENG-407	10407	Webhook deliveries delayed (Cobalt Freight)	Done	2026-08-06 12:00:00	2026-08-09 12:00:00	Medium	Cobalt Freight
+ENG-408	10408	P1: Export job times out (Cobalt Freight)	In Progress	2026-10-31 03:20:00	2026-11-03 03:20:00	Highest	Cobalt Freight
+ENG-409	10409	Dashboard slow to load (Cobalt Freight)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Cobalt Freight
+ENG-410	10410	Report totals do not match (Ferncliff Retail)	Done	2026-07-26 12:00:00	2026-07-29 12:00:00	Medium	ferncliff-retail
+ENG-411	10411	API rate limit errors (Ferncliff Retail)	Done	2026-07-21 12:00:00	2026-07-24 12:00:00	Medium	Ferncliff
+ENG-412	10412	Blocked: Export job times out (Ferncliff Retail)	Blocked	2026-10-19 12:00:00	2026-10-22 12:00:00	High	Ferncliff
+ENG-413	10413	Webhook deliveries delayed (Ferncliff Retail)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	ferncliff-retail
+ENG-414	10414	API rate limit errors (Granite Ridge Bank)	Done	2026-07-15 12:00:00	2026-07-18 12:00:00	Medium	Granite Ridge Bank
+ENG-415	10415	Report totals do not match (Granite Ridge Bank)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Granite Ridge Bank
+ENG-416	10416	Login failures after SSO change (Halcyon Media)	Done	2026-07-04 12:00:00	2026-07-07 12:00:00	Medium	Halcyon Media
+ENG-417	10417	API rate limit errors (Halcyon Media)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Halcyon Media
+ENG-418	10418	Export job times out (Ironbark Energy)	Done	2026-06-23 12:00:00	2026-06-26 12:00:00	Medium	Ironbark Energy
+ENG-419	10419	P1: API rate limit errors (Ironbark Energy)	Blocked	2026-11-01 03:20:00	2026-11-04 03:20:00	Highest	Ironbark Energy
+ENG-420	10420	Login failures after SSO change (Ironbark Energy)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Ironbark Energy
+ENG-421	10421	Dashboard slow to load (Juniper Logistics)	Done	2026-06-12 12:00:00	2026-06-15 12:00:00	Medium	Juniper Logistics
+ENG-422	10422	Export job times out (Juniper Logistics)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Juniper Logistics
+ENG-423	10423	Webhook deliveries delayed (Kestrel Aerospace)	Done	2026-06-01 12:00:00	2026-06-04 12:00:00	Medium	Kestrel Aerospace
+ENG-424	10424	Dashboard slow to load (Kestrel Aerospace)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Kestrel Aerospace
+ENG-425	10425	Report totals do not match (Lumen Dental Group)	Done	2026-05-21 12:00:00	2026-05-24 12:00:00	Medium	Lumen Dental
+ENG-426	10426	P1: Dashboard slow to load (Lumen Dental Group)	In Progress	2026-11-03 03:20:00	2026-11-06 03:20:00	Highest	Lumen Dental
+ENG-427	10427	Webhook deliveries delayed (Lumen Dental Group)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Lumen Dental
+ENG-428	10428	API rate limit errors (Marlowe Insurance)	Done	2026-05-10 12:00:00	2026-05-13 12:00:00	Medium	Marlowe Insurance
+ENG-429	10429	P1: Webhook deliveries delayed (Marlowe Insurance)	Blocked	2026-11-02 03:20:00	2026-11-05 03:20:00	Highest	Marlowe Insurance
+ENG-430	10430	Report totals do not match (Marlowe Insurance)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Marlowe Insurance
+ENG-431	10431	Login failures after SSO change (Northgate Foods)	Done	2026-04-29 12:00:00	2026-05-02 12:00:00	Medium	Northgate Foods
+ENG-432	10432	API rate limit errors (Northgate Foods)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Northgate Foods
+ENG-433	10433	Dashboard slow to load (Pinecrest Schools)	Done	2026-04-07 12:00:00	2026-04-10 12:00:00	Medium	Pinecrest Schools
+ENG-434	10434	Blocked: API rate limit errors (Pinecrest Schools)	Blocked	2026-10-21 12:00:00	2026-10-24 12:00:00	High	Pinecrest Schools
+ENG-435	10435	Export job times out (Pinecrest Schools)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Pinecrest Schools
+ENG-436	10436	Webhook deliveries delayed (Quillon Systems)	Done	2026-03-27 12:00:00	2026-03-30 12:00:00	Medium	Quillon
+ENG-437	10437	Dashboard slow to load (Quillon Systems)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Quillon
+ENG-438	10438	Report totals do not match (Redfern Hotels)	Done	2026-03-16 12:00:00	2026-03-19 12:00:00	Medium	Redfern Hotels
+ENG-439	10439	Webhook deliveries delayed (Redfern Hotels)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Redfern Hotels
+ENG-440	10440	API rate limit errors (Saltmarsh Brewing)	Done	2026-03-05 12:00:00	2026-03-08 12:00:00	Medium	Saltmarsh Brewing
+ENG-441	10441	Report totals do not match (Saltmarsh Brewing)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Saltmarsh Brewing
+ENG-442	10442	Login failures after SSO change (Tamarack Mining)	Done	2026-02-22 12:00:00	2026-02-25 12:00:00	Medium	Tamarack Mining
+ENG-443	10443	API rate limit errors (Tamarack Mining)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Tamarack Mining
+ENG-444	10444	Dashboard slow to load (Vantage Payroll)	Done	2026-01-31 12:00:00	2026-02-03 12:00:00	Medium	Vantage Payroll
+ENG-445	10445	Export job times out (Vantage Payroll)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Vantage Payroll
+ENG-446	10446	Webhook deliveries delayed (Willow Creek Clinics)	Done	2026-01-20 12:00:00	2026-01-23 12:00:00	Medium	Willow Creek Clinics
+ENG-447	10447	Dashboard slow to load (Willow Creek Clinics)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Willow Creek Clinics
+ENG-448	10448	Report totals do not match (Xylo Robotics)	Done	2026-01-09 12:00:00	2026-01-12 12:00:00	Medium	Xylo Robotics
+ENG-449	10449	Login failures after SSO change (Zephyr Telecom)	Done	2025-12-18 12:00:00	2025-12-21 12:00:00	Medium	Zephyr Telecom
+ENG-450	10450	API rate limit errors (Zephyr Telecom)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Zephyr Telecom
+ENG-451	10451	Export job times out (Alder & Finch)	Done	2025-12-07 12:00:00	2025-12-10 12:00:00	Medium	Alder & Finch
+ENG-452	10452	Login failures after SSO change (Alder & Finch)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Alder & Finch
+ENG-453	10453	Webhook deliveries delayed (Cinder Studios)	Done	2025-11-15 12:00:00	2025-11-18 12:00:00	Medium	Cinder Studios
+ENG-454	10454	API rate limit errors (Elmstead Manufacturing)	Done	2025-10-24 12:00:00	2025-10-27 12:00:00	Medium	Elmstead
+ENG-455	10455	Report totals do not match (Elmstead Manufacturing)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Elmstead
