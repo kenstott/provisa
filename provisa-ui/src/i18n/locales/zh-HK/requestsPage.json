@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "違反治理規定",
     "reasonOutOfScope": "超出範圍",
     "reasonEndpointUnreachable": "端點無法連線",
-    "reasonSchemaMismatch": "結構描述不相符"
+    "reasonSchemaMismatch": "結構描述不相符",
+    "delivery": "通知方式",
+    "deliveryHelp": "如何告知請求所指向角色的成員。電郵：Provisa 向每位成員發送通知。僅事件：Provisa 不發送通知；您的工作流程工具訂閱 ops.requests。兩者：電郵及事件。",
+    "deliveryEmail": "電郵",
+    "deliveryEvents": "僅事件",
+    "deliveryBoth": "兩者"
   }
 }

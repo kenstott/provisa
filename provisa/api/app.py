@@ -5057,6 +5057,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
 
     app.include_router(catalogs_router)
+    from provisa.api.admin.request_delivery_router import (  # REQ-2216
+        router as request_delivery_router,
+    )
+
+    app.include_router(request_delivery_router)
     from provisa.api.admin.data_product_documents_router import (  # REQ-2118
         router as data_product_documents_router,
     )

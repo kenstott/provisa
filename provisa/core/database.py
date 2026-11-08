@@ -925,9 +925,14 @@ class Connection:
             self._record_write(target, -1 if rowcount is None else rowcount)
         return result
 
-    def _run(self, sql: str, args: tuple, *, bind_as_given: bool = False) -> Any:
+    def _run(
+        self, sql: str, args: tuple, *, bind_as_given: bool = False, prepared: bool = True
+    ) -> Any:
         stmt, params = _translate(sql, args, self.capabilities.dialect, bind_as_given=bind_as_given)
-        return self._exec(text(stmt), params)
+        if prepared or self.capabilities.dialect != "postgresql":
+            return self._exec(text(stmt), params)
+        with _unprepared(self._sc):
+            return self._exec(text(stmt), params)
 
     def _commit_if_autocommit(self) -> None:
         if self._tx_depth == 0:
@@ -964,18 +969,19 @@ class Connection:
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetch_with_columns(
-        self, sql: str, *args: Any, bind_as_given: bool = False
+        self, sql: str, *args: Any, bind_as_given: bool = False, prepared: bool = True
     ) -> tuple[list[str], list[Row]]:
         """Rows plus the result's column names — known even when no row comes back.
-        ``bind_as_given``: see :func:`_translate`."""
-        result = self._run(sql, args, bind_as_given=bind_as_given)
+        ``bind_as_given``: see :func:`_translate`. ``prepared=False``: a statement run once, which
+        PostgreSQL does not keep (:func:`_unprepared`)."""
+        result = self._run(sql, args, bind_as_given=bind_as_given, prepared=prepared)
         columns = list(result.keys())
         rows = [Row(r) for r in result.fetchall()]
         self._commit_if_autocommit()
         return columns, rows
 
     async def fetch_described(
-        self, sql: str, *args: Any, bind_as_given: bool = False
+        self, sql: str, *args: Any, bind_as_given: bool = False, prepared: bool = True
     ) -> tuple[list[str], list[int], list[Row]]:
         """:meth:`fetch_with_columns` with each column's type oid, as PostgreSQL described it."""
         from psycopg.types.json import JsonLoader
@@ -987,7 +993,7 @@ class Connection:
         adapters = driver.adapters
         adapters.register_loader("json", TextLoader)
         try:
-            result = self._run(sql, args, bind_as_given=bind_as_given)
+            result = self._run(sql, args, bind_as_given=bind_as_given, prepared=prepared)
         finally:
             adapters.register_loader("json", JsonLoader)
         columns = list(result.keys())
@@ -1515,6 +1521,24 @@ class Connection:
 
 
 _PREPARED_SCOPE = "provisa_prepared_scope"
+
+
+@contextmanager
+def _unprepared(sc: sa.Connection) -> Iterator[None]:
+    """Statements run on ``sc`` meanwhile are not prepared: psycopg sends each as the unnamed
+    statement, which PostgreSQL drops once the next one arrives. A statement run once -- a client's
+    own SQL, its literals written into it -- would otherwise stay prepared on the pooled
+    connection, its plan held in the server backend until the LRU (:data:`_PREPARED_MAX`) evicts
+    it: a catalog statement's plan alone is tens of megabytes, and a backend holding a hundred of
+    them never gives that memory back."""
+    driver = sc.connection.driver_connection
+    assert driver is not None  # a statement of this connection is about to run on it
+    threshold = driver.prepare_threshold
+    driver.prepare_threshold = None
+    try:
+        yield
+    finally:
+        driver.prepare_threshold = threshold
 
 
 def _prepared_for_scope(sc: sa.Connection, search_path: str | None) -> None:

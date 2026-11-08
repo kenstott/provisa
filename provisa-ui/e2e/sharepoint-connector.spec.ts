@@ -18,6 +18,19 @@ const SCHEMA = SOURCE_ID.replace(/-/g, "_");
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
 // DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
 const GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
+// The certificate's ONE absolute path that both readers of the source can open: Trino, in its
+// container, and the source's own pgwire server, which Provisa starts on this host for the
+// source's writes (REQ-1946) and the keys it declares (REQ-2170). docker-compose.e2e-mounts.yml
+// mounts the file into Trino at this same path. `/certs/sharepoint.pfx` exists only in the
+// container: the host's server died on FileNotFoundException and registerTable failed with
+// "Error instantiating JsonCustomSchema" (runs 42367768201, 42368724170).
+function certPath(): string {
+  const path = process.env.PROVISA_E2E_SHAREPOINT_CERT_HOST;
+  if (!path) {
+    throw new Error("PROVISA_E2E_SHAREPOINT_CERT_HOST is not set: the certificate's absolute host path");
+  }
+  return path;
+}
 
 // SharePoint calendar list columns (obtained via Graph API — information_schema.columns
 // returns empty for the Calcite-based sharepoint connector, so we supply known columns)
@@ -122,8 +135,7 @@ test("sharepoint connector: add source and verify calendar list is available", a
 
   await page.waitForSelector('[data-testid="sharepoint-cert-path-input"]', { timeout: 10000 });
   await page.locator('[data-testid="sharepoint-client-id-input"]').fill("d6f6b74e-df85-470f-8e68-e34c767436be");
-  // Trino runs inside Docker where the cert is mounted at /certs/sharepoint.pfx (docker-compose.core.yml:99)
-  await page.locator('[data-testid="sharepoint-cert-path-input"]').fill("/certs/sharepoint.pfx");
+  await page.locator('[data-testid="sharepoint-cert-path-input"]').fill(certPath());
   // PFX password — the cert was created with the password literally set to "YOUR_PFX_PASSWORD"
   await page.locator('[data-testid="sharepoint-cert-password-input"]').fill("YOUR_PFX_PASSWORD");
 

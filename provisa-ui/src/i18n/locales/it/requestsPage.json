@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Violazione della governance",
     "reasonOutOfScope": "Fuori ambito",
     "reasonEndpointUnreachable": "Endpoint non raggiungibile",
-    "reasonSchemaMismatch": "Schema non corrispondente"
+    "reasonSchemaMismatch": "Schema non corrispondente",
+    "delivery": "Notifica tramite",
+    "deliveryHelp": "Come i membri dei ruoli a cui è indirizzata una richiesta ne vengono informati. Email: Provisa invia un avviso a ciascuno di loro. Solo eventi: Provisa non invia alcun avviso; il tuo strumento di workflow si iscrive a ops.requests. Entrambi: email ed eventi.",
+    "deliveryEmail": "Email",
+    "deliveryEvents": "Solo eventi",
+    "deliveryBoth": "Entrambi"
   }
 }

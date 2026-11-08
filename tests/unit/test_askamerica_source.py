@@ -2305,7 +2305,12 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
     """The pass runs under the engine's one attach lock, on the request path. Over [a fast
     source, an AskAmerica source whose catalog is still being prepared, another fast source] it
     returns at once, attaches the other two, and leaves the pass incomplete so the next one
-    retries the source that was starting."""
+    retries the source that was starting.
+
+    What is timed is the starting source's attach alone, not the whole pass: the pass also does
+    this process's one-time work (a first import of its readers, the first transpile of the ops
+    signal views), about a second and a half alone and several under a parallel run's load, and
+    none of it waits on any source."""
     release = threading.Event()
     replica = _replica_with_server(
         healthy=True,
@@ -2319,10 +2324,15 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
     class _Runtime:
         def __init__(self) -> None:
             self.attached: list[str] = []
+            self.starting_attach_seconds: float | None = None
 
         def attach_source(self, merged) -> None:
             if merged.type.value == "govdata":
-                pr.ensure_endpoint(merged)  # what the connector's details() does first
+                started = time.monotonic()
+                try:
+                    pr.ensure_endpoint(merged)  # what the connector's details() does first
+                finally:
+                    self.starting_attach_seconds = time.monotonic() - started
             self.attached.append(merged.id)
 
         def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
@@ -2367,12 +2377,15 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
         tables=[],
         source_catalogs={"pg-a": "pg_a", "aa": "aa", "pg-b": "pg_b"},
     )
-    started = time.monotonic()
     complete = backend._walk_registry(state, config)
-    elapsed = time.monotonic() - started
+    # The pass returned with the catalog still being prepared: it did not wait for it.
+    preparing = replica._catalog_thread is not None and replica._catalog_thread.is_alive()
     release.set()
 
-    assert elapsed < 2, f"the attach pass waited {elapsed:.1f}s on the starting source"
+    waited = backend._runtime.starting_attach_seconds
+    assert waited is not None, "the pass never tried the starting source"
+    assert waited < 2, f"the attach pass waited {waited:.1f}s on the starting source"
+    assert preparing, "the pass returned only once the catalog was no longer being prepared"
     assert backend._runtime.attached == ["pg-a", "pg-b"]
     assert complete is False  # retried by the next pass, when the catalog is prepared
 
