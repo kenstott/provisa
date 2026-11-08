@@ -317,6 +317,8 @@ _BINARY_CMP: dict[str, type[exp.Expression]] = {
 
 #: The functions whose value openCypher types a float.
 _FLOAT_FUNCTIONS = frozenset({"tofloat", "tofloatornull"})
+#: Cypher's conversions to a number.
+_NUMBER_CONVERSIONS = frozenset({"tointeger", "tointegerornull", *_FLOAT_FUNCTIONS})
 #: The registered types of a column holding a non-integer number.
 _FLOAT_TYPES = re.compile(r"^(real|float|double|decimal|numeric)", re.I)
 
@@ -1455,6 +1457,16 @@ class ExprLowering:
             if isinstance(step, Literal) and step.kind == "number" and step.value == 0:
                 # openCypher's ArgumentError (NumberOutOfRange): a range never steps by 0.
                 raise CypherTranslateError("range() takes a step other than 0, e.g. range(2, 8, 1)")
+        if node.name.lower() in _NUMBER_CONVERSIONS and len(node.args) == 1:
+            given = node.args[0]
+            if (
+                isinstance(given, Variable) and given.name in self._json_vars
+            ) or self._ctx.is_json_value(given):
+                # An item of a list of several types is its JSON: converted from its scalar's text
+                # ('3', not '"3"'), as a string is; a list or a map has none, and converts to null
+                # (or is refused, _checked_conversion).
+                text = _anon("JSON_EXTRACT_SCALAR", self.lower(given), exp.Literal.string("$"))
+                return self._ctx.resolve_function(node.name, [exp.Paren(this=text)], distinct=False)
         if node.name.lower() in ("tostring", "tostringornull") and len(node.args) == 1:
             given = node.args[0]
             if (
@@ -1507,9 +1519,12 @@ class ExprLowering:
                 return exp.Literal.number(len(given.items))
             if isinstance(given, Literal) and given.kind == "null":
                 return exp.Null()
-            if isinstance(given, Variable) and given.name in self._json_vars:
-                # An item of a list of several types is its JSON: a list's items or a string's
-                # characters, counted by the engine from it.
+            if (
+                isinstance(given, Variable) and given.name in self._json_vars
+            ) or self._ctx.is_json_value(given):
+                # An item of a list of several types (a comprehension's variable, or l[i]) is its
+                # JSON: a list's items or a string's characters, counted by the engine from it,
+                # never its JSON text's characters.
                 return _anon("json_size", self.lower(given))
             if self._ctx.is_text(given) and not isinstance(given, Literal):
                 # A string's size is its character count: counted as text on every engine, never
@@ -1787,6 +1802,10 @@ class ExprLowering:
         return result
 
     def _lower_Quantifier(self, node: Quantifier) -> exp.Expression:
+        if isinstance(node.source, ListLiteral) and not node.source.items:
+            # Over no items (openCypher): all and none are true, any and single false. Answered as
+            # written: an engine may not type an empty list (PostgreSQL's ARRAY[]).
+            return exp.true() if node.kind in ("ALL", "NONE") else exp.false()
         source = self.lower(node.source)
         pred = (
             _lam(node.var, self._over(node.var, source, node.predicate, node.source))
