@@ -36,12 +36,13 @@ export function CapabilityGate({
   capability,
   orCapability,
   anyOf,
+  andCapability,
   children,
   fallback,
   navigable,
 }: Props) {
   const { loading, capabilities, demonstrated } = useAuth();
-  const req = { capability, orCapability, anyOf };
+  const req = { capability, orCapability, anyOf, andCapability };
   const allowed = meetsRequirement(capabilities, req);
   // A gate with a fallback owns a whole region — a route body — and has to show something there.
   // A gate without one contributes a nav link or a button to a larger layout: it renders nothing
