@@ -29,7 +29,8 @@ import provisa.api.app  # noqa: E402,F401 -- the API layer says whether the depl
 # in the calling frame (its replacement scan), which the missing-catalog case must not find.
 from provisa.core import schema_org  # noqa: E402
 from provisa.core.models import SourceType  # noqa: E402
-from provisa.federation.duckdb_runtime import DuckDBFederationRuntime, ReservedCatalog  # noqa: E402
+from provisa.federation import duckdb_runtime  # noqa: E402
+from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E402
 from provisa.federation.native_backend import libpq_dsn  # noqa: E402
 
 _REGISTERED = 'SELECT table_name FROM "provisa_admin"."org_default"."registered_tables"'
@@ -170,11 +171,16 @@ def test_a_source_named_under_provisa_admin_is_refused(control_plane, tmp_path):
     """Regression: a SQLite source handed over under ``provisa_admin`` (the catalog Trino names a
     source it cannot read in place) took the name as an in-memory catalog before the control plane
     was attached; the control plane's attach then counted itself done, and the source's drop
-    detached the catalog, so every meta read failed on a catalog that was gone."""
+    detached the catalog, so every meta read failed on a catalog that was gone.
+
+    The refusal is caught as the ValueError it is and only then checked for its class, so against
+    a runtime without the refusal the test fails on the attach that went through (DID NOT RAISE),
+    not on importing a name that runtime does not have."""
     rt = DuckDBFederationRuntime()
     try:
-        with pytest.raises(ReservedCatalog, match="provisa_admin"):
+        with pytest.raises(ValueError, match="'provisa_admin', which is reserved") as refused:
             rt.attach_source(_sqlite_source(tmp_path, "provisa_admin"))
+        assert isinstance(refused.value, duckdb_runtime.ReservedCatalog)
         rt.attach_control_plane(libpq_dsn(control_plane.org().engine.url))
         rt.drop_source("inquiries-sqlite")
         _register(control_plane, 1, "orders")
