@@ -25,9 +25,12 @@ import {
   signInSource,
   takeIssuerAnswer,
 } from "../lib/sourceSignIn";
+import { onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const SIGN_IN = "https://cloud.provisa.test";
 const ORG = "https://acme.provisa.test";
+// A deployment whose org subdomains live under the base domain it declares.
+onDeclaredBaseDomain("provisa.test");
 const RETURNED = `${SIGN_IN}/source-sign-in.html?state=made-up-state&code=made-up-code`;
 
 function loc(href: string): Location {

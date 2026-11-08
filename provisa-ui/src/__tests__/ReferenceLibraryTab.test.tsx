@@ -31,7 +31,12 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
-  useDomains: () => ({ domains: [{ id: "sales" }, { id: "finance" }] }),
+  useDomains: () => ({
+    domains: ["sales", "meta", "ontology", "ops", "finance"].map((id) => ({
+      id,
+      isSystem: id !== "sales" && id !== "finance",
+    })),
+  }),
 }));
 
 import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
@@ -160,7 +165,24 @@ describe("ReferenceLibraryTab", () => {
     const pickers = document.querySelectorAll<HTMLInputElement>('input[type="file"]');
     expect(pickers.length).toBeGreaterThan(0);
     pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xml"));
+    pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xlsx"));
     expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
+  });
+
+  it("offers the whole organization and the user's domains, never a system domain", async () => {
+    render(<ReferenceLibraryTab />);
+    fireEvent.click(await screen.findByTestId("reflib-add"));
+    const field = screen.getByTestId("reflib-add-domains");
+    fireEvent.click(field);
+    const listbox = document.getElementById(field.getAttribute("aria-controls") ?? "");
+    if (!listbox) throw new Error("Domains opened no list");
+    const labels = within(listbox)
+      .queryAllByRole("option", { hidden: true })
+      .map((o) => o.textContent ?? "");
+    expect(labels).toContain("sales");
+    expect(labels).toContain("finance");
+    expect(labels.some((l) => /whole/i.test(l))).toBe(true);
+    expect(labels.filter((l) => ["meta", "ontology", "ops"].includes(l))).toEqual([]);
   });
 
   it("adds a document by its URL with its domains", async () => {

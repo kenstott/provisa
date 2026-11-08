@@ -181,6 +181,10 @@ CALL_TIMEOUT_S = 30.0
 #: How long a leg may run before what remains is not reached: the job's own limit would lose it all.
 LEG_BUDGET_S = 6300.0
 
+#: How many overloads apart the leg says where it is: a leg the runner gives up on mid-step leaves
+#: its log alone, which then names the overload it last reached.
+PROGRESS_EVERY = 50
+
 #: Calls of an overload given values: one aggregate or window statement reads all of them as rows.
 VALUE_ROWS = 3
 
@@ -3463,8 +3467,11 @@ def measure(
                     "detail": server_gone,
                 }
             )
-        if i % 200 == 0:
-            print(f"{i}/{len(fns)} after {time.monotonic() - started:.0f}s", flush=True)
+        if i % PROGRESS_EVERY == 0:
+            print(
+                f"{i}/{len(fns)} after {time.monotonic() - started:.0f}s at {fn.signature}",
+                flush=True,
+            )
     report = {
         "engine": engine,
         "postgres_version": pg.rows("SHOW server_version")[0][0],

@@ -20,23 +20,8 @@ import grpc.aio
 import pytest
 
 from provisa.executor.result import QueryResult
-from provisa.grpc.server import ProvisaServicer, _nodes_field, _pascal_to_snake, _rpc_role
+from provisa.grpc.server import ProvisaServicer, _nodes_field, _rpc_role
 from tests.role_state import RoleState
-
-
-class TestPascalToSnake:
-    def test_simple(self):
-        assert _pascal_to_snake("Orders") == "orders"
-
-    def test_two_words(self):
-        assert _pascal_to_snake("CustomerSegments") == "customer_segments"
-
-    def test_single_char(self):
-        assert _pascal_to_snake("A") == "a"
-
-    def test_acronym_adjacent(self):
-        # Regex only splits on lowercase→uppercase boundary
-        assert _pascal_to_snake("APIUsers") == "apiusers"
 
 
 class TestRpcRole:
@@ -176,7 +161,7 @@ class TestHandleQuery:
             ) as mock_execute_plan,
         ):
             rows_yielded = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 rows_yielded.append(msg)
 
             assert _rows(msg_cls, rows_yielded) == [
@@ -220,7 +205,7 @@ class TestHandleQuery:
                 return_value=_result(["id", "amount"], []),
             ),
         ):
-            _ = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+            _ = [m async for m in servicer._handle_query(request, context, "Orders")]
 
         assert lowering.call_args.kwargs["offset"] == 30
 
@@ -417,7 +402,7 @@ class TestHandleQuery:
             ) as mock_execute_native,
         ):
             rows_yielded = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 rows_yielded.append(msg)
 
             assert _rows(msg_cls, rows_yielded) == [
@@ -517,7 +502,7 @@ class TestHandleQuery:
             ) as mock_execute_native,
         ):
             rows_yielded = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 rows_yielded.append(msg)
 
             assert _rows(msg_cls, rows_yielded) == [
@@ -550,7 +535,7 @@ class TestHandleQuery:
         request = MagicMock()
         results = []
         with pytest.raises(grpc.aio.AbortError):
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 results.append(msg)
 
         context.abort.assert_awaited_once_with(
@@ -609,7 +594,7 @@ class TestErrorHandling:
         context = AsyncMock(spec=grpc.aio.ServicerContext)
         context.invocation_metadata.return_value = []
 
-        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders", "orders")]
+        rows = [m async for m in servicer._handle_query(MagicMock(), context, "Orders")]
 
         assert rows == []
         context.abort.assert_awaited_once_with(
@@ -633,7 +618,7 @@ class TestErrorHandling:
         request.limit = 0
         results = []
         with pytest.raises(grpc.aio.AbortError):
-            async for msg in servicer._handle_query(request, context, "Nonexistent", "nonexistent"):
+            async for msg in servicer._handle_query(request, context, "Nonexistent"):
                 results.append(msg)
 
         context.abort.assert_awaited_once_with(

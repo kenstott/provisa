@@ -864,7 +864,8 @@ async def _seed_demo_templates(_log: logging.Logger) -> None:  # REQ-2006
 # (employee != employeeId), so it emits an empty source_column that these rows correct. schedules
 # keys on the landed employee_id scalar (config gql_selection "employee_id: employee { id }"), not
 # the raw employee object field -- keying on a column the config does not land refuses the startup
-# column-drop of the stale object field.
+# column-drop of the stale object field. No pets<->assignments breed_name row: either direction makes
+# breed_name a replica key and it repeats on both tables (pets reach assignments via animal_breeds).
 _DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | None], ...] = (
     (
         "employees_to_assignments",
@@ -892,24 +893,6 @@ _DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | Non
         "breed_name",
         "one-to-many",
         "PETS_OF_BREED",
-    ),
-    (
-        "pets-to-shelter-assignments",
-        "pets",
-        "assignments",
-        "breed_name",
-        "breed_name",
-        "many-to-one",
-        None,
-    ),
-    (
-        "shelter-assignments-to-pets",
-        "assignments",
-        "pets",
-        "breed_name",
-        "breed_name",
-        "one-to-many",
-        None,
     ),
     (
         "shelter-assignments-to-employees",

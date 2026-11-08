@@ -43,7 +43,10 @@ vi.mock("../components/graph3d/OntologyGraph", () => ({
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    // A role as the session holds it: its effective capabilities and domains (who owns a product).
+    selectedRoles: [
+      { id: "admin", effectiveCapabilities: ["data_product_rw"], domain_access: ["*"] },
+    ],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));

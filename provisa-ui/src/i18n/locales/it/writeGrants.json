@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Chi può scrivere in questa tabella è visibile agli amministratori che vedono la governance.",
     "empty": "Nessun ruolo può scrivere in questa tabella.",
+    "sourceAcceptsNone": "La sorgente non accetta scritture (vedi la scheda API), quindi a nessun ruolo si può concedere un’autorizzazione di scrittura.",
     "role": "Ruolo",
     "operation": "Operazione",
     "op_insert": "Inserisci",

@@ -385,6 +385,63 @@ async def init_schema(
             )
 
 
+def layout_digest(schema_sql: str, audit_sql: str) -> str:
+    """The digest of the layout init_schema and init_audit_schema give an org schema: the
+    ``schema.sql`` script, the metadata add_missing_columns reconciles against, the standard roles
+    assert_standard_roles writes, the tables config_stamp.install triggers, and the audit DDL. A
+    schema stamped with it (:func:`read_layout_digest`) is laid out as this release lays it out."""
+    import hashlib
+    from pathlib import Path
+
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateTable
+
+    from provisa.core import config_stamp, schema_org
+
+    dialect = postgresql.dialect()
+    parts = (
+        schema_sql,
+        *(str(CreateTable(t).compile(dialect=dialect)) for t in schema_org.metadata.sorted_tables),
+        (Path(__file__).parent / "standard_roles.yaml").read_text(),
+        repr(sorted(config_stamp.TENANT_TABLES.items())),
+        repr(config_stamp.TENANT_ADVANCED),
+        audit_sql,
+    )
+    digest = hashlib.sha256()
+    for part in parts:
+        encoded = part.encode()
+        # Each part's length first, so no two lists of parts hash alike.
+        digest.update(len(encoded).to_bytes(8, "big"))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
+async def read_layout_digest(pool: "Database", schema: str) -> str | None:
+    """The layout digest ``schema`` is stamped with, or None: never stamped, or its layout
+    predates the stamp. Plain reads -- an AccessShare lock at most -- beside a live runtime's."""
+    _validate_schema_name(schema)
+    async with pool.acquire() as conn:
+        if await conn.fetchval(f"SELECT to_regclass('\"{schema}\".schema_layout')") is None:
+            return None
+        return await conn.fetchval(f'SELECT digest FROM "{schema}".schema_layout')
+
+
+async def write_layout_digest(pool: "Database", schema: str, digest: str) -> None:
+    """Stamp ``schema`` as laid out to ``digest``: written once its layout has succeeded."""
+    from sqlalchemy import text
+
+    from provisa.core import model_change
+
+    _validate_schema_name(schema)
+    async with pool.acquire() as conn, model_change.layout():  # REQ-1524: not a model change
+        await conn.execute_core(
+            text(
+                f'INSERT INTO "{schema}".schema_layout (id, digest) VALUES (1, :digest) '
+                "ON CONFLICT (id) DO UPDATE SET digest = EXCLUDED.digest"
+            ).bindparams(digest=digest)
+        )
+
+
 async def apply_tenancy_role_grants(  # REQ-1337
     pool: "Database", org_id: str, *, multitenancy: bool, env: str | None = None
 ) -> None:

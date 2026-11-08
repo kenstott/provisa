@@ -488,3 +488,119 @@ describe("TagControl: pii on a column", () => {
     expect(screen.queryByTestId("pii-also-term")).toBeNull();
   });
 });
+
+// REQ-2208: a row rule, a role and a metric carry tags as the model's objects do -- each chip shows
+// its own object's tags, offers the tags that apply to its kind, and names its object to the server.
+describe("TagControl: row rules, roles and metrics", () => {
+  const cases = [
+    {
+      objectType: "rls_rule" as const,
+      props: { rlsRuleId: 4 },
+      other: { rlsRuleId: 5 },
+      target: { rlsRuleId: 4 },
+      testId: "tag-control-rls_rule-4",
+    },
+    {
+      objectType: "role" as const,
+      props: { roleId: "analyst" },
+      other: { roleId: "steward" },
+      target: { roleId: "analyst" },
+      testId: "tag-control-role-analyst",
+    },
+    {
+      objectType: "metric" as const,
+      props: { metricName: "revenue" },
+      other: { metricName: "margin" },
+      target: { metricName: "revenue" },
+      testId: "tag-control-metric-revenue",
+    },
+  ];
+
+  beforeEach(() => {
+    assignSpy.mockClear();
+    unassignSpy.mockClear();
+    mockTags = [
+      {
+        id: "reviewed",
+        description: "Reviewed against the access policy",
+        appliesTo: ["rls_rule", "role", "metric"],
+        isSystem: false,
+        derived: false,
+        reasonPolicy: "optional",
+        expiresPolicy: "hidden",
+        paramPolicy: "none",
+        paramValues: [],
+      },
+      {
+        id: "audited",
+        description: "Audited this quarter",
+        appliesTo: ["rls_rule", "role", "metric"],
+        isSystem: false,
+        derived: false,
+        reasonPolicy: "optional",
+        expiresPolicy: "hidden",
+        paramPolicy: "none",
+        paramValues: [],
+      },
+      {
+        id: "finance",
+        description: "Finance domain",
+        appliesTo: ["table"],
+        isSystem: false,
+        derived: false,
+        reasonPolicy: "hidden",
+        expiresPolicy: "hidden",
+        paramPolicy: "none",
+        paramValues: [],
+      },
+    ];
+    mockAssignments = cases.flatMap((c) => [
+      { tagId: "reviewed", objectType: c.objectType, ...c.target },
+      { tagId: "audited", objectType: c.objectType, ...c.other },
+    ]);
+  });
+
+  it.each(cases)("$objectType: shows its own tags only", ({ objectType, props, testId }) => {
+    render(<TagControl objectType={objectType} {...props} />);
+    expect(screen.getByTestId(testId)).toBeInTheDocument();
+    expect(screen.getByTestId("tag-pill-reviewed")).toBeInTheDocument();
+    expect(screen.queryByTestId("tag-pill-audited")).toBeNull();
+  });
+
+  it.each(cases)(
+    "$objectType: offers the tags that apply to it and assigns one on its object",
+    async ({ objectType, props, target }) => {
+      render(<TagControl objectType={objectType} {...props} />);
+      fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+      const option = await screen.findByTestId("tag-option-audited");
+      expect(screen.queryByTestId("tag-option-finance")).toBeNull();
+      fireEvent.click(option);
+      fireEvent.click(screen.getByTestId("tag-apply-audited"));
+      await waitFor(() => expect(assignSpy).toHaveBeenCalledTimes(1));
+      expect(assignSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tagId: "audited",
+          objectType,
+          tableId: undefined,
+          commandName: undefined,
+          ...target,
+        }),
+      );
+    },
+  );
+
+  it.each(cases)(
+    "$objectType: unchecking its tag unassigns it from its object",
+    async ({ objectType, props, target }) => {
+      render(<TagControl objectType={objectType} {...props} />);
+      fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+      const option = await screen.findByTestId("tag-option-reviewed");
+      expect(option).toBeChecked();
+      fireEvent.click(option);
+      await waitFor(() => expect(unassignSpy).toHaveBeenCalledTimes(1));
+      expect(unassignSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ tagId: "reviewed", objectType, ...target }),
+      );
+    },
+  );
+});

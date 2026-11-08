@@ -385,6 +385,7 @@ export function NavBar() {
                   <CapabilityGate
                     capability={item.capability}
                     orCapability={item.orCapability}
+                    anyOf={item.anyOf}
                     navigable
                   >
                     <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>

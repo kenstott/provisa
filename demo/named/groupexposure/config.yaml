@@ -283,4 +283,4 @@ glossary_terms:
   - groupexposure
   edges:
   - to: group of connected clients
-    rel_type: RELATED_TO
+    rel_type: PART_OF

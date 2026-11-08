@@ -184,8 +184,15 @@ def model_config(
             }
         ],
         # REQ-2155: a standard role (analyst) is every org's already; a config declares only its own.
+        # Each holds usage: a role holding no capability holds no domain (inheritance.held_rights),
+        # so it would be no data audience and no catalog tag would name it.
         "roles": [
-            {"id": r, "description": f"{r} role.", "capabilities": [], "domain_access": ["*"]}
+            {
+                "id": r,
+                "description": f"{r} role.",
+                "capabilities": ["usage"],
+                "domain_access": ["*"],
+            }
             for r in roles
             if r not in SEEDED_ROLE_IDS
         ],

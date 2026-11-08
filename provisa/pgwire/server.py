@@ -2913,8 +2913,52 @@ class _ReadResult:
         return _ReadData(self._result.data())
 
 
+class _FlushingReader:  # REQ-2203
+    """The connection's reader over its unbuffered socket file, holding what it received: a read
+    the held bytes answer is answered from them; a read that must wait on the client first sends
+    what the server has buffered for it. So a reply leaves as PostgreSQL sends it, its messages
+    together, when the server is out of input to act on (pq_flush before the backend waits),
+    never one send per message, and never a wait on the client with an answer unsent. A driver
+    waiting on the socket wakes once per send it receives."""
+
+    #: The most one receive takes from the socket.
+    CHUNK = 65536
+
+    def __init__(self, raw: Any, flush: Callable[[], None]) -> None:
+        self._raw = raw
+        self._flush = flush
+        self._held = bytearray()
+
+    def read(self, size: int = -1, /) -> bytes:
+        """``size`` bytes, fewer only at the end of the stream; every byte to its end when
+        ``size`` is negative."""
+        while size < 0 or len(self._held) < size:
+            self._flush()
+            chunk = self._raw.read(self.CHUNK)
+            if not chunk:
+                break
+            self._held += chunk
+        taken = len(self._held) if size < 0 else size
+        out = bytes(self._held[:taken])
+        del self._held[:taken]
+        return out
+
+    def close(self) -> None:
+        self._raw.close()
+
+    @property
+    def closed(self) -> bool:
+        return self._raw.closed
+
+
 class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
+
+    # REQ-2203: the writer buffers (socketserver's default is a send per write, and the socket is
+    # TCP_NODELAY); ``_FlushingReader``, reading the socket unbuffered and buffering itself, sends
+    # what the writer holds when the server must wait on its client.
+    wbufsize = -1
+    rbufsize = 0
 
     # REQ-1452: the metering writer, held apart from ``wfile`` because socketserver declares that
     # attribute as the plain stream it hands out. ``setup`` installs one before the first byte is
@@ -3158,6 +3202,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self._shield = request_deadline.shielded()  # this connection thread's (REQ-1905)
         self._meter = CountingWriter(self.wfile, None)
         self.wfile = self._meter
+        # The reader flushes the writer itself, never through the handler: a reference back to
+        # the handler would keep it, and a TLS connection's socket only it holds, open past the
+        # end of the connection (the server closes the socket it accepted, not the TLS one).
+        self.rfile = _FlushingReader(self.rfile, self._meter.flush)  # type: ignore[assignment]
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
         from provisa.api.engine_error_names import client_text
@@ -3239,12 +3287,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.wfile.write(b"S")
                 self.wfile.flush()
                 self.request = ssl_ctx.wrap_socket(self.request, server_side=True)
-                self.rfile = self.request.makefile("rb")
                 # Re-wrap: the TLS upgrade replaces the socket, and with it the writer setup()
                 # metered. Leaving it unwrapped would silently stop metering every TLS pgwire
-                # session, i.e. all of them on the hosted deployment.
-                self._meter = CountingWriter(self.request.makefile("wb", 0), None)
+                # session, i.e. all of them on the hosted deployment. Buffered, as setup()'s
+                # (REQ-2203): the reader flushes it.
+                self._meter = CountingWriter(self.request.makefile("wb", self.wbufsize), None)
                 self.wfile = self._meter
+                self.rfile = _FlushingReader(  # type: ignore[assignment]
+                    self.request.makefile("rb", self.rbufsize), self._meter.flush
+                )
                 self.r = BVBuffer(self.rfile)
             else:
                 self.wfile.write(b"N")

@@ -199,7 +199,7 @@ describe("TableEditForm — a column's test data (REQ-1494)", () => {
     const tabs = within(screen.getByRole("tablist", { name: "Column attributes" }))
       .getAllByRole("tab")
       .map((tab) => tab.textContent);
-    expect(tabs).toEqual(["Naming", "Type and keys", "Access", "Testing"]);
+    expect(tabs).toEqual(["Naming", "Type and keys", "Read grants", "Write grants", "Testing"]);
     expect(screen.queryByTestId("table-columns-mode")).toBeNull();
     expect(screen.queryByText("Metadata")).toBeNull();
     expect(screen.queryByTestId("testdata-columns")).toBeNull();

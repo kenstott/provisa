@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Quién puede escribir en esta tabla lo ven los administradores con acceso al gobierno.",
     "empty": "Ningún rol puede escribir en esta tabla.",
+    "sourceAcceptsNone": "La fuente no acepta escrituras (véase la pestaña API), así que no se puede conceder ninguna a un rol.",
     "role": "Rol",
     "operation": "Operación",
     "op_insert": "Insertar",

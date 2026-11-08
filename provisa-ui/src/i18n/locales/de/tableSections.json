@@ -5,10 +5,9 @@
     "identity": "Identität",
     "associations": "Zuordnungen",
     "load": "Laststeuerung und Aktualität",
-    "query": "Abfrage",
+    "query": "API",
     "quality": "Qualität",
     "columns": "Spalten",
-    "writes": "Schreibrechte",
     "source": "Quelle",
     "schema": "Schema",
     "table": "Tabelle",
@@ -33,7 +32,6 @@
       "skipped": "Übersprungen"
     },
     "classTerm": "Zeilen sind Instanzen von",
-    "classTermPlaceholder": "Begriff wählen",
     "noClassTerm": "Kein Begriff",
     "classTermUnreadable": "Der Begriff konnte nicht gelesen werden: {{error}}",
     "access": "Zugriff"

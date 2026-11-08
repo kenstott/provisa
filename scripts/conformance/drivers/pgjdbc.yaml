@@ -1,8 +1,569 @@
 # pgjdbc's expected-failure list (REQ-2203): every test of pgjdbc's own suite that fails against
 # Provisa's pgwire, with its reason, seeded from a CI run of conformance-drivers.yml at the
-# pinned version. A reason is a skipped-by-design decision (requirement and decision) or an open
-# defect (defect). scripts/conformance/driver_suite.py reads it.
+# pinned version (driver_suite.py seed). A reason is a skipped-by-design decision (requirement and
+# decision) or an open defect (defect). A failure seeded without a reason the list already gave
+# it is an open defect named by the error the suite saw. scripts/conformance/driver_suite.py
+# reads it.
 driver: pgjdbc
-version: "REL42.7.14"
-reasons: {}
-expected: {}
+version: REL42.7.14
+reasons:
+  org-postgresql-util-psqlexception-error-drop-tab:
+    defect: 'org.postgresql.util.PSQLException: ERROR: DROP TABLE is not available here: create it in
+      the model (admin pages, admin A'
+  org-postgresql-util-psqlexception-the-fastpath-f:
+    defect: 'org.postgresql.util.PSQLException: The fastpath function lo_creat is unknown.'
+  org-opentest4j-assertionfailederror-expected-n-b:
+    defect: 'org.opentest4j.AssertionFailedError: expected: <N> but was: <N>'
+  org-postgresql-util-psqlexception-error-drop-rol:
+    defect: 'org.postgresql.util.PSQLException: ERROR: DROP ROLE is not available here: create it in the
+      model (admin pages, admin AP'
+  org-postgresql-util-psqlexception-error-create-t:
+    defect: 'org.postgresql.util.PSQLException: ERROR: CREATE TABLE is not available here: create it in
+      the model (admin pages, admin'
+  org-postgresql-util-psqlexception-error-invalid:
+    defect: 'org.postgresql.util.PSQLException: ERROR: Invalid Input Error: Values were not provided for
+      the following prepared state'
+  java-lang-assertionerror-replication-connection:
+    defect: 'java.lang.AssertionError: Replication connection as Simple connection can be check on valid'
+  org-postgresql-util-psqlexception-error-parser-e:
+    defect: 'org.postgresql.util.PSQLException: ERROR: Parser Error: syntax error at or near ''…'''
+  org-postgresql-util-psqlexception-error-sql-pars:
+    defect: 'org.postgresql.util.PSQLException: ERROR: SQL parse error: Invalid expression / Unexpected
+      token. Line N, Col: N.'
+  org-opentest4j-assertionfailederror-postgresql-n:
+    defect: 'org.opentest4j.AssertionFailedError: PostgreSQL >= N should support temporary replication
+      slots ==> Unexpected exception'
+  org-opentest4j-assertionfailederror-sql-state-mu:
+    defect: 'org.opentest4j.AssertionFailedError: SQL state must be for a unique violation ==> expected:
+      <N> but was: <0A000>'
+  org-postgresql-util-psqlexception-error-drop-sch:
+    defect: 'org.postgresql.util.PSQLException: ERROR: DROP SCHEMA is not available here: create it in
+      the model (admin pages, admin '
+  org-postgresql-util-psqlexception-error-create-u:
+    defect: 'org.postgresql.util.PSQLException: ERROR: CREATE USER is not available here: create it in
+      the model (admin pages, admin '
+  org-opentest4j-assertionfailederror-transaction:
+    defect: 'org.opentest4j.AssertionFailedError: transaction isolation level should be SERIALIZABLE after
+      ''…'' ==> expected: <N> but '
+  org-opentest4j-assertionfailederror-allowencodin:
+    defect: 'org.opentest4j.AssertionFailedError: allowEncodingChanges is false, thus set client_encoding=aql_ascii
+      is expected to fa'
+  org-postgresql-util-psqlexception-error-cannot-d:
+    defect: 'org.postgresql.util.PSQLException: ERROR: cannot describe result column ''…'': the type of
+      _0.generate_series cannot be de'
+  org-postgresql-util-psqlexception-unable-to-dete:
+    defect: 'org.postgresql.util.PSQLException: Unable to determine a value for MaxIndexKeys due to missing
+      system catalog data.'
+  org-postgresql-util-psqlexception-error-alter-da:
+    defect: 'org.postgresql.util.PSQLException: ERROR: ALTER DATABASE is not available here: create it
+      in the model (admin pages, adm'
+  org-opentest4j-assertionfailederror-set-datestyl:
+    defect: 'org.opentest4j.AssertionFailedError: Set DateStyle=PostgreSQL should not be allowed'
+  org-postgresql-util-psqlexception-error-drop-typ:
+    defect: 'org.postgresql.util.PSQLException: ERROR: DROP TYPE is not available here: create it in the
+      model (admin pages, admin AP'
+  org-postgresql-util-psqlexception-error-listen-i:
+    defect: 'org.postgresql.util.PSQLException: ERROR: LISTEN is refused by name: Provisa''s pgwire has
+      no notification channel'
+  org-opentest4j-assertionfailederror-getbigdecima:
+    defect: 'org.opentest4j.AssertionFailedError: getBigDecimal for SELECT N::numeric ==> expected: <N>
+      but was: <N>'
+  org-opentest4j-assertionfailederror-getbigdecima-2:
+    defect: 'org.opentest4j.AssertionFailedError: getBigDecimal for N ==> expected: <N> but was: <N>'
+  org-postgresql-util-psqlexception-error-conversi:
+    defect: 'org.postgresql.util.PSQLException: ERROR: Conversion Error: Could not cast value N to DECIMAL(N,N)'
+  org-opentest4j-assertionfailederror-getstring-fo:
+    defect: 'org.opentest4j.AssertionFailedError: getString for N ==> expected: <N> but was: <N>'
+  org-postgresql-util-psqlexception-error-v006-tab:
+    defect: 'org.postgresql.util.PSQLException: ERROR: [V006] Table function ''…'' is not a governed relation'
+  org-postgresql-util-psqlexception-error-unsuppor:
+    defect: 'org.postgresql.util.PSQLException: ERROR: Unsupported parameter type: N'
+  org-opentest4j-assertionfailederror-expected-dri:
+    defect: 'org.opentest4j.AssertionFailedError: expected: <Driver Tests> but was: <>'
+  org-opentest4j-assertionfailederror-expected-pgj:
+    defect: 'org.opentest4j.AssertionFailedError: expected: <pgjdbc_ParameterStatusTest2> but was: <>'
+  org-postgresql-util-psqlexception-error-create-d:
+    defect: 'org.postgresql.util.PSQLException: ERROR: CREATE DOMAIN is not available here: create it
+      in the model (admin pages, admi'
+  org-opentest4j-assertionfailederror-rollback-to:
+    defect: 'org.opentest4j.AssertionFailedError: ROLLBACK TO SAVEPOINT should move back to OPEN ==> expected:
+      <OPEN> but was: <FAILE'
+  org-postgresql-util-psqlexception-error-syntax-e:
+    defect: 'org.postgresql.util.PSQLException: ERROR: syntax error: Expecting ). Line N, Col: N.'
+  org-postgresql-util-psqlexception-error-create-f:
+    defect: 'org.postgresql.util.PSQLException: ERROR: CREATE FUNCTION is not available here: create it
+      in the model (admin pages, ad'
+  java-nio-bufferunderflowexception:
+    defect: java.nio.BufferUnderflowException
+  org-opentest4j-assertionfailederror-set-applicat:
+    defect: 'org.opentest4j.AssertionFailedError: set application_name=''…'' should be visible via con.getClientInfo(''…'')
+      ==> expected:'
+  org-opentest4j-assertionfailederror-expected-my:
+    defect: 'org.opentest4j.AssertionFailedError: expected: <my app> but was: <>'
+  org-postgresql-util-psqlexception-error-drop-seq:
+    defect: 'org.postgresql.util.PSQLException: ERROR: DROP SEQUENCE is not available here: create it
+      in the model (admin pages, admi'
+  java-lang-classcastexception-class-java-lang-str:
+    defect: 'java.lang.ClassCastException: class java.lang.String cannot be cast to class java.util.UUID
+      (java.lang.String and java.u'
+  org-opentest4j-assertionfailederror-setstring-uu:
+    defect: 'org.opentest4j.AssertionFailedError: setString(, uuid) should fail to insert value into UUID
+      column when stringType=varc'
+  org-postgresql-util-psqlexception-error-temporar:
+    defect: 'org.postgresql.util.PSQLException: ERROR: temporary table column ''…'': type XML is not supported.
+      A column is one of bigi'
+  org-postgresql-util-psqlexception-error-create-s:
+    defect: 'org.postgresql.util.PSQLException: ERROR: CREATE SCHEMA is not available here: create it
+      in the model (admin pages, admi'
+  java-util-concurrent-timeoutexception-executewit:
+    defect: 'java.util.concurrent.TimeoutException: executeWith65535BindsWorks() timed out after N seconds'
+  org-postgresql-util-psqlexception-unable-to-dete-2:
+    defect: 'org.postgresql.util.PSQLException: Unable to determine encryption type:'
+  org-postgresql-util-psqlexception-bad-value-for:
+    defect: 'org.postgresql.util.PSQLException: Bad value for type int :'
+expected:
+  org.postgresql.jdbc.BitFieldTest::TestGetObjectForBitFields(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.BitFieldTest::TestSetBitParameter(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.DeepBatchedInsertStatementTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.LargeObjectManagerTest::closedLargeObjectThrowsException(): org-postgresql-util-psqlexception-the-fastpath-f
+  org.postgresql.jdbc.LargeObjectManagerTest::objectWriteThenRead(): org-postgresql-util-psqlexception-the-fastpath-f
+  ? org.postgresql.jdbc.LargeObjectManagerTest::openWithErrorAndSubsequentParameterStatusMessageShouldLeaveConnectionInUsableStateAndUpdateParameterStatus()
+  : org-opentest4j-assertionfailederror-expected-n-b
+  org.postgresql.jdbc.NoColumnMetadataIssue1613Test::shouldBeNoNPE(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::setCharacterStream(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::testCustomXxe(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::testGetSourceXxeDOMSource(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::testGetSourceXxeNull(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::testGetSourceXxeSAXSource(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::testGetSourceXxeStAXSource(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.PgSQLXMLTest::testLegacyXxe(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.jdbc.ScramTest::[1] passwd=My Space: org-postgresql-util-psqlexception-error-drop-rol
+  ? org.postgresql.jdbc.ScramTest::[1] password=null, expectedMessage=The server requested SCRAM-based
+    authentication, but no password was provided.
+  : org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::[2] passwd=$ec ret: org-postgresql-util-psqlexception-error-drop-rol
+  ? org.postgresql.jdbc.ScramTest::[2] password=, expectedMessage=The server requested SCRAM-based authentication,
+    but the password is an empty string.
+  : org-postgresql-util-psqlexception-error-drop-rol
+  'org.postgresql.jdbc.ScramTest::[3] passwd= rover june spelling ': org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::[3] passwd=rover june spelling: org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::[4] passwd=!zj5hs*k5 STj@DaRUy: org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::[5] passwd=q w e r t　y: org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::executionError: org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::rejectIterationCountAboveCustomCap(): org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::rejectIterationCountAboveDefaultCap(): org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.ScramTest::rejectValidCredentialsAboveCustomCap(): org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.jdbc.UUIDArrayTest::initializationError: org-postgresql-util-psqlexception-error-create-t
+  org.postgresql.replication.CopyBothResponseTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::applyLocationDoNotChangeDuringReceiveMessage(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::applyLocationDoNotDependOnFlushLocation(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::applyLocationEqualToSetLocation(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::flushLocationDoNotChangeDuringReceiveMessage(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::flushLocationEqualToSetLocation(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::keepAliveServerLSNCanBeUsedToAdvanceFlushLSN(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::lastReceiveLSNCorrectOnView(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::receivedLSNDependentOnProcessMessage(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::sentLocationEqualToLastReceiveLSN(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::statusCanBeSentToBackendAsynchronously(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationStatusTest::writeLocationCanBeLessThanSendLocation(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::afterCloseConnectionDBSLotStatusNotActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::afterCloseReplicationStreamDBSlotStatusNotActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::afterStartStreamingDBSlotStatusActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::avoidTimeoutDisconnectWithDefaultStatusInterval(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::doesNotHavePendingMessageWhenStartFromLastLSN(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::duringSendBigTransactionConnectionCloseSlotStatusNotActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::duringSendBigTransactionReplicationStreamCloseNotActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::notAvailableStartNotExistReplicationSlot(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::readActualChangesWithoutBlock(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::readPreviousChangesWithoutBlock(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::receiveChangesAfterStartReplication(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::receiveChangesOccursBeforeStartReplication(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::repeatWalPositionTwice(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::replicationRestartFromLastFeedbackPosition(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::replicationRestartFromLastFeedbackPositionParallelTransaction(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::restartReplicationFromRestartSlotLSNWhenFeedbackAbsent(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.LogicalReplicationTest::startFromCurrentServerLSNWithoutSpecifyLSNExplicitly(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.PhysicalReplicationTest::afterCloseReplicationStreamDBSlotStatusNotActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.PhysicalReplicationTest::afterStartStreamingDBSlotStatusActive(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.PhysicalReplicationTest::receiveChangesWithReplicationSlot(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.PhysicalReplicationTest::receiveChangesWithoutReplicationSlot(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.PhysicalReplicationTest::restartPhysicalReplicationWithoutRepeatMessage(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.PhysicalReplicationTest::walRecordCanBeRepeatBeRestartReplication(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.replication.ReplicationConnectionTest::connectionNotValidWhenSessionTerminated(): org-postgresql-util-psqlexception-error-invalid
+  org.postgresql.replication.ReplicationConnectionTest::isValid(): java-lang-assertionerror-replication-connection
+  org.postgresql.replication.ReplicationConnectionTest::replicationCommandResultSetAccessByIndex(): org-postgresql-util-psqlexception-error-parser-e
+  org.postgresql.replication.ReplicationConnectionTest::replicationCommandResultSetAccessByName(): org-postgresql-util-psqlexception-error-parser-e
+  org.postgresql.replication.ReplicationSlotTest::createLogicalSlot(): org-postgresql-util-psqlexception-error-sql-pars
+  org.postgresql.replication.ReplicationSlotTest::createLogicalSlotReturnedInfo(): org-postgresql-util-psqlexception-error-sql-pars
+  org.postgresql.replication.ReplicationSlotTest::createPhysicalSlot(): org-postgresql-util-psqlexception-error-sql-pars
+  org.postgresql.replication.ReplicationSlotTest::createPhysicalSlotReturnedInfo(): org-postgresql-util-psqlexception-error-sql-pars
+  org.postgresql.replication.ReplicationSlotTest::createTemporaryLogicalSlotPg10AndHigher(): org-opentest4j-assertionfailederror-postgresql-n
+  org.postgresql.replication.ReplicationSlotTest::createTemporaryPhysicalSlotPg10AndHigher(): org-opentest4j-assertionfailederror-postgresql-n
+  org.postgresql.replication.ReplicationSlotTest::dropLogicalSlot(): org-postgresql-util-psqlexception-error-sql-pars
+  org.postgresql.replication.ReplicationSlotTest::dropPhysicalSlot(): org-postgresql-util-psqlexception-error-sql-pars
+  org.postgresql.test.core.LogServerMessagePropertyTest::batchExplicitlyEnabled(): org-opentest4j-assertionfailederror-sql-state-mu
+  org.postgresql.test.core.LogServerMessagePropertyTest::batchWithDefaults(): org-opentest4j-assertionfailederror-sql-state-mu
+  org.postgresql.test.core.LogServerMessagePropertyTest::batchWithLogServerErrorDetailDisabled(): org-opentest4j-assertionfailederror-sql-state-mu
+  org.postgresql.test.core.LogServerMessagePropertyTest::withDefaults(): org-opentest4j-assertionfailederror-sql-state-mu
+  org.postgresql.test.core.LogServerMessagePropertyTest::withExplicitlyEnabled(): org-opentest4j-assertionfailederror-sql-state-mu
+  org.postgresql.test.core.LogServerMessagePropertyTest::withLogServerErrorDetailDisabled(): org-opentest4j-assertionfailederror-sql-state-mu
+  org.postgresql.test.core.OptionsPropertyTest::optionsInProperties(): org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.core.RequireAuthTest::initializationError: org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.jdbc2.ArrayTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.AutoRollbackTest::run(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.AutoSaveTransactionSettingsTest::setLocalTransactionIsolationLevelAsFirstStatement(): org-opentest4j-assertionfailederror-transaction
+  org.postgresql.test.jdbc2.AutoSaveTransactionSettingsTest::setSessionTransactionIsolationLevelAsFirstStatement(): org-opentest4j-assertionfailederror-transaction
+  org.postgresql.test.jdbc2.AutoSaveTransactionSettingsTest::setTransactionIsolationLevelAsFirstStatement(): org-opentest4j-assertionfailederror-transaction
+  org.postgresql.test.jdbc2.BatchDeadlockTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchEscapeProcessing(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchOnTerminatedConnection(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchReturningMixedNulls(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes0(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes1(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes2(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes3(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes4(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes5(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingAndUnknownTypes6(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithAlternatingTypes(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithEmbeddedNulls(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithMultiInsert(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithRepeatedInsertStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testBatchWithTwoMultiInsertStatements(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testClearBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testClearPreparedEmptyBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testClearPreparedNoArgBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testEmptyClearBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testExecuteEmptyBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testExecuteEmptyPreparedBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testMixedBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testMultiStatementSqlInAddBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testNoServerPrepareOneRow(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testPreparedNoParameters(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testPreparedStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testSelectInBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testSelectInBatchThrows(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testSelectInBatchThrowsAutoCommit(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testServerPrepareMultipleRows(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testSmallBatchUpdateFailureSimple(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testStringAddBatchOnPreparedStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testSupportsBatchUpdates(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testTransactionalBehaviour(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchExecuteTest::testWarningsAreCleared(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchFailureTest::run(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BatchedInsertReWriteEnabledTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BlobTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.BlobTransactionTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CallableStmtTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CleanupSavepointsWithFastpathTest::testInterleavedQueriesAndLargeObjects(): org-postgresql-util-psqlexception-the-fastpath-f
+  org.postgresql.test.jdbc2.CleanupSavepointsWithFastpathTest::testLargeObjectWithCleanupSavepoints(): org-postgresql-util-psqlexception-the-fastpath-f
+  org.postgresql.test.jdbc2.CleanupSavepointsWithFastpathTest::testLargeObjectWithoutCleanupSavepoints(): org-postgresql-util-psqlexception-the-fastpath-f
+  org.postgresql.test.jdbc2.CleanupSavepointsWithFastpathTest::testMultipleQueriesThenLargeObject(): org-postgresql-util-psqlexception-the-fastpath-f
+  org.postgresql.test.jdbc2.CleanupSavepointsWithFastpathTest::testPreparedStatementThenLargeObject(): org-postgresql-util-psqlexception-the-fastpath-f
+  org.postgresql.test.jdbc2.ClientEncodingTest::setEncodingAscii(): org-opentest4j-assertionfailederror-allowencodin
+  org.postgresql.test.jdbc2.ColumnSanitiserDisabledTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ColumnSanitiserEnabledTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ConcurrentStatementFetchTest::testFetchTwoStatements(): org-postgresql-util-psqlexception-error-cannot-d
+  org.postgresql.test.jdbc2.ConnectionTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyLargeFileTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::changeDateStyle(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInAsOutputStream(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInAsOutputStreamClosesAfterEndCopy(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInAsOutputStreamFailsOnFlushAfterEndCopy(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInByRow(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInFromByteStreamWriter(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInFromInputStream(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInFromReader(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyInFromStreamFail(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyMultiApi(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyOut(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyOutByRow(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyQuery(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::copyRollback(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::isValidShouldNotHangAfterCopyInputStreamNetworkFailure(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::isValidShouldNotHangAfterCopyStreamNetworkFailure(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::isValidShouldNotHangAfterReadFromCopyNetworkFailure(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::isValidShouldNotHangAfterWriteToCopyNetworkFailure(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::lockReleaseOnCancelFailure(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::nonCopyIn(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::nonCopyOut(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::skipping(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::statementCopyIn(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CopyTest::statementCopyOut(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CursorFetchSqlTransactionTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CursorFetchTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.CustomTypeWithBinaryTransferTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.DatabaseEncodingTest::encoding(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.DatabaseEncodingTest::truncatedUTF8Decode(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.DatabaseEncodingTest::uTF8Decode(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.DatabaseMetaDataPropertiesTest::values(): org-postgresql-util-psqlexception-unable-to-dete
+  org.postgresql.test.jdbc2.DatabaseMetaDataTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[1] isolationLevel=8: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[1] isolationLevel=read committed: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[2] isolationLevel=4: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[2] isolationLevel=read uncommitted: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[3] isolationLevel=2: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[3] isolationLevel=repeatable read: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[4] isolationLevel=1: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::[4] isolationLevel=serializable: org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::connectionTransactionIsolation(): org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DatabaseMetaDataTransactionIsolationTest::metadataDefaultTransactionIsolation(): org-postgresql-util-psqlexception-error-alter-da
+  org.postgresql.test.jdbc2.DateStyleTest::connect(): org-opentest4j-assertionfailederror-set-datestyl
+  org.postgresql.test.jdbc2.DateTest::testGetDate(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.DateTest::testSetDate(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.EnumTest::enumArray(): org-postgresql-util-psqlexception-error-drop-typ
+  org.postgresql.test.jdbc2.EnumTest::enumArrayArray(): org-postgresql-util-psqlexception-error-drop-typ
+  org.postgresql.test.jdbc2.GeometricTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.GetXXXTest::getObject(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.GetXXXTest::getUDT(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.IntervalTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.JBuilderTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotify(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotifyWithEndlessTimeoutAndMessagesAvailableWhenStartingListening(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotifyWithEndlessTimeoutAndMessagesSendAfter(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotifyWithTimeout(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotifyWithTimeoutAndMessagesAvailableWhenStartingListening(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotifyWithTimeoutAndMessagesSendAfter(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::asyncNotifyWithTimeoutAndSocketThatBecomesClosed(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::notifyArgument(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NotifyTest::testNotify(): org-postgresql-util-psqlexception-error-listen-i
+  org.postgresql.test.jdbc2.NumericTransfer2Test::receiveValue(): org-opentest4j-assertionfailederror-getbigdecima
+  org.postgresql.test.jdbc2.NumericTransfer2Test::sendReceiveValue(): org-opentest4j-assertionfailederror-getbigdecima-2
+  org.postgresql.test.jdbc2.NumericTransferTest::receive100000(): org-postgresql-util-psqlexception-error-conversi
+  org.postgresql.test.jdbc2.NumericTransferTest::sendReceive100000(): org-opentest4j-assertionfailederror-getstring-fo
+  org.postgresql.test.jdbc2.OuterJoinSyntaxTest::testOuterJoinSyntaxWithMultipleJoinsAndWithOj3(): org-postgresql-util-psqlexception-error-v006-tab
+  org.postgresql.test.jdbc2.PGObjectSetTest::setNullAsPGobject(): org-postgresql-util-psqlexception-error-unsuppor
+  org.postgresql.test.jdbc2.PGObjectSetTest::setNullAsPGobjectSubtype(): org-postgresql-util-psqlexception-error-unsuppor
+  org.postgresql.test.jdbc2.PGTimeTest::testTimeInsertAndSelect(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.PGTimeTest::testTimeWithInterval(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.PGTimestampTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ParameterStatusTest::expectedApplicationNameWithMinVersion(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.ParameterStatusTest::expectedApplicationNameWithNullMinVersion(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.ParameterStatusTest::expectedInitialParameters(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.ParameterStatusTest::parameterMapIsView(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.ParameterStatusTest::reportUpdatedParameters(): org-opentest4j-assertionfailederror-expected-pgj
+  org.postgresql.test.jdbc2.ParameterStatusTest::transactionalParametersAutocommit(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.ParameterStatusTest::transactionalParametersCommit(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.ParameterStatusTest::transactionalParametersRollback(): org-opentest4j-assertionfailederror-expected-dri
+  org.postgresql.test.jdbc2.PreparedStatementTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.RefCursorFetchTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.RefCursorTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ResultSetMetaDataTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ResultSetRefreshTest::testWithDataColumnThatRequiresEscaping(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ResultSetRefreshTest::testWithKeyColumnThatRequiresEscaping(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ResultSetTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.SearchPathLookupTest::searchPathBackwardsCompatibleLookup(): org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.jdbc2.SearchPathLookupTest::searchPathHiddenLookup(): org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.jdbc2.SearchPathLookupTest::searchPathNormalLookup(): org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.jdbc2.ServerCursorTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.ServerErrorTest::initializationError: org-postgresql-util-psqlexception-error-create-d
+  org.postgresql.test.jdbc2.ServerPreparedStmtTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.StatementTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TimeTest::getTime(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TimeTest::getTimeZone(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TimeTest::setTime(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TimestampTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TimezoneCachingTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TimezoneTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.TransactionStateTest::openAfterRollbackToSavepointFromFailed(): org-opentest4j-assertionfailederror-rollback-to
+  org.postgresql.test.jdbc2.TypeCacheDLLStressTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpdateableResultTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testMultiValuedUpsertBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testSingleValuedUpsertBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testSingleValuedUpsertUpdateBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testSingleValuedUpsertUpdateConstantBatch(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testUpsertDoNothingConflict(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testUpsertDoNothingNoConflict(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testUpsertDoUpdateConflict(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.UpsertTest::testUpsertDoUpdateNoConflict(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.optional.CaseOptimiserDataSourceTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.optional.ConnectionPoolTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.optional.PoolingDataSourceTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.optional.SimpleDataSourceTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.optional.SimpleDataSourceWithSetURLTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc2.optional.SimpleDataSourceWithUrlTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.CompositeTest::initializationError: org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.jdbc3.DatabaseMetaDataTest::getColumnsForDomain(): org-postgresql-util-psqlexception-error-create-d
+  org.postgresql.test.jdbc3.DatabaseMetaDataTest::getColumnsForDomain_whenCatalogArgPercentSign_expectNoResults(): org-postgresql-util-psqlexception-error-create-d
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeCallIfNoReturnTest::testInvokeFunction(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeCallIfNoReturnTest::testInvokeFunctionHavingReturnParameter(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeCallIfNoReturnTest::testInvokeProcedure(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeCallTest::testInvokeFunction(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeCallTest::testInvokeFunctionHavingReturnParameter(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeCallTest::testInvokeProcedure(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeSelectTest::testInvokeFunction(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeSelectTest::testInvokeFunctionHavingReturnParameter(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.EscapeSyntaxCallModeSelectTest::testInvokeProcedure(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.GeneratedKeysTest::breakDescribeOnFirstServerPreparedExecution(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::selectWithGeneratedKeysViaNonPrepared(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::selectWithGeneratedKeysViaPreparedExecute(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::selectWithGeneratedKeysViaPreparedExecuteQuery(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testBatchGeneratedKeys(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testCloseStatementClosesRS(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testDelete(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testEmptyRSWithoutReturning(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testGeneratedKeys(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testGeneratedKeysCleared(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testMultipleRows(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testPSDelete(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testPSUpdate(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testReturningWithTrailingSemicolon(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testSerialWorks(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testStatementUpdateCount(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testUpdate(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testWithInsertInsert(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.GeneratedKeysTest::testWithInsertSelect(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.Jdbc3BlobTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testAllInOut(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testCall5Times(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testFunctionNoParametersWithParentheses(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testFunctionNoParametersWithoutParentheses(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetBit1WithoutArg(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetBit2WithoutArg(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetBoolean01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetBooleanWithoutArg(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetByte01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetBytes01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetBytes02(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetDouble01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetDoubleAsReal(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetInt01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetLong01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetObjectDecimal(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetObjectFloat(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetObjectLongVarchar(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testGetShort01(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testInOut(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testMultipleOutExecutions(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testNotEnoughParameters(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testNumeric(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testProcedureInOnlyNativeCall(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testProcedureInOutNativeCall(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testProcedureNoParametersWithParentheses(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testProcedureNoParametersWithoutParentheses(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testSetObjectBit(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testSomeInOut(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testSum(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testTooManyParameters(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testUpdateDecimal(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testUpdateReal(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3CallableStatementTest::testVarcharBool(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.Jdbc3SavepointTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.ParameterMetaDataTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.ProcedureTransactionTest::testProcAutoCommitFalse(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.ProcedureTransactionTest::testProcAutoCommitTrue(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.ProcedureTransactionTest::testProcWithCommitInside(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.ProcedureTransactionTest::testProcWithNoTxnControl(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.ProcedureTransactionTest::testProcWithRollbackInside(): org-postgresql-util-psqlexception-error-syntax-e
+  org.postgresql.test.jdbc3.SendRecvBufferSizeTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.StringTypeParameterTest::initializationError: org-postgresql-util-psqlexception-error-drop-typ
+  org.postgresql.test.jdbc3.TestReturningTest::testMixedCase(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc3.TypesTest::testCallableBoolean(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.TypesTest::testPreparedBoolean(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.TypesTest::testPreparedByte(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc3.TypesTest::testUnknownType(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc4.ArrayTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.BinaryStreamTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.BinaryTest::testGetMetaDataBeforeExecuteQuery(): java-nio-bufferunderflowexception
+  org.postgresql.test.jdbc4.BlobTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownIntLength100Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownIntLength10Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownIntLength200Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownIntLength2Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownIntLengthEmpty(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownIntLengthNull(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownLongLength100Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownLongLength10Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownLongLength200Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownLongLength2Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownLongLengthEmpty(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testKnownLongLengthNull(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testUnknownLength100Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testUnknownLength10Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testUnknownLength200Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testUnknownLength2Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testUnknownLengthEmpty(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.CharacterStreamTest::testUnknownLengthNull(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.ClientInfoTest::testExplicitSetAppNameNotificationIsParsed(): org-opentest4j-assertionfailederror-set-applicat
+  org.postgresql.test.jdbc4.ClientInfoTest::testSetAppName(): org-opentest4j-assertionfailederror-expected-my
+  org.postgresql.test.jdbc4.ClientInfoTest::testSetAppNameProps(): org-opentest4j-assertionfailederror-expected-my
+  org.postgresql.test.jdbc4.DatabaseMetaDataHideUnprivilegedObjectsTest::initializationError: org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.jdbc4.DatabaseMetaDataTest::initializationError: org-postgresql-util-psqlexception-error-drop-seq
+  org.postgresql.test.jdbc4.IsValidTest::testIsValidRemoteClose(): org-postgresql-util-psqlexception-error-invalid
+  org.postgresql.test.jdbc4.JsonbTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.UUIDTest::testUUID(): java-lang-classcastexception-class-java-lang-str
+  org.postgresql.test.jdbc4.UUIDTest::testUUIDString(): org-opentest4j-assertionfailederror-setstring-uu
+  org.postgresql.test.jdbc4.XmlTest::testDOMParse(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testDOMRead(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testDomWrite(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testDoubleSet(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testEmpty(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testFree(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testGetObject(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testSAXRead(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testSAXWrite(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testSet(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testSetNull(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testStAXRead(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testStAXWrite(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testStreamRead(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testStreamWrite(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.XmlTest::testUpdateRS(): org-postgresql-util-psqlexception-error-temporar
+  org.postgresql.test.jdbc4.jdbc41.CloseOnCompletionTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.jdbc41.GetObjectTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc4.jdbc41.SchemaTest::initializationError: org-postgresql-util-psqlexception-error-create-s
+  org.postgresql.test.jdbc42.AdaptiveFetchSizeTest::adaptiveFetching(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.AdaptiveFetchSizeTest::adaptiveFetchingWithMaximumSize(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.AdaptiveFetchSizeTest::adaptiveFetchingWithMinimumSize(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.AdaptiveFetchSizeTest::adaptiveFetchingWithMoreData(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.DatabaseMetaDataTest::initializationError: org-postgresql-util-psqlexception-error-drop-sch
+  org.postgresql.test.jdbc42.GetObject310Test::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.Jdbc42CallableStatementTest::testGetResultSetWithoutArg(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc42.Jdbc42CallableStatementTest::testGetResultSetWithoutArgUnsupportedConversion(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc42.Jdbc42CallableStatementTest::testRegisterInoutParameter(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc42.Jdbc42CallableStatementTest::testRegisterOutParameter(): org-postgresql-util-psqlexception-error-create-f
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testEmptyExecuteLargeBatchPreparedStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testEmptyExecuteLargeBatchStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargeBatchStatementSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargeBatchValuesInsertSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargePreparedStatementStatementLoopSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargePreparedStatementStatementSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargeUpdatePreparedStatementSELECT(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargeUpdatePreparedStatementSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargeUpdateStatementSELECT(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testExecuteLargeUpdateStatementSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testGetLargeUpdateCountPreparedStatementSELECT(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testGetLargeUpdateCountPreparedStatementSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testGetLargeUpdateCountStatementSELECT(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testGetLargeUpdateCountStatementSMALL(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testNullExecuteLargeBatchPreparedStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.LargeCountJdbc42Test::testNullExecuteLargeBatchStatement(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.PreparedStatement64KBindsTest::executeWith65535BindsWorks(): java-util-concurrent-timeoutexception-executewit
+  org.postgresql.test.jdbc42.PreparedStatementTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.SetObject310InfinityTest::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.jdbc42.SetObject310Test::initializationError: org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.plugin.AuthenticationPluginTest::authPluginMD5(): org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.test.plugin.AuthenticationPluginTest::authPluginSASL(): org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.test.ssl.SslTest::initializationError: org-postgresql-util-psqlexception-error-drop-rol
+  org.postgresql.test.util.ByteStreamWriterTest::contentOverTwiceTheSendBufferIsPaddedWithZeros(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testEmpty(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testIOExceptionPassedThroughAsCause(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLength100Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLength10Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLength200Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLength2Kb(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLength2KbReadOnly(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLength37b(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLengthGreaterThanContent(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testLengthLessThanContent(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testRuntimeExceptionPassedThroughAsIOException(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testThreeBuffersWithReadonly(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.ByteStreamWriterTest::testTwoBuffers(): org-postgresql-util-psqlexception-error-drop-tab
+  org.postgresql.test.util.PasswordUtilTest::alterUserPasswordSupportsNullEncoding(): org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.util.PasswordUtilTest::customScramParams(): org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.util.PasswordUtilTest::encodePasswordWithServersPasswordEncryption(): org-postgresql-util-psqlexception-unable-to-dete-2
+  org.postgresql.test.util.PasswordUtilTest::encryptionTypeValueOfOff(): org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.util.PasswordUtilTest::encryptionTypeValueOfOn(): org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.util.PasswordUtilTest::mD5(): org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.util.PasswordUtilTest::scramSha256(): org-postgresql-util-psqlexception-error-create-u
+  org.postgresql.test.xa.XADataSourceTest::initializationError: org-postgresql-util-psqlexception-bad-value-for

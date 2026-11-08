@@ -34,6 +34,7 @@ import provisa.core.org_provisioning as org_provisioning
 from provisa.api.admin.orgs_router import router as admin_orgs_router
 from provisa.auth.middleware import AuthMiddleware
 from provisa.core.database import Database, create_engine_from_url
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from provisa.core.schema_admin import REGISTRY_TABLES, orgs, user_org_memberships
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
@@ -50,6 +51,7 @@ from provisa.core.schema_org import (
     user_role_assignments,
 )
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.served_config import served_config
 
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
@@ -75,6 +77,14 @@ def _prepare_sync():
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
         # A pre-existing org: proves the server_default keeps older rows "ready".
         conn.execute(insert(orgs).values(id="root", name="Enterprise"))
+        # REQ-2190: a node start creates the admin terminal's client role once per database
+        # (startup_seed._seed_catalog_client); provisioning grants it the new org's registry view.
+        conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         # REQ-1301: provisioning refreshes the root org's registry view and registers it as a
         # meta-domain table, so the tenant plane needs the dataset catalog too — not just the roles.
@@ -115,6 +125,9 @@ def planes(monkeypatch):
     monkeypatch.setattr(app_state, "tenant_db", tenant_db, raising=False)
     monkeypatch.setattr(app_state, "record_db", app_state.tenant_db, raising=False)
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
+    # A served app always holds its parsed config; provisioning reads the platform's default region
+    # grant from it (REQ-1922).
+    monkeypatch.setattr(app_state, "config", served_config(), raising=False)
 
     # Stub the data-plane build: this test isolates the control-plane onboarding contract. The
     # background task must still flip the row to "ready" and record the grant call.
@@ -131,6 +144,8 @@ def planes(monkeypatch):
         *,
         env=None,
         ephemeral=False,
+        data_mode=None,
+        mutation_handling=None,
         include_demo=False,
         isolated_engine=False,
         external_engine=None,
@@ -138,6 +153,8 @@ def planes(monkeypatch):
         engine_url=None,
         shard="",
         storage_url=None,
+        model_cloned=False,
+        provisioned=False,
     ):
         from provisa.api.org_runtime import OrgRuntime
         from tests.helpers import ready_org_folder
