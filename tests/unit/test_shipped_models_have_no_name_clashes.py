@@ -34,3 +34,14 @@ def test_the_survey_finds_the_shipped_models():
 def test_a_shipped_model_builds_its_names_table_without_a_clash(config):
     result = survey_names_clash.survey(config)
     assert result["clashes"] == [], result["clashes"]
+
+
+def test_the_survey_builds_the_runtime_source_set():
+    """The default demo's model as boot builds it: the control-plane source boot adds, and the
+    checkers that share its catalog (catalog_name_for_source)."""
+    config = _SCRIPT.parents[1] / "config" / "provisa-install.yaml"
+    result = survey_names_clash.survey(config)
+    assert result["clashes"] == [], result["clashes"]
+    assert result["catalogs"]["provisa-admin"] == "provisa_admin"
+    assert result["catalogs"]["dq-checker"] == "provisa_admin"
+    assert result["catalogs"]["dq-soda"] == "provisa_admin"

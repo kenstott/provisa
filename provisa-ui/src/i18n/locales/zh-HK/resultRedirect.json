@@ -2,6 +2,7 @@
   "resultRedirect": {
     "landed": "結果（{{rows}} 行）已寫入結果儲存庫。",
     "landedAt": "結果（{{rows}} 行）已寫入結果儲存庫：{{url}}",
-    "download": "下載"
+    "download": "下載",
+    "downloadFailed": "下載失敗：{{reason}}"
   }
 }

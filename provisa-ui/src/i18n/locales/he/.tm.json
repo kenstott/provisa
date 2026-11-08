@@ -9739,12 +9739,6 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
   "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
-  "he/tagsTab.json::tagsTab.scope_product": "Data product",
-  "he/tagsTab.json::tagsTab.scope_term": "Glossary term",
-  "he/tagsTab.json::tagsTab.scope_document": "Library document",
-  "he/tagsTab.json::tagsTab.scope_section": "Library section",
-  "he/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "he/referenceLibrary.json::referenceLibrary.fieldTags": "Tags",
   "tour.json::tour.steps.customer360Scenario.title": "Customer 360 across four systems",
   "tour.json::tour.steps.customer360Scenario.description": "Halyard Software sells to businesses, and each customer lives in four systems: <strong>Salesforce</strong> holds its account and renewals, <strong>ServiceNow</strong> its incidents, <strong>Jira</strong> engineering's bugs and <strong>Stripe</strong> its invoices. The question: <em>which accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?</em> On the way: SaaS sources, a customer master read live, relationships, lineage, materialized views, data-quality findings and a data product.",
   "tour.json::tour.steps.customer360Systems.title": "Each system has its own ids",
@@ -9785,5 +9779,13 @@
   "he/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
   "he/requestsPage.json::requestsPage.deliveryEmail": "Email",
   "he/requestsPage.json::requestsPage.deliveryEvents": "Events only",
-  "he/requestsPage.json::requestsPage.deliveryBoth": "Both"
+  "he/requestsPage.json::requestsPage.deliveryBoth": "Both",
+  "he/dataProductsTab.json::dataProductsTab.detail.inputsLineageLink": "See column lineage",
+  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneInputs": "Inputs",
+  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneTables": "This product's tables",
+  "he/dataProductsTab.json::dataProductsTab.detail.lineageTitle": "Column lineage: where this product comes from",
+  "he/graph3d.json::graph3d.hopsFrom": "Hops from {{focus}}",
+  "he/graph3d.json::graph3d.hopsFromMatches": "Hops from the matches",
+  "he/graph3d.json::graph3d.relatedTables": "Related tables",
+  "he/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}"
 }

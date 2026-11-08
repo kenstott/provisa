@@ -27,6 +27,7 @@ from types import SimpleNamespace
 import duckdb
 import pytest
 from sqlalchemy import insert, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 import provisa.api.app  # noqa: F401  (says whether the deployment holds many organizations)
 from provisa.core import secrets_store
@@ -446,3 +447,82 @@ async def test_the_boot_pass_records_the_keys_of_a_table_registered_before_its_s
         "tag": (False, True),
         "name": (False, False),
     }
+
+
+async def _register_admin_table(db, table_name: str) -> None:
+    """``table_name`` registered on the control plane's own source, as the ops seed registers it."""
+    from provisa.core.environments import org_schema
+
+    async with db.acquire() as conn:
+        # The template's control plane may already hold the built-in domain and source.
+        await conn.execute_core(
+            pg_insert(domains).values(id="ops").on_conflict_do_nothing(index_elements=["id"])
+        )
+        await conn.execute_core(
+            pg_insert(sources)
+            .values(id="provisa-admin", type="postgresql")
+            .on_conflict_do_update(index_elements=["id"], set_={"type": "postgresql"})
+        )
+        table_id = (
+            await conn.execute_core(
+                insert(registered_tables)
+                .values(
+                    source_id="provisa-admin",
+                    domain_id="ops",
+                    schema_name=org_schema("default"),
+                    table_name=table_name,
+                )
+                .returning(registered_tables.c.id)
+            )
+        ).scalar_one()
+        await conn.execute_core(
+            insert(table_columns).values(
+                table_id=table_id,
+                domain_id="ops",
+                column_name="id",
+                visible_to=["org_admin"],
+                data_type="text",
+            )
+        )
+
+
+async def test_the_boot_pass_reads_an_ops_view_registered_over_another_tables_keys(
+    monkeypatch, control_plane
+):
+    """``ops.requests`` is registered under the name ``requests`` and shows ``creation_requests``:
+    no relation of the registered name exists, and its key is that table's (REQ-2216)."""
+    from provisa.api import startup_seed
+    from provisa.api.app import state
+    from provisa.federation import replica_routing
+
+    db = control_plane.org()
+    await _register_admin_table(db, "requests")
+
+    async def _none_kept(_state):
+        return frozenset()
+
+    monkeypatch.setattr(replica_routing, "kept_sources", _none_kept)
+    monkeypatch.setattr(type(state), "source_pools", property(lambda _s: SourcePool()))
+    monkeypatch.setattr(state, "model_db", db, raising=False)
+    await startup_seed._resolve_pk_from_sources()
+    assert await _marks(db) == {"id": (True, False)}
+
+
+async def test_the_boot_pass_names_an_admin_table_that_has_no_relation(monkeypatch, control_plane):
+    """A table registered on the control plane with nothing to read is a defect of the seed, not a
+    source that cannot be reached now: it stops the pass, naming the table."""
+    from provisa.api import startup_seed
+    from provisa.api.app import state
+    from provisa.federation import replica_routing
+
+    db = control_plane.org()
+    await _register_admin_table(db, "no_such_relation")
+
+    async def _none_kept(_state):
+        return frozenset()
+
+    monkeypatch.setattr(replica_routing, "kept_sources", _none_kept)
+    monkeypatch.setattr(type(state), "source_pools", property(lambda _s: SourcePool()))
+    monkeypatch.setattr(state, "model_db", db, raising=False)
+    with pytest.raises(RuntimeError, match="no_such_relation"):
+        await startup_seed._resolve_pk_from_sources()

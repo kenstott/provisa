@@ -9736,12 +9736,6 @@
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
   "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
-  "zh-HK/tagsTab.json::tagsTab.scope_product": "Data product",
-  "zh-HK/tagsTab.json::tagsTab.scope_term": "Glossary term",
-  "zh-HK/tagsTab.json::tagsTab.scope_document": "Library document",
-  "zh-HK/tagsTab.json::tagsTab.scope_section": "Library section",
-  "zh-HK/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "zh-HK/referenceLibrary.json::referenceLibrary.fieldTags": "Tags",
   "tour.json::tour.steps.customer360Scenario.title": "Customer 360 across four systems",
   "tour.json::tour.steps.customer360Scenario.description": "Halyard Software sells to businesses, and each customer lives in four systems: <strong>Salesforce</strong> holds its account and renewals, <strong>ServiceNow</strong> its incidents, <strong>Jira</strong> engineering's bugs and <strong>Stripe</strong> its invoices. The question: <em>which accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?</em> On the way: SaaS sources, a customer master read live, relationships, lineage, materialized views, data-quality findings and a data product.",
   "tour.json::tour.steps.customer360Systems.title": "Each system has its own ids",
@@ -9782,5 +9776,13 @@
   "zh-HK/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
   "zh-HK/requestsPage.json::requestsPage.deliveryEmail": "Email",
   "zh-HK/requestsPage.json::requestsPage.deliveryEvents": "Events only",
-  "zh-HK/requestsPage.json::requestsPage.deliveryBoth": "Both"
+  "zh-HK/requestsPage.json::requestsPage.deliveryBoth": "Both",
+  "zh-HK/dataProductsTab.json::dataProductsTab.detail.inputsLineageLink": "See column lineage",
+  "zh-HK/dataProductsTab.json::dataProductsTab.detail.lineageLaneInputs": "Inputs",
+  "zh-HK/dataProductsTab.json::dataProductsTab.detail.lineageLaneTables": "This product's tables",
+  "zh-HK/dataProductsTab.json::dataProductsTab.detail.lineageTitle": "Column lineage: where this product comes from",
+  "zh-HK/graph3d.json::graph3d.hopsFrom": "Hops from {{focus}}",
+  "zh-HK/graph3d.json::graph3d.hopsFromMatches": "Hops from the matches",
+  "zh-HK/graph3d.json::graph3d.relatedTables": "Related tables",
+  "zh-HK/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}"
 }

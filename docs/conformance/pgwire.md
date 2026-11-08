@@ -4041,27 +4041,24 @@ Each cell reads exact / equivalent / refused by name / differs.
 
 On DuckDB, Trino and ClickHouse these functions are served for constants only. A column argument is refused by name:
 
-- `to_tsvector`
 - `json_to_tsvector`
 - `jsonb_to_tsvector`
+- `to_tsvector` of `json` or `jsonb`
 - `to_tsquery`
-- `plainto_tsquery`
-- `phraseto_tsquery`
 - `websearch_to_tsquery`
 - `ts_headline`
-- `ts_lexize`
-- `ts_match_tt`
-- `ts_match_tq`
 - `ts_parse`
 - `ts_debug`
 - `ts_stat`
 - `ts_rewrite`
 
-Every `tsquery` argument, of any function, is held to the same rule. A `tsquery` constant is a literal such as `'a & b'::tsquery`, so `ts_rank(v, to_tsquery('english', 'a'))` is refused as well.
+These read a text column row by row: `to_tsvector`, `plainto_tsquery` and `phraseto_tsquery` of `text`, the document of `ts_match_tt` and `ts_match_tq`, and the word of `ts_lexize`. The engine reads the text as PostgreSQL's default parser does, with the `english` or `simple` configuration (the `english_stem` or `simple` dictionary). A text the parser reads in a way these forms do not cover is refused by name, row by row. Such a text holds a dot, an at sign, a slash, an ampersand, a hyphen or an angle bracket outside an email address, URL, host, file path, hyphenated word, number or tag. A configuration or dictionary must be a constant. A column is read as text only where the statement says it is text: a cast such as `body::text`, or a `||` concatenation. Without that, `to_tsvector(body)` is refused, because the `json` overload would answer differently.
 
-Column forms of these functions are not built. Functions that read a `tsvector`, such as `ts_delete`, `setweight` and `ts_rank`, take a column for the vector.
+Every `tsquery` argument, of any function, must be a constant: a literal such as `'a & b'::tsquery`, or `to_tsquery`, `plainto_tsquery`, `phraseto_tsquery` or `websearch_to_tsquery` of constants. So `ts_rank(to_tsvector(body::text), to_tsquery('english', 'a'))` is served, and a `tsquery` column is refused.
 
-The `@@` operator has no form on these engines. It is not refused by name: the statement reaches the engine and fails there. `ts_match_vq` is the spelling that works.
+Functions that read a `tsvector`, such as `ts_delete`, `setweight` and `ts_rank`, take a column for the vector.
+
+The `@@` operator is served where the statement says its operands' types: a `tsvector` and a `tsquery` (`ts_match_vq`, `ts_match_qv`), text and a `tsquery` (`ts_match_tq`), or two texts (`ts_match_tt`). An unknown literal takes the type of the other operand, as PostgreSQL resolves it. An operand whose type the statement does not say, such as a bare column, is refused by name.
 
 ### Advisory locks
 

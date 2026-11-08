@@ -80,7 +80,8 @@ export interface LineageBox {
   collapsed: boolean;
   /** Columns of the relation no edge touches — counted in the header, not drawn. */
   unused: number;
-  /** REQ-1667: the swimlane, by distance from the lane-0 relations (negative = upstream). */
+  /** REQ-1667, REQ-2174: the swimlane (lanesFrom): 0 the lane-0 relations, -1 their inputs, -1 - n
+   *  n hops beyond the inputs, BETWEEN_LANE what they read the inputs through, +1 a consumer. */
   lane: number | null;
   width: number;
   height: number;
@@ -128,9 +129,9 @@ export interface LineageModelOptions {
   /** Draw every column as a row, not only the ones an edge touches (Complete Lineage: every column
    *  the role can see is in use, whether or not a registered view derives from it). */
   allColumns?: boolean;
-  /** REQ-1667: relations that define lane 0. Every other box takes the lane of its distance from
-   *  them — contributors -1, -2… by shortest upstream path, consumers +1. */
-  lanesAround?: ReadonlySet<string>;
+  /** REQ-1667, REQ-2174: the relations of lane 0 (``members``) and their inputs (``inputs``, lane
+   *  -1); every other box takes its lane from them (lanesFrom). */
+  lanesAround?: { members: ReadonlySet<string>; inputs: ReadonlySet<string> };
   /** How a box names its registered relation — a page that knows the catalog names it as the
    *  catalog does. Unset, a box is named by the relation the server reports. */
   relationLabel?: (relation: string) => string;
@@ -357,16 +358,14 @@ export function rowWidth(box: { width: number }): number {
   return box.width - 8;
 }
 
-// REQ-1667: lanes by distance from the lane-0 relations. A contributor's lane is its LONGEST
-// upstream path to lane 0 (a table that feeds a member both directly and through a view sits at
-// -2, so every edge runs rightward across lanes and none doubles back inside one); anything not
-// upstream that a lane-0 relation feeds directly is +1. A box the graph does not connect to lane 0
-// at all has no lane and is left to the layout.
+// REQ-1667, REQ-2174 (amended 2026-11-07): lanes around the lane-0 relations and their inputs
+// (lanesFrom). A box the graph does not connect to lane 0 at all has no lane and is left to the
+// layout.
 function assignLanes(
   boxes: Map<string, LineageBox>,
   nodeBox: Map<string, string>,
   graph: LineageGraphData,
-  around: ReadonlySet<string>,
+  around: { members: ReadonlySet<string>; inputs: ReadonlySet<string> },
 ): void {
   const links: [string, string][] = [];
   for (const e of graph.edges) {
@@ -374,17 +373,29 @@ function assignLanes(
     const tb = nodeBox.get(e.target);
     if (sb && tb) links.push([sb, tb]);
   }
-  const zero = [...boxes.values()]
-    .filter((b) => b.relation !== null && around.has(b.relation))
-    .map((b) => b.id);
-  const lane = lanesFrom(links, zero);
+  const of = (relations: ReadonlySet<string>) =>
+    [...boxes.values()]
+      .filter((b) => b.relation !== null && relations.has(b.relation))
+      .map((b) => b.id);
+  const lane = lanesFrom(links, of(around.members), of(around.inputs));
   for (const box of boxes.values()) box.lane = lane.get(box.id) ?? null;
 }
 
-/** REQ-1667, REQ-2128: the lane of each node of a directed graph (``[from, to]`` links) by its
- * distance from ``zero`` (lane 0): upstream nodes by their longest path down to lane 0, negated;
- * a node a lane-0 node feeds directly, not upstream, +1. A node not so connected has no lane. */
-export function lanesFrom(links: [string, string][], zero: string[]): Map<string, number> {
+/** REQ-2174: the lane between the inputs (-1) and lane 0: what lane 0 reads its inputs through
+ * (a view between a member and its input), or reads that comes from no input. */
+export const BETWEEN_LANE = -0.5;
+
+/** REQ-1667, REQ-2128, REQ-2174 (amended 2026-11-07): the lane of each node of a directed graph
+ * (``[from, to]`` links) upstream of ``zero`` (lane 0). Its ``inputs`` are lane -1 wherever they
+ * sit; a node upstream of an input is -1 - n, n its LONGEST path down to an input (one that feeds
+ * an input both directly and through another sits a lane further left, so every edge runs
+ * rightward across lanes); any other node upstream of lane 0 is BETWEEN_LANE. A node a lane-0 node
+ * feeds directly, not upstream, is +1. A node not so connected has no lane. */
+export function lanesFrom(
+  links: [string, string][],
+  zero: string[],
+  inputs: string[],
+): Map<string, number> {
   const feeders = new Map<string, Set<string>>();
   const consumers = new Map<string, Set<string>>();
   for (const [sb, tb] of links) {
@@ -393,11 +404,12 @@ export function lanesFrom(links: [string, string][], zero: string[]): Map<string
     (consumers.get(sb) ?? consumers.set(sb, new Set()).get(sb)!).add(tb);
   }
   const zeroSet = new Set(zero);
-  // Longest path DOWN to lane 0 from each upstream box, memoized; a cycle contributes nothing.
+  const inputSet = new Set(inputs.filter((id) => !zeroSet.has(id)));
+  // Longest path DOWN to an input from each box, memoized; a cycle contributes nothing.
   const depth = new Map<string, number>();
   const visiting = new Set<string>();
   const depthOf = (id: string): number => {
-    if (zeroSet.has(id)) return 0;
+    if (inputSet.has(id)) return 0;
     const known = depth.get(id);
     if (known !== undefined) return known;
     if (visiting.has(id)) return -Infinity;
@@ -425,7 +437,7 @@ export function lanesFrom(links: [string, string][], zero: string[]): Map<string
   for (const id of zero) lane.set(id, 0);
   for (const id of upstream) {
     const d = depthOf(id);
-    if (d !== -Infinity) lane.set(id, -d);
+    lane.set(id, d === -Infinity ? BETWEEN_LANE : -1 - d);
   }
   for (const id of zero) {
     for (const c of consumers.get(id) ?? []) if (!lane.has(c)) lane.set(c, 1);
