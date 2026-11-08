@@ -882,12 +882,40 @@ def _typed_by_its_form(node: exp.Expr) -> bool:
     return isinstance(test, exp.In) and isinstance(test.this, exp.Typeof)
 
 
-def _never_an_instant(value: exp.Expr) -> bool:
-    """Whether the value is a list or object built here (an ARRAY_AGG, a JSON_OBJECT, a
-    JSON_ARRAY, filtered or not): its type is never an instant, so nothing is told apart."""
+def _unwrapped(value: exp.Expr) -> exp.Expr:
     while isinstance(value, (exp.Filter, exp.Paren)):
         value = value.this
-    return isinstance(value, (exp.ArrayAgg, exp.JSONObject, exp.JSONArray, exp.Array))
+    return value
+
+
+def _never_an_instant(value: exp.Expr) -> bool:
+    """Whether the value is an object or array built here (a JSON_OBJECT, a JSON_ARRAY, filtered
+    or not): its members were each told apart as they were written, so nothing is told apart
+    again."""
+    return isinstance(_unwrapped(value), (exp.JSONObject, exp.JSONArray))
+
+
+def _is_list(value: exp.Expr) -> bool:
+    """Whether the value is a list of the statement's own (an ARRAY_AGG or an ARRAY[...]): to_json
+    of it holds instants DuckDB writes as its text, by the list's type, which only it knows."""
+    return isinstance(_unwrapped(value), (exp.ArrayAgg, exp.Array))
+
+
+_INSTANT_LISTS = "('TIMESTAMP WITH TIME ZONE[]', 'TIMESTAMP[]')"
+
+
+def _list_to_json(value: str) -> str:
+    """to_json(list): a list of instants with each written as PostgreSQL's JSON writes it (the ISO
+    form, a whole offset), a list of anything else left to to_json. The value is named once, as
+    in _instant_to_json."""
+    iso = (
+        r"regexp_replace(regexp_replace(CAST(e AS VARCHAR), '^(\d+-\d\d-\d\d) ', '\1T'), "
+        r"'([+-]\d\d)$', '\1:00')"
+    )
+    return (
+        f"list_transform([{value}], x -> CASE WHEN typeof(x) IN {_INSTANT_LISTS} "
+        f"THEN to_json(list_transform(x, e -> {iso})) ELSE to_json(x) END)[1]"
+    )
 
 
 def after(sql: str) -> str:
@@ -911,12 +939,17 @@ def after(sql: str) -> str:
                 value = node.expressions[0].transform(_written).sql(dialect="duckdb")
                 return sqlglot.parse_one(_encode_escape(value), read="duckdb")
             if name == _TO_JSON and len(node.expressions) == 1:
-                if _typed_by_its_form(node) or _never_an_instant(node.expressions[0]):
+                value = node.expressions[0]
+                listed = _is_list(value)
+                # A list is told apart here even in the branch of the scalar form, whose
+                # typeof test names no list.
+                if (not listed and _typed_by_its_form(node)) or _never_an_instant(value):
                     return node
                 # Its value's own placeholders written first: the form replacing the call is
                 # not walked again.
-                written = node.expressions[0].transform(_written).sql(dialect="duckdb")
-                return sqlglot.parse_one(_instant_to_json(written), read="duckdb")
+                written = value.transform(_written).sql(dialect="duckdb")
+                form = _list_to_json if listed else _instant_to_json
+                return sqlglot.parse_one(form(written), read="duckdb")
         return node
 
     return sqlglot.parse_one(sql, read="duckdb").transform(_written).sql(dialect="duckdb")
