@@ -49,6 +49,7 @@ sorting it would change what it means.
 
 from __future__ import annotations
 
+import functools
 from typing import Any, NamedTuple
 from urllib.parse import quote, unquote
 
@@ -129,15 +130,23 @@ def kind_path(kind_dir: str, *parts: str) -> str:
     return f"{kind_dir}/" + "/".join(_segment(p) for p in parts) + SUFFIX
 
 
+@functools.cache
+def _excluded_columns(table: str) -> frozenset[str]:
+    """What :func:`_model_columns` leaves out of ``table``'s rows: the same for every row of it,
+    so made once per table rather than once per row of every projection."""
+    excluded = STORAGE_COLUMNS | DERIVED_COLUMNS | DERIVED_COLUMNS_BY_TABLE.get(table, frozenset())
+    if table in BINDING_COLUMNS:
+        excluded = excluded | BINDING_COLUMNS[table] | {BINDING_COLUMN}
+    return excluded
+
+
 def _model_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
     """``row`` less everything that is storage, derivation, or a binding."""
-    excluded = STORAGE_COLUMNS | DERIVED_COLUMNS | DERIVED_COLUMNS_BY_TABLE.get(table, frozenset())
+    excluded = _excluded_columns(table)
     if table == "sources":
         # REQ-1942: the type the model gives it; a row bound to a synthetic store holds the
         # store's in its place.
         row = {**row, "type": model_type(row)}
-    if table in BINDING_COLUMNS:
-        excluded = excluded | BINDING_COLUMNS[table] | {BINDING_COLUMN}
     return {k: v for k, v in row.items() if k not in excluded and v is not None}
 
 
@@ -162,10 +171,15 @@ def fingerprint(value: Any) -> Any:
     equal fingerprints are the same values of the same types (``1``, ``1.0``, ``True`` and ``"1"``
     all differ), so :func:`dump` renders them to the same text."""
     if isinstance(value, dict):
-        return (
-            "dict",
-            tuple(sorted(((fingerprint(k), fingerprint(v)) for k, v in value.items()), key=repr)),
-        )
+        pairs = [(fingerprint(k), fingerprint(v)) for k, v in value.items()]
+        # Ordered by key: a dict's keys are distinct, so their fingerprints' text orders the pairs
+        # as the whole pairs' text does, without writing every value's subtree out at every level
+        # it is nested in. Two keys of one text (keys of different types rendering alike) fall
+        # back to ordering by the whole pair.
+        keyed = {repr(k): (k, v) for k, v in pairs}
+        if len(keyed) == len(pairs):
+            return ("dict", tuple(keyed[text] for text in sorted(keyed)))
+        return ("dict", tuple(sorted(pairs, key=repr)))
     if isinstance(value, (list, tuple)):
         return (type(value).__name__, tuple(fingerprint(v) for v in value))
     return (type(value).__name__, value)
