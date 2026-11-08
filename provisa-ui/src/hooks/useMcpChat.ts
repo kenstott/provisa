@@ -25,6 +25,13 @@ export type ChatArtifact =
       content_type: string | null;
     };
 
+/** The artifact an `artifact` stream event carries: the event minus its `type` tag. Shared by every
+ *  chat that reads the server's stream, so a new artifact is handled in one place. */
+export function artifactFromEvent(ev: { type: string }): ChatArtifact {
+  const { type: _type, ...artifact } = ev;
+  return artifact as ChatArtifact;
+}
+
 export interface ChatMsg {
   role: "user" | "assistant";
   text: string;
@@ -128,8 +135,7 @@ export function useMcpChat(
         }
         if (ev.type === "text") turn.text(ev.text);
         else if (ev.type === "artifact") {
-          const { type: _type, ...artifact } = ev;
-          turn.artifact(artifact as ChatArtifact);
+          turn.artifact(artifactFromEvent(ev));
         }
         else if (ev.type === "tool_use")
           setTools((p) => [...p, { name: ev.name, input: ev.input, running: true }]);
