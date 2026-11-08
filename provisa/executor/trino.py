@@ -11,7 +11,8 @@
 """The Trino engine read's retry policy and the shape of a dial that reached no coordinator.
 
 Reads run through the Zaychik Arrow Flight SQL proxy (``executor/trino_flight.py``, REQ-2194);
-this module says which of their failures are retried and which mean the engine is unreachable.
+this module says which of their failures are retried and which mean the engine is unreachable,
+and hands those reads the client's own value mappers.
 """
 
 # Requirements: REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-303
@@ -19,6 +20,8 @@ this module says which of their failures are retried and which mean the engine i
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
+from typing import Any
 
 import trino
 
@@ -58,6 +61,18 @@ def is_connection_error(exc: BaseException) -> bool:
     from provisa.executor.trino_flight import EngineUnreachable
 
     return isinstance(exc, (trino.exceptions.TrinoConnectionError, EngineUnreachable))
+
+
+def value_mapper(type_signature: Any) -> Callable[[Any], Any]:
+    """The Trino client's value mapper for a type signature: the one function that turns a
+    protocol value into the Python value the Trino client gives. Lives here for the reason
+    :func:`is_connection_error` does."""
+    from trino.mapper import RowMapperFactory
+
+    rows = RowMapperFactory().create(
+        columns=[{"typeSignature": type_signature}], legacy_primitive_types=False
+    )
+    return lambda value: rows.map([[value]])[0][0]
 
 
 def _backoff_secs(attempt: int, cap: float = 30.0) -> float:

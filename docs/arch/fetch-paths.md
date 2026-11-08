@@ -218,8 +218,8 @@ ways; `zaychik/trino-statement-protocol.patch` and `executor/trino_flight.py` cl
    client's own value mappers (`trino.mapper`), so a nested value is the Python value the client
    gave (`NamedRowTuple`, `UUID`, `relativedelta`, ...). A REAL is read as the shortest decimal of
    the float, as the protocol writes it.
-3. **Session**: every Flight statement is a Trino session of its own. Its `source` (the org,
-   REQ-056), catalog, schema and session properties (the FTE hints, the caller's hints,
+3. **Session**: every Flight statement is a Trino session of its own. Its `source` (the org),
+   catalog, schema and session properties (the FTE hints, the caller's hints,
    `query_max_execution_time`) travel in the `x-provisa-trino-context` call header and reach
    Trino as the client protocol sends them. With no header the proxy keeps the JDBC driver's
    source `trino-jdbc` (the `global.flight` resource group).
@@ -240,13 +240,13 @@ rows of a streamed read are being read raises the engine's error at the consumer
 retried (the materialized `execute` retries the whole read).
 
 An org whose terminal is a coordinator other than the proxy's configured one (an external engine,
-REQ-1412; an isolated host, REQ-1043) names it in the context header (`server`). The proxy dials it
+an isolated host) names it in the context header (`server`). The proxy dials it
 only if the deployment declared it at start (`TF_TRINO_ALLOWED_SERVERS`: `scheme://host:port`
 entries, a host may hold `{org_id}`; compose fills it from `PROVISA_ZAYCHIK_ALLOWED_SERVERS`, and
 `docker-compose.isolated-engine.yml` adds the isolated host template). Any other address is refused
 by name (`CoordinatorRefused`) with nothing dialed: a request never chooses where the proxy
 connects. On a provisioning deployment each shard's proxy is a sidecar in front of that shard's own
-coordinator (REQ-1518) and no statement names one.
+coordinator and no statement names one.
 
 ## 5. Measured: DuckDB, 2,000,000 rows
 

@@ -290,12 +290,9 @@ def column_types(schema: pa.Schema) -> list[str]:
 def _mapper(signature: bytes) -> Callable[[Any], Any]:
     """The Trino client's value mapper for a type signature: the one function that turns a
     protocol value into the Python value the Trino client gives."""
-    from trino.mapper import RowMapperFactory
+    from provisa.executor.trino import value_mapper
 
-    rows = RowMapperFactory().create(
-        columns=[{"typeSignature": json.loads(signature)}], legacy_primitive_types=False
-    )
-    return lambda value: rows.map([[value]])[0][0]
+    return value_mapper(json.loads(signature))
 
 
 def _field_values(f: pa.Field, column: pa.Array | pa.ChunkedArray) -> list[Any]:
