@@ -196,7 +196,9 @@ async def reload_model(rt: "OrgRuntime") -> object:
 
     async def _rebuild() -> None:
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
-        await _rebuild_schemas(announce=False)
+        # Built at the stored stamp by the time its turn comes (this worker's own change), it is
+        # not built again.
+        await _rebuild_schemas(announce=False, if_stale=True)
         # REQ-1922: this region's state rows whose model owner the change removed.
         await prune_region_state(rt)
         # REQ-1003: the org's triggers are its model, so a trigger made or changed on another

@@ -469,17 +469,14 @@ class TestImputeStableIds:
         assert "Company|2" in out
 
     @pytest.mark.asyncio
-    async def test_register_node_ids_registers_then_replaces(self):
+    async def test_register_node_ids_registers_then_replaces(self, control_plane):
         """register_node_ids registers the node in node_ids and mutates rows in place with its id."""
         from sqlalchemy import select
 
         from provisa.core import schema_org
-        from provisa.core.database import Database, create_engine_from_url
         from provisa.gql.assembler import register_node_ids
 
-        db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="node-ids")
-        with db.engine.begin() as conn:
-            schema_org.node_ids.create(conn)
+        db = control_plane.org()
 
         rows = [{"node": {"id": "Person|5", "label": "Person", "properties": {}}}]
         await register_node_ids(rows, db)

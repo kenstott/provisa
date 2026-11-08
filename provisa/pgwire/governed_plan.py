@@ -64,9 +64,9 @@ from typing import Any
 
 
 def _rebuild_in_progress() -> bool:
-    from provisa.api.app import _rebuild_schemas_lock
+    from provisa.api.app import rebuild_in_progress
 
-    return _rebuild_schemas_lock.locked()
+    return rebuild_in_progress()
 
 
 def governance_anchors(state: Any, role_id: str) -> tuple[Any, ...]:

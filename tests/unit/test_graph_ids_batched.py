@@ -25,19 +25,16 @@ import pytest
 from sqlalchemy import event, select
 
 from provisa.core import schema_org
-from provisa.core.database import Database, create_engine_from_url
+from provisa.core.database import Database
 from provisa.gql.assembler import register_node_ids, register_rel_ids
 
 pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture
-def db() -> Database:
-    database = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="graph-ids")
-    with database.engine.begin() as conn:
-        schema_org.node_ids.create(conn)
-        schema_org.rel_ids.create(conn)
-    return database
+def db(control_plane) -> Database:
+    """The org's model store, on the control plane of this test's own."""
+    return control_plane.org()
 
 
 def _count_statements(database: Database) -> list[str]:
@@ -67,6 +64,8 @@ async def _held(database: Database, table) -> dict[str, tuple[int, dict]]:  # no
 
 
 async def test_the_statements_do_not_grow_with_the_nodes(db: Database) -> None:
+    # The store's first registration also reads what it needs once; the ones compared come after.
+    await register_node_ids(_nodes(1, label="Warm"), db)
     small, large = _nodes(3), _nodes(300)
     seen = _count_statements(db)
     await register_node_ids(small, db)
@@ -120,6 +119,7 @@ async def test_relationships_are_registered_the_same_way(db: Database) -> None:
             for i in range(n)
         ]
 
+    await register_rel_ids([{"r": {**edges(1)[0]["r"], "identity": "Warm|0"}}], db)
     seen = _count_statements(db)
     await register_rel_ids(edges(2), db)
     for_two = len(seen)
@@ -128,5 +128,15 @@ async def test_relationships_are_registered_the_same_way(db: Database) -> None:
     await register_rel_ids(rows, db)
     assert len(seen) == for_two
     held = await _held(db, schema_org.rel_ids)
+    held.pop("Warm|0")
     assert len(held) == 200
     assert {r["r"]["identity"] for r in rows} == {v[0] for v in held.values()}
+
+
+async def test_a_row_the_store_refuses_is_raised_not_tried_again(db: Database) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    # node_ids.label is NOT NULL: no race leaves this row held, so nothing is retried.
+    rows = [{"n": {"id": "Pet|1", "label": None, "properties": {}}}]
+    with pytest.raises(IntegrityError):
+        await register_node_ids(rows, db)

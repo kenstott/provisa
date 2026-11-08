@@ -583,7 +583,11 @@ async def _register_ids(
                     await conn.execute_core_many(table.insert(), new)
                     await conn.execute_core_many(changed_stmt, changed)
             except IntegrityError:
-                # Another read registered one of the new ids first: it is held now, read again.
+                # Lost a race: another read registered one of the new ids first, so it is held now
+                # and the next pass reads it. Only a race leaves one held -- with none, the INSERT
+                # was refused by a constraint, and that is raised, not tried again.
+                if not await held_rows([row["composite_id"] for row in new]):
+                    raise
                 continue
             break
         if new:
