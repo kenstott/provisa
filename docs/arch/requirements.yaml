@@ -93742,7 +93742,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the role. They are the role''s ceiling: defaults, grants and identity-provider lists all stay inside
     them, and there is no separate ceiling. As a shortcut, setting them also writes the role''s default
     entitlements, every capability the role holds scoped to those domains, which can then be narrowed (maintainer
-    2026-11-07).'
+    2026-11-07). (Amended 2026-11-08, HOW THE LISTS ARE NAMED IN A TOKEN:) The claim that carries the nested
+    form is named per identity provider, in that provider''s settings, which the admin UI edits; with no
+    name set, that provider sends no nested lists. The flat form is provisa:<role>:<kind>:<id>, and an empty
+    identifier (provisa:<role>:<kind>:) is an explicit empty list: nothing of that kind. (Maintainer 2026-11-08.)'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
