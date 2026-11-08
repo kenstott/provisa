@@ -940,9 +940,7 @@ async def _a_seeded_table(db: Database, name: str = "assignments") -> None:
         await conn.execute_core(
             insert(metadata.tables["sources"]).values(id="graphql-demo", type="graphql_remote")
         )
-        await conn.execute_core(
-            insert(metadata.tables["domains"]).values(id="shelter", description="Shelter")
-        )
+        await domain_repo.upsert(conn, Domain(id="shelter", description="Shelter"))
         await table_repo.upsert(
             conn,
             Table(
@@ -957,7 +955,8 @@ async def _a_seeded_table(db: Database, name: str = "assignments") -> None:
 
 def _a_product_and_a_relationship_on_a_seeded_table() -> dict:
     return _raw(
-        tables=[_table("orders")],
+        tables=[_table("orders", domain_id="shelter")],
+        domains=("sales", "shelter"),
         relationships=[
             {
                 "id": "orders-to-assignments",
@@ -971,7 +970,7 @@ def _a_product_and_a_relationship_on_a_seeded_table() -> dict:
         data_products=[
             {
                 "id": "workforce_ops",
-                "domain_id": "sales",
+                "domain_id": "shelter",
                 "name": "Workforce Ops",
                 "tables": ["assignments", "orders"],
             }
@@ -1013,6 +1012,7 @@ async def test_a_seed_holds_a_seeded_member_until_its_table_exists(db):
 
 async def test_a_member_no_registration_holds_is_refused_by_name(db):
     raw = _a_product_and_a_relationship_on_a_seeded_table()
+    raw["relationships"] = []
     raw["data_products"][0]["tables"] = ["orders", "nowhere"]
     async with db.acquire() as conn:
         with pytest.raises(ValueError, match=r"workforce_ops.*'nowhere'"):
@@ -1021,6 +1021,21 @@ async def test_a_member_no_registration_holds_is_refused_by_name(db):
     async with db.acquire() as conn:
         with pytest.raises(ValueError, match=r"workforce_ops.*'nowhere'"):
             await config_loader.set_product_members(conn, parse_config_dict(raw))
+
+
+async def _seed_like_the_boot(plane: Database, raw: dict) -> None:
+    """The seeded source's tables, in the store before an export is applied to it, as a boot's
+    registration leaves them (a seeded table is in every store and in no file's export)."""
+    from provisa.core.db import SEEDED_SOURCE_IDS
+
+    seeded = {
+        **raw,
+        "tables": [t for t in raw.get("tables", []) if t["source_id"] in SEEDED_SOURCE_IDS],
+    }
+    for key in ("relationships", "data_products", "rls_rules", "tag_assignments", "glossary_terms"):
+        seeded.pop(key, None)
+    async with plane.acquire() as conn:
+        await apply_config(parse_config_dict(seeded), conn)
 
 
 # --- a named demo's whole config ------------------------------------------------------------------
@@ -1047,6 +1062,7 @@ async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_fil
     assert _given(await _model(db)) == _given(first)
     exported = with_store_model(raw, first)
     fresh = await new_plane()
+    await _seed_like_the_boot(fresh, raw)
     async with fresh.acquire() as conn:
         await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
     assert _given(await _model(fresh)) == _given(first)
