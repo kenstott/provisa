@@ -81403,7 +81403,23 @@
     by hand as a beta on the installed product. Manual testing can find a defect in a requirement rather
     than in the code: it is recorded as a requirement amendment first, and the maintainer decides whether
     a small change goes on the release branch like a fix or the change goes to dev for the next release.
-    (Maintainer 2026-11-08.)'
+    (Maintainer 2026-11-08.) (Amended 2026-11-08, MAIN IS THE TRUNK:) This replaces the earlier amendments
+    of this date wherever they say main is the shipped state or that work lands on a dev branch, so that
+    the process is what most developers expect. main is the trunk: a feature starts from main and lands
+    on main, on its unit tests, its UI unit tests when it touches the UI, its own tests, and the smoke check,
+    and the check keeps main always startable. The smoke check starts the default demo from a clean install
+    on DuckDB, the engine a developer first meets, loads the UI and runs a query in it, runs one known query
+    through each front door (SQL over HTTP and pgwire, GraphQL, Cypher over HTTP and Bolt, SPARQL, gRPC,
+    Flight SQL, REST, MCP), reads each of four easily started sources (a Parquet file, SQLite, a remote
+    GraphQL service and embedded PostgreSQL), and shows that a restricted role gets less. What shipped is
+    on the Releases page and its tags. A branch that passed merges without being tested again unless git
+    reports a conflict. A release branch starts from a main commit, taking everything on main at that point,
+    or from the last release with a subset cherry-picked. The rest stands: it converges on the full suites
+    with fixes on the branch, is packaged, is tested by hand as a beta, and is tagged and published; every
+    fix cascades to newer open releases and to main. (Maintainer 2026-11-08.) (Amended 2026-11-08, SMOKE
+    READS THE DEMO''S SOURCES:) The sources the smoke check reads are those of the default demo, the first
+    thing a developer meets, such as a Parquet file, SQLite, a remote GraphQL service, an OpenAPI service
+    and embedded PostgreSQL, each started without an external service. (Maintainer 2026-11-08.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
