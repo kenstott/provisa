@@ -84,7 +84,7 @@ describe("a step with a graph on its page", () => {
     const steps = demoTourSteps([
       { key: "a", route: "/admin/ontology", term: "loss ratio" },
       { key: "b", route: "/data-products", product: "c360" },
-    ] as never);
+    ] as never, []);
     expect(steps.map((s) => s.clearOf)).toEqual([
       { selector: ".g3d-panel-view", reveal: true },
       { selector: ".g3d-panel-view", reveal: false },

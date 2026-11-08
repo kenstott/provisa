@@ -87,20 +87,20 @@ function drawnGraph(cy: CyCore, stage: DOMRect): DrawnGraph {
   const at = (p: cytoscape.Position) => ({ x: stage.left + p.x, y: stage.top + p.y });
   cy.elements().forEach((e) => {
     if (e.isNode()) {
-      const kind = e.data("kind");
+      const n = e as unknown as cytoscape.NodeSingular;
+      const kind = n.data("kind");
       if (kind !== "node" && kind !== "more") return;
-      const b = e.renderedBoundingBox();
+      const b = n.renderedBoundingBox({});
       drawn.boxes.push({
         left: stage.left + b.x1,
         top: stage.top + b.y1,
         right: stage.left + b.x2,
         bottom: stage.top + b.y2,
       });
-    } else
-      drawn.lines.push([
-        at(e.source().renderedPosition()),
-        at(e.target().renderedPosition()),
-      ]);
+    } else {
+      const k = e as unknown as cytoscape.EdgeSingular;
+      drawn.lines.push([at(k.source().renderedPosition()), at(k.target().renderedPosition())]);
+    }
   });
   return drawn;
 }

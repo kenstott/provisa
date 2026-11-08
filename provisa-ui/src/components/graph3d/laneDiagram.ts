@@ -532,6 +532,23 @@ export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): stri
     if (next.n >= best.n) break;
     best = next;
   }
+  // Each block in turn moved to where, the other lanes reordered around it, the drawing crosses
+  // least: a cost two moves apart (a term and a column each needing the other moved first) is
+  // found only this way. Bounded like refineDrawn: past the budget a diagram keeps what it has.
+  const pairs = (d.links.length * (d.links.length - 1)) / 2;
+  let budget = REFINE_BUDGET;
+  for (let pass = 0; pass < TERM_ROUNDS && best.n > 0; pass++) {
+    const before = best.n;
+    for (const block of termBlocks(d, best.lanes[0])) {
+      const rest = termBlocks(d, best.lanes[0]).filter((b) => b[0] !== block[0]);
+      for (let j = 0; j <= rest.length && budget >= pairs * 2; j++) {
+        budget -= pairs * 2;
+        const next = score([...rest.slice(0, j), block, ...rest.slice(j)].flat());
+        if (next.n < best.n) best = next;
+      }
+    }
+    if (best.n >= before) break;
+  }
   return refineDrawn(d, best.lanes, placed);
 }
 

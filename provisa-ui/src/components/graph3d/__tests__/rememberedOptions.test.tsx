@@ -15,7 +15,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
 import { getStored, setStored } from "../../../lib/browserStorage";
-import { MemoryRouter } from "react-router-dom";
 import { TourRunningContext } from "../../../tour/tourRunning";
 import { TERM_GRAPH_DEPTH, termPreset } from "../ontologyPresets";
 
@@ -269,20 +268,18 @@ describe("the term graph's opening", () => {
   const key = { kind: "ontology-snippet", subject: "term:1" };
   const term = () =>
     render(
-      <MemoryRouter>
-        <GraphExplorer
-          data={DATA}
-          scope={ONTOLOGY_SCOPE}
-          preset="ontology"
-          depth={TERM_GRAPH_DEPTH}
-          focus="term:1"
-          snippet
-          opensFlat
-          settingsKey={key}
-          exportName="term"
-          testId="snip"
-        />
-      </MemoryRouter>,
+      <GraphExplorer
+        data={DATA}
+        scope={ONTOLOGY_SCOPE}
+        preset="ontology"
+        depth={TERM_GRAPH_DEPTH}
+        focus="term:1"
+        snippet
+        opensFlat
+        settingsKey={key}
+        exportName="term"
+        testId="snip"
+      />,
     );
 
   it("opens in 2D at one hop for someone with nothing remembered", async () => {
@@ -304,20 +301,18 @@ describe("the term graph's opening", () => {
     setStored("graph3d.ontology-snippet.term:1", JSON.stringify({ flat: false }));
     render(
       <TourRunningContext.Provider value>
-        <MemoryRouter>
-          <GraphExplorer
-            data={DATA}
-            scope={ONTOLOGY_SCOPE}
-            preset="ontology"
-            depth={TERM_GRAPH_DEPTH}
-            focus="term:1"
-            snippet
-            opensFlat
-            settingsKey={key}
-            exportName="term"
-            testId="snip"
-          />
-        </MemoryRouter>
+        <GraphExplorer
+          data={DATA}
+          scope={ONTOLOGY_SCOPE}
+          preset="ontology"
+          depth={TERM_GRAPH_DEPTH}
+          focus="term:1"
+          snippet
+          opensFlat
+          settingsKey={key}
+          exportName="term"
+          testId="snip"
+        />
       </TourRunningContext.Provider>,
     );
     expect(await screen.findByTestId("x-lanes")).toBeInTheDocument();

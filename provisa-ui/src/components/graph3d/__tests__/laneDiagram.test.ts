@@ -16,7 +16,19 @@
 import { describe, expect, it } from "vitest";
 import mermaid from "mermaid";
 import { NO_FILTERS, visibleGraph, type GraphData, type LayerId } from "../graphModel";
-import { LANES, laneDiagram, laneMermaid, moreId, type Lane } from "../laneDiagram";
+import {
+  LANES,
+  connectedTo,
+  drawnCrossings,
+  laneDiagram,
+  laneMermaid,
+  moreId,
+  placedLaneOrder,
+  stackTerms,
+  tipPlacement,
+  type At,
+  type Lane,
+} from "../laneDiagram";
 import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
@@ -378,8 +390,9 @@ describe("the product lane, read from the graph", () => {
 });
 
 describe("the term lane's own order (a line crossing others that need not)", () => {
-  // Crop year binds the first column drawn; loss ratio and premium bind columns far below it, and
-  // ELK's packing puts crop year last, at the bottom of the term lane.
+  // Crop year binds a column of both tables; loss ratio and premium one each. With the terms
+  // kept in the order ELK packed them -- crop year last, at the bottom -- crop year's line must
+  // cross another; with crop year between the other two, none does.
   const data: GraphData = {
     nodes: [
       { id: "term:loss", type: "term", label: "loss ratio" },
@@ -387,31 +400,29 @@ describe("the term lane's own order (a line crossing others that need not)", () 
       { id: "term:year", type: "term", label: "crop year" },
       { id: "t:claims", type: "table", label: "claims" },
       { id: "t:policies", type: "table", label: "policies" },
-      { id: "t:view", type: "table", label: "view" },
       { id: "c:claims.year", type: "column", label: "crop_year", parent: "t:claims" },
+      { id: "c:claims.loss", type: "column", label: "loss_ratio", parent: "t:claims" },
       { id: "c:policies.year", type: "column", label: "crop_year", parent: "t:policies" },
       { id: "c:policies.premium", type: "column", label: "premium", parent: "t:policies" },
-      { id: "c:view.loss", type: "column", label: "loss_ratio", parent: "t:view" },
     ],
     edges: [
       { id: "b1", a: "term:year", b: "c:claims.year", kind: "term_binding" },
       { id: "b2", a: "term:year", b: "c:policies.year", kind: "term_binding" },
       { id: "b3", a: "term:premium", b: "c:policies.premium", kind: "term_binding" },
-      { id: "b4", a: "term:loss", b: "c:view.loss", kind: "term_binding" },
+      { id: "b4", a: "term:loss", b: "c:claims.loss", kind: "term_binding" },
     ],
   };
   const d = laneDiagram(data, data, new Set());
   const FIRST: Record<string, At> = {
     "term:loss": { x: 800, y: 0 },
-    "term:premium": { x: 920, y: 0 },
-    "term:year": { x: 800, y: 40 },
+    "term:premium": { x: 800, y: 40 },
+    "term:year": { x: 800, y: 80 },
     "c:claims.year": { x: 600, y: 0 },
-    "c:policies.year": { x: 600, y: 40 },
-    "c:policies.premium": { x: 600, y: 80 },
-    "c:view.loss": { x: 600, y: 120 },
-    "t:claims": { x: 400, y: 0 },
-    "t:policies": { x: 400, y: 60 },
-    "t:view": { x: 400, y: 120 },
+    "c:claims.loss": { x: 600, y: 40 },
+    "c:policies.year": { x: 600, y: 80 },
+    "c:policies.premium": { x: 600, y: 120 },
+    "t:claims": { x: 400, y: 20 },
+    "t:policies": { x: 400, y: 100 },
   };
   const first = (id: string) => FIRST[id];
   const drawn = (lanes: string[][]) => {
@@ -428,13 +439,11 @@ describe("the term lane's own order (a line crossing others that need not)", () 
     return (id: string) => at.get(id) as At;
   };
 
-  it("draws the crop-year graph with no crossing, crop year level with the columns it binds", () => {
+  it("draws the crop-year graph with no crossing, crop year between the terms beside it", () => {
     const lanes = placedLaneOrder(d, first);
     const at = drawn(lanes);
     expect(drawnCrossings(d.links, at)).toBe(0);
-    const ys = ["c:claims.year", "c:policies.year"].map((id) => at(id).y);
-    expect(at("term:year").y).toBeGreaterThanOrEqual(Math.min(...ys) - 1e-9);
-    expect(at("term:year").y).toBeLessThanOrEqual(Math.max(...ys) + 1e-9);
+    expect(lanes[0].indexOf("term:year")).toBe(1);
   });
 
   it("keeps a block of terms joined by rank lines in the shape ELK gave it", () => {

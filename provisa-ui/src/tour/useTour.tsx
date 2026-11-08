@@ -887,6 +887,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const ends = landing !== null;
         // A provider the copy names is named as a user sees it: "(beta)" while unproven.
         const copy = { atlan: exportProviderName("atlan", "Atlan", t) };
+        const clear = step.clearOf ? keepClearOf(step.clearOf, abort.signal) : null;
         const popover: DriverPopover = {
           title: t(`tour.steps.${step.key}.title`),
           description: step.image
@@ -936,6 +937,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
           // where it would be a no-op, and on a topic, whose card carries Deep Dives
           // instead: the way back to the core tour's start is the catalog's control.
           onPopoverRender: (popover) => {
+            // driver.js places it as soon as this returns; a graph's step moves it clear after.
+            clear?.();
             // An image step's popover is placed before its picture loads; once it has, its
             // height is known and the popover is placed again, inside the window.
             const image =
@@ -1033,7 +1036,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           },
         };
         driverRef.current.highlight({ element, popover });
-        const clear = step.clearOf ? keepClearOf(step.clearOf, abort.signal) : null;
+
         // A page that renders its anchor again (the SQL explorer's results, once its answer is in)
         // leaves the step lighting a node no longer on the page, its popover in a corner: the
         // step's anchor as it is now is lit again.
