@@ -13,12 +13,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import type {
-  ContractColumn,
-  ContractSlaProperty,
-  ContractTerms,
-  MutationResult,
-} from "../types/admin";
+import type { ContractSlaProperty, ContractTerms, MutationResult } from "../types/admin";
 import type { Finding } from "../components/lifecycle/ToReview";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
@@ -119,7 +114,6 @@ export interface DataContractInput {
   description: string | null;
   terms: ContractTerms;
   sla: ContractSlaProperty[];
-  columns: ContractColumn[];
 }
 
 export function useSaveDataContract() {

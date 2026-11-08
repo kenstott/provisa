@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "לא ניתן היה לבדוק את טבלאות ה-traces של Provisa ({{reason}}). לא ידוע אם הן מקבלות שורות; הבדיקה חוזרת כל 30 שניות.",
     "tracesTableEmpty": "הוגדרה נקודת קצה, אך בטבלאות ה-traces של Provisa עדיין אין שורות. אם נקודת הקצה היא ספק חיצוני ולא ה-collector של Provisa, יש להעביר אותה אל ה-exporters של ה-collector.",
-    "tracesTableStale": "הוגדרה נקודת קצה, אך טבלאות ה-traces של Provisa לא קיבלו שורות ב-{{minutes}} הדקות האחרונות. אם Provisa לא פעלה, זה צפוי. אחרת, יש לוודא שנקודת הקצה היא ה-collector של Provisa ולא ספק חיצוני."
+    "tracesTableStale": "הוגדרה נקודת קצה, אך טבלאות ה-traces של Provisa לא קיבלו שורות ב-{{minutes}} הדקות האחרונות. אם Provisa לא פעלה, זה צפוי. אחרת, יש לוודא שנקודת הקצה היא ה-collector של Provisa ולא ספק חיצוני.",
+    "schemaClustersTitle": "אשכולות סכמה"
   }
 }

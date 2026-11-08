@@ -56,7 +56,7 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 table_name="orders",
                 columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
                 # REQ-2158: the draft contract the member's first save gives it
-                contract=data_contracts.draft({"id": "integer"}),
+                contract=data_contracts.draft(),
             )
         ],
         data_products=[

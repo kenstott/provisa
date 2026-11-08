@@ -32,7 +32,6 @@ import { Copy, Plus } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { PlatformRequired } from "./PlatformRequired";
 import { isForbidden } from "./isForbidden";
-import { useCapability } from "../../hooks/useCapability";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { OrgEncryptionTab } from "./OrgEncryptionTab";
@@ -501,42 +500,17 @@ function SecretsVault({ vault, header }: VaultProps) {
 }
 
 /**
- * ORG SECRETS (REQ-1560): the shared vault, plus the deployment's choice of secrets service for
- * whoever runs the deployment.
- *
- * The org half is gated STRICTLY on `org_settings` -- `capabilities.includes` rather than
- * `hasCapability` -- because the platform wildcard must not answer for it (REQ-1361). A platform
- * admin holds `admin`, which satisfies every other gate in the UI; here it would have shown them
- * the list of names an org keeps, which is itself a statement about what that org connects to. The
- * server refuses the same call, so all the wildcard bought was a page that 403s.
+ * ORG SECRETS (REQ-1560): the shared vault. The route asks `org_settings` alone (REQ-1361): a list
+ * of the names an org keeps is itself a statement about what that org connects to, so platform
+ * authority does not reach it. The deployment's secrets service is on the Security page (REQ-1327).
  */
 export function SecretsTab() {
   const { t } = useTranslation();
-  const { capabilities } = useAuth();
-  const mayChooseService = useCapability("platform_settings");
-  const mayHoldSecrets = capabilities.includes("org_settings");
-
-  // Collapsed by default: choosing the backend happens once for the deployment, reading the names
-  // happens every day, so the page opens on the names. The choice is remembered per browser.
-  const service = mayChooseService ? (
-    <Collapsibles id="admin.secrets.service" testId="secrets-service-panel">
-      {/* Mounted only when open, so a collapsed panel does not read the deployment config. */}
-      <CollapsibleItem
-        value="service"
-        defaultOpen={false}
-        mountWhenOpen
-        controlTestId="secrets-service-toggle"
-        title={t("secretsTab.serviceTitle")}
-      >
-        <SecretsServicePanel />
-      </CollapsibleItem>
-    </Collapsibles>
-  ) : null;
 
   // REQ-1574: the org's key sits above the org's secrets, because it is the thing they are wrapped
-  // under -- the same right, org_settings, and the same page. Collapsed by default for the reason
-  // the service panel is: setting the key happens once, reading the names happens every day.
-  const orgKey = mayHoldSecrets ? (
+  // under -- the same right, org_settings, and the same page. Collapsed by default: setting the key
+  // happens once, reading the names happens every day.
+  const header = (
     <Collapsibles id="admin.secrets.org" testId="org-key-panel">
       {/* Mounted only when open, so a collapsed panel does not read the key's state. */}
       <CollapsibleItem
@@ -569,16 +543,8 @@ export function SecretsTab() {
         <RedactionTab />
       </CollapsibleItem>
     </Collapsibles>
-  ) : null;
-
-  const header = (
-    <>
-      {orgKey}
-      {service}
-    </>
   );
 
-  if (!mayHoldSecrets) return <Stack data-testid="secrets-tab">{service}</Stack>;
   return <SecretsVault vault="org" header={header} />;
 }
 

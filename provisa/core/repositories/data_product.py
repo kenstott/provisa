@@ -215,10 +215,10 @@ async def save_contract(  # REQ-2158
     conn: "Connection", table_id: int, contract: DataContract
 ) -> dict:
     """A member's contract replaced, the version saved recorded on it: refused
-    (data_contracts.ContractRefused) when the table is no product's output port, when it stops
-    promising a column at the same version, or when it promises a column the member does not hold
-    as that type. The member's row, as it is now."""
+    (data_contracts.ContractRefused) when the table is no product's output port. The member's row,
+    as it is now."""
     from provisa.core import contract_versions, data_contracts
+    from provisa.core.repositories.table import load_columns
 
     async with conn.transaction():
         row = (
@@ -235,23 +235,13 @@ async def save_contract(  # REQ-2158
         await conn.require_admitted(update(data_products).where(data_products.c.id.in_(products)))
         cid = data_contracts.contract_id(products[0], row.schema_name, row.table_name)
         model_change.name("upsert", "data contract", cid)  # REQ-1524
-        contract = data_contracts.as_stored(cid, contract)
         previous = DataContract.model_validate(row.contract)
-        data_contracts.require_new_version(cid, previous, contract)
         contract = data_contracts.created_as(previous, contract)
-        types = {
-            r.column_name: r.data_type
-            for r in (
-                await conn.execute_core(
-                    select(table_columns.c.column_name, table_columns.c.data_type).where(
-                        table_columns.c.table_id == table_id
-                    )
-                )
-            ).fetchall()
-        }
-        data_contracts.require_provided(cid, contract, types)
         contract = contract_versions.recorded(
-            previous, contract, await promised_checks(conn, table_id)
+            previous,
+            contract,
+            await promised_checks(conn, table_id),
+            contract_versions.snapshot(await load_columns(conn, table_id)),
         )
         await conn.execute_core(
             update(registered_tables)
@@ -687,11 +677,11 @@ async def _add_members(
 
 
 async def _give_draft_contract(conn: "Connection", table_id: int) -> None:
-    """REQ-2158: a member with no contract is given a draft promising its columns as they are
-    stored. A checker table (a data-quality contract's scan results) has none."""
+    """REQ-2158: a member with no contract is given a draft, its first version snapshotting the
+    member's columns as they are stored. A checker table (a data-quality contract's scan results)
+    has none."""
     from provisa.core import contract_versions, data_contracts
-    from provisa.core.ir_types import base_type
-    from provisa.core.numeric_type import stored_type_of
+    from provisa.core.repositories.table import load_columns
 
     row = (
         await conn.execute_core(
@@ -702,20 +692,11 @@ async def _give_draft_contract(conn: "Connection", table_id: int) -> None:
     ).fetchone()
     if row is None or row.contract is not None or row.dq_contract is not None:
         return
-    # REQ-2171: a contract promises the stored type, a subtype's base.
-    types = {
-        r.column_name: stored_type_of(base_type(r.data_type))
-        for r in (
-            await conn.execute_core(
-                select(table_columns.c.column_name, table_columns.c.data_type)
-                .where(table_columns.c.table_id == table_id)
-                .where(table_columns.c.data_type.is_not(None))
-                .order_by(table_columns.c.id)
-            )
-        ).fetchall()
-    }
     contract = contract_versions.recorded(
-        None, data_contracts.draft(types), await promised_checks(conn, table_id)
+        None,
+        data_contracts.draft(),
+        await promised_checks(conn, table_id),
+        contract_versions.snapshot(await load_columns(conn, table_id)),
     )
     await conn.execute_core(
         update(registered_tables)

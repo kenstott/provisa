@@ -406,11 +406,12 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
     refuse_taken_sql_addresses([*others, candidate], rules)
 
 
-async def _contract_for_save(conn: "Connection", table: Table) -> DataContract | None:
-    """REQ-2158: the contract the table's save stores, checked against the stored one and the
-    columns it saves (provisa.core.data_contracts)."""
-    from provisa.core import data_contracts
-    from provisa.core.ir_types import base_type
+async def _contract_for_save(
+    conn: "Connection", table: Table, types: dict[str, str]
+) -> DataContract | None:
+    """REQ-2158: the contract the table's save stores (provisa.core.data_contracts). ``types``: each
+    column's resolved type, the one the save writes (REQ-1426)."""
+    from provisa.core import contract_versions, data_contracts
 
     stored = (
         await conn.execute_core(
@@ -424,17 +425,6 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
             )
         )
     ).fetchone()
-    existing = await stored_column_types(conn, table.source_id, table.schema_name, table.table_name)
-    column_types: dict[str, str] = {}
-    for col in table.columns:
-        declared_type = getattr(col, "data_type", None) or existing.get(col.name)
-        if not declared_type:
-            continue  # refused by name where the columns are written (REQ-1426)
-        try:
-            # REQ-2171: a contract promises the stored type, a subtype's base.
-            column_types[col.name] = stored_type_of(base_type(declared_type))
-        except ReportedNumericMalformed as malformed:
-            raise NumericSizeRefused(table.table_name, col.name, declared_type) from malformed
     # REQ-1634: the products the table is a member of are the product's to set (set_members); a
     # table's save keeps its contract while it is a member of any.
     products = [] if stored is None else await data_product_repo.products_of_table(conn, stored.id)
@@ -447,12 +437,20 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
     return data_contracts.for_save(
         products=products,
         is_checker=is_checker,
-        schema_name=table.schema_name,
-        table_name=table.table_name,
         declared=getattr(table, "contract", None),
         stored=None if stored is None else stored.contract,
-        column_types=column_types,
         checks=promised,
+        columns=contract_versions.snapshot(
+            [
+                {
+                    "column_name": c.name,
+                    "data_type": types[c.name],
+                    "description": c.description,
+                    "not_null": c.not_null,
+                }
+                for c in table.columns
+            ]
+        ),
     )
 
 
@@ -503,7 +501,52 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
 
         await require_row_level_switch_allowed(conn, table)
     await _require_landed_if_member(conn, table, domain_id)  # REQ-1634
-    contract = await _contract_for_save(conn, table)  # REQ-2158
+    # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
+    # resolved (by the type-introspection user-assist) survives a config reload even though the YAML
+    # carries no type. Capture the currently-stored types before the column replace and reuse any
+    # that the incoming config leaves unset (REQ-471) — never null a resolved type back out.
+    _existing_rows = (
+        await conn.execute_core(
+            select(
+                table_columns.c.column_name,
+                table_columns.c.data_type,
+                table_columns.c.is_foreign_key,
+                table_columns.c.is_alternate_key,
+                table_columns.c.not_null,
+                table_columns.c.array_depth,
+                table_columns.c.element_type,
+                table_columns.c.native_type,
+                table_columns.c.native_platform,
+                table_columns.c.subtype,
+            )
+            .select_from(
+                table_columns.join(
+                    registered_tables, table_columns.c.table_id == registered_tables.c.id
+                )
+            )
+            .where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+            )
+        )
+    ).fetchall()
+    _existing_types = {r.column_name: r.data_type for r in _existing_rows}
+    # REQ-1426: a column without a type is not registrable. Every writer resolves the type before
+    # it gets here (source introspection, SQLGlot annotation for views, the remote mappers' own
+    # type maps); persisting NULL made the catalog render "unknown" and left the SQL layer with no
+    # type to compile against. Refused here, naming the column, before the contract snapshots the
+    # types and before anything is written (REQ-2158).
+    _resolved_types: dict[str, str] = {}
+    for col in table.columns:
+        _resolved = getattr(col, "data_type", None) or _existing_types.get(col.name)
+        if not _resolved:
+            raise ValueError(
+                f"column {table.table_name}.{col.name} has no data_type; "
+                "resolve the type at registration — an untyped column cannot be persisted"
+            )
+        _resolved_types[col.name] = _resolved
+    contract = await _contract_for_save(conn, table, _resolved_types)  # REQ-2158
     # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
     values = {
         "source_id": table.source_id,
@@ -656,27 +699,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         update_columns=_update_columns,
     )
 
-    # Column data_type is resolved at registration (design time) and PERSISTS: a column type once
-    # resolved (by the type-introspection user-assist) survives a config reload even though the YAML
-    # carries no type. Capture the currently-stored types before the column replace and reuse any
-    # that the incoming config leaves unset (REQ-471) — never null a resolved type back out.
-    _existing_rows = (
-        await conn.execute_core(
-            select(
-                table_columns.c.column_name,
-                table_columns.c.data_type,
-                table_columns.c.is_foreign_key,
-                table_columns.c.is_alternate_key,
-                table_columns.c.not_null,
-                table_columns.c.array_depth,
-                table_columns.c.element_type,
-                table_columns.c.native_type,
-                table_columns.c.native_platform,
-                table_columns.c.subtype,
-            ).where(table_columns.c.table_id == table_id)
-        )
-    ).fetchall()
-    _existing_types = {r.column_name: r.data_type for r in _existing_rows}
     # REQ-2171: a column's subtype persists with the base type it was recorded with: an edit that
     # restates the stored base keeps it.
     _existing_subtypes = {
@@ -811,16 +833,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         object_fields = [
             f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw
         ]
-        _data_type = getattr(col, "data_type", None) or _existing_types.get(col.name)
-        # REQ-1426: a column without a type is not registrable. Every writer resolves the type
-        # before it gets here (source introspection, SQLGlot annotation for views, the remote
-        # mappers' own type maps); persisting NULL made the catalog render "unknown" and left the
-        # SQL layer with no type to compile against. Refuse loudly at the last gate.
-        if not _data_type:
-            raise ValueError(
-                f"column {table.table_name}.{col.name} has no data_type; "
-                "resolve the type at registration — an untyped column cannot be persisted"
-            )
+        _data_type = _resolved_types[col.name]
         # REQ-1961: a numeric's precision and scale are stored in one spelling, whoever writes
         # the registration and however they spelled it; a size no numeric can have is refused
         # here, the one place a column's type is written.

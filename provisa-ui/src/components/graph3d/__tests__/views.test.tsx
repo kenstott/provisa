@@ -103,6 +103,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 
 import { OntologySnippet, OntologyView, ProductMapButton } from "../OntologyGraph";
 import { productPreset, termPreset, type SnippetPreset } from "../ontologyPresets";
+import { setStored } from "../../../lib/browserStorage";
 
 const last = () => made.scenes[made.scenes.length - 1];
 const drawn = () => last().setData.mock.calls.at(-1)?.[0] as GraphData;
@@ -243,9 +244,11 @@ describe("expanding a snippet", () => {
   });
 
   it("from a term's page selects the term", async () => {
+    // A reader who chose 3D here: what matters is the expanded view.
+    setStored("graph3d.ontology-snippet.term:customer", JSON.stringify({ flat: false }));
     snippet({ ...termPreset(0), focus: "term:customer" }, "Customer");
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,2"]));
+    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,1"]));
     fireEvent.click(screen.getByTestId("snip-expand"));
     await screen.findByTestId("graph3d");
     await waitFor(() => expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("Customer"));
