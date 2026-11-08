@@ -1085,12 +1085,18 @@ async def _resolve_tag_assignment_table(
 async def _set_product_members(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-1634
     """Each declared data product's members become exactly the tables and commands it lists: the
     product owns its membership, so its declaration is the whole of it. A table is named as a
-    relationship names one (its alias, else its table name); a name no registered table answers
-    fails the load, naming the product."""
+    relationship names one (its alias, else its table name), or as ``source.schema.table`` where
+    that name is not unique; a name no registered table answers fails the load, naming the
+    product."""
     for dp in config.data_products:
         table_ids = []
         for name in dp.tables:
-            row = await table_repo.find_by_table_name(conn, name)
+            parts = name.split(".")
+            row = (
+                await table_repo.get_by_name(conn, *parts)
+                if len(parts) == 3
+                else await table_repo.find_by_table_name(conn, name)
+            )
             if row is None:
                 raise ValueError(
                     f"data product {dp.id!r} lists table {name!r}, which no registration holds"

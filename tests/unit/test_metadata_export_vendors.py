@@ -56,6 +56,7 @@ from provisa.core.models import MetadataExportTarget
 from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     ORG_ID,
+    PROD,
     RLS_FILTER,
     governed_config,
     governed_snapshot,
@@ -216,7 +217,12 @@ def _snapshot_with_data_product():  # REQ-1634
     config = governed_config()
     config.data_products = [
         DataProduct(
-            id="prod", domain_id="sales", name="Sales 360", owner_role="alice", purpose="Unified"
+            id="prod",
+            domain_id="sales",
+            name="Sales 360",
+            owner_role="alice",
+            purpose="Unified",
+            tables=list(PROD.tables),
         )
     ]
     return build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})

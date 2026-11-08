@@ -27,6 +27,7 @@ import pytest
 from provisa.api.metadata_export import workbook as wb
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.refs import metric_uri
+from tests.unit.product_members import assigned, assigned_members, with_members
 from provisa.core.models import (
     Column,
     Domain,
@@ -46,20 +47,21 @@ def _table(name: str, **kwargs) -> Table:
     columns = kwargs.pop("columns", None) or [
         Column(name="id", data_type="integer", visible_to=["*"])
     ]
-    return Table(
+    product_id = kwargs.pop("product_id", "prod")
+    table = Table(
         source_id="wh",
         domain_id=kwargs.pop("domain_id", "sales"),
         schema_name="public",
         table_name=name,
         description=kwargs.pop("description", f"{name} table"),
-        product_id=kwargs.pop("product_id", "prod"),
         columns=columns,
         **kwargs,
     )
+    return assigned(table, product_id)
 
 
 def _config() -> ProvisaConfig:
-    return ProvisaConfig(
+    config = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="warehouse")],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
         tables=[
@@ -86,6 +88,10 @@ def _config() -> ProvisaConfig:
             Metric(name="held", expression="SUM(staging.id)"),
         ],
         roles=[],
+    )
+    # REQ-1634: each table's product lists it.
+    return config.model_copy(
+        update={"data_products": with_members([], assigned_members(config.tables))}
     )
 
 

@@ -54,7 +54,6 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                product_id="customer_360",
                 columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
                 # REQ-2158: the draft contract the member's first save gives it
                 contract=data_contracts.draft({"id": "integer"}),
@@ -67,6 +66,7 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
                 name="Customer 360",
                 owner_role=owner,
                 purpose="Unified customer view",
+                tables=["wh.public.orders"],
             )
         ],
         roles=[],
@@ -265,11 +265,11 @@ def test_a_view_is_seated_in_the_derived_layers_service_and_database():  # REQ-2
             domain_id="sales",
             schema_name="views",
             table_name="order_ids",
-            product_id="customer_360",
             view_sql='SELECT o.id AS id FROM "sales"."orders" o',
             columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
         )
     )
+    config.data_products[0].tables.append("__derived__.views.order_ids")
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     entities = to_entities(snapshot)
     order = [

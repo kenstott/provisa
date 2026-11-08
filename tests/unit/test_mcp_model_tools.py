@@ -595,7 +595,7 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
             _column("created", "bigint", epoch_unit="ms"),
         ],
         "profiler_source_id": "prof",
-        "stored_product_id": "p1",
+        "stored_product_ids": ["p1"],
         "region": None,  # REQ-1921
         "draft": False,  # REQ-1921
         "row_materialize": False,  # REQ-1865
@@ -687,11 +687,9 @@ async def test_set_column_fake_is_checked_then_saved_with_the_whole_table(monkey
     # Everything else is saved back as it was, including what the editor holds elsewhere.
     assert by_name["id"].fake is None and by_name["created"].epoch_unit == "ms"
     assert saved.mv_primary_key == ["id"]
-    assert (saved.load_protected, saved.off_peak_window, saved.product_id) == (
-        True,
-        "01:00-05:00",
-        "p1",
-    )
+    assert (saved.load_protected, saved.off_peak_window) == (True, "01:00-05:00")
+    # REQ-1634: a table's products are set on each product, never by a table's save.
+    assert not hasattr(saved, "product_id")
     assert saved.profiler_source_id == "prof"
 
 

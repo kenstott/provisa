@@ -32,6 +32,7 @@ from provisa.api.metadata_export.openmetadata import (
 )
 from provisa.core.models import (
     Column,
+    DataProduct,
     Domain,
     MetadataExportTarget,
     ProvisaConfig,
@@ -80,7 +81,6 @@ def snapshot():
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                product_id="prod",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["viewer", "clerk", "admin"]),
                     Column(
@@ -112,6 +112,9 @@ def snapshot():
                 filter="region_id = 'us'",
                 description="Test rule.",
             )
+        ],
+        data_products=[
+            DataProduct(id="prod", domain_id="sales", name="prod", tables=["wh.public.orders"])
         ],
     )
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})

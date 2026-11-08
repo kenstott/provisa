@@ -42,6 +42,7 @@ from provisa.api.metadata_export.datahub import DataHubExport
 from provisa.api.metadata_export.openmetadata import OpenMetadataExport
 from provisa.core.models import (
     Column,
+    DataProduct,
     Domain,
     MetadataExportConfig,
     MetadataExportTarget,
@@ -68,7 +69,6 @@ def snapshot():
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                product_id="prod",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["analyst"]),
                     Column(name="amount", data_type="numeric", visible_to=["analyst"]),
@@ -76,6 +76,9 @@ def snapshot():
             )
         ],
         roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
+        data_products=[
+            DataProduct(id="prod", domain_id="sales", name="prod", tables=["wh.public.orders"])
+        ],
     )
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
@@ -160,11 +163,18 @@ async def test_atlas_and_so_purview_bind_each_data_product(monkeypatch):
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
             )
         ],
-        data_products=[DataProduct(id="prod", domain_id="sales", name="Prod", status="live")],
+        data_products=[
+            DataProduct(
+                id="prod",
+                domain_id="sales",
+                name="Prod",
+                status="live",
+                tables=["wh.public.orders"],
+            )
+        ],
         roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
     )
     with_product = build_snapshot(model, org_id="acme", dialect="postgres", contexts={})

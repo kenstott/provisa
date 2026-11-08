@@ -48,7 +48,7 @@ from provisa.core.models import (
 )
 from provisa.grpc.descriptor import SERVICE_NAME
 from provisa.security.rights import SQL_ONLY_TABLES
-from tests.integration.metadata_export_fixture import MASK_PATTERN, ORG_ID, governed_config
+from tests.integration.metadata_export_fixture import MASK_PATTERN, ORG_ID, PROD, governed_config
 
 _SCHEMAS = Path(__file__).resolve().parents[1] / "fixtures" / "standards"
 
@@ -96,6 +96,7 @@ def _snapshot(orders_contract: DataContract | None = None, **product):
             support_contact="data-team@example.com",
             custom_properties={"cost_center": "CC-42"},
             **product,
+            tables=list(PROD.tables),
         )
     ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
@@ -198,10 +199,12 @@ def test_an_unversioned_product_says_so_and_an_unpublished_one_is_draft():
 
 
 def test_a_member_with_no_contract_is_no_output_port():
-    # A checker table the product owns is a member by product_id, with no contract (REQ-2157).
+    # A checker table the product owns is a member it lists, with no contract (REQ-2157).
     config = governed_config()
     config.tables[1].contract = None  # customers
-    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     (product,) = snapshot.data_products
     document, contracts = product_documents(snapshot, product)
@@ -216,7 +219,9 @@ def test_a_checker_table_is_no_member_without_a_contract():
     """A checker table belongs to its product with no contract by design (REQ-2157)."""
     config = governed_config()
     config.tables[1].contract = None  # customers, standing in for a checker table
-    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     (product,) = snapshot.data_products
     orders, customers = (
@@ -260,8 +265,6 @@ def test_a_retired_product_is_retired_with_no_output_ports():
     """REQ-1634 STATUS: retired, its members went to its successor; the document says so, with
     no member contracts, and is still a valid ODPS document."""
     config = governed_config()
-    for table in config.tables:
-        table.product_id = None  # moved to the successor
     config.data_products = [
         DataProduct(
             id="prod",
@@ -270,6 +273,7 @@ def test_a_retired_product_is_retired_with_no_output_ports():
             purpose="One view of each customer",
             status="retired",
             status_reason="Replaced by Customer 360 v2.",
+            tables=[],  # its members moved to the successor
         )
     ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
@@ -292,7 +296,7 @@ def _check(observed, results, *, owner: str | None, column: str | None = None):
         definition="missing_count(id) = 0",
         severity="fail",
         results_table=results.ref,
-        owner_product_id=owner,
+        owner_product_ids=(owner,) if owner is not None else (),
     )
 
 
@@ -300,11 +304,12 @@ def _two_products():
     """orders is upstream's output port, under its declared contract; prod's view order_totals
     reads it, beside prod's own customers."""
     config = governed_config()
-    config.tables[0].product_id = "upstream"
     config.tables[0].contract = ORDERS_CONTRACT
     config.data_products = [
-        DataProduct(id="upstream", domain_id="sales", name="Orders"),
-        DataProduct(id="prod", domain_id="sales", name="Customer 360"),
+        DataProduct(id="upstream", domain_id="sales", name="Orders", tables=["orders"]),
+        DataProduct(
+            id="prod", domain_id="sales", name="Customer 360", tables=["customers", "order_totals"]
+        ),
     ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     product = next(p for p in snapshot.data_products if p.id == "prod")
@@ -363,6 +368,7 @@ def test_the_document_carries_its_team_tags_tenant_creation_and_management_ports
             name="Customer 360",
             owner_role="data_owner",
             team_role="analyst",
+            tables=list(PROD.tables),
         )
     ]
     snapshot = build_snapshot(
@@ -426,7 +432,9 @@ def test_the_schema_object_is_addressed_and_its_keys_and_types_are_derived():
     orders.columns.append(Column(name="n", data_type="bigint", visible_to=["admin"]))
     orders.unique_constraints = [UniqueConstraint(name="orders_email", columns=["email"])]
     orders.contract = data_contracts.draft({c.name: c.data_type for c in orders.columns})
-    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})
     (product,) = snapshot.data_products
     contract = odcs_contract(snapshot, product, _orders(snapshot))
@@ -489,7 +497,13 @@ def test_roles_read_or_write_and_are_approved_by_the_owners():
     config = governed_config()
     config.tables[0].write_grants = [WriteGrant(role="admin", operation="insert", columns=["id"])]
     config.data_products = [
-        DataProduct(id="prod", domain_id="sales", name="Customer 360", owner_role="data_owner")
+        DataProduct(
+            id="prod",
+            domain_id="sales",
+            name="Customer 360",
+            owner_role="data_owner",
+            tables=list(PROD.tables),
+        )
     ]
     snapshot = build_snapshot(
         config,
@@ -513,7 +527,9 @@ def test_servers_are_the_endpoints_a_consumer_reads_it_through():
     from provisa.api.metadata_export.model import ServingEndpoints
 
     config = governed_config()
-    config.data_products = [DataProduct(id="prod", domain_id="sales", name="Customer 360")]
+    config.data_products = [
+        DataProduct(id="prod", domain_id="sales", name="Customer 360", tables=list(PROD.tables))
+    ]
     snapshot = build_snapshot(
         config,
         org_id=ORG_ID,

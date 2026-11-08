@@ -37,6 +37,7 @@ from provisa.api.metadata_export.openmetadata import (
     to_lineage_requests,
 )
 from provisa.api.metadata_export.registry import registered_providers
+from tests.unit.product_members import all_members_of
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -66,8 +67,6 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
-        # Marked so the table publishes: only Data Product tables enter the snapshot.
-        product_id="prod",
     )
 
 
@@ -148,7 +147,9 @@ def snapshot():
             )
         ],
     )
-    return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    return build_snapshot(
+        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+    )
 
 
 def _export_config(provider: str) -> MetadataExportTarget:
@@ -227,7 +228,9 @@ def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
             )
         ],
     )
-    snap = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    snap = build_snapshot(
+        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+    )
     events = to_events(snap, event_time=EVENT_TIME)
     orders = next(
         e for e in events if e.payload.get("dataset", {}).get("name") == "wh.public.orders"

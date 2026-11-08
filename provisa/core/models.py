@@ -602,7 +602,8 @@ class DataProduct(BaseModel):  # REQ-1634
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
     # REQ-1634: the product's members, many-to-many: the tables and views it holds, each named as a
-    # relationship names a table (its alias, else its table name), and the commands, by name. A
+    # relationship names a table (its alias, else its table name) or as source.schema.table where
+    # that is not unique, and the commands, by name. A
     # member joins only products of its own domain. The product owns its membership: these lists
     # are the one place it is declared.
     tables: list[str] = Field(default_factory=list)
@@ -3821,6 +3822,36 @@ class ProvisaConfig(BaseModel):
                 f"command names used more than once (functions and webhooks share one address "
                 f"space): {dupes}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _products_list_members_of_their_domain(self) -> "ProvisaConfig":
+        # REQ-1634: a member joins only products of its own domain. A product listing a table or
+        # command this configuration declares in another domain is refused as it is read; one the
+        # configuration does not declare is held to the same rule where the members are stored
+        # (data_product.set_members).
+        tables: dict[str, list[Table]] = {}
+        for t in self.tables:
+            tables.setdefault(t.alias or t.table_name, []).append(t)
+            tables.setdefault(f"{t.source_id}.{t.schema_name}.{t.table_name}", []).append(t)
+        commands = {f.name: f for f in self.functions}
+        for product in self.data_products:
+            for name in product.tables:
+                for t in tables.get(name, []):
+                    if t.domain_id and t.domain_id != product.domain_id:
+                        raise ValueError(
+                            f"data product {product.id!r} lists table {name!r}, which is in domain "
+                            f"{t.domain_id!r}; a product's members share its domain "
+                            f"{product.domain_id!r}"
+                        )
+            for name in product.commands:
+                f = commands.get(name)
+                if f is not None and f.domain_id and f.domain_id != product.domain_id:
+                    raise ValueError(
+                        f"data product {product.id!r} lists command {name!r}, which is in domain "
+                        f"{f.domain_id!r}; a product's members share its domain "
+                        f"{product.domain_id!r}"
+                    )
         return self
 
     @model_validator(mode="after")

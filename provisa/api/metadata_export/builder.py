@@ -144,10 +144,12 @@ def _unique_keys(table: Table) -> tuple[tuple[str, ...], ...]:  # REQ-1093, REQ-
 def product_memberships(config: ProvisaConfig) -> dict[tuple[str, ...], tuple[str, ...]]:
     """REQ-1634: each member table's products, any number, in id order, keyed by the table's
     physical triple: read off each product's ``tables``, which names a table by its virtual name
-    (its alias, else its table name). A name no table, or more than one, answers is refused."""
+    (its alias, else its table name) or as ``source.schema.table``. A name no table, or more than
+    one, answers is refused."""
     by_name: dict[str, list[Table]] = {}
     for table in config.tables:
         by_name.setdefault(table.alias or table.table_name, []).append(table)
+        by_name.setdefault(".".join(table_ref(table).parts), []).append(table)
     out: dict[tuple[str, ...], list[str]] = {}
     for product in config.data_products:
         for name in product.tables:

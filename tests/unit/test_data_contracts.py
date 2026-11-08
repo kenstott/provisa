@@ -91,27 +91,30 @@ def test_a_promised_type_is_spelled_as_a_column_type_is_stored():
 
 def _for_save(**kw):
     args = {
-        "product_id": "p",
+        "products": ["p"],
         "is_checker": False,
         "schema_name": "s",
         "table_name": "t",
         "declared": None,
         "stored": None,
-        "stored_product_id": None,
         "column_types": {"id": "INTEGER"},
     }
     return data_contracts.for_save(**{**args, **kw})
 
 
 def test_a_table_in_no_product_or_a_checker_has_no_contract():
-    assert _for_save(product_id=None) is None
+    assert _for_save(products=[]) is None
     assert _for_save(is_checker=True) is None
+    # A contract declared before the table joins a product is kept for it.
+    assert _for_save(products=[], declared=_contract("1.0.0", id="INTEGER")).version == "1.0.0"
 
 
-def test_a_save_keeps_the_stored_contract_and_a_new_product_starts_a_draft():
+def test_a_save_keeps_the_one_stored_contract_whichever_products_the_table_is_in():
+    # REQ-1634: a table in several products has one contract, which each of them lists.
     stored = _contract("3.0.0", id="INTEGER").model_dump()
-    assert _for_save(stored=stored, stored_product_id="p").version == "3.0.0"
-    assert _for_save(stored=stored, stored_product_id="other").version == FIRST_CONTRACT_VERSION
+    assert _for_save(stored=stored).version == "3.0.0"
+    assert _for_save(stored=stored, products=["other", "p"]).version == "3.0.0"
+    assert _for_save().version == FIRST_CONTRACT_VERSION
 
 
 def test_a_contract_keeps_when_it_was_created_through_every_version():
@@ -119,9 +122,7 @@ def test_a_contract_keeps_when_it_was_created_through_every_version():
     first = _for_save()
     assert first.created_at is not None
     stored = first.model_dump(mode="json")
-    released = _for_save(
-        stored=stored, stored_product_id="p", declared=_contract("2.0.0", id="INTEGER")
-    )
+    released = _for_save(stored=stored, declared=_contract("2.0.0", id="INTEGER"))
     assert (released.version, released.created_at) == ("2.0.0", first.created_at)
     # A contract declared for a new member is created by that save.
     assert _for_save(declared=_contract("1.0.0", id="INTEGER")).created_at is not None
@@ -130,13 +131,12 @@ def test_a_contract_keeps_when_it_was_created_through_every_version():
 # -- the table's save -----------------------------------------------------------------------------
 
 
-def _table(*columns: str, product: str | None = "p", contract: DataContract | None = None):
+def _table(*columns: str, contract: DataContract | None = None):
     return Table(
         source_id="pg",
         domain_id="sales",
         schema_name="public",
         table_name="orders",
-        product_id=product,
         contract=contract,
         columns=[Column(name=c, visible_to=["analyst"], data_type="integer") for c in columns],
     )
@@ -150,6 +150,13 @@ async def plane(control_plane) -> Database:
         await conn.execute_core(insert(domains).values(id="sales"))
         await data_product_repo.upsert(conn, DataProduct(id="p", domain_id="sales", name="P"))
         await table_repo.upsert(conn, _table("id", "amount"))
+        # REQ-1634: the table joins the product on the product.
+        table_id = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+            )
+        ).scalar_one()
+        await data_product_repo.set_members(conn, "p", table_ids=[table_id], commands=[])
     return db
 
 
@@ -196,7 +203,7 @@ async def test_the_same_version_without_the_column_is_refused(plane):
 
 async def test_leaving_the_product_takes_the_contract_away(plane):
     async with plane.acquire() as conn:
-        await table_repo.upsert(conn, _table("id", "amount", product=None))
+        await data_product_repo.set_members(conn, "p", table_ids=[], commands=[])
     _, contract = await _stored(plane)
     assert contract is None
 
@@ -228,7 +235,7 @@ async def test_a_contract_breaking_its_version_or_promising_what_is_not_there_is
 
 async def test_a_table_in_no_product_has_no_contract_to_save(plane):
     async with plane.acquire() as conn:
-        await table_repo.upsert(conn, _table("id", "amount", product=None))
+        await data_product_repo.set_members(conn, "p", table_ids=[], commands=[])
     table_id, _ = await _stored(plane)
     async with plane.acquire() as conn:
         with pytest.raises(ContractRefused, match="is no data product's output port"):

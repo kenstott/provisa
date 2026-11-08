@@ -29,6 +29,7 @@ from provisa.api.metadata_export.model import MetadataSnapshot
 from provisa.core.models import (
     Cardinality,
     Column,
+    DataProduct,
     Domain,
     ProvisaConfig,
     Relationship,
@@ -45,9 +46,9 @@ RLS_FILTER = "region_id = current_setting('provisa.region')"
 
 
 def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Table:
-    # product_id marks every fixture table: only Data Product tables publish, and this
-    # fixture exists to exercise what published assets carry end-to-end. Each member carries the
-    # draft contract its first save gives it (REQ-2158).
+    # Every fixture table is a member of "prod" (governed_config): only Data Product tables
+    # publish, and this fixture exists to exercise what published assets carry end-to-end. Each
+    # member carries the draft contract its first save gives it (REQ-2158).
     return Table(
         source_id="wh",
         domain_id="sales",
@@ -56,10 +57,14 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
-        product_id="prod",
         contract=data_contracts.draft({c.name: c.data_type for c in columns if c.data_type}),
     )
 
+
+#: The product every fixture table is a member of (REQ-1634).
+PROD = DataProduct(
+    id="prod", domain_id="sales", name="prod", tables=["orders", "customers", "order_totals"]
+)
 
 #: Every role: each standard role (REQ-2155) descends from viewer; the config's roles are named.
 EVERYONE = ["viewer", "itest_analyst", "admin"]
@@ -154,6 +159,8 @@ def governed_config() -> ProvisaConfig:
                 description="Test rule.",
             )
         ],
+        # REQ-1634: the product lists its members.
+        data_products=[PROD],
     )
 
 
