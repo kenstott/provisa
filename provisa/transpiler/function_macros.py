@@ -1407,7 +1407,7 @@ def _sha(bits: int) -> Macro:
     }
     if bits in (256, 512):  # the digests Trino and SQL Server have
         forms[_TRINOS] = f"sha{bits}(value)"
-        forms[frozenset({"tsql"})] = Pg(f"sha{bits}(value)")
+        forms[frozenset({"tsql"})] = f"HASHBYTES('SHA2_{bits}', value)"  # sqlglot 30.29 writes none
     return Macro(f"sha{bits}", ("value",), forms)
 
 
@@ -2646,7 +2646,7 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.expression) if a is not None]
     if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
         return "time", [a for a in (node.this, node.args.get("zone")) if a is not None]
-    if isinstance(node, exp.SHA2):  # sqlglot's reading of sha256, sha384 and sha512
+    if isinstance(node, exp.SHA2Digest):  # sqlglot's reading of sha256, sha384 and sha512
         length = node.args.get("length")
         return f"sha{length.this if isinstance(length, exp.Literal) else 256}", [node.this]
     if isinstance(node, exp.Encode) and isinstance(node.args.get("charset"), exp.Literal):

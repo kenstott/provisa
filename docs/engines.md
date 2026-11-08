@@ -113,6 +113,8 @@ The functions Provisa ships for Cypher tools (the APOC set, see [Commands](comma
 <!-- engine-function-anomalies:begin -->
 | Engine | Function not available |
 | --- | --- |
+| `bigquery` | `apoc.coll.toSet` |
+| `bigquery` | `apoc.coll.union` |
 | `clickhouse` | `apoc.map.fromLists` |
 | `clickhouse-server` | `apoc.map.fromLists` |
 | `snowflake` | `apoc.map.fromLists` |
