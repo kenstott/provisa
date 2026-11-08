@@ -865,7 +865,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                tc.object_fields,
                tc.visible_to,
                tc.tenant_id
-        -- registered_tables first: schema.sql locks it before table_columns (REQ-2190 lock order).
+        -- registered_tables first: schema.sql locks it before table_columns (lock order).
         -- A draft table's columns are not listed.
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
