@@ -10,7 +10,8 @@
 #   packages ─────────────┘
 #
 # On a tag (v*) the release is built and published as it always was. Run by hand (Actions ->
-# Build Provisa Packages -> Run workflow) it is a DRY RUN: every artifact is built and uploaded
+# Build Provisa Packages -> Run workflow) on release/<version>, once the suites are green there,
+# it is the release's DRY RUN, which "Release: cut" requires: every artifact is built and uploaded
 # to the run under the names the given `version` produces, and nothing leaves the run -- no
 # draft release, no attachment, no PyPI upload, no image push, no signed attestation. A manual
 # run publishes only when it is started ON the tag whose version it names (re-publishing that
@@ -194,3 +195,5 @@ jobs:
     with:
       version: ${{ inputs.version || github.ref_name }}
       publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+    secrets:
+      RELEASE_MERGE_TOKEN: ${{ secrets.RELEASE_MERGE_TOKEN }}

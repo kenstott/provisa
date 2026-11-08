@@ -7,7 +7,7 @@
 # the sandbox tier fetches <name>-latest when it opens a sandbox, and `start-ui-install.sh --demo
 # <name>` pulls it, so a demo updated here is served with no release and no redeploy.
 #
-# A push to main rebuilds only the demos it changed; a dispatch rebuilds the one it names, or every
+# A push to dev rebuilds only the demos it changed; a dispatch rebuilds the one it names, or every
 # published demo (`all`). A version is never published twice (the push refuses one that exists).
 #
 # REQ-2006: before a bundle is published, a visitor walks it (tests/integration/
@@ -20,7 +20,7 @@ name: "Demo bundles"
 
 on:
   push:
-    branches: [main]
+    branches: [dev]
     paths:
       - "demo/named/**"
   workflow_dispatch:

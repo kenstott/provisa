@@ -7,7 +7,7 @@ name: Lint
 
 on:
   push:
-    branches: [main]
+    branches: [dev, 'release/**']
   pull_request:
   workflow_dispatch:
   # verification calls it (verify-surface.yml).

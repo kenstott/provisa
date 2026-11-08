@@ -1,5 +1,6 @@
 name: Unit Tests
 
+# Runs on dev, and on release/** where it gates a release (release-cut.yml reads the result).
 # tests/unit/ — pure, no Docker/live-service dependency (verified: no test in this directory
 # carries an integration/e2e/requires_* marker). Runs on every push/PR so a regression is caught
 # in minutes, not only when the (much more expensive) e2e lanes happen to run — see
@@ -7,7 +8,7 @@ name: Unit Tests
 
 on:
   push:
-    branches: [main]
+    branches: [dev, 'release/**']
   pull_request:
   workflow_dispatch:
   # verification calls it (verify-surface.yml).
