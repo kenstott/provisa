@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The customer360 demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Customer 360
+description: >-
+  Salesforce, ServiceNow, Jira and Stripe each keep their own id for a customer; a customer master
+  hub links them. Which accounts renewing this quarter have open P1 incidents, blocked fixes or
+  overdue invoices? Answered through the hub, then checked against each system's own evidence,
+  which finds the account the hub links to the wrong Stripe customer.
+screenshot: card.png
+published: false
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo.
+requires_provisa: 0.1.0a497
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Customer 360, Checked"

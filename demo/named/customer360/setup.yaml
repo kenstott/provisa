@@ -1,0 +1,25 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# What the customer360 demo runs once, in order, after the server is up (REQ-2016;
+# scripts/run_demo_setup.py):
+#
+#   command  a command of config.yaml, called as org_admin with no arguments
+#   refresh  a view of config.yaml with materialize: true, whose stored rows are built
+#
+# The first step that fails stops the run, naming the step.
+#
+# The check of the customer master, built once in its cascade's order: the crosswalk, the golden
+# record, the findings, the match rate and the corrected crosswalk.
+steps:
+- refresh: crosswalk
+- refresh: master
+- refresh: hub_findings
+- refresh: hub_match_rate
+- refresh: hub_corrected

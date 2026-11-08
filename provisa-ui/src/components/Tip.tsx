@@ -49,6 +49,7 @@ type TargetProps = {
   ref?: Ref<HTMLElement>;
   onMouseEnter?: (e: MouseEvent<HTMLElement>) => void;
   onMouseLeave?: (e: MouseEvent<HTMLElement>) => void;
+  onMouseOver?: (e: MouseEvent<HTMLElement>) => void;
   onMouseDown?: (e: MouseEvent<HTMLElement>) => void;
   onFocus?: (e: FocusEvent<HTMLElement>) => void;
   onBlur?: (e: FocusEvent<HTMLElement>) => void;
@@ -56,7 +57,14 @@ type TargetProps = {
   onTouchStart?: (e: TouchEvent<HTMLElement>) => void;
   onTouchEnd?: (e: TouchEvent<HTMLElement>) => void;
   "aria-describedby"?: string;
+  "data-tip-target"?: string;
 };
+
+/** Marks each Tip target (set in TipSurface below). */
+const TARGET_ATTR = "data-tip-target";
+/** The innermost Tip target holding `node` (the node itself, or the nearest one above it). */
+const targetOf = (node: EventTarget | null) =>
+  node instanceof Element ? node.closest(`[${TARGET_ATTR}]`) : null;
 
 /** Props a wrapper may hand on through a Tip to its target (see `ref` below). */
 type PassedOn = Omit<HTMLAttributes<HTMLElement>, "content" | "children">;
@@ -171,9 +179,15 @@ export function TipSurface({
       {cloneElement(children, {
         ...own,
         ref: attach,
-        onMouseEnter: (e) => {
-          own.onMouseEnter?.(e);
-          show(openDelay);
+        "data-tip-target": "",
+        // Hover is read from mouseover, which names the deepest element under the pointer and
+        // bubbles (mouseenter does neither). A control inside this target that has a Tip of its
+        // own owns the pointer while it is on it: this hint closes there, and opens again, after
+        // the usual delay, when the pointer comes back onto this target's own area.
+        onMouseOver: (e) => {
+          own.onMouseOver?.(e);
+          if (targetOf(e.target) !== target) hide();
+          else if (targetOf(e.relatedTarget) !== target) show(openDelay);
         },
         onMouseLeave: (e) => {
           own.onMouseLeave?.(e);
@@ -182,7 +196,8 @@ export function TipSurface({
         onFocus: (e) => {
           own.onFocus?.(e);
           // A click focuses too; only a focus the keyboard made shows the hint at once.
-          if (e.currentTarget.matches(":focus-visible")) show(0);
+          if (targetOf(e.target) !== target) hide();
+          else if (e.currentTarget.matches(":focus-visible")) show(0);
         },
         onBlur: (e) => {
           own.onBlur?.(e);
@@ -201,7 +216,7 @@ export function TipSurface({
         // A finger has no hover: the hint shows while the target is pressed.
         onTouchStart: (e) => {
           own.onTouchStart?.(e);
-          show(0);
+          if (targetOf(e.target) === target) show(0);
         },
         onTouchEnd: (e) => {
           own.onTouchEnd?.(e);

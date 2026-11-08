@@ -1932,6 +1932,74 @@
       "banksecrecyRecap": {
         "title": "您看到了什么",
         "description": "法律从公开地址读取，其术语被找出并落实到银行的表上，银行按概念进行了查询。Currency Transaction Report 通过其多笔交易到达数据，每个角色都看到了它可以看到的内容。"
+      },
+      "customer360Scenario": {
+        "title": "跨四个系统的 Customer 360",
+        "description": "Halyard Software 面向企业销售，每个客户都分布在四个系统中：<strong>Salesforce</strong> 保存其账户和续约，<strong>ServiceNow</strong> 保存其事件，<strong>Jira</strong> 保存研发的缺陷，<strong>Stripe</strong> 保存其发票。问题是：<em>本季度续约的账户中，哪些有未关闭的 P1 事件、受阻的修复或逾期发票？</em>沿途会看到：SaaS 数据源、实时读取的客户主数据、关系、血缘、物化视图、数据质量发现和一个数据产品。"
+      },
+      "customer360Systems": {
+        "title": "每个系统都有自己的 ID",
+        "description": "<strong>stripe</strong> 是 Halyard 的 Stripe 账户，通过 Stripe 公开的 API 读取。与 Salesforce、ServiceNow 和 Jira 一样，它只按自己的 ID 认识客户：这里是 <code>cus_…</code>，Salesforce 中是 <code>001…</code>，ServiceNow 中是公司的 <code>sys_id</code>，Jira 的 Customer 字段中是手工输入的名称。没有共享的 ID。"
+      },
+      "customer360Hub": {
+        "title": "客户主数据",
+        "description": "<strong>hub</strong> 是 Halyard 的客户主数据中心（MDM），一个实时读取的 Postgres 数据库。它为每个真实客户保存一个主客户，并有一张从每个主客户到其在各系统中 ID 的对照表（crosswalk）。它是“谁是谁”的记录系统。"
+      },
+      "customer360Crosswalk": {
+        "title": "主数据中心的对照表",
+        "description": "<strong>xref</strong> 就是对照表：每一行是某个系统对一个客户的 ID 及其所属的主客户，并记录由谁、何时建立链接：初始加载、数据管家、支持台或一次批量导入。"
+      },
+      "customer360JiraCustomer": {
+        "title": "Jira 的 Customer 字段",
+        "description": "Jira 表是一个表单：一个项目和一种问题类型，这里是 ENG 项目的缺陷。其 <strong>customer</strong> 列读取自定义字段 <code>customfield_10050</code>，即支持工程师手工输入的客户名称，因此同一个客户可能有多种写法。"
+      },
+      "customer360Spoke": {
+        "title": "中心辐射",
+        "description": "<strong>IS_BILLED_AS</strong> 把对照表的一行关联到它所指的 Stripe 客户。每个系统都这样关联到主数据中心，而不是彼此关联：第五个系统只多一个关系，而不是四个。"
+      },
+      "customer360FixedBy": {
+        "title": "事件的修复",
+        "description": "<strong>FIXED_BY</strong> 沿着 ServiceNow 事件的 correlation id 找到修复它的 Jira 缺陷：这是两个团队本来就在维护的链接。"
+      },
+      "customer360Lineage": {
+        "title": "答案从何而来",
+        "description": "答案的血缘：每一列都经由 <strong>renewal_risk_hub</strong> 追溯到它读取的字段，包括 Salesforce 的商机和账户、主数据中心的对照表、ServiceNow 的事件、Jira 的缺陷和 Stripe 的发票。"
+      },
+      "customer360Answer": {
+        "title": "通过主数据中心得到的答案",
+        "description": "<strong>renewal_risk_hub</strong> 回答这个问题：本季度续约结束的每个账户，以及主数据中心为其链接的记录中未关闭的 P1 事件、受阻的修复和逾期发票。共七个账户。<em>本季度</em>和<em>逾期</em>都从主数据中心最近一次同步算起。"
+      },
+      "customer360Graphql": {
+        "title": "同一答案的 GraphQL 版本",
+        "description": "同一视图作为 GraphQL 查询，并带出每个账户所属的主客户。每张表和每个视图都是一个 GraphQL 字段，受同样的治理。"
+      },
+      "customer360Graph": {
+        "title": "从账户到事件再到修复",
+        "description": "每个未关闭 P1 背后的路径，以图的形式呈现：一个 Salesforce 账户、它的对照表行、它的主客户、主客户的 ServiceNow 公司、该公司提交的 P1 事件，以及修复每个事件的 Jira 缺陷。每一跳都经过主数据中心。"
+      },
+      "customer360Trust": {
+        "title": "这个答案有多可信？",
+        "description": "答案的好坏取决于主数据中心的链接。<strong>hub_match_rate</strong> 根据各系统自身记录中的证据重新推导每条链接，并按月显示得到确认的比例。批量导入之后它下降了。"
+      },
+      "customer360Rules": {
+        "title": "对照表的规则",
+        "description": "<strong>crosswalk</strong> 按其注明的规则把每条系统记录匹配到一个 Salesforce 账户：网站或邮箱域名，否则是规范化后的名称。Larkspur 的两个 Stripe 客户按邮箱域名匹配，一个对应 Larkspur Analytics，一个对应 Larkspur Labs。<strong>master</strong> 构建黄金记录；其 ID 是锚定账户的哈希，因此重建永远不会重新编号。"
+      },
+      "customer360Findings": {
+        "title": "检查发现了什么",
+        "description": "<strong>hub_findings</strong> 列出每一处不一致：两次错误合并（批量导入把 Larkspur 的两个 Stripe 客户对调了）、重复客户、覆盖缺口（不属于任何主客户的记录）以及过时链接（指向系统中已不存在的记录）。对照表、主记录和发现是同一条物化视图级联。"
+      },
+      "customer360Corrected": {
+        "title": "修正后的答案",
+        "description": "<strong>renewal_risk_checked</strong> 在应用检查发现后再次通过主数据中心提问。Larkspur Analytics 出现了：它最近一张发票已逾期，但主数据中心把它链接到了 Larkspur Labs 的 Stripe 客户，所以第一次的答案漏掉了它。"
+      },
+      "customer360Product": {
+        "title": "作为产品的 Account Health",
+        "description": "<strong>Account Health</strong> 是数据产品：经过检查的答案、客户的黄金记录、发现和匹配率，并说明其用途、用法和局限。"
+      },
+      "customer360Recap": {
+        "title": "您看到了什么",
+        "description": "四个没有共享 ID 的 SaaS 系统，通过客户主数据连接起来；用 SQL、GraphQL 和 Cypher 回答了问题；然后进行检查：规则根据证据重新推导每条链接，找到了错误合并及其掩盖的账户。可从 SQL 页面自行探索。"
       }
     },
     "status": {
@@ -2064,6 +2132,10 @@
       "banksecrecy": {
         "title": "从 Bank Secrecy Act 读出的现金报告",
         "summary": "一家银行从官方公开地址读取 Bank Secrecy Act 的现金报告规则，找出其中的术语并将其落实到自己的表上。然后按概念查询：哪些现金需要 Currency Transaction Report，谁在 10,000 美元以下拆分交易。银行和客户是虚构的，法规是真实的。"
+      },
+      "customer360": {
+        "title": "Customer 360",
+        "summary": "通过客户主数据连接 Salesforce、ServiceNow、Jira 和 Stripe，找出有风险的续约；再用各系统自身的证据检查主数据，找出它漏掉的账户。"
       }
     }
   }
