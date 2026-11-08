@@ -1861,6 +1861,7 @@ async def govern_statement(
     await _reject_unbound_writes(_parsed_input, state)
 
     gov_ctx = _governance()
+    _written_tree = _parsed_input
     # ONE semantic statement: every view the statement reads is replaced by its SQL before
     # governance, so governance judges it whole for this reader (provisa.mv.view_read).
     _validated_sql = normalized_sql
@@ -1872,6 +1873,16 @@ async def govern_statement(
             normalized_sql, _view_map, state, gov_ctx
         )
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
+    # REQ-2219: the first governance rule. Every object the statement touches is in the person's
+    # mask, before any other rule reads the statement.
+    from provisa.compiler.entitlement_rule import entitlement_violations
+
+    _outside = entitlement_violations(_written_tree, _parsed_input, gov_ctx)
+    if _outside:
+        from provisa.compiler.sql_validator import GovernanceRefused
+
+        await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+        raise GovernanceRefused(_outside)
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     # REQ-2190: a client's join on oids is no registered relationship; row scope and column rules
@@ -3972,7 +3983,9 @@ def _raw_cache_key(
 ) -> str | None:
     """The raw-SQL namespace key for governed ``sql``, its bound values and the request's as-of,
     or None when the text depends on unresolved session state (REQ-866)."""
+    from provisa.api.app import state
     from provisa.cache.key import is_cacheable, raw_sql_cache_key
+    from provisa.entitlements.runtime import current_mask_hash
 
     cacheable, _ = is_cacheable(sql)
     if not cacheable:
@@ -3989,6 +4002,7 @@ def _raw_cache_key(
         wire_formats=wire_formats,
         as_of=as_of,
         session=temp_tables.slot_key(),
+        mask_hash=current_mask_hash(state, role_id),  # REQ-2219
     )
 
 
@@ -5349,6 +5363,7 @@ async def _govern_compiled(
     if _lifted != sql:
         sql = _lifted
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
+    _written_compiled = _compiled_tree
     # ONE semantic statement, as on the raw-SQL stage: every view is replaced by its SQL before
     # governance (provisa.mv.view_read).
     _validated_sql = sql
@@ -5360,6 +5375,17 @@ async def _govern_compiled(
         _views = views_read(sql, _view_map)
         sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
+    # REQ-2219: the first governance rule (see govern_statement).
+    from provisa.compiler.entitlement_rule import entitlement_violations
+
+    _outside = entitlement_violations(_written_compiled, _compiled_tree, gov_ctx)
+    if _outside:
+        from provisa.audit.pipeline import write_denial
+
+        from provisa.compiler.sql_validator import GovernanceRefused
+
+        await write_denial(sql, role_id, _compiled_tree, gov_ctx, state)
+        raise GovernanceRefused(_outside)
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
     # The V-rules every statement meets (a masked column in a filter, a hidden column, tables
     # related outside the approved relationships, …), on the compiled path too. The relationship
