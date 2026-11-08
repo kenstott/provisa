@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 1424d70f-0ae8-42c2-8fcc-c62d850e9128
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -16,7 +17,10 @@ governance once. Every check asserts the answer, and a skip is a failure (confte
 
 Run it from the repository root, on a test instance only, with one command:
 
-    .venv/bin/python -m pytest -m isolated tests/smoke/test_main_is_startable.py --no-cov -v
+    PYTEST_NO_DOCKER=1 .venv/bin/python -m pytest -m isolated \
+        tests/smoke/test_main_is_startable.py --no-cov -v
+
+(PYTEST_NO_DOCKER: tests/conftest.py would otherwise start its compose stack; this check uses none.)
 
 It needs `uv sync --extra dev --extra gx --extra soda`, provisa-client/ installed, and
 `npm ci && npx playwright install chromium` in provisa-ui. It starts and removes everything it uses,

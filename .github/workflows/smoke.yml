@@ -47,6 +47,9 @@ jobs:
       - name: Run the smoke check
         env:
           CI: "true"
+          # No compose stack: tests/conftest.py would otherwise start one for a test outside
+          # tests/unit.
+          PYTEST_NO_DOCKER: "1"
           PROVISA_SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
         run: >-
           .venv/bin/python -m pytest -m isolated tests/smoke/test_main_is_startable.py
