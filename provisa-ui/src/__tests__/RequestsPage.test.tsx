@@ -269,9 +269,10 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
 });
 
 describe("RequestsPage's remembered filters", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.unstubAllGlobals();
     localStorage.clear();
+    await i18n.changeLanguage("en");
     serve(() => new Response("{}"));
   });
 
