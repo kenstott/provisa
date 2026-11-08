@@ -22,7 +22,8 @@ import json
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from sqlalchemy import select
+from sqlalchemy import bindparam, select, update
+from sqlalchemy.exc import IntegrityError
 
 from provisa.core.schema_org import node_ids, rel_ids
 from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind, PathDepthExceeded
@@ -523,8 +524,75 @@ def _apply_rel_id_map(v: Any, rel_map: dict[str, int]) -> Any:
     return v
 
 
+# Composite ids read per statement: well under every store's bound-parameter limit.
+_ID_BATCH = 500
+
+
+async def _register_ids(
+    model_db: Any, table: Any, kind_column: str, found: dict[str, tuple[str, dict]]
+) -> dict[str, int]:
+    """The durable id of each composite id in ``found`` (its kind and properties), registered in
+    ``table`` (node_ids or rel_ids) in batched statements: the held rows are read in one statement
+    per batch, and the new rows and the rows whose kind or properties change are written in one
+    transaction -- not a read and an upsert per item, which made one Cypher read of a few hundred
+    nodes hundreds of control-plane commits, and readers running at once queued on them. A held
+    row's properties are merged with the read's, the read's winning (REQ-394)."""
+    wanted = {
+        cid: (kind, {k: v for k, v in props.items() if v is not None})
+        for cid, (kind, props) in found.items()
+    }
+    cids = list(wanted)
+    changed_stmt = (
+        update(table)
+        .where(table.c.composite_id == bindparam("b_composite_id"))
+        .values(
+            {
+                kind_column: bindparam("b_kind"),
+                "properties": bindparam("b_properties", type_=table.c.properties.type),
+            }
+        )
+    )
+
+    async def held_rows(of: list[str]) -> dict[str, tuple[int, str, dict]]:
+        held: dict[str, tuple[int, str, dict]] = {}
+        for at in range(0, len(of), _ID_BATCH):
+            result = await conn.execute_core(
+                select(
+                    table.c.composite_id, table.c.id, table.c[kind_column], table.c.properties
+                ).where(table.c.composite_id.in_(of[at : at + _ID_BATCH]))
+            )
+            held.update({r[0]: (r[1], r[2], r[3] or {}) for r in result.fetchall()})
+        return held
+
+    async with model_db.acquire() as conn:
+        while True:
+            held = await held_rows(cids)
+            new = [
+                {"composite_id": cid, kind_column: kind, "properties": props}
+                for cid, (kind, props) in wanted.items()
+                if cid not in held
+            ]
+            changed = []
+            for cid, (_id, kind_was, props_was) in held.items():
+                kind, props = wanted[cid]
+                merged = {**props_was, **props}
+                if kind != kind_was or merged != props_was:
+                    changed.append({"b_composite_id": cid, "b_kind": kind, "b_properties": merged})
+            try:
+                async with conn.transaction():
+                    await conn.execute_core_many(table.insert(), new)
+                    await conn.execute_core_many(changed_stmt, changed)
+            except IntegrityError:
+                # Another read registered one of the new ids first: it is held now, read again.
+                continue
+            break
+        if new:
+            held.update(await held_rows([row["composite_id"] for row in new]))
+    return {cid: row[0] for cid, row in held.items()}
+
+
 async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None:
-    """Upsert all graph relationships to rel_ids; replace composite edge identities with ints.
+    """Register all graph relationships in rel_ids; replace composite edge identities with ints.
 
     Mutates serializable_rows in place.  No-op if model_db is None or no edges found.
     Mirrors register_node_ids so relationships get durable IDs the same way nodes do.
@@ -540,31 +608,13 @@ async def register_rel_ids(serializable_rows: list[dict], model_db: Any) -> None
     if not edges:
         return
 
-    rel_map: dict[str, int] = {}
-    async with model_db.acquire() as conn:
-        for cid, (rel_type, props) in edges.items():
-            new_props = {k: v for k, v in props.items() if v is not None}
-            # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
-            existing = await conn.execute_core(
-                select(rel_ids.c.properties).where(rel_ids.c.composite_id == cid)
-            )
-            erow = existing.fetchone()
-            merged = {**(erow[0] or {}), **new_props} if erow is not None else new_props
-            rid = await conn.upsert_returning(
-                rel_ids,
-                {"composite_id": cid, "rel_type": rel_type, "properties": merged},
-                index_elements=["composite_id"],
-                returning="id",
-                update_columns=["rel_type", "properties"],
-            )
-            rel_map[cid] = rid
-
+    rel_map = await _register_ids(model_db, rel_ids, "rel_type", edges)
     for i, row in enumerate(serializable_rows):
         serializable_rows[i] = {k: _apply_rel_id_map(v, rel_map) for k, v in row.items()}
 
 
 async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> None:  # REQ-394
-    """Upsert all graph nodes to node_ids table; replace composite string IDs with integers.
+    """Register all graph nodes in node_ids; replace composite string IDs with integers.
 
     Mutates serializable_rows in place.  No-op if model_db is None or no nodes found.
     """
@@ -579,25 +629,7 @@ async def register_node_ids(serializable_rows: list[dict], model_db: Any) -> Non
     if not nodes:
         return
 
-    id_map: dict[str, int] = {}
-    async with model_db.acquire() as conn:
-        for cid, (label, props) in nodes.items():
-            new_props = {k: v for k, v in props.items() if v is not None}
-            # Conflict SET merged existing || excluded; resolve the JSON merge in Python.
-            existing = await conn.execute_core(
-                select(node_ids.c.properties).where(node_ids.c.composite_id == cid)
-            )
-            erow = existing.fetchone()
-            merged = {**(erow[0] or {}), **new_props} if erow is not None else new_props
-            nid = await conn.upsert_returning(
-                node_ids,
-                {"composite_id": cid, "label": label, "properties": merged},
-                index_elements=["composite_id"],
-                returning="id",
-                update_columns=["label", "properties"],
-            )
-            id_map[cid] = nid
-
+    id_map = await _register_ids(model_db, node_ids, "label", nodes)
     for i, row in enumerate(serializable_rows):
         serializable_rows[i] = {k: _apply_id_map(v, id_map) for k, v in row.items()}
 
