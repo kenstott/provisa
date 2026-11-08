@@ -890,9 +890,14 @@ def _unwrapped(value: exp.Expr) -> exp.Expr:
 
 def _never_an_instant(value: exp.Expr) -> bool:
     """Whether the value is an object or array built here (a JSON_OBJECT, a JSON_ARRAY, filtered
-    or not): its members were each told apart as they were written, so nothing is told apart
-    again."""
-    return isinstance(_unwrapped(value), (exp.JSONObject, exp.JSONArray))
+    or not, or a list of them): its members were each told apart as they were written, so nothing
+    is told apart again."""
+    value = _unwrapped(value)
+    if isinstance(value, exp.ArrayAgg):  # json_agg(json_object(...)): the objects are such
+        value = _unwrapped(value.this)
+    elif isinstance(value, exp.Array) and value.expressions:
+        return all(_never_an_instant(item) for item in value.expressions)
+    return isinstance(value, (exp.JSONObject, exp.JSONArray))
 
 
 def _is_list(value: exp.Expr) -> bool:
