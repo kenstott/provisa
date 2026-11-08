@@ -540,7 +540,7 @@ class TestReq748TenantIdInjection:
         # not in the live server's config, so the compiled MATCH resolves columns the token's role
         # cannot see and column visibility (V003) rejects it before execution. What must never
         # happen is the query running ungoverned.
-        assert resp.status_code in [200, 400, 403, 404, 500]
+        assert resp.status_code in [200, 400, 403, 404, 500], resp.text
         # Tenant_id should be injected into the WHERE clause automatically
 
     def test_tenant_id_injected_in_sql(self, client):

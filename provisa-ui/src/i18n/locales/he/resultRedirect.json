@@ -2,6 +2,7 @@
   "resultRedirect": {
     "landed": "התוצאה ({{rows}} שורות) נכתבה למאגר התוצאות.",
     "landedAt": "התוצאה ({{rows}} שורות) נכתבה למאגר התוצאות: {{url}}",
-    "download": "הורדה"
+    "download": "הורדה",
+    "downloadFailed": "ההורדה נכשלה: {{reason}}"
   }
 }
