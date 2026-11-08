@@ -27,7 +27,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from provisa.core import contract_versions
-from provisa.core.models import FIRST_CONTRACT_VERSION, ContractCheck, DataContract
+from provisa.core.models import (
+    FIRST_CONTRACT_VERSION,
+    ContractCheck,
+    DataContract,
+    VersionColumn,
+)
 
 
 class ContractRefused(ValueError):
@@ -58,10 +63,12 @@ def for_save(
     stored: dict[str, Any] | None,
     stored_product_id: str | None,
     checks: list[ContractCheck] | None = None,
+    columns: list[VersionColumn],
 ) -> DataContract | None:
     """The contract a table's save stores: none outside a product (or for a checker); the one
     declared, else the one stored for the same product, else a draft, with the version this save
-    made recorded on it. ``checks``: the product's promises on the member."""
+    made recorded on it. ``checks``: the product's promises on the member; ``columns``: the member's
+    columns, snapshotted by the version."""
     if product_id is None or is_checker:
         return None
     previous = (
@@ -74,4 +81,6 @@ def for_save(
     elif declared is not None and declared.created_at is None:
         # A contract declared for a new member is created by this save.
         declared = declared.model_copy(update={"created_at": datetime.now(timezone.utc)})
-    return contract_versions.recorded(previous, declared or previous or draft(), checks or [])
+    return contract_versions.recorded(
+        previous, declared or previous or draft(), checks or [], columns
+    )

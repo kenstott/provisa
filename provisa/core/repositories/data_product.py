@@ -202,6 +202,7 @@ async def save_contract(  # REQ-2158
     (data_contracts.ContractRefused) when the table is no product's output port. The member's row,
     as it is now."""
     from provisa.core import contract_versions, data_contracts
+    from provisa.core.repositories.table import load_columns
 
     async with conn.transaction():
         row = (
@@ -222,7 +223,10 @@ async def save_contract(  # REQ-2158
         previous = DataContract.model_validate(row.contract)
         contract = data_contracts.created_as(previous, contract)
         contract = contract_versions.recorded(
-            previous, contract, await promised_checks(conn, row.product_id, table_id)
+            previous,
+            contract,
+            await promised_checks(conn, row.product_id, table_id),
+            contract_versions.snapshot(await load_columns(conn, table_id)),
         )
         await conn.execute_core(
             update(registered_tables)

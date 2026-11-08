@@ -666,6 +666,9 @@ glossary_terms:
   definition: How many server errors (HTTP 5xx) a customer was served.
   domains:
   - shop
+  edges:
+  - to: server error
+    rel_type: DERIVED_FROM
 - name: session
   approve: true
   definition: The database session, one connection's lifetime, that a log record belongs to.
@@ -798,8 +801,6 @@ glossary_terms:
   edges:
   - to: web request
     rel_type: KIND_OF
-  - to: server errors
-    rel_type: RELATED_TO
 - name: database error
   approve: true
   definition: A database statement that failed, with the SQLSTATE and message the database gave.
@@ -822,7 +823,7 @@ glossary_terms:
   - to: duration ms
     rel_type: RELATED_TO
   - to: request time
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
 - name: slow page
   approve: true
   definition: A page whose latency is high enough for a visitor to notice; the slowest pages view ranks

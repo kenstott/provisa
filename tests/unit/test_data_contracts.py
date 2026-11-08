@@ -58,6 +58,18 @@ def test_a_contract_holds_no_column_selection_of_its_own():
         )
 
 
+def test_the_api_carries_no_columns_on_a_contract_or_its_input():
+    import dataclasses
+
+    from provisa.api.admin.types import DataContractInput, DataContractType
+
+    for kind in (DataContractType, DataContractInput):
+        assert "columns" not in {f.name for f in dataclasses.fields(kind)}
+    from provisa.core import models
+
+    assert not hasattr(models, "ContractColumn")
+
+
 def test_no_rule_holds_a_member_to_columns_its_contract_selected():
     # The checks are the promise (REQ-2157); there is no column promise to keep or to break.
     assert not hasattr(data_contracts, "require_new_version")
@@ -66,6 +78,7 @@ def test_no_rule_holds_a_member_to_columns_its_contract_selected():
 
 def _for_save(**kw):
     args = {
+        "columns": [],
         "product_id": "p",
         "is_checker": False,
         "declared": None,

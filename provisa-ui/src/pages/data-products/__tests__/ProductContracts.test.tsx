@@ -76,6 +76,7 @@ const saved = (
   savedBy: string | null = "ken@example.com",
 ): ContractVersion => ({
   contract: { version, status },
+  columns: [],
   changes,
   saved_at: "2026-10-20T10:00:00Z",
   saved_by: savedBy,

@@ -149,6 +149,8 @@ export interface ContractChange {
 /** A saved version of a contract, as the store keeps it (REQ-2158). */
 export interface ContractVersion {
   contract: { version: string; status: string };
+  /** The member's columns when this version was saved; a contract holds none of its own. */
+  columns: { name: string; type: string; required: boolean; description: string | null }[];
   changes: ContractChange[];
   saved_at: string;
   /** Who saved it; null when the system did (a configuration load). */

@@ -37,10 +37,10 @@ from provisa.core import model_change
 from provisa.core.models import (
     ContractChange,
     ContractCheck,
-    ContractColumn,
     ContractSlaProperty,
     ContractVersion,
     DataContract,
+    VersionColumn,
 )
 
 #: Which way a service level runs: +1 stronger as it rises, -1 stronger as it falls.
@@ -125,8 +125,8 @@ def _check_weakened(before: ContractCheck, after: ContractCheck) -> bool:
 
 
 def _renames(
-    removed: list[ContractColumn], added: list[ContractColumn]
-) -> list[tuple[ContractColumn, ContractColumn]]:
+    removed: list[VersionColumn], added: list[VersionColumn]
+) -> list[tuple[VersionColumn, VersionColumn]]:
     """The removed field each added one replaces: the one of its type, where there is only one
     each way. With two of a type, which became which cannot be told."""
     return [
@@ -139,9 +139,9 @@ def _renames(
     ]
 
 
-def _field_changes(before: DataContract, after: DataContract) -> list[ContractChange]:
-    old = {c.name: c for c in before.columns}
-    new = {c.name: c for c in after.columns}
+def _field_changes(before: list[VersionColumn], after: list[VersionColumn]) -> list[ContractChange]:
+    old = {c.name: c for c in before}
+    new = {c.name: c for c in after}
     removed = [c for name, c in old.items() if name not in new]
     added = [c for name, c in new.items() if name not in old]
     renames = _renames(removed, added)
@@ -274,19 +274,15 @@ def _prose_changes(before: DataContract, after: DataContract) -> list[ContractCh
     return changes
 
 
-def differences(
-    before: DataContract,
-    before_checks: list[ContractCheck],
-    after: DataContract,
-    after_checks: list[ContractCheck],
-) -> list[ContractChange]:
-    """How ``after`` differs from ``before``, each difference marked breaking or not. A version
-    number or a status is no difference: it says which contract this is, not what it promises."""
+def differences(before: ContractVersion, after: ContractVersion) -> list[ContractChange]:
+    """How ``after`` differs from ``before``, each difference marked breaking or not. Fields are
+    compared by the member's columns each version snapshotted. A version number or a status is no
+    difference: it says which contract this is, not what it promises."""
     return [
-        *_field_changes(before, after),
-        *_sla_changes(before, after),
-        *_check_changes(before_checks, after_checks),
-        *_prose_changes(before, after),
+        *_field_changes(before.columns, after.columns),
+        *_sla_changes(before.contract, after.contract),
+        *_check_changes(before.checks, after.checks),
+        *_prose_changes(before.contract, after.contract),
     ]
 
 
@@ -295,24 +291,46 @@ def _unchanged(a: DataContract, b: DataContract) -> bool:
     return a.model_dump(exclude=omitted) == b.model_dump(exclude=omitted)
 
 
+def snapshot(columns: list[dict[str, Any]]) -> list[VersionColumn]:
+    """The member's columns as a version keeps them. ``columns``: each one's ``column_name``,
+    ``data_type``, ``description`` and ``not_null`` as the model store holds them."""
+    return [
+        VersionColumn(
+            name=c["column_name"],
+            type=c["data_type"] or "unknown",
+            description=c.get("description"),
+            required=bool(c.get("not_null")),
+        )
+        for c in columns
+    ]
+
+
 def recorded(
-    previous: DataContract | None, contract: DataContract, checks: list[ContractCheck]
+    previous: DataContract | None,
+    contract: DataContract,
+    checks: list[ContractCheck],
+    columns: list[VersionColumn],
 ) -> DataContract:
     """``contract`` replacing ``previous`` with the version this save made recorded on it: a new
     number adds one, the same number replaces it, and saving what is stored records nothing.
-    ``checks``: what the product promises of the member now. The history is the stored one
-    whatever ``contract`` carries. A contract stored before versions were kept starts from this
-    save, with no differences to record."""
+    ``checks``: what the product promises of the member now; ``columns``: the member's columns
+    now, which the version snapshots. The history is the stored one whatever ``contract`` carries.
+    A contract stored before versions were kept starts from this save, with no differences to
+    record."""
     kept = previous.versions if previous is not None else []
     if previous is not None and kept and _unchanged(previous, contract):
+        # The member's columns alone make no version: a snapshot is taken by a version's save, and
+        # the next version's differences show what the member's columns became since.
         return contract.model_copy(update={"versions": kept})
     earlier = [v for v in kept if v.contract.version != contract.version]
     base = earlier[-1] if earlier else None
     version = ContractVersion(
         contract=contract.model_copy(update={"versions": []}),
+        columns=columns,
         checks=checks,
-        changes=differences(base.contract, base.checks, contract, checks) if base else [],
         saved_at=datetime.now(timezone.utc),
         saved_by=model_change.actor(),
     )
+    if base is not None:
+        version = version.model_copy(update={"changes": differences(base, version)})
     return contract.model_copy(update={"versions": [*earlier, version]})

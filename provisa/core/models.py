@@ -619,8 +619,9 @@ CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
 FIRST_CONTRACT_VERSION = "0.1.0"
 
 
-class ContractColumn(BaseModel):  # REQ-2158
-    """A column a contract declares: the member's column, of the type it is stored as."""
+class VersionColumn(BaseModel):  # REQ-2158
+    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
+    what a version's field differences compare is what the member's columns were when it was saved."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -703,9 +704,6 @@ class DataContract(BaseModel):  # REQ-2158
     description: str | None = None
     terms: ContractTerms = Field(default_factory=ContractTerms)
     sla: list[ContractSlaProperty] = Field(default_factory=list)
-    # WIP: only contract_versions._field_changes still reads this; removal awaits how a version
-    # records field differences once the schema is the member's (REQ-2158, 2026-10-29 amendment).
-    columns: list[ContractColumn] = Field(default_factory=list)
     # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
     # every later version (data_contracts.for_save).
     created_at: datetime | None = None
@@ -722,6 +720,8 @@ class ContractVersion(BaseModel):  # REQ-2158
     model_config = ConfigDict(extra="forbid")
 
     contract: DataContract
+    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
+    columns: list[VersionColumn] = Field(default_factory=list)
     checks: list[ContractCheck] = Field(default_factory=list)
     changes: list[ContractChange] = Field(default_factory=list)
     saved_at: datetime

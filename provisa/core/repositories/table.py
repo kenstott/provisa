@@ -408,7 +408,7 @@ async def _require_free_sql_address(conn: "Connection", table: Table, domain_id:
 
 async def _contract_for_save(conn: "Connection", table: Table) -> DataContract | None:
     """REQ-2158: the contract the table's save stores (provisa.core.data_contracts)."""
-    from provisa.core import data_contracts
+    from provisa.core import contract_versions, data_contracts
 
     stored = (
         await conn.execute_core(
@@ -437,6 +437,17 @@ async def _contract_for_save(conn: "Connection", table: Table) -> DataContract |
         stored=None if stored is None else stored.contract,
         stored_product_id=None if stored is None else stored.product_id,
         checks=promised,
+        columns=contract_versions.snapshot(
+            [
+                {
+                    "column_name": c.name,
+                    "data_type": c.data_type,
+                    "description": c.description,
+                    "not_null": c.not_null,
+                }
+                for c in table.columns
+            ]
+        ),
     )
 
 
