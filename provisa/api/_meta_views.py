@@ -959,7 +959,15 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
     "query_audit_log": "query_audit_log_ops",
     "replica_build_log": "replica_build_log_ops",
     "sla_breach_log": "sla_breach_log_ops",
+    # REQ-2216: ops.requests -- one row per request, over the creation-request queue.
+    "requests": "requests_ops",
 }
+
+# An ops log whose exposed name is not a physical table, by the base table it shows one row per
+# row of: its primary key is that table's, and that table's notify trigger (schema.sql) reports its
+# changes on the schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216:
+# ops.requests over creation_requests.
+_OPS_LOG_BASE_TABLE: dict[str, str] = {"requests": "creation_requests"}
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
@@ -988,6 +996,24 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         SELECT b.id, b.kind, b.observed, b.last_observed, b.limit_value, b.window_start,
                b.window_end, b.started_at, b.last_seen_at, b.resolved_at
         FROM sla_breach_log b
+    """,
+    # REQ-2216, REQ-2215, REQ-2217: one row per request -- what was asked, by whom, the
+    # environment it is for, the roles it is addressed to and their members as resolved when it
+    # was raised (and the roles none could be resolved for), its state, the decision, who decided
+    # and when. A workflow tool subscribes to it: a request raised is an insert, decided an update.
+    "requests": """
+        CREATE OR REPLACE VIEW requests_ops AS
+        SELECT r.id, r.request_type, r.capability, r.payload, r.requested_by,
+               rq.display_name AS requested_by_name, r.environment, r.addressed_roles,
+               r.addressed_members, r.unresolved_roles, r.status AS state, r.approvals,
+               r.required_approvals,
+               CASE r.status WHEN 'executed' THEN 'approved' WHEN 'rejected' THEN 'rejected'
+               END AS decision,
+               r.rejection_reason AS decision_reason, r.resolved_by AS decided_by,
+               rd.display_name AS decided_by_name, r.resolved_at AS decided_at, r.created_at
+        FROM creation_requests r
+        LEFT JOIN user_directory rq ON rq.user_id = r.requested_by
+        LEFT JOIN user_directory rd ON rd.user_id = r.resolved_by
     """,
 }
 

@@ -693,7 +693,7 @@ async def create_webhook(
     if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
-    from provisa.core.repositories import creation_request as cr_repo
+    from provisa.api.admin.request_queue import raise_request
 
     async with state.model_db.acquire() as conn:
         await _refuse_taken_name(conn, tracked_webhooks, body.name, "webhook")
@@ -739,13 +739,14 @@ async def create_webhook(
         # via the creation_requests queue — a webhook is approved when its most recent
         # "webhook" request is executed. Registering or editing enqueues a fresh pending
         # request, so any edit resets approval until re-approved.
-        request_id = await cr_repo.create(
+        request_id = await raise_request(
             conn,
             "webhook",
             "webhook_registration",
             {"name": body.name},
             # The user who registered or edited it, so the request is not theirs to approve.
             getattr(getattr(request.state, "identity", None), "user_id", None),
+            state=state,
         )
 
     log.info("Saved tracked webhook %s (pending approval, request #%s)", body.name, request_id)

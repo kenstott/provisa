@@ -138,6 +138,8 @@ async def _queue_creation_request(  # REQ-434
     """Persist a governed create the caller is not authorized to perform (REQ-434)."""
 
     from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.api.admin.request_queue import raise_request
+    from provisa.api.app import state
     from provisa.core.repositories import creation_request as cr_repo
 
     payload = request_payload(input)
@@ -145,8 +147,8 @@ async def _queue_creation_request(  # REQ-434
     requested_by = getattr(identity, "user_id", None) if identity is not None else None
     pool = await _get_pool()
     async with pool.acquire() as conn:
-        rid = await cr_repo.create(
-            cast("Connection", conn), request_type, capability, payload, requested_by
+        rid = await raise_request(
+            cast("Connection", conn), request_type, capability, payload, requested_by, state=state
         )
     if request_type in cr_repo.REQUIRED_APPROVALS:
         # REQ-1948: a relationship request is decided by the domains it touches.
