@@ -162,10 +162,15 @@ def fingerprint(value: Any) -> Any:
     equal fingerprints are the same values of the same types (``1``, ``1.0``, ``True`` and ``"1"``
     all differ), so :func:`dump` renders them to the same text."""
     if isinstance(value, dict):
-        return (
-            "dict",
-            tuple(sorted(((fingerprint(k), fingerprint(v)) for k, v in value.items()), key=repr)),
-        )
+        pairs = [(fingerprint(k), fingerprint(v)) for k, v in value.items()]
+        # Ordered by key: a dict's keys are distinct, so their fingerprints' text orders the pairs
+        # as the whole pairs' text does, without writing every value's subtree out at every level
+        # it is nested in. Two keys of one text (keys of different types rendering alike) fall
+        # back to ordering by the whole pair.
+        keyed = {repr(k): (k, v) for k, v in pairs}
+        if len(keyed) == len(pairs):
+            return ("dict", tuple(keyed[text] for text in sorted(keyed)))
+        return ("dict", tuple(sorted(pairs, key=repr)))
     if isinstance(value, (list, tuple)):
         return (type(value).__name__, tuple(fingerprint(v) for v in value))
     return (type(value).__name__, value)

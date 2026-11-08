@@ -16,6 +16,7 @@ Extracted from sql_gen.py; pure data structures, no compilation logic.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
@@ -219,6 +220,9 @@ class CompilationContext:
 # --- Compiled query result ---
 
 
+# Asked for every column of every table each role's context is built from: a type is answered
+# from the memo.
+@functools.lru_cache(maxsize=1024)
 def is_json_type(data_type: str | None) -> bool:
     """REQ-1867: a column type whose values are JSON -- PostgreSQL's json and jsonb, as a
     registration or an engine names them."""
@@ -237,6 +241,7 @@ _INTEGER_TYPES = frozenset(
 )  # fmt: skip
 
 
+@functools.lru_cache(maxsize=1024)
 def is_integer_type(data_type: str | None) -> bool:
     """REQ-1867: a column type whose values are integers, written as JSON numbers by the type --
     not by how a reader represented the value (a DuckDB HUGEINT read through Arrow is a Decimal)."""

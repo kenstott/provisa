@@ -161,6 +161,9 @@ def ontology_name(term_name: str) -> str | None:  # REQ-2163
     return name if re.fullmatch(r"[a-z][a-z0-9_]*", name) else None
 
 
+# Pure string -> string, and asked for every column of every table each role's schema and context
+# name (a schema rebuild and a role's compile): a repeated name is answered from the memo.
+@functools.lru_cache(maxsize=65536)
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase.
 
@@ -190,6 +193,7 @@ def to_pascal_case(name: str) -> str:  # REQ-194
     return _to_pascal_case(name)
 
 
+@functools.lru_cache(maxsize=65536)
 def _to_camel_case(name: str) -> str:
     """Convert snake_case or kebab-case to camelCase."""
     pascal = _to_pascal_case(name)
@@ -499,7 +503,14 @@ _GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
 
 
 def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, REQ-411, REQ-412
-    converted = apply_convention(name, override or _gql_convention)
+    return _gql_name(name, override or _gql_convention)
+
+
+@functools.lru_cache(maxsize=65536)
+def _gql_name(name: str, convention: str) -> str:
+    """:func:`apply_gql_name` under ``convention``: pure, so a repeated name is answered from the
+    memo (see :func:`_to_pascal_case`)."""
+    converted = apply_convention(name, convention)
     if _GQL_NAME_RE.match(converted):
         return converted
     # apply_convention only re-cases an already-valid identifier — a raw external name (a CSV/API
@@ -530,6 +541,7 @@ def apply_cql_property(name: str) -> str:  # REQ-471
     return apply_gql_name(name)
 
 
+@functools.lru_cache(maxsize=65536)
 def apply_convention(name: str, convention: str) -> str:  # REQ-471
     """Apply a naming convention preset to a name. Returns name unchanged when already correct."""
     canon = _canonical_convention(convention)
