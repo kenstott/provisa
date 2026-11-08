@@ -47,7 +47,6 @@ import { Tip } from "../../components/Tip";
 import { TagControl } from "../../components/TagControl";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { LineageDag } from "../../components/lineage/LineageDag";
-import { BETWEEN_LANE } from "../../components/lineage/lineage-layout";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
 import type { MetaReader } from "../../api/metaGraph";
@@ -206,17 +205,15 @@ export function DataProductDetailPanel({
   // REQ-1667: the same graph at 90% of the viewport; collapse state is shared with the inline one.
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
   // REQ-1667, REQ-2174 (amended 2026-11-07): lane 0 is this product's tables, lane -1 its inputs,
-  // each lane further up named by its hops beyond the inputs; what the tables read their inputs
-  // through stands between, untitled. Nothing downstream is drawn.
+  // each lane further up named by its hops beyond the inputs; a view between an input and a table
+  // is on the edge between them, not a lane. Nothing downstream is drawn.
   const laneTitle = useCallback(
     (lane: number) =>
-      lane === BETWEEN_LANE
-        ? null
-        : lane === 0
-          ? t("dataProductsTab.detail.lineageLaneTables")
-          : lane === -1
-            ? t("dataProductsTab.detail.lineageLaneInputs")
-            : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane - 1 }),
+      lane === 0
+        ? t("dataProductsTab.detail.lineageLaneTables")
+        : lane === -1
+          ? t("dataProductsTab.detail.lineageLaneInputs")
+          : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane - 1 }),
     [t],
   );
   // One value while its parts hold: a new one redraws the DAG, its zoom and pan lost.

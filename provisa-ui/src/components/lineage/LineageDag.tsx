@@ -28,6 +28,7 @@ import {
   ROLE_STYLE,
   ROW_H,
   buildLineageModel,
+  edgeText,
   nativeHeadHeight,
   rowWidth,
 } from "./lineage-layout";
@@ -243,7 +244,7 @@ export function LineageDag({
           id: e.id,
           source: e.source,
           target: e.target,
-          label: e.count > 1 ? `${e.count} columns` : e.label,
+          label: edgeText(e),
           command: e.command ? "yes" : "no",
           commandName: e.commandName ?? "",
         },
