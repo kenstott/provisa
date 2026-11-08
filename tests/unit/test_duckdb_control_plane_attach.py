@@ -13,18 +13,23 @@ and a row the control plane commits is read by the next statement, with no snaps
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import insert
 
 duckdb = pytest.importorskip("duckdb")
 
+import provisa.api.app  # noqa: E402,F401 -- the API layer says whether the deployment holds many orgs, which reading a source's secrets asks
+
 # Imported as the module: DuckDB resolves an unknown table name to a Python variable of that name
 # in the calling frame (its replacement scan), which the missing-catalog case must not find.
 from provisa.core import schema_org  # noqa: E402
-from provisa.federation.duckdb_runtime import DuckDBFederationRuntime  # noqa: E402
+from provisa.core.models import SourceType  # noqa: E402
+from provisa.federation.duckdb_runtime import DuckDBFederationRuntime, ReservedCatalog  # noqa: E402
 from provisa.federation.native_backend import libpq_dsn  # noqa: E402
 
 _REGISTERED = 'SELECT table_name FROM "provisa_admin"."org_default"."registered_tables"'
@@ -135,3 +140,63 @@ def test_concurrent_queries_never_steal_each_others_results(control_plane, runti
             t.join(timeout=10)
     assert errors == []
     assert wrong == [], f"{len(wrong)} wrong-length results under concurrency: {wrong[:5]}"
+
+
+def _sqlite_source(tmp_path, catalog: str) -> SimpleNamespace:
+    """A table of a SQLite source, as the attach walk hands it over (native_backend._attach_tbl),
+    named under ``catalog``."""
+    path = tmp_path / "inquiries.sqlite"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS inquiries (id INTEGER)")
+    return SimpleNamespace(
+        id="inquiries-sqlite",
+        type=SourceType.sqlite,
+        catalog=catalog,
+        path=str(path),
+        host=None,
+        port=None,
+        database=None,
+        username=None,
+        password=None,
+        federation_hints={},
+        mapping={},
+        max_live_concurrency=None,
+        schema_name="main",
+        table_name="inquiries",
+    )
+
+
+def test_a_source_named_under_provisa_admin_is_refused(control_plane, tmp_path):
+    """Regression: a SQLite source handed over under ``provisa_admin`` (the catalog Trino names a
+    source it cannot read in place) took the name as an in-memory catalog before the control plane
+    was attached; the control plane's attach then counted itself done, and the source's drop
+    detached the catalog, so every meta read failed on a catalog that was gone."""
+    rt = DuckDBFederationRuntime()
+    try:
+        with pytest.raises(ReservedCatalog, match="provisa_admin"):
+            rt.attach_source(_sqlite_source(tmp_path, "provisa_admin"))
+        rt.attach_control_plane(libpq_dsn(control_plane.org().engine.url))
+        rt.drop_source("inquiries-sqlite")
+        _register(control_plane, 1, "orders")
+        assert [r[0] for r in rt.run_sync(_REGISTERED).rows] == ["orders"]
+    finally:
+        rt.close()
+
+
+def test_a_detached_control_plane_is_attached_again(control_plane, runtime):
+    """Whether the control plane is attached is read from the connection, so an attach after it
+    went is made again rather than answered from memory."""
+    runtime._con.execute('DETACH "provisa_admin"')
+    runtime.attach_control_plane(libpq_dsn(control_plane.org().engine.url))
+    _register(control_plane, 1, "orders")
+    assert [r[0] for r in runtime.run_sync(_REGISTERED).rows] == ["orders"]
+
+
+def test_another_database_under_the_control_planes_name_is_refused(control_plane):
+    rt = DuckDBFederationRuntime()
+    try:
+        rt._con.execute("ATTACH ':memory:' AS \"provisa_admin\"")
+        with pytest.raises(RuntimeError, match="'provisa_admin' is attached as a duckdb database"):
+            rt.attach_control_plane(libpq_dsn(control_plane.org().engine.url))
+    finally:
+        rt.close()

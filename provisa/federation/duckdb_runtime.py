@@ -140,6 +140,18 @@ def _local_store_name(schema: str, table: str) -> str:
     return f'"{_LOCAL_STORE_SCHEMA}"."{schema}__{table}"'
 
 
+class ReservedCatalog(ValueError):
+    """A source handed over under the catalog name the control plane is attached as
+    (``provisa_admin``): its tables would stand in an in-memory catalog of that name, which the
+    control plane's attach then finds taken and a drop of the source detaches. Refused by name."""
+
+    def __init__(self, source_id: Any, catalog: str) -> None:
+        super().__init__(
+            f"source {source_id!r} is named under catalog {catalog!r}, which is reserved for the "
+            "control plane"
+        )
+
+
 class WriteConflict(RuntimeError):
     """REQ-2006: a statement collided with another transaction's write to the same rows, and DuckDB
     refused it. Refused by name, never retried here: the caller decides whether to write again."""
@@ -307,8 +319,6 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._ext_loaded: set[str] = (
             set()
         )  # community/extension connectors LOADed on this connection
-        self._control_plane_attached = False  # provisa_admin catalog (native path only)
-        self._cp_trace: list[str] = []  # DIAG(J939): temporary, removed before merge
         # A region's own stores, attached read-only for the ops views over them, by alias.
         self._region_stores_attached: set[str] = set()
         # A held file's pause is invisible to concurrent queries only if they are excluded from it
@@ -342,8 +352,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def _phys_name(self, source: Any) -> str:
         """The catalog-qualified physical name the compiler emits: ``"catalog"."schema"."table"``."""
         catalog = self._catalog_of(source)
-        if catalog == "provisa_admin":  # DIAG(J939)
-            self._cp_diag(f"_phys_name source={source.id} new={catalog not in self._phys_catalogs}")
+        if catalog == self._CONTROL_PLANE:
+            raise ReservedCatalog(source.id, catalog)
         if catalog not in self._phys_catalogs:
             # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
             # DB is read-only and cannot host the schema/view the compiler references).
@@ -436,7 +446,6 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         attach left behind to a server that has gone fails those listings for every other
         source. Under the catalogue gate: a statement in flight finishes first."""
         aliases = [a for a, sid in self._attach_source.items() if sid == source_id]
-        self._cp_diag(f"drop_source {source_id} aliases={aliases}")  # DIAG(J939)
         with self._catalog_gate.write():
             for alias in aliases:
                 self._con.execute(f'DETACH "{alias}"')
@@ -917,26 +926,21 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         read-only and live, once: DuckDB's postgres extension maps every schema of it -- the org's
         ``org_<id>`` and the meta views it holds -- 1:1 under the catalog, so a row it commits is
         read by the next statement. Trino parity: there ``provisa_admin`` is a real catalog over
-        the same database. Called from NativeEngineBackend's registry walk."""
-        self._cp_diag(  # DIAG(J939)
-            f"attach_control_plane flag={self._control_plane_attached} "
-            f"in_phys={self._CONTROL_PLANE in self._phys_catalogs} "
-            f"attach_source={self._attach_source.get(self._CONTROL_PLANE)}"
-        )
-        if self._control_plane_attached:
-            return
+        the same database. Called from NativeEngineBackend's registry walk, on every walk: whether
+        it is attached is read from the connection itself, never remembered beside it."""
         catalog = self._CONTROL_PLANE
+        held = self._con.execute(
+            "SELECT type FROM duckdb_databases() WHERE database_name = ?", [catalog]
+        ).fetchall()
+        if held and held[0][0] == "postgres":
+            return
+        if held:
+            raise RuntimeError(
+                f"catalog {catalog!r} is attached as a {held[0][0]} database, not the control "
+                "plane: the control plane cannot be attached under its name"
+            )
         self._ensure_postgres_loaded()
-        if catalog not in self._phys_catalogs:
-            self._con.execute(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
-            self._phys_catalogs.add(catalog)
-        self._control_plane_attached = True
-
-    def _cp_diag(self, what: str) -> None:  # DIAG(J939): temporary
-        import traceback
-
-        stack = "".join(traceback.format_stack(limit=12)[:-1])
-        self._cp_trace.append(f"{what}\n{stack}")
+        self._con.execute(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
 
     def attach_region_ops(
         self, catalog: str, schema: str, stores: dict[str, str], views: dict[str, str]

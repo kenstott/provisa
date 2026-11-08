@@ -75,10 +75,9 @@ def _engine_catalogs() -> str:
         for r in runtime._con.execute("SELECT database_name FROM duckdb_databases()").fetchall()
     ]
     return (
-        f"attached={attached} control_plane_attached={getattr(runtime, '_control_plane_attached', None)} "
+        f"attached={attached} "
         f"phys_catalogs={sorted(getattr(runtime, '_phys_catalogs', []))} "
-        f"failed={dict(getattr(backend, '_failed', {}))} "
-        f"CPTRACE<<<{chr(10).join(getattr(runtime, '_cp_trace', []))}>>>CPTRACE"
+        f"failed={dict(getattr(backend, '_failed', {}))} walks={getattr(backend, '_walks', None)}"
     )
 
 
