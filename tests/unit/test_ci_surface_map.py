@@ -80,6 +80,18 @@ def test_every_integration_file_is_mapped_or_falls_to_the_control_plane():
         assert ran_by == (named or [surface_map.DEFAULT]), path
 
 
+def test_every_top_level_package_of_the_product_is_on_exactly_one_surface():
+    """A package a surface names is that surface's; what none names is the control plane's."""
+    code = {n: s.paths for n, s in SURFACES.items()}
+    entries = [p for p in (REPO / "provisa").iterdir() if p.name != "__pycache__"]
+    assert len(entries) > 50
+    for entry in entries:
+        probe = f"provisa/{entry.name}" + ("/__init__.py" if entry.is_dir() else "")
+        named = surface_map.owners(probe, code)
+        assert len(named) <= 1, f"{probe} is on {named}"
+        assert surface_map.surface_of(DATA, [probe]) == (named or [surface_map.DEFAULT])[0], probe
+
+
 def test_an_unmapped_file_really_runs_with_the_control_plane():
     """The default surface runs whole lanes: its own, and whatever lane any file it took needs."""
     planned = surface_map.plan(DATA, "control-plane", full=False, changed=[])
