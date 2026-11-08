@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL (1 de 9 superficies)",
-        "description": "SQL vive en el explorador de SQL. SQL estándar federado en todos los orígenes: une Postgres con Mongo y con un CSV en una sola sentencia. Los propios metadatos del modelo y cada traza de actividad son también tablas consultables aquí, así que puedes unir tu registro de auditoría o el linaje directamente con datos en vivo.<p>🔌 El mismo SQL gobernado se ejecuta a través de varios protocolos de conexión además de este explorador; tu herramienta elige el que ya conoce:</p><ul><li><strong>pgwire</strong>: todo cliente compatible con Postgres (psql, DBeaver, Tableau, Power BI) se conecta sin configuración adicional.</li><li><strong>JDBC</strong>: encaja en cualquier aplicación Java/JVM, pipeline de ETL o herramienta de BI compatible con JDBC.</li><li><strong>Arrow Flight SQL</strong>: streaming columnar para clientes ADBC, sin recodificar filas, pensado para grandes volúmenes de resultados.</li><li><strong>DuckDB · airport</strong>: haz ATTACH de Provisa desde DuckDB y consulta la federación gobernada in situ.</li></ul>"
+        "description": "SQL vive en el explorador de SQL. SQL estándar federado en todos los orígenes: une Postgres con Mongo y con un CSV en una sola sentencia. Los propios metadatos del modelo y cada traza de actividad son también tablas consultables aquí, así que puedes unir tu registro de auditoría o el linaje directamente con datos en vivo.<p>🔌 El mismo modelo gobernado se ofrece a través de varios protocolos además de este explorador; tu herramienta elige el que ya conoce:</p><ul><li><strong>pgwire</strong>: todo cliente compatible con Postgres (psql, DBeaver, Tableau, Power BI) se conecta sin configuración adicional.</li><li><strong>JDBC</strong>: encaja en cualquier aplicación Java/JVM, pipeline de ETL o herramienta de BI compatible con JDBC.</li><li><strong>Arrow Flight SQL</strong>: streaming columnar para clientes ADBC, sin recodificar filas, pensado para grandes volúmenes de resultados.</li><li><strong>DuckDB · airport</strong>: haz ATTACH de Provisa desde DuckDB y consulta la federación gobernada in situ.</li><li><strong>OData</strong>: Excel y Power BI se conectan mediante su fuente OData integrada y leen directamente las tablas gobernadas.</li></ul>"
       },
       "step7": {
         "title": "GraphQL (2 de 9 superficies)",
@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "Trazas y trazado de depuración",
-        "description": "🔭 El trazado registra un tramo por solicitud. La pestaña Trazado de depuración añade un tramo por etapa del flujo y por llamada a un origen, con el texto SQL. Añade carga, así que actívelo para una organización, rol u origen durante un tiempo determinado; se apaga solo al terminar."
+        "description": "🔭 Cada solicitud se traza, con un span cada una. El feed de trazas lista sus trazas más recientes: puede filtrarlas, pausar la lista o abrir una para ver sus spans. Donde su rol puede cambiar la configuración, la pestaña Trazado de depuración añade un span por etapa del pipeline y por llamada a la fuente, durante un tiempo determinado."
       },
       "stepCache": {
         "title": "Cachés y réplicas",
@@ -1704,22 +1704,6 @@
         "title": "De qué trata esta demo",
         "description": "Un banco de Praga presta a empresas y registra la empresa propietaria de cada una por su Legal Entity Identifier (LEI). Las normas de la UE limitan lo que puede prestar a un cliente, o a un grupo de empresas controlado por un mismo propietario, al 25 % de su capital de nivel 1 (Tier 1). La pregunta: ¿ante qué grupos supera el banco ese límite? Sus libros nombran al propietario de cada prestatario, no quién es dueño del propietario. El banco, sus prestatarios y sus préstamos son ficticios; los grupos que los poseen son reales."
       },
-      "groupexposureJoin": {
-        "title": "Unidos por el LEI",
-        "description": "La tabla de propietarios del banco y las tablas de Wikidata comparten el LEI del propietario, y estas relaciones las unen. Los datos del banco se quedan en su base de datos y los de Wikidata en su réplica; la unión se hace en la consulta."
-      },
-      "groupexposureAnswer": {
-        "title": "La respuesta en SQL",
-        "description": "La vista group_exposure agrupa cada facilidad en el grupo de su prestatario, a través del LEI del propietario y Wikidata. Los grupos Veolia y Vinci superan cada uno el 25 % del capital de nivel 1, y una empresa conjunta de Veolia y EPH cuenta en ambos. Ni los libros del banco ni Wikidata lo muestran por separado. Los prestatarios y sus préstamos son ficticios."
-      },
-      "groupexposureExample": {
-        "title": "La respuesta en GraphQL",
-        "description": "La misma vista en GraphQL: los grupos a los que más presta el banco, sus prestatarios, lo comprometido y si cada uno supera el límite."
-      },
-      "groupexposureRecap": {
-        "title": "Lo que ha visto",
-        "description": "La cartera de préstamos de un banco ficticio y datos enlazados públicos de Wikidata, unidos por LEI en un modelo gobernado. Las cadenas de propiedad de Wikidata convierten muchos préstamos pequeños en unas pocas grandes exposiciones de grupo, y la respuesta se sirve en SQL, GraphQL y REST."
-      },
       "groupexposureWikidata": {
         "title": "Quién es dueño de los propietarios, según Wikidata",
         "description": "Wikidata, el grafo de conocimiento público, registra el LEI de cada empresa y su organización matriz. Esta fuente lo lee a través del servicio de consultas SPARQL de Wikidata. Sus tablas se cargaron una sola vez, al crear la demo, por lo que la demo nunca llama a Wikidata mientras la usa."
@@ -1732,6 +1716,10 @@
         "title": "El grupo de cada propietario",
         "description": "Para cada propietario que registra el banco, la empresa en la cima de su cadena de organizaciones matrices en Wikidata, encontrada con una sola ruta de propiedades SPARQL. Wikidata sabe que una sociedad holding checa pertenece a Veolia o a E.ON, aunque los libros del banco no lo sepan."
       },
+      "groupexposureJoin": {
+        "title": "Unidos por el LEI",
+        "description": "La tabla de propietarios del banco y las tablas de Wikidata comparten el LEI del propietario, y estas relaciones las unen. Los datos del banco se quedan en su base de datos y los de Wikidata en su réplica; la unión se hace en la consulta."
+      },
       "groupexposureTerms": {
         "title": "En palabras sencillas",
         "description": "El glosario explica los términos con los que trabaja un responsable de riesgos: gran exposición, capital de nivel 1, Legal Entity Identifier y organización matriz. Un grupo de clientes vinculados son empresas que forman un solo riesgo porque una controla a las demás."
@@ -1740,9 +1728,21 @@
         "title": "Solo los libros",
         "description": "La exposición propia de cada prestatario, tal como la ven los libros del banco. La mayor está por debajo del 10 % del capital de nivel 1, así que ningún prestatario se acerca al límite del 25 %."
       },
+      "groupexposureAnswer": {
+        "title": "La respuesta en SQL",
+        "description": "La vista group_exposure agrupa cada facilidad en el grupo de su prestatario, a través del LEI del propietario y Wikidata. Los grupos Veolia y Vinci superan cada uno el 25 % del capital de nivel 1, y una empresa conjunta de Veolia y EPH cuenta en ambos. Ni los libros del banco ni Wikidata lo muestran por separado. Los prestatarios y sus préstamos son ficticios."
+      },
+      "groupexposureExample": {
+        "title": "La respuesta en GraphQL",
+        "description": "La misma vista en GraphQL: los grupos a los que más presta el banco, sus prestatarios, lo comprometido y si cada uno supera el límite."
+      },
       "groupexposureRest": {
         "title": "La misma respuesta por REST",
         "description": "La vista también es un endpoint REST, aquí agrupado según si un grupo supera el límite y sumado en el servidor, listo para un informe de riesgos o una hoja de cálculo."
+      },
+      "groupexposureRecap": {
+        "title": "Lo que ha visto",
+        "description": "La cartera de préstamos de un banco ficticio y datos enlazados públicos de Wikidata, unidos por LEI en un modelo gobernado. Las cadenas de propiedad de Wikidata convierten muchos préstamos pequeños en unas pocas grandes exposiciones de grupo, y la respuesta se sirve en SQL, GraphQL y REST."
       },
       "agentdataScenario": {
         "title": "Dale tus datos a un agente",

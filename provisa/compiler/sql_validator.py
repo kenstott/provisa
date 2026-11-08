@@ -41,10 +41,12 @@ Security model / layer responsibilities:
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.dialects.postgres import Postgres
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
@@ -66,6 +68,28 @@ from provisa.security.rights import (
     reaches_domain,
 )
 from provisa.transpiler.xml_syntax import MAPPINGS
+
+
+# The functions sqlglot's PostgreSQL reader takes for unnest under other names: it reads
+# ``explode(a)`` and ``pg_catalog.explode(a)`` as it reads ``pg_catalog.unnest(a)``, an Explode.
+# PostgreSQL has no such functions, so a user's schema may.
+_EXPLODE_NAMES = frozenset({"EXPLODE", "EXPLODE_OUTER", "POSEXPLODE", "POSEXPLODE_OUTER"})
+
+
+class PostgresAsWritten(Postgres):
+    """PostgreSQL as the validator reads it (REQ-039, REQ-266): a function is read by the name it
+    is written with -- ``explode`` is an unknown function, never PostgreSQL's unnest."""
+
+    class Parser(Postgres.Parser):
+        FUNCTIONS = {
+            name: build
+            for name, build in Postgres.Parser.FUNCTIONS.items()
+            if name not in _EXPLODE_NAMES
+        }
+
+
+#: The dialect a statement is parsed in for validation (:func:`validate_sql`).
+READ = PostgresAsWritten
 
 
 @dataclass
@@ -105,7 +129,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     2 matches its rules against, name for name. A spelling only one of them resolves -- ``C.ssn``
     over ``FROM bank.customer c`` -- is refused, so no column reaches the engine past either."""
     try:
-        written = sqlglot.parse_one(sql, read="postgres")
+        written = sqlglot.parse_one(sql, read=READ)
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
     flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
@@ -176,7 +200,9 @@ def _violations(
             primary_keys=registered_primary_keys(raw_tables),
         )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
-    violations += _check_dag(tree, gov_ctx, cte_names_set)
+    # On its own copy: it prunes joins in place, and the checks after it judge the statement as
+    # written -- a pruned join's alias is still in scope, its columns still governed (REQ-039).
+    violations += _check_dag(tree.copy(), gov_ctx, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_xmltable(tree, gov_ctx, cte_names_set)
     violations += _check_xml_mappings(tree)
@@ -193,6 +219,21 @@ def _violations(
 # itself (provisa.federation.duckdb_pg_xml); what it is passed is the statement's own, governed as
 # the statement is (_check_masked_in_xmltable).
 _ROW_GENERATORS = (exp.GenerateSeries, exp.ExplodingGenerateSeries, exp.XMLTable)
+
+
+def client_table_function(tbl: exp.Table, table_functions: Collection[str]) -> bool:
+    """Whether FROM item ``tbl`` reads one of ``table_functions``: PostgreSQL's own, unqualified
+    or in pg_catalog, never a function of that name in another schema or catalog (a user's
+    ``evil.unnest``). A schema-qualified ``pg_catalog.unnest(...)`` is read by sqlglot as an
+    Explode, not by its name: it is PostgreSQL's unnest all the same (REQ-2204). Only that Explode
+    -- in :data:`READ`, ``explode`` and its kin are read by their own names, so an Explode was
+    written ``unnest``; a subclass (``Posexplode``) is another function."""
+    if tbl.catalog or tbl.db not in ("", "pg_catalog"):
+        return False
+    target = tbl.this
+    if isinstance(target, exp.Anonymous):
+        return target.name.lower() in table_functions
+    return type(target) is exp.Explode and "unnest" in table_functions
 
 
 def _check_registered_relations(  # REQ-001, REQ-266
@@ -214,7 +255,7 @@ def _check_registered_relations(  # REQ-001, REQ-266
         target = tbl.this
         if isinstance(target, _ROW_GENERATORS):
             continue
-        if isinstance(target, exp.Anonymous) and target.name.lower() in table_functions:
+        if client_table_function(tbl, table_functions):
             continue  # REQ-2190: a statement of the catalog, on the role that runs client SQL
         if not isinstance(target, exp.Identifier):
             fn = target.sql(dialect="postgres").split("(", 1)[0] if target is not None else "?"
@@ -673,16 +714,13 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                     # relationship field): read by the engine to join, never returned (REQ-603).
                     continue
                 if not tbl_ref:
-                    for tid in am.values():
-                        vis = gov_ctx.visible_columns.get(tid)
-                        if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
-                            violations.append(
-                                ValidationViolation(
-                                    "V003",
-                                    f"Column {col_name!r} is not visible to this role",
-                                )
+                    if _unqualified_column_refused(col_name, am, gov_ctx):
+                        violations.append(
+                            ValidationViolation(
+                                "V003",
+                                f"Column {col_name!r} is not visible to this role",
                             )
-                            break
+                        )
                 else:
                     tid = am.get(tbl_ref)
                     if tid is None:
@@ -698,6 +736,31 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
         violations += _hidden_sort_keys(select, am, gov_ctx)
         violations += _hidden_join_keys(select, am, gov_ctx)
     return violations
+
+
+def _unqualified_column_refused(  # REQ-039, REQ-2190
+    col_name: str, am: dict[str, int], gov_ctx: GovernanceContext
+) -> bool:
+    """Whether an unqualified ``col_name`` read beside the relations of ``am`` is refused (V003).
+
+    It is judged at the relations in scope that have it -- register it, or serve it: refused when
+    any of them hides it. A relation without the name has no say: psycopg2's hstore lookup
+    (``SELECT t.oid, typarray FROM pg_type t JOIN pg_namespace ns ...``, sent by every SQLAlchemy
+    psycopg2 connection) names pg_type's column beside pg_namespace. When no relation in scope
+    has the name it is refused if any of them is governed, as before: a physical column the model
+    does not serve is never passed through."""
+    holders: list[int] = []
+    for tid in am.values():
+        name = registered_name(gov_ctx, tid, col_name)
+        vis = gov_ctx.visible_columns.get(tid)
+        registered = {c for c, _ in gov_ctx.all_columns.get(tid, [])}
+        if name in registered or (vis is not None and name in vis):
+            holders.append(tid)
+            if vis is not None and name not in vis:
+                return True
+    if holders:
+        return False
+    return any(gov_ctx.visible_columns.get(tid) is not None for tid in am.values())
 
 
 def _hidden_columns(tid: int, gov_ctx: GovernanceContext) -> set[str]:
@@ -829,11 +892,19 @@ def _relation_names_by_scope(tree: exp.Expr) -> dict[int, set[str]]:
     """The names a column may be qualified by in each scope of ``tree`` (by ``id`` of its
     statement node): each FROM item's alias, else a table's name, else a function's name -- as
     PostgreSQL names an unaliased ``generate_series(1, 3)``. A CTE's name is listed where the CTE
-    is declared; it is a relation where it is read."""
+    is declared; it is a relation where it is read. A FROM item's column list names its columns,
+    each a value whose fields a qualified column reads -- ``"__b"."n"`` over
+    ``UNNEST($1) AS _uw0(__b)``, as REQ-2176 unwinds the rows a write gave."""
     names: dict[int, set[str]] = {}
     for node in tree.find_all(exp.TableAlias, exp.Table, exp.Unnest):
         if isinstance(node, exp.TableAlias):
             name = node.name
+            if not isinstance(node.parent, exp.CTE):
+                scope = node.find_ancestor(*_SCOPES)
+                if scope is not None:
+                    names.setdefault(id(scope), set()).update(
+                        column.name for column in node.args.get("columns") or ()
+                    )
         elif node.alias:
             continue  # its TableAlias names it
         elif isinstance(node, exp.Table) and isinstance(node.this, exp.Identifier):

@@ -13,6 +13,7 @@ import { Text } from "@mantine/core";
 import type { RLSRule } from "../../types/admin";
 import { RULE_RIGHT_LABEL } from "./ruleRights";
 import { DetailFields } from "../../components/detail/DetailFields";
+import { TagControl } from "../../components/TagControl";
 
 /**
  * Every value of an RLS rule, read-only, under the labels its form gives them: what it applies
@@ -79,6 +80,11 @@ export function RlsRuleRead({
               {r.filterExpr}
             </Text>
           ),
+        },
+        // REQ-2208: the rule carries tags as the model's objects do.
+        {
+          label: t("securityPage.tags"),
+          value: <TagControl objectType="rls_rule" rlsRuleId={r.id} />,
         },
       ]}
     />

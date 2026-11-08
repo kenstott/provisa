@@ -327,3 +327,29 @@ def test_the_in_browser_python_is_served_from_provisa_notebook_when_installed(
     finally:
         monkeypatch.undo()
         importlib.reload(ui_server)
+
+
+async def _deployment_config_body(monkeypatch, value):
+    from provisa.ui_server import deployment_config
+
+    if value is None:
+        monkeypatch.delenv("VITE_ORG_BASE_DOMAIN", raising=False)
+    else:
+        monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", value)
+    response = await deployment_config()
+    assert response.media_type == "application/javascript"
+    assert response.headers["cache-control"] == "no-store"
+    return response.body.decode()
+
+
+async def test_deployment_config_declares_the_base_domain(monkeypatch):
+    # REQ-1276: cloud.provisa.dev declares provisa.dev, so the UI reads orgs from hosts under it.
+    body = await _deployment_config_body(monkeypatch, "provisa.dev")
+    assert body == 'window.__PROVISA_ORG_BASE_DOMAIN__ = "provisa.dev";'
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+async def test_deployment_config_declares_nothing_when_unset(monkeypatch, value):
+    # A Codespace, localhost, a custom single host: no declaration, so the UI names no org.
+    body = await _deployment_config_body(monkeypatch, value)
+    assert body == "window.__PROVISA_ORG_BASE_DOMAIN__ = null;"

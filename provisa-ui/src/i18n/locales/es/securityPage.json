@@ -94,6 +94,7 @@
     "ruleDescription": "Descripción",
     "ruleDescriptionHelp": "Para qué sirve la regla, tal como la lee una revisión de acceso.",
     "ruleRight": "Permiso",
+    "tags": "Etiquetas",
     "ruleRightRead": "Leer",
     "ruleRightUpdate": "Actualizar",
     "ruleRightDelete": "Eliminar",

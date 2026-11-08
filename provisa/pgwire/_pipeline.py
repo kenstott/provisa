@@ -1751,7 +1751,7 @@ async def govern_statement(
     from provisa.api.app import state
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
     from provisa.compiler.stage2 import apply_governance
-    from provisa.compiler.sql_validator import validate_sql
+    from provisa.compiler.sql_validator import READ, client_table_function, validate_sql
 
     from provisa.audit.pipeline import write_denial
 
@@ -1921,19 +1921,17 @@ async def govern_statement(
         if "*" not in _role_domain_access:
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
-                parsed_tree = await _off_loop(
-                    lambda: sqlglot.parse_one(_validated_sql, read="postgres")
-                )
+                # Read as validate_sql reads it: ``explode`` is no unnest (client_table_function).
+                parsed_tree = await _off_loop(lambda: sqlglot.parse_one(_validated_sql, read=READ))
                 _statement_ctes = (
                     {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
                 for tbl in parsed_tree.find_all(exp.Table):
                     if isinstance(tbl.this, exp.XMLTable):
                         continue  # REQ-2167: no relation; what it reads is the statement's own
-                    if (
-                        isinstance(tbl.this, exp.Anonymous)
-                        and tbl.this.name.lower() in _table_functions
-                    ) or (not tbl.db and tbl.name in _statement_ctes):
+                    if client_table_function(tbl, _table_functions) or (
+                        not tbl.db and tbl.name in _statement_ctes
+                    ):
                         continue
                     tbl_name = tbl.name
                     tbl_db = tbl.db
@@ -4549,6 +4547,7 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # That store serves this source and no other: a statement for any other source reaching
         # it would be read from, or written into, the control plane.
         from provisa.transpiler.metadata_settings import (
+            WITHOUT_JIT,
             enter_client_role,
             refuse_client_settings,
             set_statement,
@@ -4579,18 +4578,21 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 col_oids: list[int] | None = None
                 # REQ-2190: every client statement here runs as the role that reaches no more than
                 # a client may, whatever it reads, and any settings last as long as its transaction.
+                # The client's statement is its own text, run once: neither prepared nor JIT
+                # compiled on the control plane (database._unprepared, WITHOUT_JIT).
                 async with _conn.transaction():
                     if plan.catalog_settings is not None:
                         _setting, _values = set_statement(plan.catalog_settings)
                         await _conn.fetch(_setting, *_values)
+                    await _conn.execute(WITHOUT_JIT)
                     await _conn.execute(enter_client_role())
                     if plan.catalog_settings is None:
                         col_names, _rows = await _conn.fetch_with_columns(
-                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True, prepared=False
                         )
                     else:
                         col_names, col_oids, _rows = await _conn.fetch_described(
-                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True, prepared=False
                         )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
@@ -4803,7 +4805,11 @@ async def _run_statements(
             buffered=buffered and answered,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
         )
-        return await _execute_plan(plan, state)
+        result = await _execute_plan(plan, state)
+        # REQ-1961: the caller writes the rows without the plan; it types each registered
+        # column by the statement's result shape, derived only when it is asked for.
+        result.result_shape = plan.result_shape
+        return result
 
     outcomes: list[StatementOutcome] = []
     last = len(statements) - 1

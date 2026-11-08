@@ -84,6 +84,7 @@
       "search_sources": "Consultas a índices de busca.",
       "grpc_services": "A superfície de consulta gRPC, de entrada e de saída."
     },
+    "tracesTableCheckFailed": "Não foi possível verificar as tabelas de rastreamento do Provisa ({{reason}}). Não se sabe se estão recebendo linhas; a verificação se repete a cada 30 segundos.",
     "tracesTableEmpty": "Há um endpoint definido, mas as tabelas de rastreamento do Provisa ainda não têm linhas. Se o endpoint for um provedor externo e não o coletor do Provisa, mova-o para os exportadores do coletor.",
     "tracesTableStale": "Há um endpoint definido, mas as tabelas de rastreamento do Provisa não receberam linhas nos últimos {{minutes}} minutos. Se o Provisa ficou ocioso, isso é esperado. Caso contrário, verifique se o endpoint é o coletor do Provisa e não um provedor externo."
   }

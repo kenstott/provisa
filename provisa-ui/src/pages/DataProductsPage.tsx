@@ -48,7 +48,7 @@ import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
 import { coreContracts } from "./data-products/productCore";
 import { contractChanged } from "./data-products/contractDraft";
-import { ProductMapButton } from "../components/graph3d/GraphPanel";
+import { ProductMapButton } from "../components/graph3d/OntologyGraph";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import {
@@ -689,6 +689,7 @@ export function DataProductsPage() {
                                     lineageMembers={lineageMembers}
                                     describeColumn={describeColumn}
                                     relationLabel={relationLabel}
+                                    onTagsChanged={() => setCoreVersion((v) => v + 1)}
                                     onEdit={(focus) => openEdit(p, focus)}
                                     onDelete={() => handleDelete(p.id)}
                                     products={dataProducts}

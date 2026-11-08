@@ -59,6 +59,7 @@ async def org_plane(monkeypatch):
         # A role of this test's own: data_steward is a standard role every org is seeded with
         # (REQ-1944), so it is not this fixture's to insert.
         await conn.execute_core(
+            # Reads nothing on purpose: no capability, no domain (J354).
             insert(roles_t).values(id="req609_steward", capabilities=[], domain_access=["*"])
         )
         await conn.execute_core(
@@ -148,6 +149,7 @@ async def test_unknown_ref_is_echoed_back_bare(org_plane):
 async def test_refs_are_deduped_across_multiple_roles(org_plane):
     async with org_plane.acquire() as conn:
         await conn.execute_core(
+            # Reads nothing on purpose: no capability, no domain (J354).
             insert(roles_t).values(id="req609_analyst", capabilities=[], domain_access=["*"])
         )
         await conn.execute_core(

@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
+from provisa.compiler.naming import to_pascal_case
 from provisa.core import command_bindings
 from provisa.compiler.schema_gen import (
     SchemaInput,
@@ -145,8 +146,9 @@ def command_rpc_name(fn_name: str) -> str:
     """The per-command RPC / request-message base name: ``active_users`` → ``ActiveUsers`` (REQ-1156).
 
     The single naming authority both proto_gen and the server use, so ``Call{name}`` RPCs round-trip
-    back to the registered command name deterministically."""
-    return "".join(part.capitalize() for part in fn_name.replace("__", "_").split("_") if part)
+    back to the registered command name deterministically. Inner capitals are kept, so
+    ``activeUsers`` is ``ActiveUsers`` too (REQ-194)."""
+    return to_pascal_case(fn_name.replace("__", "_"))
 
 
 def _numbers_for(

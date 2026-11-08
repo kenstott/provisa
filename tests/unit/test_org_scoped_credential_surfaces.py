@@ -411,3 +411,9 @@ class TestPgwireCatalogNamesTheOrg:
         finally:
             reset_current_org(token)
         assert result.rows == [("acme",)]
+
+
+@pytest.fixture(autouse=True)
+def _declared_org_base_domain(monkeypatch):
+    """REQ-1276: a host names an org only under the deployment's declared base domain."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.org")

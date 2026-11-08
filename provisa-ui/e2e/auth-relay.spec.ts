@@ -49,6 +49,18 @@ test.use({
   },
 });
 
+// The deployment declares provisa.test as its base domain: /deployment-config.js answers as
+// ui_server's does for VITE_ORG_BASE_DOMAIN=provisa.test, in place of the dev server's null stand-in.
+// page.route answers the relay's frames too.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/deployment-config.js", (route) =>
+    route.fulfill({
+      body: 'window.__PROVISA_ORG_BASE_DOMAIN__ = "provisa.test";',
+      contentType: "application/javascript",
+    }),
+  );
+});
+
 /**
  * Embed the relay served from `relayOrigin` and run the parent half of the protocol against it.
  *

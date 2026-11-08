@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Afgeleid van de aggregatie wanneer opgebouwd uit een feitmeetwaarde",
     "fieldDescription": "Beschrijving",
     "fieldAiContext": "AI-context",
+    "fieldTags": "Tags",
     "fieldAiContextPlaceholder": "Aanwijzingen voor AI-ondersteunde querygeneratie",
     "saveFailed": "Opslaan mislukt.",
     "editMetric": "Metric {{name}} bewerken",

@@ -406,7 +406,9 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   await submitSwapSource(page, sourceId);
 
   // REQ-322: adding the source registers nothing; the table is registered on its own.
-  const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
+  // The offered (registered) name keeps the proto's names; SQL addresses it by its snake case alias
+  // <namespace>__animal_catalog__list_breeds (REQ-325).
+  await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
     "name",
     "species",
     "avg_lifespan_years",
@@ -415,7 +417,7 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   return {
     label: "grpc_remote",
     sourceId,
-    sql: `SELECT name, species FROM grpc_remote.${breedTable} ORDER BY name`,
+    sql: `SELECT name, species FROM grpc_remote.${namespace}__animal_catalog__list_breeds ORDER BY name`,
     assertRows: (rows) => {
       expect(rows).toHaveLength(3);
       expect(rows.map((r) => r[0])).toEqual(["Holland Lop", "Labrador Retriever", "Siamese"]);

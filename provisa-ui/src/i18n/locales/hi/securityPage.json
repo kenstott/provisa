@@ -94,6 +94,7 @@
     "ruleDescription": "विवरण",
     "ruleDescriptionHelp": "नियम किसलिए है, जैसा एक्सेस समीक्षा उसे पढ़ती है।",
     "ruleRight": "अधिकार",
+    "tags": "टैग",
     "ruleRightRead": "पढ़ना",
     "ruleRightUpdate": "अपडेट करना",
     "ruleRightDelete": "हटाना",

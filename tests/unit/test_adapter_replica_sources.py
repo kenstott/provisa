@@ -266,7 +266,7 @@ async def test_kafka_yields_one_poll_at_a_time(monkeypatch):
 
     recorded: list[tuple] = []
 
-    async def _record(bootstrap, landed, offsets):
+    async def _record(bootstrap, landed, offsets, *, security):
         recorded.append((landed, offsets))
 
     monkeypatch.setattr(aiokafka, "AIOKafkaConsumer", _Consumer)

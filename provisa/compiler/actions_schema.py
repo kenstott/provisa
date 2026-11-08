@@ -29,7 +29,12 @@ from graphql import (
     GraphQLString as _GraphQLString,
 )
 
-from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
+from provisa.compiler.naming import (
+    apply_gql_name,
+    domain_to_sql_name,
+    mutation_style,
+    to_pascal_case,
+)
 from provisa.compiler.type_map import JSONScalar
 from provisa.security.mutation_authz import command_assigned
 from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain  # noqa: F401  (annotations)
@@ -262,7 +267,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 # query's documents, whose shape may differ from one to the next.
                 gql_return = JSONScalar
             elif return_schema:
-                type_name = "".join(p.capitalize() for p in func["name"].split("_")) + "ReturnType"
+                type_name = to_pascal_case(func["name"]) + "ReturnType"
                 gql_return = _json_schema_to_gql_type(return_schema, type_name) or GraphQLString
             else:
                 gql_return = GraphQLString
@@ -282,7 +287,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 ret_type = None
             gql_return = GraphQLList(GraphQLNonNull(ret_type)) if ret_type else GraphQLString
         elif inline:
-            wh_type_name = "".join(p.capitalize() for p in wh["name"].split("_")) + "ReturnType"
+            wh_type_name = to_pascal_case(wh["name"]) + "ReturnType"
             inline_fields = {
                 f["name"]: GraphQLField(_gql_scalar(f.get("type", "String")))
                 for f in inline

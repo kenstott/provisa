@@ -88,7 +88,7 @@ def rpc_received(shared_data):
     shared_data["role"] = None
 
     async def _receive():
-        async for _ in servicer._handle_query(MagicMock(), context, "Orders", "orders"):
+        async for _ in servicer._handle_query(MagicMock(), context, "Orders"):
             pass
 
     try:

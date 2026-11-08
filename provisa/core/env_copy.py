@@ -350,12 +350,13 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
     return names
 
 
-#: REQ-2201: a library document, its domains and passages, and the scans of it with their drafts,
+#: REQ-2201: a library document, its domains, passages and tags (REQ-2208), and the scans of it with their drafts,
 #: in the order their foreign keys need.
 _SCAN_TABLES = (
     "reference_documents",
     "reference_document_domains",
     "reference_passages",
+    "reference_document_tags",  # REQ-2208: the tags on its documents and their sections
     "glossary_term_scans",
     "glossary_term_drafts",
 )

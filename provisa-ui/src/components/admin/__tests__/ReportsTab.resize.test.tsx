@@ -11,10 +11,18 @@
 // REQ-1431: the rule between the report list and the report is a grab handle — dragging it sets the
 // list width, clamped so neither pane can be dragged away.
 
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "../../../test-utils/render";
+import { storageKey } from "../../../lib/browserStorage";
 
-vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({
+    actingRoles: "analyst",
+    loading: false,
+    capabilities: ["table_registration"],
+    demonstrated: [],
+  }),
+}));
 vi.mock("../../../hooks/useAdminQueries", () => ({
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useRegisterTable: () => ({ registerTable: vi.fn() }),
@@ -33,7 +41,35 @@ function drag(dx: number) {
   fireEvent.mouseUp(window);
 }
 
+const KEY = storageKey("provisa.reportsTab.listWidth");
+
 describe("ReportsTab resize handle", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("writes the dragged width to storage and restores it on the next mount", () => {
+    const first = render(<ReportsTab />);
+    expect(localStorage.getItem(KEY)).toBeNull();
+    drag(80);
+    expect(localStorage.getItem(KEY)).toBe("320");
+    first.unmount();
+
+    render(<ReportsTab />);
+    expect(screen.getByTestId("reports-list").style.width).toBe("320px");
+  });
+
+  it("reads a width kept earlier", () => {
+    localStorage.setItem(KEY, "400");
+    render(<ReportsTab />);
+    expect(screen.getByTestId("reports-list").style.width).toBe("400px");
+  });
+
+  it("moves the edge with the arrow keys and keeps that too", () => {
+    render(<ReportsTab />);
+    fireEvent.keyDown(screen.getByTestId("reports-resize-handle"), { key: "ArrowRight" });
+    expect(screen.getByTestId("reports-list").style.width).toBe("272px");
+    expect(localStorage.getItem(KEY)).toBe("272");
+  });
+
   it("widens the list as the handle is dragged right", () => {
     render(<ReportsTab />);
     expect(screen.getByTestId("reports-list").style.width).toBe("240px");

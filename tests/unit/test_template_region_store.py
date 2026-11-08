@@ -93,3 +93,59 @@ async def test_an_org_that_does_not_select_the_nodes_region_is_refused(registry,
     monkeypatch.setattr(app, "_region_lane_of", _lane(OrgNotInRegion("acme", "eu", ["us"])))
     with pytest.raises(OrgNotInRegion):
         await orgs_router.on_its_region_lane("acme", object())
+
+
+@pytest.mark.asyncio
+async def test_the_lane_build_is_an_ordinary_build_whose_schema_says_it_is_current(
+    registry, monkeypatch
+):
+    """The org was laid out a moment ago -- by provision_org, and again by the provisioning build
+    this one replaces -- and that build's lifecycle wiring, detached from it, is still reading
+    the org's model. schema.sql's ALTER TABLEs, run again here, took AccessExclusive locks beside
+    that reader's and deadlocked it (the regions tier's retail template, sbxtplretail). The
+    schema's layout stamp now says so (test_schema_layout_stamp); the caller passes nothing."""
+    monkeypatch.setattr(app, "_region_lane_of", _lane(_EU))
+    built: list[dict] = []
+
+    async def _build(org_id, **kwargs):
+        built.append(kwargs)
+        return SimpleNamespace(org_id=org_id, storage_url=kwargs["storage_url"])
+
+    monkeypatch.setattr(app, "build_org_runtime", _build)
+
+    async def _flags(org_id):
+        return app.OrgLane(True, False, None, None, None, "", None)
+
+    monkeypatch.setattr(app, "_read_org_flags", _flags)
+    await orgs_router.on_its_region_lane("sbxtplretail", object())
+    await app.build_on_its_lane("sbxtplretail", None)  # any later build of it
+    assert built[0] == built[1]
+    assert "schema_current" not in built[0]
+
+
+@pytest.mark.asyncio
+async def test_a_schema_already_current_is_given_its_grants_and_no_ddl(monkeypatch):
+    from provisa.core import db, org_provisioning
+
+    ran: list[str] = []
+    current = {"stamp": False}
+
+    async def _lay_out(*args, **kwargs):
+        if current["stamp"]:
+            return False
+        ran.append("layout")
+        return True
+
+    async def _grants(*args, **kwargs):
+        ran.append("grants")
+
+    monkeypatch.setattr(org_provisioning, "lay_out_schema", _lay_out)
+    monkeypatch.setattr(db, "apply_tenancy_role_grants", _grants)
+    monkeypatch.setattr(app, "state", SimpleNamespace(model_db=object(), multitenancy=True))
+    current["stamp"] = True
+    await app._set_up_org_schema("sbxtplretail", "prod")
+    assert ran == ["grants"]
+    ran.clear()
+    current["stamp"] = False
+    await app._set_up_org_schema("sbxtplretail", "prod")
+    assert ran == ["layout", "grants"]

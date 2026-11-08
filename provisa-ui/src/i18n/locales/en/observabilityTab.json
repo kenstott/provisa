@@ -84,6 +84,7 @@
       "search_sources": "Queries against search indexes.",
       "grpc_services": "The gRPC query surface, inbound and outbound."
     },
+    "tracesTableCheckFailed": "Provisa's trace tables could not be checked ({{reason}}). Whether they are receiving rows is unknown; the check repeats every 30 seconds.",
     "tracesTableEmpty": "An endpoint is set, but Provisa's trace tables have no rows yet. If the endpoint is an external provider rather than Provisa's collector, move it into the collector's exporters.",
     "tracesTableStale": "An endpoint is set, but Provisa's trace tables have received no rows in the last {{minutes}} minutes. If Provisa has been idle that is expected. If not, check that the endpoint is Provisa's collector and not an external provider."
   }

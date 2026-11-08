@@ -318,16 +318,20 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
         # by key.
         from provisa.events.push_wiring import cdc_capture
         from provisa.kafka import landed_offsets
+        from provisa.kafka.security import PLAINTEXT
 
         captured = cdc_capture(source, table)
-        stopped = await landed_offsets.end_offsets(*captured) if captured else None
+        # A CDC transport names no TLS or SASL settings: a plain cluster (REQ-147).
+        stopped = (
+            await landed_offsets.end_offsets(*captured, security=PLAINTEXT) if captured else None
+        )
         # REQ-1661: never two writers on one replica in a process. The event loop's delta lands
         # take this same lock, keyed on the replica's address.
         async with land_lock(f"{address.schema}.{address.table}"):
             outcome = await job.run(progress)
         if captured and stopped is not None:
             await landed_offsets.record(
-                captured[0], landed_offsets.landed_group(source.id), stopped
+                captured[0], landed_offsets.landed_group(source.id), stopped, security=PLAINTEXT
             )
         # REQ-874: a delta table that fell through to a whole rebuild records why (delta_skipped) and
         # advances the cursor to the source's current max watermark, so the next build resumes as a

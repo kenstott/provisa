@@ -143,6 +143,19 @@ async def test_the_registered_set_is_read_from_the_registry():
     }
 
 
+async def test_a_refreshed_table_keeps_the_sql_name_the_naming_authority_gives_it(written):
+    # REQ-325/REQ-194: the table is addressed in SQL by its alias, else its table_name. The refresh
+    # writes the table again, so it must write the alias the SQL convention gives (snake by
+    # default); with none, the stored alias is replaced by NULL and SQL sees the raw proto name.
+    registered = {
+        "ns__OrderService__ListOrders": ("sales", {"id"}, set(), {"id": []}),
+    }
+    await router._register_schema("g", [_query("ListOrders")], _Conn(), "ns", "d", registered)
+    (table,) = written
+    assert table.table_name == "ns__OrderService__ListOrders"  # the registered name is unchanged
+    assert table.alias == "ns__order_service__list_orders"
+
+
 # --- registering one ---
 
 

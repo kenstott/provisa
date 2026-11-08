@@ -24,6 +24,7 @@
     "layer_relationships": "Relaties tussen leden",
     "layer_outside": "Relaties met externe tabellen",
     "layer_lineage": "Lineage",
+    "layer_productLinks": "Koppelingen naar andere producten",
     "filterDomain": "Domeinen",
     "filterTag": "Tags",
     "filterSensitivity": "Gevoeligheid",
@@ -78,6 +79,7 @@
     "ontologyView": "Ontologieweergave",
     "orphans": "Wezen",
     "columnsToggle": "Kolommen",
+    "tablesToggle": "Tabellen",
     "allEdgeTypes": "Alle randtypen",
     "someEdgeTypes": "{{count}} van {{total}} randtypen",
     "allDomains": "Alle domeinen",
@@ -146,6 +148,8 @@
     "factOwner": "Eigenaar",
     "factMembers": "Lidtabellen",
     "factColumns": "Kolommen",
+    "depth": "Diepte",
+    "lateral": "Laterale randen",
     "grounding_grounded": "Verankerd",
     "grounding_grounded_pending": "Verankerd, via een concept"
   }

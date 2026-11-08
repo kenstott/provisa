@@ -14,14 +14,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  GLOSSARY_SCOPE,
+  ONTOLOGY_SCOPE,
   visibleGraph,
   type GraphData,
   type GraphFilters,
   type LayerId,
 } from "../graphModel";
 import { nodeLook } from "../nodeLook";
-import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
+import { glossaryGraph, type TermEdgeRow, type TermRow } from "../ontologyData";
 
 const ref = (table: number, column: string, domain: string, product: string | null) => ({
   columnKey: `${table}:${column}`,
@@ -67,7 +67,7 @@ const all: GraphFilters = {
   hiddenStatuses: [],
 };
 const view = (layers: LayerId[], filters: GraphFilters = all) =>
-  visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
+  visibleGraph(G, new Set(layers), filters, new Set(), ONTOLOGY_SCOPE);
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const has = (g: GraphData, kind: string, a: string, b: string) =>
   g.edges.some((e) => e.kind === kind && e.a === a && e.b === b);
@@ -108,7 +108,7 @@ describe("the Ontology View's tables", () => {
   });
 
   it("offers no table layer", () => {
-    expect(Object.keys(GLOSSARY_SCOPE.layers).sort()).toEqual([
+    expect(Object.keys(ONTOLOGY_SCOPE.layers).sort()).toEqual([
       "columns",
       "data",
       "domains",
@@ -138,7 +138,7 @@ describe("a search focus with the tables", () => {
       new Set<LayerId>(["ontology", "columns"]),
       { ...all, focus: ["term:4"] },
       new Set(),
-      GLOSSARY_SCOPE,
+      ONTOLOGY_SCOPE,
     );
     expect(ids(g)).toEqual(["t:10", "term:4"]);
     expect(has(g, "term_binding", "term:4", "t:10")).toBe(true);

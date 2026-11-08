@@ -33,8 +33,8 @@ interface RelationshipDetailProps {
   setEditingRel: (f: RelForm | null) => void;
   canManage: boolean;
   onStartEdit: () => void;
-  /** Opens the form that creates this relationship's reverse. */
-  onReverse: () => void;
+  /** Opens the form that creates this relationship's reverse; absent while it cannot be offered. */
+  onReverse?: () => void;
   /** REQ-2198: resolves once the relationship is deleted and the list read again (PanelDelete). */
   onDelete: () => Promise<boolean | void>;
   onEditSave: () => void;
@@ -86,9 +86,10 @@ export function RelationshipDetail({
               <Tip text={t("relationshipRow.generateReverse")} named>
                 <ActionIcon
                   aria-label={t("relationshipRow.generateReverse")}
+                  disabled={!onReverse}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onReverse();
+                    onReverse?.();
                   }}
                 >
                   <ArrowLeftRight size={14} />

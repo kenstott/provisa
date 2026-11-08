@@ -213,6 +213,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
     from provisa.core.secrets import resolve_secrets
     from provisa.kafka.avro_registry import RegistrySettings
     from provisa.kafka.landed_offsets import landed_group
+    from provisa.kafka.security import KafkaSecurity
     from provisa.subscriptions.registry import get_provider
 
     source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
@@ -253,6 +254,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 "field_mapping": kafka_cfg.get("field_mapping") or {},
                 # REQ-1733: its first start reads from where the table's landing stopped.
                 "landed": landed_group(src.id),
+                "security": KafkaSecurity.of_source(src),  # REQ-147
             },
         )
         return provider, topic
@@ -700,6 +702,7 @@ async def _wire_pipeline(
     import asyncio
 
     from provisa.federation import singlestore_kafka, singlestore_pipeline as sp
+    from provisa.kafka.security import KafkaSecurity
 
     kafka = (
         ((tbl.get("live") or {}).get("kafka") or {}) if isinstance(tbl.get("live"), dict) else {}
@@ -709,12 +712,15 @@ async def _wire_pipeline(
         source_id=src.id, schema_name=tbl["schema_name"], table_name=tbl["table_name"]
     )
     bootstrap = f"{src.host}:{src.port}" if src.port else src.host
+    security = KafkaSecurity.of_source(src)  # REQ-147
     registry = src.cdc.schema_registry_url if getattr(src, "cdc", None) else None
     field_mapping = kafka.get("field_mapping") or None
     expected = sp.kafka_pipeline_name(
         address.schema,
         address.table,
-        sp.kafka_definition(origin, columns, pk_columns, field_mapping, registry, bootstrap),
+        sp.kafka_definition(
+            origin, columns, pk_columns, field_mapping, registry, bootstrap, security
+        ),
     )
     if not hasattr(state, "kafka_pipelines"):
         state.kafka_pipelines = {}
@@ -731,7 +737,7 @@ async def _wire_pipeline(
 
     try:
         # REQ-1733: a new pipeline starts where the table's landing stopped on the topic.
-        landed = await recorded(bootstrap, landed_group(src.id), origin.location)
+        landed = await recorded(bootstrap, landed_group(src.id), origin.location, security=security)
         name = await asyncio.to_thread(
             singlestore_kafka.ensure,
             _pipeline_store(state, engine),
@@ -744,6 +750,7 @@ async def _wire_pipeline(
             field_mapping=field_mapping,
             schema_registry=registry,
             landed=landed,
+            security=security,
         )
     except Exception:
         log.exception(

@@ -79,6 +79,10 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
+  // REQ-194: the reverse is offered once the GraphQL convention its alias is named by is read.
+  fetchSettings: vi.fn().mockResolvedValue({
+    naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
+  }),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
@@ -155,10 +159,12 @@ describe("RelationshipsPage: the right-hand detail panel", () => {
     expect(form.queryByText(/Junction table/)).toBeNull();
   });
 
-  it("opens the reverse form in the panel, with a way back to the relationship", () => {
+  it("opens the reverse form in the panel, with a way back to the relationship", async () => {
     render(<RelationshipsPage />);
     fireEvent.click(rowOf("orders.customer_id"));
-    fireEvent.click(within(panel()).getByRole("button", { name: "Generate reverse relationship" }));
+    const reverse = within(panel()).getByRole("button", { name: "Generate reverse relationship" });
+    await waitFor(() => expect(reverse).toBeEnabled());
+    fireEvent.click(reverse);
     expect(within(panel()).getByTestId("reverse-relationship-form")).toBeTruthy();
     expect(screen.getByTestId("reverse-rel-id")).toHaveValue("customers-to-orders");
 

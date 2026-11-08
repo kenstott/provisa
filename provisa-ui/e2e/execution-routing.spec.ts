@@ -46,8 +46,10 @@ test("single-source query transpiles via SQLGlot to target dialect", async ({
 test("cross-source query routes to Trino", async ({ request }) => {
   const resp = await request.post(`${BACKEND_URL}/data/compile`, {
     data: {
-      // pets -> assignments is one-to-many, so the field is the plural list `assignments`.
-      query: `{ ps__pets { id assignments { id } } }`,
+      // pets (the pet store's SQLite) -> animal_breeds (the shelter's GraphQL API): BREED_INFO,
+      // many-to-one, so the field is the singular `animalBreed`. No relationship joins pets to
+      // assignments any more: breed_name repeats on both, so neither side can key it.
+      query: `{ ps__pets { id animalBreed { name } } }`,
     },
     headers: { "Content-Type": "application/json", "X-Provisa-Role": "org_admin" },
   });
