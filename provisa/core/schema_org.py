@@ -1123,9 +1123,25 @@ creation_requests = Table(
     Column("resolved_at", DateTime(timezone=True)),
     Column("approvals", JSON, nullable=False, default=list, server_default="[]"),
     Column("required_approvals", Integer, nullable=False, server_default="1"),
+    # REQ-2217, REQ-2216, REQ-2215: see the matching block in schema.sql.
+    Column("environment", Text, nullable=False, server_default="prod"),
+    Column("addressed_roles", JSON, nullable=False, default=list, server_default="[]"),
+    Column("addressed_members", JSON, nullable=False, default=list, server_default="[]"),
+    Column("unresolved_roles", JSON, nullable=False, default=list, server_default="[]"),
     CheckConstraint(
         "status IN ('pending', 'executed', 'rejected')", name="creation_requests_status_check"
     ),
+)
+
+# REQ-2216: approve and decide calls already answered, by Idempotency-Key. See schema.sql.
+idempotent_calls = Table(
+    "idempotent_calls",
+    metadata,
+    Column("scope", Text, primary_key=True),
+    Column("actor", Text, primary_key=True),
+    Column("call_key", Text, primary_key=True),
+    Column("response", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 live_query_state = Table(
