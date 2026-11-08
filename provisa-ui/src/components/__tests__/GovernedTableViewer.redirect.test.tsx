@@ -90,10 +90,14 @@ describe("GovernedTableViewer — a result landed in the results store", () => {
     const pageSize = screen.getByTestId("page-size-select");
     expect(pageSize).toBeInTheDocument();
     expect(screen.getByTestId("clear-filters-btn")).toBeInTheDocument();
+    // The rows are in the results store: no "0 rows" count beside the notice.
+    expect(screen.queryByText(/^0 rows?$/)).toBeNull();
 
     // Changing the row limit runs the query again and the rows replace the notice.
     await userEvent.click(pageSize);
-    await userEvent.click(await screen.findByRole("option", { name: "25" }));
+    // The listbox is in a portal whose dropdown jsdom reports as display:none while its
+    // transition runs, so the option is looked up with hidden: true (as the page-size test does).
+    await userEvent.click(await screen.findByRole("option", { name: "25", hidden: true }));
     await waitFor(() => expect(screen.queryByTestId("result-redirected")).toBeNull());
     expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
     const second = JSON.parse(String(fetchMock.mock.calls[1][1].body));

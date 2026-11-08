@@ -279,12 +279,16 @@ export function ResultsGrid({
             {t("sqlResultsPanel.clearFilters")}
           </Button>
         </Tip>
-        <Text component="span" size="xs" c="dimmed">
-          {t("sqlResultsPanel.rowCount", { count: displayRows.length })}
-          {!serverPaged && displayRows.length < totalRowCount && groupBy.length === 0
-            ? t("sqlResultsPanel.filteredFrom", { count: totalRowCount })
-            : ""}
-        </Text>
+        {/* A landed result's rows are in the results store, not here: the notice says how many,
+            and a count of the rows on screen would read "0 rows" beside it. */}
+        {notice === undefined && (
+          <Text component="span" size="xs" c="dimmed">
+            {t("sqlResultsPanel.rowCount", { count: displayRows.length })}
+            {!serverPaged && displayRows.length < totalRowCount && groupBy.length === 0
+              ? t("sqlResultsPanel.filteredFrom", { count: totalRowCount })
+              : ""}
+          </Text>
+        )}
         <div style={{ flex: 1 }} />
         {/* REQ-1438: rows per page is the reader's choice, offered whether or not the current
             result happens to spill past one page. */}
