@@ -1320,6 +1320,18 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
     return _middleware
 
 
+def _uvicorn_config(app: Any, fd: int, ssl_kwargs: dict[str, Any]) -> Any:
+    """The MCP server's uvicorn config, one that leaves the process's loggers alone.
+
+    ``Config.__init__`` configures logging for the whole process: a ``log_config`` rewrites the
+    ``uvicorn`` loggers' handlers and a ``log_level`` sets ``uvicorn.error`` and ``uvicorn.access``.
+    This server runs in a thread beside the main one, so either would change the main server's
+    startup and access lines. Both stay ``None``; the loggers keep the level the main server set."""
+    import uvicorn
+
+    return uvicorn.Config(app, fd=fd, log_config=None, log_level=None, **ssl_kwargs)
+
+
 def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | None:
     """Start the MCP Streamable HTTP transport in a background thread.
 
@@ -1415,7 +1427,7 @@ def start_mcp_server(state: Any, log_: logging.Logger | None = None) -> Any | No
     _sock.bind((host, port))  # nosec B104 - same wildcard host this server always advertised
 
     def _serve() -> None:
-        uvicorn.run(app, fd=_sock.fileno(), log_level="warning", **ssl_kwargs)
+        uvicorn.Server(_uvicorn_config(app, _sock.fileno(), ssl_kwargs)).run()
 
     threading.Thread(target=_serve, daemon=True).start()
     _log.info("MCP Streamable %s server listening on %s:%d", scheme.upper(), host, port)
