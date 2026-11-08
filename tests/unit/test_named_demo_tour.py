@@ -262,7 +262,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     from provisa.api.demo_templates import demo_scans
 
     scanned = set(demo_scans(home))
-    terms = {t["name"] for t in config.get("glossary_terms", [])}
+    terms = {t["name"].strip().lower() for t in config.get("glossary_terms", [])}  # as stored
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     profiled = {
@@ -861,6 +861,22 @@ def test_each_surface_s_call_on_the_demo_is_accepted():
             },
         ],
     )
+
+
+@pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
+def test_a_term_step_names_the_term_as_the_catalog_stores_it(path):
+    """The glossary list marks each row data-glossary-term=<stored name>, and the tour clicks the
+    row by that exact string. The catalog stores a declared term lower-cased (REQ-1844,
+    upsert_declared_term), so a step that spells its term as the config does never finds the row
+    and the page waits forever."""
+    config = yaml.safe_load((path.parent / "config.yaml").read_text())
+    stored = {t["name"].strip().lower() for t in config.get("glossary_terms", [])}
+    for step in yaml.safe_load(path.read_text())["steps"]:
+        if "term" in step:
+            assert step["term"] in stored, (
+                f"{path.parent.name}: step {step['key']} names term {step['term']!r}; "
+                f"the catalog stores {sorted(stored)}"
+            )
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
