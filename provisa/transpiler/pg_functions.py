@@ -882,6 +882,14 @@ def _typed_by_its_form(node: exp.Expr) -> bool:
     return isinstance(test, exp.In) and isinstance(test.this, exp.Typeof)
 
 
+def _never_an_instant(value: exp.Expr) -> bool:
+    """Whether the value is a list or object built here (an ARRAY_AGG, a JSON_OBJECT, a
+    JSON_ARRAY, filtered or not): its type is never an instant, so nothing is told apart."""
+    while isinstance(value, (exp.Filter, exp.Paren)):
+        value = value.this
+    return isinstance(value, (exp.ArrayAgg, exp.JSONObject, exp.JSONArray, exp.Array))
+
+
 def after(sql: str) -> str:
     """The DuckDB statement with each placeholder ``before`` left written out."""
     lowered = sql.lower()
@@ -902,7 +910,9 @@ def after(sql: str) -> str:
             if name == _ENCODE_ESCAPE:
                 value = node.expressions[0].transform(_written).sql(dialect="duckdb")
                 return sqlglot.parse_one(_encode_escape(value), read="duckdb")
-            if name == _TO_JSON and len(node.expressions) == 1 and not _typed_by_its_form(node):
+            if name == _TO_JSON and len(node.expressions) == 1:
+                if _typed_by_its_form(node) or _never_an_instant(node.expressions[0]):
+                    return node
                 # Its value's own placeholders written first: the form replacing the call is
                 # not walked again.
                 written = node.expressions[0].transform(_written).sql(dialect="duckdb")
