@@ -1099,3 +1099,143 @@ def test_views_of_a_union_read_again_and_again_are_refused_as_before():
         *(f"c{i}.k = c0.k" for i in range(1, 3)),
     }
     assert took < 2, took
+
+
+_MARKED_IDS = {**_IDS, "records": 10, "crosswalk": 11, "master": 12}
+
+
+def _marked(view: str, body: str) -> str:
+    """``body`` as governance expands the view ``view`` for the guard (view_expand.VIEW_MARK)."""
+    from provisa.compiler.view_expand import VIEW_MARK
+
+    return f'(SELECT * FROM ({body}) AS "{VIEW_MARK}{view}")'
+
+
+def _marked_crosswalk(reads: int) -> str:
+    records = _RECORDS[1:-1]
+    joins = [f"FROM {_marked('records', records)} AS r0"] + [
+        f"LEFT JOIN {_marked('records', records)} AS r{i} ON r{i}.k = r0.k" for i in range(1, reads)
+    ]
+    return _marked("crosswalk", "SELECT r0.k, r0.n " + " ".join(joins))
+
+
+def _crosswalk_beside_its_master(reads: int, crosswalks: int) -> str:
+    """customer360's tour: the crosswalk view joined to the golden record built from it."""
+    joins = [f"FROM {_marked_crosswalk(reads)} AS c0"] + [
+        f"LEFT JOIN {_marked_crosswalk(reads)} AS c{i} ON c{i}.k = c0.k"
+        for i in range(1, crosswalks)
+    ]
+    master = _marked("master", "SELECT c0.k, c0.n " + " ".join(joins))
+    return f"SELECT x.k FROM {_marked_crosswalk(reads)} AS x LEFT JOIN {master} AS m ON m.k = x.k"
+
+
+def _marked_check(sql: str, registered: set[tuple[int, int, str, str]]) -> list:
+    import sqlglot
+
+    from provisa.compiler import join_guard
+
+    return join_guard.unrelated_tables(
+        sqlglot.parse_one(sql),
+        resolve_table_id=lambda t: _MARKED_IDS.get(t.name),
+        columns_of=lambda _table_id: {"k", "n"},
+        registered=registered,
+        exempt_table=lambda _table_id: False,
+        same_remote_source=lambda a, b: False,
+    )
+
+
+@pytest.mark.timeout(10)
+def test_a_view_of_unions_beside_a_view_of_it_is_checked_without_telling_branches_apart():
+    """Each branch of a marked view's union is one connected piece, named by a different
+    instance, and the guard told the pieces apart by that name, so views read side by side
+    multiplied: customer360's crosswalk beside its golden record ran past the 60 s request
+    timeout. Whether a set is connected does not depend on what a refusal would call its pieces."""
+    import time
+
+    ids = _MARKED_IDS.values()
+    every_pair = {(x, y, "k", "k") for x in ids for y in ids}
+    started = time.perf_counter()
+    found = _marked_check(_crosswalk_beside_its_master(4, 3), every_pair)
+    took = time.perf_counter() - started
+    assert found == []
+    # Measured before: 24 s at (3, 3), past 30 s at this size.
+    assert took < 2, took
+
+
+@pytest.mark.timeout(10)
+def test_a_view_of_unions_beside_a_view_of_it_with_a_branch_unrelated_is_refused():
+    """The same statement with d related to nothing is refused for every pairing with d, named
+    as the guard always named it: the check that settles a connected set decides nothing else."""
+    from provisa.compiler.join_guard import UNREGISTERED
+
+    without_d = {(x, y, "k", "k") for x in range(1, 4) for y in range(1, 4)}
+    found = _marked_check(_crosswalk_beside_its_master(2, 2), without_d)
+    assert sorted({(f.left_table, f.right_table) for f in found if f.reason == UNREGISTERED}) == [
+        (1, 4),
+        (2, 4),
+        (3, 4),
+        (4, 4),
+    ]
+
+
+def _brute_connected(choice, related: set[frozenset[int]], members: set[int]) -> bool:
+    """Every set ``choice`` may be, listed and connected one by one: the check by its definition."""
+    from provisa.compiler.join_guard import project
+
+    for instances in project(choice, None):
+        held = instances & members
+        if not held:
+            continue
+        reached, frontier = set(), [next(iter(held))]
+        while frontier:
+            at = frontier.pop()
+            if at not in reached:
+                reached.add(at)
+                frontier += [o for o in held - reached if frozenset({at, o}) in related]
+        if reached != held:
+            return False
+    return True
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_the_connection_check_agrees_with_listing_every_set(seed):
+    """What the guard lets through without listing a set: on random choices of random unions, with
+    instances read twice and views among them, a group is connected exactly when every set of it,
+    listed, is. A statement let through here that a listing would refuse is a hole in REQ-603."""
+    import random
+
+    from provisa.compiler.join_guard import _Choice, _Pieces, _Resolver
+
+    rng = random.Random(seed)
+    disconnected = 0
+    for _ in range(1500):
+        resolver = _Resolver(lambda _t: None, lambda _i: set())
+        instances = list(range(1, rng.randint(3, 10)))
+        views = frozenset(i for i in instances if rng.random() < 0.3)
+
+        def build(depth: int) -> _Choice:
+            if depth == 0 or rng.random() < 0.3:
+                return resolver.one(frozenset(rng.sample(instances, rng.randint(1, 2))))
+            parts = [build(depth - 1) for _ in range(rng.randint(2, 3))]
+            return resolver.any_of(parts) if rng.random() < 0.5 else resolver.all_of(parts)
+
+        choice = build(rng.randint(1, 3))
+        members = set(instances)
+        edges = {
+            frozenset({a, b})
+            for a in instances
+            for b in instances
+            if a < b and rng.random() < rng.choice([0.15, 0.4, 0.8])
+        }
+        shared = set(resolver.shared)
+        expected = _brute_connected(choice, edges, members)
+        disconnected += not expected
+        assert _Pieces(members, edges, set(), shared, views=views).connected(choice) is expected, (
+            seed,
+            sorted(map(sorted, edges)),
+            views,
+        )
+        # The listing the guard names a refusal from agrees too.
+        exact = _Pieces(members, edges, set(), shared).whole(choice)
+        assert all(len(parts) < 2 for parts in exact) is expected
+    assert disconnected > 100  # the draw exercised refusals as well as passes
