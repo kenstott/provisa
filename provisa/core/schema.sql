@@ -994,6 +994,33 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
+-- REQ-194: the names table of the last model version built -- every model object's name on every
+-- surface, with the naming problems found in it. Derived state: each build replaces every row.
+CREATE TABLE IF NOT EXISTS model_names (
+    object_kind   TEXT NOT NULL,
+    object_id     TEXT NOT NULL,
+    surface       TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    physical_name TEXT NOT NULL,
+    label         TEXT NOT NULL,
+    domain_id     TEXT NOT NULL DEFAULT '',
+    table_id      INTEGER,
+    is_alias      BOOLEAN NOT NULL DEFAULT FALSE,
+    warnings      JSONB NOT NULL DEFAULT '[]',
+    PRIMARY KEY (object_kind, object_id, surface)
+);
+
+-- REQ-194: the name clashes the last model build refused, each naming both objects. Emptied by a
+-- build that refuses none.
+CREATE TABLE IF NOT EXISTS model_name_clashes (
+    surface  TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    holder   TEXT NOT NULL,
+    newcomer TEXT NOT NULL,
+    message  TEXT NOT NULL,
+    PRIMARY KEY (surface, name, newcomer)
+);
+
 -- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
 -- no row has never run; the dry run writes none.
 CREATE TABLE IF NOT EXISTS checker_latest_runs (
@@ -1137,6 +1164,46 @@ CREATE TABLE IF NOT EXISTS creation_requests (
 );
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS approvals JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS required_approvals INT NOT NULL DEFAULT 1;
+-- REQ-2217: the environment a request is for. REQ-2216/REQ-2215: the roles it is addressed to and
+-- their members as resolved when it was raised (principals: id, display_name, email), and the
+-- roles none could be resolved for, by name.
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'prod';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS addressed_roles JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS addressed_members JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS unresolved_roles JSONB NOT NULL DEFAULT '[]';
+
+-- REQ-2216: ops.requests is subscribable. Every insert, update or delete of a request is reported
+-- on this schema's own channel (subscriptions.pg_provider.schema_channel: NOTIFY is database-wide
+-- and the org schemas share a database) with the request's id only; the subscription reads the
+-- row back through the governed pipeline as the subscriber, so the event is the table's columns.
+CREATE OR REPLACE FUNCTION provisa_notify_requests()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid int;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_requests_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_requests ON creation_requests;
+CREATE TRIGGER provisa_sub_requests
+AFTER INSERT OR UPDATE OR DELETE ON creation_requests
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_requests();
+
+-- REQ-2216: an approve or decide call carrying an Idempotency-Key applies once; a repeat of the
+-- same key by the same caller on the same endpoint is answered with the first call's result.
+CREATE TABLE IF NOT EXISTS idempotent_calls (
+    scope       TEXT NOT NULL,         -- method and path of the call
+    actor       TEXT NOT NULL,         -- the caller's user id
+    call_key    TEXT NOT NULL,         -- the Idempotency-Key header
+    response    JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (scope, actor, call_key)
+);
 
 -- Live Query Engine watermark state (Phase AM, Phase AY)
 CREATE TABLE IF NOT EXISTS live_query_state (

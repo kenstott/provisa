@@ -75,6 +75,7 @@ import { SettingsCatalogPanel } from "../components/admin/SettingField";
 import {
   ApolloSubgraphCard,
   DomainModeCard,
+  NameClashPolicyCard,
   NamingConventionsCard,
 } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
@@ -393,6 +394,7 @@ export function AdminPage() {
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                   <DomainModeCard onApplied={() => refetchDomains()} />
                   <NamingConventionsCard />
+                  <NameClashPolicyCard />
                   <ApolloSubgraphCard />
                 </SimpleGrid>
               </CollapsibleItem>

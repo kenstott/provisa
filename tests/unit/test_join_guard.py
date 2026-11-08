@@ -275,6 +275,70 @@ def test_tables_combined_along_a_relationship_pass(shape):
     assert _v002(_ALONG[shape]) == [], shape
 
 
+# A filter on a window function's result over rows already joined by a registered relationship
+# is not a match between those tables (REQ-603, amended 2026-11-07): the latest row per group.
+_WINDOW_RESULTS = {
+    "row_number_latest": (
+        "SELECT e.name FROM (SELECT c.name, ROW_NUMBER() OVER (PARTITION BY c.id "
+        "ORDER BY v.id DESC) AS n FROM customers c JOIN visits v ON c.id = v.customer_id) e "
+        "WHERE e.n = 1"
+    ),
+    "rank": (
+        "SELECT e.name FROM (SELECT c.name, RANK() OVER (PARTITION BY v.customer_id "
+        "ORDER BY c.region, v.id) AS r FROM customers c JOIN visits v ON c.id = v.customer_id) e "
+        "WHERE e.r <= 3"
+    ),
+    "dense_rank_in_a_cte": (
+        "WITH e AS (SELECT c.name, DENSE_RANK() OVER (PARTITION BY c.id ORDER BY v.id) AS d "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id) SELECT name FROM e WHERE d = 1"
+    ),
+    "one_table": (
+        "SELECT e.id FROM (SELECT o.id, ROW_NUMBER() OVER (PARTITION BY o.customer_id "
+        "ORDER BY o.id DESC) AS n FROM orders o) e WHERE e.n = 1"
+    ),
+}
+
+
+@pytest.mark.parametrize("sql", _WINDOW_RESULTS.values(), ids=list(_WINDOW_RESULTS))
+def test_a_filter_on_a_window_result_over_joined_rows_passes(sql):
+    assert _v002(sql) == [], sql
+
+
+# A window does not lift the rule from the join it is computed over, nor from a comparison of the
+# two tables' columns that is not a registered equality.
+_STILL_REFUSED_BESIDE_A_WINDOW = {
+    "unregistered_join_under_the_window": (
+        "SELECT e.id FROM (SELECT o.id, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY o.id) AS n "
+        "FROM orders o JOIN customers c ON o.region = c.region) e WHERE e.n = 1"
+    ),
+    "not_equal": (
+        "SELECT e.name FROM (SELECT c.name, c.id AS cid, v.id AS vid, ROW_NUMBER() OVER "
+        "(PARTITION BY c.id ORDER BY v.id) AS n FROM customers c JOIN visits v "
+        "ON c.id = v.customer_id) e WHERE e.n = 1 AND e.cid <> e.vid"
+    ),
+    "less_than": (
+        "SELECT e.name FROM (SELECT c.name, c.id AS cid, v.id AS vid, ROW_NUMBER() OVER "
+        "(PARTITION BY c.id ORDER BY v.id) AS n FROM customers c JOIN visits v "
+        "ON c.id = v.customer_id) e WHERE e.n = 1 AND e.cid < e.vid"
+    ),
+    "case_comparing_two_tables": (
+        "SELECT e.name FROM (SELECT c.name, CASE WHEN c.id > v.id THEN 1 ELSE 0 END AS n "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id) e WHERE e.n = 1"
+    ),
+    "window_beside_an_inequality": (
+        "SELECT c.name, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY v.id) AS n "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id WHERE c.id <> v.id"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "sql", _STILL_REFUSED_BESIDE_A_WINDOW.values(), ids=list(_STILL_REFUSED_BESIDE_A_WINDOW)
+)
+def test_two_tables_compared_beside_a_window_are_still_refused(sql):
+    assert _v002(sql), sql
+
+
 @pytest.mark.parametrize(
     "sql",
     [
