@@ -564,6 +564,17 @@ async def _save_data_product(
                 code="schema.domain_not_found",
                 params={"domain": input.domain_id},
             )
+        if stored is not None and stored["domain_id"] != input.domain_id:
+            # REQ-1634: a member joins only products of its own domain.
+            try:
+                await data_product_repo.require_members_in_domain(conn, input.id, input.domain_id)
+            except data_product_repo.MembershipRefused as refused:
+                return MutationResult(
+                    success=False,
+                    message=str(refused),
+                    code=f"data_product.members.{refused.code}",
+                    params=refused.params,
+                )
         model = DataProductModel(
             id=input.id,
             domain_id=input.domain_id,

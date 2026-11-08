@@ -42,6 +42,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
+from tests.unit.openmetadata_product_mock import product_assets_response
 
 TABLE_FQN = "wh.default.public.orders"
 
@@ -155,10 +156,14 @@ def _mock_transport(monkeypatch, live_response):
 
     async def _put(self, url, json=None, headers=None, params=None):
         puts.append((url, json))
+        if (member_call := product_assets_response("PUT", url)) is not None:
+            return member_call
         body = {"id": "9c1d8e70-0000-0000-0000-0000000000aa", "fullyQualifiedName": TABLE_FQN}
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
 
     async def _get(self, url, params=None, headers=None):
+        if (member_call := product_assets_response("GET", url)) is not None:
+            return member_call
         gets.append(url)
         request = httpx.Request("GET", url)
         if isinstance(live_response, Exception):

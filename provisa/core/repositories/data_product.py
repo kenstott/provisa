@@ -796,3 +796,42 @@ async def require_domain_of_products(  # REQ-1634
                 domain=domain_id,
                 product_domain=product["domain_id"],
             )
+
+
+async def require_members_in_domain(  # REQ-1634
+    conn: "Connection", product_id: str, domain_id: str
+) -> None:
+    """A product moved to ``domain_id`` holds no member of another domain: the move is refused by
+    name while it does, as a member moved out of its products' domain is
+    (require_domain_of_products), since a member joins only products of its own domain."""
+    tables = (
+        await conn.execute_core(
+            select(registered_tables.c.table_name)
+            .join(data_product_tables, data_product_tables.c.table_id == registered_tables.c.id)
+            .where(data_product_tables.c.product_id == product_id)
+            .where(registered_tables.c.domain_id != domain_id)
+            .order_by(registered_tables.c.table_name)
+        )
+    ).fetchall()
+    commands = (
+        await conn.execute_core(
+            select(tracked_functions.c.name)
+            .join(
+                data_product_commands,
+                data_product_commands.c.command_name == tracked_functions.c.name,
+            )
+            .where(data_product_commands.c.product_id == product_id)
+            .where(tracked_functions.c.domain_id != domain_id)
+            .order_by(tracked_functions.c.name)
+        )
+    ).fetchall()
+    members = [*(r.table_name for r in tables), *(r.name for r in commands)]
+    if members:
+        raise MembershipRefused(
+            "domain_has_members",
+            f"data product {product_id!r} cannot move to domain {domain_id!r} while it has members "
+            f"of another domain ({', '.join(members)}); take them out of the product first",
+            data_product=product_id,
+            domain=domain_id,
+            members=", ".join(members),
+        )

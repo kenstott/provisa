@@ -921,8 +921,9 @@ async def create_data_product(  # REQ-1855
 ) -> dict:
     """Create or replace a data product by id (an id that already exists is overwritten in
     full — fetch it first with list_data_products if you mean to change only some fields).
-    `domain_id` must be a real, existing domain. Its status is kept: a new product is a draft,
-    and change_data_product_status changes it."""
+    `domain_id` must be a real, existing domain; a product is not moved to another domain while it
+    has members (take them out with set_data_product_members first). Its status is kept: a new
+    product is a draft, and change_data_product_status changes it."""
     require_role(role, state)
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
@@ -944,6 +945,9 @@ async def create_data_product(  # REQ-1855
         )
         if await domain_repo.get(conn, domain_id) is None:
             raise ValueError(f"Domain not found: {domain_id}")
+        if stored is not None and stored["domain_id"] != domain_id:
+            # REQ-1634: a member joins only products of its own domain.
+            await data_product_repo.require_members_in_domain(conn, id, domain_id)
         model = DataProductModel(
             id=id,
             domain_id=domain_id,

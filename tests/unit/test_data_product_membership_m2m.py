@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from sqlalchemy import insert, select
@@ -220,6 +221,49 @@ async def test_a_product_with_members_is_not_deleted(control_plane):
         }
         await repo.set_members(conn, "churn", table_ids=[], commands=[])
         assert await repo.delete(conn, "churn") is True
+
+
+@pytest.mark.asyncio
+async def test_a_product_with_members_is_not_moved_to_another_domain(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        await repo.set_members(conn, "c360", table_ids=[1, 2], commands=["refresh_customer"])
+        with pytest.raises(repo.MembershipRefused) as refused:
+            await repo.require_members_in_domain(conn, "c360", "finance")
+        assert refused.value.code == "domain_has_members"
+        assert refused.value.params == {
+            "data_product": "c360",
+            "domain": "finance",
+            "members": "customers, orders, refresh_customer",
+        }
+        await repo.require_members_in_domain(conn, "c360", "sales")  # its own domain is no move
+        await repo.set_members(conn, "c360", table_ids=[], commands=[])
+        await repo.require_members_in_domain(conn, "c360", "finance")  # no members, free to move
+
+
+@pytest.mark.asyncio
+async def test_the_product_save_refuses_a_domain_move_while_it_has_members(
+    control_plane, monkeypatch
+):
+    from provisa.api.admin import capabilities, schema_mutation
+    from provisa.api.admin.types import DataProductInput
+
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            await repo.set_members(conn, "c360", table_ids=[1], commands=[])
+
+        async def _pool():
+            return db
+
+        monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
+        monkeypatch.setattr(capabilities, "require_capability", lambda _info, _cap: None)
+        monkeypatch.setattr(capabilities, "require_right_in_domains", lambda _i, _r, _d: None)
+        monkeypatch.setattr(capabilities, "_identity_from_info", lambda _info: None)
+        mutation: Any = schema_mutation.Mutation()
+        moved = DataProductInput(id="c360", domain_id="finance", name="C360")
+        result = await mutation.update_data_product(None, moved)
+        assert (result.success, result.code) == (False, "data_product.members.domain_has_members")
+        async with db.acquire() as conn:
+            assert (await repo.get(conn, "c360"))["domain_id"] == "sales"  # nothing written
 
 
 def test_a_table_or_command_declaring_product_id_is_refused_by_name():

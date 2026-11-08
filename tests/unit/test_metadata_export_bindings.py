@@ -53,6 +53,7 @@ from provisa.core.models import (
     Table,
 )
 from tests.role_state import RoleState
+from tests.unit.openmetadata_product_mock import product_assets_response
 
 TABLE_FQN = "wh.public.orders"
 OM_TABLE_FQN = "wh.default.public.orders"
@@ -304,10 +305,14 @@ def _mock_openmetadata(monkeypatch, *, old_live=None):
 
     async def _put(self, url, json=None, headers=None):
         calls["puts"].append((url, json))
+        if (member_call := product_assets_response("PUT", url)) is not None:
+            return member_call
         body = {"id": "om-uuid-new", "fullyQualifiedName": OM_TABLE_FQN}
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
 
     async def _get(self, url, params=None, headers=None):
+        if (member_call := product_assets_response("GET", url)) is not None:
+            return member_call
         calls["gets"].append(url)
         req = httpx.Request("GET", url)
         if old_live is not None and url.endswith(f"/api/v1/tables/{old_live['id']}"):
@@ -394,6 +399,10 @@ async def test_openmetadata_unchanged_fqn_never_touches_the_predecessor_path(sna
 # --- Collibra -------------------------------------------------------------------------------
 
 
+PRODUCT_FQN = "prod"
+PRODUCT_UUID = "collibra-product-uuid"
+
+
 def _mock_collibra(monkeypatch, *, lookup_results=None):
     order: list[str] = []
     calls: dict[str, list] = {"posts": [], "gets": [], "patches": []}
@@ -406,9 +415,11 @@ def _mock_collibra(monkeypatch, *, lookup_results=None):
     async def _get(self, url, params=None, headers=None):
         order.append("lookup")
         calls["gets"].append((url, params))
-        return httpx.Response(
-            200, json={"results": lookup_results or []}, request=httpx.Request("GET", url)
-        )
+        found = lookup_results or []
+        if params["name"] == PRODUCT_FQN:
+            # REQ-1634: the product the table publishes through is bound as its own asset.
+            found = [{"id": PRODUCT_UUID, "name": PRODUCT_FQN}]
+        return httpx.Response(200, json={"results": found}, request=httpx.Request("GET", url))
 
     async def _patch(self, url, json=None, headers=None):
         order.append("rename")
@@ -438,7 +449,10 @@ async def test_collibra_steady_state_reconcile_makes_no_lookup_and_no_rename(sna
     calls, _ = _mock_collibra(monkeypatch)
     export = CollibraExport(_config("collibra"))
     uri = snapshot.tables[0].semantic_uri
-    export.stored_bindings = {uri: ("collibra-uuid-1", TABLE_FQN)}
+    export.stored_bindings = {
+        uri: ("collibra-uuid-1", TABLE_FQN),
+        snapshot.data_products[0].semantic_uri: (PRODUCT_UUID, PRODUCT_FQN),
+    }
     result = await export.publish(snapshot)
     assert result.ok
     assert calls["gets"] == [] and calls["patches"] == []

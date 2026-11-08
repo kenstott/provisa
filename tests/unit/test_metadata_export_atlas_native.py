@@ -71,8 +71,14 @@ def _snapshot():
 def test_native_entities_state_what_the_model_holds():
     entities = to_native_entities(_snapshot())
     by_type = {e.type_name: e for e in entities}
-    # No rdbms masquerade, no instance/db split — source, table, column.
-    assert set(by_type) == {PROVISA_SOURCE_TYPE, PROVISA_TABLE_TYPE, PROVISA_COLUMN_TYPE}
+    # No rdbms masquerade, no instance/db split — source, table, column, and the data product the
+    # table publishes through (REQ-1634).
+    assert set(by_type) == {
+        PROVISA_SOURCE_TYPE,
+        PROVISA_TABLE_TYPE,
+        PROVISA_COLUMN_TYPE,
+        PROVISA_DATA_PRODUCT_TYPE,
+    }
     source = by_type[PROVISA_SOURCE_TYPE]
     assert source.attributes["sourceType"] == "openapi"
     assert source.attributes["name"] == "petstore-api"
@@ -231,6 +237,7 @@ def test_atlan_keeps_builtin_types_and_merges_classifications_on_its_own_routes(
         "Table",
         "Column",
         "Process",
+        "DataProduct",  # REQ-1634: the product the table publishes through
     }
 
 

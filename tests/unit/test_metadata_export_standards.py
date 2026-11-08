@@ -52,6 +52,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
+from tests.unit.openmetadata_product_mock import product_assets_response
 
 EVENT_TIME = datetime(2026, 8, 4, 12, 0, tzinfo=UTC)
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
@@ -210,7 +211,7 @@ def test_openlineage_dataset_event_carries_schema_ownership_and_description(snap
     assert facets["provisa_domain"]["domainId"] == "sales"
 
 
-def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
+def test_openlineage_dataset_facet_names_its_data_products():  # REQ-1634
     # OpenLineage has no persistent entity for a data product — only per-event dataset/run
     # facets — so membership rides the member table's own facets, alongside provisa_domain.
     config = ProvisaConfig(
@@ -235,10 +236,11 @@ def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
     orders = next(
         e for e in events if e.payload.get("dataset", {}).get("name") == "wh.public.orders"
     )
-    facet = orders.payload["dataset"]["facets"]["provisa_data_product"]
-    assert facet["productId"] == "prod"
-    assert facet["name"] == "Sales 360"
-    assert facet["owner"] == "alice"
+    # Membership is many-to-many: the facet lists every product the table belongs to.
+    (product,) = orders.payload["dataset"]["facets"]["provisa_data_products"]["products"]
+    assert product["productId"] == "prod"
+    assert product["name"] == "Sales 360"
+    assert product["owner"] == "alice"
 
 
 def test_openlineage_column_lineage_facet_names_input_field_and_transform(snapshot):
@@ -441,6 +443,8 @@ def _entity_response(url: str, body: dict) -> dict:
     """
     if url.endswith("/users"):
         return {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, body["name"]))}
+    if (member_call := product_assets_response("PUT", url)) is not None:
+        return member_call.json()  # REQ-1634: the product's member assets, added
     if not url.endswith("/tables"):
         return {}
     fqn = f"{body['databaseSchema']}.{body['name']}"
@@ -449,6 +453,8 @@ def _entity_response(url: str, body: dict) -> dict:
 
 async def _type_get(self, url, params=None, headers=None):
     """The metadata-type lookups the relationship custom property is registered against."""
+    if (member_call := product_assets_response("GET", url)) is not None:
+        return member_call
     name = url.rsplit("/", 1)[-1]
     return httpx.Response(
         200,
