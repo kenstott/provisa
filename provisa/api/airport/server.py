@@ -13,7 +13,7 @@
 Serves the DuckDB `airport` community extension's Flight application protocol so
 an external DuckDB client can::
 
-    INSTALL airport FROM community; LOAD airport;
+    LOAD airport;  -- staged at install time, or INSTALL airport FROM community on the client's own DuckDB
     ATTACH 'grpc://host:port' AS provisa (TYPE AIRPORT);
     SELECT ... FROM provisa.<schema>.<table>;
     INSERT INTO provisa.<schema>.<table> VALUES (...);

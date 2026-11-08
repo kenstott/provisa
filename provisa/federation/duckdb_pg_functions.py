@@ -17,7 +17,7 @@ abbrev are.
 
 sha224, sha384 and sha512 are the crypto extension's ``crypto_hash`` (REQ-2171, EXTENSIONS AND TOTAL
 LANDING). :func:`register` only loads it, from the extension directory: staging it is an install's
-step (provisa-duckdb-ext, or ``INSTALL crypto FROM community``), so a connection never reaches the
+step (provisa-duckdb-ext, or scripts/stage_duckdb_extensions.py), so a connection never reaches the
 network. Where it is not staged the call is refused by name."""
 
 # Requirements: REQ-2167, REQ-2171

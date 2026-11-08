@@ -250,6 +250,8 @@ bundle_native_payload() {
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "$py" "$notebook_dir"
   "$py" -m pip install --quiet --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # REQ-294: the runtime never downloads a DuckDB extension, so a build without all of them stops here.
+  "$py" -I -m provisa.federation.duckdb_extensions
   # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
   # REQ-2194: provisa's wheel carries its compiled encoders (provisa._encoders) and their notices.
   # -I: from the repository root, `-c` would import the checkout's provisa (no compiled module).

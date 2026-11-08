@@ -23,7 +23,7 @@ import os
 
 import adbc_driver_snowflake
 
-from provisa.federation.duckdb_extensions import install_and_load
+from provisa.federation.duckdb_extensions import load_extension
 
 _ENV = "SNOWFLAKE_ADBC_DRIVER_PATH"
 
@@ -43,7 +43,7 @@ def test_the_snowflake_extension_is_loaded_with_the_shipped_driver(monkeypatch):
     monkeypatch.setenv(_ENV, "unset")
     monkeypatch.delenv(_ENV)
     con = _Con()
-    install_and_load(con, "snowflake")  # pyright: ignore[reportArgumentType]
+    load_extension(con, "snowflake")  # pyright: ignore[reportArgumentType]
     shipped = adbc_driver_snowflake._driver_path()  # pyright: ignore[reportPrivateUsage]
     assert os.path.exists(shipped)
     assert ("LOAD snowflake", shipped) in con.ran
@@ -53,5 +53,5 @@ def test_the_snowflake_extension_is_loaded_with_the_shipped_driver(monkeypatch):
 def test_another_extension_names_no_snowflake_driver(monkeypatch):
     monkeypatch.setenv(_ENV, "unset")
     monkeypatch.delenv(_ENV)
-    install_and_load(_Con(), "mongo")  # pyright: ignore[reportArgumentType]
+    load_extension(_Con(), "mongo")  # pyright: ignore[reportArgumentType]
     assert _ENV not in os.environ

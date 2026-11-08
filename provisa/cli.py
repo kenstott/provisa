@@ -98,7 +98,8 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     # Stage the DuckDB extensions OFFLINE from the provisa-duckdb-ext PyPI package (installed by
     # provisa[embedded]) so DEPLOY never reaches extensions.duckdb.org — required behind an enterprise
     # firewall where only PyPI/Maven/npm/NuGet are proxied. Absent package = a dev checkout without the
-    # extra: leave PROVISA_DUCKDB_EXT_DIR unset so DuckDB's network INSTALL still works for local dev.
+    # extra: it loads from DuckDB's per-user directory, filled once by stage_duckdb_extensions.py. The
+    # runtime never installs an extension either way (REQ-294).
     if not os.environ.get("PROVISA_DUCKDB_EXT_DIR"):
         from provisa.federation.duckdb_extensions import stage_bundled_extensions
 
@@ -106,8 +107,9 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
             ext_dir = stage_bundled_extensions(data_dir / "duckdb-ext")
         except ModuleNotFoundError:
             notes.append(
-                "duckdb extensions: provisa-duckdb-ext not installed — DuckDB will INSTALL from the "
-                "network on first use (install provisa[embedded] for an offline/air-gapped setup)"
+                "duckdb extensions: provisa-duckdb-ext not installed; loading from DuckDB's per-user "
+                "directory, and a missing extension is refused by name (install provisa[embedded], "
+                "or run scripts/stage_duckdb_extensions.py once on a source checkout)"
             )
         else:
             os.environ["PROVISA_DUCKDB_EXT_DIR"] = str(ext_dir)

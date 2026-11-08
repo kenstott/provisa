@@ -21,12 +21,12 @@ extension API standardises:
     and (when not importing) table OPTIONS. So an arbitrary standard-conforming FDW is drivable.
 
   * DUCKDB is a CURATED UNION of the two mechanisms the engine already drives — ATTACH-TYPE
-    (INSTALL/LOAD + ATTACH …) and SCAN table-function (CREATE VIEW … AS SELECT * FROM <fn>(…)). The
+    (LOAD + ATTACH …) and SCAN table-function (CREATE VIEW … AS SELECT * FROM <fn>(…)). The
     descriptor picks a mechanism and its template; an extension exposing neither is unsupported.
 
 Availability is verified at attach time against each engine's STANDARD discovery catalog — the pg probe
-checks pg_available_extensions/pg_extension; the duckdb probe INSTALL/LOADs and checks duckdb_functions()
-for the declared symbol — failing loud when the declared extension is not installable (no silent skip)."""
+checks pg_available_extensions/pg_extension; the duckdb probe LOADs and checks duckdb_functions()
+for the declared symbol — failing loud when the declared extension is not staged (REQ-294: an operator stages it) (no silent skip)."""
 
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ class GenericPgFdwConnector(Connector):  # REQ-1177
 
 
 class GenericDuckDbAttachConnector(_DuckDBExtensionConnector):  # REQ-1177
-    """A config-declared DuckDB ATTACH-type connector (INSTALL/LOAD + templated ATTACH)."""
+    """A config-declared DuckDB ATTACH-type connector (LOAD + templated ATTACH)."""
 
     def __init__(self, d: dict) -> None:
         self.source_type = d["source_type"]
@@ -162,7 +162,7 @@ class GenericDuckDbAttachConnector(_DuckDBExtensionConnector):  # REQ-1177
 
 
 class GenericDuckDbScanConnector(_DuckDBExtensionConnector):  # REQ-1177
-    """A config-declared DuckDB SCAN-type connector (INSTALL/LOAD + a read table-function view)."""
+    """A config-declared DuckDB SCAN-type connector (LOAD + a read table-function view)."""
 
     def __init__(self, d: dict) -> None:
         self.source_type = d["source_type"]

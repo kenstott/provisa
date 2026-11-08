@@ -157,8 +157,8 @@ def _duckdb_env(work: Path) -> dict[str, str]:
     directory (the icu extension then fails to load and the server does not start). As
     provisa/cli.py does for a deployment: the extensions staged offline from provisa-duckdb-ext
     when it is installed (PROVISA_DUCKDB_EXT_DIR), or else this user's own DuckDB cache, under the
-    HOME this process has -- a checkout without the embedded extra installs from the network on
-    first use, as it does everywhere (cli.py). An extension directory this process was given is
+    HOME this process has -- a checkout without the embedded extra loads what
+    scripts/stage_duckdb_extensions.py staged there (cli.py). An extension directory this process was given is
     passed on as it is."""
     from provisa.federation.duckdb_extensions import extension_directory, stage_bundled_extensions
 

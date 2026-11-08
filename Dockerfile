@@ -141,6 +141,11 @@ COPY provisa/ ./provisa/
 # REQ-2194: provisa's compiled encoders and their notices, from provisa's wheel (stage 2).
 COPY --from=installer /encoders/ ./provisa/
 RUN python -c "import provisa._encoders.pgwire"
+# REQ-294: every DuckDB extension is installed here, at build time, for the DuckDB version and
+# architecture of this image; the runtime only LOADs and refuses by name what is missing.
+ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
+COPY scripts/stage_duckdb_extensions.py /tmp/stage_duckdb_extensions.py
+RUN PYTHONPATH=/app python /tmp/stage_duckdb_extensions.py && rm /tmp/stage_duckdb_extensions.py
 # REQ-2194: the wheel itself, kept for the code images this server builds: their PostgreSQL
 # front end writes its rows with the encoders the wheel carries (codesource/image_build.py takes
 # them from the wheel for the image's architecture, and refuses a build it has no wheel for).

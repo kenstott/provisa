@@ -37,10 +37,10 @@ _STAMP = "%Y%m%d%H%M%S"
 
 def _account(token: str) -> duckdb.DuckDBPyConnection:
     """A connection signed in to the account with every database attached (``md:``)."""
-    from provisa.federation.duckdb_extensions import install_and_load
+    from provisa.federation.duckdb_extensions import load_extension
 
     con = duckdb.connect()
-    install_and_load(con, "motherduck", from_community=False)
+    load_extension(con, "motherduck")
     con.execute("SET GLOBAL motherduck_token = ?", [token])
     con.execute("ATTACH 'md:'")
     return con

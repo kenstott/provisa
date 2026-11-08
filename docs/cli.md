@@ -74,7 +74,7 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 | `PROVISA_CONFIG` | Config file to load; `--demo` sets this to the bundled demo config |
 | `PROVISA_DEMO` | Set to `1` by `--demo`; marks the session as a demo run |
 | `PROVISA_DEMO_DIR` | Path to the demo's sample-data directory; set by `--demo` |
-| `PROVISA_DUCKDB_EXT_DIR` | Pre-staged DuckDB extension directory; set automatically from the `provisa-duckdb-ext` package if present; absent means DuckDB downloads from the network on first use |
+| `PROVISA_DUCKDB_EXT_DIR` | Pre-staged DuckDB extension directory; set automatically from the `provisa-duckdb-ext` package if present; absent means DuckDB's per-user directory, filled by `scripts/stage_duckdb_extensions.py`. Nothing is downloaded at runtime |
 
 ### Startup sequence
 

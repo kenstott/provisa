@@ -211,9 +211,9 @@ provisa = "provisa.cli:main"
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb is
 # already a base dep; this extra names the tier explicitly and adds fakeredis for the embedded cache.
 # provisa-duckdb-ext (the offline DuckDB extension blobs, REQ-1142) is now published on PyPI, so it is a
-# hard dep here: pip install provisa[embedded] stages the extensions offline (no extensions.duckdb.org
+# hard dep here, capped below 0.2 (the 0.2 line is built for DuckDB 2.0; duckdb is pinned to 1.5.5 above): pip install provisa[embedded] stages the extensions offline (no extensions.duckdb.org
 # reach on first LOAD), matching _stage_duckdb_extensions in cli.py.
-embedded = ["duckdb", "fakeredis", "provisa-duckdb-ext>=0.1.1"]
+embedded = ["duckdb", "fakeredis", "provisa-duckdb-ext>=0.1.1,<0.2"]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the
 # native installers (build-sfx.ps1 / build-dmg.sh) so the connector needs no Node and no user pip.

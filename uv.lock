@@ -4191,7 +4191,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa", extras = ["cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica"], marker = "extra == 'all-drivers'" },
-    { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1" },
+    { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1,<0.2" },
     { name = "provisa-notebook", editable = "provisa-notebook" },
     { name = "provisa-pg-ext", marker = "extra == 'dev'", specifier = "==0.2.0" },
     { name = "psycopg", extras = ["binary"] },

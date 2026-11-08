@@ -71,7 +71,6 @@ details = connector.details(src)
 assert "ATTACH" in details["attach"] and '(TYPE AIRPORT)' in details["attach"], details
 
 conn = duckdb.connect()
-conn.execute(connector._install_sql())  # "INSTALL airport FROM community"
 conn.execute(f"LOAD {connector.extension}")
 
 probe = conn.execute(

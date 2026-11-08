@@ -11,9 +11,12 @@ from `extensions.duckdb.org` at runtime. Behind an enterprise firewall where onl
 are proxied (Artifactory), that host is unreachable and the embedded tier breaks.
 
 This package embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so
-acquisition flows through PyPI instead. One universal wheel carries every platform. Provisa's
-`provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the running platform's blobs
-into a writable directory on first run and points `PROVISA_DUCKDB_EXT_DIR` at it.
+acquisition flows through PyPI instead. Each platform has its own wheel. One platform's full set is
+136-208 MB compressed and PyPI's per-file limit is 100 MB, so the extensions are split across three
+distributions (`provisa-duckdb-ext`, `provisa-duckdb-ext-warehouse`, `provisa-duckdb-ext-saas`);
+`collect.py` assigns each extension and this package depends on the other two at its own version.
+Provisa's `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the running platform's
+blobs into a writable directory on first run and points `PROVISA_DUCKDB_EXT_DIR` at it.
 
 Extensions are locked to the exact DuckDB build they were mirrored from, so an incompatible `duckdb`
 version can never silently load a mismatched extension.

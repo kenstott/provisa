@@ -66,7 +66,7 @@ that airgapped hosts cannot complete):
 
 | Package | Version | Notes |
 |---|---|---|
-| duckdb | 1.5.4 | Embedded federation engine (REQ-1129) |
+| duckdb | 1.5.5 | Embedded federation engine (REQ-1129) |
 | chdb | 4.2.1 | Embedded ClickHouse; **no Windows wheel** — gated off `win32` in pyproject.toml |
 | pyarrow | 25.0.0 | Arrow-native transport |
 | numpy | 2.5.1 | pandas/pyarrow/scipy transitive |

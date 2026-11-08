@@ -258,9 +258,7 @@ def test_firebird_attached_and_queried_through_duckdb_engine():
 
     conn = duckdb.connect()
     try:
-        install_sql = connector._install_sql()  # "INSTALL firebird FROM community"
-        conn.execute(install_sql)
-        conn.execute(f"LOAD {connector.extension}")
+        conn.execute(f"LOAD {connector.extension}")  # staged by the lane (REQ-294)
 
         rows = conn.execute(
             "SELECT count(*) FROM duckdb_functions() "

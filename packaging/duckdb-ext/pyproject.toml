@@ -5,8 +5,8 @@
 # them from extensions.duckdb.org at runtime. Behind an enterprise firewall where only PyPI/Maven/npm/
 # NuGet are proxied (Artifactory), that host is unreachable and the embedded tier breaks. This package
 # embeds the pinned, per-platform `.duckdb_extension` binaries as ordinary wheel data so acquisition
-# flows through PyPI instead. One universal wheel carries every platform (the blobs are small and
-# DuckDB-version-locked); `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the
+# flows through PyPI instead. One wheel per platform, split across three distributions to stay under
+# PyPI's 100 MB per-file limit (collect.py assigns each extension); `provisa.federation.duckdb_extensions.stage_bundled_extensions` copies the
 # running platform's blobs into a writable dir on first run and points PROVISA_DUCKDB_EXT_DIR at it.
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -14,13 +14,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "provisa-duckdb-ext"
-version = "0.1.1"
+version = "0.1.2"
 description = "Pinned, per-platform DuckDB extension binaries for the Provisa embedded tier (PyPI-delivered, offline)."
 readme = "README.md"
 requires-python = ">=3.10"
 # Extensions are locked to the exact DuckDB build they were mirrored from — pin it hard so an
 # incompatible duckdb can never silently load a mismatched extension.
-dependencies = ["duckdb==1.5.5"]
+dependencies = [
+    "duckdb==1.5.5",
+    "provisa-duckdb-ext-warehouse==0.1.2",
+    "provisa-duckdb-ext-saas==0.1.2",
+]
 
 [tool.setuptools]
 packages = ["provisa_duckdb_ext"]

@@ -306,6 +306,14 @@ bundle_native_payload() {
   # (manylinux_2_28, with provisa._encoders and its notices); first-launch imports the module.
   "${base}/bin/python3" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "$wheels"/provisa-*.whl \
     --tag manylinux_2_28_x86_64 --import
+  # REQ-294: the runtime never downloads a DuckDB extension, so a wheelhouse without all of them
+  # stops here. Installed as first launch installs it: from the wheelhouse alone.
+  local check_venv
+  check_venv="$(mktemp -d)"
+  "${base}/bin/python3" -m venv "$check_venv"
+  "$check_venv/bin/pip" install --quiet --no-index --find-links "$wheels" "$(ls "$wheels"/provisa-*.whl)[embedded]"
+  "$check_venv/bin/python" -I -m provisa.federation.duckdb_extensions
+  rm -rf "$check_venv"
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
   # ── 3. Built UI (build provisa-ui/dist if not already present) ──

@@ -112,8 +112,11 @@ if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
 # REQ-2194: installing provisa compiles its Rust encoders (provisa._encoders) with setuptools-rust,
 # with the toolchain every recipe names.
 $env:RUSTUP_TOOLCHAIN = '1.95.0'
-& $RuntimePy -m pip install --quiet --find-links $NotebookDir $RepoRoot uvicorn mcp-proxy
+& $RuntimePy -m pip install --quiet --find-links $NotebookDir "${RepoRoot}[embedded]" uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+# REQ-294: the runtime never downloads a DuckDB extension, so a build without all of them stops here.
+& $RuntimePy -I -m provisa.federation.duckdb_extensions
+if ($LASTEXITCODE -ne 0) { throw "the native runtime lacks DuckDB extensions (see above)" }
 # -I: from the repository root, -c would import the checkout's provisa (no compiled module)
 # in place of the runtime's.
 & $RuntimePy -I -c "import provisa, provisa._encoders.pgwire, pathlib; assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES').is_file()" 2>&1 | Out-Null

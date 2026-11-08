@@ -156,10 +156,10 @@ def _attach(con: Any, alias: str, dsn: str, *, read_only: bool) -> None:
     if url.get_backend_name() == "duckdb":
         con.execute(f"ATTACH '{url.database}' AS {alias} (TYPE duckdb{mode})")
         return
-    from provisa.federation.duckdb_extensions import install_and_load
+    from provisa.federation.duckdb_extensions import load_extension
     from provisa.federation.native_backend import libpq_dsn
 
-    install_and_load(con, "postgres", from_community=False)
+    load_extension(con, "postgres")
     con.execute(f"ATTACH '{libpq_dsn(url)}' AS {alias} (TYPE postgres{mode})")
 
 

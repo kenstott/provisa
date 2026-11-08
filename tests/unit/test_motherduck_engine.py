@@ -82,9 +82,7 @@ class _Recording:
 @pytest.fixture
 def runtime(monkeypatch):
     loaded: list[str] = []
-    monkeypatch.setattr(
-        runtime_mod, "install_and_load", lambda _con, ext, **_kw: loaded.append(ext)
-    )
+    monkeypatch.setattr(runtime_mod, "load_extension", lambda _con, ext, **_kw: loaded.append(ext))
     made = DuckDBFederationRuntime(materialize_dsn=STORE)
     setattr(made, "_con", _Recording())
     made.loaded = loaded  # type: ignore[attr-defined]
@@ -119,7 +117,7 @@ def test_a_source_of_another_account_is_refused_on_a_motherduck_store_engine(run
 
 
 def test_a_token_reference_in_the_store_url_is_resolved_at_use(monkeypatch):
-    monkeypatch.setattr(runtime_mod, "install_and_load", lambda *_a, **_kw: None)
+    monkeypatch.setattr(runtime_mod, "load_extension", lambda *_a, **_kw: None)
     monkeypatch.setenv("IT_MD_TOKEN", "tok-from-env")
     made = DuckDBFederationRuntime(
         materialize_dsn="motherduck:///shop?motherduck_token=${env:IT_MD_TOKEN}"
@@ -137,7 +135,7 @@ def test_a_token_reference_in_the_store_url_is_resolved_at_use(monkeypatch):
     [("motherduck:///shop", "motherduck_token"), ("motherduck:///?motherduck_token=t", "database")],
 )
 def test_a_store_url_missing_its_token_or_database_is_refused_by_name(monkeypatch, dsn, missing):
-    monkeypatch.setattr(runtime_mod, "install_and_load", lambda *_a, **_kw: None)
+    monkeypatch.setattr(runtime_mod, "load_extension", lambda *_a, **_kw: None)
     made = DuckDBFederationRuntime(materialize_dsn=dsn)
     setattr(made, "_con", _Recording())
     with pytest.raises(RuntimeError, match=f"names no {missing}"):

@@ -18,7 +18,7 @@ GLOBAL: the runtime runs queries on cursors, which a plain SET never reaches.
 
 import duckdb
 
-from provisa.federation.duckdb_extensions import install_and_load
+from provisa.federation.duckdb_extensions import load_extension
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
 
@@ -29,14 +29,13 @@ def _pushdown(con: duckdb.DuckDBPyConnection) -> bool:
 def test_the_extension_default_pushes_filters_down():
     # The default this guards against: loaded bare, pushdown is on.
     con = duckdb.connect()
-    con.execute("INSTALL postgres")
     con.execute("LOAD postgres")
     assert _pushdown(con) is True
 
 
 def test_the_shared_loader_turns_pushdown_off_for_the_connection_and_its_cursors():
     con = duckdb.connect()
-    install_and_load(con, "postgres", from_community=False)
+    load_extension(con, "postgres")
     assert _pushdown(con) is False
     assert _pushdown(con.cursor()) is False
 
@@ -49,7 +48,7 @@ def test_the_runtime_loads_postgres_with_pushdown_off_on_the_cursors_it_queries_
 
 def test_another_extension_is_loaded_with_no_postgres_setting():
     con = duckdb.connect()
-    install_and_load(con, "sqlite", from_community=False)
+    load_extension(con, "sqlite")
     assert (
         con.execute(
             "SELECT count(*) FROM duckdb_extensions() WHERE loaded AND extension_name = 'sqlite_scanner'"

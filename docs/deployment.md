@@ -29,6 +29,8 @@ Every production path needs the Provisa artifacts before any deployment can run.
 
 **Terraform path.** Upload the AppImage to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot through their IAM role, so they need outbound access to S3, directly or through a VPC gateway endpoint. Apply the same scanning policy as for the AppImage path.
 
+**DuckDB extensions.** Every installer, the container image and `pip install provisa[embedded]` hold every DuckDB extension for the DuckDB version they run, and DuckDB never fetches one at runtime. `python -m provisa.federation.duckdb_extensions` checks an install and names anything missing. An extension declared by a [custom connector](../config/custom_connectors.yaml) isn't bundled; stage it into `PROVISA_DUCKDB_EXT_DIR` yourself. A MotherDuck source needs its service reachable: the extension asks `api.motherduck.com` for its build when it loads.
+
 **Helm / Kubernetes path.** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
 
 ---
@@ -64,6 +66,16 @@ UI:      http://localhost:3000
 `--reset-volumes` runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate: after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
 
 `--observability` adds full tracing and metrics instrumentation. It downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`). The `jvm.config` patch is automatically reverted on Ctrl+C.
+
+### DuckDB extensions on a source checkout
+
+Provisa never downloads a DuckDB extension while it runs. It only loads what's already staged, and a missing extension fails naming the extension and this step. On a source checkout, run this once on a connected machine (and again after a DuckDB version change):
+
+```bash
+python scripts/stage_duckdb_extensions.py
+```
+
+It installs every extension into DuckDB's per-user directory, or into `PROVISA_DUCKDB_EXT_DIR` when that's set, then loads each to confirm it. `pip install provisa[embedded]`, the installers and the container image already hold them.
 
 ### Manual steps (backend only, no UI)
 
