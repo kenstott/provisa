@@ -295,6 +295,29 @@ def test_an_or_and_a_join_are_not_pushed():
     )
 
 
+_INVOICES = (
+    '(SELECT "i"."id" AS "id", "i"."balance" AS "balance", \'***\' AS "doc_number" '
+    'FROM "qb"."invoice" AS "i" WHERE "i"."txn_date" >= \'2026-01-01\') AS "i"'
+)
+
+
+def test_a_governed_read_pushes_its_row_rule_its_conditions_and_its_limit():
+    args = pushed_arguments(
+        _endpoint(), f"SELECT i.id FROM {_INVOICES} WHERE i.balance > 0 LIMIT 7", "invoice"
+    )
+    assert args == {
+        "query": "SELECT * FROM Invoice WHERE TxnDate >= '2026-01-01' AND Balance > '0'",
+        "max_rows": 7,
+    }
+
+
+def test_a_governed_condition_on_a_masked_column_is_left_to_the_engine():
+    args = pushed_arguments(
+        _endpoint(), f"SELECT i.id FROM {_INVOICES} WHERE i.doc_number = '1' LIMIT 7", "invoice"
+    )
+    assert args == {"query": "SELECT * FROM Invoice WHERE TxnDate >= '2026-01-01'"}
+
+
 def test_a_customer_condition_on_active_replaces_the_read_of_both():
     args = pushed_arguments(
         _endpoint("customer"), "SELECT id FROM customer WHERE active = true", "customer"

@@ -1633,7 +1633,9 @@ tables:
   table: schedules
 # REQ-2074: the demo's one writable table. A role writes it only through its write grants, so the
 # org's admin can add, change and remove a prospective adopter (Cypher CREATE / SET / DELETE, SQL
-# INSERT / UPDATE / DELETE).
+# INSERT / UPDATE / DELETE). REQ-039: a column a role sets or filters a write on is one it is served,
+# and the admin is served the id it names a row by and the name it changes through data_steward,
+# which it inherits.
 - columns:
   - description: When the customer record was created
     name: created_at

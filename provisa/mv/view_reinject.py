@@ -263,6 +263,102 @@ def _rewrite_join(
     return select.sql(dialect="postgres")
 
 
+def _within(node: exp.Expression, ancestors: list[exp.Expression]) -> bool:
+    parent = node.parent
+    while parent is not None:
+        if any(parent is a for a in ancestors):
+            return True
+        parent = parent.parent
+    return False
+
+
+def _matched(join: exp.Join, rt) -> exp.Column | None:
+    """The column of a LEFT-joined relation its ON equates with the other side, as its table's
+    column: never NULL on a row the join matched, NULL on one it extends. None for any other ON."""
+    on = _equi(join.args.get("on"))
+    if on is None:
+        return None
+    mine = [name for alias, name in on if alias == rt.alias]
+    if len(mine) != 1:
+        return None
+    physical = rt.column(mine[0])
+    return None if physical is None else exp.column(physical, table=rt.alias, quoted=True)
+
+
+def _fold(select: exp.Select) -> exp.Select | None:  # REQ-039
+    """``select`` with each governed relation it reads in its FROM and JOINs read as its table: a
+    reference to a column of one is the value the relation exposes (the column, or its mask),
+    and the relation's row rule is ANDed into the WHERE (into the ON of a LEFT JOIN, which it
+    restricts before the join). The governance the relation applied is then in the statement,
+    where a view's columns can carry it (the module docstring). ``select`` itself when it reads
+    no governed relation; None when it cannot be read so: a column it reads is not one the
+    relation exposes, unqualified beside a join, or masked on the outer side of a LEFT JOIN, where
+    a mask would give a value to the row the join extends with NULLs."""
+    from provisa.compiler.governed_relation import read_through
+
+    tree = select.copy()
+    source = tree.args.get("from_")
+    items: list[tuple[exp.Expression, exp.Join | None]] = (
+        [(source.this, None)] if source is not None else []
+    )
+    items += [(j.this, j) for j in tree.args.get("joins") or []]
+    found = [(rt, join) for item, join in items if (rt := read_through(item)) is not None]
+    if not found:
+        return select
+    by_alias = {rt.alias: (rt, join) for rt, join in found}
+    if len(by_alias) != len(found):
+        return None
+    bodies: list[exp.Expression] = [rt.relation for rt, _join in found]
+    joined = len(items) > 1
+    for column in list(tree.find_all(exp.Column)):
+        if isinstance(column.this, exp.Star) or _within(column, bodies):
+            continue
+        if column.table:
+            hit = by_alias.get(column.table)
+        elif joined:
+            return None  # which relation it reads is not said
+        elif column.find_ancestor(exp.Select) is tree:
+            hit = found[0]
+        else:
+            continue  # a nested query's own column
+        if hit is None:
+            continue
+        rt, join = hit
+        value = rt.columns.get(column.name)
+        if value is None:
+            value = next(
+                (v for k, v in rt.columns.items() if k.lower() == column.name.lower()), None
+            )
+        if value is None:
+            return None
+        if join is not None and _kind(join) == "left" and not isinstance(value, exp.Column):
+            key = _matched(join, rt)
+            if key is None:
+                return None
+            # A row the join extends with NULLs reads NULL, as the relation's would.
+            value = exp.Case(
+                ifs=[exp.If(this=exp.Is(this=key, expression=exp.Null()), true=exp.Null())],
+                default=value.copy(),
+            )
+        if column.parent is tree and column.arg_key == "expressions":
+            column.replace(exp.alias_(value.copy(), column.name, quoted=True))
+        elif isinstance(value, exp.Column):
+            column.replace(value.copy())
+        else:
+            column.replace(exp.Paren(this=value.copy()))
+    for rt, join in found:
+        rt.relation.replace(rt.table.copy())
+        rule = exp.and_(*rt.predicates) if rt.predicates else None
+        if rule is None:
+            continue
+        if join is not None and _kind(join) == "left":
+            on = join.args.get("on")
+            join.set("on", rule if on is None else exp.and_(on, rule))
+        else:
+            tree.where(rule, copy=False)
+    return tree
+
+
 def reinject(
     sql: str,
     fresh_mvs: list[MVDefinition],
@@ -286,6 +382,12 @@ def reinject(
         return None
     if not isinstance(tree, exp.Select):
         return None
+    # REQ-039: every registered table stands in the governed statement as its governed relation.
+    folded = _fold(tree)
+    if folded is None:
+        return None
+    if folded is not tree:
+        tree, sql = folded, folded.sql(dialect="postgres")
     root = tree.args.get("from_")
     root = root.this if root is not None else None
     if not isinstance(root, exp.Table) or not root.catalog:
