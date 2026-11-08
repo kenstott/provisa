@@ -9747,5 +9747,9 @@
   "he/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
   "he/requestsPage.json::requestsPage.deliveryEmail": "Email",
   "he/requestsPage.json::requestsPage.deliveryEvents": "Events only",
-  "he/requestsPage.json::requestsPage.deliveryBoth": "Both"
+  "he/requestsPage.json::requestsPage.deliveryBoth": "Both",
+  "he/dataProductsTab.json::dataProductsTab.detail.field.lineage": "Lineage",
+  "he/dataProductsTab.json::dataProductsTab.detail.lineageLaneDownstream": "Downstream, hop {{n}}",
+  "he/graph3d.json::graph3d.depth": "Depth",
+  "he/resultRedirect.json::resultRedirect.downloadFailed": "The download failed: {{reason}}"
 }

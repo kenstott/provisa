@@ -413,6 +413,15 @@ def org_prefixed_catalog(
     return f"org_{org_id}__{base_catalog}"
 
 
+def is_own_catalog(catalog: str, source_id: str) -> bool:  # REQ-194
+    """Whether ``catalog`` is the one named after ``source_id`` (:func:`source_to_catalog`, in the
+    forms :func:`org_prefixed_catalog` gives it), so the source holds that address alone. Otherwise
+    the source is pinned to a catalog it shares by design: the control plane's, a materialize
+    store's or a fixed warehouse's."""
+    base = source_to_catalog(source_id)
+    return catalog == base or (catalog.startswith("org_") and catalog.endswith(f"__{base}"))
+
+
 # REQ-195: Hasura v2 / DDN literals map to internal presets.
 #   hasura-default  → snake_case   graphql-default → camelCase
 #   graphql (DDN namingConvention) → camelCase
