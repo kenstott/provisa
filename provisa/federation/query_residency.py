@@ -924,6 +924,21 @@ def _join_key_column(join: Any, target_alias: str) -> tuple[str, Any] | None:
     return None
 
 
+def join_key_column(join: Any) -> tuple[str, Any] | None:
+    """``_join_key_column`` for the item ``join`` reads, by its own alias, with the target's column
+    named as its table's: a governed relation (REQ-039) is read as the table it reads, and its
+    column as the table column it serves as it is. None when that column is masked or computed --
+    its value is not the key's."""
+    from provisa.compiler.governed_relation import read_through
+
+    found = _join_key_column(join, join.this.alias_or_name)
+    relation = read_through(join.this)
+    if found is None or relation is None:
+        return found
+    physical = relation.column(found[0])
+    return None if physical is None else (physical, found[1])
+
+
 def _pushdown_alias(table: Any) -> str:
     """The probe's output column carrying a row-level table's join keys: named for the table's
     registered name, a plain identifier whatever its replica is called."""
@@ -1019,7 +1034,13 @@ async def pushdown_row_materialize(
     if not isinstance(tree, exp.Select):
         return set()
 
-    all_joins = {j.this.name: j for j in tree.find_all(exp.Join) if j.this.name in tables_by_name}
+    from provisa.compiler.governed_relation import base_table
+
+    def joined(join: Any) -> str:
+        read = base_table(join.this)  # REQ-039: a governed relation is read as its table
+        return read.name if read is not None else ""
+
+    all_joins = {joined(j): j for j in tree.find_all(exp.Join) if joined(j) in tables_by_name}
     if not all_joins:
         return set()
 
@@ -1062,14 +1083,14 @@ async def pushdown_row_materialize(
             break
 
         pass_tree = tree.copy()
-        joins_by_name = {j.this.name: j for j in pass_tree.find_all(exp.Join)}
+        joins_by_name = {joined(j): j for j in pass_tree.find_all(exp.Join)}
         key_cols: dict[str, tuple[str, Any]] = {}
         skip: set[str] = set()
         for name in still_pending:
             # _join_key_column matches against the join's OWN alias (e.g. "ce"), not the bare
             # table name ("bench_contains_edge") -- an aliased join's ON-condition columns are
             # always alias-qualified, never re-qualified back to the physical table name.
-            kc = _join_key_column(joins_by_name[name], joins_by_name[name].this.alias_or_name)
+            kc = join_key_column(joins_by_name[name])
             if kc is None:
                 skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue
