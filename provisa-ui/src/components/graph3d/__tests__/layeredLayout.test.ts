@@ -21,7 +21,7 @@ import {
   type GraphData,
 } from "../graphModel";
 import { crossings, layerLevels, orderLevels } from "../layeredLayout";
-import { drawnCrossings, laneDiagram, laneOrder, placedLaneOrder, type At } from "../laneDiagram";
+import { drawnCrossings, laneDiagram, laneOrder, placedLaneOrder, stackTerms, type At } from "../laneDiagram";
 import { PET_STORE_DRAWN, petStoreFlows, petStoreOntology, threeLevels } from "./crossingFixtures";
 
 const node = (id: string) => ({ id, type: "term" as const, label: id });
@@ -240,10 +240,10 @@ describe("the lane diagram's order", () => {
   const terms = d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => n.id);
   const tableOf = new Map(d.graph.nodes.filter((n) => n.parent).map((n) => [n.id, n.parent]));
   const first = (id: string) => PET_STORE_DRAWN[id] as At;
-  /** Where ``lanes`` would be drawn: terms as ELK placed them, each other lane spread evenly
-   * over the height it had, in order (placedLaneOrder's model of the second pass). */
+  /** Where ``lanes`` would be drawn: terms stacked by block in the order chosen, each other lane
+   * spread evenly over the height it had, in order (placedLaneOrder's model of the second pass). */
   const placed = (lanes: string[][]) => {
-    const at = new Map<string, At>(terms.map((t) => [t, first(t)]));
+    const at = stackTerms(d, lanes[0], first);
     for (const row of lanes.slice(1)) {
       const ys = row.map((id) => first(id).y);
       const lo = Math.min(...ys);
@@ -277,7 +277,7 @@ describe("the lane diagram's order", () => {
     oneRunPerTable(order[1]);
   });
 
-  it("cuts the crossings drawn under ELK's rows of terms (the pet-store graph at 1280)", () => {
+  it("cuts the crossings drawn with the terms ordered too (the pet-store graph at 1280)", () => {
     const order = placedLaneOrder(d, first);
     expect(order.map((l) => l.length)).toEqual([17, 32, 12, 1]);
     const drawn = drawnCrossings(d.links, placed(order));

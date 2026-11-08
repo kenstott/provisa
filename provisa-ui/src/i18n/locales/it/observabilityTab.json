@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "Non è stato possibile controllare le tabelle delle tracce di Provisa ({{reason}}). Non è noto se stiano ricevendo righe; il controllo si ripete ogni 30 secondi.",
     "tracesTableEmpty": "Un endpoint è impostato, ma le tabelle delle tracce di Provisa non hanno ancora righe. Se l'endpoint è un provider esterno e non il collector di Provisa, spostarlo negli exporter del collector.",
-    "tracesTableStale": "Un endpoint è impostato, ma le tabelle delle tracce di Provisa non hanno ricevuto righe negli ultimi {{minutes}} minuti. Se Provisa è rimasto inattivo, è previsto. Altrimenti verificare che l'endpoint sia il collector di Provisa e non un provider esterno."
+    "tracesTableStale": "Un endpoint è impostato, ma le tabelle delle tracce di Provisa non hanno ricevuto righe negli ultimi {{minutes}} minuti. Se Provisa è rimasto inattivo, è previsto. Altrimenti verificare che l'endpoint sia il collector di Provisa e non un provider esterno.",
+    "schemaClustersTitle": "Cluster di schema"
   }
 }

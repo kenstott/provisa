@@ -18,6 +18,7 @@
 // terms tied to them, each hop past 3 one step across the term links. Pure data: LaneStage draws
 // what this decides.
 
+import type { FloatingPosition } from "@mantine/core";
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 import { edgeClass } from "./layeredLayout";
 
@@ -407,23 +408,100 @@ export function drawnCrossings(links: LaneLink[], at: (id: string) => At): numbe
   return n;
 }
 
-const PROJECTIONS = 3;
+/** The term lane's vertical gap, as ELK spaces the term lane's nodes. */
+const TERM_GAP = 14;
+const TERM_HEIGHT = 26;
+/** How wide a row of terms with no line out of the lane runs before it wraps. */
+const UNLINKED_ROW = 480;
+const TERM_ROUNDS = 4;
 
-/** The lanes' order for a drawing whose first pass put each node at ``first`` (the term lane as
- * ELK laid it out on its own, a grid of rows): the terms' order is how their lines meet the
- * column lane, which in a row of terms depends on where the lines go. Each candidate term order
- * -- top to bottom with a row left to right, and right to left, then each term at the height its
- * lines reach the term lane's right edge, from the best order so far -- is ordered by laneOrder,
- * the other lanes spread evenly over the height they had, and the one whose lines cross least as
- * drawn is kept. */
+/** The term lane's blocks in ``order``: terms joined by the rank lines inside the lane keep the
+ * shape ELK gave them and move as one; a term alone is a block by itself. */
+function termBlocks(d: LaneDiagram, order: string[]): string[][] {
+  const joined = new Map(order.map((id) => [id, id]));
+  const root = (id: string): string => {
+    const up = joined.get(id) as string;
+    return up === id ? id : root(up);
+  };
+  for (const k of d.links)
+    if (joined.has(k.from) && joined.has(k.to)) joined.set(root(k.from), root(k.to));
+  const blocks = new Map<string, string[]>();
+  for (const id of order) {
+    const r = root(id);
+    blocks.set(r, [...(blocks.get(r) ?? []), id]);
+  }
+  return [...blocks.values()];
+}
+
+/** Whether a block has a line leaving the term lane. */
+const reachesOut = (d: LaneDiagram, block: string[]) =>
+  d.links.some((k) => block.includes(k.from) && d.lane.get(k.to) !== "term");
+
+/** Where the terms are drawn, given their ``order`` (top to bottom, by block) and where ELK put
+ * them (``at``): the blocks stacked in one column at the lane's left edge, centred on the other
+ * lanes, so every order the lanes can take is open to them. ELK packs the term lane's blocks by
+ * size, a lone term wherever one fits, which is a line across the diagram for no reason. Blocks
+ * with no line out of the lane wrap in rows below the column: they cross nothing, and a stack of
+ * them would only make the diagram taller. ``widthOf`` is a node's drawn width, for those rows. */
+export function stackTerms(
+  d: LaneDiagram,
+  order: string[],
+  at: (id: string) => At,
+  widthOf: (id: string) => number = () => 0,
+): Map<string, At> {
+  const out = new Map<string, At>();
+  if (order.length === 0) return out;
+  const blocks = termBlocks(d, order);
+  const left = Math.min(...order.map((id) => at(id).x));
+  const others = d.graph.nodes.filter((n) => d.lane.get(n.id) !== "term").map((n) => at(n.id).y);
+  const linked = blocks.filter((b) => reachesOut(d, b));
+  const lone = blocks.filter((b) => !reachesOut(d, b));
+  const heightOf = (b: string[]) => {
+    const ys = b.map((id) => at(id).y);
+    return Math.max(...ys) - Math.min(...ys) + TERM_HEIGHT;
+  };
+  const place = (b: string[], x: number, y: number) => {
+    const xs = b.map((id) => at(id).x);
+    const ys = b.map((id) => at(id).y);
+    const x0 = Math.min(...xs);
+    const y0 = Math.min(...ys);
+    for (const id of b) out.set(id, { x: x + at(id).x - x0, y: y + at(id).y - y0 });
+  };
+  const total = linked.reduce((sum, b) => sum + heightOf(b) + TERM_GAP, -TERM_GAP);
+  const middle =
+    others.length > 0 ? (Math.min(...others) + Math.max(...others)) / 2 : at(order[0]).y;
+  let y = linked.length > 0 ? middle - total / 2 : at(order[0]).y;
+  for (const b of linked) {
+    place(b, left, y);
+    y += heightOf(b) + TERM_GAP;
+  }
+  let x = left;
+  let row = 0;
+  for (const b of lone) {
+    const width = Math.max(...b.map((id) => at(id).x + widthOf(id))) - Math.min(...b.map((id) => at(id).x));
+    if (x > left && x + width > left + UNLINKED_ROW) {
+      x = left;
+      y += row + TERM_GAP;
+      row = 0;
+    }
+    place(b, x, y);
+    x += width + TERM_GAP;
+    row = Math.max(row, heightOf(b));
+  }
+  return out;
+}
+
+/** The lanes' order for a drawing whose first pass put each node at ``first``. The terms are
+ * ordered with the other lanes rather than taken as ELK packed them: from top to bottom as placed,
+ * each block of terms then moved to the height its lines reach, for as long as that cuts the
+ * crossings drawn (terms stacked by stackTerms, the other lanes spread evenly over the height they
+ * had), and finished by moves judged on the drawing itself (refineDrawn). */
 export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): string[][] {
   const terms = d.graph.nodes.filter((n) => d.lane.get(n.id) === "term").map((n) => n.id);
-  const byRow = (dir: 1 | -1) =>
-    [...terms].sort((p, q) => first(p).y - first(q).y || dir * (first(p).x - first(q).x));
-  // Where each node of the other lanes would be drawn: at its lane's x, spread over the lane's
-  // first height in the order given.
+  const start = [...terms].sort((p, q) => first(p).y - first(q).y || first(p).x - first(q).x);
+  // Where each node would be drawn, the other lanes at their lane's x, spread over its first height.
   const placed = (lanes: string[][]) => {
-    const at = new Map<string, At>();
+    const at = stackTerms(d, lanes[0], first);
     for (const row of lanes.slice(1)) {
       if (row.length === 0) continue;
       const ys = row.map((id) => first(id).y);
@@ -433,40 +511,43 @@ export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): stri
         at.set(id, { x: first(id).x, y: lo + ((i + 0.5) * (hi - lo)) / row.length }),
       );
     }
-    for (const t of terms) at.set(t, first(t));
     return (id: string) => at.get(id) as At;
   };
   const score = (order: string[]) => {
     const lanes = laneOrder(d, order);
     return { lanes, n: drawnCrossings(d.links, placed(lanes)) };
   };
-  let best = score(byRow(1));
-  const other = score(byRow(-1));
-  if (other.n < best.n) best = other;
-  // The term lane's edge facing the other lanes: its left, the lanes running to its left.
-  const termXs = terms.map((t) => first(t).x);
-  const otherXs = d.graph.nodes.filter((n) => d.lane.get(n.id) !== "term").map((n) => first(n.id).x);
-  const meanOf = (xs: number[]) => xs.reduce((s, v) => s + v, 0) / xs.length;
-  const edge =
-    otherXs.length > 0 && meanOf(otherXs) < meanOf(termXs) ? Math.min(...termXs) : Math.max(...termXs);
-  for (let r = 0; r < PROJECTIONS && best.n > 0; r++) {
+  let best = score(start);
+  for (let round = 0; round < TERM_ROUNDS && best.n > 0; round++) {
     const at = placed(best.lanes);
-    const reach = new Map<string, number>();
-    for (const t of terms) {
-      const p = first(t);
-      const ends = d.links.filter((k) => k.from === t && d.lane.get(k.to) !== "term").map((k) => at(k.to));
-      if (ends.length === 0) {
-        reach.set(t, p.y);
-        continue;
-      }
-      const q = { x: ends.reduce((s, e) => s + e.x, 0) / ends.length, y: ends.reduce((s, e) => s + e.y, 0) / ends.length };
-      reach.set(t, p.y + ((q.y - p.y) * (edge - p.x)) / (q.x - p.x));
-    }
-    const next = score(
-      [...terms].sort((p, q) => (reach.get(p) as number) - (reach.get(q) as number) || first(p).x - first(q).x),
-    );
+    const reach = (block: string[]) => {
+      const ends = d.links
+        .filter((k) => block.includes(k.from) && d.lane.get(k.to) !== "term")
+        .map((k) => at(k.to).y);
+      return ends.length === 0 ? Infinity : ends.reduce((s, y) => s + y, 0) / ends.length;
+    };
+    const blocks = termBlocks(d, best.lanes[0]).map((b, i) => ({ b, r: reach(b), i }));
+    blocks.sort((x, y) => (x.r === y.r ? x.i - y.i : x.r - y.r));
+    const next = score(blocks.flatMap((x) => x.b));
     if (next.n >= best.n) break;
     best = next;
+  }
+  // Each block in turn moved to where, the other lanes reordered around it, the drawing crosses
+  // least: a cost two moves apart (a term and a column each needing the other moved first) is
+  // found only this way. Bounded like refineDrawn: past the budget a diagram keeps what it has.
+  const pairs = (d.links.length * (d.links.length - 1)) / 2;
+  let budget = REFINE_BUDGET;
+  for (let pass = 0; pass < TERM_ROUNDS && best.n > 0; pass++) {
+    const before = best.n;
+    for (const block of termBlocks(d, best.lanes[0])) {
+      const rest = termBlocks(d, best.lanes[0]).filter((b) => b[0] !== block[0]);
+      for (let j = 0; j <= rest.length && budget >= pairs * 2; j++) {
+        budget -= pairs * 2;
+        const next = score([...rest.slice(0, j), block, ...rest.slice(j)].flat());
+        if (next.n < best.n) best = next;
+      }
+    }
+    if (best.n >= before) break;
   }
   return refineDrawn(d, best.lanes, placed);
 }
@@ -475,9 +556,10 @@ const REFINE_PASSES = 4;
 /** Line pairs checked, at most, by the drawn refinement: past it a diagram keeps laneOrder's. */
 const REFINE_BUDGET = 20_000_000;
 
-/** ``lanes`` improved by moves judged on the drawing itself: each table with its columns moved to
- * the place in its lane where the drawn lines cross least, then each column inside its table's
- * block, then each product; passes repeat while one gains, at most REFINE_PASSES. */
+/** ``lanes`` improved by moves judged on the drawing itself: each block of terms, each table with
+ * its columns moved to the place in its lane where the drawn lines cross least, then each column
+ * inside its table's block, then each product; passes repeat while one gains, at most
+ * REFINE_PASSES. */
 function refineDrawn(
   d: LaneDiagram,
   lanes: string[][],
@@ -503,8 +585,13 @@ function refineDrawn(
     });
     return out;
   };
-  const fromBlocks = (bs: { table: string | null; members: string[] }[], products: string[]) => [
-    lanes[0],
+  let termRow = termBlocks(d, lanes[0]);
+  const fromBlocks = (
+    bs: { table: string | null; members: string[] }[],
+    products: string[],
+    terms: string[][] = termRow,
+  ) => [
+    terms.flat(),
     bs.flatMap((b) => b.members),
     bs.flatMap((b) => (b.table ? [b.table] : [])),
     products,
@@ -539,6 +626,7 @@ function refineDrawn(
   };
   for (let pass = 0; pass < REFINE_PASSES && best > 0; pass++) {
     const before = best;
+    termRow = moveEach(termRow, (ts) => fromBlocks(blocks, products, ts));
     blocks = moveEach(blocks, (bs) => fromBlocks(bs, products));
     for (let i = 0; i < blocks.length; i++) {
       const members = moveEach(blocks[i].members, (ms) =>
@@ -553,6 +641,171 @@ function refineDrawn(
     if (best >= before) break;
   }
   return fromBlocks(blocks, products);
+}
+
+/** What a focused node brings forward: the nodes and the lines between them. */
+export interface Connected {
+  nodes: Set<string>;
+  links: Set<string>;
+}
+
+/** Everything connected to ``id`` along the lanes: its own path out in each direction, never
+ * doubling back, so a table reached from a term does not bring that table's other columns. A term
+ * brings its broader and narrower terms, and each of those the columns, tables and products it
+ * reaches; a term link that is not a rank edge, its other end alone. */
+export function connectedTo(d: LaneDiagram, id: string): Connected {
+  const moreIds = new Set(d.more.map((m) => m.id));
+  const at = (x: string) => LANES.indexOf(moreIds.has(x) ? "column" : (d.lane.get(x) as Lane));
+  const term = LANES.indexOf("term");
+  const nodes = new Set([id]);
+  const links = new Set<string>();
+  /** Follows the lines ``next`` picks from each node of ``from``; returns the nodes reached. */
+  const walk = (from: string[], next: (x: string, k: LaneLink) => string | null) => {
+    const reached = [...from];
+    for (let i = 0; i < reached.length; i++)
+      for (const k of d.links) {
+        const to = next(reached[i], k);
+        if (to === null) continue;
+        links.add(k.id);
+        nodes.add(to);
+        if (!reached.includes(to)) reached.push(to);
+      }
+    return reached;
+  };
+  const other = (x: string, k: LaneLink) => (k.from === x ? k.to : k.to === x ? k.from : null);
+  const inLane = (x: string, k: LaneLink) => at(k.from) === term && at(k.to) === term && other(x, k) !== null;
+  const chain = (from: string[]) => [
+    ...walk(from, (x, k) => (inLane(x, k) && k.to === x ? k.from : null)),
+    ...walk(from, (x, k) => (inLane(x, k) && k.from === x ? k.to : null)),
+  ];
+  const across = (from: string[], dir: 1 | -1) =>
+    walk(from, (x, k) => {
+      const to = other(x, k);
+      return to !== null && Math.sign(at(to) - at(x)) === dir ? to : null;
+    });
+  if (at(id) === term) across(chain([id]), -1);
+  else {
+    across([id], -1);
+    chain(across([id], 1).filter((x) => at(x) === term));
+  }
+  for (const k of d.arcs)
+    if (k.from === id || k.to === id) {
+      links.add(k.id);
+      nodes.add(k.from).add(k.to);
+    }
+  return { nodes, links };
+}
+
+/** A rectangle on the page. */
+export interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** What a hover card should stay off: the nodes drawn and the lines between them, on the page. */
+export interface DrawnGraph {
+  boxes: Box[];
+  lines: [At, At][];
+}
+
+const TIP_PLACES: FloatingPosition[] = [
+  "right-start",
+  "left-start",
+  "bottom-start",
+  "top-start",
+  "right",
+  "left",
+  "bottom",
+  "top",
+  "right-end",
+  "left-end",
+  "bottom-end",
+  "top-end",
+];
+/** The card's distance from the pointer (Tip's offset and arrow) and from the window's edge. */
+const TIP_GAP = 8;
+const TIP_MARGIN = 4;
+/** How much of a line counts as drawn beneath the card: a band this wide, as a node's area. */
+const LINE_BAND = 10;
+
+/** The length of the segment ``a``-``b`` inside ``r`` (Liang-Barsky). */
+function clipped(a: At, b: At, r: Box): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let lo = 0;
+  let hi = 1;
+  for (const [p, q] of [
+    [-dx, a.x - r.left],
+    [dx, r.right - a.x],
+    [-dy, a.y - r.top],
+    [dy, r.bottom - a.y],
+  ]) {
+    if (p === 0) {
+      if (q < 0) return 0;
+    } else if (p < 0) lo = Math.max(lo, q / p);
+    else hi = Math.min(hi, q / p);
+  }
+  return hi <= lo ? 0 : (hi - lo) * Math.hypot(dx, dy);
+}
+
+/** A card of ``size`` beside the ``target`` box covers this box in ``place``. */
+function placeBox(place: FloatingPosition, target: Box, size: { width: number; height: number }): Box {
+  const [side, align] = place.split("-") as [string, string | undefined];
+  const across = (lo: number, hi: number, length: number) =>
+    align === "start" ? lo : align === "end" ? hi - length : (lo + hi - length) / 2;
+  const left =
+    side === "right"
+      ? target.right + TIP_GAP
+      : side === "left"
+        ? target.left - TIP_GAP - size.width
+        : across(target.left, target.right, size.width);
+  const top =
+    side === "bottom"
+      ? target.bottom + TIP_GAP
+      : side === "top"
+        ? target.top - TIP_GAP - size.height
+        : across(target.top, target.bottom, size.height);
+  return { left, top, right: left + size.width, bottom: top + size.height };
+}
+
+/** Where beside ``target`` (the node or the point hovered) a card of ``size`` covers least of the
+ * drawn graph: the first of TIP_PLACES, among those inside the window, covering fewest nodes and
+ * lines. */
+export function tipPlacement(
+  target: Box,
+  size: { width: number; height: number },
+  drawn: DrawnGraph,
+  win: { width: number; height: number },
+): FloatingPosition {
+  const cover = (r: Box) => {
+    let sum = 0;
+    for (const b of drawn.boxes) {
+      const w = Math.min(r.right, b.right) - Math.max(r.left, b.left);
+      const h = Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top);
+      if (w > 0 && h > 0) sum += w * h;
+    }
+    for (const [a, b] of drawn.lines) sum += clipped(a, b, r) * LINE_BAND;
+    return sum;
+  };
+  const inWindow = (r: Box) =>
+    r.left >= TIP_MARGIN &&
+    r.top >= TIP_MARGIN &&
+    r.right <= win.width - TIP_MARGIN &&
+    r.bottom <= win.height - TIP_MARGIN;
+  let best: FloatingPosition = TIP_PLACES[0];
+  let least = Infinity;
+  for (const p of TIP_PLACES) {
+    const r = placeBox(p, target, size);
+    if (!inWindow(r)) continue;
+    const c = cover(r);
+    if (c < least) {
+      least = c;
+      best = p;
+    }
+  }
+  return best;
 }
 
 /** The diagram as Mermaid ``flowchart LR`` text, one subgraph per lane drawn, left to right; a
