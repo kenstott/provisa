@@ -64,6 +64,8 @@ from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import domains, roles, sources, user_role_assignments
 
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
+
 pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
@@ -137,6 +139,15 @@ def _prepare_sync():
         # (startup_seed.py's source/meta-domain seeding) writes before any org is provisioned.
         conn.execute(insert(sources).values(id="provisa-admin", type="postgresql"))
         conn.execute(insert(domains).values(id="meta"))
+        # REQ-2190: the view's grants name the role a client's catalog SQL runs as. A role is the
+        # cluster's, not a schema's: startup_seed._seed_catalog_client creates it at boot, which
+        # this test does not run.
+        conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
     return engine
 
 
