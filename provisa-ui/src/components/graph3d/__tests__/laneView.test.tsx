@@ -21,7 +21,9 @@ import { DATA, FACTS } from "./fixture";
 
 type Handler = { event: string; selector: string; fn: (evt: unknown) => void };
 type Element = { group: string; data: Record<string, unknown> };
-const made = vi.hoisted(() => ({ cys: [] as { elements: Element[]; handlers: Handler[] }[] }));
+const made = vi.hoisted(() => ({
+  cys: [] as { elements: Element[]; handlers: Handler[]; classes: Map<string, Set<string>> }[],
+}));
 vi.mock("cytoscape", () => {
   const cytoscape = (options: unknown) => {
     // cytoscape("layout", "elk"): the ELK layout is registered.
@@ -29,9 +31,26 @@ vi.mock("cytoscape", () => {
     const record = {
       elements: (options as { elements: Element[] }).elements,
       handlers: [] as Handler[],
+      classes: new Map<string, Set<string>>(),
     };
     made.cys.push(record);
     const none = { empty: () => true, nonempty: () => false, forEach: () => undefined };
+    const drawnElement = (e: Element) => {
+      const id = e.data.id as string;
+      const cls = record.classes.get(id) ?? new Set<string>();
+      record.classes.set(id, cls);
+      const self = {
+        id: () => id,
+        data: (k: string) => e.data[k],
+        isNode: () => e.group === "nodes",
+        renderedBoundingBox: () => ({ x1: 0, y1: 0, x2: 1, y2: 1 }),
+        source: () => ({ renderedPosition: () => ({ x: 0, y: 0 }) }),
+        target: () => ({ renderedPosition: () => ({ x: 1, y: 1 }) }),
+        removeClass: (c: string) => (cls.delete(c), self),
+        addClass: (c: string) => (cls.add(c), self),
+      };
+      return self;
+    };
     return {
       on: (event: string, selector: string, fn: (evt: unknown) => void) =>
         record.handlers.push({ event, selector, fn }),
@@ -45,7 +64,11 @@ vi.mock("cytoscape", () => {
         };
       },
       nodes: () => none,
-      elements: () => ({ ...none, filter: () => none }),
+      elements: () => ({
+        ...none,
+        filter: () => none,
+        forEach: (f: (e: unknown) => void) => record.elements.forEach((e) => f(drawnElement(e))),
+      }),
       // Every node at the origin: the second pass's order is ELK's to keep, not the test's.
       getElementById: () => ({ ...none, position: () => 0 }),
       add: vi.fn(),
@@ -400,5 +423,38 @@ describe("the detail panel's names (NAMES WRAP, NEVER CUT)", () => {
       expect(n).toHaveClass("is-wrap");
       expect(n.querySelector(".name-breakable")).not.toBeNull();
     }
+  });
+});
+
+describe("the hover card and the stage (what the frame does to it)", () => {
+  it("draws the card outside the stage, so the frame clips nothing and the legend stays behind it", async () => {
+    await explorer();
+    hover("term:customer");
+    const tip = await screen.findByTestId("graph3d-lanes-tip");
+    const stage = screen.getByTestId("graph3d-lanes");
+    expect(stage.contains(tip)).toBe(false);
+    expect(tip.closest(".mantine-Tooltip-tooltip")).not.toBeNull();
+  });
+});
+
+describe("focusing a term (the rest of its graph with it)", () => {
+  const faded = (id: string) => last().classes.get(id)?.has("faded") ?? false;
+
+  it("lights the term's columns, tables and products on a click and fades the rest", async () => {
+    await explorer();
+    tap("term:amount");
+    await waitFor(() => expect(faded("t:customers")).toBe(true));
+    expect(faded("term:amount")).toBe(false);
+    expect(faded("c:orders.total")).toBe(false);
+    expect(faded("t:orders")).toBe(false);
+    const lit = [...last().classes].filter(([, c]) => c.has("lit")).map(([id]) => id);
+    expect(lit.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does the same on hover, and gives the focus back when the pointer leaves", async () => {
+    await explorer();
+    hover("term:amount");
+    await waitFor(() => expect(faded("t:customers")).toBe(true));
+    expect(faded("t:orders")).toBe(false);
   });
 });

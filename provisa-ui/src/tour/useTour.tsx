@@ -72,6 +72,8 @@ import { readBulk, removeBulk, writeBulk } from "../lib/bulkStorage";
 import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
 import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
+import { keepClearOf } from "./clearOfGraph";
+import { TourRunningContext } from "./tourRunning";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -1031,6 +1033,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           },
         };
         driverRef.current.highlight({ element, popover });
+        const clear = step.clearOf ? keepClearOf(step.clearOf, abort.signal) : null;
         // A page that renders its anchor again (the SQL explorer's results, once its answer is in)
         // leaves the step lighting a node no longer on the page, its popover in a corner: the
         // step's anchor as it is now is lit again.
@@ -1041,6 +1044,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           if (!now || !driverRef.current) return;
           lit = now;
           driverRef.current.highlight({ element: now, popover });
+          clear?.();
         });
         relight.observe(document.body, { childList: true, subtree: true });
         abort.signal.addEventListener("abort", () => relight.disconnect(), { once: true });
@@ -1230,6 +1234,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }));
 
   return (
+    <TourRunningContext.Provider value={activeStep !== null}>
     <TourContext.Provider
       value={{
         startTour,
@@ -1282,6 +1287,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         onExit={() => endTour("dismissed")}
       />
     </TourContext.Provider>
+    </TourRunningContext.Provider>
   );
 }
 
