@@ -14,6 +14,8 @@ standard report listing every name, its problems, and the clashes the last build
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from sqlalchemy import insert, select, text
 
@@ -24,6 +26,7 @@ from provisa.compiler.names_table import (
     FrozenAlias,
     NameClash,
     NameRow,
+    NameWarning,
     build_names_table,
 )
 from provisa.core.repositories.model_names import (
@@ -162,6 +165,82 @@ async def test_the_report_lists_names_problems_and_refused_clashes(control_plane
         ("table", "1", "sql", "orders", "ok", None),
     ]
     assert sorted(r[0] for r in statuses) == ["ok", "warning"]
+
+
+def _many_names(count: int) -> list[NameRow]:
+    warning = NameWarning("column", "1:c0", "sql", "reserved", "crm.public.orders.c0: reserved")
+    return [
+        NameRow(
+            "column",
+            f"1:c{i}",
+            "sql",
+            f"c{i}",
+            f"c{i}",
+            f"crm.public.orders.c{i}",
+            domain_id="sales",
+            table_id=1,
+            warnings=(warning,) if i == 0 else (),
+        )
+        for i in range(count)
+    ]
+
+
+def _many_clashes(count: int) -> list[NameClash]:
+    return [NameClash("sql", f"c{i}", f"holder{i}", f"newcomer{i}") for i in range(count)]
+
+
+class _RecordingConn:
+    """Keeps the statements a writer sends the model store, and the rows sent beside each."""
+
+    def __init__(self) -> None:
+        self.statements: list[Any] = []
+
+    async def execute_core(self, stmt: Any) -> None:
+        self.statements.append(stmt)
+
+    async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
+        self.statements.append(stmt)
+
+
+@pytest.mark.asyncio
+async def test_a_model_with_more_names_than_a_statement_can_bind_is_stored(control_plane):
+    """A PostgreSQL statement binds at most 65535 parameters, and a stored name takes ten: a
+    model of 284 tables stopped every demo start here, past 6553 names."""
+    names = _many_names(7000)
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await write_names_table(conn, names)
+            stored = (
+                await conn.execute_core(text("SELECT count(*) FROM model_names"))
+            ).scalar_one()
+            warned = (
+                await conn.execute_core(
+                    text("SELECT warnings FROM model_names WHERE object_id = '1:c0'")
+                )
+            ).scalar_one()
+    finally:
+        await db.close()
+    assert stored == 7000
+    assert warned == [{"code": "reserved", "message": "crm.public.orders.c0: reserved"}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("write", "many"),
+    [(write_names_table, _many_names), (write_refused_clashes, _many_clashes)],
+    ids=["names", "clashes"],
+)
+async def test_what_a_build_sends_does_not_grow_with_its_names(write, many):
+    """However many names a model has, the same statements with the same binds: the rows travel
+    beside the statement."""
+
+    async def sent(count: int) -> list[int]:
+        conn = _RecordingConn()
+        await write(conn, many(count))
+        return [len(s.compile().params) for s in conn.statements]
+
+    assert await sent(2) == await sent(500)
 
 
 @pytest.mark.asyncio
