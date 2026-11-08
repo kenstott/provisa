@@ -181,7 +181,7 @@ def _collect_predicates(ast: exp.Expr) -> list[exp.Expr]:
     return predicates
 
 
-def scope_predicates(table: exp.Table) -> list[exp.Expr]:
+def scope_predicates(table: exp.Table | exp.Subquery) -> list[exp.Expr]:
     """The WHERE and JOIN ... ON predicates of the SELECT that names ``table`` in its FROM or a
     JOIN -- the only predicates that restrict which of that reference's rows are read (REQ-1915).
     Empty when no SELECT encloses it."""

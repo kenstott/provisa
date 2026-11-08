@@ -31,6 +31,7 @@ from provisa.security.domain_tree import (
     tree_problem,
 )
 from provisa.security.row_filters import resolve_table_rules
+from tests.rules import rule_of, rules_of
 
 DOMAINS = [
     {"id": "retail", "parent_domain_id": None},
@@ -142,19 +143,23 @@ def _table_rules(role: str, rules: list[dict]) -> dict[int, str]:
 class TestADomainRowFilterCoversTheSubtree:
     def test_a_business_unit_rule_covers_the_tables_of_every_domain_under_it(self):
         rules = [_domain_rule("r", "retail", "tenant = 1")]
-        assert _table_rules("r", rules) == {1: "tenant = 1", 2: "tenant = 1", 3: "tenant = 1"}
+        assert _table_rules("r", rules) == rules_of(
+            {1: "tenant = 1", 2: "tenant = 1", 3: "tenant = 1"}
+        )
 
     def test_every_ancestor_domain_rule_applies_together(self):
         rules = [
             _domain_rule("r", "retail", "tenant = 1"),
             _domain_rule("r", "retail_emea", "region = 'emea'"),
         ]
-        assert _table_rules("r", rules) == {
-            1: "tenant = 1",
-            2: "(region = 'emea') AND (tenant = 1)",
-            # the team is filtered by its organization's rule and by the unit's
-            3: "(region = 'emea') AND (tenant = 1)",
-        }
+        assert _table_rules("r", rules) == rules_of(
+            {
+                1: "tenant = 1",
+                2: "(region = 'emea') AND (tenant = 1)",
+                # the team is filtered by its organization's rule and by the unit's
+                3: "(region = 'emea') AND (tenant = 1)",
+            }
+        )
 
     def test_a_table_rule_stands_for_its_own_domain_and_the_ancestors_still_apply(self):
         table_rule = {**_domain_rule("r", "", "store = 7"), "domain_id": None, "table_id": 3}
@@ -163,7 +168,7 @@ class TestADomainRowFilterCoversTheSubtree:
             _domain_rule("r", "retail_emea_uk", "uk = true"),
             _domain_rule("r", "retail", "tenant = 1"),
         ]
-        assert _table_rules("r", rules)[3] == "(store = 7) AND (tenant = 1)"
+        assert _table_rules("r", rules)[3] == rule_of("(store = 7) AND (tenant = 1)")
 
     def test_another_roles_rule_is_not_handed_down_to_this_one(self):
         rules = [_domain_rule("other", "retail", "tenant = 1")]

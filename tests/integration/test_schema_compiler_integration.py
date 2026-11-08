@@ -29,6 +29,8 @@ from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
+from provisa.compiler.rls import RLSContext
+from provisa.compiler.stage2 import apply_governance, build_governance_context
 from tests.helpers import registry_write_ops, registry_write_returns_rows
 
 pytestmark = [pytest.mark.integration]
@@ -59,6 +61,7 @@ def _make_basic_si(
     naming_convention: str = "snake",
     domain_prefix: bool = False,
     domains: list[dict] | None = None,
+    source_types: dict[str, str] | None = None,
 ) -> SchemaInput:
     _naming.configure(gql=naming_convention)
     return SchemaInput(
@@ -69,7 +72,20 @@ def _make_basic_si(
         role=_make_role(role_id),
         domains=domains or [{"id": "sales", "graphql_alias": None}],
         domain_prefix=domain_prefix,
+        source_types=source_types,
     )
+
+
+def _governed_read(si: SchemaInput, query: str) -> tuple[str, str]:
+    """A GraphQL read compiled, and governed for the admin: (compiled SQL, governed SQL)."""
+    ctx = build_context(si)
+    gql = parse(query)
+    errors = validate(generate_schema(si), gql)
+    assert not errors, f"GQL validation errors: {errors}"
+    (compiled,) = compile_query(gql, ctx, variables=None, use_catalog=False)
+    role = _make_role()
+    gov = build_governance_context("admin", RLSContext(rules={}), {}, ctx, si.tables, role, [])
+    return compiled.sql, apply_governance(compiled.sql, gov)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +345,7 @@ class TestViewComputedSemantics:
                 _col("payload", "json"),
             ]
         }
-        return _make_basic_si(tables, col_types)
+        return _make_basic_si(tables, col_types, source_types={"sales-pg": "postgresql"})
 
     def test_view_compiled_to_sql_subquery(self):
         # REQ-136: the schema generates successfully (compilation does not short-circuit for views)
@@ -340,17 +356,14 @@ class TestViewComputedSemantics:
         assert "order_summary" in qt.fields
 
     def test_view_sql_expression_appears_in_compiled_output(self):
-        # REQ-136: the column_paths entry for the path-extracted column is registered in ctx
-        si = self._make_view_with_path_si()
-        ctx = build_context(si)
-        # payload col has path="payload.total" — should be registered in column_paths
-        # key is (table_id, gql_field_name) → path expression
-        paths = {k: v for k, v in ctx.column_paths.items() if k[0] == 30}
-        assert paths, f"Expected column_paths entries for table 30, got: {ctx.column_paths}"
-        path_values = list(paths.values())
-        assert any("payload.total" in p for p in path_values), (
-            f"Expected 'payload.total' in column_paths, got: {path_values}"
+        # REQ-136, REQ-151 (amended 2026-11-05): the GraphQL compile reads the path column by its
+        # name; the governed relation serves it as the value at payload.total in its JSON column.
+        compiled, governed = _governed_read(
+            self._make_view_with_path_si(), "{ order_summary { id payload } }"
         )
+        assert compiled == 'SELECT "id", "payload" FROM "public"."order_summary"', compiled
+        assert "->>" not in compiled
+        assert '"order_summary"."payload" ->> \'total\' AS "payload"' in governed, governed
 
 
 # ---------------------------------------------------------------------------
@@ -359,7 +372,7 @@ class TestViewComputedSemantics:
 
 
 class TestJSONPathExpressions:
-    """REQ-151: a column with path= renders the ->> operator in generated SQL."""
+    """REQ-151: a column with path= is read by name and extracted with ->> in its governed relation."""
 
     def _make_path_si(self) -> SchemaInput:
         tables = [
@@ -389,30 +402,22 @@ class TestJSONPathExpressions:
                 _col("payload", "json"),
             ]
         }
-        return _make_basic_si(tables, col_types)
+        return _make_basic_si(tables, col_types, source_types={"sales-pg": "postgresql"})
 
     def test_json_path_field_renders_arrow_operator_in_sql(self):
-        # REQ-151: column with path extracts value via ->>'key' in SQL
-        si = self._make_path_si()
-        ctx = build_context(si)
-        schema = generate_schema(si)
-        gql = parse("{ events { id order_id } }")
-        errors = validate(schema, gql)
-        assert not errors, f"GQL validation errors: {errors}"
-        results = compile_query(gql, ctx, variables=None, use_catalog=False)
-        assert results, "Expected at least one compiled query"
-        sql = results[0].sql
-        # The path col alias "order_id" should be in the SELECT with ->>'order_id' extraction
-        assert "->>" in sql or "->" in sql, (
-            f"Expected JSON path operator (->> or ->) in SQL for path column, got:\n{sql}"
-        )
+        # REQ-151 (amended 2026-11-05): the read names order_id; the governed relation extracts it
+        # from its JSON column with ->>'order_id'.
+        compiled, governed = _governed_read(self._make_path_si(), "{ events { id order_id } }")
+        assert compiled == 'SELECT "id", "order_id" FROM "public"."events"', compiled
+        assert '"events"."payload" ->> \'order_id\' AS "payload"' in governed, governed
+        assert '"events"."payload" AS "order_id"' in governed, governed
 
     def test_json_path_field_with_text_extraction(self):
-        # REQ-151: column_paths is populated so the executor can apply path extraction
-        si = self._make_path_si()
-        ctx = build_context(si)
-        paths = {k: v for k, v in ctx.column_paths.items() if k[0] == 40}
-        assert paths, f"Expected column_paths for table 40, got: {ctx.column_paths}"
+        # REQ-151: the value is the text at the path (->>), not the JSON document
+        ctx = build_context(self._make_path_si())
+        (compiled,) = compile_query(parse("{ events { id order_id } }"), ctx, variables=None)
+        order_id = next(c for c in compiled.columns if c.field_name == "order_id")
+        assert not order_id.json and not order_id.integer
 
 
 # ---------------------------------------------------------------------------
