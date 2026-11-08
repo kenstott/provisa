@@ -71,7 +71,7 @@ function reader(): MetaReader {
         }),
         type("M__RegisteredTables", {
           ...scalars("id", "domainId", "tableName"),
-          product: one("M__DataProducts"),
+          dataProductTables: list("M__DataProductTables"),
           tableColumns: list("M__TableColumns"),
           sourceRelationships: list("M__Relationships"),
         }),
@@ -87,9 +87,14 @@ function reader(): MetaReader {
           ...scalars("id", "fromTermId", "toTermId", "relType"),
           targetTerm: one("ON_Terms"),
         }),
+        type("M__DataProductTables", {
+          ...scalars("productId"),
+          dataProduct: one("M__DataProducts"),
+          registeredTable: one("M__RegisteredTables"),
+        }),
         type("M__DataProducts", {
           ...scalars("id", "name", "domainId"),
-          memberTables: list("M__RegisteredTables"),
+          dataProductTables: list("M__DataProductTables"),
         }),
       ],
     },
@@ -119,7 +124,7 @@ const PETS = {
   id: 10,
   tableName: "pets",
   domainId: "sales",
-  product: { id: "pet_store", name: "pet_store", domainId: "sales" },
+  dataProductTables: [{ dataProduct: { id: "pet_store", name: "pet_store", domainId: "sales" } }],
 };
 const RELATIONSHIPS: Record<
   number,
@@ -145,11 +150,11 @@ const product = (id: string, named: boolean) =>
 function answer(query: string): OntologyRows & { data_products?: unknown[] } {
   const q = query.replace(/\s+/g, " ");
   const selected = (field: string) => new RegExp(`\\b${field}[ (]`).test(q);
-  const named = q.includes("product { id name domainId");
+  const named = q.includes("dataProduct { id name domainId");
   const rels = q.includes("sourceRelationships");
   const table = (id: number) => ({
     id,
-    product: product(TABLES[id].product, named),
+    dataProductTables: [{ dataProduct: product(TABLES[id].product, named) }],
     ...(rels ? { sourceRelationships: RELATIONSHIPS[id] ?? [] } : {}),
   });
   const out: OntologyRows & { data_products?: unknown[] } = {
@@ -197,20 +202,22 @@ function answer(query: string): OntologyRows & { data_products?: unknown[] } {
       id: p,
       name: p,
       domainId: "sales",
-      memberTables: Object.entries(TABLES)
+      dataProductTables: Object.entries(TABLES)
         .filter(([, t]) => t.product === p)
         .map(([id, t]) => ({
-          id: Number(id),
-          domainId: "sales",
-          tableName: t.name,
-          tableColumns: t.columns.map((c) => ({
-            columnName: c,
-            columnKey: `${id}:${c}`,
-            glossaryRef: TERMS.filter((x) => x.columns.includes(`${id}:${c}`)).map((x) => ({
-              termId: x.id,
+          registeredTable: {
+            id: Number(id),
+            domainId: "sales",
+            tableName: t.name,
+            tableColumns: t.columns.map((c) => ({
+              columnName: c,
+              columnKey: `${id}:${c}`,
+              glossaryRef: TERMS.filter((x) => x.columns.includes(`${id}:${c}`)).map((x) => ({
+                termId: x.id,
+              })),
             })),
-          })),
-          ...(rels ? { sourceRelationships: RELATIONSHIPS[Number(id)] ?? [] } : {}),
+            ...(rels ? { sourceRelationships: RELATIONSHIPS[Number(id)] ?? [] } : {}),
+          },
         })),
     }));
   return out;

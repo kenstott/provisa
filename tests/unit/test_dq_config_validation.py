@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.core.config_loader import _validate_dq_contracts
-from provisa.core.models import Column, ProvisaConfig, Source, SourceType, Table
+from provisa.core.models import Column, DataProduct, ProvisaConfig, Source, SourceType, Table
 from provisa.dq.registration import check_contract_target
 from provisa.dq.results import DQ_PROMOTIONS, DQ_WATERMARK_COLUMN, RESULT_FIELDS
 from tests.helpers import dq_contexts
@@ -149,11 +149,16 @@ def test_a_contract_on_a_non_checker_source_is_rejected():
 
 
 def test_a_checker_table_keeps_the_product_it_is_assigned_to():
-    """REQ-1443 PRODUCT ASSIGNMENT: a checker table is assigned to a product as any member is."""
-    table = _results_table()
-    table.product_id = "orders-product"
-    _validate_dq_contracts(_config(table, _target_table()))
-    assert table.product_id == "orders-product"
+    """REQ-1443 PRODUCT ASSIGNMENT: a checker table is assigned to a product as any member is --
+    the product lists it (REQ-1634) -- and validating its contract leaves that as it is."""
+    config = _config(_results_table(), _target_table())
+    config.data_products.append(
+        DataProduct(
+            id="orders-product", domain_id="default", name="Orders", tables=["orders_scans"]
+        )
+    )
+    _validate_dq_contracts(config)
+    assert config.data_products[0].tables == ["orders_scans"]
 
 
 def test_a_checker_table_without_a_contract_is_rejected():

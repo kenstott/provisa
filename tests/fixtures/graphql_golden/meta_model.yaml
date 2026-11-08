@@ -6602,6 +6602,21 @@ tables:
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
+  table: data_product_commands
+  columns:
+  - name: command_name
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: product_id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
   table: data_product_edges
   columns:
   - name: aliases
@@ -6648,6 +6663,21 @@ tables:
     data_type: integer
     visible_to:
     - viewer
+- source_id: provisa-admin
+  domain_id: meta
+  schema: org_default
+  table: data_product_tables
+  columns:
+  - name: product_id
+    data_type: text
+    visible_to:
+    - viewer
+    is_primary_key: true
+  - name: table_id
+    data_type: integer
+    visible_to:
+    - viewer
+    is_primary_key: true
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default
@@ -10232,10 +10262,6 @@ tables:
     data_type: integer
     visible_to:
     - viewer
-  - name: product_id
-    data_type: text
-    visible_to:
-    - viewer
   - name: profiled_table_id
     data_type: integer
     visible_to:
@@ -11017,10 +11043,6 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: product_id
-    data_type: text
-    visible_to:
-    - viewer
   - name: return_schema
     data_type: text
     visible_to:
@@ -11108,6 +11130,34 @@ tables:
     visible_to:
     - viewer
 relationships:
+- id: meta:data_product_commands:data_products
+  source_column: product_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_product_commands
+  target_table_id: data_products
+- id: meta:data_product_commands:tracked_functions
+  source_column: command_name
+  target_column: name
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_product_commands
+  target_table_id: tracked_functions
 - id: meta:data_product_edges:data_products
   source_column: product_id
   target_column: id
@@ -11156,6 +11206,68 @@ relationships:
   needs_review: false
   source_table_id: data_product_edges
   target_table_id: registered_tables
+- id: meta:data_product_tables:data_products
+  source_column: product_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_product_tables
+  target_table_id: data_products
+- id: meta:data_product_tables:registered_tables
+  source_column: table_id
+  target_column: id
+  cardinality: many-to-one
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_product_tables
+  target_table_id: registered_tables
+- id: meta:data_products:commands
+  source_column: id
+  target_column: name
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: COMMANDS
+  graphql_alias: commands
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: product_id
+  via_target_column: command_name
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_products
+  target_table_id: tracked_functions
+  via_table: data_product_commands
+- id: meta:data_products:data_product_commands
+  source_column: id
+  target_column: product_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_products
+  target_table_id: data_product_commands
 - id: meta:data_products:data_product_edges
   source_column: id
   target_column: product_id
@@ -11172,6 +11284,20 @@ relationships:
   needs_review: false
   source_table_id: data_products
   target_table_id: data_product_edges
+- id: meta:data_products:data_product_tables
+  source_column: id
+  target_column: product_id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: data_products
+  target_table_id: data_product_tables
 - id: meta:data_products:domains
   source_column: domain_id
   target_column: id
@@ -11186,9 +11312,9 @@ relationships:
   needs_review: false
   source_table_id: data_products
   target_table_id: domains
-- id: meta:data_products:registered_tables
+- id: meta:data_products:member_tables
   source_column: id
-  target_column: product_id
+  target_column: id
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
@@ -11197,11 +11323,15 @@ relationships:
   disable_cypher: false
   hide_target_meta: false
   same_entity: false
+  via_source_column: product_id
+  via_target_column: table_id
+  via_label_source: fixed
   parameters: {}
   version: 1
   needs_review: false
   source_table_id: data_products
   target_table_id: registered_tables
+  via_table: data_product_tables
 - id: meta:data_products:tag_assignments
   source_column: id
   target_column: product_id
@@ -11218,22 +11348,6 @@ relationships:
   needs_review: false
   source_table_id: data_products
   target_table_id: tag_assignments
-- id: meta:data_products:tracked_functions
-  source_column: id
-  target_column: product_id
-  cardinality: one-to-many
-  materialize: false
-  refresh_interval: 300
-  alias: COMMANDS
-  graphql_alias: commands
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: data_products
-  target_table_id: tracked_functions
 - id: meta:derived_tags:registered_tables
   source_column: table_id
   target_column: id
@@ -11413,14 +11527,12 @@ relationships:
   needs_review: false
   source_table_id: registered_tables
   target_table_id: _terms
-- id: meta:registered_tables:data_products
-  source_column: product_id
-  target_column: id
-  cardinality: many-to-one
+- id: meta:registered_tables:data_product_tables
+  source_column: id
+  target_column: table_id
+  cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  alias: PRODUCT
-  graphql_alias: product
   disable_cypher: false
   hide_target_meta: false
   same_entity: false
@@ -11428,7 +11540,7 @@ relationships:
   version: 1
   needs_review: false
   source_table_id: registered_tables
-  target_table_id: data_products
+  target_table_id: data_product_tables
 - id: meta:registered_tables:derived_tags
   source_column: id
   target_column: table_id
@@ -11475,6 +11587,26 @@ relationships:
   needs_review: false
   source_table_id: registered_tables
   target_table_id: dq_rules
+- id: meta:registered_tables:products
+  source_column: id
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: PRODUCT
+  graphql_alias: products
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: table_id
+  via_target_column: product_id
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: registered_tables
+  target_table_id: data_products
+  via_table: data_product_tables
 - id: meta:registered_tables:profile_results
   source_column: id
   target_column: profiled_table_id
@@ -11961,22 +12093,6 @@ relationships:
   needs_review: false
   source_table_id: tags
   target_table_id: tag_assignments
-- id: meta:tracked_functions:data_products
-  source_column: product_id
-  target_column: id
-  cardinality: many-to-one
-  materialize: false
-  refresh_interval: 300
-  alias: PRODUCT
-  graphql_alias: product
-  disable_cypher: false
-  hide_target_meta: false
-  same_entity: false
-  parameters: {}
-  version: 1
-  needs_review: false
-  source_table_id: tracked_functions
-  target_table_id: data_products
 - id: meta:tracked_functions:domains
   source_column: domain_id
   target_column: id
@@ -11991,6 +12107,26 @@ relationships:
   needs_review: false
   source_table_id: tracked_functions
   target_table_id: domains
+- id: meta:tracked_functions:products
+  source_column: name
+  target_column: id
+  cardinality: one-to-many
+  materialize: false
+  refresh_interval: 300
+  alias: PRODUCT
+  graphql_alias: products
+  disable_cypher: false
+  hide_target_meta: false
+  same_entity: false
+  via_source_column: command_name
+  via_target_column: product_id
+  via_label_source: fixed
+  parameters: {}
+  version: 1
+  needs_review: false
+  source_table_id: tracked_functions
+  target_table_id: data_products
+  via_table: data_product_commands
 - id: meta:tracked_webhooks:domains
   source_column: domain_id
   target_column: id

@@ -26,7 +26,7 @@ const promise = (id: number, rules: ProductDqRule[]): ProductDqEntry => ({
   table_name: `pets_scan_${id}`,
   alias: null,
   description: `Scan ${id}`,
-  owner_product_id: "pet_health",
+  owner_product_ids: ["pet_health"],
   checked_table_id: 100,
   checked_table: { id: 100, domain_id: "pet-store", table_name: "pets", alias: null },
   rules,
@@ -76,9 +76,9 @@ function renderView(promises = PROMISES) {
       versions={[]}
       tableId={7}
       table={{ domainId: "pet-store", tableName: "pets", alias: null }}
-        reader={null}
-        viewer={{ held: new Set<string>(), acting: "analyst" }}
-        promises={promises}
+      reader={null}
+      viewer={{ held: new Set<string>(), acting: "analyst" }}
+      promises={promises}
     />,
   );
 }
@@ -164,9 +164,9 @@ describe("a contract's promises table", () => {
           versions={[]}
           tableId={7}
           table={{ domainId: "pet-store", tableName: "pets", alias: null }}
-        reader={null}
-        viewer={{ held: new Set<string>(), acting: "analyst" }}
-        promises={[promise(9, [rule("expect_something_new", "")])]}
+          reader={null}
+          viewer={{ held: new Set<string>(), acting: "analyst" }}
+          promises={[promise(9, [rule("expect_something_new", "")])]}
         />,
       ),
     ).toThrow(/expect_something_new/);

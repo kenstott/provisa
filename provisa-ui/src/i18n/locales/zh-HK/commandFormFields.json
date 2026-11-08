@@ -29,7 +29,7 @@
     "query": "查詢",
     "domain": "領域",
     "selectDomain": "選擇領域...",
-    "dataProduct": "數據產品（選填）",
+    "dataProduct": "數據產品",
     "dataProductPlaceholder": "選擇數據產品...",
     "description": "描述",
     "descriptionPlaceholder": "選填",

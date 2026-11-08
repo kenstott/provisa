@@ -11,12 +11,15 @@ data_products:
 - purpose: "Pet health records — inventory and referral vets for care history"
   domain_id: pet-store
   id: pet_health
+  tables: [pets, pets_quality, vets, vets_quality]
+  commands: [add_pet]
   name: Pet Health
   owner: org_admin
   support_contact: kennethstott@gmail.com
 - purpose: "Shelter staffing — employee roster and shift coverage"
   domain_id: shelter
   id: workforce_ops
+  tables: [assignments, employees, schedules]
   name: Workforce Ops
   owner: org_admin
   support_contact: kennethstott@gmail.com
@@ -119,7 +122,6 @@ functions:
   impl_kind: source_operation
   kind: mutation
   name: add_pet
-  product_id: pet_health
   returns: ''
   schema_name: openapi
   source_id: petstore-api
@@ -612,7 +614,6 @@ tables:
   description: "Complete accountability map of staff to breeds \u2014 use to spot\
     \ coverage gaps or single-keeper risk across all species"
   domain_id: shelter
-  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: assignments
@@ -882,7 +883,6 @@ tables:
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
-  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: employees
@@ -1267,7 +1267,6 @@ tables:
   domain_id: pet-store
   enable_aggregates: true
   enable_group_by: true
-  product_id: pet_health
   schema: pet_store
   profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
@@ -1344,7 +1343,6 @@ tables:
     - data_steward
   description: "Veterinarians the store refers pets to"
   domain_id: pet-store
-  product_id: pet_health
   schema: pet_store
   profiler_source_id: demo-profiler
   source_id: pet-store-sqlite
@@ -1500,7 +1498,6 @@ tables:
       - type: expect_column_values_to_not_be_null
         kwargs:
           column: species
-  product_id: pet_health
   source_id: dq-checker
   table: pets_quality
 # REQ-1443: the Soda counterpart — same results schema, same scan pipeline, the other contract
@@ -1532,7 +1529,6 @@ tables:
     checks:
       - row_count:
           must_be_greater_than: 0
-  product_id: pet_health
   source_id: dq-soda
   table: vets_quality
 - alias: schedule_by_employee
@@ -1627,7 +1623,6 @@ tables:
   description: "Full weekly shift roster \u2014 use for shelter-wide coverage analysis\
     \ and to surface days where any location is understaffed"
   domain_id: shelter
-  product_id: workforce_ops
   schema: graphql
   source_id: graphql-demo
   table: schedules

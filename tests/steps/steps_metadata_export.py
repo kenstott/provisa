@@ -12,6 +12,7 @@ import pytest
 from pytest_bdd import given, scenarios, then, when
 
 from provisa.api.metadata_export import build_snapshot
+from tests.unit.product_members import all_members_of
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -40,8 +41,6 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
-        # Marked so the table publishes: only Data Product tables enter the snapshot.
-        product_id="prod",
     )
 
 
@@ -100,7 +99,11 @@ def _governed_config(shared_data):
 @when("a metadata snapshot is built for the org")
 def _build(shared_data):
     shared_data["snapshot"] = build_snapshot(
-        shared_data["config"], org_id="acme", dialect="postgres", contexts={}
+        # REQ-1634: every table is a member of "prod", so it publishes.
+        all_members_of(shared_data["config"], "prod"),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
     )
 
 

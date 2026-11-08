@@ -582,7 +582,7 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
         source,
         inputs,
         ctx,
-        product_id=mv.product_id,
+        product_ids=mv.product_ids,
         hold=mv.hold_on_failing_checks,  # REQ-2133
         table_id=mv.table_id,
     )

@@ -17,7 +17,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
 
 from provisa.api.errors import ApiError
@@ -72,7 +74,8 @@ def _row_to_function(row: dict) -> dict:
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
-        "productId": row.get("product_id"),  # REQ-1634
+        # REQ-1634: the products the command is a member of, read-only here: set on the product.
+        "productIds": list(row.get("product_ids") or []),
         "returnSchema": row.get("return_schema"),
         "outputColumns": row.get("output_columns"),  # REQ-1159: IR-typed output dataset contract
         # REQ-885: implementation kind + swappable binding, decoupled from addressing.
@@ -118,6 +121,9 @@ async def list_actions(request: Request):  # REQ-205, REQ-209
             select(tracked_functions).order_by(tracked_functions.c.name)
         )
         fn_rows = fn_result.fetchall()
+        from provisa.core.repositories import data_product as data_product_repo
+
+        memberships = await data_product_repo.command_memberships(conn)  # REQ-1634
         wh_result = await conn.execute_core(
             select(tracked_webhooks).order_by(tracked_webhooks.c.name)
         )
@@ -132,7 +138,10 @@ async def list_actions(request: Request):  # REQ-205, REQ-209
             wh["approved"] = await cr_repo.latest_status(conn, "webhook", wh["name"]) == "executed"
             webhooks.append(wh)
 
-    functions = [_row_to_function(dict(r._mapping)) for r in fn_rows]
+    functions = [
+        _row_to_function({**dict(r._mapping), "product_ids": memberships.get(r.name, [])})
+        for r in fn_rows
+    ]
     # REQ-2001: a statement command's contract as this build derived it from its statement.
     served = getattr(state, "tracked_functions", None) or {}
     for fn in functions:
@@ -142,6 +151,18 @@ async def list_actions(request: Request):  # REQ-205, REQ-209
 
 
 class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
+    @model_validator(mode="before")
+    @classmethod
+    def _no_product(cls, data: Any) -> Any:  # REQ-1634
+        """A command's products are set on each product (setDataProductMembers), never here: a
+        body naming one is refused by name rather than having it dropped."""
+        if isinstance(data, dict) and ("productId" in data or "productIds" in data):
+            raise ValueError(
+                "a command's data products are set on the product (setDataProductMembers), not "
+                "on the command"
+            )
+        return data
+
     name: str
     sourceId: str = ""
     schemaName: str = "public"
@@ -152,7 +173,6 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     domainId: str = ""
     description: str | None = None
     kind: str = "mutation"
-    productId: str | None = None  # REQ-1634
     returnSchema: dict | None = None
     # REQ-1159: canonical IR-typed output dataset contract [{name,type}]; returnSchema is its projection.
     outputColumns: list[dict] | None = None
@@ -485,7 +505,6 @@ async def create_function(
         domain_id=body.domainId,
         description=body.description,
         kind=body.kind,
-        product_id=body.productId,  # REQ-1634
         impl_kind=body.implKind,
         binding=body.binding,
         materialize=body.materialize,
@@ -546,23 +565,18 @@ async def update_function(
             request, conn, tracked_functions, name, body.kind, body.domainId
         )
         await _refuse_unreachable_mask(conn, body.outputColumns)
-        if body.productId is not None:
-            # REQ-1634: same domain-membership gate as function_repo.upsert_function; the
-            # update path writes tracked_functions directly and must not bypass it.
-            product = await data_product_repo.get(conn, body.productId)
-            if product is None:
-                raise ApiError(
-                    422,
-                    "actions.data_product_not_found",
-                    f"data product {body.productId!r} does not exist",
-                )
-            if product["domain_id"] != body.domainId:
-                raise ApiError(
-                    422,
-                    "actions.data_product_domain_mismatch",
-                    f"command {name} is in domain {body.domainId!r} but data product "
-                    f"{body.productId!r} belongs to domain {product['domain_id']!r}",
-                )
+        try:
+            # REQ-1634: same gate as function_repo.upsert_function -- the update path writes
+            # tracked_functions directly and must not bypass it: a member keeps to the domain of
+            # every product it is a member of.
+            await data_product_repo.require_domain_of_products(
+                conn,
+                await data_product_repo.products_of_command(conn, name),
+                body.domainId,
+                f"command {name}",
+            )
+        except data_product_repo.MembershipRefused as refused:
+            raise ApiError(422, "actions.data_product_domain_mismatch", str(refused)) from refused
         result = await conn.execute_core(
             update(tracked_functions)
             .where(tracked_functions.c.name == name)
@@ -576,7 +590,6 @@ async def update_function(
                 domain_id=body.domainId,
                 description=body.description,
                 kind=body.kind,
-                product_id=body.productId,  # REQ-1634
                 return_schema=body.returnSchema,
                 output_columns=body.outputColumns,  # REQ-1159
                 impl_kind=body.implKind,

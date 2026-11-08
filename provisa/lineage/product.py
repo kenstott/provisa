@@ -105,7 +105,8 @@ def product_dq(
 ) -> dict[str, list[dict]]:
     """A product's data quality (REQ-2157), each checker table in one list.
 
-    ``checkers``: every checker table -- its id, names, description, owning ``product_id``, the
+    ``checkers``: every checker table -- its id, names, description, owning ``product_ids``
+    (REQ-1634: any number), the
     ``checked_table_id`` its contract scans and that table's names (``checked_table``), the
     ``rule_columns`` its checks name, its ``rules`` (check type, column and arguments) and its
     latest run. ``members`` and ``inputs`` are the product's member and nearest input table ids, as
@@ -120,7 +121,7 @@ def product_dq(
         if not _reads_check(c, served):
             continue
         checked = c["checked_table_id"]
-        owned = c["product_id"] == product_id
+        owned = product_id in c["product_ids"]
         if owned and checked in members:
             kind = "promises"
         elif owned and checked in inputs:
@@ -138,7 +139,7 @@ def product_dq(
                 "table_name": c["table_name"],
                 "alias": c["alias"],
                 "description": c["description"],
-                "owner_product_id": c["product_id"],
+                "owner_product_ids": c["product_ids"],
                 "checked_table_id": checked,
                 "checked_table": c["checked_table"],
                 "rules": c["rules"],

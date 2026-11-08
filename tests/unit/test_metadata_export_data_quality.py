@@ -31,6 +31,7 @@ from provisa.api.metadata_export.datahub import to_proposals
 from provisa.api.metadata_export.model import DataQualityOutcome
 from provisa.api.metadata_export.openlineage import to_events
 from provisa.api.metadata_export.openmetadata import to_entities as om_entities
+from tests.unit.product_members import assigned, assigned_members, with_members
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -78,29 +79,33 @@ CONTEXTS = dq_contexts(
 
 
 def _observed() -> Table:
-    return Table(
-        source_id="wh",
-        domain_id="sales",
-        schema_name="sales",
-        table_name="orders",
-        product_id="orders-product",
-        columns=[
-            Column(name="id", data_type="integer", visible_to=["admin"]),
-            Column(name="customer", data_type="varchar", visible_to=["admin"]),
-        ],
+    return assigned(
+        Table(
+            source_id="wh",
+            domain_id="sales",
+            schema_name="sales",
+            table_name="orders",
+            columns=[
+                Column(name="id", data_type="integer", visible_to=["admin"]),
+                Column(name="customer", data_type="varchar", visible_to=["admin"]),
+            ],
+        ),
+        "orders-product",
     )
 
 
 def _results(contract: str = CONTRACT, product_id: str | None = "orders-product") -> Table:
-    return Table(
-        source_id="dq",
-        domain_id="sales",
-        schema_name="quality",
-        table_name="orders_scans",
-        # REQ-1443 PRODUCT ASSIGNMENT: assigned to a product as any member is.
-        product_id=product_id,
-        dq_contract=contract,
-        columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
+    # REQ-1443 PRODUCT ASSIGNMENT: assigned to a product as any member is.
+    return assigned(
+        Table(
+            source_id="dq",
+            domain_id="sales",
+            schema_name="quality",
+            table_name="orders_scans",
+            dq_contract=contract,
+            columns=[Column(name="check_name", data_type="varchar", visible_to=["admin"])],
+        ),
+        product_id,
     )
 
 
@@ -109,14 +114,18 @@ def _config(
     checker: SourceType = SourceType.soda,
     tables: list[Table] | None = None,
 ) -> ProvisaConfig:
+    tables = tables if tables is not None else [_observed(), _results()]
     return ProvisaConfig(
         sources=[
             Source(id="wh", type=SourceType.postgresql, description="warehouse"),
             Source(id="dq", type=checker, description="quality"),
         ],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
-        data_products=[DataProduct(id="orders-product", domain_id="sales", name="Orders")],
-        tables=tables if tables is not None else [_observed(), _results()],
+        data_products=with_members(
+            [DataProduct(id="orders-product", domain_id="sales", name="Orders")],
+            assigned_members(tables),
+        ),
+        tables=tables,
         roles=[],
     )
 
@@ -213,11 +222,10 @@ def test_each_assertion_names_the_product_that_owns_its_check(snapshot):
     """REQ-2157: a check is the product's whose checker table names it, whatever product the table
     it observes belongs to: its promise on a member, its expectation on an input, or another
     product's check there."""
-    assert {a.owner_product_id for a in snapshot.assertions} == {"orders-product"}
+    assert {a.owner_product_ids for a in snapshot.assertions} == {("orders-product",)}
     config = _config(tables=[_observed(), _results(product_id="fulfilment")])
-    config.data_products.append(DataProduct(id="fulfilment", domain_id="sales", name="Fulfilment"))
     owned = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
-    assert {a.owner_product_id for a in owned.assertions} == {"fulfilment"}
+    assert {a.owner_product_ids for a in owned.assertions} == {("fulfilment",)}
 
 
 def test_a_results_table_assigned_to_no_product_is_withheld():
@@ -230,8 +238,7 @@ def test_a_results_table_assigned_to_no_product_is_withheld():
 
 def test_an_unpublished_observed_table_publishes_no_assertion():
     """Both ends must publish or the reference dangles — the filter's whole purpose."""
-    observed = _observed()
-    observed.product_id = None
+    observed = assigned(_observed(), None)
     config = _config(tables=[observed, _results()])
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts=CONTEXTS)
     assert snapshot.assertions == []

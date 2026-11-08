@@ -758,6 +758,9 @@
         "successor_retired": "De opvolger '{{successor}}' is buiten gebruik gesteld. Kies een dataproduct dat in gebruik is.",
         "successor_other_domain": "De opvolger '{{successor}}' hoort bij domein {{domain}}. De leden van een product delen zijn domein, dus kies een opvolger in hetzelfde domein."
       },
+      "members": {
+        "domain_has_members": "Dataproduct {{data_product}} kan niet naar domein {{domain}} verhuizen zolang het leden uit een ander domein bevat: {{members}}. Haal ze eerst uit het product."
+      },
       "finding": {
         "no_members": "Er hoort geen tabel, view of opdracht bij dit dataproduct.",
         "member_deprecated": "Ledentabel {{table}} is verouderd.",

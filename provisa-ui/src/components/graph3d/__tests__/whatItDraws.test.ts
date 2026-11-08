@@ -59,30 +59,32 @@ const PRODUCTS: ProductRow[] = [
     id: "p1",
     name: "P1",
     domainId: "sales",
-    commands: [{ name: "refund", domainId: "sales" }],
-    memberTables: [
+    dataProductCommands: [{ trackedFunction: { name: "refund", domainId: "sales" } }],
+    dataProductTables: [
       {
-        id: 3,
-        domainId: "sales",
-        tableName: "pets",
-        tableColumns: [
-          { columnName: "name", columnKey: "3:name", glossaryRef: [{ termId: 7 }] },
-          { columnName: "age", columnKey: "3:age" },
-          { columnName: "born", columnKey: "3:born" },
-        ],
-        sourceRelationships: [
-          {
-            id: "r1",
-            cypherType: "OWNED_BY",
-            targetTableId: 5,
-            targetTable: {
-              id: 5,
-              tableName: "owners",
-              domainId: "crm",
-              product: { id: "p2", name: "Owners", domainId: "crm" },
+        registeredTable: {
+          id: 3,
+          domainId: "sales",
+          tableName: "pets",
+          tableColumns: [
+            { columnName: "name", columnKey: "3:name", glossaryRef: [{ termId: 7 }] },
+            { columnName: "age", columnKey: "3:age" },
+            { columnName: "born", columnKey: "3:born" },
+          ],
+          sourceRelationships: [
+            {
+              id: "r1",
+              cypherType: "OWNED_BY",
+              targetTableId: 5,
+              targetTable: {
+                id: 5,
+                tableName: "owners",
+                domainId: "crm",
+                dataProductTables: [{ dataProduct: { id: "p2", name: "Owners", domainId: "crm" } }],
+              },
             },
-          },
-        ],
+          ],
+        },
       },
     ],
   },
