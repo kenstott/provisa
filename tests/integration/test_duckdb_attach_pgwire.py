@@ -110,7 +110,7 @@ def _build_state():
             "description": "Test role.",
             "id": "admin",
             "domain_access": ["*"],
-            "capabilities": [],
+            "capabilities": ["usage"],
         },
         domains=[{"id": "sales", "graphql_alias": None}],
     )
@@ -123,7 +123,7 @@ def _build_state():
         "admin": {
             "description": "Test role.",
             "id": "admin",
-            "capabilities": [],
+            "capabilities": ["usage"],
             "domain_access": ["*"],
         }
     }

@@ -137,27 +137,35 @@ def test_sharepoint_missing_tenant_is_loud():
 # -- REQ-1693: certificate auth's three Calcite-adapter contracts --------------
 
 
-def test_sharepoint_certificate_auth_names_the_adapter_and_auth_type():
+def _pfx(directory) -> str:
+    """An existing certificate file under ``directory``: the model refuses a path absent on the
+    host its server runs on (REQ-1693)."""
+    path = directory / "cert.pfx"
+    path.write_bytes(b"")
+    return str(path)
+
+
+def test_sharepoint_certificate_auth_names_the_adapter_and_auth_type(tmp_path):
     """Without authType, SharePointAuthFactory.createAuth defaults to CLIENT_CREDENTIALS and dies
     on the absent secret — the operand must say CERTIFICATE, and the schema factory must be the
     adapter's own class name."""
     src = _sharepoint_source(
         password="",
-        mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": ""},
+        mapping={"certificate_path": _pfx(tmp_path), "certificate_password": ""},
     )
     model = pr.build_model_json(src)
     operand = model["schemas"][0]["operand"]
     assert operand["authType"] == "CERTIFICATE"
-    assert operand["certificatePath"] == "/abs/cert.pfx"
+    assert operand["certificatePath"] == _pfx(tmp_path)
     assert operand["certificatePassword"] == ""
     assert "clientSecret" not in operand
     assert model["schemas"][0]["factory"] == pr._SCHEMA_FACTORY["sharepoint"]
 
 
-def test_sharepoint_certificate_password_is_preserved_when_non_empty():
+def test_sharepoint_certificate_password_is_preserved_when_non_empty(tmp_path):
     src = _sharepoint_source(
         password="",
-        mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": "s3cret"},
+        mapping={"certificate_path": _pfx(tmp_path), "certificate_password": "s3cret"},
     )
     operand = pr.build_model_json(src)["schemas"][0]["operand"]
     assert operand["certificatePassword"] == "s3cret"
@@ -174,17 +182,31 @@ def test_sharepoint_certificate_relative_path_is_loud():
         pr.build_model_json(src)
 
 
-def test_sharepoint_certificate_missing_password_key_is_loud():
+def test_sharepoint_certificate_absent_on_this_host_is_loud(tmp_path):
+    """The model is for the server started on THIS host, so a certificate_path that resolves only
+    inside a container (the Trino lane's ``/certs/sharepoint.pfx``) is refused up front, naming
+    the path. Started anyway, the adapter died with FileNotFoundException and Provisa reported only
+    the log's last lines: "Error instantiating JsonCustomSchema" with no cause (REQ-1693)."""
+    absent = tmp_path / "absent.pfx"
+    src = _sharepoint_source(
+        password="",
+        mapping={"certificate_path": str(absent), "certificate_password": ""},
+    )
+    with pytest.raises(pr.MissingConnectorConfig, match=f"{absent}.*does not exist on this host"):
+        pr.build_model_json(src)
+
+
+def test_sharepoint_certificate_missing_password_key_is_loud(tmp_path):
     """CertificateAuth calls certificatePassword.toCharArray() and createCertificateAuth rejects a
     null password, so an absent mapping key is a config error, never silently defaulted to ""."""
-    src = _sharepoint_source(password="", mapping={"certificate_path": "/abs/cert.pfx"})
+    src = _sharepoint_source(password="", mapping={"certificate_path": _pfx(tmp_path)})
     with pytest.raises(pr.MissingConnectorConfig, match="certificate_password"):
         pr.build_model_json(src)
 
 
-def test_sharepoint_certificate_non_string_password_is_loud():
+def test_sharepoint_certificate_non_string_password_is_loud(tmp_path):
     src = _sharepoint_source(
-        password="", mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": None}
+        password="", mapping={"certificate_path": _pfx(tmp_path), "certificate_password": None}
     )
     with pytest.raises(pr.MissingConnectorConfig, match="certificate_password"):
         pr.build_model_json(src)
