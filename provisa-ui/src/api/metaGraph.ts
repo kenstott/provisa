@@ -22,6 +22,8 @@ export interface GraphqlType {
   ofType?: GraphqlType | null;
 }
 
+import { toCamelCase } from "../naming";
+
 interface IntrospectedType {
   name: string;
   fields: { name: string; type: GraphqlType }[] | null;
@@ -66,10 +68,8 @@ export async function dataGraphql<T>(
 
 const norm = (name: string) => name.replace(/_/g, "").toLowerCase();
 
-/** The key a row carries a column under: its name in camelCase, as naming.py's ``_to_camel_case``
- * has it (an underscore before a digit stays). */
-const rowKey = (column: string) =>
-  column.replace(/(?<=[a-z0-9])_([a-z])/g, (_, c: string) => c.toUpperCase());
+/** The key a row carries a column under: its name in camelCase, as the naming authority has it. */
+const rowKey = (column: string) => toCamelCase(column);
 
 /** ``name`` selected to answer under ``key``: no alias when the schema's spelling is the key. */
 const answeredAs = (key: string, name: string) => (key === name ? name : `${key}: ${name}`);
@@ -291,4 +291,21 @@ export function rootQuery(
 ): string | null {
   const field = rootField(m, view, sel, where);
   return field === null ? null : operation(name, [field]);
+}
+
+// One read of each role's schema for the page's life: it changes only with the model.
+const readers = new Map<string, Promise<MetaReader>>();
+
+/** ``role``'s meta reader: its GraphQL schema and its root fields, read once. */
+export function metaReader(role: string): Promise<MetaReader> {
+  let r = readers.get(role);
+  if (!r) {
+    r = Promise.all([
+      dataGraphql<Introspection>(INTROSPECTION_QUERY, {}, role),
+      rootFields(role),
+    ]).then(([raw, roots]) => ({ schema: new RoleSchema(raw), roots }));
+    r.catch(() => readers.delete(role));
+    readers.set(role, r);
+  }
+  return r;
 }

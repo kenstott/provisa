@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL（九種介面之一）",
-        "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的 SQL 還可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"
+        "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的模型還可透過多種協定提供服務；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li><li><strong>OData</strong>：Excel 和 Power BI 透過內置的 OData 摘要連接，直接讀取受管治的表格。</li></ul>"
       },
       "step7": {
         "title": "GraphQL（九種介面之二）",
@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "追蹤與除錯追蹤",
-        "description": "🔭 追蹤為每個請求記錄一個 span。「除錯追蹤」分頁會為每個管線階段和每次資料來源呼叫各增加一個 span，並附帶 SQL 文字。這會增加負載，因此只在一段設定的時間內針對某個組織、角色或資料來源開啟；時間到後它會自動關閉。"
+        "description": "🔭 每個請求都會被追蹤，各產生一個 span。追蹤動態列出您最近的追蹤：可以篩選、暫停列表，或開啟某條追蹤查看其 span。如果您的角色可以更改設定，除錯追蹤分頁會在設定的時間內，為每個管線階段和每次資料來源呼叫各增加一個 span。"
       },
       "stepCache": {
         "title": "快取與副本",
@@ -1704,22 +1704,6 @@
         "title": "這個示範講甚麼",
         "description": "一家布拉格銀行向企業放貸，並按法律實體識別編碼（LEI）記錄每家企業的擁有者。歐盟規定，銀行對單一客戶或同一擁有者控制的企業集團的授信不得超過其一級資本（Tier 1）的 25%。問題是：銀行對哪些集團超出了這一限額？銀行的賬簿記錄了每個借款人的擁有者，卻不記錄誰擁有這個擁有者。銀行、借款人及其貸款是虛構的，擁有它們的集團是真實的。"
       },
-      "groupexposureJoin": {
-        "title": "按 LEI 連接",
-        "description": "銀行的擁有者表與 Wikidata 的表共用擁有者的 LEI，這些關係把它們連接起來。銀行的數據留在其資料庫中，Wikidata 的數據留在其副本中；連接在查詢中完成。"
-      },
-      "groupexposureAnswer": {
-        "title": "SQL 中的答案",
-        "description": "視圖 group_exposure 透過擁有者的 LEI 和 Wikidata，將每筆授信歸入借款人所屬集團。Veolia 和 Vinci 集團各自超過一級資本的 25%，Veolia 與 EPH 的合資企業在兩個集團中都計入。無論銀行賬簿還是 Wikidata，單獨都看不出這一點。借款人及其貸款是虛構的。"
-      },
-      "groupexposureExample": {
-        "title": "GraphQL 中的答案",
-        "description": "GraphQL 中的同一視圖：銀行放貸最多的集團、其借款人、承諾金額，以及各集團是否超限。"
-      },
-      "groupexposureRecap": {
-        "title": "您看到了甚麼",
-        "description": "一家虛構銀行的貸款賬簿與 Wikidata 的公共關聯數據，按 LEI 在一個受管治的模型中連接。Wikidata 的擁有權鏈把許多小額貸款變成少數幾個大額集團風險承擔，答案透過 SQL、GraphQL 和 REST 提供。"
-      },
       "groupexposureWikidata": {
         "title": "誰擁有這些擁有者：來自 Wikidata",
         "description": "公共知識圖譜 Wikidata 記錄了每家企業的 LEI 及其母公司。此數據源透過 Wikidata 的 SPARQL 查詢服務讀取這些資料。其表在建立示範時只載入一次，因此您使用示範時它從不呼叫 Wikidata。"
@@ -1732,6 +1716,10 @@
         "title": "每個擁有者所屬的集團",
         "description": "對銀行記錄的每個擁有者，取其在 Wikidata 上母公司鏈頂端的企業，只用一條 SPARQL 屬性路徑即可找到。即使銀行賬簿不知道，Wikidata 也知道某家捷克控股公司屬於 Veolia 或 E.ON。"
       },
+      "groupexposureJoin": {
+        "title": "按 LEI 連接",
+        "description": "銀行的擁有者表與 Wikidata 的表共用擁有者的 LEI，這些關係把它們連接起來。銀行的數據留在其資料庫中，Wikidata 的數據留在其副本中；連接在查詢中完成。"
+      },
       "groupexposureTerms": {
         "title": "淺白解釋",
         "description": "詞彙表解釋風險人員使用的詞彙：大額風險承擔、一級資本、法律實體識別編碼和母公司。關連客戶集團是指因一家控制其他各家而構成同一風險的一組企業。"
@@ -1740,9 +1728,21 @@
         "title": "只看賬簿",
         "description": "銀行賬簿所見的每個借款人自身的風險承擔。最大的也低於一級資本的 10%，沒有任何借款人接近 25% 的限額。"
       },
+      "groupexposureAnswer": {
+        "title": "SQL 中的答案",
+        "description": "視圖 group_exposure 透過擁有者的 LEI 和 Wikidata，將每筆授信歸入借款人所屬集團。Veolia 和 Vinci 集團各自超過一級資本的 25%，Veolia 與 EPH 的合資企業在兩個集團中都計入。無論銀行賬簿還是 Wikidata，單獨都看不出這一點。借款人及其貸款是虛構的。"
+      },
+      "groupexposureExample": {
+        "title": "GraphQL 中的答案",
+        "description": "GraphQL 中的同一視圖：銀行放貸最多的集團、其借款人、承諾金額，以及各集團是否超限。"
+      },
       "groupexposureRest": {
         "title": "透過 REST 取得同一答案",
         "description": "該視圖也是一個 REST 端點，這裏按是否超限分組並在伺服器端匯總，可直接用於風險報告或試算表。"
+      },
+      "groupexposureRecap": {
+        "title": "您看到了甚麼",
+        "description": "一家虛構銀行的貸款賬簿與 Wikidata 的公共關聯數據，按 LEI 在一個受管治的模型中連接。Wikidata 的擁有權鏈把許多小額貸款變成少數幾個大額集團風險承擔，答案透過 SQL、GraphQL 和 REST 提供。"
       },
       "agentdataScenario": {
         "title": "把數據交給智能體",
@@ -1916,6 +1916,10 @@
       "banksecrecyStructuring": {
         "title": "誰在拆分交易？",
         "description": "在不同分行和日期，三次或更多次略低於 10,000 美元的存款。其中任何一筆單獨都無需報告。Victor Hale 一週內去了三間分行，而 Marcus Reed 同一天的兩筆存款合起來需要報告。只有合規人員能看到這個視圖。"
+      },
+      "banksecrecyPollyWalk": {
+        "title": "銀行必須怎樣做？",
+        "description": "一位客戶不斷存入略低於 10,000 美元的現金。銀行必須怎樣做？在法律條文中搜尋這些詞找不到答案。Polly 改為沿詞彙表走：低於門檻的存款，到拆分交易 (structuring)，再到可疑活動報告，最終找到 31 CFR 1010.314 和 31 CFR 1020.320，也就是寫明答案的條文。"
       },
       "banksecrecyExample": {
         "title": "同樣的答案，用 GraphQL",

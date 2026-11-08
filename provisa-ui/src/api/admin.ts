@@ -915,9 +915,10 @@ export interface PlatformSettings {
     role: string | null;
   };
   naming: {
-    // Deployment-wide, so absent for an org administrator; the two below are the org's own.
+    // Deployment-wide, so absent for an org administrator.
     domain_prefix?: boolean;
-    convention?: string;
+    // REQ-194: the GraphQL convention, read by every caller (writing it is the platform's).
+    convention: string;
     sql_convention?: string;
     use_domains: boolean | null;
     default_domain: string;

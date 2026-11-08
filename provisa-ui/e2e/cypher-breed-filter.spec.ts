@@ -7,14 +7,17 @@
 
 import { test, expect, BACKEND_URL } from "./coverage";
 
-// pets-to-shelter-assignments is one-to-many (a breed has several keepers), so its derived
-// edge type is HAS_ASSIGNMENTS, not the many-to-one IS_ASSIGNMENT it once was.
+// No relationship joins pets to assignments on breed_name (it repeats on both, so it cannot be a
+// replica key): a pet reaches the assignments of its breed through animal_breeds, BREED_INFO
+// (pets -> animal_breeds) then ASSIGNMENT_BREED (assignments -> animal_breeds). Every pattern hangs
+// off the inquiry: an assignment matched on its own would be a cross join, which governance refuses
+// (V002).
 const QUERY = `
 MATCH (a:Inquiries)
 OPTIONAL MATCH (a:Inquiries)-[r1:HAS_PETS]->(b:Pets)
-OPTIONAL MATCH (b:Pets)-[r2:HAS_ASSIGNMENTS]->(c:Assignments)
-OPTIONAL MATCH (c:Assignments)-[r3:ASSIGNMENT_EMPLOYEE]->(d:Employees)
+OPTIONAL MATCH (b:Pets)-[r2:BREED_INFO]->(e:AnimalBreeds)
 OPTIONAL MATCH (c:Assignments)-[r4:ASSIGNMENT_BREED]->(e:AnimalBreeds)
+OPTIONAL MATCH (c:Assignments)-[r3:ASSIGNMENT_EMPLOYEE]->(d:Employees)
 OPTIONAL MATCH (a)-[rUsers:SUBMITTED_BY]-(mUsers:PetStore:Users)
 WHERE NOT b.id IN [2]
 AND NOT c.breedName IN ['Maine Coon']

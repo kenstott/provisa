@@ -146,7 +146,7 @@ class TestStreamedQueries:
             request.limit = 0
 
             streamed = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 streamed.append(msg)
 
             sent = _sent(msg_cls, streamed)
@@ -168,7 +168,7 @@ class TestStreamedQueries:
             request = MagicMock()
             request.limit = 0
             streamed = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 streamed.append(msg)
 
             assert len(streamed) == 0
@@ -247,7 +247,7 @@ class TestRoleBasedFieldFiltering:
             request = MagicMock()
             request.limit = 0
             streamed = []
-            async for msg in servicer._handle_query(request, context, "Orders", "orders"):
+            async for msg in servicer._handle_query(request, context, "Orders"):
                 streamed.append(msg)
 
             # The servicer selects the schema/context by the metadata role and passes that
@@ -273,7 +273,7 @@ class TestRoleBasedFieldFiltering:
 
         results = []
         with pytest.raises(grpc.aio.AbortError):
-            async for msg in servicer._handle_query(MagicMock(), context, "Orders", "orders"):
+            async for msg in servicer._handle_query(MagicMock(), context, "Orders"):
                 results.append(msg)
 
         context.abort.assert_awaited_once_with(

@@ -84,6 +84,7 @@
       "search_sources": "Abfragen an Suchindizes.",
       "grpc_services": "Die gRPC-Abfrageoberfläche, eingehend und ausgehend."
     },
+    "tracesTableCheckFailed": "Die Trace-Tabellen von Provisa konnten nicht geprüft werden ({{reason}}). Ob sie Zeilen empfangen, ist unbekannt; die Prüfung wird alle 30 Sekunden wiederholt.",
     "tracesTableEmpty": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa enthalten noch keine Zeilen. Ist der Endpunkt ein externer Anbieter und nicht der Collector von Provisa, verschieben Sie ihn in die Exporter des Collectors.",
     "tracesTableStale": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa haben in den letzten {{minutes}} Minuten keine Zeilen erhalten. War Provisa untätig, ist das zu erwarten. Andernfalls prüfen Sie, ob der Endpunkt der Collector von Provisa und kein externer Anbieter ist."
   }

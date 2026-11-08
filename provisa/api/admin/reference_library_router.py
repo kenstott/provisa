@@ -13,8 +13,10 @@
 An admin lists the library's documents (title, source, status, domains, when each was added and
 last refreshed or replaced), adds one by file or URL, keeps or discards a proposed one, changes
 its domains, refreshes a URL document, uploads a new version of a file document, and removes one.
-The library is the org's, so the page asks ``org_settings``. A file travels as base64 in a JSON
-body, as every admin upload does (import_router.py).
+The library is curated with the glossary -- term finding adds its documents as proposed -- so the
+page asks the glossary's curation right, ``glossary_rw`` (REQ-1327: each surface its own right). A file travels as base64 in a JSON
+body, as every admin upload does (import_router.py). The page also shows and changes the library's
+retrieval setting, passage or graph (GRAPH RETRIEVAL), held in the org's settings.
 """
 
 # Requirements: REQ-2185
@@ -28,9 +30,10 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Request
 
 from provisa.api.admin._guards import require_active_org_id
-from provisa.api.admin._platform_guard import require_org_settings
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.reference_library import library, store
+from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -47,7 +50,7 @@ def _pool() -> Database:
 
 
 def _guard(request: Request) -> str:
-    require_org_settings(request)
+    require_capability_request(request, Capability.GLOSSARY_RW.value)
     return require_active_org_id(request)
 
 
@@ -287,3 +290,47 @@ async def remove_document(document_id: int, request: Request) -> dict:
     except library.LibraryRefused as exc:
         raise _refused(exc) from None
     return {"removed": document_id}
+
+
+@router.get("/settings")
+async def get_settings(request: Request) -> dict:
+    """The library's retrieval setting: ``passage`` or ``graph``."""
+    from provisa.reference_library import retrieve
+
+    _guard(request)
+    try:
+        return {"retrieval": await retrieve.retrieval_setting(_pool())}
+    except ValueError as exc:
+        raise ApiError(409, "reference_library.bad_setting", str(exc)) from None
+
+
+@router.put("/settings")
+async def put_settings(body: dict, request: Request) -> dict:
+    """Change the library's retrieval setting (``retrieval``: ``passage`` or ``graph``). Choosing
+    graph embeds the glossary's in-service terms with the org's vector model now, so the first
+    question does not wait on it."""
+    from provisa.core.org_settings import write_org_overrides
+    from provisa.reference_library import retrieve, terms
+
+    _guard(request)
+    unknown = sorted(set(body) - {"retrieval"})
+    if unknown:
+        raise ApiError(
+            400, "reference_library.bad_setting", f"{unknown[0]!r} is not a library setting"
+        )
+    retrieval = body.get("retrieval")
+    if retrieval not in retrieve.RETRIEVALS:
+        raise ApiError(
+            400,
+            "reference_library.bad_setting",
+            f"retrieval must be one of {', '.join(retrieve.RETRIEVALS)}",
+        )
+    pool = _pool()
+    if retrieval == retrieve.GRAPH:
+        embedder = await _embedder()
+        async with pool.acquire() as conn:
+            await terms.refresh(conn, await terms.in_service(conn), embedder)
+    await write_org_overrides(
+        pool, {retrieve.SETTING: {"retrieval": retrieval}}, updated_by=_user_id(request) or "admin"
+    )
+    return {"retrieval": retrieval}

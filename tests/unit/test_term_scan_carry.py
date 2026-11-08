@@ -211,21 +211,30 @@ async def test_a_template_missing_a_carried_scan_is_not_held(control_plane, db, 
         ]
 
 
-async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control_plane, db):
-    await _scanned(db)
+#: The sandbox's tables a copy of the template's scans reads or writes: the scan tables, and the
+#: glossary term embeddings whose vector indexes it fits to the rows held (store.index_vectors).
+_SANDBOX_TABLES = (*env_copy._SCAN_TABLES, store.TERM_VECTORS)
+
+
+def _lay_out_sandbox(control_plane) -> None:
+    """A sandbox's schema as schema.sql lays it out, for the tables the copy touches: no vector
+    index until it holds rows (LIKE copied the template's under a name of its own)."""
     with control_plane.engine().begin() as c:
         c.exec_driver_sql('CREATE SCHEMA "org_sandbox"')
-        for table in env_copy._SCAN_TABLES:
+        for table in _SANDBOX_TABLES:
             c.exec_driver_sql(
                 f'CREATE TABLE "org_sandbox"."{table}" (LIKE "{SCHEMA}"."{table}" INCLUDING ALL)'
             )
-        # as schema.sql lays a sandbox out: no vector index until it holds passages (LIKE copied
-        # the template's under a name of its own)
         for (name,) in c.exec_driver_sql(
             "SELECT indexname FROM pg_indexes WHERE schemaname = 'org_sandbox' "
-            "AND tablename = 'reference_passages' AND indexdef LIKE '%%USING hnsw%%'"
+            "AND indexdef LIKE '%%USING hnsw%%'"
         ).fetchall():
             c.exec_driver_sql(f'DROP INDEX "org_sandbox"."{name}"')
+
+
+async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control_plane, db):
+    await _scanned(db)
+    _lay_out_sandbox(control_plane)
     async with db.acquire() as conn:
         copied = await env_copy.copy_term_scans(conn, SCHEMA, "org_sandbox")
         assert copied == list(env_copy._SCAN_TABLES)
@@ -237,7 +246,8 @@ async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control
             ).fetchall()
             for table in env_copy._SCAN_TABLES
         }
-    assert [len(held[t]) for t in env_copy._SCAN_TABLES] == [1, 1, 2, 1, 2]
+    # REQ-2208: the template's document carries no tags here, so none are copied
+    assert [len(held[t]) for t in env_copy._SCAN_TABLES] == [1, 1, 2, 0, 1, 2]
     async with db.acquire() as conn:
         assert await _vector_indexes(conn, "org_sandbox") == {"reference_passages_vector_2"}
     sandbox = Database(
@@ -271,17 +281,7 @@ async def test_an_assistant_in_a_sandbox_finds_the_passages_of_the_regulation_it
     await _forget(db)
     async with db.acquire() as conn, conn.transaction():
         await carry.load_scans(conn, out)
-    with control_plane.engine().begin() as c:
-        c.exec_driver_sql('CREATE SCHEMA "org_sandbox"')
-        for table in env_copy._SCAN_TABLES:
-            c.exec_driver_sql(
-                f'CREATE TABLE "org_sandbox"."{table}" (LIKE "{SCHEMA}"."{table}" INCLUDING ALL)'
-            )
-        for (name,) in c.exec_driver_sql(
-            "SELECT indexname FROM pg_indexes WHERE schemaname = 'org_sandbox' "
-            "AND tablename = 'reference_passages' AND indexdef LIKE '%%USING hnsw%%'"
-        ).fetchall():
-            c.exec_driver_sql(f'DROP INDEX "org_sandbox"."{name}"')
+    _lay_out_sandbox(control_plane)
     async with db.acquire() as conn:
         await env_copy.copy_term_scans(conn, SCHEMA, "org_sandbox")
     sandbox = Database(

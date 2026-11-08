@@ -36,20 +36,25 @@ import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from provisa.kafka.security import PLAINTEXT, KafkaSecurity
+
 _DRAIN_TIMEOUT_MS = 5000
 
 
 @dataclass(frozen=True)
 class KafkaConnection:  # REQ-1730
     bootstrap_servers: str
+    security: KafkaSecurity = PLAINTEXT  # REQ-147
 
     @classmethod
-    def build(cls, host: str, port: int | None) -> "KafkaConnection":
+    def build(
+        cls, host: str, port: int | None, security: KafkaSecurity = PLAINTEXT
+    ) -> "KafkaConnection":
         # The source's ``host`` may list several brokers, comma-separated (same convention as
         # push_wiring.py's CDC listener and TrinoKafkaConnector.details()'s kafka.nodes).
         if not host:
             raise ValueError("a Kafka source names its brokers in host; this one names none")
-        return cls(bootstrap_servers=f"{host}:{port}" if port else host)
+        return cls(bootstrap_servers=f"{host}:{port}" if port else host, security=security)
 
 
 def _decode_row(raw: bytes | str | None) -> dict | None:
@@ -88,6 +93,7 @@ async def iter_row_batches(
         auto_offset_reset="earliest",
         enable_auto_commit=False,
         group_id=None,
+        **conn.security.client_kwargs(),
     )
     await consumer.start()
     try:
@@ -107,7 +113,10 @@ async def iter_row_batches(
             from provisa.kafka import landed_offsets
 
             await landed_offsets.record(
-                conn.bootstrap_servers, landed, await landed_offsets.drained_to(consumer)
+                conn.bootstrap_servers,
+                landed,
+                await landed_offsets.drained_to(consumer),
+                security=conn.security,
             )
     finally:
         await consumer.stop()

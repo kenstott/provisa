@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL (1 sur 9 surfaces)",
-        "description": "Le SQL vit dans l'explorateur SQL. Du SQL standard fédéré sur toutes les sources : joignez Postgres à Mongo et à un CSV en une seule instruction. Les métadonnées du modèle lui-même et toutes les traces d'activité sont aussi des tables interrogeables ici, si bien que vous pouvez joindre votre journal d'audit ou votre traçabilité directement aux données en direct.<p>🔌 Le même SQL gouverné circule via plusieurs protocoles filaires en plus de cet explorateur ; votre outil choisit celui qu'il parle déjà :</p><ul><li><strong>pgwire</strong> : tout client compatible Postgres (psql, DBeaver, Tableau, Power BI) se connecte immédiatement.</li><li><strong>JDBC</strong> : s'intègre dans toute application Java/JVM, tout pipeline ETL ou tout outil BI compatible JDBC.</li><li><strong>Arrow Flight SQL</strong> : diffusion en flux colonnaire pour les clients ADBC, sans réencodage ligne par ligne, conçu pour les gros volumes de résultats.</li><li><strong>DuckDB · airport</strong> : faites un ATTACH de Provisa depuis DuckDB et interrogez la fédération gouvernée sur place.</li></ul>"
+        "description": "Le SQL vit dans l'explorateur SQL. Du SQL standard fédéré sur toutes les sources : joignez Postgres à Mongo et à un CSV en une seule instruction. Les métadonnées du modèle lui-même et toutes les traces d'activité sont aussi des tables interrogeables ici, si bien que vous pouvez joindre votre journal d'audit ou votre traçabilité directement aux données en direct.<p>🔌 Le même modèle gouverné est servi via plusieurs protocoles en plus de cet explorateur ; votre outil choisit celui qu'il parle déjà :</p><ul><li><strong>pgwire</strong> : tout client compatible Postgres (psql, DBeaver, Tableau, Power BI) se connecte immédiatement.</li><li><strong>JDBC</strong> : s'intègre dans toute application Java/JVM, tout pipeline ETL ou tout outil BI compatible JDBC.</li><li><strong>Arrow Flight SQL</strong> : diffusion en flux colonnaire pour les clients ADBC, sans réencodage ligne par ligne, conçu pour les gros volumes de résultats.</li><li><strong>DuckDB · airport</strong> : faites un ATTACH de Provisa depuis DuckDB et interrogez la fédération gouvernée sur place.</li><li><strong>OData</strong> : Excel et Power BI se connectent via leur flux OData intégré et lisent directement les tables gouvernées.</li></ul>"
       },
       "step7": {
         "title": "GraphQL (2 sur 9 surfaces)",
@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "Traces et traçage de débogage",
-        "description": "🔭 Le traçage enregistre un span par requête. L'onglet Traçage de débogage ajoute un span par étape du pipeline et par appel à une source, avec le texte SQL. Il ajoute de la charge : activez-le pour une organisation, un rôle ou une source pendant une durée donnée ; il s'éteint de lui-même."
+        "description": "🔭 Chaque requête est tracée, avec un span chacune. Le flux de traces liste vos dernières traces : vous pouvez les filtrer, mettre la liste en pause ou en ouvrir une pour voir ses spans. Là où votre rôle peut modifier les paramètres, l'onglet Traçage de débogage ajoute un span par étape du pipeline et par appel de source, pour une durée définie."
       },
       "stepCache": {
         "title": "Caches et répliques",
@@ -1704,22 +1704,6 @@
         "title": "De quoi parle cette démo",
         "description": "Une banque pragoise prête à des entreprises et enregistre la société qui détient chacune par son Legal Entity Identifier (LEI). Les règles de l'UE plafonnent ce qu'elle peut prêter à un client, ou à un groupe d'entreprises contrôlé par un même propriétaire, à 25 % de ses fonds propres de base (Tier 1). La question : envers quels groupes la banque dépasse-t-elle ce plafond ? Ses livres nomment le propriétaire de chaque emprunteur, pas qui détient ce propriétaire. La banque, ses emprunteurs et ses prêts sont fictifs ; les groupes qui les détiennent sont réels."
       },
-      "groupexposureJoin": {
-        "title": "Reliés par le LEI",
-        "description": "La table des propriétaires de la banque et les tables de Wikidata partagent le LEI du propriétaire, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
-      },
-      "groupexposureAnswer": {
-        "title": "La réponse en SQL",
-        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur, via le LEI du propriétaire et Wikidata. Les groupes Veolia et Vinci dépassent chacun 25 % des fonds propres de base, et une coentreprise de Veolia et d'EPH compte dans les deux. Ni les livres de la banque ni Wikidata ne le montrent seuls. Les emprunteurs et leurs prêts sont fictifs."
-      },
-      "groupexposureExample": {
-        "title": "La réponse en GraphQL",
-        "description": "La même vue en GraphQL : les groupes auxquels la banque prête le plus, leurs emprunteurs, le montant engagé et si chacun dépasse la limite."
-      },
-      "groupexposureRecap": {
-        "title": "Ce que vous avez vu",
-        "description": "Le portefeuille de prêts d'une banque fictive et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
-      },
       "groupexposureWikidata": {
         "title": "Qui détient les propriétaires, selon Wikidata",
         "description": "Wikidata, le graphe de connaissances public, enregistre le LEI de chaque entreprise et son organisation mère. Cette source le lit via le service de requêtes SPARQL de Wikidata. Ses tables ont été chargées une seule fois, à la construction de la démo, si bien que la démo n'appelle jamais Wikidata pendant que vous l'utilisez."
@@ -1732,6 +1716,10 @@
         "title": "Le groupe de chaque propriétaire",
         "description": "Pour chaque propriétaire que la banque enregistre, l'entreprise au sommet de sa chaîne d'organisations mères sur Wikidata, trouvée avec un seul chemin de propriétés SPARQL. Wikidata sait qu'une holding tchèque appartient à Veolia ou à E.ON, même si les livres de la banque l'ignorent."
       },
+      "groupexposureJoin": {
+        "title": "Reliés par le LEI",
+        "description": "La table des propriétaires de la banque et les tables de Wikidata partagent le LEI du propriétaire, et ces relations les relient. Les données de la banque restent dans sa base, celles de Wikidata dans leur réplique ; la jointure se fait dans la requête."
+      },
       "groupexposureTerms": {
         "title": "En termes simples",
         "description": "Le glossaire explique les termes d'un responsable des risques : grand risque, fonds propres de base, Legal Entity Identifier et organisation mère. Un groupe de clients liés est un ensemble d'entreprises qui forment un seul risque parce que l'une contrôle les autres."
@@ -1740,9 +1728,21 @@
         "title": "Les livres seuls",
         "description": "L'exposition propre de chaque emprunteur, telle que les livres de la banque la voient. La plus grande est inférieure à 10 % des fonds propres de base : aucun emprunteur n'approche la limite de 25 %."
       },
+      "groupexposureAnswer": {
+        "title": "La réponse en SQL",
+        "description": "La vue group_exposure rattache chaque financement au groupe de son emprunteur, via le LEI du propriétaire et Wikidata. Les groupes Veolia et Vinci dépassent chacun 25 % des fonds propres de base, et une coentreprise de Veolia et d'EPH compte dans les deux. Ni les livres de la banque ni Wikidata ne le montrent seuls. Les emprunteurs et leurs prêts sont fictifs."
+      },
+      "groupexposureExample": {
+        "title": "La réponse en GraphQL",
+        "description": "La même vue en GraphQL : les groupes auxquels la banque prête le plus, leurs emprunteurs, le montant engagé et si chacun dépasse la limite."
+      },
       "groupexposureRest": {
         "title": "La même réponse en REST",
         "description": "La vue est aussi un point d'accès REST, ici groupé selon qu'un groupe dépasse la limite et totalisé sur le serveur, prêt pour un rapport de risques ou un tableur."
+      },
+      "groupexposureRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Le portefeuille de prêts d'une banque fictive et des données liées publiques de Wikidata, reliés par LEI dans un modèle gouverné. Les chaînes de propriété de Wikidata transforment de nombreux petits prêts en quelques grandes expositions de groupe, et la réponse est servie en SQL, GraphQL et REST."
       },
       "agentdataScenario": {
         "title": "Confiez vos données à un agent",
@@ -1916,6 +1916,10 @@
       "banksecrecyStructuring": {
         "title": "Qui fractionne ?",
         "description": "Des dépôts juste sous 10 000 $, trois fois ou plus, sur plusieurs agences et jours. Aucun n'exigeait de déclaration à lui seul. Victor Hale est allé dans trois agences en une semaine, et les deux dépôts de Marcus Reed le même jour exigeaient ensemble une déclaration. Seule la conformité voit cette vue."
+      },
+      "banksecrecyPollyWalk": {
+        "title": "Que doit faire la banque ?",
+        "description": "Un client dépose sans cesse des espèces juste sous 10 000 $. Que doit faire la banque ? Chercher ces mots dans les passages de la loi manque la réponse. Polly parcourt plutôt le glossaire : dépôts sous le seuil, vers le fractionnement (structuring), vers la déclaration d'activité suspecte, et atteint 31 CFR 1010.314 et 31 CFR 1020.320, les passages qui le disent."
       },
       "banksecrecyExample": {
         "title": "La même réponse en GraphQL",

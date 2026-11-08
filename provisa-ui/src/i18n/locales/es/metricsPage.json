@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Derivado del agregado cuando se construye a partir de una medida de hecho",
     "fieldDescription": "Descripción",
     "fieldAiContext": "Contexto de IA",
+    "fieldTags": "Etiquetas",
     "fieldAiContextPlaceholder": "Indicaciones para la generación de consultas asistida por IA",
     "saveFailed": "Error al guardar.",
     "editMetric": "Editar métrica {{name}}",

@@ -62,6 +62,9 @@ vector_models:
   provider: huggingface
   dimensions: 384
   enabled: true
+# The library answers by the glossary walk as well as by nearest passage (REQ-2185, GRAPH RETRIEVAL).
+reference_library:
+  retrieval: graph
 sources:
 - id: banksecrecy-db
   type: postgresql
@@ -200,8 +203,8 @@ relationships:
 - {id: cash-to-account, alias: ON_ACCOUNT, cardinality: many-to-one, source_table_id: cash_transactions, source_column: account_id, target_table_id: accounts, target_column: id}
 - {id: cash-to-branch, alias: AT_BRANCH, cardinality: many-to-one, source_table_id: cash_transactions, source_column: branch_id, target_table_id: branches, target_column: id}
 - {id: cash-to-teller, alias: TAKEN_BY, cardinality: many-to-one, source_table_id: cash_transactions, source_column: teller_id, target_table_id: tellers, target_column: id}
-- {id: cash-conducted-by, alias: CONDUCTED_BY, graphql_alias: conductedBy, cardinality: many-to-one, source_table_id: cash_transactions, source_column: conducted_by, target_table_id: customers, target_column: id}
-- {id: cash-on-behalf-of, alias: ON_BEHALF_OF, graphql_alias: onBehalfOf, cardinality: many-to-one, source_table_id: cash_transactions, source_column: on_behalf_of, target_table_id: customers, target_column: id}
+- {id: cash-conducted-by, alias: CONDUCTED_BY, graphql_alias: conductedByCustomer, cardinality: many-to-one, source_table_id: cash_transactions, source_column: conducted_by, target_table_id: customers, target_column: id}
+- {id: cash-on-behalf-of, alias: ON_BEHALF_OF, graphql_alias: onBehalfOfCustomer, cardinality: many-to-one, source_table_id: cash_transactions, source_column: on_behalf_of, target_table_id: customers, target_column: id}
 # The regulation's words, as the scans of 31 CFR 1010.311, 1010.313 and 1010.100 find them,
 # grounded on the bank's tables: each through an edge from the term a table or column derives,
 # or holding the column of its own name (business day, on behalf of, multiple transactions). The
@@ -285,3 +288,11 @@ glossary_terms:
   definition: 'Conducting or attempting to conduct one or more transactions in currency, in any amount, at one or more financial institutions, on one or more days, in any manner, for the purpose of evading the reporting requirements -- including breaking a sum over $10,000 into sums at or below it (31 CFR 1010.100(xx)).'
   domains:
   - banksecrecy
+- name: suspicious activity report
+  approve: true
+  definition: 'The report a bank files of a transaction conducted or attempted by, at or through it, involving or aggregating at least $5,000, that it knows, suspects or has reason to suspect involves funds from illegal activity, is designed to evade the Bank Secrecy Act''s requirements, or has no business or apparent lawful purpose (31 CFR 1020.320(a)(2), (b)(1)).'
+  domains:
+  - banksecrecy
+  edges:
+  - to: structuring
+    rel_type: RELATED_TO

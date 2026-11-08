@@ -409,6 +409,8 @@ async def on_its_region_lane(org_id: str, rt: "OrgRuntime") -> "OrgRuntime":  # 
 
     if await _region_lane_of(org_id, PROD) is None:
         return rt
+    # The build this replaces stamped the schema's layout, so this one runs no DDL beside that
+    # build's detached lifecycle wiring, which still reads it (app._set_up_org_schema).
     return await _app_state.org_registry.rebuild(org_id, lambda oid: build_on_its_lane(oid, None))
 
 

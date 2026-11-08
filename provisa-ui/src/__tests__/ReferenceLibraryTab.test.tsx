@@ -26,10 +26,17 @@ const api = vi.hoisted(() => ({
   reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
+  fetchRetrieval: vi.fn(),
+  saveRetrieval: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
-  useDomains: () => ({ domains: [{ id: "sales" }, { id: "finance" }] }),
+  useDomains: () => ({
+    domains: ["sales", "meta", "ontology", "ops", "finance"].map((id) => ({
+      id,
+      isSystem: id !== "sales" && id !== "finance",
+    })),
+  }),
 }));
 
 import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
@@ -64,6 +71,8 @@ const PROPOSED = {
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
+  api.fetchRetrieval.mockResolvedValue("passage");
+  api.saveRetrieval.mockImplementation(async (r: string) => r);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
     passage_list: [
@@ -81,6 +90,33 @@ describe("scopeChange", () => {
 });
 
 describe("ReferenceLibraryTab", () => {
+  it("shows the library's retrieval setting and saves a change to it", async () => {
+    render(<ReferenceLibraryTab />);
+    const setting = await screen.findByTestId("reflib-retrieval");
+    expect(setting).toHaveTextContent("Retrieval");
+    const passage = within(setting).getByLabelText("Passage") as HTMLInputElement;
+    await waitFor(() => expect(passage.checked).toBe(true));
+    fireEvent.click(within(setting).getByText("Graph"));
+    await waitFor(() => expect(api.saveRetrieval).toHaveBeenCalledWith("graph"));
+    await waitFor(() =>
+      expect((within(setting).getByLabelText("Graph") as HTMLInputElement).checked).toBe(true),
+    );
+  });
+
+  it("puts the setting back and says why when it is refused", async () => {
+    api.saveRetrieval.mockRejectedValue(new Error("the org has no vector model"));
+    render(<ReferenceLibraryTab />);
+    const setting = await screen.findByTestId("reflib-retrieval");
+    await waitFor(() =>
+      expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true),
+    );
+    fireEvent.click(within(setting).getByText("Graph"));
+    expect(await screen.findByTestId("reflib-error")).toHaveTextContent(
+      "the org has no vector model",
+    );
+    expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("lists each document with its source, status and domains", async () => {
     render(<ReferenceLibraryTab />);
     const row = await screen.findByTestId("reflib-row-3");
@@ -129,7 +165,24 @@ describe("ReferenceLibraryTab", () => {
     const pickers = document.querySelectorAll<HTMLInputElement>('input[type="file"]');
     expect(pickers.length).toBeGreaterThan(0);
     pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xml"));
+    pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xlsx"));
     expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
+  });
+
+  it("offers the whole organization and the user's domains, never a system domain", async () => {
+    render(<ReferenceLibraryTab />);
+    fireEvent.click(await screen.findByTestId("reflib-add"));
+    const field = screen.getByTestId("reflib-add-domains");
+    fireEvent.click(field);
+    const listbox = document.getElementById(field.getAttribute("aria-controls") ?? "");
+    if (!listbox) throw new Error("Domains opened no list");
+    const labels = within(listbox)
+      .queryAllByRole("option", { hidden: true })
+      .map((o) => o.textContent ?? "");
+    expect(labels).toContain("sales");
+    expect(labels).toContain("finance");
+    expect(labels.some((l) => /whole/i.test(l))).toBe(true);
+    expect(labels.filter((l) => ["meta", "ontology", "ops"].includes(l))).toEqual([]);
   });
 
   it("adds a document by its URL with its domains", async () => {

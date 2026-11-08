@@ -1638,8 +1638,9 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
 
 async def search_reference_library(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
     """The reference library's passages that best answer ``question`` (REQ-2185), from the kept
-    documents ``role`` may read: those whose domains it reads, and every ``*`` document. Each
-    carries what citing it takes -- the document, its section or page, the quoted text."""
+    documents ``role`` may read: those whose domains it reads, and every ``*`` document, with
+    their neighbours (retrieve.retrieve_with_neighbours). Each carries what citing it takes -- the
+    document, its section or page, the quoted text -- and how it was reached."""
     role = require_role(role, state)
     from provisa.reference_library.retrieve import search_for_role
 
@@ -1704,7 +1705,7 @@ async def _queue_mcp_proposal(
     GraphQL caller falls back to, so a rights-holder must execute or reject it via the admin UI
     (Requests page) regardless of what capability the MCP credential itself carries."""
 
-    from provisa.core.repositories import creation_request as cr_repo
+    from provisa.api.admin.request_queue import raise_request
 
     if not reason or not reason.strip():
         raise ValueError("reason is required — say why this was discovered/proposed")
@@ -1720,7 +1721,9 @@ async def _queue_mcp_proposal(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        request_id = await cr_repo.create(conn, request_type, capability, payload, proposer)
+        request_id = await raise_request(
+            conn, request_type, capability, payload, proposer, state=state
+        )
     return {
         "request_id": request_id,
         "status": "pending",

@@ -107,6 +107,16 @@ model_seed = Table(
     CheckConstraint("id = 1", name="model_seed_id_check"),
 )
 
+# The layout this schema was given (db.layout_digest): written once schema.sql and the audit schema
+# have both run, and read before either runs again.
+schema_layout = Table(
+    "schema_layout",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("digest", Text, nullable=False),
+    CheckConstraint("id = 1", name="schema_layout_id_check"),
+)
+
 sources = Table(
     "sources",
     metadata,
@@ -635,6 +645,10 @@ tag_assignments = Table(
     Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE")),  # REQ-1634
     # REQ-2145: the glossary term a tag is on (pii on a Property term).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE")),
+    # REQ-2208: a row rule, a role or a governed metric the tag is on.
+    Column("rls_rule_id", Integer, ForeignKey("rls_rules.id", ondelete="CASCADE")),
+    Column("role_id", Text, ForeignKey("roles.id", ondelete="CASCADE")),
+    Column("metric_name", Text, ForeignKey("metrics.name", ondelete="CASCADE", onupdate="CASCADE")),
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
@@ -652,7 +666,7 @@ tag_assignments = Table(
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
         "object_type IN ('source', 'table', 'column', 'relationship', 'command', 'product', "
-        "'term')",
+        "'term', 'rls_rule', 'role', 'metric')",
         name="tag_assignments_object_type_check",
     ),
 )
@@ -1081,9 +1095,25 @@ creation_requests = Table(
     Column("resolved_at", DateTime(timezone=True)),
     Column("approvals", JSON, nullable=False, default=list, server_default="[]"),
     Column("required_approvals", Integer, nullable=False, server_default="1"),
+    # REQ-2217, REQ-2216, REQ-2215: see the matching block in schema.sql.
+    Column("environment", Text, nullable=False, server_default="prod"),
+    Column("addressed_roles", JSON, nullable=False, default=list, server_default="[]"),
+    Column("addressed_members", JSON, nullable=False, default=list, server_default="[]"),
+    Column("unresolved_roles", JSON, nullable=False, default=list, server_default="[]"),
     CheckConstraint(
         "status IN ('pending', 'executed', 'rejected')", name="creation_requests_status_check"
     ),
+)
+
+# REQ-2216: approve and decide calls already answered, by Idempotency-Key. See schema.sql.
+idempotent_calls = Table(
+    "idempotent_calls",
+    metadata,
+    Column("scope", Text, primary_key=True),
+    Column("actor", Text, primary_key=True),
+    Column("call_key", Text, primary_key=True),
+    Column("response", JSON, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 live_query_state = Table(
@@ -2132,6 +2162,62 @@ reference_passages = Table(
     Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
+)
+
+# REQ-2208: the registry's tags on library documents and their sections, kept with the library --
+# the environment's own, as the documents are -- rather than in tag_assignments, which travels with
+# the model: a tag follows its object's environment class. The columns are a tag assignment's; a
+# section is named by its heading, or by its page when it has none (a PDF's pages).
+reference_document_tags = Table(
+    "reference_document_tags",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("tag_id", Text, nullable=False),
+    Column("base_tag_id", Text, nullable=False),  # REQ-1467: the parameter stripped
+    Column("object_type", Text, nullable=False),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
+    Column("object_key", Text, nullable=False),
+    Column("reason", Text),
+    Column("expires_on", Text),
+    Column("purpose", Text),  # REQ-2094: the rest of the assignment's why, as tag_assignments'
+    Column("bases", JSON(none_as_null=True)),
+    Column("review_on", Text),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("evidence", JSON(none_as_null=True)),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("base_tag_id", "object_key"),
+    CheckConstraint(
+        "object_type IN ('document', 'section')",
+        name="reference_document_tags_object_type_check",
+    ),
+)
+
+# REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,
+# embedded by the org's vector model -- that governed retrieval finds the terms nearest a question
+# by. ``digest`` is of the model and the text embedded, so a term whose name or definition changed,
+# or a change of model, is embedded again (provisa.reference_library.terms). ``vector`` is held as
+# a passage's is, under one partial HNSW index per dimension in use.
+glossary_term_vectors = Table(
+    "glossary_term_vectors",
+    metadata,
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("embedding_model", Text, nullable=False),
+    Column("digest", Text, nullable=False),
+    Column("vector", Vector(), nullable=False),
+    Column("tenant_id", Uuid),
 )
 
 # REQ-2179: the glossary's scans of reference library documents for terms. A scan keeps the

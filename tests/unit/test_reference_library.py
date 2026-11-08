@@ -196,6 +196,40 @@ def test_a_pdf_or_word_file_that_is_not_one_is_refused_by_name(media, name, says
         extract.read(b"not a document", media, name)
 
 
+def _workbook() -> bytes:
+    import io
+
+    import openpyxl
+
+    book = openpyxl.Workbook()
+    limits = book.active
+    assert limits is not None
+    limits.title = "Limits"
+    limits.append(["Region", "Limit"])
+    limits.append(["EU", 500])
+    limits.append(["US", 250])
+    plain = book.create_sheet("Notes")
+    plain.append(["Review annually", 2026])
+    plain.append([None, "Owner: Risk"])
+    data = io.BytesIO()
+    book.save(data)
+    return data.getvalue()
+
+
+def test_an_excel_workbook_is_read_a_sheet_to_a_section_and_a_row_to_a_paragraph():
+    assert extract.media_type_of_name("limits.xlsx") == extract.EXCEL
+    document = extract.read(_workbook(), extract.EXCEL, "limits.xlsx")
+    assert [(s.heading, s.paragraphs) for s in document.sections] == [
+        ("Limits", ["Region: EU · Limit: 500", "Region: US · Limit: 250"]),
+        ("Notes", ["A: Review annually · B: 2026", "B: Owner: Risk"]),
+    ]
+
+
+def test_an_excel_file_that_is_not_one_is_refused_by_name():
+    with pytest.raises(extract.UnreadableDocument, match="'x.xlsx' is not an Excel workbook"):
+        extract.read(b"not a workbook", extract.EXCEL, "x.xlsx")
+
+
 ECFR = Path(__file__).resolve().parents[1] / "fixtures" / "ecfr"
 
 
@@ -558,6 +592,24 @@ async def test_the_admin_api_adds_lists_rescopes_and_removes_a_document(api):
     assert gone.value.status_code == 404 and gone.value.code == "reference_library.not_found"
 
 
+@pytest.mark.parametrize(
+    ("held", "admitted"),
+    [({"glossary_rw"}, True), ({"org_settings"}, False), (set(), False)],
+)
+def test_the_admin_api_is_the_glossary_curators(monkeypatch, held, admitted):
+    """The library is curated with the glossary, so its page asks glossary_rw and nothing in its
+    place: org_settings alone is refused."""
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda _identity, _state: held)
+    if admitted:
+        assert router._guard(_request()) == "default"
+        return
+    with pytest.raises(ApiError) as refused:
+        router._guard(_request())
+    assert refused.value.status_code == 403 and "glossary_rw" in str(refused.value.detail)
+
+
 async def test_the_admin_api_refuses_by_name(api):
     async def refused(body: dict) -> ApiError:
         with pytest.raises(ApiError) as caught:
@@ -615,7 +667,240 @@ async def test_the_mcp_tool_searches_for_the_callers_role(db, monkeypatch):
         "page",
         "quote",
         "score",
+        "ordinal",
+        "reached",
+        # REQ-2185 (GRAPH RETRIEVAL): a glossary candidate's term and definition; None otherwise
+        "term",
+        "term_definition",
     }
+
+
+# -- neighbours (REQ-2185, THE LIBRARY'S STORE AND RETRIEVAL) -----------------------------------
+
+ACCOUNTS = b"""# Accounts
+
+A client holds an account.
+
+## Records
+
+Account records are kept for a client.
+
+## Payments
+
+A payment carries a currency.
+
+## Settlement
+
+A payment settles in its currency.
+
+## Contracts
+
+A contract binds the client.
+"""
+
+SETTLEMENT = b"""# Settlement terms
+
+A payment settles in its currency.
+
+## Fees
+
+A contract fee is charged.
+"""
+
+
+async def test_a_passage_s_adjacent_passages_are_read_from_its_document(db):
+    async with db.acquire() as conn:
+        accounts = await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        other = await _add(conn, "spec.md", SPEC, ["*"])
+        ids = [accounts, other]
+        assert [o for o, *_ in await store.passages(conn, accounts)] == [0, 1, 2, 3, 4]
+
+        async def beside(ordinal: int, n: int = 1) -> list[tuple[int, int]]:
+            found = await store.adjacent_passages(conn, accounts, ordinal, ids, n)
+            return [(p.document_id, p.ordinal) for p in found]
+
+        assert await beside(2) == [(accounts, 1), (accounts, 3)]
+        assert await beside(0) == [(accounts, 1)]
+        assert await beside(4) == [(accounts, 3)]
+        assert await beside(2, 2) == [(accounts, o) for o in (0, 1, 3, 4)]
+        (after,) = [
+            p for p in await store.adjacent_passages(conn, accounts, 2, ids) if p.ordinal == 3
+        ]
+        assert (after.section, after.text) == ("Settlement", "A payment settles in its currency.")
+        with pytest.raises(ValueError, match="not among the documents being searched"):
+            await store.adjacent_passages(conn, accounts, 2, [other])
+        with pytest.raises(ValueError, match="n must be a positive integer"):
+            await store.adjacent_passages(conn, accounts, 2, ids, 0)
+
+        from sqlalchemy.dialects import postgresql
+
+        query = store.adjacent_query(accounts, 2, 1).compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {query}"))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert "reference_passages_document_id_ordinal" in plan
+
+
+async def test_the_passages_nearest_a_passage_are_those_the_cosine_says_but_itself(db):
+    async with db.acquire() as conn:
+        ids = [
+            await _add(conn, "accounts.md", ACCOUNTS, ["*"]),
+            await _add(conn, "policy.html", POLICY, ["*"]),
+        ]
+        held = [
+            (document_id, ordinal, text_)
+            for document_id in ids
+            for ordinal, _, _, text_ in await store.passages(conn, document_id)
+        ]
+        for seed_document, seed_ordinal, seed_text in held[:3]:
+            seed = _float4(_vector(seed_text))
+            expected = sorted(
+                (-_old_cosine(seed, _float4(_vector(t))), d, o, t)
+                for d, o, t in held
+                if (d, o) != (seed_document, seed_ordinal)
+            )[:3]
+            hits = await store.near_passage(conn, seed_document, seed_ordinal, ids, 3)
+            assert [(h.document_id, h.ordinal, h.text) for h in hits] == [
+                (d, o, t) for _, d, o, t in expected
+            ]
+            for hit, (negative, *_rest) in zip(hits, expected, strict=True):
+                assert hit.score == pytest.approx(-negative, rel=FLOAT4)
+
+        # only the documents searched are reached, and the seed's must be one of them
+        only = await store.near_passage(conn, ids[0], 2, [ids[0]], 10)
+        assert {h.document_id for h in only} == {ids[0]}
+        assert [h.ordinal for h in only if h.ordinal == 2] == []
+        with pytest.raises(ValueError, match="not among the documents being searched"):
+            await store.near_passage(conn, ids[0], 2, [ids[1]], 3)
+        with pytest.raises(ValueError, match="has no passage 99"):
+            await store.near_passage(conn, ids[0], 99, ids, 3)
+
+        sql, params = store.near_passage_sql(ids[0], 2, len(VOCABULARY), ids, 3)
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {sql}").bindparams(**params))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert f"reference_passages_vector_{len(VOCABULARY)}" in plan
+
+
+def _keys(found: list[retrieve.Citation]) -> list[tuple[int, int]]:
+    return [(c.document_id, c.ordinal) for c in found]
+
+
+async def test_neighbours_fill_the_budget_after_the_question_s_passages_in_order(db):
+    async with db.acquire() as conn:
+        accounts = await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        question = "When does a payment settle?"
+        (hit,) = await retrieve.retrieve(conn, question, None, EMBEDDER, k=1)
+        assert (hit.ordinal, hit.reached) == (3, retrieve.NEAREST_QUESTION)
+        near = await store.near_passage(conn, accounts, 3, [accounts], retrieve.NEAR_PER_PASSAGE)
+        # the passage nearest the settlement passage is the one before it, already given
+        assert near[0].ordinal == 2
+
+        found = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=1, budget=5
+        )
+        named = "passage 3 in 'Accounts'"
+        assert [(c.ordinal, c.reached) for c in found] == [
+            (3, retrieve.NEAREST_QUESTION),
+            (4, f"after {named}"),
+            (2, f"before {named}"),
+            *[(h.ordinal, f"near {named}") for h in near[1:]],
+        ]
+        assert found[0] == hit
+        assert all(c.score is None for c in found[1:])
+        # four, under the budget of five: the passage before was also the nearest, given once
+        assert len(found) == 4 and len(set(_keys(found))) == len(found)
+        assert found[1].quote == "A contract binds the client." and found[1].section == "Contracts"
+
+        # the budget cuts the neighbours, in their order
+        cut_short = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=1, budget=2
+        )
+        assert _keys(cut_short) == _keys(found)[:2]
+
+
+async def test_neighbours_never_displace_the_question_s_passages_nor_repeat_them(db):
+    async with db.acquire() as conn:
+        await _add(conn, "accounts.md", ACCOUNTS, ["*"])
+        question = "payment currency"
+        hits = await retrieve.retrieve(conn, question, None, EMBEDDER, k=2)
+        # the two nearest the question sit side by side: each is the other's neighbour
+        assert sorted(c.ordinal for c in hits) == [2, 3]
+
+        full = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=2, budget=2
+        )
+        assert full == hits
+        found = await retrieve.retrieve_with_neighbours(conn, question, None, EMBEDDER, k=2)
+        assert found[:2] == hits
+        assert len(found) == 4
+        assert len(set(_keys(found))) == len(found)
+        assert {c.ordinal for c in found[2:]} == {1, 4}
+        assert all(c.reached != retrieve.NEAREST_QUESTION for c in found[2:])
+        with pytest.raises(ValueError, match="cannot hold the 2 nearest the question"):
+            await retrieve.retrieve_with_neighbours(conn, question, None, EMBEDDER, k=2, budget=1)
+
+
+async def test_a_role_never_gets_a_neighbour_from_a_document_it_cannot_read(db):
+    async with db.acquire() as conn:
+        accounts = await _add(conn, "accounts.md", ACCOUNTS, ["sales"])
+        settlement = await _add(conn, "settlement.md", SETTLEMENT, ["finance"])
+        question = "When does a payment settle?"
+
+        everyone = await retrieve.retrieve_with_neighbours(
+            conn, question, None, EMBEDDER, k=1, budget=20
+        )
+        # with both documents readable, the other document's passages are reached
+        assert settlement in {c.document_id for c in everyone}
+
+        sales = await retrieve.retrieve_with_neighbours(
+            conn, question, frozenset({"sales"}), EMBEDDER, k=2, budget=20
+        )
+        assert sales and {c.document_id for c in sales} == {accounts}
+        finance = await retrieve.retrieve_with_neighbours(
+            conn, question, frozenset({"finance"}), EMBEDDER, k=1, budget=20
+        )
+        assert finance and {c.document_id for c in finance} == {settlement}
+
+
+async def _labelled_state(db, monkeypatch) -> Any:
+    from provisa.api.mcp import tools
+
+    async def embedder(state):
+        return EMBEDDER
+
+    monkeypatch.setattr(retrieve, "org_embedder", embedder)
+    monkeypatch.setattr(tools, "require_role", lambda role, state: role)
+    return types.SimpleNamespace(
+        model_db=db,
+        roles={"analyst": {"id": "analyst", "domain_access": ["sales"], "capabilities": []}},
+    )
+
+
+async def test_the_labels_reach_the_assistant_in_the_tool_result(db, monkeypatch):
+    from provisa.api.mcp import chat, tools
+
+    async with db.acquire() as conn:
+        await _add(conn, "accounts.md", ACCOUNTS, ["sales"])
+        await _add(conn, "settlement.md", SETTLEMENT, ["finance"])
+    state = await _labelled_state(db, monkeypatch)
+    question = "When does a payment settle?"
+
+    over_mcp = await tools.search_reference_library(state, "analyst", question, k=1)
+    in_chat = await chat._execute_tool(
+        state, "analyst", "search_reference_library", {"question": question, "k": 1}
+    )
+    assert in_chat == over_mcp
+    # k=1: the passage nearest the question and one neighbour, within the default budget of 2
+    assert [(f["ordinal"], f["reached"]) for f in in_chat] == [
+        (3, "nearest the question"),
+        (4, "after passage 3 in 'Accounts'"),
+    ]
+    assert {f["document_title"] for f in in_chat} == {"Accounts"}
 
 
 # -- re-embedding (REQ-2185, RE-EMBED) ----------------------------------------------------------

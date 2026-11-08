@@ -1,0 +1,13 @@
+{
+  "kafkaFields": {
+    "securityProtocol": "Протокол безопасности",
+    "securityProtocolHint": "Confluent Cloud и MSK используют SASL_SSL. Кластер без защиты использует PLAINTEXT.",
+    "saslMechanism": "Механизм SASL",
+    "username": "Имя пользователя",
+    "usernameHint": "Ключ API в Confluent Cloud.",
+    "password": "Пароль",
+    "passwordHint": "Секрет API в Confluent Cloud. Ссылка на секрет, например ${secret:NAME}, разрешается при открытии кластера.",
+    "caCertificate": "Сертификат ЦС (PEM)",
+    "caCertificateHint": "Оставьте пустым для брокера, сертификат которого выдан публичным ЦС, как в Confluent Cloud и MSK. Вставьте сертификат частного ЦС, чтобы доверять только этому ЦС."
+  }
+}

@@ -135,7 +135,15 @@ async def list_constraints(request: Request, table_id: int) -> dict:
 
 @router.post("/tables/{table_id}/profile-constraints")
 async def decide_constraint(request: Request, table_id: int, body: DecisionInput) -> dict:
+    """Decide a profiled constraint. With an ``Idempotency-Key``, a repeat is answered with the
+    first result (REQ-2216)."""
+    from provisa.api.idempotency import once
+
     require_capability_request(request, "dq_rw")
+    return await once(_db(), request, lambda: _decide_constraint(request, table_id, body))
+
+
+async def _decide_constraint(request: Request, table_id: int, body: DecisionInput) -> dict:
     from provisa.profiler import constraints
 
     try:

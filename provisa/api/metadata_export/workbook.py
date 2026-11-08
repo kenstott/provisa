@@ -103,7 +103,17 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "tags",
     ),
     VIEWS: ("id", "name", "domain", "source", "tags", "definition", "description"),
-    METRICS: ("id", "metric", "expression", "datatype", "description", "ai context", "from fact"),
+    # REQ-2208: a metric carries registry tags like any other governed object.
+    METRICS: (
+        "id",
+        "metric",
+        "expression",
+        "datatype",
+        "tags",
+        "description",
+        "ai context",
+        "from fact",
+    ),
     MATERIALIZED_VIEWS: (
         "id",
         "name",
@@ -385,6 +395,10 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
     """
     from provisa.compiler.metric_expand import metric_reference_tables
 
+    tagged: dict[str, list[str]] = {}
+    for assignment in config.tag_assignments:  # REQ-2208
+        if assignment.object_type == "metric" and assignment.metric_name is not None:
+            tagged.setdefault(assignment.metric_name, []).append(assignment.tag_id)
     rows: list[list[Any]] = []
     for metric in config.metrics:
         referenced = set(metric_reference_tables(metric.name, metric.expression))
@@ -396,6 +410,7 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
                 metric.name,
                 metric.expression,
                 metric.datatype or "",
+                ", ".join(tagged.get(metric.name, [])),
                 metric.description or "",
                 metric.ai_context or "",
                 metric.from_fact or "",

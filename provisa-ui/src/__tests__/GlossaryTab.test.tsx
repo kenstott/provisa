@@ -18,8 +18,11 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   // Spread the real module so the enum constants stay real; replace the fetchers.
   ...(await importOriginal<typeof import("../api/glossary")>()),
@@ -544,6 +547,9 @@ describe("GlossaryTab", () => {
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
+      // REQ-2145, REQ-2208: the term's tag chip. Margin carries no tag, so the chip holds only
+      // its picker, named by an aria-label and not by text.
+      ["Tags", ""],
       // Deprecated by its last column leaving: no one gave a reason or a date.
       ["Status", "Deprecated"],
       // REQ-1387: computed, beside the status a person set.
@@ -553,6 +559,8 @@ describe("GlossaryTab", () => {
       ["Planned retirement", "—"],
       [t("glossaryTab.excludeFromExportLabel"), "No"],
     ]);
+    const tags = within(read).getByText("Tags").nextElementSibling as HTMLElement;
+    expect(within(tags).getByTestId("tag-control-term-3")).toBeInTheDocument();
     // Nothing is edited in place: no input until Edit.
     expect(screen.queryByTestId("glossary-name-input")).toBeNull();
     // An unscoped term is the enterprise's, as the create form names it.

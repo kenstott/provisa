@@ -25,7 +25,7 @@ import logging
 
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import source_to_catalog
+from provisa.compiler.naming import apply_convention, source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
@@ -223,6 +223,7 @@ def _process_kafka_sources(
         if not ks.get("bootstrap_servers"):
             raise ValueError(f"Kafka source {source_id!r} names no bootstrap_servers")
         state.kafka_bootstrap[source_id] = resolve_secrets(ks["bootstrap_servers"])
+        state.kafka_declared[source_id] = ks
         # REQ-250/147: register the Kafka source as an engine catalog (the engine writes catalog files
         # + CREATE CATALOG so it loads regardless of start order; native engines no-op).
         if register_catalogs:
@@ -1013,10 +1014,9 @@ async def _init_ingest_engines() -> None:
 
 def _graphql_remote_field_name(table_name: str) -> str:
     """The remote-schema field name a landed table's physical name derives to (REQ-1685):
-    ``<domain>__<snake_words>`` collapses to camelCase on the words past the domain prefix."""
-    snake_field = table_name.split("__", 1)[-1]
-    parts = snake_field.split("_")
-    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+    ``<domain>__<snake_words>`` is the remote field the landed table was named for by
+    apply_sql_name, so it is the words past the domain prefix in the camel-case convention."""
+    return apply_convention(table_name.split("__", 1)[-1], "apollo_graphql")
 
 
 def _build_graphql_remote_table(tr: dict, col_rows: list[dict], source_id: str) -> dict:

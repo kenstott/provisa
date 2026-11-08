@@ -20,6 +20,10 @@ found by one query ordered by cosine distance over that index (:func:`nearest_pa
 no unindexed search. pgvector indexes a ``vector`` to 2000 dimensions; from 2001 to 4000 the index is
 over ``vector::halfvec(n)`` (half precision) while the column stays full precision, and above 4000
 the library refuses the embeddings by name.
+
+A passage's neighbours, for governed retrieval: the passages just before and after it in its
+document, read through the (document_id, ordinal) key (:func:`adjacent_passages`), and the passages
+nearest it by embedding, the same indexed search seeded with its own vector (:func:`near_passage`).
 """
 
 # Requirements: REQ-2185
@@ -32,7 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, func, insert, select, text, update
+from sqlalchemy import Select, delete, func, insert, select, text, update
 
 from provisa.core import pgvector
 
@@ -240,7 +244,7 @@ async def _write_passages(
     conn: Connection, document_id: int, passages: Sequence[StoredPassage]
 ) -> None:
     if passages:
-        dimensions = _dimensions([p.vector for p in passages])
+        dimensions = dimensions_of([p.vector for p in passages])
         await conn.execute_core_many(
             insert(passages_t),
             [
@@ -255,7 +259,7 @@ async def _write_passages(
                 for p in passages
             ],
         )
-        await _index(conn, dimensions, None)
+        await index(conn, dimensions, None, PASSAGES)
 
 
 async def replace_content(
@@ -289,7 +293,7 @@ async def replace_content(
     )
     await conn.execute_core(delete(passages_t).where(passages_t.c.document_id == document_id))
     await _write_passages(conn, document_id, passages)
-    await _drop_unused_indexes(conn, None)
+    await drop_unused_indexes(conn, None, PASSAGES)
 
 
 async def replace_vectors(
@@ -304,7 +308,7 @@ async def replace_vectors(
     held = [o for o, _, _, _ in await passages(conn, document_id)]
     if len(vectors) != len(held):
         raise ValueError(f"{len(vectors)} embeddings for {len(held)} passages")
-    dimensions = _dimensions(vectors) if vectors else None
+    dimensions = dimensions_of(vectors) if vectors else None
     for ordinal, vector in zip(held, vectors, strict=True):
         await conn.execute_core(
             update(passages_t)
@@ -317,8 +321,8 @@ async def replace_vectors(
         .values(embedding_model=embedding_model)
     )
     if dimensions is not None:
-        await _index(conn, dimensions, None)
-    await _drop_unused_indexes(conn, None)
+        await index(conn, dimensions, None, PASSAGES)
+    await drop_unused_indexes(conn, None, PASSAGES)
 
 
 async def remove(conn: Connection, document_id: int) -> bool:
@@ -328,23 +332,28 @@ async def remove(conn: Connection, document_id: int) -> bool:
     )
     if result.fetchone() is None:
         return False
-    await _drop_unused_indexes(conn, None)
+    await drop_unused_indexes(conn, None, PASSAGES)
     return True
 
 
 # -- the vector index ---------------------------------------------------------------------------
 
-_INDEX_PREFIX = "reference_passages_vector_"
+#: The tables whose ``vector`` column is held under one partial index per dimension: the passages,
+#: and the glossary terms' embeddings governed retrieval seeds its walk with (terms.py).
+PASSAGES = "reference_passages"
+TERM_VECTORS = "glossary_term_vectors"
 _V = pgvector.SCHEMA
 
 
-def _dimensions(vectors: Sequence[Sequence[float]]) -> int:
+def _prefix(table: str) -> str:
+    return f"{table}_vector_"
+
+
+def dimensions_of(vectors: Sequence[Sequence[float]]) -> int:
     """The one dimension of ``vectors``, refused when they differ or pgvector cannot index it."""
     found = {len(v) for v in vectors}
     if len(found) != 1:
-        raise ValueError(
-            f"one document's embeddings have {sorted(found)} dimensions; one is needed"
-        )
+        raise ValueError(f"embeddings of {sorted(found)} dimensions given together; one is needed")
     (dimensions,) = found
     _indexable(dimensions)
     return dimensions
@@ -359,7 +368,7 @@ def _half(dimensions: int) -> bool:
     return dimensions > pgvector.MAX_INDEXED_DIMENSIONS
 
 
-def _type(dimensions: int) -> str:
+def vector_type(dimensions: int) -> str:
     """The type the index of ``dimensions`` is over, and a search casts to."""
     return f"{_V}.{'halfvec' if _half(dimensions) else 'vector'}({int(dimensions)})"
 
@@ -376,78 +385,97 @@ def _indexable(dimensions: int) -> None:
         )
 
 
-def _table(schema: str | None) -> str:
-    return f'"{schema}".reference_passages' if schema else "reference_passages"
+def _table(schema: str | None, table: str) -> str:
+    return f'"{schema}".{table}' if schema else table
 
 
 def _in_schema(schema: str | None) -> str:
     return "schemaname = :schema" if schema else "schemaname = current_schema()"
 
 
-async def _indexed(conn: Connection, schema: str | None) -> set[int]:
-    """The dimensions ``schema`` (None: the connection's) has a vector index for."""
+async def _indexed(conn: Connection, schema: str | None, table: str) -> set[int]:
+    """The dimensions ``schema`` (None: the connection's) has a vector index of ``table`` for."""
     rows = await conn.execute_core(
         text(
             f"SELECT indexname FROM pg_indexes WHERE {_in_schema(schema)} "
-            f"AND tablename = 'reference_passages' AND indexname LIKE '{_INDEX_PREFIX}%'"
+            f"AND tablename = '{table}' AND indexname LIKE '{_prefix(table)}%'"
         ).bindparams(**({"schema": schema} if schema else {}))
     )
-    return {int(r[0].removeprefix(_INDEX_PREFIX)) for r in rows.fetchall()}
+    return {int(r[0].removeprefix(_prefix(table))) for r in rows.fetchall()}
 
 
-async def _held_dimensions(conn: Connection, schema: str | None) -> set[int]:
+async def _held_dimensions(conn: Connection, schema: str | None, table: str) -> set[int]:
     rows = await conn.execute_core(
-        text(f"SELECT DISTINCT {_V}.vector_dims(vector) FROM {_table(schema)}")
+        text(f"SELECT DISTINCT {_V}.vector_dims(vector) FROM {_table(schema, table)}")
     )
     return {int(r[0]) for r in rows.fetchall()}
 
 
-async def _index(conn: Connection, dimensions: int, schema: str | None) -> None:
-    """The partial HNSW index of ``dimensions``, created if it is not there. Under a lock on the
-    schema's library, so two first writes of a dimension do not both create it."""
-    if dimensions in await _indexed(conn, schema):
+async def index(conn: Connection, dimensions: int, schema: str | None, table: str) -> None:
+    """``table``'s partial HNSW index of ``dimensions``, created if it is not there. Under a lock
+    on the schema's ``table``, so two first writes of a dimension do not both create it."""
+    if dimensions in await _indexed(conn, schema, table):
         return
     async with conn.transaction():
         await conn.execute_core(
-            text("SELECT pg_advisory_xact_lock(:key)").bindparams(key=await _lock_key(conn, schema))
+            text("SELECT pg_advisory_xact_lock(:key)").bindparams(
+                key=await _lock_key(conn, schema, table)
+            )
         )
         await conn.execute_core(
             text(
-                f"CREATE INDEX IF NOT EXISTS {_INDEX_PREFIX}{int(dimensions)} ON {_table(schema)} "
-                f"USING hnsw ((vector::{_type(dimensions)}) {_ops(dimensions)}) "
+                f"CREATE INDEX IF NOT EXISTS {_prefix(table)}{int(dimensions)} "
+                f"ON {_table(schema, table)} "
+                f"USING hnsw ((vector::{vector_type(dimensions)}) {_ops(dimensions)}) "
                 f"WHERE {_V}.vector_dims(vector) = {int(dimensions)}"
             )
         )
 
 
-async def _drop_unused_indexes(conn: Connection, schema: str | None) -> None:
-    """Drop the index of each dimension no passage has any more."""
-    indexed = await _indexed(conn, schema)
+async def drop_unused_indexes(conn: Connection, schema: str | None, table: str) -> None:
+    """Drop ``table``'s index of each dimension no row of it has any more."""
+    indexed = await _indexed(conn, schema, table)
     if not indexed:
         return
-    unused = indexed - await _held_dimensions(conn, schema)
+    unused = indexed - await _held_dimensions(conn, schema, table)
     prefix = f'"{schema}".' if schema else ""
     for dimensions in sorted(unused):
-        await conn.execute_core(text(f"DROP INDEX IF EXISTS {prefix}{_INDEX_PREFIX}{dimensions}"))
+        await conn.execute_core(text(f"DROP INDEX IF EXISTS {prefix}{_prefix(table)}{dimensions}"))
 
 
-async def _lock_key(conn: Connection, schema: str | None) -> int:
+async def _lock_key(conn: Connection, schema: str | None, table: str) -> int:
     if schema is None:
         schema = (await conn.execute_core(text("SELECT current_schema()"))).scalar()
-    return zlib.crc32(f"{schema}.reference_passages.vector".encode())
+    return zlib.crc32(f"{schema}.{table}.vector".encode())
 
 
 async def index_vectors(conn: Connection, schema: str | None = None) -> None:
-    """``schema``'s (None: the connection's) vector indexes made to fit the passages it holds, for
-    passages written other than through this module: a demo's carried library
-    (provisa.term_finding.carry) and a sandbox's copy of its template's (env_copy)."""
-    for dimensions in sorted(await _held_dimensions(conn, schema)):
-        _indexable(dimensions)
-        await _index(conn, dimensions, schema)
-    await _drop_unused_indexes(conn, schema)
+    """``schema``'s (None: the connection's) vector indexes made to fit the passages and term
+    embeddings it holds, for rows written other than through the library: a demo's carried
+    library (provisa.term_finding.carry) and a sandbox's copy of its template's (env_copy)."""
+    for table in (PASSAGES, TERM_VECTORS):
+        for dimensions in sorted(await _held_dimensions(conn, schema, table)):
+            _indexable(dimensions)
+            await index(conn, dimensions, schema, table)
+        await drop_unused_indexes(conn, schema, table)
 
 
 # -- governed retrieval's nearest passages ------------------------------------------------------
+
+
+def _nearest_sql(n: int, operand: str, where: str = "") -> str:
+    """The indexed cosine search over ``n``-dimension passages of ``:ids`` for the ``:k`` nearest
+    ``operand`` (an expression of the index's type), each also meeting ``where``."""
+    kind = vector_type(n)
+    return (
+        "SELECT document_id, ordinal, section, page, text, 1 - distance AS score FROM ("
+        "SELECT document_id, ordinal, section, page, text, "
+        f"(vector::{kind}) OPERATOR({_V}.<=>) {operand} "
+        "AS distance FROM reference_passages "
+        f"WHERE {_V}.vector_dims(vector) = {int(n)} AND document_id = ANY(:ids){where} "
+        "ORDER BY distance LIMIT :k"
+        ") nearest ORDER BY distance, document_id, ordinal"
+    )
 
 
 def nearest_sql(
@@ -459,27 +487,34 @@ def nearest_sql(
     over ``halfvec``, so the column and the question are cast to it and the order, and the score,
     come from the half-precision distance (the order is that of the half-precision index)."""
     n = int(len(query))
-    kind = _type(n)
-    sql = (
-        "SELECT document_id, ordinal, section, page, text, 1 - distance AS score FROM ("
-        "SELECT document_id, ordinal, section, page, text, "
-        f"(vector::{kind}) OPERATOR({_V}.<=>) CAST(:query AS {kind}) "
-        "AS distance FROM reference_passages "
-        f"WHERE {_V}.vector_dims(vector) = {n} AND document_id = ANY(:ids) "
-        "ORDER BY distance LIMIT :k"
-        ") nearest ORDER BY distance, document_id, ordinal"
-    )
+    sql = _nearest_sql(n, f"CAST(:query AS {vector_type(n)})")
     return sql, {"query": pgvector.literal(query), "ids": sorted(document_ids), "k": k}
 
 
-async def nearest_passages(
-    conn: Connection, query: Sequence[float], document_ids: Collection[int], k: int
-) -> list[PassageHit]:
-    """The ``k`` passages of ``document_ids`` nearest ``query`` by cosine distance, nearest first,
-    found through the index of the question's dimension. A document of another dimension is
-    refused by name rather than left out."""
-    if not document_ids:
-        return []
+def near_passage_sql(
+    document_id: int, ordinal: int, dimensions: int, document_ids: Collection[int], k: int
+) -> tuple[str, dict[str, Any]]:
+    """:func:`nearest_sql` seeded with a passage's own embedding (read by its key in the same
+    statement) rather than a question's, the passage itself left out."""
+    seed = "document_id = :seed_document AND ordinal = :seed_ordinal"
+    sql = _nearest_sql(
+        dimensions,
+        f"(SELECT vector::{vector_type(dimensions)} FROM reference_passages WHERE {seed})",
+        f" AND NOT ({seed})",
+    )
+    return sql, {
+        "seed_document": document_id,
+        "seed_ordinal": ordinal,
+        "ids": sorted(document_ids),
+        "k": k,
+    }
+
+
+async def _refuse_other_dimensions(
+    conn: Connection, document_ids: Collection[int], n: int, whose: str
+) -> None:
+    """A document of ``document_ids`` whose passages are not of ``n`` dimensions is refused by
+    name rather than left out of a search."""
     # A document's passages are written together, by one model: its first passage's dimension
     # is the document's, read through the (document_id, ordinal) key, one row per document.
     other = (
@@ -490,21 +525,111 @@ async def nearest_passages(
                 "SELECT vector FROM reference_passages WHERE document_id = d.id "
                 "ORDER BY ordinal LIMIT 1) AS p "
                 f"WHERE {_V}.vector_dims(p.vector) <> :n ORDER BY d.id LIMIT 1"
-            ).bindparams(ids=sorted(document_ids), n=len(query))
+            ).bindparams(ids=sorted(document_ids), n=n)
         )
     ).fetchone()
     if other is not None:
         raise ValueError(
-            f"library document {other[0]}'s passages have {other[1]} dimensions; "
-            f"the question's have {len(query)}"
+            f"library document {other[0]}'s passages have {other[1]} dimensions; {whose} have {n}"
         )
-    sql, params = nearest_sql(query, document_ids, k)
+
+
+async def _search(conn: Connection, sql: str, params: dict[str, Any]) -> list[PassageHit]:
     async with conn.transaction():
         # Filtered by document, an HNSW scan would stop at its candidate list (hnsw.ef_search)
         # and return fewer than k; iterative scanning goes on until k are found, in order.
         await conn.execute_core(text("SET LOCAL hnsw.iterative_scan = strict_order"))
         rows = (await conn.execute_core(text(sql).bindparams(**params))).fetchall()
     return [PassageHit(*row) for row in rows]
+
+
+async def nearest_passages(
+    conn: Connection, query: Sequence[float], document_ids: Collection[int], k: int
+) -> list[PassageHit]:
+    """The ``k`` passages of ``document_ids`` nearest ``query`` by cosine distance, nearest first,
+    found through the index of the question's dimension. A document of another dimension is
+    refused by name rather than left out."""
+    if not document_ids:
+        return []
+    await _refuse_other_dimensions(conn, document_ids, len(query), "the question's")
+    return await _search(conn, *nearest_sql(query, document_ids, k))
+
+
+# -- a passage's neighbours ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Passage:
+    """A passage where it sits in its document."""
+
+    document_id: int
+    ordinal: int
+    section: str | None
+    page: int | None
+    text: str
+
+
+def _within(document_id: int, document_ids: Collection[int]) -> None:
+    if document_id not in document_ids:
+        raise ValueError(
+            f"library document {document_id} is not among the documents being searched"
+        )
+
+
+async def adjacent_passages(
+    conn: Connection, document_id: int, ordinal: int, document_ids: Collection[int], n: int = 1
+) -> list[Passage]:
+    """The passages up to ``n`` before and after passage ``ordinal`` in its document, in order,
+    read through the (document_id, ordinal) key. The document must be one of ``document_ids``,
+    those being searched."""
+    if n <= 0:
+        raise ValueError("n must be a positive integer")
+    _within(document_id, document_ids)
+    result = await conn.execute_core(adjacent_query(document_id, ordinal, n))
+    return [Passage(*row) for row in result.fetchall()]
+
+
+def adjacent_query(document_id: int, ordinal: int, n: int) -> Select:
+    """:func:`adjacent_passages`' query."""
+    return (
+        select(
+            passages_t.c.document_id,
+            passages_t.c.ordinal,
+            passages_t.c.section,
+            passages_t.c.page,
+            passages_t.c.text,
+        )
+        .where(
+            (passages_t.c.document_id == document_id)
+            & passages_t.c.ordinal.between(ordinal - n, ordinal + n)
+            & (passages_t.c.ordinal != ordinal)
+        )
+        .order_by(passages_t.c.ordinal)
+    )
+
+
+async def near_passage(
+    conn: Connection, document_id: int, ordinal: int, document_ids: Collection[int], k: int
+) -> list[PassageHit]:
+    """The ``k`` passages of ``document_ids`` nearest passage ``ordinal`` of ``document_id`` by
+    cosine distance (the score is the similarity to that passage), nearest first, the passage
+    itself left out: :func:`nearest_passages` seeded with the passage's embedding. Its document
+    must be one of ``document_ids``; a document of another dimension is refused by name."""
+    _within(document_id, document_ids)
+    dimensions = (
+        await conn.execute_core(
+            text(
+                f"SELECT {_V}.vector_dims(vector) FROM reference_passages "
+                "WHERE document_id = :d AND ordinal = :o"
+            ).bindparams(d=document_id, o=ordinal)
+        )
+    ).scalar()
+    if dimensions is None:
+        raise ValueError(f"library document {document_id} has no passage {ordinal}")
+    await _refuse_other_dimensions(conn, document_ids, int(dimensions), "the passage's")
+    return await _search(
+        conn, *near_passage_sql(document_id, ordinal, int(dimensions), document_ids, k)
+    )
 
 
 async def passages(
@@ -517,3 +642,35 @@ async def passages(
         .order_by(passages_t.c.ordinal)
     )
     return [tuple(r) for r in result.fetchall()]  # type: ignore[misc]
+
+
+# -- the passages a glossary term cites ---------------------------------------------------------
+
+
+async def scored_passages(
+    conn: Connection, query: Sequence[float], keys: Collection[tuple[int, int]]
+) -> list[PassageHit]:
+    """The passages of ``keys`` ((document id, ordinal) pairs), each with its similarity to
+    ``query``, nearest first: read through the (document_id, ordinal) key, not searched, so every
+    one of them is returned. Each must be of the question's dimension."""
+    if not keys:
+        return []
+    n = int(len(query))
+    kind = vector_type(n)
+    documents, ordinals = zip(*sorted(set(keys)), strict=True)
+    rows = (
+        await conn.execute_core(
+            text(
+                "SELECT p.document_id, p.ordinal, p.section, p.page, p.text, "
+                f"1 - ((p.vector::{kind}) OPERATOR({_V}.<=>) CAST(:query AS {kind})) AS score "
+                "FROM unnest(CAST(:documents AS integer[]), CAST(:ordinals AS integer[])) "
+                "AS k(document_id, ordinal) JOIN reference_passages p "
+                "ON p.document_id = k.document_id AND p.ordinal = k.ordinal "
+                f"WHERE {_V}.vector_dims(p.vector) = {n} "
+                "ORDER BY score DESC, p.document_id, p.ordinal"
+            ).bindparams(
+                query=pgvector.literal(query), documents=list(documents), ordinals=list(ordinals)
+            )
+        )
+    ).fetchall()
+    return [PassageHit(*row) for row in rows]

@@ -12,8 +12,10 @@
 // source, status, domains, when each was added and last refreshed or replaced -- with the selected
 // one in the panel on the right: its facts and passages, Keep or Discard for a proposed one,
 // Refresh for a URL document, Upload new version for a file one, Remove, and its domains. Adding a
-// document opens its form in the same panel.
+// document opens its form in the same panel. Above the list, the library's retrieval setting,
+// passage or graph (GRAPH RETRIEVAL), saved as it is changed.
 
+import { assignableDomainIds } from "../../lib/internalDomains";
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -37,21 +39,25 @@ import {
   addLibraryDocument,
   fetchLibrary,
   fetchLibraryDocument,
+  fetchRetrieval,
   keepLibraryDocument,
   reembedLibrary,
   reembedLibraryDocument,
   refreshLibraryDocument,
   removeLibraryDocument,
+  saveRetrieval,
   setLibraryDomains,
   uploadLibraryVersion,
   type LibraryDocument,
   type LibraryDocumentDetail,
   type ReembedOutcome,
+  type Retrieval,
 } from "../../api/referenceLibrary";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { PanelDelete } from "../list/PanelDelete";
 import { DetailFields } from "../detail/DetailFields";
-import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { TagControl } from "../TagControl";
+import { FormField, FormFooter, FormLayout, LabelWithHelp } from "../form/FormLayout";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
@@ -62,7 +68,7 @@ import { scopeChange, WHOLE_ORG } from "./referenceScope";
 import { documentMark } from "../../lib/documentMark";
 
 /** The files the library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xlsx,.xml";
 
 function when(value: string | null, language: string): string {
   return value ? new Date(value).toLocaleString(language) : "";
@@ -116,7 +122,7 @@ function useDomainOptions() {
   return useMemo(
     () => [
       { value: WHOLE_ORG, label: t("referenceLibrary.wholeOrg") },
-      ...domains.map((d) => ({ value: d.id, label: d.id })),
+      ...assignableDomainIds(domains.map((d) => d.id)).map((id) => ({ value: id, label: id })),
     ],
     [domains, t],
   );
@@ -224,6 +230,13 @@ function AddDocumentForm({
       </FormField>
     </FormLayout>
   );
+}
+
+/** Whether passage ``i`` is the first of its section: the one before it is of another section. */
+function opensSection(passages: LibraryDocumentDetail["passage_list"], i: number): boolean {
+  if (i === 0) return true;
+  const [before, p] = [passages[i - 1], passages[i]];
+  return before.section !== p.section || (!p.section && before.page !== p.page);
 }
 
 /** A document's facts, passages and actions, in the panel. */
@@ -380,6 +393,11 @@ function DocumentDetail({
               ),
           },
           { label: t("referenceLibrary.fieldStatus"), value: <StatusBadge status={doc.status} /> },
+          // REQ-2208: the registry's tags on the document, with the chip every taggable object has.
+          {
+            label: t("referenceLibrary.fieldTags"),
+            value: <TagControl objectType="document" documentId={doc.id} />,
+          },
           { label: t("referenceLibrary.fieldPassages"), value: String(doc.passages) },
           {
             label: t("referenceLibrary.fieldModel"),
@@ -430,13 +448,29 @@ function DocumentDetail({
         </Text>
       ) : (
         <Stack gap="xs" data-testid="reflib-passages">
-          {detail.passage_list.map((p) => (
+          {detail.passage_list.map((p, i) => (
             <div key={p.ordinal} className="reflib-passage">
-              <Text size="xs" c="dimmed">
-                {[p.section, p.page !== null ? t("referenceLibrary.page", { page: p.page }) : null]
-                  .filter(Boolean)
-                  .join(" · ") || t("referenceLibrary.noSection")}
-              </Text>
+              <Group gap="xs" wrap="nowrap">
+                <Text size="xs" c="dimmed">
+                  {[
+                    p.section,
+                    p.page !== null ? t("referenceLibrary.page", { page: p.page }) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || t("referenceLibrary.noSection")}
+                </Text>
+                {/* REQ-2208: a section's tags, at the first of its passages. A section is named
+                    by its heading, or by its page when it has none; one with neither is the
+                    document's untitled opening, tagged as the document. */}
+                {opensSection(detail.passage_list, i) && (p.section || p.page !== null) && (
+                  <TagControl
+                    objectType="section"
+                    documentId={doc.id}
+                    sectionHeading={p.section || null}
+                    sectionPage={p.section ? null : p.page}
+                  />
+                )}
+              </Group>
               <Text size="sm" lineClamp={4} style={{ whiteSpace: "pre-wrap" }}>
                 {p.text}
               </Text>
@@ -445,6 +479,57 @@ function DocumentDetail({
         </Stack>
       )}
     </Stack>
+  );
+}
+
+/** The library's retrieval setting, saved as it is changed. */
+function RetrievalSetting({ onError }: { onError: (message: string) => void }) {
+  const { t } = useTranslation();
+  const [retrieval, setRetrieval] = useState<Retrieval | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchRetrieval()
+      .then(setRetrieval)
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
+  }, [onError]);
+
+  const change = async (next: Retrieval) => {
+    const before = retrieval;
+    setRetrieval(next);
+    setSaving(true);
+    try {
+      setRetrieval(await saveRetrieval(next));
+    } catch (e) {
+      setRetrieval(before);
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid="reflib-retrieval">
+      <Text size="sm" component="div">
+        <LabelWithHelp
+          label={t("referenceLibrary.retrieval")}
+          help={t("referenceLibrary.retrievalHelp")}
+          textId="reflib-retrieval-label"
+        />
+      </Text>
+      <SegmentedControl
+        size="xs"
+        aria-labelledby="reflib-retrieval-label"
+        value={retrieval ?? ""}
+        disabled={retrieval === null || saving}
+        onChange={(v) => change(v as Retrieval)}
+        data={[
+          { value: "passage", label: t("referenceLibrary.retrievalPassage") },
+          { value: "graph", label: t("referenceLibrary.retrievalGraph") },
+        ]}
+        data-testid="reflib-retrieval-control"
+      />
+    </Group>
   );
 }
 
@@ -542,6 +627,7 @@ export function ReferenceLibraryTab() {
           {t("referenceLibrary.intro")}
         </Text>
         <Group gap="xs" wrap="nowrap" data-toolbar>
+          <RetrievalSetting onError={setError} />
           {stale > 0 && (
             <Button
               size="xs"

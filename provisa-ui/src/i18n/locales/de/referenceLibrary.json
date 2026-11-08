@@ -27,6 +27,7 @@
     "domainsHelp": "Rollen, die diese Domänen lesen, stützen sich auf das Dokument. Gesamte Organisation steht allein.",
     "fieldSource": "Quelle",
     "fieldStatus": "Status",
+    "fieldTags": "Tags",
     "fieldPassages": "Passagen",
     "fieldModel": "Embedding-Modell",
     "fieldAdded": "Hinzugefügt",
@@ -60,6 +61,10 @@
     "helpWhat": "Eine kleine, ausgewählte Sammlung von Referenzdokumenten (Richtlinien, Vorschriften, Verträge, Prozesse), hinzugefügt per Datei oder URL. Kein Dokumentenspeicher.",
     "helpWho": "Polly antwortet daraus und zitiert die Passagen. KI-Agenten, die über den MCP-Server von Provisa verbunden sind, durchsuchen sie (search_reference_library). „Begriffe finden“ liest sie, um Glossarbegriffe und Definitionen vorzuschlagen.",
     "helpSees": "Ein Assistent, der für eine Rolle handelt, nutzt nur behaltene Dokumente in Domänen, die die Rolle liest, sowie Dokumente für die gesamte Organisation.",
-    "helpEmbedding": "Die Passagen eines Dokuments werden beim Hinzufügen mit dem Embedding-Modell der Organisation eingebettet; „Neu einbetten“ ist nur nötig, wenn sich dieses Modell ändert."
+    "helpEmbedding": "Die Passagen eines Dokuments werden beim Hinzufügen mit dem Embedding-Modell der Organisation eingebettet; „Neu einbetten“ ist nur nötig, wenn sich dieses Modell ändert.",
+    "retrieval": "Abruf",
+    "retrievalPassage": "Passage",
+    "retrievalGraph": "Graph",
+    "retrievalHelp": "Wie die Frage eines Assistenten aus der Bibliothek beantwortet wird. Passage: die Passagen, die der Frage am nächsten sind, und die Passagen um sie herum. Graph: folgt außerdem dem Glossar von den Begriffen, die die Frage nennt, über ihre Beziehungen zu den Passagen, die die erreichten Begriffe zitieren, sodass sich eine Antwort auf eine Regel stützen kann, deren Wortlaut der Frage nicht ähnelt."
   }
 }

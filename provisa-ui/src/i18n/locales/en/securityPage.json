@@ -94,6 +94,7 @@
     "ruleDescription": "Description",
     "ruleDescriptionHelp": "What the rule is for, as an access review reads it.",
     "ruleRight": "Right",
+    "tags": "Tags",
     "ruleRightRead": "Read",
     "ruleRightUpdate": "Update",
     "ruleRightDelete": "Delete",
