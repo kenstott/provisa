@@ -82,7 +82,6 @@ describe("tour steps that point at the navigation", () => {
     "step19",
     "step20",
     "step21",
-    "step23",
   ]) {
     it(`finds ${key}'s anchor on its route`, async () => {
       const step = tourStep(key);

@@ -44,19 +44,26 @@ async function clearSettings(page: Page) {
   }
 }
 
-async function openPanel(page: Page) {
-  await page.goto("/admin/observability");
+/** REQ-1327: the platform's panel, a window over an org as a whole. */
+async function openPlatformPanel(page: Page) {
+  await page.goto("/admin/platform-observability");
   await page.getByTestId("observability-debug-trace-tab").click({ timeout: 60000 });
   await expect(page.getByTestId("debug-trace-panel")).toBeVisible();
   // The org list has loaded once the org select holds an option to start a window for.
   await expect(page.getByTestId("debug-trace-org").locator("option")).not.toHaveCount(0);
 }
 
+/** REQ-1327: the org's panel, a window naming a role or source in it, and the hint. */
+async function openOrgPanel(page: Page) {
+  await page.goto("/admin/observability");
+  await expect(page.getByTestId("debug-trace-panel")).toBeVisible({ timeout: 60000 });
+}
+
 test.beforeEach(async ({ page }) => clearSettings(page));
 test.afterEach(async ({ page }) => clearSettings(page));
 
 test("a debug window is started for an org, counts down, and is stopped", async ({ page }) => {
-  await openPanel(page);
+  await openPlatformPanel(page);
   await expect(page.getByTestId("debug-trace-no-windows")).toBeVisible();
 
   const orgId = await page.getByTestId("debug-trace-org").inputValue();
@@ -89,7 +96,7 @@ test("a debug window is started for an org, counts down, and is stopped", async 
 });
 
 test("a role window carries the role it covers", async ({ page }) => {
-  await openPanel(page);
+  await openOrgPanel(page);
   await page.getByTestId("debug-trace-scope").selectOption("role");
   // A role window with no role named cannot be started.
   await expect(page.getByTestId("debug-trace-start")).toBeDisabled();
@@ -102,17 +109,16 @@ test("a role window carries the role it covers", async ({ page }) => {
 });
 
 test("the per-request hint is permitted for a role and revoked", async ({ page }) => {
-  await openPanel(page);
+  await openOrgPanel(page);
   await expect(page.getByTestId("debug-trace-no-hint-roles")).toBeVisible();
 
-  const orgId = await page.getByTestId("debug-trace-hint-org").inputValue();
   await page.getByTestId("debug-trace-hint-role").fill("analyst");
   await page.getByTestId("debug-trace-hint-permit").click();
 
   await expect(page.getByTestId("debug-trace-hint-roles")).toContainText("analyst");
-  expect(((await (await page.request.get(API)).json()) as DebugTraceState).hint_roles).toEqual([
-    { org_id: orgId, role_id: "analyst" },
-  ]);
+  const permitted = ((await (await page.request.get(API)).json()) as DebugTraceState).hint_roles;
+  expect(permitted.map((r) => r.role_id)).toEqual(["analyst"]);
+  const orgId = permitted[0].org_id;
 
   await page.getByTestId(`debug-trace-hint-revoke-${orgId}-analyst`).click();
   await expect(page.getByTestId("debug-trace-no-hint-roles")).toBeVisible();

@@ -620,13 +620,14 @@ CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
 FIRST_CONTRACT_VERSION = "0.1.0"
 
 
-class ContractColumn(BaseModel):  # REQ-2158
-    """A column an output port promises: the member's column, of the type it is stored as."""
+class VersionColumn(BaseModel):  # REQ-2158
+    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
+    what a version's field differences compare is what the member's columns were when it was saved."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
-    type: str = Field(min_length=1)
+    type: str = Field(min_length=1)  # registration guarantees a data_type (REQ-1426)
     description: str | None = None
     required: bool = False  # ODCS: the column is never null
 
@@ -693,8 +694,9 @@ class ContractChange(BaseModel):  # REQ-2158
 
 
 class DataContract(BaseModel):  # REQ-2158
-    """A data product member's ODCS contract: its output port, versioned on its own. Its promises
-    are the checks the product owns on the member (REQ-2157), read when the contract is."""
+    """A data product member's ODCS contract: its output port, versioned on its own. Its schema
+    is its member table's columns, never a selection of its own; its promises are the checks the
+    product owns on the member (REQ-2157), read when the contract is."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -703,7 +705,6 @@ class DataContract(BaseModel):  # REQ-2158
     description: str | None = None
     terms: ContractTerms = Field(default_factory=ContractTerms)
     sla: list[ContractSlaProperty] = Field(default_factory=list)
-    columns: list[ContractColumn] = Field(default_factory=list)
     # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
     # every later version (data_contracts.for_save).
     created_at: datetime | None = None
@@ -720,6 +721,8 @@ class ContractVersion(BaseModel):  # REQ-2158
     model_config = ConfigDict(extra="forbid")
 
     contract: DataContract
+    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
+    columns: list[VersionColumn] = Field(default_factory=list)
     checks: list[ContractCheck] = Field(default_factory=list)
     changes: list[ContractChange] = Field(default_factory=list)
     saved_at: datetime
@@ -1902,7 +1905,7 @@ class Table(
     mv_incremental: bool = False
     product_id: str | None = None  # REQ-1634: FK -> DataProduct.id; membership is this being set
     # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
-    # none is given a draft at FIRST_CONTRACT_VERSION promising its columns.
+    # none is given a draft at FIRST_CONTRACT_VERSION; its schema is the member's columns.
     contract: DataContract | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a

@@ -16,6 +16,10 @@ import { render, screen, fireEvent } from "../../../test-utils/render";
 
 const updateSettings = vi.fn().mockResolvedValue({ updated: ["otel.subsystem_traces"] });
 
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ activeOrgId: "acme", capabilities: ["observability"] }),
+}));
+
 vi.mock("../../../api/admin", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../api/admin")>();
   return {
@@ -27,7 +31,10 @@ vi.mock("../../../api/admin", async (importOriginal) => {
   };
 });
 
-import { ObservabilityTab } from "../ObservabilityTab";
+import {
+  ObservabilityTab as OrgObservabilityTab,
+  PlatformObservabilityTab as ObservabilityTab,
+} from "../ObservabilityTab";
 import type { PlatformSettings } from "../../../api/admin";
 
 function makeSettings(): PlatformSettings {
@@ -135,7 +142,7 @@ describe("the trace feed's search", () => {
       ),
     );
     try {
-      render(<ObservabilityTab settings={makeSettings()} setSettings={vi.fn()} />);
+      render(<OrgObservabilityTab />);
       await screen.findByTestId("trace-row-c");
       fireEvent.change(screen.getByTestId("trace-filter"), { target: { value: "orders error" } });
       expect(screen.getByTestId("trace-row-a")).toBeInTheDocument();

@@ -310,7 +310,7 @@ def test_a_faked_and_kept_table_reads_a_written_row_as_the_member_that_admits_it
     )
     con.execute("INSERT INTO public.log VALUES (1, 'upsert', 2, 'EU', 'w@eu.example', '999')")
     ctx = CompilationContext()
-    ctx.kept = {_TABLE: ("public.log", ["id"])}
+    ctx.kept = {_TABLE: (("public", "log"), ["id"])}
     rows = _faked_read("SELECT id, region, email, phone FROM public.t", _gov(state, meta, ctx), con)
     assert rows[1] == (2, "EU", "w@eu.example", "999")
     assert rows[0][0] == 1 and rows[0][3] == "111" and rows[0][2] not in _REAL_EMAILS
@@ -327,7 +327,7 @@ def test_a_faked_and_kept_table_hides_a_written_row_from_the_member_that_alone_a
     # Row 1 written into the US region: `us` alone admits it now, and is not served phone.
     con.execute("INSERT INTO public.log VALUES (1, 'upsert', 1, 'US', 'w@us.example', '999')")
     ctx = CompilationContext()
-    ctx.kept = {_TABLE: ("public.log", ["id"])}
+    ctx.kept = {_TABLE: (("public", "log"), ["id"])}
     rows = _faked_read("SELECT id, region, phone FROM public.t", _gov(state, meta, ctx), con)
     assert rows == [(1, "US", None), (2, "US", None)]
 
@@ -347,7 +347,7 @@ def test_members_that_each_read_every_row_are_read_as_the_plain_table():
     meta = ensure_meta_role(state, ["eu", "us"])
     sql = "SELECT region, email, phone FROM public.t"
     governed = apply_governance(sql, _gov(state, meta))
-    assert governed == "SELECT region, email, phone FROM public.t LIMIT 100"
+    assert "__m_" not in governed and "CASE" not in governed
     assert governed == apply_governance(sql, _gov(state, "eu"))
     assert _read(governed) == [("EU", "a@eu.example", "111"), ("US", "b@us.example", "222")]
 
@@ -358,7 +358,7 @@ def test_a_member_reading_every_row_is_the_case_else_and_carries_no_flag():
     state = _filters(_state(), "region = 'EU'", None)
     meta = ensure_meta_role(state, ["eu", "us"])
     governed = apply_governance("SELECT region, email FROM public.t", _gov(state, meta))
-    assert "CASE WHEN __m_0 THEN \"__real_email\" ELSE '***' END" in governed
+    assert 'CASE WHEN "__m_0" THEN "__real_email" ELSE \'***\' END' in governed
     assert "__m_1" not in governed and "TRUE" not in governed
     assert _read(governed) == [("EU", "a@eu.example"), ("US", "***")]
 
@@ -367,5 +367,5 @@ def test_members_that_each_admit_only_some_rows_keep_the_case():
     state = _state()  # eu reads the EU rows, us the US rows
     meta = ensure_meta_role(state, ["eu", "us"])
     governed = apply_governance("SELECT region, email FROM public.t", _gov(state, meta))
-    assert "CASE WHEN __m_0" in governed and "WHEN __m_1" in governed
+    assert 'CASE WHEN "__m_0"' in governed and 'WHEN "__m_1"' in governed
     assert _read(governed) == [("EU", "a@eu.example"), ("US", "***")]

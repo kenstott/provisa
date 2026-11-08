@@ -170,10 +170,21 @@
   position: absolute;
   inset: 0 0 var(--g3d-legend-h) 0;
 }
-/* REQ-2174: a lane node's card stays while the pointer is on it, so its links can be followed. */
-.p3d-tip.g3d-tip-live {
+/* REQ-2174: a lane node's card stays while the pointer is on it, so its links can be followed: the
+   tip surface passes the pointer through, its content does not. */
+.g3d-tip-live {
   pointer-events: auto;
-  max-width: 320px;
+  display: grid;
+  gap: 2px;
+}
+.g3d-tip-live b {
+  font-family: var(--mantine-font-family-monospace);
+  font-weight: 500;
+}
+/* What the card is attached to: the node on the drawing, or a point on a line (LaneStage). */
+.g3d-tip-anchor {
+  position: absolute;
+  pointer-events: none;
 }
 /* A node's facts (nodeFacts): label and value per row, in the card and the detail panel. */
 .g3d-facts {
@@ -210,4 +221,17 @@
 .p3d-row-name.is-wrap {
   white-space: normal;
   text-overflow: clip;
+}
+/* REQ-2174 (amended 2026-11-07): a link's name at its middle -- a table relationship's name, a term
+   link's type -- smaller than a node's, with the stage's halo so it reads across the rods. */
+.g3d-edge-label {
+  font-size: 9px;
+  translate: -50% -50%;
+  opacity: 0.85;
+  text-shadow:
+    0 0 2px var(--p3d-canvas),
+    0 0 3px var(--p3d-canvas);
+}
+.g3d-edge-label-term_edge {
+  font-style: italic;
 }

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -24,7 +25,14 @@ from provisa.compiler.stage2 import (
     extract_sources,
 )
 from provisa.security.masking import MaskType, MaskingRule
+from tests.governed_pg import governed_database
 from tests.helpers import unscoped_role
+from tests.rules import rules_of
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_stage2_complex")
 
 
 # --------------------------------------------------------------------------- #
@@ -160,27 +168,53 @@ class TestApplyGovernanceRLS:
         gov = _gov(
             rls_rules={1: "tenant_id = 42"},
             table_map={"orders": 1},
+            all_columns={
+                1: [
+                    ("id", "integer"),
+                    ("tenant_id", "integer"),
+                    ("region", "varchar"),
+                    ("status", "varchar"),
+                    ("cid", "integer"),
+                ]
+            },
         )
         result = apply_governance("SELECT id FROM orders", gov)
         assert "WHERE" in result
         assert "tenant_id" in result
         assert "42" in result
 
-    def test_rls_anded_with_existing_where(self):
+    def test_rls_anded_with_existing_where(self, pg):
         gov = _gov(
             rls_rules={1: "region = 'eu'"},
             table_map={"orders": 1},
+            all_columns={
+                1: [
+                    ("id", "integer"),
+                    ("tenant_id", "integer"),
+                    ("region", "varchar"),
+                    ("status", "varchar"),
+                    ("cid", "integer"),
+                ]
+            },
         )
         sql = "SELECT id FROM orders WHERE status = 'open'"
         result = apply_governance(sql, gov)
-        assert "\"region\" = 'eu'" in result
-        assert "status = 'open'" in result
-        assert "AND" in result
+        rows = [
+            {"id": 1, "tenant_id": 1, "region": "eu", "status": "open", "cid": 1},
+            {"id": 2, "tenant_id": 1, "region": "us", "status": "open", "cid": 1},
+            {"id": 3, "tenant_id": 1, "region": "eu", "status": "closed", "cid": 1},
+        ]
+        # The row rule and the reader's filter both hold.
+        assert pg.answer(result, {"orders": rows}) == [(1,)]
 
     def test_rls_multiple_tables_multiple_filters(self):
         gov = _gov(
             rls_rules={1: "region = 'us'", 2: "active = TRUE"},
             table_map={"orders": 1, "customers": 2},
+            all_columns={
+                1: [("id", "integer"), ("region", "varchar"), ("cid", "integer")],
+                2: [("id", "integer"), ("active", "boolean")],
+            },
         )
         sql = "SELECT o.id FROM orders o JOIN customers c ON o.cid = c.id"
         result = apply_governance(sql, gov)
@@ -188,7 +222,7 @@ class TestApplyGovernanceRLS:
         assert "active" in result.lower()
 
     def test_empty_rls_context_sql_unchanged_where(self):
-        gov = _gov(table_map={"orders": 1})
+        gov = _gov(table_map={"orders": 1}, all_columns={1: [("id", "integer")]})
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
         assert "WHERE" not in result
@@ -197,6 +231,9 @@ class TestApplyGovernanceRLS:
         gov = _gov(
             rls_rules={1: "department_id IN (10, 20) AND active = TRUE"},
             table_map={"employees": 1},
+            all_columns={
+                1: [("id", "integer"), ("department_id", "integer"), ("active", "boolean")]
+            },
         )
         result = apply_governance("SELECT id FROM employees", gov)
         assert "department_id" in result
@@ -216,6 +253,7 @@ class TestApplyGovernanceMasking:
         gov = _gov(
             masking_rules={(1, "email"): (rule, "varchar")},
             table_map={"users": 1},
+            all_columns={1: [("id", "integer"), ("email", "varchar"), ("phone", "varchar")]},
         )
         result = apply_governance("SELECT email FROM users", gov)
         assert "PROVISA_REGEX_REPLACE" in result
@@ -230,26 +268,29 @@ class TestApplyGovernanceMasking:
                 (1, "phone"): (phone_rule, "varchar"),
             },
             table_map={"users": 1},
+            all_columns={1: [("id", "integer"), ("email", "varchar"), ("phone", "varchar")]},
         )
         result = apply_governance("SELECT email, phone FROM users", gov)
         assert "PROVISA_REGEX_REPLACE" in result
         assert "***-****" in result
 
-    def test_unmasked_columns_preserved_unchanged(self):
+    def test_unmasked_columns_preserved_unchanged(self, pg):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=r".+@", replace="***@")
         gov = _gov(
             masking_rules={(1, "email"): (rule, "varchar")},
             table_map={"users": 1},
+            all_columns={1: [("id", "integer"), ("email", "varchar"), ("phone", "varchar")]},
         )
         result = apply_governance("SELECT id FROM users", gov)
-        assert "PROVISA_REGEX_REPLACE" not in result
-        assert "id" in result
+        rows = [{"id": 7, "email": "ann@x.com", "phone": "1"}]
+        assert pg.answer(result, {"users": rows}) == [(7,)]
 
     def test_null_masking_constant_produces_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         gov = _gov(
             masking_rules={(1, "ssn"): (rule, "varchar")},
             table_map={"customers": 1},
+            all_columns={1: [("id", "integer"), ("ssn", "varchar")]},
         )
         result = apply_governance("SELECT ssn FROM customers", gov)
         assert "NULL" in result
@@ -259,6 +300,7 @@ class TestApplyGovernanceMasking:
         gov = _gov(
             masking_rules={(1, "notes"): (rule, "varchar")},
             table_map={"records": 1},
+            all_columns={1: [("id", "integer"), ("notes", "varchar")]},
         )
         result = apply_governance("SELECT notes FROM records", gov)
         # Constant '' should appear as an empty string literal
@@ -369,7 +411,7 @@ class TestBuildGovernanceContext:
         tables = [{"id": 1, "columns": [{"column_name": "id"}]}]
         rls = _FakeRLSContext({1: "tenant_id = 7"})
         gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
-        assert gov.rls_rules == {1: "tenant_id = 7"}
+        assert gov.rls_rules == rules_of({1: "tenant_id = 7"})
 
     def test_masking_rules_for_matching_role_populated(self):
         ctx = _ctx(_meta("users", "users", table_id=2))

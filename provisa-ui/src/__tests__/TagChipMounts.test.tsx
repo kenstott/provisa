@@ -86,6 +86,7 @@ describe("a data product's tags", () => {
         canEdit={canEdit}
         canDelete={false}
         owner
+        seesConsumers
         lineageLoading={false}
         contractsVersion={0}
         lineageError=""

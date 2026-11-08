@@ -68,6 +68,7 @@ from provisa.security.rights import (
     served_roles,
 )
 from provisa.security.visibility import visible_tables
+from tests.rules import mentions, rule_of
 
 ROLE, LONER, WILD, NO_GLOSSARY = "pet_analyst", "loner", "wild", "no_glossary"
 PETS, CATALOG, TERMS, QUERIES, PRODUCTS = 1, 2, 3, 4, 5
@@ -501,10 +502,10 @@ def test_sql_governance_columns_follow_view_governance():
 def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
     _, gov = _gov(_flat())
     # meta: REQ-1132's default tier: the tables it reads, not the whole catalog. Ops is not read.
-    assert gov.rls_rules[CATALOG] == f"id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})"
+    assert gov.rls_rules[CATALOG] == rule_of(f"id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})")
     # ontology: the glossary's own rule, scoped to the role's data domains.
-    assert "pet-store" in gov.rls_rules[TERMS] and "shelter" in gov.rls_rules[TERMS]
-    assert "'meta'" not in gov.rls_rules[TERMS]
+    assert mentions(gov.rls_rules[TERMS], "pet-store") and mentions(gov.rls_rules[TERMS], "shelter")
+    assert not mentions(gov.rls_rules[TERMS], "|meta|")
     # A role reaching every data domain has neither.
     _, whole = _gov(_flat("org_admin"))
     assert CATALOG not in whole.rls_rules and TERMS not in whole.rls_rules

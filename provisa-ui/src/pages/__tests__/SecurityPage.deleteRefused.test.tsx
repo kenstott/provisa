@@ -135,7 +135,9 @@ describe("deleting a role on the Security page", () => {
     const problem = await screen.findByTestId("delete-role-seller-problem");
     expect(problem).toHaveTextContent("Not deleted:");
     expect(problem).toHaveTextContent("Role 'seller' is a system role and cannot be deleted");
-    expect(screen.getByTestId("delete-role-seller")).not.toBeDisabled();
+    // The panel's lock is released in an effect after the pending press ends, one commit after
+    // the problem is drawn: the unlock is waited for, as it is the thing asserted.
+    await waitFor(() => expect(screen.getByTestId("delete-role-seller")).not.toBeDisabled());
     expect(screen.queryByText("Cannot delete seller yet")).toBeNull();
   });
 });

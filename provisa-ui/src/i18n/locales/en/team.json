@@ -90,6 +90,7 @@
       "saveEdit": "Save {{name}}",
       "cancelEdit": "Cancel the edit",
       "remove": "Remove {{name}}"
-    }
+    },
+    "localUsersHeading": "Local users"
   }
 }

@@ -25,9 +25,12 @@ table for the operation (REQ-2074), in this order:
    the grant presets is the grant's to set: the statement may not supply it, and the grant's
    value (a session variable, a literal, or the time of the write) is added to the statement.
 4. **The rows it may touch.** The grant's rows predicate is ANDed into the WHERE of an UPDATE
-   or DELETE, and beside it the role's U rule into an UPDATE and its D rule into a DELETE
-   (REQ-2188). A rule only narrows: it is read after the grant, so it gives nothing to a role
-   holding no grant for the operation, and a role with no rule for a right is not narrowed.
+   or DELETE, and beside it the role's read row rule (REQ-039: a write reaches only rows the
+   role may read) and its U rule into an UPDATE and its D rule into a DELETE (REQ-2188). A rule
+   only narrows: it is read after the grant, so it gives nothing to a role holding no grant for
+   the operation, and a role with no rule for a right is not narrowed. A TRUNCATE, a MERGE and an
+   ``ON CONFLICT DO UPDATE`` cannot carry a predicate, so a role whose reads are narrowed is
+   refused them.
 5. **The rows it leaves behind.** An INSERT's rows, and the new values of an UPDATE that sets a
    column the grant's check reads, are checked against the check before anything is sent to a
    source: the supplied values are put in the check's place for those columns and the resulting
@@ -50,18 +53,22 @@ Nothing is written first and checked afterwards."""
 
 from __future__ import annotations
 
-from provisa.compiler.sql_literals import sql_literal
 
-import re
 from typing import TYPE_CHECKING
 
-import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.definitions import NotAvailableHere
 
-from provisa.compiler.rls import _qualified_predicate, cast_session_terms
-from provisa.core.session_terms import expand_list_settings
+from provisa.compiler.rls import (
+    Rule,
+    _qualified_predicate,
+    all_of,
+    any_of,
+    cast_session_terms,
+    every_row,
+)
+from provisa.core.session_terms import resolve_session_terms
 from provisa.security.mutation_authz import ColumnNotWritable
 
 if TYPE_CHECKING:
@@ -69,8 +76,6 @@ if TYPE_CHECKING:
 
 # REQ-1942: TRUNCATE is a mutation too, run as itself -- never rewritten to a DELETE.
 WRITES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
-
-_SESSION_TERM = re.compile(r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*\)", re.IGNORECASE)
 
 
 class WriteNotAdmitted(PermissionError):
@@ -119,6 +124,7 @@ _FORM_NAMES = {
     "delete_using": "DELETE ... USING",
     "merge": "MERGE",
     "truncate": "TRUNCATE",
+    "with_write": "a write led by WITH",
 }
 
 
@@ -157,29 +163,48 @@ def require_write_op(gov: "GovernanceContext", table_id: int, name: str, kind: s
 
 
 def is_write(tree: exp.Expression) -> bool:
-    return isinstance(tree, WRITES)
+    """Whether ``tree`` holds a data-modifying statement anywhere: a CTE's included (REQ-039)."""
+    return bool(_writes(tree))
 
 
-def nested_writes(tree: exp.Expression) -> list[exp.Expression]:  # REQ-039
-    """The data writes in ``tree`` other than the statement itself -- a writable CTE, a write in a
-    subquery -- less a root MERGE's own WHEN actions. A write is admitted, and its RETURNING
-    governed, only as the statement's root; one inside it is read as neither, so it is refused."""
+def _writes(tree: exp.Expression) -> list[exp.Expression]:
+    """Every data-modifying statement in ``tree``: a MERGE's WHEN actions are the MERGE's own."""
     return [
         node
-        for node in tree.find_all(*WRITES)
-        if node is not tree
-        and not (isinstance(node.parent, exp.When) and node.find_ancestor(exp.Merge) is tree)
+        for node in tree.walk()
+        if isinstance(node, WRITES) and node.find_ancestor(exp.When) is None
     ]
 
 
-def refuse_nested_writes(tree: exp.Expression) -> None:
-    """Raise :class:`WriteNotAdmitted` for a data write inside the statement (:func:`nested_writes`)."""
-    nested = nested_writes(tree)
-    if nested:
+def the_write(tree: exp.Expression) -> exp.Expression | None:  # REQ-039
+    """The one write ``tree`` holds, or None for a read. A statement holds at most one write,
+    either at its root or as ``WITH w AS (<write> RETURNING ...) SELECT ... FROM w``; any other
+    placement, and a second write, is refused (V006): a write nested anywhere else escaped
+    admission, and several writes in one statement may reach sources no route runs atomically."""
+    writes = _writes(tree)
+    if not writes:
+        return None
+    if len(writes) > 1:
         raise WriteNotAdmitted(
-            f"{_kind(nested[0])} inside a statement is not admitted: a data write is run only as "
-            "the statement itself"
+            "[V006] a statement holds at most one INSERT, UPDATE, DELETE or MERGE"
         )
+    write = writes[0]
+    if write is tree:
+        return write
+    cte = write.parent
+    with_ = cte.parent if isinstance(cte, exp.CTE) else None
+    if (
+        isinstance(cte, exp.CTE)
+        and cte.this is write
+        and isinstance(tree, exp.Query)
+        and with_ is tree.args.get("with_")
+        and write.args.get("returning") is not None
+    ):
+        return write
+    raise WriteNotAdmitted(
+        "[V006] a write stands at the statement's root or as WITH w AS (<write> RETURNING ...) "
+        "SELECT ... FROM w; it may not be nested anywhere else"
+    )
 
 
 def _kind(tree: exp.Expression) -> str:
@@ -187,8 +212,18 @@ def _kind(tree: exp.Expression) -> str:
 
 
 def target_table(tree: exp.Expression) -> exp.Table:
-    """The table a write targets."""
-    return _target(tree)[0]
+    """The table a write targets: the statement's one write, wherever it stands."""
+    return _target(_located(tree))[0]
+
+
+def _located(tree: exp.Expression) -> exp.Expression:
+    """The statement's one write (``the_write``); the statement itself when it is one."""
+    if isinstance(tree, WRITES):
+        return tree
+    write = the_write(tree)
+    if write is None:
+        raise WriteNotAdmitted("the statement holds no write")
+    return write
 
 
 def _target(tree: exp.Expression) -> tuple[exp.Table, list[str] | None]:
@@ -245,13 +280,13 @@ def for_columns(grant: dict, columns: list[str]) -> dict:  # REQ-1620
     for stated in ("rows", "check"):
         if grant.get(stated) is None:
             continue
-        per_column: list[str] = []
+        per_column: list[Rule | None] = []
         for column in dict.fromkeys(columns):
             terms = [h[stated] for h in holders if column in h["columns"]]
-            if not terms or any(t == "TRUE" for t in terms):
+            if not terms or any(every_row(t) for t in terms):
                 continue  # no holder grants it (refused by name) / a holder admits every row
-            per_column.append(" OR ".join(f"({t})" for t in terms))
-        applied[stated] = " AND ".join(f"({t})" for t in dict.fromkeys(per_column)) or "TRUE"
+            per_column.append(any_of(terms))
+        applied[stated] = all_of(per_column) or exp.true()
     return applied
 
 
@@ -270,7 +305,7 @@ def _require_columns(gov: "GovernanceContext", grant: dict, name: str, columns: 
             raise ColumnNotWritable(gov.role_id, column)
 
 
-def _predicate(gov: "GovernanceContext", table_id: int, stated: str | None) -> str | None:
+def _predicate(gov: "GovernanceContext", table_id: int, stated: Rule | None) -> Rule | None:
     """The predicate a grant states for its rows or its check. REQ-2074: a grant that states none
     takes the role's read row filter on the table -- a role writes the rows it reads unless its
     grant says otherwise -- and a table the role reads unfiltered gives none (every row)."""
@@ -279,7 +314,7 @@ def _predicate(gov: "GovernanceContext", table_id: int, stated: str | None) -> s
     return gov.rls_rules.get(table_id)
 
 
-def _rule(gov: "GovernanceContext", table_id: int, operation: str) -> str | None:  # REQ-2188
+def _rule(gov: "GovernanceContext", table_id: int, operation: str) -> Rule | None:  # REQ-2188
     """The role's U rule on the table for an update, its D rule for a delete, or None."""
     return gov.write_rules.get(operation, {}).get(table_id)
 
@@ -291,12 +326,9 @@ def _label(grant: dict, stated: str) -> str:
     )
 
 
-def _every_row(predicate: str | None) -> bool:
+def _every_row(predicate: Rule | None) -> bool:
     """Whether ``predicate`` admits every row: none at all, or the literal TRUE."""
-    if predicate is None:
-        return True
-    tree = sqlglot.parse_one(predicate, read="postgres")
-    return isinstance(tree, exp.Boolean) and tree.this is True
+    return predicate is None or every_row(predicate)
 
 
 def _preset_values(
@@ -333,21 +365,20 @@ def _preset_values(
 
 
 def _filter_over(
-    predicate: str,
+    predicate: Rule,
     gov: "GovernanceContext",
     table_id: int,
     session_vars: dict[str, str],
     values: dict[str, exp.Expression],
-) -> exp.Expression:
+) -> Rule:
     """``predicate`` with every column in ``values`` replaced by the expression the statement
     supplies for it."""
     column_types = dict(gov.all_columns.get(table_id, []))
     qualified = _qualified_predicate(predicate, None)
     cast_session_terms(qualified, column_types)
-    expand_list_settings(qualified, session_vars)  # REQ-2188
-    resolved: exp.Expression = sqlglot.parse_one(  # pyright: ignore[reportAssignmentType]  # sqlglot stub types parse_one as Expr
-        _with_session_values(qualified.sql(dialect="postgres"), session_vars), read="postgres"
-    )
+    # REQ-2188, REQ-1682: list variables expanded, every other term the request's value (NULL
+    # when unbound) -- what the pipeline does to a governed read -- on the tree.
+    resolved = resolve_session_terms(qualified, session_vars)
     for column in list(resolved.find_all(exp.Column)):
         if column.name in values:
             column.replace(exp.paren(values[column.name].copy()))
@@ -358,7 +389,7 @@ def _admit_row(
     gov: "GovernanceContext",
     table_id: int,
     name: str,
-    check: str,
+    check: Rule,
     supplied: dict[str, exp.Expression],
     session_vars: dict[str, str],
     *,
@@ -377,7 +408,7 @@ def _admit_row(
     if not outcome:
         raise WriteNotAdmitted(
             f"{kind} {name!r}: the row is outside role {gov.role_id!r}'s {label} on this table "
-            f"({check}). A role may only write the rows its grant admits."
+            f"({check.sql(dialect='postgres')}). A role may only write the rows its grant admits."
         )
 
 
@@ -407,7 +438,7 @@ def _admit_inserted_rows(
     table_id: int,
     name: str,
     listed: list[str] | None,
-    check: str,
+    check: Rule,
     session_vars: dict[str, str],
     params: list | None,
     label: str,
@@ -493,7 +524,7 @@ def _admit_new_values(
     gov: "GovernanceContext",
     table_id: int,
     name: str,
-    check: str,
+    check: Rule,
     session_vars: dict[str, str],
     params: list | None,
     label: str,
@@ -528,18 +559,7 @@ def _admit_new_values(
     _admit_row(gov, table_id, name, check, assignments, session_vars, kind="UPDATE of", label=label)
 
 
-def _with_session_values(predicate: str, session_vars: dict[str, str]) -> str:
-    """``predicate`` with each session term replaced by the request's value, NULL when unbound —
-    what the pipeline does to a governed read (REQ-1682)."""
-
-    def _value(match: re.Match) -> str:
-        value = session_vars.get(match.group(1))
-        return "NULL" if value is None else sql_literal(value, "postgres")
-
-    return _SESSION_TERM.sub(_value, predicate)
-
-
-def _holds(predicate: exp.Expression) -> bool | None:
+def _holds(predicate: Rule) -> bool | None:
     """Whether a predicate that reads no column is true (False also for NULL: a filter that is
     not true does not admit a row). None when it cannot be decided here — it still reads a
     column or another table, or evaluating it failed for any reason — which every caller treats
@@ -592,7 +612,7 @@ def written_columns(tree: exp.Expression, gov: "GovernanceContext", table_id: in
 def written_table_id(tree: exp.Expression, gov: "GovernanceContext") -> int:
     """The registered table a write targets — what the steps after a successful write act on
     (its cached reads dropped, its views marked stale, its change event and sinks)."""
-    return _resolve(_target(tree)[0], gov)
+    return _resolve(_target(_located(tree))[0], gov)
 
 
 def admit_write(
@@ -641,6 +661,12 @@ def admit_write(
                 f"TRUNCATE of {name!r}: role {gov.role_id!r} has a {_label(grant, 'rows')} on "
                 f"this table ({rows}), which a TRUNCATE cannot apply. Use DELETE, which does."
             )
+        readable = gov.rls_rules.get(table_id)  # REQ-039: it would empty rows the role cannot read
+        if not _every_row(readable):
+            raise WriteNotAdmitted(
+                f"TRUNCATE of {name!r}: role {gov.role_id!r} has a row filter on this table "
+                f"({readable}), which a TRUNCATE cannot apply. Use DELETE, which does."
+            )
         rule = _rule(gov, table_id, "delete")  # REQ-2188
         if rule is not None:
             raise WriteNotAdmitted(
@@ -656,7 +682,10 @@ def admit_write(
             _require_columns(gov, grant, name, every)
             grant = for_columns(grant, every)
             stated = [grant.get("check")] + ([grant.get("rows")] if operation == "update" else [])
-            narrowed = operation == "update" and _rule(gov, table_id, "update") is not None
+            narrowed = operation == "update" and (
+                _rule(gov, table_id, "update") is not None
+                or not _every_row(gov.rls_rules.get(table_id))  # REQ-039: rows it cannot read
+            )
             if narrowed or not all(_every_row(_predicate(gov, table_id, p)) for p in stated):
                 raise WriteNotAdmitted(
                     f"MERGE into {name!r}: role {gov.role_id!r}'s {operation} grant limits the "
@@ -686,6 +715,7 @@ def admit_write(
             if (
                 update.get("presets")
                 or _rule(gov, table_id, "update") is not None  # REQ-2188
+                or not _every_row(gov.rls_rules.get(table_id))  # REQ-039: rows it cannot read
                 or not (
                     _every_row(_predicate(gov, table_id, update.get("rows")))
                     and _every_row(_predicate(gov, table_id, update.get("check")))
@@ -715,7 +745,7 @@ def admit_write(
             )
         return tree
 
-    from provisa.compiler.rls import _qualify_filter  # noqa: PLC0415
+    from provisa.compiler.rls import qualified_filter  # noqa: PLC0415
     from provisa.compiler.stage2 import _alias_for  # noqa: PLC0415
 
     assert isinstance(tree, (exp.Update, exp.Delete))
@@ -734,10 +764,14 @@ def admit_write(
             )
     rows = _predicate(gov, table_id, grant.get("rows"))
     column_types = dict(gov.all_columns.get(table_id, []))
-    for predicate in (rows, _rule(gov, table_id, operation)):
+    # REQ-039: a write reaches only rows the role may both read and write -- the role's read row
+    # rule beside the grant's rows (the same rule when the grant states none) and its U or D rule,
+    # so nothing is changed blind and the affected-row count reveals no row outside the read rule.
+    readable = gov.rls_rules.get(table_id)
+    for predicate in dict.fromkeys((rows, readable, _rule(gov, table_id, operation))):
         if _every_row(predicate):
             continue
         assert predicate is not None
-        touched = _qualify_filter(predicate, _alias_for(table), column_types)
-        tree = tree.where(f"({touched})", dialect="postgres", append=True)
+        touched = qualified_filter(predicate, _alias_for(table), column_types)
+        tree = tree.where(exp.paren(touched), append=True)
     return tree
