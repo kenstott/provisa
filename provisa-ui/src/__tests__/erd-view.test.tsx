@@ -129,7 +129,7 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,

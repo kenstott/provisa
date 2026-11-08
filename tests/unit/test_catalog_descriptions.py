@@ -25,11 +25,12 @@ import sqlglot
 from provisa.api._catalog_descriptions import COLUMN_DESCRIPTIONS, TABLE_DESCRIPTIONS
 from provisa.api._meta_views import (
     _META_TABLE_VIEWS,
+    _OPS_LOG_TABLE_ALIAS,
     _OPS_LOG_TABLE_VIEWS,
     _OPS_REPORT_VIEWS,
 )
 from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
-from provisa.api.app_loaders import _META_TABLES
+from provisa.api.app_loaders import _META_TABLE_ALIAS, _META_TABLES
 from provisa.core.org_registry_view import VIEW_COLUMNS as ORG_REGISTRY_COLUMNS
 from provisa.core.org_registry_view import VIEW_NAME as ORG_REGISTRY_VIEW
 from provisa.observability.ops_schema import OPS_TABLES
@@ -127,6 +128,10 @@ class TestTheSeedCarriesTheDescriptions:
         # has no surrogate id, so a fixed one-column stand-in would demand a description for a column
         # the seed never writes.
         exposed = _exposed_columns()
+        # The seed reflects a table's curated view by the view's own name (<table>_meta,
+        # <log>_ops), not by the table name it registers.
+        for tbl, view_name in (*_META_TABLE_ALIAS.items(), *_OPS_LOG_TABLE_ALIAS.items()):
+            exposed[view_name] = exposed[tbl]
 
         async def _reflect(name, schema=None):
             del schema

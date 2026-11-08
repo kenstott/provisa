@@ -982,7 +982,7 @@ async def _sync_view_mv(
     preprocess: str | None = None,  # REQ-957
     hold_on_failing_checks: bool = False,  # REQ-2133
     table_id: int | None = None,  # REQ-2133: the view table this build is of
-    product_id: str | None = None,  # REQ-2133: that table's data product
+    product_ids: list[str] | None = None,  # REQ-2133, REQ-1634: that table's data products
     business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
     valid_time: str | None = None,  # REQ-2109: the column its reads travel on
     recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
@@ -1060,7 +1060,7 @@ async def _sync_view_mv(
         preprocess=preprocess,  # REQ-957
         hold_on_failing_checks=hold_on_failing_checks,  # REQ-2133
         table_id=table_id,  # REQ-2133
-        product_id=product_id,  # REQ-2133
+        product_ids=list(product_ids or []),  # REQ-2133, REQ-1634
         bitemporal=bitemporal,  # REQ-1162
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970
@@ -1193,3 +1193,15 @@ async def restart_source_server(model) -> None:
 
         async with _bound_for_start():
             start_when_saved(model)
+
+
+async def _view_products(table_id: int | None) -> list[str]:  # REQ-2133, REQ-1634
+    """The data products the view table ``table_id`` is a member of (none for no table): what its
+    build's preflight relates each checker to."""
+    if table_id is None:
+        return []
+    from provisa.core.repositories import data_product as data_product_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        return await data_product_repo.products_of_table(cast("Connection", conn), table_id)

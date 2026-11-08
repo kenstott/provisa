@@ -30,7 +30,6 @@ describe("exportProviderName", () => {
 
   it("fills the copy that names Atlan with its label", () => {
     const atlan = exportProviderName("atlan", "Atlan", t);
-    expect(t("tableEditForm.dataProductDesc", { atlan })).toContain("Atlan (beta)");
     expect(t("tour.steps.stepPublish.description", { atlan })).toContain("Atlan (beta)");
   });
 });

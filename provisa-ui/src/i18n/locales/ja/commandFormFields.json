@@ -29,7 +29,7 @@
     "query": "クエリ",
     "domain": "ドメイン",
     "selectDomain": "ドメインを選択...",
-    "dataProduct": "データプロダクト(任意)",
+    "dataProduct": "データプロダクト",
     "dataProductPlaceholder": "データプロダクトを選択...",
     "description": "説明",
     "descriptionPlaceholder": "任意",

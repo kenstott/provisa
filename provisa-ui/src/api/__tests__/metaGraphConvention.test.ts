@@ -87,7 +87,7 @@ const snake = (name: string) =>
 /** The relationships the meta seed declares a graphql_alias for: schema_gen takes one as written,
  * so these keep their camelCase under ``snake`` and ``hasura_graphql``, and every other field,
  * a derived relationship's among them, takes the convention. */
-const DECLARED = new Set(["edgesOut", "edgesIn", "sourceTerm", "targetTerm", "memberTables"]);
+const DECLARED = new Set(["edgesOut", "edgesIn", "sourceTerm", "targetTerm"]);
 
 interface MetaSchemaDoc {
   introspection: Introspection;
