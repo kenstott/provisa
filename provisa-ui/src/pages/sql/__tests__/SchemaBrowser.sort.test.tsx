@@ -24,7 +24,7 @@ function tbl(tableName: string, alias: string | null = null, columns: string[] =
     schemaName: "public",
     tableName,
     alias,
-    columns: columns.map((c, i) => ({ id: i, columnName: c, alias: null, visibleTo: [] })),
+    columns: columns.map((c, i) => ({ id: i, columnName: c, computedSqlAlias: c, alias: null, visibleTo: [] })),
   } as unknown as ListedTable;
 }
 
@@ -100,8 +100,12 @@ describe("SchemaBrowser alphabetical order", () => {
       new Set(["meta"]),
       new Set(["t"]),
     );
-    const text = document.body.textContent ?? "";
-    expect(text.indexOf("zz")).toBeLessThan(text.indexOf("aa"));
-    expect(text.indexOf("aa")).toBeLessThan(text.indexOf("mm"));
+    expect(ids("schema-column-")).toEqual([
+      "schema-column-t-zz",
+      "schema-column-t-aa",
+      "schema-column-t-mm",
+      "schema-column-t-_name_",
+      "schema-column-t-_domain_",
+    ]);
   });
 });
