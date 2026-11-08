@@ -50,6 +50,16 @@ _FAKES_BY_TYPE = {
     "address_country": "country()",
 }
 
+# A classified column's plausible type is the classification kind its values passed (REQ-2147,
+# profiler.run.classified_plausible_types): the same things under the catalogue's ids.
+_FAKES_BY_KIND = {
+    "email_address": "email()",
+    "e164_phone": "phone_number()",
+    "city": "city()",
+    "country": "country()",
+}
+_FAKES_BY_TYPE.update(_FAKES_BY_KIND)
+
 # Government identifiers and account numbers, by the column's name.
 _FAKES_BY_NAME: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ssn()", ("ssn", "social_security", "social_security_number", "national_id", "nin")),

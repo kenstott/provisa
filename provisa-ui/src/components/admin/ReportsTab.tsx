@@ -14,7 +14,7 @@
 // exportable, and access-controlled like any table). Rows load through the one
 // governed SQL pipeline; sort/filter/group happen client-side in ResultsGrid.
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -36,13 +36,25 @@ import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { ListedTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
 import { reportCellHref } from "../../lib/reportCellHref";
+import { useLocalStorage } from "../graph/graph-persistence";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { CapabilityGate } from "../CapabilityGate";
+import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import { OntologyDriftPanel } from "./OntologyDriftPanel";
+import { FilterInput } from "./FilterInput";
+import { matchesQuery } from "../../lib/searchItems";
 
 /** REQ-1386: drift is computed from the model's history and shown with this report. */
 const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
+
+const LIST_WIDTH_KEY = "provisa.reportsTab.listWidth";
+const LIST_INITIAL = 240;
+const LIST_MIN = 160;
+const LIST_MAX = 560;
+const KEY_STEP = 32;
+const DESCRIPTION_LINES = 2;
 
 export function ReportsTab() {
   const { t } = useTranslation();
@@ -56,7 +68,12 @@ export function ReportsTab() {
     () =>
       tables
         .filter((tbl) => tbl.domainId === "ops")
-        .sort((a, b) => (a.alias || a.tableName).localeCompare(b.alias || b.tableName)),
+        // Alphabetical by the name the row shows, case and accents ignored.
+        .sort((a, b) =>
+          (a.alias || a.tableName).localeCompare(b.alias || b.tableName, undefined, {
+            sensitivity: "base",
+          }),
+        ),
     [tables],
   );
 
@@ -71,22 +88,34 @@ export function ReportsTab() {
     reports[0] ??
     null;
 
-  const [listWidth, setListWidth] = useState(240);
-  const startDrag = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startX = e.clientX;
-      const startW = listWidth;
-      const onMove = (ev: MouseEvent) =>
-        setListWidth(Math.max(160, Math.min(560, startW + ev.clientX - startX)));
-      const onUp = () => {
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [listWidth],
+  // The list's width is kept per browser (useLocalStorage, the store useResizableWidth keeps its
+  // width in). The hook measures a panel docked at the right of its row; this list sits at the
+  // left, so the drag measures from the list's left edge here and the key and storage rules match.
+  const [listWidth, setListWidth] = useLocalStorage(LIST_WIDTH_KEY, LIST_INITIAL);
+  const clampWidth = (w: number) => Math.max(LIST_MIN, Math.min(LIST_MAX, Math.round(w)));
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = listWidth;
+    const onMove = (ev: MouseEvent) => setListWidth(clampWidth(startW + ev.clientX - startX));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const onHandleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setListWidth(clampWidth(listWidth + (e.key === "ArrowRight" ? KEY_STEP : -KEY_STEP)));
+  };
+
+  // The list is narrowed by name or description; the selection and the deep link still resolve
+  // over every report, so a filter never changes which report the pane shows.
+  const [filter, setFilter] = useState("");
+  const visibleReports = reports.filter((r) =>
+    matchesQuery([r.alias, r.tableName, r.description], filter),
   );
 
   const [addOpen, setAddOpen] = useState(false);
@@ -162,16 +191,27 @@ export function ReportsTab() {
           <Text size="sm" fw={600}>
             {t("reportsTab.title")}
           </Text>
-          <Button
-            size="compact-xs"
-            variant="default"
-            leftSection={<Plus size={12} />}
-            onClick={() => setAddOpen(true)}
-            data-testid="add-report-btn"
-          >
-            {t("reportsTab.add")}
-          </Button>
+          {/* A report is a view registered in the ops domain, so adding one asks what
+              registering a table asks; reading the reports is the ops domain's right. */}
+          <CapabilityGate capability="table_registration">
+            <Button
+              size="compact-xs"
+              variant="default"
+              leftSection={<Plus size={12} />}
+              onClick={() => setAddOpen(true)}
+              data-testid="add-report-btn"
+            >
+              {t("reportsTab.add")}
+            </Button>
+          </CapabilityGate>
         </Group>
+        <div style={{ padding: "0 var(--mantine-spacing-xs) 6px" }}>
+          <FilterInput
+            value={filter}
+            onChange={setFilter}
+            placeholder={t("reportsTab.filterPlaceholder")}
+          />
+        </div>
         <div style={{ flex: 1, overflow: "auto" }}>
           {tablesLoading && reports.length === 0 ? (
             <Group justify="center" py="md">
@@ -181,33 +221,53 @@ export function ReportsTab() {
             <Text size="xs" c="dimmed" px="xs" py="sm">
               {t("reportsTab.empty")}
             </Text>
+          ) : visibleReports.length === 0 ? (
+            <Text size="xs" c="dimmed" px="xs" py="sm" data-testid="reports-no-match">
+              {t("reportsTab.noMatch")}
+            </Text>
           ) : (
-            reports.map((report) => {
+            visibleReports.map((report) => {
               const custom = report.sourceId === DERIVED_SOURCE_ID;
               return (
                 <NavLink
                   key={report.id}
                   active={report.id === selected?.id}
                   label={report.alias || report.tableName}
-                  description={report.description || undefined}
+                  description={
+                    report.description ? (
+                      // Held to two lines; a click on the text opens or closes it and stops there,
+                      // so it does not select the report (a click elsewhere on the row still does).
+                      <ClampedDetail
+                        testId={`report-description-${report.tableName}`}
+                        lines={DESCRIPTION_LINES}
+                        // The row's own type, not the browser's button type.
+                        buttonStyle={{ font: "inherit", color: "inherit" }}
+                        onToggle={(e) => e.stopPropagation()}
+                      >
+                        {report.description}
+                      </ClampedDetail>
+                    ) : undefined
+                  }
                   onClick={() => handleSelect(report)}
                   data-testid={`report-item-${report.tableName}`}
                   rightSection={
                     custom ? (
-                      <Tip text={t("reportsTab.delete")} named>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          size="sm"
-                          aria-label={t("reportsTab.delete")}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleDelete(report);
-                          }}
-                        >
-                          <Trash2 size={13} />
-                        </ActionIcon>
-                      </Tip>
+                      <CapabilityGate capability="table_registration">
+                        <Tip text={t("reportsTab.delete")} named>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            size="sm"
+                            aria-label={t("reportsTab.delete")}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleDelete(report);
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </ActionIcon>
+                        </Tip>
+                      </CapabilityGate>
                     ) : undefined
                   }
                 />
@@ -223,7 +283,9 @@ export function ReportsTab() {
         role="separator"
         aria-orientation="vertical"
         aria-label={t("reportsTab.resize")}
+        tabIndex={0}
         onMouseDown={startDrag}
+        onKeyDown={onHandleKeyDown}
         data-testid="reports-resize-handle"
         style={{
           flexShrink: 0,

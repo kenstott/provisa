@@ -36,14 +36,17 @@ vi.mock("../pages/data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../components/graph3d/GraphPanel", () => ({
+vi.mock("../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
-  GraphPanel: () => null,
+  OntologySnippet: () => null,
 }));
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    // A role as the session holds it: its effective capabilities and domains (who owns a product).
+    selectedRoles: [
+      { id: "admin", effectiveCapabilities: ["data_product_rw"], domain_access: ["*"] },
+    ],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));

@@ -99,16 +99,48 @@ class FakeObserver {
 }
 vi.stubGlobal("IntersectionObserver", FakeObserver);
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
-vi.mock("../useProductGraph", () => ({
-  useProductGraph: (_product: string | null, enabled: boolean) => ({
-    data: enabled ? FACTS : null,
-    error: null,
-    scoped: enabled ? { data: FACTS, query: "query DataProductGraph { x }" } : null,
-    onScope: () => undefined,
-  }),
+// The ontology as read: the fixture, with Amount bound to orders.total and orders' placed column
+// bound to nothing (its "+N columns" node).
+const LANES_DATA = vi.hoisted(() => ({ data: null as unknown }));
+vi.mock("../ontologyData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyData")>()),
+  // The query stands for its scope; the server below answers it with the graph read.
+  ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
+    JSON.stringify({ ...s, layers: [...s.layers] }),
+  ontologyCountQuery: () => "count",
+  ontologyGraph: () => LANES_DATA.data,
+}));
+vi.mock("../../../api/metaGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async () => ({ schema: null, roots: new Map() }),
+  dataGraphql: async (query: string) => {
+    void query;
+    return { _terms: [] };
+  },
 }));
 
-import { GraphPanel } from "../GraphPanel";
+import { OntologySnippet } from "../OntologyGraph";
+import { productPreset } from "../ontologyPresets";
+
+const DATA_READ = {
+  nodes: [
+    ...FACTS.nodes,
+    { id: "term:amount", type: "term" as const, label: "Amount" },
+    {
+      id: "c:orders.placed",
+      type: "column" as const,
+      label: "placed",
+      parent: "t:orders",
+      domains: ["sales"],
+    },
+  ],
+  edges: [
+    ...FACTS.edges,
+    { id: "b2", a: "term:amount", b: "c:orders.total", kind: "term_binding" as const },
+    { id: "h2", a: "t:orders", b: "c:orders.placed", kind: "has_column" as const },
+  ],
+};
+LANES_DATA.data = DATA_READ;
 
 const last = () => made.cys[made.cys.length - 1];
 const ids = (kind: string) =>
@@ -131,13 +163,15 @@ beforeEach(() => {
 });
 
 function panel() {
-  render(<GraphPanel productId="c360" productName="customer_360" graph={DATA} />);
+  render(
+    <OntologySnippet preset={productPreset("c360")} name="customer_360" testId="graph-panel" />,
+  );
   act(() => observed.fire.forEach((f) => f()));
 }
 
 async function explorer() {
   panel();
-  fireEvent.click(screen.getByTestId("graph-panel-expand"));
+  fireEvent.click(await screen.findByTestId("graph-panel-expand"));
   const full = await screen.findByTestId("graph3d");
   fireEvent.click(within(full).getByRole("radio", { name: "2D" }));
   await screen.findByTestId("graph3d-lanes");
@@ -147,14 +181,24 @@ async function explorer() {
 describe("the product panel in 2D", () => {
   it("draws the product's lanes: terms with their hierarchy, columns, tables, the product", async () => {
     panel();
-    fireEvent.click(within(screen.getByTestId("graph-panel")).getByRole("radio", { name: "2D" }));
+    fireEvent.click(
+      within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
+    );
     await screen.findByTestId("graph-panel-lanes");
-    // Party, the term Customer is a kind of, heads the chain though the card draws no term edge.
+    // REQ-2174 (amended 2026-11-07): it opens at 1 hop, the product's tables alone.
+    expect(ids("node")).toEqual(["p:c360", "t:customers", "t:orders"]);
+    // At 4 hops: their columns, the terms tied to them, and Party a step across a term link.
+    fireEvent.click(
+      within(screen.getByTestId("graph-panel-depth")).getByRole("radio", { name: "4" }),
+    );
+    await waitFor(() => expect(ids("node")).toContain("term:party"));
     expect(ids("node")).toEqual([
       "c:customers.email",
+      "c:orders.total",
       "p:c360",
       "t:customers",
       "t:orders",
+      "term:amount",
       "term:customer",
       "term:party",
     ]);
@@ -162,6 +206,8 @@ describe("the product panel in 2D", () => {
     expect(laneOf("c:customers.email")).toBe("column");
     expect(laneOf("t:orders")).toBe("table");
     expect(laneOf("p:c360")).toBe("product");
+    // Related tables is the 3D view's (REQ-2174, amended 2026-11-07).
+    expect(screen.queryByTestId("graph-panel-related")).not.toBeInTheDocument();
     // A 2D graph has one layout: no Force / Layered choice.
     expect(screen.queryByTestId("graph-panel-layout")).not.toBeInTheDocument();
     // A glance: no copy control on the card.
@@ -170,17 +216,22 @@ describe("the product panel in 2D", () => {
 
   it("expands a table's +N columns node in place", async () => {
     panel();
-    fireEvent.click(within(screen.getByTestId("graph-panel")).getByRole("radio", { name: "2D" }));
+    fireEvent.click(
+      within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
+    );
     await screen.findByTestId("graph-panel-lanes");
-    expect(ids("more")).toEqual(["more:t:orders"]);
+    fireEvent.click(
+      within(screen.getByTestId("graph-panel-depth")).getByRole("radio", { name: "3" }),
+    );
+    await waitFor(() => expect(ids("more")).toEqual(["more:t:orders"]));
     tap("more:t:orders");
     await waitFor(() => expect(ids("more")).toEqual([]));
-    expect(laneOf("c:orders.total")).toBe("column");
+    expect(laneOf("c:orders.placed")).toBe("column");
   });
 });
 
 describe("the full graph in 2D", () => {
-  it("draws the All preset in lanes, with no 3D controls", async () => {
+  it("draws the whole ontology in lanes, with no 3D controls", async () => {
     const full = await explorer();
     expect(laneOf("term:party")).toBe("term");
     expect(laneOf("p:c360")).toBe("product");
@@ -207,7 +258,7 @@ describe("the full graph in 2D", () => {
   it("expands +N columns in place, and folds them back from the detail panel", async () => {
     await explorer();
     tap("more:t:orders");
-    await waitFor(() => expect(laneOf("c:orders.total")).toBe("column"));
+    await waitFor(() => expect(laneOf("c:orders.placed")).toBe("column"));
     tap("t:orders");
     fireEvent.click(await screen.findByTestId("graph3d-columns"));
     await waitFor(() => expect(ids("more")).toEqual(["more:t:orders"]));
@@ -222,7 +273,11 @@ describe("the full graph in 2D", () => {
     const text = (writeText.mock.calls[0] as unknown as [string])[0];
     expect(text.split("\n")[0]).toBe("flowchart LR");
     expect(text).toContain('subgraph lane_term["Terms"]');
-    expect(text).toContain('["+1 column"]');
+    expect(text).toContain('["1 column with no term in this view"]');
+    // A term link in its own direction, named by its type: Customer is a kind of Party.
+    const node = (name: string) =>
+      (new RegExp(`(n\\d+)\\["${name}"\\]`).exec(text) as RegExpExecArray)[1];
+    expect(text).toContain(`${node("Customer")} -.->|"KIND_OF"| ${node("Party")}`);
   });
 });
 
@@ -239,6 +294,17 @@ describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {
     expect(within(full).queryByTestId("graph3d-layers-menu")).not.toBeInTheDocument();
     fireEvent.click(within(full).getByRole("radio", { name: "3D" }));
     expect(await within(full).findByTestId("graph3d-layers-menu")).toBeInTheDocument();
+  });
+
+  it("keeps the Term relationships filter in 2D, whose term links it filters, and in 3D", async () => {
+    const full = await explorer();
+    expect(within(full).getByTestId("graph3d-filter-edge-type")).toHaveTextContent(
+      "All term relationships",
+    );
+    fireEvent.click(within(full).getByRole("radio", { name: "3D" }));
+    expect(await within(full).findByTestId("graph3d-filter-edge-type")).toHaveTextContent(
+      "All term relationships",
+    );
   });
 });
 
@@ -269,8 +335,10 @@ describe("what each lane node says (EVERY LANE NODE INFORMS AND LINKS)", () => {
     await explorer();
     hover("more:t:orders");
     const facts = await screen.findByTestId("graph3d-lanes-tip-facts");
-    const column = FACTS.nodes.find((n) => n.id === "c:orders.total") as (typeof FACTS.nodes)[number];
-    expect(within(facts).getByRole("link", { name: "total" })).toHaveAttribute(
+    const column = DATA_READ.nodes.find(
+      (n) => n.id === "c:orders.placed",
+    ) as (typeof FACTS.nodes)[number];
+    expect(within(facts).getByRole("link", { name: "placed" })).toHaveAttribute(
       "href",
       nodeHref(column),
     );

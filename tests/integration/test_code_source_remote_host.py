@@ -65,8 +65,36 @@ def _api(srv, method: str, path: str, **kw) -> httpx.Response:
     )
 
 
+_REPO = Path(__file__).parents[2]
+
+
 @pytest.fixture(scope="module")
-def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
+def provisa_wheel(runtime_cache):  # noqa: F811
+    """This checkout's Linux provisa wheel for the image's architecture, in the build cache's
+    wheelhouse (REQ-2194): a code image's front end carries the provisa._encoders compiled into
+    it. Built as the Provisa images build theirs, from the Dockerfile's provisa-wheel stage."""
+    house = runtime_cache / "wheels"
+    subprocess.run(
+        [
+            "docker",
+            "build",
+            "--platform",
+            f"linux/{_ARCH}",
+            "--target",
+            "provisa-wheel",
+            "--output",
+            f"type=local,dest={house}",
+            str(_REPO),
+        ],
+        check=True,
+    )
+    wheels = sorted(house.glob("provisa-*.whl"))
+    assert len(wheels) == 1, wheels
+    return wheels[0]
+
+
+@pytest.fixture(scope="module")
+def remote_host(server, code_source, provisa_wheel, tmp_path_factory):  # noqa: F811
     """The source's image, built through the API, loaded and run; its port, its pairing code, its
     image and its container's name."""
     started = _api(server, "POST", "/builds", json={"arch": _ARCH, "download": True})

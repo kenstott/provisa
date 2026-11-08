@@ -13,7 +13,14 @@
 // edges onto the box; untouched columns are counted, not drawn.
 
 import { describe, expect, it } from "vitest";
-import { HEADER_H, ROW_H, buildLineageModel, rowPosition } from "../lineage-layout";
+import {
+  BETWEEN_LANE,
+  HEADER_H,
+  ROW_H,
+  buildLineageModel,
+  lanesFrom,
+  rowPosition,
+} from "../lineage-layout";
 import type { LineageGraphData } from "../../../api/lineage";
 
 const op = (name: string, kind: "sql_function" | "identity" = "sql_function") => ({ name, kind });
@@ -123,7 +130,7 @@ describe("buildLineageModel", () => {
     ]);
   });
 
-  it("lanes boxes by distance from the given relations: contributors negative, consumers +1 (REQ-1667)", () => {
+  it("lanes boxes around the given relations and their inputs: consumers +1 (REQ-1667, REQ-2174)", () => {
     const chain: LineageGraphData = {
       nodes: [
         { id: "a.x", column: "x", relation: "a", kind: "source", materialized: false },
@@ -136,15 +143,104 @@ describe("buildLineageModel", () => {
       edges: [
         { source: "a.x", target: "b.x", transform: "", ops: [] },
         { source: "b.x", target: "m.x", transform: "", ops: [] },
-        { source: "a.x", target: "m.y", transform: "", ops: [] }, // a also feeds m directly: still -2
+        { source: "a.x", target: "m.y", transform: "", ops: [] }, // a also feeds m through b
         { source: "m.x", target: "c.x", transform: "", ops: [] },
       ],
       outputs: ["m.x", "m.y", "lone.z"],
       cycles: [],
     };
-    const m = buildLineageModel(chain, undefined, { lanesAround: new Set(["m", "lone"]) });
+    const m = buildLineageModel(chain, undefined, {
+      lanesAround: { members: new Set(["m", "lone"]), inputs: new Set(["a"]) },
+    });
     const lanes = Object.fromEntries(m.boxes.map((b) => [b.label, b.lane]));
-    expect(lanes).toEqual({ a: -2, b: -1, m: 0, c: 1, lone: 0 });
+    // a is m's input; b, a view m reads it through, stands between the inputs and m.
+    expect(lanes).toEqual({ a: -1, b: BETWEEN_LANE, m: 0, c: 1, lone: 0 });
+  });
+
+  // REQ-2174 (amended 2026-11-07): a product's inputs are its Inputs lane, wherever the graph
+  // puts them; only what lies beyond an input is "Upstream, hop n".
+  describe("lanesFrom", () => {
+    it("pins an input read through a view to the Inputs lane, the view between", () => {
+      // input -> view -> member: by path length the view would be -1 and the input -2.
+      const lane = lanesFrom(
+        [
+          ["input", "view"],
+          ["view", "member"],
+        ],
+        ["member"],
+        ["input"],
+      );
+      expect(Object.fromEntries(lane)).toEqual({ member: 0, view: BETWEEN_LANE, input: -1 });
+    });
+
+    it("pins every input to -1, near or far", () => {
+      const lane = lanesFrom(
+        [
+          ["near", "member"],
+          ["far", "v1"],
+          ["v1", "v2"],
+          ["v2", "member"],
+        ],
+        ["member"],
+        ["near", "far"],
+      );
+      expect(lane.get("near")).toBe(-1);
+      expect(lane.get("far")).toBe(-1);
+      expect(lane.get("v1")).toBe(BETWEEN_LANE);
+      expect(lane.get("v2")).toBe(BETWEEN_LANE);
+    });
+
+    it("counts the hops beyond the inputs by the longest path down to one", () => {
+      // landing -> raw (input) -> member; origin feeds landing, and raw directly too.
+      const lane = lanesFrom(
+        [
+          ["raw", "member"],
+          ["landing", "raw"],
+          ["origin", "landing"],
+          ["origin", "raw"],
+        ],
+        ["member"],
+        ["raw"],
+      );
+      expect(lane.get("raw")).toBe(-1);
+      expect(lane.get("landing")).toBe(-2); // Upstream, hop 1
+      expect(lane.get("origin")).toBe(-3); // hop 2: its longer path runs through landing
+    });
+
+    it("lanes what is beyond an input read through a view by its hops to the input", () => {
+      const lane = lanesFrom(
+        [
+          ["landing", "raw"],
+          ["raw", "view"],
+          ["view", "member"],
+        ],
+        ["member"],
+        ["raw"],
+      );
+      expect(Object.fromEntries(lane)).toEqual({
+        member: 0,
+        view: BETWEEN_LANE,
+        raw: -1,
+        landing: -2,
+      });
+    });
+
+    it("puts what reaches lane 0 from no input between, and leaves the unconnected out", () => {
+      const lane = lanesFrom(
+        [
+          ["orphanView", "member"],
+          ["member", "reader"],
+          ["x", "y"],
+        ],
+        ["member"],
+        [],
+      );
+      expect(Object.fromEntries(lane)).toEqual({
+        member: 0,
+        orphanView: BETWEEN_LANE,
+        reader: 1,
+      });
+    });
   });
 
   it("folds a collapsed relation's edges onto its box and reports the count", () => {

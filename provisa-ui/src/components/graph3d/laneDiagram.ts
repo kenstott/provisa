@@ -8,24 +8,25 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-10-28): the graph's 2D view is a lane diagram read left to right -- the
-// term hierarchy, the columns its terms bind, their tables, the products those tables belong to.
-// Inside the term lane only rank edges are drawn, top-down; a chain ends at the columns binding
-// it; columns link to their table and tables to their products. A table's unbound columns are one
-// "+N columns" node until the table is expanded. A table in no product ends at the tables lane.
-// Lateral and flow edges and lineage are not drawn. Pure data: LaneStage draws what this decides.
-// The term lane is the hierarchy: each term drawn with the broader terms its rank edges reach,
-// up the chain, whatever a focus keeps (a product's neighbourhood ends at its bound terms).
+// REQ-2174 (amended 2026-10-28; 2026-11-07, WHAT THE GRAPH DRAWS): the graph's 2D view is a lane
+// diagram read left to right -- the products, their tables, those tables' columns and the terms
+// those columns are tied to, with the links between the terms drawn (the Term relationships filter
+// already applied) and nothing else: no related table, no lineage. Inside the term lane the rank
+// edges set the levels, top-down; every other term link is an arc laid over them that moves no
+// node. A table's columns not tied to a term drawn are one node until the table is expanded. A
+// product's focus counts hops along that path (lanePath): 1 its tables, 2 their columns, 3 the
+// terms tied to them, each hop past 3 one step across the term links. Pure data: LaneStage draws
+// what this decides.
 
 import type { GraphData, GraphEdge, GraphNode } from "./graphModel";
 import { edgeClass } from "./layeredLayout";
 
 export type Lane = "term" | "column" | "table" | "product";
 
-/** The lanes, left to right. */
-export const LANES: Lane[] = ["term", "column", "table", "product"];
+/** The lanes as drawn, left to right. */
+export const LANES: Lane[] = ["product", "table", "column", "term"];
 
-/** A table's unbound columns, drawn as one node until the table is expanded. */
+/** A table's columns tied to no term drawn, drawn as one node until the table is expanded. */
 export interface MoreNode {
   id: string;
   table: string;
@@ -34,11 +35,14 @@ export interface MoreNode {
   columns: GraphNode[];
 }
 
-/** A drawn line, ``from`` the upper or left end ``to`` the lower or right one. */
+/** A line, ``from`` its end on the term side (inside the term lane, the broader term) ``to`` the
+ * other: the lanes are ordered by these. LaneStage draws a line between lanes left to right. */
 export interface LaneLink {
   id: string;
   from: string;
   to: string;
+  /** A term link's type, named on the line. */
+  label?: string;
 }
 
 export interface LaneDiagram {
@@ -46,21 +50,34 @@ export interface LaneDiagram {
   graph: GraphData;
   lane: Map<string, Lane>;
   more: MoreNode[];
-  /** Every line drawn: the graph's edges and each "+N columns" node's line to its table. */
+  /** Every line laid out: the graph's edges and each fold node's line to its table, the term
+   * links that are not rank edges aside. */
   links: LaneLink[];
+  /** The term links that are not rank edges (lateral, flow): drawn over the laid-out term lane,
+   * never placing a node. */
+  arcs: LaneLink[];
   /** The whole graph read, where each node's facts are found (nodeFacts). */
   data: GraphData;
 }
 
 export const moreId = (table: string) => `more:${table}`;
 
+/** The hops of a product's focus, counted along the lane path. */
+export interface LanePath {
+  /** The product's node id. */
+  focus: string;
+  depth: number;
+}
+
 /** The lane diagram of ``shown`` (the graph the view's layers and filters keep). Columns are
  * read from ``data``, since a table's columns fold into it there; ``expanded`` holds the tables
- * whose unbound columns are drawn one by one. */
+ * whose columns are drawn one by one. With ``path`` (a product's focus) ``shown`` is the graph
+ * unpruned by the focus and the hops are counted here, along the lanes. */
 export function laneDiagram(
   shown: GraphData,
   data: GraphData,
   expanded: ReadonlySet<string>,
+  path: LanePath | null = null,
 ): LaneDiagram {
   const byId = new Map(data.nodes.map((n) => [n.id, n]));
   const node = (id: string): GraphNode => {
@@ -69,74 +86,113 @@ export function laneDiagram(
     return n;
   };
   const drawn = new Set(shown.nodes.map((n) => n.id));
+  const termLinks = shown.edges.filter((e) => e.kind === "term_edge");
   const lane = new Map<string, Lane>();
-  const terms = shown.nodes.filter((n) => n.type === "term");
-  for (const n of terms) lane.set(n.id, "term");
-  // Up each chain: a rank edge's broader term (its b end) joins the lane.
-  const ranks = data.edges.filter((e) => e.kind === "term_edge" && edgeClass(e) === "rank");
-  for (let i = 0; i < terms.length; i++)
-    for (const e of ranks)
-      if (e.a === terms[i].id && !lane.has(e.b)) {
-        lane.set(e.b, "term");
-        terms.push(node(e.b));
-      }
-
-  // The tables drawn, and those of the columns a drawn term binds (a preset without tables draws
-  // the columns alone); a column drawn only as lineage's end brings no table.
   const tables: string[] = [];
   const addTable = (id: string) => {
     if (lane.has(id)) return;
     lane.set(id, "table");
     tables.push(id);
   };
-  for (const n of shown.nodes) if (n.type === "table") addTable(n.id);
-  for (const e of shown.edges) {
-    if (e.kind !== "term_binding" || lane.get(e.a) !== "term") continue;
-    const parent = node(e.b).parent;
-    if (node(e.b).type === "column" && parent) addTable(parent);
+  const terms: GraphNode[] = [];
+  const addTerm = (id: string) => {
+    if (lane.has(id)) return;
+    lane.set(id, "term");
+    terms.push(node(id));
+  };
+  // Whether columns are drawn at all: a product's first hop is its tables alone.
+  const columnsDrawn = path === null || path.depth >= 2;
+
+  if (path !== null) {
+    // 1: the product's tables.
+    if (path.depth >= 1)
+      for (const e of shown.edges)
+        if (e.kind === "member" && e.a === path.focus && node(e.b).type === "table") addTable(e.b);
+    // 3: the terms drawn tied to their columns (read from ``data``, where a column is itself);
+    // past 3, a step across the term links each hop.
+    if (path.depth >= 3) {
+      for (const e of data.edges) {
+        if (e.kind !== "term_binding" || !drawn.has(e.a) || node(e.a).type !== "term") continue;
+        const parent = node(e.b).parent;
+        if (node(e.b).type === "column" && parent && lane.get(parent) === "table") addTerm(e.a);
+      }
+      let frontier = terms.map((n) => n.id);
+      for (let hop = 4; hop <= path.depth && frontier.length > 0; hop++) {
+        const at = new Set(frontier);
+        frontier = [];
+        for (const e of termLinks)
+          for (const [from, to] of [
+            [e.a, e.b],
+            [e.b, e.a],
+          ])
+            if (at.has(from) && !lane.has(to)) {
+              addTerm(to);
+              frontier.push(to);
+            }
+      }
+    }
+  } else {
+    for (const n of shown.nodes) if (n.type === "term") addTerm(n.id);
+    // The tables drawn, and those of the columns a drawn term binds (a preset without tables draws
+    // the columns alone); a column drawn only as lineage's end brings no table.
+    for (const n of shown.nodes) if (n.type === "table") addTable(n.id);
+    for (const e of shown.edges) {
+      if (e.kind !== "term_binding" || lane.get(e.a) !== "term") continue;
+      const parent = node(e.b).parent;
+      if (node(e.b).type === "column" && parent) addTable(parent);
+    }
   }
 
   const edges: GraphEdge[] = [];
   const links: LaneLink[] = [];
+  const arcs: LaneLink[] = [];
+  const edgeId = (e: Omit<GraphEdge, "id">) =>
+    `${e.kind}:${e.a}>${e.b}${e.kind === "term_edge" && e.label ? `:${e.label}` : ""}`;
   const add = (e: Omit<GraphEdge, "id">, from: string, to: string) => {
-    // Rank edges of two types between two terms are two lines (graphModel's rule).
-    const id = `${e.kind}:${e.a}>${e.b}${e.kind === "term_edge" && e.label ? `:${e.label}` : ""}`;
+    // Term links of two types between two terms are two lines (graphModel's rule).
+    const id = edgeId(e);
     edges.push({ ...e, id });
-    links.push({ id, from, to });
+    links.push({ id, from, to, ...(e.kind === "term_edge" && e.label ? { label: e.label } : {}) });
   };
 
-  // Inside the term lane, rank edges only: the broader term above. The graph read holds them
-  // all (the view's edge-type filter is in its query), each type its own edge.
-  const seenRank = new Set<string>();
-  for (const e of ranks) {
+  // Between the terms drawn, every link the filters keep, each type its own: a rank edge sets the
+  // levels, the broader term above; any other is an arc over them.
+  const seenLink = new Set<string>();
+  for (const e of termLinks) {
     if (lane.get(e.a) !== "term" || lane.get(e.b) !== "term") continue;
-    const key = `${e.a}>${e.b}:${e.label}`;
-    if (seenRank.has(key)) continue;
-    seenRank.add(key);
-    add({ a: e.a, b: e.b, kind: e.kind, label: e.label }, e.b, e.a);
+    const id = edgeId(e);
+    if (seenLink.has(id)) continue;
+    seenLink.add(id);
+    if (edgeClass(e) === "rank") add({ a: e.a, b: e.b, kind: e.kind, label: e.label }, e.b, e.a);
+    else {
+      edges.push({ a: e.a, b: e.b, kind: e.kind, label: e.label, id });
+      arcs.push({ id, from: e.a, to: e.b, ...(e.label ? { label: e.label } : {}) });
+    }
   }
 
-  // A chain ends at the columns binding it: those drawn, or of a table drawn. A term that IS a
-  // table (a class) ends at the table.
+  // A term's line ends at the columns tied to it: those drawn, or of a table drawn. A term that IS
+  // a table (a class) ends at the table.
   const bound = new Set<string>();
   const bindings: Omit<GraphEdge, "id">[] = [];
   for (const e of data.edges) {
     if (e.kind !== "term_binding" || lane.get(e.a) !== "term") continue;
     const end = node(e.b);
     if (end.type === "column") {
+      if (!columnsDrawn) continue;
       if (!drawn.has(end.id) && !(end.parent && lane.get(end.parent) === "table")) continue;
       bound.add(end.id);
     } else if (lane.get(end.id) !== "table") continue;
     bindings.push({ a: e.a, b: e.b, kind: "term_binding", label: e.label });
   }
 
-  // Each table's columns: the bound ones, and the rest as one "+N columns" node until expanded.
+  // Each table's columns: the bound ones, and the rest as one node until expanded.
   const columns: GraphNode[] = [];
   const more: MoreNode[] = [];
   const ofTable = new Map<string, GraphNode[]>();
-  for (const n of data.nodes)
-    if (n.type === "column" && n.parent && lane.get(n.parent) === "table")
-      ofTable.set(n.parent, [...(ofTable.get(n.parent) ?? []), n]);
+  if (columnsDrawn)
+    for (const n of data.nodes)
+      if (n.type === "column" && n.parent && lane.get(n.parent) === "table")
+        ofTable.set(n.parent, [...(ofTable.get(n.parent) ?? []), n]);
   for (const t of tables) {
     const cols = ofTable.get(t) ?? [];
     const unbound = cols.filter((c) => !bound.has(c.id));
@@ -153,26 +209,29 @@ export function laneDiagram(
     if (c.parent) add({ a: c.parent, b: c.id, kind: "has_column" }, c.id, c.parent);
   for (const m of more) links.push({ id: `${m.id}>${m.table}`, from: m.id, to: m.table });
 
-  // Every product the tables belong to, read from the graph whatever its layers draw (the
-  // glossary's Data layer off); a graph of products alone draws those drawn.
+  // A product's focus draws that product alone; otherwise every product the tables belong to,
+  // read from the graph whatever its layers draw (the glossary's Data layer off), and a graph of
+  // products alone draws those drawn.
   const members = data.edges.filter(
-    (e) => e.kind === "member" && node(e.a).type === "product" && lane.get(e.b) === "table",
+    (e) =>
+      e.kind === "member" &&
+      node(e.a).type === "product" &&
+      lane.get(e.b) === "table" &&
+      (path === null || e.a === path.focus),
   );
-  const alone = terms.length === 0 && tables.length === 0;
-  const products = alone
-    ? shown.nodes.filter((n) => n.type === "product")
-    : [...new Set(members.map((e) => e.a))].map(node);
+  const alone = path === null && terms.length === 0 && tables.length === 0;
+  const products =
+    path !== null
+      ? [node(path.focus)]
+      : alone
+        ? shown.nodes.filter((n) => n.type === "product")
+        : [...new Set(members.map((e) => e.a))].map(node);
   for (const p of products) lane.set(p.id, "product");
   for (const e of members) add({ a: e.a, b: e.b, kind: "member" }, e.b, e.a);
 
   // In lane order, left to right.
-  const nodes = [
-    ...terms,
-    ...columns,
-    ...tables.map(node),
-    ...products,
-  ];
-  return { graph: { nodes, edges }, lane, more, links, data };
+  const nodes = [...products, ...tables.map(node), ...columns, ...terms];
+  return { graph: { nodes, edges }, lane, more, links, arcs, data };
 }
 
 /** Lines crossing, by place: pairs (a from ``xs``, b from ``ys``) with a below b. */
@@ -225,7 +284,8 @@ const median = (xs: number[]) => {
  * line from a column to its table crosses another; the blocks, the columns inside each and the
  * products ordered to cut the crossings of the lines from the terms and to the products. A term
  * bound to a table counts in its table's block, as the line it draws passes the column lane there;
- * lines inside the term lane cross nothing outside it. Same diagram, same order. */
+ * lines inside the term lane cross nothing outside it. Same diagram, same order. The lanes are
+ * returned from the term side: terms, columns, tables, products. */
 export function laneOrder(d: LaneDiagram, termOrder: string[]): string[][] {
   const termAt = new Map(termOrder.map((id, i) => [id, i]));
   const moreIds = new Set(d.more.map((m) => m.id));
@@ -383,7 +443,12 @@ export function placedLaneOrder(d: LaneDiagram, first: (id: string) => At): stri
   let best = score(byRow(1));
   const other = score(byRow(-1));
   if (other.n < best.n) best = other;
-  const edge = Math.max(...terms.map((t) => first(t).x));
+  // The term lane's edge facing the other lanes: its left, the lanes running to its left.
+  const termXs = terms.map((t) => first(t).x);
+  const otherXs = d.graph.nodes.filter((n) => d.lane.get(n.id) !== "term").map((n) => first(n.id).x);
+  const meanOf = (xs: number[]) => xs.reduce((s, v) => s + v, 0) / xs.length;
+  const edge =
+    otherXs.length > 0 && meanOf(otherXs) < meanOf(termXs) ? Math.min(...termXs) : Math.max(...termXs);
   for (let r = 0; r < PROJECTIONS && best.n > 0; r++) {
     const at = placed(best.lanes);
     const reach = new Map<string, number>();
@@ -490,7 +555,8 @@ function refineDrawn(
   return fromBlocks(blocks, products);
 }
 
-/** The diagram as Mermaid ``flowchart LR`` text, one subgraph per lane drawn. */
+/** The diagram as Mermaid ``flowchart LR`` text, one subgraph per lane drawn, left to right; a
+ * term link is dotted and named by its type. */
 export function laneMermaid(
   d: LaneDiagram,
   laneTitle: (lane: Lane) => string,
@@ -518,6 +584,14 @@ export function laneMermaid(
     for (const [id, label] of members) out.push(`    ${idOf(id)}[${quote(label)}]`);
     out.push("  end");
   }
-  for (const k of d.links) out.push(`  ${idOf(k.from)} --> ${idOf(k.to)}`);
+  const inTerms = (k: LaneLink) => d.lane.get(k.from) === "term" && d.lane.get(k.to) === "term";
+  // A term link runs in its own direction: the narrower term KIND_OF the broader one.
+  const dotted = (from: string, to: string, label?: string) =>
+    `  ${idOf(from)} -.->${label ? `|${quote(label)}|` : ""} ${idOf(to)}`;
+  for (const k of d.links)
+    out.push(
+inTerms(k) ? dotted(k.to, k.from, k.label) : `  ${idOf(k.to)} --> ${idOf(k.from)}`
+    );
+  for (const k of d.arcs) out.push(dotted(k.from, k.to, k.label));
   return out.join("\n");
 }

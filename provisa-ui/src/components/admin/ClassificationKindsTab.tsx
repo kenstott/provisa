@@ -29,16 +29,12 @@ function message(e: unknown): string {
 export function ClassificationKindsTab() {
   const { t } = useTranslation();
   const [kinds, setKinds] = useState<ClassificationKind[] | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchClassificationKinds()
-      .then((r) => {
-        setKinds(r.kinds);
-        setCanEdit(r.canEdit);
-      })
+      .then((r) => setKinds(r.kinds))
       .catch((e: unknown) => setError(message(e)));
   }, []);
 
@@ -102,7 +98,7 @@ export function ClassificationKindsTab() {
                 <Table.Td>
                   <Switch
                     checked={k.enabled}
-                    disabled={!canEdit || saving != null}
+                    disabled={saving != null}
                     onChange={(e) => void toggle(k, e.currentTarget.checked)}
                     aria-label={t("classificationKinds.enabledAria", {
                       kind: t(`classificationKinds.kind.${k.id}`),

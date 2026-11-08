@@ -40,6 +40,8 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/data", tags=["data"])
 
 CHANNEL_PREFIX = "provisa_"
+# The built-in source the ops tables are registered under.
+OPS_SOURCE_ID = "provisa-admin"
 
 
 def _tables_key(table: str, tables: dict, state) -> str | None:
@@ -78,6 +80,19 @@ def _build_kafka_config(state, source_id: str) -> dict:
     if not bootstrap:
         raise ValueError(f"Kafka source {source_id!r} has no brokers configured for a subscription")
     return {"bootstrap_servers": bootstrap}
+
+
+async def _kafka_security(state, source_id: str):  # REQ-147
+    """The TLS and SASL settings of a declared Kafka source, read under the org's vault: its
+    password may be a ``${secret:...}``. A plain cluster names none and asks nothing of the vault."""
+    from provisa.core.secrets_store import bound_to_request_org
+    from provisa.kafka.security import PLAINTEXT, declared_settings, of_declared
+
+    declared = state.kafka_declared[source_id]
+    if not declared_settings(declared)["hints"]:
+        return PLAINTEXT
+    async with bound_to_request_org():
+        return of_declared(declared)
 
 
 def _build_ingest_config(state, source_id: str) -> dict:
@@ -296,6 +311,8 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
 
     provider_type = _resolve_provider_type(source_type, source_id, tbl_meta, state)  # REQ-814
     provider_config = _build_provider_config(provider_type, source_id, table, tbl_meta, state)
+    if provider_type == "kafka":
+        provider_config["security"] = await _kafka_security(state, source_id)
 
     if supports_polling_fallback(provider_type) and "watermark_column" not in provider_config:
         # REQ-260: without an explicit watermark_column, poll subscriptions are unavailable
@@ -313,15 +330,14 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
 
 async def _sse_generator(  # REQ-219, REQ-258
     pool,
-    table: str,
+    channel: str,
     disconnect: asyncio.Event,
 ) -> AsyncGenerator[ChangeEvent, None]:
     """The change events of a PostgreSQL LISTEN channel, with a keepalive tick every 30s.
 
-    Subscribes to the ``provisa_{table}`` channel on *pool* (the control-plane
-    ``Database``, whose listener thread holds the LISTEN connection) until the client leaves.
+    Subscribes to ``channel`` (:func:`_channel`) on *pool* (the control-plane ``Database``, whose
+    listener thread holds the LISTEN connection) until the client leaves.
     """
-    channel = f"{CHANNEL_PREFIX}{table}"
     queue: asyncio.Queue[str] = asyncio.Queue()
 
     def _on_notify(  # pyright: ignore[reportUnusedParameter]
@@ -352,6 +368,18 @@ async def _sse_generator(  # REQ-219, REQ-258
     finally:
         await pool.remove_listener(channel, _on_notify)
         log.info("SSE: disconnected from channel %s", channel)
+
+
+def _channel(table: str, tbl_meta) -> str:  # REQ-258, REQ-2216
+    """The channel *table*'s changes are reported on: an ops table over a base table of the org
+    schema (ops.requests over creation_requests) reports on its schema's own channel, every other
+    PostgreSQL table on ``provisa_{table}``."""
+    from provisa.api._meta_views import _OPS_LOG_BASE_TABLE
+    from provisa.subscriptions.pg_provider import schema_channel, table_channel
+
+    if tbl_meta.source_id == OPS_SOURCE_ID and table in _OPS_LOG_BASE_TABLE:
+        return schema_channel(table, tbl_meta.schema_name)
+    return table_channel(table)
 
 
 def _resolve_tbl_meta(table: str, state):
@@ -556,7 +584,7 @@ async def subscribe(
                     table, source_id, source_type, tbl_meta, disconnect
                 )
             else:
-                events = _sse_generator(state.tenant_db, table, disconnect)
+                events = _sse_generator(state.tenant_db, _channel(table, tbl_meta), disconnect)
             # The stream has answered 200: when it ends on a failure the subscriber is told why in
             # one last frame (provisa/api/data/stream_end.py), never left with a silent close.
             changes = _governed_changes(events, key, ref, pk)

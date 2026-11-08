@@ -76,9 +76,15 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
 
     grants = write_grant_repo.grouped(await conn.fetch(write_grant_repo.BY_TABLE_SQL))
     # Every table's columns in one read, each table's in registration order: a rebuild reads
-    # every table, and a query per table was one for each (REQ-1882).
+    # every table, and a query per table was one for each (REQ-1882). registered_tables is read in
+    # a WITH clause, which PostgreSQL analyzes (and locks) before the FROM clause, so the statement
+    # locks the two in schema.sql's order: its ALTER TABLE blocks take registered_tables, then
+    # table_columns, in one transaction. Read in a subquery of the WHERE clause, registered_tables
+    # was locked second, the read held table_columns while it waited for it, and a run of
+    # schema.sql on the same org schema deadlocked with it.
     columns_of: dict[int, list] = {}
     for r in await conn.fetch(
+        f"WITH served AS (SELECT id FROM registered_tables WHERE {served}) "
         "SELECT table_id, column_name, data_type, visible_to, masks, "
         "alias, description, path, is_primary_key, object_fields, native_filter_type, "
         "native_filter_required, required_by_steward, "  # REQ-1986
@@ -88,8 +94,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "subtype, "  # REQ-2171
         "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
         "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
-        "FROM table_columns WHERE table_id IN "
-        f"(SELECT id FROM registered_tables WHERE {served}) ORDER BY table_id, id",
+        "FROM table_columns WHERE table_id IN (SELECT id FROM served) ORDER BY table_id, id",
         draft,
     ):
         columns_of.setdefault(r["table_id"], []).append(r)

@@ -61,7 +61,7 @@ jobs:
 
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -115,7 +115,7 @@ jobs:
 
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -169,7 +169,7 @@ jobs:
 
   build-macos-obs:
     name: Build macOS Obs DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -220,7 +220,7 @@ jobs:
 
   build-macos-demo:
     name: Build macOS Demo DMG (${{ needs.metadata.outputs.channel }})
-    runs-on: macos-14
+    runs-on: macos-15
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45

@@ -127,6 +127,7 @@ def _planes(monkeypatch, *org_rows: dict):
                 tenant_db=tenant_db,
                 record_db=tenant_db,
                 roles={
+                    # Reads nothing on purpose: no capability, no domain (J354).
                     "analyst": {"id": "analyst", "description": "Test role.", "capabilities": []}
                 },
             ),

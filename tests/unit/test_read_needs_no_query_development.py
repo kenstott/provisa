@@ -154,6 +154,7 @@ async def client(monkeypatch, source):
             "source_dialects",
             "tables",
             "relationships",
+            "schema_build_cache",
         )
     }
     state.auth_config = None
@@ -173,6 +174,9 @@ async def client(monkeypatch, source):
     state.source_dialects = {"pg": "postgres"}
     state.tables = [_TABLE]
     state.relationships = []
+    # A served app with a role's schema has its build cache, the registry's column types in it
+    # (app._build_and_register_schemas); /data/sql types a registered column by them (REQ-1961).
+    state.schema_build_cache = {"column_types": {}}
     state.source_pools = MagicMock()
     async with AsyncClient(transport=ASGITransport(app=the_app), base_url="http://test") as c:
         yield c

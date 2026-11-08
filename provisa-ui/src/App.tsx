@@ -28,7 +28,7 @@ import { AdminRail } from "./components/AdminRail";
 import { NAV_GROUPS, entryItem, sandboxReadable } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { SandboxReadableGate } from "./components/admin/SandboxReadableGate";
-import { HIDING_RIGHTS } from "./lib/capabilities";
+import { HIDING_RIGHTS, IMPORT_SURFACE } from "./lib/capabilities";
 import { CredentialCheck } from "./components/CredentialCheck";
 import { PageLoading } from "./components/PageLoading";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
@@ -619,12 +619,13 @@ function App() {
                                             }
                                           />
 
-                                          {/* REQ-1349: approvals are the acting org's own pending creation requests. */}
+                                          {/* REQ-1327: every member sees the requests it made and decides those whose
+                                    own right it holds, so the page asks `usage`, which every role carries. */}
                                           <Route
                                             path="/admin/requests"
                                             element={
                                               <CapabilityGate
-                                                capability="org_settings"
+                                                capability="usage"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <RequestsPage />
@@ -670,11 +671,9 @@ function App() {
                                               ["/admin/package-registries", "org_settings"], // REQ-1984
                                               ["/admin/container-registries", "org_settings"], // REQ-2098
                                               ["/admin/catalogs", "org_settings"], // REQ-2122
-                                              ["/admin/reference-library", "org_settings"], // REQ-2185
+                                              ["/admin/reference-library", "glossary_rw"], // REQ-2185, REQ-1327
                                               ["/admin/metadata-export", "org_settings"],
-                                              ["/admin/import", "org_settings"], // REQ-1483
-                                              ["/admin/tags", "org_settings"],
-                                              ["/admin/classification-kinds", "org_settings"], // REQ-2147
+                                              ["/admin/classification-kinds", "sensitive_data"], // REQ-2147, REQ-1327
                                               ["/admin/reports", "observability"], // REQ-1386
                                               // REQ-1590: the glossary has its own read right. Reading a term
                                               // is not administering the org, so an analyst opens it; the
@@ -720,6 +719,33 @@ function App() {
                                               <CapabilityGate
                                                 capability="environment_management"
                                                 orCapability="environment_owned_management"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <AdminPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-1327: an import writes objects of several layers, so any one of
+                                    their rights opens the page; applying checks each one's own. */}
+                                          <Route
+                                            path="/admin/import"
+                                            element={
+                                              <CapabilityGate
+                                                {...IMPORT_SURFACE}
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <AdminPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-1374, REQ-1944: tags are edited by a table editor or a holder of
+                                    sensitive_data, the rights the tag mutations ask. */}
+                                          <Route
+                                            path="/admin/tags"
+                                            element={
+                                              <CapabilityGate
+                                                capability="table_registration"
+                                                orCapability="sensitive_data"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <AdminPage />

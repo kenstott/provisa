@@ -97,7 +97,6 @@
         "customProperties": "自訂屬性",
         "relatedTables": "相關數據表",
         "relationships": "關係",
-        "lineage": "血緣",
         "inputPorts": "輸入埠",
         "dataQuality": "數據質素"
       },
@@ -111,11 +110,14 @@
       "relationshipsEmpty": "此產品的數據表之間沒有關係",
       "lineageEmpty": "沒有血緣",
       "lineageLoading": "正在載入血緣…",
-      "lineageHint": "欄位血緣圖，以此產品的數據表作為發佈端點，並列出用於衍生它們的所有上游數據表。僅供參考，需要 view_governance 能力。",
+      "lineageTitle": "欄位血緣：此產品的來源",
+      "lineageHint": "此產品發佈的每個欄位及其來源輸入欄位，以及兩者之間的每一步。需要 view_governance 權限。",
       "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
       "customPropertiesEmpty": "沒有自訂屬性",
-      "lineageLaneUpstream": "上游，第 {{n}} 跳",
-      "lineageLaneDownstream": "下游，第 {{n}} 跳"
+      "lineageLaneTables": "此產品的數據表",
+      "lineageLaneInputs": "輸入",
+      "lineageLaneUpstream": "上游，輸入之外第 {{n}} 跳",
+      "inputsLineageLink": "查看欄位血緣"
     },
     "readOnly": "唯讀",
     "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。",
@@ -213,6 +215,46 @@
         "description_changed": "描述已更改",
         "terms_changed": "條款已更改：{{subject}}"
       },
+      "howToUse": {
+        "column": {
+          "surface": "介面",
+          "address": "位址",
+          "how": "使用方式",
+          "link": "範例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任何 PostgreSQL 用戶端，例如 psql 或 DBeaver。資料庫 {{database}}，結構描述 {{schema}}。",
+          "flight-sql": "任何 Arrow Flight SQL 用戶端，例如 ADBC 驅動程式。資料庫 {{database}}，結構描述 {{schema}}。",
+          "grpc": "任何 gRPC 用戶端，呼叫服務 {{service}}，並附上中繼資料 authorization: Bearer <token>。",
+          "graphql": "任何 GraphQL 用戶端：對此資料表 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。",
+          "rest": "任何 HTTP 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "openapi": "僅包含此資料表的描述：可載入 Swagger UI、Postman 或用戶端產生器。",
+          "jsonapi": "任何 JSON:API 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "sparql": "任何 SPARQL 1.1 用戶端：對此資料表的類別 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "須由 {{approvers}} 授予存取權後才能使用。",
+          "noApprover": "須由 {{roles}} 的持有人授予存取權後才能使用。此合約沒有指定審批人。",
+          "undeclared": "須授予存取權後才能使用。此合約沒有指定角色或審批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申請存取權",
+          "roles": "向 {{roles}} 的持有人申請存取權",
+          "nobody": "此合約沒有指定可聯絡的人"
+        },
+        "open": "開啟範例",
+        "openAria": "開啟 {{table}} 的 {{surface}} 範例"
+      },
       "loadError": "無法讀取契約：{{error}}",
       "notExported": "{{member}} 沒有已匯出的契約",
       "section": {
@@ -259,46 +301,6 @@
         "versions": "版本與變更",
         "roles": "角色",
         "history": "版本歷史"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "介面",
-          "address": "位址",
-          "how": "使用方式",
-          "link": "範例"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "任何 PostgreSQL 用戶端，例如 psql 或 DBeaver。資料庫 {{database}}，結構描述 {{schema}}。",
-          "flight-sql": "任何 Arrow Flight SQL 用戶端，例如 ADBC 驅動程式。資料庫 {{database}}，結構描述 {{schema}}。",
-          "grpc": "任何 gRPC 用戶端，呼叫服務 {{service}}，並附上中繼資料 authorization: Bearer <token>。",
-          "graphql": "任何 GraphQL 用戶端：對此資料表 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。",
-          "rest": "任何 HTTP 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
-          "openapi": "僅包含此資料表的描述：可載入 Swagger UI、Postman 或用戶端產生器。",
-          "jsonapi": "任何 JSON:API 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
-          "sparql": "任何 SPARQL 1.1 用戶端：對此資料表的類別 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。"
-        },
-        "access": {
-          "granted": "須由 {{approvers}} 授予存取權後才能使用。",
-          "noApprover": "須由 {{roles}} 的持有人授予存取權後才能使用。此合約沒有指定審批人。",
-          "undeclared": "須授予存取權後才能使用。此合約沒有指定角色或審批人。"
-        },
-        "ask": {
-          "approvers": "向 {{approvers}} 申請存取權",
-          "roles": "向 {{roles}} 的持有人申請存取權",
-          "nobody": "此合約沒有指定可聯絡的人"
-        },
-        "open": "開啟範例",
-        "openAria": "開啟 {{table}} 的 {{surface}} 範例"
       }
     }
   }

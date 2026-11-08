@@ -125,6 +125,27 @@ if [ -f mongo-c-driver/src/libbson/CMakeLists.txt ]; then
   flip_cmp0042 mongo-c-driver/src/libbson/CMakeLists.txt
 fi
 
+# cmake 4.4 reads the "-Werror ..." libmongoc passes its accept() probe (a try_compile CMAKE_FLAGS,
+# so a cmake option, never a compiler flag) as a warning category and refuses to configure. Earlier
+# cmake ignored it; drop it. autogen.sh extracts the driver afresh each run, so the patch goes in
+# right after that step.
+python3 - autogen.sh <<'EOF'
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+step = "mv mongo-c-driver-$MONGOC_VERSION mongo-c-driver &&"
+patched = step + (
+    "\n\tsed -i.bak 's/\"-Werror -DCMAKE_CXX_LINK_EXECUTABLE/\"-DCMAKE_CXX_LINK_EXECUTABLE/'"
+    " mongo-c-driver/src/libmongoc/CMakeLists.txt &&"
+)
+if patched not in text:
+    if text.count(step) != 1:
+        sys.exit(f"FAIL: autogen.sh no longer extracts mongo-c-driver with {step!r}")
+    path.write_text(text.replace(step, patched))
+EOF
+
 echo "=== autogen: build+install mongo-c-driver 1.30.2 + json-c ==="
 bash ./autogen.sh
 # If the libbson CMP0042 line only appeared after checkout, patch + rebuild the driver once.

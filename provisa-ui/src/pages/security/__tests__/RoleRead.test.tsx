@@ -67,6 +67,7 @@ describe("a role's read view", () => {
       ["Domain Access", "All Domains"],
       ["Inherits from", "analyst"],
       ["Session values", "tier = golddesk = 7"],
+      ["Tags", ""],
     ]);
     // REQ-1682: one name = value to a line.
     expect(
@@ -118,6 +119,7 @@ describe("a role's read view", () => {
       ["Domain Access", "no domains: reaches no data"],
       ["Inherits from", "—"],
       ["Session values", "—"],
+      ["Tags", ""],
     ]);
     const limits = fields("role-read-limits");
     for (const [, value] of limits.slice(0, -1)) expect(value).toBe("—");

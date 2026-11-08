@@ -318,6 +318,9 @@ jobs:
         PROVISA_LANE_TESTS=${{ inputs.tests }}
       # The lane's name: the vector lane also installs the vector extra (REQ-2016).
       prepare: scripts/ci/lanes/suite-prepare.sh ${{ matrix.lane }}
+      # The session's live server (tests/conftest.py provisa_server) logs here, not to the lane's
+      # results: a test it answers with a 5xx is explained only by this file.
+      failure-logs: .pytest_cache/provisa_server.log
       run: >-
         uv run python scripts/ci/run_lane.py ${{ matrix.lane }}
         ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }}
@@ -581,7 +584,7 @@ jobs:
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
 
       - name: Stack slots on this runner
-        run: bash scripts/ci/lanes/suite-prepare.sh
+        run: bash scripts/ci/lanes/suite-prepare.sh warehouse
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml

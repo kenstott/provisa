@@ -135,12 +135,15 @@ async def _collect_events(
     that has landed everything so far stands; with nothing committed it reads the topic from its
     earliest offset (REQ-1733), and the table's snapshot would fill *count*."""
     from provisa.kafka import landed_offsets
+    from provisa.kafka.security import PLAINTEXT
 
     topic = provider._build_topic(table)  # noqa: SLF001
+    # The compose stack's Kafka is a plain cluster (REQ-147).
     await landed_offsets.record(
         KAFKA_BOOTSTRAP,
         provider._consumer_group_id,  # noqa: SLF001
-        await landed_offsets.end_offsets(KAFKA_BOOTSTRAP, topic),
+        await landed_offsets.end_offsets(KAFKA_BOOTSTRAP, topic, security=PLAINTEXT),
+        security=PLAINTEXT,
     )
     events = []
     try:

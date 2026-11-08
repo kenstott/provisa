@@ -21,6 +21,18 @@
 // The resolution: exactly one host — the control plane — ever runs a sign-in, and org subdomains
 // obtain the bearer from it (see lib/crossSubdomainAuth.ts). This module is the single place that
 // decides which host we are on, so the parent, the relay, and the login page cannot disagree.
+//
+// All of it applies only where the deployment declares its base domain (cloud.provisa.dev declares
+// provisa.dev). Any other host — a GitHub Codespace's forwarded port, localhost, a custom single
+// host — is the deployment's one address, whatever its shape: `<name>-3000.app.github.dev` has three
+// labels but names no org, and there is no `cloud.app.github.dev` to borrow a session from.
+
+declare global {
+  interface Window {
+    /** Set by /deployment-config.js (ui_server) from the UI container's VITE_ORG_BASE_DOMAIN. */
+    __PROVISA_ORG_BASE_DOMAIN__?: string | null;
+  }
+}
 
 /** The org-agnostic control-plane label. Must match `_requested_org_from_host` (auth/middleware.py). */
 export const CONTROL_PLANE_LABEL = "cloud";
@@ -29,34 +41,53 @@ function labelsOf(hostname: string): string[] {
   return hostname.split(".").filter(Boolean);
 }
 
-/** True for a literal IPv4 host, which has no subdomain structure to read an org from. */
-function isIpLiteral(hostname: string): boolean {
-  return /^\d+(\.\d+)*$/.test(hostname);
+/**
+ * The base domain this deployment declares for org-subdomain addressing, or null when it declares
+ * none. Runtime-injected first (ui_server's /deployment-config.js, so one built image serves any
+ * deployment), build-time VITE_ORG_BASE_DOMAIN second — the same order as the Firebase config.
+ */
+export function declaredBaseDomain(): string | null {
+  const env = (import.meta as unknown as Record<string, Record<string, string | undefined>>).env;
+  const raw = window.__PROVISA_ORG_BASE_DOMAIN__ || env.VITE_ORG_BASE_DOMAIN || "";
+  return labelsOf(raw.trim().toLowerCase()).join(".") || null;
+}
+
+/** The single label in front of the declared base domain, or null when the host is not one. */
+function subdomainLabel(hostname: string): string | null {
+  const base = declaredBaseDomain();
+  if (!base) return null;
+  const labels = labelsOf(hostname.toLowerCase());
+  const baseLabels = labelsOf(base);
+  if (labels.length !== baseLabels.length + 1) return null;
+  return labels.slice(1).join(".") === base ? labels[0] : null;
 }
 
 /**
- * The deployment's base domain — everything after the leftmost label. `kstott.provisa.dev`
- * → `provisa.dev`. Empty when the host has no leftmost label to strip (`localhost`).
+ * The deployment's base domain when `hostname` is it or a single label in front of it:
+ * `kstott.provisa.dev` → `provisa.dev`. Empty on every other host — and on every host when the
+ * deployment declares no base domain — because such a host addresses nothing but itself.
  */
 export function baseDomain(hostname: string = window.location.hostname): string {
-  return labelsOf(hostname).slice(1).join(".");
+  const base = declaredBaseDomain();
+  if (!base) return "";
+  return hostname.toLowerCase() === base || subdomainLabel(hostname) !== null ? base : "";
 }
 
 /** True on the control-plane host itself (`cloud.<base>`), where sign-in is allowed to run. */
 export function isControlPlaneHost(hostname: string = window.location.hostname): boolean {
-  return labelsOf(hostname)[0] === CONTROL_PLANE_LABEL;
+  return subdomainLabel(hostname) === CONTROL_PLANE_LABEL;
 }
 
 /**
  * True on a host whose leftmost label names an org — the case that cannot sign in locally.
  *
- * Mirrors the server's rule (auth/middleware.py `_requested_org_from_host`): three or more
- * labels, leftmost not `cloud`. An apex or bare host resolves to no org and is not an org host.
+ * A single label in front of the declared base domain, other than `cloud` — the server's rule
+ * (auth/middleware.py `_requested_org_from_host`) restricted to the declared zone. The apex, any
+ * other host, and every host of a deployment that declares no base domain are not org hosts.
  */
 export function isOrgSubdomainHost(hostname: string = window.location.hostname): boolean {
-  if (isIpLiteral(hostname)) return false;
-  const labels = labelsOf(hostname);
-  return labels.length >= 3 && labels[0] !== CONTROL_PLANE_LABEL;
+  const label = subdomainLabel(hostname);
+  return label !== null && label !== CONTROL_PLANE_LABEL;
 }
 
 /** The org named by the current Host, i.e. the leftmost label. Only valid on an org host. */
@@ -64,7 +95,7 @@ export function orgFromHost(hostname: string = window.location.hostname): string
   if (!isOrgSubdomainHost(hostname)) {
     throw new Error(`orgFromHost called on a non-org host: ${hostname}`);
   }
-  return labelsOf(hostname)[0];
+  return subdomainLabel(hostname)!;
 }
 
 /**
@@ -107,7 +138,7 @@ export function inviteUrl(orgId: string, token: string, location: Location = win
 
 /**
  * True when `origin` is a host of THIS deployment — same scheme, same port, and a single
- * label in front of the same base domain. The relay answers token requests only from these,
+ * label in front of its declared base domain. The relay answers token requests only from these,
  * so a sibling tenant of some other zone can never ask the control plane for a bearer.
  */
 export function isSiblingOrigin(origin: string, self: Location = window.location): boolean {
@@ -118,8 +149,5 @@ export function isSiblingOrigin(origin: string, self: Location = window.location
     return false;
   }
   if (url.protocol !== self.protocol || url.port !== self.port) return false;
-  if (isIpLiteral(url.hostname)) return false;
-  const selfBase = baseDomain(self.hostname);
-  if (!selfBase) return false;
-  return labelsOf(url.hostname).length >= 3 && baseDomain(url.hostname) === selfBase;
+  return baseDomain(self.hostname) !== "" && subdomainLabel(url.hostname) !== null;
 }

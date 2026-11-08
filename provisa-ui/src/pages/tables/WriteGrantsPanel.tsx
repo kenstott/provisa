@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2074: what each role may write to the table, per operation -- the table's Writes section.
+// REQ-2074: what each role may write to the table, per operation -- the Write grants tab of the
+// table's Columns section.
 // Read, it lists the grants; edited, they are saved together, apart from the table's other
 // settings.
 
@@ -38,6 +39,9 @@ interface Props {
   /** null: not shown to this caller (it does not hold view_governance). */
   grants: WriteGrant[] | null;
   columns: string[];
+  /** The writes the table's source accepts (the API tab): grants cannot act beyond them. Not
+   * consulted while the table is being created (`kept`). */
+  sourceWriteOps: string[];
   roles: { id: string; label: string }[];
   /** Edited and saved through this; absent, the grants are only read. */
   onSave?: (grants: WriteGrant[]) => Promise<MutationResult>;
@@ -52,7 +56,7 @@ function presetText(p: WritePreset, t: (k: string, o?: Record<string, unknown>) 
   return t("writeGrants.presetLiteral", { column: p.column, value: p.value ?? "" });
 }
 
-export function WriteGrantsPanel({ grants, columns, roles, onSave, kept }: Props) {
+export function WriteGrantsPanel({ grants, columns, sourceWriteOps, roles, onSave, kept }: Props) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<WriteGrant[]>(grants ?? []);
   const [saving, setSaving] = useState(false);
@@ -68,6 +72,15 @@ export function WriteGrantsPanel({ grants, columns, roles, onSave, kept }: Props
     return (
       <Text size="sm" c="dimmed" data-testid="write-grants-not-shown">
         {t("writeGrants.notShown")}
+      </Text>
+    );
+
+  // A table not yet created has no stored writes to compare: its source's are known once saved.
+  const gated = !kept;
+  if (gated && sourceWriteOps.length === 0)
+    return (
+      <Text size="sm" c="dimmed" data-testid="write-grants-source-none">
+        {t("writeGrants.sourceAcceptsNone")}
       </Text>
     );
 
@@ -146,7 +159,9 @@ export function WriteGrantsPanel({ grants, columns, roles, onSave, kept }: Props
               <FormField size="short">
                 <Select
                   label={t("writeGrants.operation")}
-                  data={OPERATIONS.map((op) => ({ value: op, label: t(`writeGrants.op_${op}`) }))}
+                  data={OPERATIONS.filter(
+                    (op) => !gated || sourceWriteOps.includes(op) || op === g.operation,
+                  ).map((op) => ({ value: op, label: t(`writeGrants.op_${op}`) }))}
                   value={g.operation}
                   onChange={(v) => v && update(i, { operation: v as WriteOperation })}
                   allowDeselect={false}

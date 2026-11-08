@@ -20,8 +20,8 @@ import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => <div data-testid="graph-panel" />,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => <div data-testid="graph-panel" />,
 }));
 
 const PRODUCT = {
@@ -64,6 +64,7 @@ function panel() {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
       contractsVersion={0}
       lineageError=""

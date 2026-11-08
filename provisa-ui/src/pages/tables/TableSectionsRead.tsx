@@ -274,7 +274,9 @@ export function QueryRead({ table }: { table: RegisteredTable }) {
       label: t("tableReadView.writable"),
       testId: "table-read-view-writable",
       value:
-        table.writeOps.length > 0 ? table.writeOps.map((op) => op.toUpperCase()).join(", ") : null,
+        table.writeOps.length > 0
+          ? table.writeOps.map((op) => op.toUpperCase()).join(", ")
+          : t("tableReadView.noWrites"),
     },
     ...(table.watermarkColumn
       ? [

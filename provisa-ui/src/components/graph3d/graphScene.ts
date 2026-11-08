@@ -64,6 +64,14 @@ const DIRECTED: ReadonlySet<EdgeKind> = new Set([
   "profiled",
 ]);
 
+/** REQ-2174 (amended 2026-11-07): a term link is dashed, told apart from a table's relationship by
+ * more than colour; each of them is named on the link, the term link by its type and the
+ * relationship by its name. */
+const DASHED: ReadonlySet<EdgeKind> = new Set(["term_edge"]);
+const NAMED: ReadonlySet<EdgeKind> = new Set(["term_edge", "relationship"]);
+/** A dash's length, and the gap after it, in layout units. */
+const DASH = 0.35;
+
 /** Whose label stays when two collide: the lower rank. */
 const LABEL_RANK: Record<NodeType, number> = {
   product: 0,
@@ -566,18 +574,45 @@ export class GraphScene extends BaseScene<GraphHover> {
       const meshes: THREE.Mesh[] = [];
       // The unit direction the edge arrives along: the chord, or an arc's end tangent.
       let arrive = unit;
+      let curve: THREE.QuadraticBezierCurve3 | null = null;
       if (this.arcs && edgeClass(e) === "lateral") {
         // A quadratic arc bulging sideways in the layout's plane, clear of the straight rods.
         const side = new THREE.Vector3(-unit.y, unit.x, 0);
-        const ctrl = a.clone().add(b).multiplyScalar(0.5).add(side.multiplyScalar(len * 0.3));
-        const curve = new THREE.QuadraticBezierCurve3(a.clone(), ctrl, b.clone());
+        const ctrl = a
+          .clone()
+          .add(b)
+          .multiplyScalar(0.5)
+          .add(side.multiplyScalar(len * 0.3));
+        curve = new THREE.QuadraticBezierCurve3(a.clone(), ctrl, b.clone());
         arrive = b.clone().sub(ctrl).normalize();
+      }
+      const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
+      if (DASHED.has(e.kind)) {
+        // Dashes along the arc, or along the rod's run: an odd count, so both ends are dashes.
+        const along = (t: number) =>
+          curve ? curve.getPoint(t) : a.clone().add(unit.clone().multiplyScalar(rodLen * t));
+        const k = Math.max(3, Math.round((curve ? curve.getLength() : rodLen) / DASH));
+        const n = k % 2 === 0 ? k + 1 : k;
+        for (let i = 0; i < n; i += 2) {
+          const p = along(i / n);
+          const q = along((i + 1) / n);
+          const d = q.clone().sub(p);
+          const dash = new THREE.Mesh(
+            new THREE.CylinderGeometry(thick, thick, d.length(), 6, 1, true),
+            mat,
+          );
+          dash.position.copy(p.clone().add(q).multiplyScalar(0.5));
+          dash.quaternion.setFromUnitVectors(UP, d.normalize());
+          dash.userData.edge = e.id;
+          world.add(dash);
+          meshes.push(dash);
+        }
+      } else if (curve) {
         const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, thick, 6, false), mat);
         tube.userData.edge = e.id;
         world.add(tube);
         meshes.push(tube);
       } else {
-        const rodLen = directed ? Math.max(0.01, len - surface - HEAD) : len;
         const rodMesh = new THREE.Mesh(
           new THREE.CylinderGeometry(thick, thick, rodLen, 6, 1, true),
           mat,
@@ -595,6 +630,10 @@ export class GraphScene extends BaseScene<GraphHover> {
         cone.userData.edge = e.id;
         world.add(cone);
         meshes.push(cone);
+      }
+      if (NAMED.has(e.kind) && e.label) {
+        const mid = curve ? curve.getPoint(0.5) : a.clone().add(b).multiplyScalar(0.5);
+        this.pin(e.label, `p3d-label g3d-edge-label g3d-edge-label-${e.kind}`, () => mid);
       }
       this.edgeMeshes.push({ edge: e, meshes });
     }

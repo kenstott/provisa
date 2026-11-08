@@ -133,7 +133,9 @@ def _table_paths(tables: list[dict[str, Any]]) -> dict[int, str]:
     return paths
 
 
-def _fragment(assignment: dict[str, Any], rel_names: dict[str, str]) -> str | None:
+def _fragment(
+    assignment: dict[str, Any], rel_names: dict[str, str], rules: dict[int, dict[str, Any]]
+) -> str | None:
     """What a tag assignment is ON, as the REQ-1385 fragment rather than the stored object_key.
 
     ``object_key`` embeds ``table_id`` -- a serial that means nothing in another environment -- so
@@ -146,6 +148,9 @@ def _fragment(assignment: dict[str, Any], rel_names: dict[str, str]) -> str | No
         return f"#field:{assignment['column_name']}"
     if kind == "relationship":
         return f"#rel:{rel_names[assignment['relationship_id']]}"
+    if kind == "rls_rule":  # REQ-2208: a role holds a right in one rule on a target (REQ-2188)
+        rule = rules[assignment["rls_rule_id"]]
+        return f"#rule:{rule['role_id']}:{rule['rights']}"
     return None
 
 
@@ -162,6 +167,10 @@ OWNER_KEYS = (
     "owner_command_name",
     "owner_product_id",
     "owner_term_id",
+    "owner_role_id",
+    "owner_metric_name",
+    "owner_domain_id",
+    "owner_rule_tag_id",
     "at",
 )
 
@@ -170,6 +179,7 @@ def _assignments_for(
     assignments: list[dict[str, Any]],
     rel_names: dict[str, str],
     rel_owner: dict[str, int],
+    rules: dict[int, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Tag assignments rewritten to name their object by fragment, ready to nest."""
     out = []
@@ -179,7 +189,7 @@ def _assignments_for(
             for k, v in row.items()
             if k in ("tag_id", "base_tag_id", "reason", "expires_on") and v is not None
         }
-        fragment = _fragment(row, rel_names)
+        fragment = _fragment(row, rel_names, rules)
         if fragment is not None:
             carried["on"] = fragment
         carried["at"] = f"{fragment or ''}|{row['tag_id']}"
@@ -198,6 +208,20 @@ def _assignments_for(
         carried["owner_product_id"] = row["product_id"]
         # REQ-2145: a TERM tag's file is the term's (glossary-terms/<name>).
         carried["owner_term_id"] = row["term_id"]
+        # REQ-2208: a ROLE tag's file is the role's, a METRIC tag's the metric's.
+        carried["owner_role_id"] = row["role_id"]
+        carried["owner_metric_name"] = row["metric_name"]
+        carried["owner_domain_id"] = None
+        carried["owner_rule_tag_id"] = None
+        if row["rls_rule_id"] is not None:
+            # A ROW RULE tag is written where its rule is, beside it: the file of the rule's
+            # table, domain, command or tag, on the fragment naming the rule there.
+            rule = rules[row["rls_rule_id"]]
+            carried["owner_table_id"] = rule["table_id"]
+            carried["owner_command_name"] = rule["action_name"]
+            carried["owner_rule_tag_id"] = rule["tag_id"]
+            if rule["table_id"] is None and rule["action_name"] is None and rule["tag_id"] is None:
+                carried["owner_domain_id"] = rule["domain_id"]
         out.append(carried)
     return out
 
@@ -228,7 +252,7 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
 
     rel_names = {r["id"]: (r["alias"] or r["id"]) for r in relationships}
     rel_owner = {r["id"]: r["source_table_id"] for r in relationships}
-    tagged = _assignments_for(assignments, rel_names, rel_owner)
+    tagged = _assignments_for(assignments, rel_names, rel_owner, {r["id"]: r for r in rls})
     term_paths = {t["id"]: kind_path(KIND_DIRS["glossary_terms"], t["name"]) for t in terms}
 
     tree: dict[str, dict[str, Any]] = {}
@@ -242,6 +266,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 "domain_id",
                 [r for r in rls if r["domain_id"] == row["id"] and r["table_id"] is None],
                 table="rls_rules",
+            ),
+            tags=Child(  # REQ-2208: tags on the domain's row rules
+                "at",
+                OWNER_KEYS,
+                [t for t in tagged if t["owner_domain_id"] == row["id"]],
+                table="tag_assignments",
             ),
         )
 
@@ -381,6 +411,12 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
                 [v for v in tag_values if v["tag_id"] == row["id"]],
                 table="tag_param_values",
             ),
+            tags=Child(  # REQ-2208: tags on the tag's row rules
+                "at",
+                OWNER_KEYS,
+                [t for t in tagged if t["owner_rule_tag_id"] == row["id"]],
+                table="tag_assignments",
+            ),
         )
 
     topics = await _rows(conn, org.kafka_topics, schema)
@@ -431,9 +467,22 @@ async def project(conn: "Connection", schema: str) -> dict[str, dict[str, Any]]:
             ),
         )
 
+    for table, key, owner in (  # REQ-2208: a metric's and a role's tags in its file
+        (org.metrics, "name", "owner_metric_name"),
+        (org.roles, "id", "owner_role_id"),
+    ):
+        for row in await _rows(conn, table, schema):
+            tree[kind_path(KIND_DIRS[table.name], row[key])] = entity(
+                table.name,
+                row,
+                tags=Child(
+                    "at",
+                    OWNER_KEYS,
+                    [t for t in tagged if t[owner] == row[key]],
+                    table="tag_assignments",
+                ),
+            )
     for table, key in (
-        (org.metrics, "name"),
-        (org.roles, "id"),
         (org.materialized_views, "id"),
         (org.stores, "id"),  # REQ-1922: one file per store (its URL stays behind, a binding)
         (org.org_regions, "id"),  # REQ-1921: one file per region the org selects

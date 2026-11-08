@@ -223,7 +223,7 @@ describe("TableReadView's Draft box", () => {
   });
 });
 
-describe("TableReadView — a column's test data is the fourth tab", () => {
+describe("TableReadView — a column's test data is the last tab", () => {
   const COLUMN = {
     id: 1,
     columnName: "email",
@@ -234,7 +234,7 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
   const withColumns = (...columns: object[]) =>
     makeTable({ id: 7, columns: columns as RegisteredTable["columns"] });
 
-  it("shows the same four topics as the editor, the column's name first on each", () => {
+  it("shows the same five topics as the editor, the column's name first on each", () => {
     renderView(
       false,
       withColumns({ ...COLUMN, fake: "email()", syntheticRule: "sql_group(1)", fakeStable: true }),
@@ -244,7 +244,8 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
     expect(topics.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Naming",
       "Type and keys",
-      "Access",
+      "Read grants",
+      "Write grants",
       "Testing",
     ]);
     fireEvent.click(screen.getByTestId("column-tab-testing"));
@@ -273,7 +274,7 @@ describe("TableReadView — a column's test data is the fourth tab", () => {
   });
 });
 
-describe("TableReadView — the table's eight sections", () => {
+describe("TableReadView — the table's seven sections", () => {
   const rel = (id: number, source: string, target: string, sourceTableId: number) =>
     ({
       id,
@@ -285,17 +286,16 @@ describe("TableReadView — the table's eight sections", () => {
       targetColumn: "id",
     }) as unknown as Relationship;
 
-  it("shows the same eight sections as the edit form, Identity first", () => {
+  it("shows the same seven sections as the edit form, Identity first", () => {
     renderView(false, makeTable({ id: 7 }));
     const sections = within(screen.getByRole("tablist", { name: "Table sections" }));
     expect(sections.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Identity",
       "Associations",
       "Load and timeliness",
-      "Query",
+      "API",
       "Quality",
       "Columns",
-      "Writes",
       "Access",
     ]);
     expect(screen.getByTestId("table-identity")).toHaveTextContent("orders");
@@ -442,7 +442,7 @@ describe("TableReadView — Preview, Profile and Policies are icon actions in th
 });
 
 describe("TableReadView — Query shows every stored setting", () => {
-  it("lists the write grants on the Writes section (REQ-2074)", () => {
+  it("lists the write grants on the Columns Write grants tab", () => {
     renderView(
       false,
       makeTable({
@@ -459,7 +459,8 @@ describe("TableReadView — Query shows every stored setting", () => {
         ],
       } as Partial<RegisteredTable>),
     );
-    fireEvent.click(screen.getByTestId("table-section-writes"));
+    fireEvent.click(screen.getByTestId("table-section-columns"));
+    fireEvent.click(screen.getByTestId("column-tab-writeGrants"));
     const grants = screen.getByTestId("write-grants-read");
     for (const text of [
       "clerk",

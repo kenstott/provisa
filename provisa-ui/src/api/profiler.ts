@@ -358,13 +358,10 @@ export const forgetClassification = (tableId: number, physicalColumn: string, ki
   );
 
 export const fetchClassificationKinds = () =>
-  call<{ kinds: ClassificationKind[]; canEdit: boolean }>(
-    "fetchClassificationKinds",
-    "/admin/classification-kinds",
-  );
+  call<{ kinds: ClassificationKind[] }>("fetchClassificationKinds", "/admin/classification-kinds");
 
 export const setEnabledClassificationKinds = (enabled: string[]) =>
-  call<{ kinds: ClassificationKind[]; canEdit: boolean }>(
+  call<{ kinds: ClassificationKind[] }>(
     "setEnabledClassificationKinds",
     "/admin/classification-kinds",
     "PUT",

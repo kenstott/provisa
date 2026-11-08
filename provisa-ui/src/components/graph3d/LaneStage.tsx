@@ -8,19 +8,21 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-10-28): the graph's 2D view, the lane diagram (laneDiagram.ts) drawn by
-// cytoscape and laid out by ELK's layered algorithm in fixed lane partitions, left to right; the
-// term lane is one compound laid out top-down. A click picks a node (the detail panel), a hover
+// REQ-2174 (amended 2026-10-28; 2026-11-07): the graph's 2D view, the lane diagram (laneDiagram.ts)
+// drawn by cytoscape and laid out by ELK's layered algorithm in fixed lane partitions, products to
+// terms left to right; the term lane is one compound laid out top-down by its rank edges, its other
+// links arcs drawn over it once placed. A term link is dashed and named by its type. A click picks a node (the detail panel), a hover
 // shows its card, a "+N columns" node expands in place; the diagram copies as Mermaid text. A
 // card holds the node's facts with links to their pages, and stays while the pointer is on it.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, useComputedColorScheme } from "@mantine/core";
 import { Check, Copy } from "lucide-react";
 import cytoscape, { type EventObject } from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import { cyCanvas } from "../graph/cyCanvas";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import type { GraphHover } from "./graphScene";
 import { GraphLegend } from "./GraphStage";
@@ -42,6 +44,8 @@ if (!registered) cytoscape.use(elk);
 type CyCore = ReturnType<typeof cytoscape> & { resize(): void };
 
 const FIT_PAD = 24;
+// The legend's offset from the stage's foot (profile3d.css .p3d-legend) and a gap above it.
+const LEGEND_GAP = 16;
 // How long a card stays once the pointer leaves its node: time to reach the card's links.
 const TIP_LINGER_MS = 300;
 const NODE_H = 26;
@@ -101,6 +105,20 @@ export function LaneStage({
   const scheme = useComputedColorScheme("dark");
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
+  const legendRef = useRef<HTMLDivElement | null>(null);
+  // The diagram is laid out above the legend, never under it: the canvas ends where the legend
+  // begins (graph3d.css, --g3d-legend-h), and its resize refits the diagram.
+  useLayoutEffect(() => {
+    const legend = legendRef.current;
+    const wrap = wrapRef.current;
+    if (!legend || !wrap) return;
+    const clear = () =>
+      wrap.style.setProperty("--g3d-legend-h", `${legend.offsetHeight + LEGEND_GAP}px`);
+    clear();
+    const observer = new ResizeObserver(clear);
+    observer.observe(legend);
+    return () => observer.disconnect();
+  }, []);
   const cyRef = useRef<CyCore | null>(null);
   const [tip, setTip] = useState<TipAt | null>(null);
   const [copied, setCopied] = useState(false);
@@ -132,8 +150,11 @@ export function LaneStage({
     const hl = token(wrap, "hl");
     const g = diagram.graph;
     const hasTerms = g.nodes.some((n) => diagram.lane.get(n.id) === "term");
+    // ELK answers after this view may have moved on (a new diagram): the core draws into a canvas
+    // of its own, which outlives the view while a layout is pending (cyCanvas).
+    const canvas = cyCanvas(box);
     const cy = cytoscape({
-      container: box,
+      container: canvas.container,
       elements: [
         ...(hasTerms
           ? [{ group: "nodes" as const, data: { id: TERM_LANE, kind: "laneBox" } }]
@@ -169,10 +190,20 @@ export function LaneStage({
             },
           };
         }),
-        ...diagram.links.map((k) => ({
-          group: "edges" as const,
-          data: { id: k.id, source: k.from, target: k.to },
-        })),
+        // A line between lanes runs left to right, from the product side; inside the term lane
+        // from the broader term down.
+        ...diagram.links.map((k) => {
+          const inTerms = diagram.lane.get(k.from) === "term" && diagram.lane.get(k.to) === "term";
+          return {
+            group: "edges" as const,
+            data: {
+              id: k.id,
+              source: inTerms ? k.from : k.to,
+              target: inTerms ? k.to : k.from,
+              ...(inTerms ? { term: "yes", rank: "yes", label: k.label ?? "" } : {}),
+            },
+          };
+        }),
       ],
       layout: { name: "preset" },
       style: [
@@ -238,6 +269,37 @@ export function LaneStage({
             "target-arrow-shape": "triangle",
             "arrow-scale": 0.8,
             "curve-style": "bezier",
+          },
+        },
+        {
+          // A term link: dashed and named by its type, as the 3D view draws it.
+          selector: 'edge[term = "yes"]',
+          style: {
+            "line-style": "dashed",
+            label: "data(label)",
+            "font-size": "9px",
+            color: ink,
+            "text-rotation": "autorotate",
+            "text-background-color": token(wrap, "canvas"),
+            "text-background-opacity": 0.8,
+          },
+        },
+        {
+          // A rank link is laid out broader term first (above); its arrow points the link's own
+          // way, from the narrower term to the broader.
+          selector: 'edge[rank = "yes"]',
+          style: {
+            "target-arrow-shape": "none",
+            "source-arrow-shape": "triangle",
+            "source-arrow-color": line,
+          },
+        },
+        {
+          selector: 'edge[arc = "yes"]',
+          style: {
+            "curve-style": "unbundled-bezier",
+            "control-point-distances": 36,
+            "control-point-weights": 0.5,
           },
         },
         { selector: ".picked", style: { "border-width": 3, "border-color": hl } },
@@ -334,30 +396,21 @@ export function LaneStage({
         });
     };
 
-    // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
-    // ELK answers after this view may have moved on (a new diagram): a cytoscape torn down while
-    // it lays out is detached at once and destroyed when the layout ends.
-    let running = true;
-    let gone = false;
-    const first = elkLayout(false);
-    first.one("layoutstop", () => {
-      if (gone) {
-        running = false;
-        cy.destroy();
-        return;
-      }
-      reorder();
-      const second = elkLayout(true);
-      second.one("layoutstop", () => {
-        running = false;
-        if (gone) {
-          cy.destroy();
-          return;
-        }
-        labelLanes();
-      });
-      second.run();
-    });
+    // The term links that are not rank edges, laid over the placed term lane: they move no node.
+    const drawArcs = () =>
+      cy.add(
+        diagram.arcs.map((k) => ({
+          group: "edges" as const,
+          data: {
+            id: k.id,
+            source: k.from,
+            target: k.to,
+            term: "yes",
+            arc: "yes",
+            label: k.label ?? "",
+          },
+        })),
+      );
     const labelLanes = () => {
       const placed = cy.nodes('[kind = "node"], [kind = "more"]');
       if (placed.empty()) return;
@@ -374,7 +427,14 @@ export function LaneStage({
       }
       cy.fit(undefined, FIT_PAD);
     };
-    first.run();
+    // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
+    canvas.run(elkLayout(false), () => {
+      reorder();
+      canvas.run(elkLayout(true), () => {
+        drawArcs();
+        labelLanes();
+      });
+    });
 
     const observer = new ResizeObserver(() => {
       cy.resize();
@@ -384,11 +444,7 @@ export function LaneStage({
     return () => {
       observer.disconnect();
       cyRef.current = null;
-      if (!running) cy.destroy();
-      else {
-        gone = true;
-        (cy as unknown as { unmount: () => void }).unmount();
-      }
+      canvas.end(cy);
     };
   }, [diagram, scheme, t, laneTitle, bare, keepTip, dropTip]);
   // A card's pending hide ends with the view.
@@ -401,7 +457,7 @@ export function LaneStage({
     const lit = new Set<string>();
     const near = new Set<string>();
     if (hover) {
-      for (const k of diagram.links)
+      for (const k of [...diagram.links, ...diagram.arcs])
         if (hover.kind === "node" ? k.from === hover.id || k.to === hover.id : k.id === hover.id) {
           lit.add(k.id);
           near.add(k.id).add(k.from).add(k.to);
@@ -485,7 +541,7 @@ export function LaneStage({
           <div className="p3d-hint">{t("profile3d.hintFlat")}</div>
         </>
       )}
-      <div className="p3d-legend">
+      <div className="p3d-legend" ref={legendRef}>
         <GraphLegend graph={diagram.graph} />
       </div>
     </div>

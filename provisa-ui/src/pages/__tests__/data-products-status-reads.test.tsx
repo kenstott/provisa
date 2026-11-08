@@ -49,14 +49,14 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
-  GraphPanel: () => null,
+  OntologySnippet: () => null,
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [],
   }),
 }));

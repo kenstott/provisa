@@ -14,6 +14,8 @@
     "deleteConfirm": "Excluir o relatório {{name}}?",
     "deleted": "Relatório {{name}} excluído.",
     "empty": "Nenhum relatório registrado no domínio ops.",
+    "filterPlaceholder": "Filtrar relatórios…",
+    "noMatch": "Nenhum relatório corresponde",
     "resize": "Redimensionar a lista de relatórios",
     "drift": {
       "title": "Desvio desde o período anterior",

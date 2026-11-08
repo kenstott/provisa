@@ -914,10 +914,15 @@ export interface PlatformSettings {
     subgraph_name: string;
     role: string | null;
   };
+  // REQ-194 (CLASH POLICY): how the org's names table settles a name clash.
+  names: {
+    clash_policy: "refuse" | "disambiguate";
+  };
   naming: {
-    // Deployment-wide, so absent for an org administrator; the two below are the org's own.
+    // Deployment-wide, so absent for an org administrator.
     domain_prefix?: boolean;
-    convention?: string;
+    // REQ-194: the GraphQL convention, read by every caller (writing it is the platform's).
+    convention: string;
     sql_convention?: string;
     use_domains: boolean | null;
     default_domain: string;
