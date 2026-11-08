@@ -90761,7 +90761,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     column and the input column it comes from), and the Input Ports card links to it. A product''s Consumers
     card is shown only to those who own the product: a session acting as the product''s owner_role, or holding
     data_product_rw with entitlements (REQ-2219) that reach that product, which its creator holds from creation;
-    no one else sees it (maintainer 2026-11-07).'
+    no one else sees it (maintainer 2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE
+    IS ON THE EDGE:) On a product page''s column lineage, a view between an input and the product''s table
+    is not drawn as its own box: the input''s column links straight to the table''s column, and the link
+    names the views it reads through (for example ''via sales.v_customers''). The panel''s lanes stay Inputs
+    and This product''s tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08).'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
