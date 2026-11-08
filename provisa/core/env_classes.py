@@ -126,6 +126,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_delta_ledger",
         "relationship_candidates",
         "creation_requests",
+        # REQ-2216: the approve and decide calls this environment already answered.
+        "idempotent_calls",
         "live_query_state",
         "file_source_mtimes",
         "node_ids",

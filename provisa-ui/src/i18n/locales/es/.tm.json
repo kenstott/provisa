@@ -9734,5 +9734,10 @@
   "es/tagsTab.json::tagsTab.scope_document": "Library document",
   "es/tagsTab.json::tagsTab.scope_section": "Library section",
   "es/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "es/referenceLibrary.json::referenceLibrary.fieldTags": "Tags"
+  "es/referenceLibrary.json::referenceLibrary.fieldTags": "Tags",
+  "es/requestsPage.json::requestsPage.delivery": "Notify by",
+  "es/requestsPage.json::requestsPage.deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
+  "es/requestsPage.json::requestsPage.deliveryEmail": "Email",
+  "es/requestsPage.json::requestsPage.deliveryEvents": "Events only",
+  "es/requestsPage.json::requestsPage.deliveryBoth": "Both"
 }
