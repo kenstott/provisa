@@ -14,25 +14,24 @@ import { Tabs } from "@mantine/core";
 import { SecurityTab } from "./SecurityTab";
 import { EncryptionTab } from "./EncryptionTab";
 import { AuthTab } from "./AuthTab";
-import { LocalUsersTab } from "./LocalUsersTab";
+import { SecretsServicePanel } from "./SecretsTab";
 
 // Consolidated Security area (cache-page style sub-tabs): posture, encryption, authentication and
-// local users. REQ-1560 moved secrets out — they are two surfaces now, one per vault, and neither
-// is a description of the deployment the way these four are.
-const TAB_KEYS = ["posture", "encryption", "authentication", "localUsers"] as const;
+// the deployment's secrets service. REQ-1560 moved the vaults out — they are two surfaces now, one
+// per vault, and neither is a description of the deployment the way these four are. REQ-1327: local
+// users are the org's people, on Team.
+const TAB_KEYS = ["posture", "encryption", "authentication", "secretsService"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
-// REQ-1361: all four answer to `platform_settings`, which is what the /admin/security route itself
-// requires — so there is no per-tab gate here. Nobody reaches this component without that right.
+// REQ-1361, REQ-1327: all four answer to the deployment check, which is what the /admin/security
+// route itself requires — so there is no per-tab gate here. Nobody reaches this component without it.
 
 interface SecurityManagerProps {
-  allRoles: string[];
-  allDomains: string[];
   /** Sub-tab to open first (deep-linked from legacy /admin/encryption, /admin/auth, …). */
   initialTab?: TabKey;
 }
 
-export function SecurityManager({ allRoles, allDomains, initialTab }: SecurityManagerProps) {
+export function SecurityManager({ initialTab }: SecurityManagerProps) {
   const { t } = useTranslation();
   const first = TAB_KEYS[0];
   const [tab, setTab] = useState<TabKey>(initialTab ?? first);
@@ -50,7 +49,7 @@ export function SecurityManager({ allRoles, allDomains, initialTab }: SecurityMa
       {tab === "posture" && <SecurityTab />}
       {tab === "encryption" && <EncryptionTab />}
       {tab === "authentication" && <AuthTab />}
-      {tab === "localUsers" && <LocalUsersTab allRoles={allRoles} allDomains={allDomains} />}
+      {tab === "secretsService" && <SecretsServicePanel />}
     </div>
   );
 }

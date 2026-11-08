@@ -90,6 +90,7 @@
       "saveEdit": "保存 {{name}}",
       "cancelEdit": "取消编辑",
       "remove": "删除 {{name}}"
-    }
+    },
+    "localUsersHeading": "本地用户"
   }
 }

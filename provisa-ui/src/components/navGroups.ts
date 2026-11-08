@@ -37,22 +37,16 @@ export interface DropdownItem {
   orCapability?: Capability;
   // Further rights, any one of which also opens the entry (CapabilityRequirement.anyOf).
   anyOf?: Capability[];
-  // The label to use when `orCapability` is what opened the entry. An entry that two rights open
-  // for two different reasons is not the same entry to both callers: a platform admin reaching
-  // /admin/secrets gets the DEPLOYMENT's secrets service and no org vault at all, so naming it
-  // "Org Secrets" to them advertises something the page does not contain.
-  orLabelKey?: string;
+  // REQ-1327: a right needed besides whichever of the above opened the entry. A platform page asks
+  // the deployment check, `platform_settings` and `cross_org`, as its routes on the server do.
+  andCapability?: Capability;
   // REQ-1922: the surface exists only where the platform declares regions (useRegionChoices).
   regionsOnly?: boolean;
   // REQ-1922: a demo sandbox's visitor may open it to read, though its capability is not theirs.
   sandboxReadable?: boolean;
-}
-
-/** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
-export function labelKeyFor(item: DropdownItem, capabilities: string[]): string {
-  if (item.orLabelKey === undefined) return item.labelKey;
-  const primary = meetsRequirement(capabilities, { capability: item.capability });
-  return primary ? item.labelKey : item.orLabelKey;
+  // REQ-1327: where the org has regions, the right that opens the entry to read them, a demo
+  // sandbox's visitor reading them too (RegionReadableGate).
+  regionsCapability?: Capability;
 }
 
 export interface NavGroup {
@@ -148,11 +142,10 @@ export const NAV_GROUPS: NavGroup[] = [
         capability: "environment_management",
         orCapability: "environment_owned_management",
       },
-      // REQ-1337: cache storage, the federation engine and the encryption/auth providers are
-      // DEPLOYMENT-WIDE settings, so each is gated on the `platform_settings` RIGHT rather than on a
-      // role name. The seed grants it to platform_admin always and to org_admin only in a
-      // single-tenant deployment (apply_tenancy_role_grants), so a multitenant org_admin never sees
-      // these entries.
+      // REQ-1337, REQ-1327: the federation engine and the encryption/auth providers are
+      // DEPLOYMENT-WIDE settings, so each asks the deployment check, `platform_settings` and
+      // `cross_org`: a single-tenant org_admin holds the first (apply_tenancy_role_grants) and never
+      // the second, so it is not shown a page whose every call it would be refused.
       { to: "/admin/cache", labelKey: "navBar.itemCache", capability: "org_settings" },
       {
         to: "/admin/scheduled-tasks",
@@ -163,7 +156,12 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/federation-engine",
         labelKey: "navBar.itemFederation",
         capability: "platform_settings",
+        andCapability: "cross_org",
         installedOnly: true, // REQ-1512
+        // REQ-1922, REQ-1327: where the org has regions the page is the engine the platform assigned
+        // it in each, which the org reads.
+        regionsCapability: "org_settings",
+        sandboxReadable: true,
       },
       // REQ-1412: which engine lane THIS org runs on (shared / isolated / external) is the org's
       // own setting, not the deployment's — org_settings, so a multitenant org_admin has it. Hosted
@@ -171,30 +169,27 @@ export const NAV_GROUPS: NavGroup[] = [
       // installed Provisa has, and its router ships in the commercial plugin.
       {
         to: "/admin/org-engine",
-        // Labelled "Federation" like the deployment-wide tab: the two never appear together --
-        // that one needs platform_settings, this one org_settings -- and to a tenant administrator
-        // the lane their queries run on IS the federation setting they have.
+        // Labelled "Federation" like the deployment-wide tab: on a hosted deployment, the only
+        // place this one shows, that one is not offered, and to a tenant administrator the lane
+        // their queries run on IS the federation setting they have.
         labelKey: "navBar.itemFederation",
         capability: "org_settings",
         commercial: true,
       },
-      { to: "/admin/security", labelKey: "navBar.itemSecurity", capability: "platform_settings" },
+      {
+        to: "/admin/security",
+        labelKey: "navBar.itemSecurity",
+        capability: "platform_settings",
+        andCapability: "cross_org",
+      },
       // REQ-1560: two surfaces, named for whose they are. They are separate entries rather than one
       // Secrets page with a filter because the question "may I see this" is answered differently for
       // each: the org vault is an administrator's list of what the org connects to (org_settings),
       // and a person's own vault is nobody's to grant -- every member has one, so `usage`, the right
       // every seeded role carries. This supersedes REQ-1558's single sub-tab under Security.
-      // REQ-1361: an org's secrets answer to the administrator of that org and to nobody above it
-      // -- the page renders no org half without `org_settings`, and no right stands in for it.
-      // What a platform admin does reach here is the deployment's choice of secrets SERVICE,
-      // which is why the entry survives on `platform_settings` instead of vanishing.
-      {
-        to: "/admin/secrets",
-        labelKey: "navBar.itemOrgSecrets",
-        capability: "org_settings",
-        orCapability: "platform_settings",
-        orLabelKey: "navBar.itemPlatformSecrets",
-      },
+      // REQ-1361, REQ-1327: an org's secrets answer to the administrator of that org and to nobody
+      // above it. The deployment's choice of secrets SERVICE is a platform setting, under Security.
+      { to: "/admin/secrets", labelKey: "navBar.itemOrgSecrets", capability: "org_settings" },
       { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
       // REQ-1576: the mail transport platform communications go out through. Deployment-wide, and
       // an invitation is the platform's message rather than any org's, so platform_settings.
@@ -208,18 +203,19 @@ export const NAV_GROUPS: NavGroup[] = [
         orCapability: "org_settings",
       },
       // REQ-1466: the scheduled-downtime banner is turned on and off for the whole deployment, so
-      // platform_settings — the same right that gates the engine topology switch it announces.
+      // the deployment check — the same one that gates the engine topology switch it announces.
       {
         to: "/admin/maintenance",
         labelKey: "navBar.itemMaintenance",
         capability: "platform_settings",
+        andCapability: "cross_org",
       },
-      // REQ-1913: every operator setting, editable. Deployment-wide, so platform_settings (the
-      // catalog routes themselves answer 403 to anyone but a platform administrator).
+      // REQ-1913: every operator setting, editable, on the deployment check its routes ask.
       {
         to: "/admin/deployment-settings",
         labelKey: "navBar.itemDeploymentSettings",
         capability: "platform_settings",
+        andCapability: "cross_org",
       },
       // REQ-1922: the platform's regions, the default grant and each org's grant. A node reads them
       // before it opens any store, so they are the platform administrator's, applied on restart. A
@@ -228,6 +224,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/platform",
         labelKey: "navBar.itemPlatform",
         capability: "platform_settings",
+        andCapability: "cross_org",
         sandboxReadable: true,
       },
       // REQ-1922: the regions the platform granted the org and their stores, read-only. Shown only
@@ -296,6 +293,14 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/observability",
         labelKey: "navBar.itemObservability",
         capability: "observability",
+      },
+      // REQ-1327: the exporter, the query engine's lifecycle and org-wide debug tracing act on the
+      // deployment; the page above is the org's own traces and tracing.
+      {
+        to: "/admin/platform-observability",
+        labelKey: "navBar.itemPlatformObservability",
+        capability: "platform_settings",
+        andCapability: "cross_org",
       },
       // REQ-1327: every member sees the requests it made and decides those whose own right it
       // holds (creation_requests_router), so the page asks `usage`, the right every role carries.

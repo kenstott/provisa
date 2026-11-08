@@ -23,11 +23,14 @@ export interface RegionChoicesData {
    * the selector surfaces it as an error rather than silently hiding, so a 503 never reads as
    * "this deployment has no regions". */
   error?: boolean;
+  /** The answer has not arrived, which says nothing yet about the org's regions. */
+  loading?: boolean;
 }
 
 export function useRegionChoices(): RegionChoicesData {
-  const { data, error } = useQuery<{ regionChoices: RegionChoicesData }>(RegionChoices);
+  const { data, error, loading } = useQuery<{ regionChoices: RegionChoicesData }>(RegionChoices);
   if (error) return { ...NO_REGIONS, error: true };
+  if (loading) return { ...NO_REGIONS, loading: true };
   // Until the answer arrives no region field is shown: the same as a platform with none.
   return data?.regionChoices ?? NO_REGIONS;
 }

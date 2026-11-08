@@ -9733,5 +9733,11 @@
   "ja/tagsTab.json::tagsTab.scope_document": "Library document",
   "ja/tagsTab.json::tagsTab.scope_section": "Library section",
   "ja/glossaryTab.json::glossaryTab.tagsLabel": "Tags",
-  "ja/referenceLibrary.json::referenceLibrary.fieldTags": "Tags"
+  "ja/referenceLibrary.json::referenceLibrary.fieldTags": "Tags",
+  "ja/navBar.json::navBar.itemPlatformObservability": "Platform Observability",
+  "ja/securityManager.json::securityManager.tabs.secretsService": "Secrets Service",
+  "ja/team.json::teamPage.localUsersHeading": "Local users",
+  "ja/observabilityTab.json::observabilityTab.schemaClustersTitle": "Schema clusters",
+  "ja/debugTracePanel.json::debugTracePanel.introPlatform": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one organization as a whole for a set time; it turns itself off when the time is up. Tracing a named role or source is that organization's administrator's.",
+  "ja/debugTracePanel.json::debugTracePanel.introOrg": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one role or source for a set time; it turns itself off when the time is up."
 }

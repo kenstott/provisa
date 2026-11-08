@@ -17,9 +17,10 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
 import { useAuth } from "../context/AuthContext";
+import { RegionReadableGate } from "./admin/RegionReadableGate";
 import { SandboxReadableGate } from "./admin/SandboxReadableGate";
 import { useRegionChoices } from "../hooks/useRegionQueries";
-import { NAV_GROUPS, activeGroupId, labelKeyFor, type NavGroup } from "./navGroups";
+import { NAV_GROUPS, activeGroupId, type NavGroup } from "./navGroups";
 
 // The rail IS the admin group; a build whose NAV_GROUPS lost it has nothing to render, so this
 // fails at import rather than degrading to an empty rail.
@@ -34,7 +35,7 @@ const ADMIN_GROUP = adminGroup();
 export function AdminRail() {
   const { t } = useTranslation();
   const location = useLocation();
-  const { billing, capabilities } = useAuth();
+  const { billing } = useAuth();
   // REQ-1922: a connected region exists only where the platform declares regions.
   const regionsDeclared = useRegionChoices().connected !== null;
 
@@ -58,9 +59,23 @@ export function AdminRail() {
             <span key={item.to} className="admin-rail-coming-soon">
               {t("navBar.comingSoon", { label: t(item.labelKey) })}
             </span>
+          ) : item.regionsCapability ? (
+            <RegionReadableGate
+              key={item.to}
+              requirement={item}
+              regionsCapability={item.regionsCapability}
+              navigable
+            >
+              <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
+            </RegionReadableGate>
           ) : item.sandboxReadable ? (
-            <SandboxReadableGate key={item.to} capability={item.capability} navigable>
-              <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+            <SandboxReadableGate
+              key={item.to}
+              capability={item.capability}
+              andCapability={item.andCapability}
+              navigable
+            >
+              <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
             </SandboxReadableGate>
           ) : (
             <CapabilityGate
@@ -68,9 +83,10 @@ export function AdminRail() {
               capability={item.capability}
               orCapability={item.orCapability}
               anyOf={item.anyOf}
+              andCapability={item.andCapability}
               navigable
             >
-              <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+              <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
             </CapabilityGate>
           ),
         )}
