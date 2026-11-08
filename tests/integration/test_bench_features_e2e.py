@@ -901,12 +901,14 @@ class Governed:
     client: httpx.Client
 
 
-def _orders_columns(stack: Stack) -> int:
-    """How many columns orders is registered with (the share masks a count of these)."""
-    tid = _table_ids(stack, stack.bound)["orders"]
-    with httpx.Client(base_url=stack.server.base_url, timeout=60) as client:
-        gov = governance.AdminGovernance(client, stack.ep.role)
-        return len(gov._tables()[int(tid)]["columns"])  # noqa: SLF001 - the bench's own client
+def _orders_contract_columns(stack: Stack) -> int:
+    """How many columns the contract names for orders: the share masks a count of these
+    (governance.masked_columns), not of every column the deployment registers."""
+    return next(
+        len(t["columns"])
+        for t in stack.raw["sources"]["bench-postgresql"]["tables"]
+        if t["table"] == "orders"
+    )
 
 
 @pytest.fixture(scope="module", params=GOVERNANCE)
@@ -918,14 +920,9 @@ def governed(stack, request) -> Iterator[Governed]:
     elif knob == "masks":
         # one masked column of orders (its only nullable one no filter, join or base request
         # reads), every column requested so it is in each answer
-        g = {"masked_column_share": 1 / _orders_columns(stack)}
-        request_knobs = {
-            "fields": next(
-                len(t["columns"])
-                for t in stack.raw["sources"]["bench-postgresql"]["tables"]
-                if t["table"] == "orders"
-            )
-        }
+        orders_columns = _orders_contract_columns(stack)
+        g = {"masked_column_share": 1 / orders_columns}
+        request_knobs = {"fields": orders_columns}
     elif knob == "redaction":
         g = {"central_redaction": True}
     elif knob == "role_depth":

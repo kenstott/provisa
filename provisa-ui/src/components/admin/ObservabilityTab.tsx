@@ -251,7 +251,7 @@ function TraceFeed() {
 
   return (
     <>
-      <div className="trace-feed">
+      <div className="trace-feed" data-testid="trace-feed">
         <div className="trace-feed-header">{headerContent}</div>
         <TraceList
           traces={traces}

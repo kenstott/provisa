@@ -19,6 +19,7 @@ JSON, BigInt, and one per subtype a native GraphQL type does not fit (REQ-2171).
 from collections.abc import Mapping
 from typing import cast
 
+from provisa.compiler.naming import to_pascal_case
 from provisa.core.ir_types import SUBTYPES, element_subtype
 
 from graphql import (
@@ -195,8 +196,7 @@ _SCALAR_NAMES: dict[str, str] = {
 def _scalar_name(subtype: str) -> str:
     if subtype in _SCALAR_NAMES:
         return _SCALAR_NAMES[subtype]
-    words = subtype.replace("multirange", "_multi_range").replace("range", "_range").split("_")
-    return "".join(word[:1].upper() + word[1:] for word in words)
+    return to_pascal_case(subtype.replace("multirange", "_multi_range").replace("range", "_range"))
 
 
 #: One named scalar per subtype native GraphQL does not fit (REQ-2171).

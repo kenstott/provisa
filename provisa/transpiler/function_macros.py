@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import enum
 import functools
+import itertools
 import re
 import string
 from collections.abc import Callable, Mapping
@@ -2410,7 +2411,13 @@ _EXACT = {
     "trino": {
         "sorted": "array_sort(filter(array_agg({k}), _e -> _e IS NOT NULL))",
         "descending": "reverse({sorted})",
-        "bound": "element_at(transform(ARRAY[{sorted}], _s -> {answer}), 1)",
+        # No keys answer NULL, as PostgreSQL does: the line between two of none would read
+        # element_at(_s, 0), which Trino refuses ("SQL array indices start at 1"). Only NULL keys
+        # leave _s empty; no rows leave it NULL (array_agg over none), whose cardinality is NULL.
+        "bound": (
+            "element_at(transform(ARRAY[{sorted}], "
+            "_s -> CASE WHEN coalesce(cardinality(_s), 0) = 0 THEN NULL ELSE {answer} END), 1)"
+        ),
         "each": "transform(ARRAY[{fractions}], _f -> {answer})",
         "disc": "element_at(_s, CAST(greatest(ceiling({f} * cardinality(_s)), 1) AS BIGINT))",
         "cont": (
@@ -2472,40 +2479,76 @@ def _exact(node: exp.WithinGroup, fractions: list[float], array: bool, dialect: 
     return sqlglot.parse_one(written, read=dialect)
 
 
+#: An element of an array, counted from 1, as each dialect reads one.
+_ELEMENT = {"trino": "element_at", "clickhouse": "arrayElement", "duckdb": "list_extract"}
+
+
+def _in_place(written: exp.Expr, fractions: list[float | None], dialect: str) -> exp.Expr:
+    """``written``, the answers of the fractions that are not NULL, with each NULL fraction's NULL
+    back in its place, as PostgreSQL answers an array that holds one: a NULL of the aggregate's
+    type over the same rows."""
+    element = _ELEMENT["trino" if dialect in _TRINO else dialect]
+
+    def at(index: int) -> exp.Expr:
+        return exp.Anonymous(this=element, expressions=[written.copy(), exp.Literal.number(index)])
+
+    places = itertools.count(1)
+    return exp.Array(
+        expressions=[
+            exp.Case(ifs=[exp.If(this=exp.false(), true=at(1))])
+            if fraction is None
+            else at(next(places))
+            for fraction in fractions
+        ]
+    )
+
+
 def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
     """percentile_cont and percentile_disc as PostgreSQL has them: a NULL fraction answers NULL of
-    the aggregate's type over the same rows, and one outside 0 to 1 is refused."""
+    the aggregate's type over the same rows, in its place in an array of them, and one outside 0
+    to 1 is refused."""
     argument = node.this.this
     array = isinstance(argument.unnest(), exp.Array) or (
         isinstance(argument.unnest(), exp.Cast) and argument.unnest().is_type("array")
     )
+    named = "percentile_cont" if isinstance(node.this, exp.PercentileCont) else "percentile_disc"
     fractions = _fractions(argument)
     if not fractions and not array:  # bound: DuckDB's own percentile checks the value it is given
         if dialect in _DUCKDB:
             return node
-        raise FunctionRefused(
-            "percentile_cont" if isinstance(node.this, exp.PercentileCont) else "percentile_disc",
-            dialect,
-        )
+        raise FunctionRefused(named, dialect)
     for fraction in fractions:
         if fraction is not None and not 0 <= fraction <= 1:
             raise PostgresError("22003", f"percentile value {fraction:g} is not between 0 and 1")
+    held = argument.unnest()
+    while isinstance(held, exp.Cast):
+        held = held.this.unnest()
+    whole = isinstance(held, exp.Null)  # the fraction, or the array of them, is NULL
+    if dialect == "clickhouse" and array and whole:  # no Array is Nullable: no NULL to answer
+        raise FunctionRefused(named, dialect)
+    placed = "trino" if dialect in _TRINO else dialect
+    if None in fractions and not whole and placed not in _ELEMENT:
+        raise FunctionRefused(named, dialect)
+    known = [fraction for fraction in fractions if fraction is not None] or [0.0]
+    written = _of_the_known(node, known, array, dialect)
+    if whole:
+        return exp.Case(ifs=[exp.If(this=exp.false(), true=written)])
+    return _in_place(written, fractions, dialect) if None in fractions else written
+
+
+def _of_the_known(node: exp.WithinGroup, known: list[float], array: bool, dialect: str) -> exp.Expr:
+    """The percentile of each fraction in ``known``, none of them NULL."""
     ordered = node.expression.expressions[0]
-    nothing = None in fractions
-    known = [0.0] if nothing else [fraction for fraction in fractions if fraction is not None]
     if dialect in _TRINO or dialect == "clickhouse":
-        exact = _exact(node, known, array, dialect)
-        return exp.Case(ifs=[exp.If(this=exp.false(), true=exact)]) if nothing else exact
+        return _exact(node, known, array, dialect)
     said = said_type(ordered.this) == "interval"
     if said and isinstance(node.this, exp.PercentileCont) and dialect in _DUCKDB:
-        written = _of_intervals(node, known, array)
-        return exp.Case(ifs=[exp.If(this=exp.false(), true=written)]) if nothing else written
-    if dialect in _DUCKDB and ordered.args.get("desc") and not nothing:
+        return _of_intervals(node, known, array)
+    if dialect in _DUCKDB and ordered.args.get("desc"):
         known = [fraction or _FIRST_DESCENDING for fraction in known]
     numbers = [exp.Literal.number(repr(fraction)) for fraction in known]
     node.this.set("this", exp.Array(expressions=numbers) if array else numbers[0])
-    written = node
-    return exp.Case(ifs=[exp.If(this=exp.false(), true=written)]) if nothing else written
+    return node
 
 
 #: The functions in FROM with columns of their own, which DuckDB's unnest of a struct does not make.

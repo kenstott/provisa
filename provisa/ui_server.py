@@ -386,6 +386,22 @@ async def firebase_config() -> Response:  # REQ-1266
     )
 
 
+@app.get("/deployment-config.js")
+async def deployment_config() -> Response:  # REQ-1276, REQ-1348
+    # The base domain this deployment addresses orgs under (cloud.provisa.dev declares
+    # provisa.dev), injected at runtime like the Firebase config above so one built image serves
+    # any deployment. index.html loads this before the app bundle, exposing
+    # window.__PROVISA_ORG_BASE_DOMAIN__ for lib/authHost.ts. Unset — a Codespace, localhost, a
+    # custom single host — emits null: the UI then reads no org from its host and runs as the
+    # deployment's one address, instead of guessing a zone from the host's shape.
+    base = os.environ.get("VITE_ORG_BASE_DOMAIN", "").strip()
+    return Response(
+        content=f"window.__PROVISA_ORG_BASE_DOMAIN__ = {json.dumps(base or None)};",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.api_route(
     "/{full_path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],

@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "Derived from the aggregate when built from a fact measure",
     "fieldDescription": "Description",
     "fieldAiContext": "AI Context",
+    "fieldTags": "Tags",
     "fieldAiContextPlaceholder": "Hints for AI-assisted query generation",
     "saveFailed": "Save failed.",
     "editMetric": "Edit metric {{name}}",

@@ -29,7 +29,6 @@ import functools
 import importlib.util
 import json
 import logging
-import re
 import sys
 from decimal import Decimal
 
@@ -202,11 +201,6 @@ def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
     if isinstance(exc, ValueError):
         return grpc.StatusCode.INVALID_ARGUMENT
     return grpc.StatusCode.INTERNAL
-
-
-def _pascal_to_snake(name: str) -> str:
-    """Convert PascalCase to snake_case: CustomerSegments -> customer_segments."""
-    return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
 
 
 def _load_module(path: str, name: str):
@@ -616,13 +610,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
         if name.startswith("Query"):
             type_name = name[len("Query") :]
-            # Convert PascalCase type name to snake_case field name
-            field_name = _pascal_to_snake(type_name)
             return self._streaming_rpc(
-                name,
-                lambda request, context: self._handle_query(
-                    request, context, type_name, field_name
-                ),
+                name, lambda request, context: self._handle_query(request, context, type_name)
             )
         if name.startswith("Insert"):
             type_name = name[len("Insert") :]
@@ -920,7 +909,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """Stub handler for insert RPCs."""
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
-    async def _handle_query(self, request, context, type_name: str, field_name: str):
+    async def _handle_query(self, request, context, type_name: str):
         """Lower a proto query request to GraphQL text and compile it as every GraphQL-shaped
         surface does (``query_ir.grpc_table_to_graphql``), then run the compiled statement through
         the shared governance → routing → physical pipeline. gRPC composes no SQL of its own.

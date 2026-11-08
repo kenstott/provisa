@@ -14,6 +14,8 @@
     "deleteConfirm": "Delete report {{name}}?",
     "deleted": "Report {{name}} deleted.",
     "empty": "No reports registered in the ops domain.",
+    "filterPlaceholder": "Filter reports…",
+    "noMatch": "No reports match",
     "resize": "Resize the report list",
     "drift": {
       "title": "Drift since the previous period",

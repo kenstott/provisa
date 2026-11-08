@@ -24,12 +24,12 @@ For SQLite, ``provisa.federation.connector_sqlite`` owns the sqlite3 driver.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.naming import apply_convention
 from provisa.federation import connector_sqlite
 from provisa.federation.connector_duckdb import read_flat_file_sync
 
@@ -75,18 +75,6 @@ class TableDefinition:  # REQ-788, REQ-790
 
 
 # ---------------------------------------------------------------------------
-# camelCase → snake_case (REQ-789, LINQ4J convention)
-# ---------------------------------------------------------------------------
-
-
-def _camel_to_snake(name: str) -> str:  # REQ-789
-    """Convert a camelCase/PascalCase identifier to snake_case (LINQ4J convention)."""
-    s1 = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
-    s2 = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s1)
-    return s2.lower()
-
-
-# ---------------------------------------------------------------------------
 # Schema discovery
 # ---------------------------------------------------------------------------
 
@@ -109,7 +97,7 @@ def discover_schema(
         raw = _discover_for_path(config, table_def.path)
         return [
             ColumnMetadata(
-                column_name=_camel_to_snake(col["name"]),
+                column_name=apply_convention(col["name"], "snake"),  # REQ-194, REQ-789
                 data_type=col["type"],
                 is_nullable=col.get("nullable", True),
             )

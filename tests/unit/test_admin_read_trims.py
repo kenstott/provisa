@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 import provisa.api.app as appmod
 from provisa.api.admin.schema_query import Query
+from provisa.core.schema_org import reference_document_tags, tag_assignments
 from tests.unit.gate_identity import grant
 
 
@@ -266,6 +267,33 @@ _ASSIGNMENTS = [
 ]
 
 
+# REQ-2208: the library's tags, read alongside the model's: a document in sales, a section of a
+# document in hr, and a section of an enterprise-wide ("*") document; the gate reads each as its
+# document is read.
+_LIBRARY_ASSIGNMENTS = [
+    {"tag_id": "t", "object_type": "document", "document_id": 10, "section_heading": None},
+    {"tag_id": "t", "object_type": "section", "document_id": 20, "section_heading": "Pay"},
+    {"tag_id": "t", "object_type": "section", "document_id": 30, "section_heading": "Scope"},
+]
+_LIBRARY_DOMAINS = {10: ["sales"], 20: ["hr"], 30: ["*"]}
+
+
+def _model_row(row):
+    """An assignment as list_assignments answers it: every tag_assignments column, then the
+    joined table_ref."""
+    return {**dict.fromkeys(tag_assignments.c.keys()), "table_ref": None, **row}
+
+
+def _library_row(row):
+    """A library tag as list_library_assignments answers it: every model object's column None."""
+    return {
+        **dict.fromkeys(tag_assignments.c.keys()),
+        **dict.fromkeys(reference_document_tags.c.keys()),
+        "table_ref": None,
+        **row,
+    }
+
+
 class _TagConn(_Conn):
     async def execute_core(self, stmt):
         text = str(stmt)
@@ -318,7 +346,19 @@ async def _assignments(monkeypatch, domain_access):
         patch("provisa.api.admin.schema_query._get_pool", return_value=_TagPool()),
         patch(
             "provisa.core.repositories.tag.list_assignments",
-            new=AsyncMock(return_value=[dict(r) for r in _ASSIGNMENTS]),
+            new=AsyncMock(return_value=[_model_row(r) for r in _ASSIGNMENTS]),
+        ),
+        patch(
+            "provisa.core.repositories.tag.list_library_assignments",
+            new=AsyncMock(return_value=[_library_row(r) for r in _LIBRARY_ASSIGNMENTS]),
+        ),
+        patch(
+            "provisa.reference_library.store.documents",
+            new=AsyncMock(
+                return_value=[
+                    types.SimpleNamespace(id=i, domains=d) for i, d in _LIBRARY_DOMAINS.items()
+                ]
+            ),
         ),
         patch("provisa.core.domain_policy.single_domain", return_value=False),
     ):
@@ -326,12 +366,15 @@ async def _assignments(monkeypatch, domain_access):
 
 
 def _keys(seen):
-    return [a.table_id or a.relationship_id or a.command_name or a.source_id for a in seen]
+    return [
+        a.table_id or a.relationship_id or a.command_name or a.source_id or a.document_id
+        for a in seen
+    ]
 
 
 async def test_an_unrestricted_caller_sees_every_assignment(monkeypatch):
     seen = await _assignments(monkeypatch, ["*"])
-    assert len(seen) == len(_ASSIGNMENTS)
+    assert len(seen) == len(_ASSIGNMENTS) + len(_LIBRARY_ASSIGNMENTS)
 
 
 async def test_a_domain_scoped_caller_sees_only_objects_in_their_domains(monkeypatch):
@@ -339,5 +382,6 @@ async def test_a_domain_scoped_caller_sees_only_objects_in_their_domains(monkeyp
     # sales table and its relationship, the sales command, the command with no domain, the source
     # allowed in sales and the source with no allowed_domains; not hr's table/column/webhook/source.
     # r1 (both ends in sales) and r4 (function target, no second table) are shown; r3 (target in hr)
-    # is hidden although its source is in scope, and r2 (both ends in hr) is hidden.
-    assert _keys(seen) == [1, "r1", "r4", "fn_sales", "fn_nodomain", "s_sales", "s_open"]
+    # is hidden although its source is in scope, and r2 (both ends in hr) is hidden. Of the
+    # library's: the sales document's tag and the enterprise-wide document's section, not hr's.
+    assert _keys(seen) == [1, "r1", "r4", "fn_sales", "fn_nodomain", "s_sales", "s_open", 10, 30]

@@ -32,6 +32,7 @@
     "fieldDatatypeDerived": "由事實表量值建立時，會從彙總函數推導",
     "fieldDescription": "描述",
     "fieldAiContext": "AI 內容",
+    "fieldTags": "標籤",
     "fieldAiContextPlaceholder": "供 AI 輔助查詢產生使用的提示",
     "saveFailed": "儲存失敗。",
     "editMetric": "編輯指標 {{name}}",

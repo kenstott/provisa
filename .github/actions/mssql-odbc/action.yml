@@ -18,8 +18,14 @@ runs:
         APT_OPTS: -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=300
       run: |
         set -euo pipefail
-        curl $CURL_OPTS https://packages.microsoft.com/keys/microsoft.asc \
-          | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+        # Both of Microsoft's signing keys into the one keyring every microsoft-prod list names
+        # (ours and the runner image's own): ubuntu/22.04 and 24.04 are signed with microsoft.asc
+        # (EB3E94ADBE1229CF), ubuntu/26.04 with microsoft-2025.asc (EE4D7792F748182B). The old key
+        # alone overwrote the image's keyring and left 26.04's index unverified (NO_PUBKEY
+        # EE4D7792F748182B, run 42161270533).
+        { curl $CURL_OPTS https://packages.microsoft.com/keys/microsoft.asc
+          curl $CURL_OPTS https://packages.microsoft.com/keys/microsoft-2025.asc
+        } | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
         curl $CURL_OPTS "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list" \
           | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
         sudo apt-get $APT_OPTS update -q

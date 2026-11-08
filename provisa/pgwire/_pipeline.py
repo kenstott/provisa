@@ -4801,7 +4801,11 @@ async def _run_statements(
             buffered=buffered and answered,
             serve_cached=True,  # REQ-1897: this function executes at the chokepoint, which serves it
         )
-        return await _execute_plan(plan, state)
+        result = await _execute_plan(plan, state)
+        # REQ-1961: the caller writes the rows without the plan; it types each registered
+        # column by the statement's result shape, derived only when it is asked for.
+        result.result_shape = plan.result_shape
+        return result
 
     outcomes: list[StatementOutcome] = []
     last = len(statements) - 1

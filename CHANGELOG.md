@@ -3,6 +3,314 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.507
+
+Released 2026-11-07.
+
+### Changes
+
+#### api
+
+- A TTL -1 API table with declared rows is read from its replica, never fetched
+- Resolve a table's TTL before asking whether it is kept for good
+
+#### demo
+
+- Banksecrecy relationships get their own GraphQL field names
+
+#### guard
+
+- A union's branch choices are judged unexpanded, never listed as their product
+
+#### macos
+
+- Allow only the container-image unpack warning in Apple's notarization log
+
+#### packaging
+
+- Retry a dropped staple connection and fail on Apple's notarization log
+
+#### tags
+
+- Library document and section tags kept with the library
+
+#### ui
+
+- The tags scope bar wraps its twelve object kinds
+
+## v0.1.0-alpha.506
+
+Released 2026-11-07.
+
+### Changes
+
+#### conformance
+
+- Keep psycopg's brace-form UUID parameter failures listed
+
+#### demo
+
+- setup_pulls waits for the view's read window to open
+
+#### naming
+
+- Name client-facing names through the naming authority
+- naming.ts answers as naming.py, takes presets; B16 alias follows the convention (D18, B16)
+- Type attach_catalog's source as Source | SimpleNamespace
+
+#### pgwire
+
+- Read a text Bind value as an array only for an array-typed parameter
+
+#### reference-library
+
+- read.xlsx workbooks, a sheet a section and a row a paragraph
+
+#### schema
+
+- Refuse a computed relationship's field another relationship holds
+- Add the row rule, role and metric tag columns to a tag_assignments that predates them
+
+#### ui
+
+- metaGraph rowKey and ServiceNow schema name use naming.ts (D15, D17)
+- Filter box on the Admin Reports list
+
+#### General
+
+- J856 /data/sql column_types lists a registered integer as integer
+
+## v0.1.0-alpha.505
+
+Released 2026-11-06.
+
+### Changes
+
+#### release
+
+- Oauthlib 4.0.1 (CVE-2026-49272); keep openssl@4 headers out of the macOS PG build
+
+#### tags
+
+- Row rules, roles and metrics carry tags
+
+## v0.1.0-alpha.504
+
+Released 2026-11-06.
+
+### Features
+
+#### Admin UI
+
+- Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building a high quality diagram that can keep being revised.
+
+#### Authorization
+
+- A capability assigned to a role never widens that role's read or write grants.
+
+#### Business Glossary & Ontology
+
+- Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query with id + text against a registered table", then "it could literally just be domain,,table,id,text".
+
+#### CI/CD
+
+- CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one server process serves a mixed request loop over every surface -- GraphQL, SQL, Cypher, SPARQL, pgwire, Arrow Flight, REST and JSON:API reads, a write, a subscription opened and closed, a sign-in and a sign-out -- for N iterations after a warm-up, then N more, and a churn of K demo sandbox orgs, each created, used and reaped.
+
+#### Catalog Explore
+
+- Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses.
+
+#### Data Catalog Integration
+
+- Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data product, as the BigQuery Analytics Hub target does: Unity Catalog has no data-product entity.
+- A feature that works but is not yet proven for production, such as a metadata export target not yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user picks or sees it, and its documentation states why it is beta.
+
+#### Data Products
+
+- The Data Products page and the core of its detail panel are drawn from the meta domain through the governed pipeline as the signed-in user: the product list, and each panel section's summary (the product's fields, its domain, member tables, commands, tags, glossary terms, data-quality and profile evidence, related tables and lineage) come from data_products_meta and its relationships and data_product_edges. [SUPERSEDED by 2026-11-06 -- lineage comes from the product lineage endpoint.
+- The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped to the selected product.
+- A data-quality checker table's description states its quality claim: why the check exists, in business terms (for example, "Orders are complete and unique so daily revenue reconciles with finance").
+- A data product's data quality has three parts.
+
+#### Demo Provisioning
+
+- A hosted demo sandbox can carry two regions, so a regions demo runs live and not only locally.
+- A published named demo may declare, in its demo.yaml, the attributes its sandbox visitor carries (visitor: attributes: {name: value}).
+
+#### Extensible Functions
+
+- A deployment setting, commands.allow_host_code (off by default), governs host code: the python command kind (an in-process module:attr callable) and the script command kind (a subprocess on the server's host).
+
+#### Federation-Wide Provenance Graph
+
+- Every lineage surface answers only what the caller can read, through one shared server-side filter: the admin Lineage page (the federation graph and statement lineage), the data product panel's Lineage and Inputs, the product Graph panel, and anything else that names a field from lineage.
+
+#### Governance Column Visibility
+
+- A column's scope says how far beyond its table's domain it reaches, and nothing else: domain, listed or public. domain, the default: outside the domain the column does not exist; inside it, roles that reach the domain read and write it per grants. listed: every role of the organisation sees the table's name and the column's name in the catalog and nothing more (no description, type, sample, value or count); reading or writing it still needs a role that reaches the domain and holds a grant. listed is how a domain makes a table discoverable, so that someone in another domain (one allowed to bypass the relationship guard, for example) can find its keys and ask its owners for a grant. public: every role of the organisation sees the table's and column's names and descriptions, and the column is served to roles of every domain per grants; masks, row rules and limits apply as inside the domain.
+
+#### JDBC/ODBC Integration
+
+- Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent.
+
+#### MCP Authentication
+
+- MCP tool describe_role returns only the caller's resolved role (for a meta-role, also its members, derived roles among them) with each one's description, and the roles the caller may switch to: the set named_role checks a named role against (remote: the token's held roles, the role it maps to and its principal's derived roles; stdio: the pinned mcp.role set), each with its description.
+
+#### Materialization Store
+
+- Fixed table arguments: a table whose source takes arguments (a parameterized API table, such as a GitHub table taking owner and name) may declare the argument values in its config (arguments: {name: value}).
+- Landing filter: a table may declare landing_filter, a SQL predicate over its own columns that is applied when its replica lands, so only matching rows are copied.
+
+#### OData
+
+- Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit, a very clean mapping of the model.
+
+#### Profile Runs 3D Relationship and Distribution Views
+
+- The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand button that opens the view in a modal at 95% of the viewport with its own camera.
+
+#### Profile Runs Terrain View
+
+- The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column.
+
+#### Schema Registration
+
+- Discovery records the keys a source declares: its primary key, unique (alternate) keys and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres and DuckDB and then each other connector that can.
+
+#### Security
+
+- Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC).
+- Rights follow the request.
+- Derived roles join the Roles list.
+- Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes).
+- The Security page's role detail panel shows the role's effective rights, as the composition of scope, capabilities and grants: every capability the role holds with the role it comes from (its own or the ancestor that carries it), its domain reach, and per table and column the access it has (read, write, masked, row rule) with the grant that gives it and the column's scope.
+- A table's detail panel answers who can read or write each of its columns: for a chosen column, every role that reads it, writes it, sees it masked or has a row rule on it, each with the chain that gives it (the granting role, the ancestor it is inherited through, the column's scope and the role's reach).
+
+#### Source Connectors
+
+- A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres engine: the DuckDB engine attaches it with DuckDB's MotherDuck extension (md:<database>), signed in with the source's MotherDuck token (its password field) resolved with the standard resolution.
+- A Node or Python code source can take its code from a folder on the developer's machine, and opens in VS Code from its form.
+- Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a database with no named source type can be registered and behave similar to something.
+- Maintainer 2026-11-03 (after asking how feasible QuickBooks and NetSuite are, and adding QuickBooks sandbox credentials): QuickBooks Online is a source type.
+- Maintainer 2026-11-03: asked whether a Go or Java code resolver is possible, and chose Go first.
+
+#### UI
+
+- Everything the UI saves in the browser is saved per control plane and organization, so each demo, instance and org keeps its own state: the domain filter, the explorers' saved queries and tabs, remembered collapsibles, and every other remembered choice.
+- A named demo ships example GraphQL queries, one file a query in its directory (demo/named/<name>/queries/*.graphql), and the GraphQL explorer opens them as its tabs, in file-name order, the first time that demo is opened in a browser.
+- A named demo has its own tour, the story of the demo told with its own data, for a demo that runs with no one to present it.
+- Each tour declares its prerequisites, what its steps show of the org beyond the rights its pages need: the sources, the registered tables and whether a data product exists.
+- A named demo, streaming (Live order stream): A live order feed arriving through Kafka or a webhook, joined to a static product catalog, on the demo's own containers.
+- A named demo, GDPR at an international retail group (one group, EU and US subsidiaries): two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated and enforced in one place; the visitor stays on one node (the US node) and the EU region's setup is shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region message scoring, are built in the EU region's own store at bundle build, and the US node reads them in place from that store, the per-request record naming eu as the serving region, or refuses naming eu when that store is absent; each subsidiary's own sources with their home region -- loyalty-programme customers with their marketing consent, orders, stores and staff -- plus shared reference data (products, stores), all generated; users with a region attribute and row rules on it.
+- An industry vertical demo, insurance: Where is our property exposure concentrated against hazard risk?
+- A feature demo, data profiling: The built-in Data Profiler profiles a demo's tables on a schedule; its results are governed tables the tour shows (nulls, distinct counts, value ranges, outliers), and a profile run is visible on each profiled table.
+- A feature demo, data vault: how to set up a data vault in Provisa.
+- A capability demo, provisioning: a warehouse takes several feeds (orders, inventory, prices) and builds large datasets as materialized views refreshed by the view cascade as the feeds land, then provisions them downstream to two consumers (a finance mart and a data-science feature store).
+- A named demo's tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns.
+- A named demo may ship a notebook (notebook.ipynb beside its tour.yaml).
+- The named demo churn answers which customers of a subscription business are about to cancel.
+- The named demo "groupexposure" joins company data to public linked data by an identifier both share.
+- Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table be used while it was being deleted.
+- Maintainer 2026-11-03: the entity/fact form is built from the right primitives, but people won't get how to interpret their method into the primitive.
+- Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a bank example, then querying based on a concept, could interesting"; chose the Bank Secrecy Act.
+    - A served view is found by its stored name; a classified column is proposed its fake
+
+### Changes
+
+#### admin
+
+- Gate specialized surfaces by their own rights (WIP)
+- Nav and route tests follow the specialized gates
+
+#### api
+
+- A schema rebuild's lifecycle wiring failure raises
+
+#### build_mongo_fdw
+
+- Drop libmongoc's -Werror cmake option, which cmake 4.4 refuses
+
+#### codesource
+
+- A code host's rows are pulled on the statement's own threads, so a refused statement's process exits
+
+#### deploy
+
+- Put the org base domain in the API containers, and verify it
+
+#### devcontainer
+
+- Make the UI's port 3000 public when a Codespace starts
+
+#### discovery
+
+- A Register Table listing goes before the catalog index's next read
+
+#### dq
+
+- great_expectations checker connects to Provisa without the hstore catalog probe
+- great_expectations checker percent-escapes the user and password in its URL
+
+#### duckdb
+
+- Drain results read from shared DuckDB connections
+
+#### ephemeral
+
+- Name a graph session's tables quoted, so governance's folded reading keeps them
+
+#### federation
+
+- Lock registered_tables before table_columns in fetch_tables
+
+#### pg
+
+- Run the engine's ADBC read pool in autocommit
+
+#### pgwire
+
+- J764 the engine replays write a jsonb answer as the wire does
+- Send a reply's messages together, as PostgreSQL does
+
+#### security
+
+- org_from_host reads an org only under the declared base domain
+
+#### site
+
+- Architecture FAQ page, linked from the home FAQ and How it works
+
+#### sql-validator
+
+- Every alias the statement binds is in scope (J775)
+- Judge an unqualified column at the relations that have it
+
+#### tour
+
+- reference-library tour steps name glossary_rw
+- Test fixture library step names glossary_rw
+- Anchor the Observability step on the trace feed, not the debug tab
+
+#### transpiler
+
+- The engine forms matrix recaptured; NULL array and pg_notify refused by name
+- A NULL fraction in a percentile's array answers NULL in its place
+- Trino's exact percentile over no keys answers NULL, not element 0
+- Trino's exact percentile over no rows answers NULL as well
+
+#### ui
+
+- A table's class term is read-only, set from the glossary term
+- Table API tab, Read grants and Write grants wording
+- Read an org from the host only under a declared base domain
+- Serve a null deployment-config.js in dev
+- The table header's profile icon opens Quality with the profile in view
+
+#### General
+
+- J788 /data/sql writes a registered column as its registered type
+
 ## v0.1.0-alpha.503
 
 Released 2026-11-05.

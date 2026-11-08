@@ -88,6 +88,10 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
+  // REQ-194: the reverse is offered once the GraphQL convention its alias is named by is read.
+  fetchSettings: vi.fn().mockResolvedValue({
+    naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
+  }),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
@@ -96,12 +100,14 @@ vi.mock("../../components/TagControl", () => ({ TagControl: () => null }));
 
 const panel = () => screen.getByTestId("relationships-split-panel");
 
-function openReverse() {
+async function openReverse() {
   render(<RelationshipsPage />);
   fireEvent.click(
     within(screen.getByTestId("relationships-list")).getByText("shop_access.customer_id"),
   );
-  fireEvent.click(within(panel()).getByRole("button", { name: "Generate reverse relationship" }));
+  const reverse = within(panel()).getByRole("button", { name: "Generate reverse relationship" });
+  await waitFor(() => expect(reverse).toBeEnabled());
+  fireEvent.click(reverse);
 }
 
 beforeEach(() => {
@@ -112,7 +118,7 @@ beforeEach(() => {
 describe("RelationshipsPage: the reverse form", () => {
   it("names each table by the name its save resolves, the alias when there is one", async () => {
     UPSERT.upsertRelationship.mockResolvedValueOnce({ success: true, message: "" });
-    openReverse();
+    await openReverse();
     expect(screen.getByTestId("reverse-rel-id")).toHaveValue("customers-to-shop_access");
     fireEvent.click(screen.getByTestId("reverse-rel-save"));
     await waitFor(() => expect(UPSERT.upsertRelationship).toHaveBeenCalledTimes(1));
@@ -134,7 +140,7 @@ describe("RelationshipsPage: the reverse form", () => {
       code: "schema.relationship_alias_taken",
       params: { alias: "BY_CUSTOMER", table: "customers", relationship: "x" },
     });
-    openReverse();
+    await openReverse();
     fireEvent.click(screen.getByTestId("reverse-rel-save"));
     const problem = await screen.findByTestId("form-problem");
     expect(problem).toHaveTextContent("BY_CUSTOMER");
@@ -147,7 +153,7 @@ describe("RelationshipsPage: the reverse form", () => {
     UPSERT.upsertRelationship.mockRejectedValueOnce(
       new Error("Target table not registered: shop_access"),
     );
-    openReverse();
+    await openReverse();
     fireEvent.click(screen.getByTestId("reverse-rel-save"));
     expect(await screen.findByTestId("form-problem")).toHaveTextContent(
       "Target table not registered: shop_access",

@@ -155,6 +155,7 @@
     "draftUndefined": "Brouillon : dérivé des noms de colonnes et de tables. Donnez-lui une définition — c'est ce que lisent les agents et les catalogues — puis approuvez-le. Le nom vient des colonnes ci-dessous, et les colonnes qui se normalisent de la même façon aboutissent à un même terme : donnez un alias à une colonne sur la page Tables pour changer le terme qu'elle alimente. Renommez ici pour ne changer que le libellé de ce terme.",
     "draftUngrounded": "Ce terme n'atteint aucune colonne physique. Reliez-le à un terme qui en a une pour qu'il nomme des données réelles.",
     "piiLabel": "PII",
+    "tagsLabel": "Tags",
     "piiHelp": "Chaque colonne de cette signification porte PII, y compris les futures.",
     "piiPropertyOnly": "Seule une propriété marque des colonnes : une classe ou un concept n’en signifie aucune.",
     "piiMarks_one": "Marque {{count}} colonne",

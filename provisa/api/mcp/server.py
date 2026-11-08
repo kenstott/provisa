@@ -501,8 +501,11 @@ def build_mcp_server(state: Any):
             )
         # The acting role too, as the HTTP middleware sets it: the catalog a tool reads and edits
         # is that role's (REQ-2152, catalog_scope).
+        # No headers: a tool call carries no Idempotency-Key, so a decision applies as it always
+        # did (REQ-2216).
         return SimpleNamespace(
-            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role)
+            headers={},
+            state=SimpleNamespace(identity=identity, active_org_id=org_id, role=resolved_role),
         )
 
     @_tool

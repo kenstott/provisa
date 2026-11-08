@@ -94,6 +94,7 @@
     "ruleDescription": "Описание",
     "ruleDescriptionHelp": "Для чего нужно правило — так, как его читает проверка доступа.",
     "ruleRight": "Право",
+    "tags": "Теги",
     "ruleRightRead": "Чтение",
     "ruleRightUpdate": "Обновление",
     "ruleRightDelete": "Удаление",

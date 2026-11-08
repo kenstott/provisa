@@ -532,7 +532,14 @@ export default defineConfig({
     trace: process.env.CI ? "retain-on-failure" : "off",
     // The 3D views (three.js) need a WebGL context. CI runners have no GPU, and Chromium no longer
     // falls back to its software renderer unasked, so SwiftShader is requested by name.
-    launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
+    // The page itself is composited in software (--disable-gpu-compositing): composited through
+    // SwiftShader GL, every frame the trace's screencast reads back cost the GPU process 89% of a
+    // runner core on average across the core lane, static pages included (run 42187604573). The
+    // same animating page, traced, measured 634% (SwiftShader GL) against 23% (software) of the GPU
+    // process on a 10-core laptop; WebGL canvases are still drawn by SwiftShader and reach the page.
+    launchOptions: {
+      args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-gpu-compositing"],
+    },
   },
   webServer: ONLY_REGIONS_DEMO
     ? []

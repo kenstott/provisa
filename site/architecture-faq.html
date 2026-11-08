@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture FAQ — Provisa</title>
+  <meta name="description" content="The questions a data architect raises when evaluating Provisa: execution, correctness, freshness, governance, scale and streaming." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/architecture-faq" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/compare">Compare</a>
+        <a href="/#deploy">Deploy</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Architecture FAQ</span></p>
+        <h1>Architecture FAQ</h1>
+        <p class="lead">The questions a data architect typically raises when evaluating Provisa, grouped by topic.</p>
+      </div>
+
+      <div class="doc-body">
+
+        <h2 id="how-to-read">How to read this FAQ</h2>
+        <p>Provisa provides the mechanisms; operators configure them for their use case. Where a behavior depends on business requirements (stale-data notification, compaction schedules, cross-border transfer rules), Provisa supplies the control and the customer sets it.</p>
+
+        <h2 id="at-a-glance">Architecture at a glance</h2>
+        <p>Clients connect only to Provisa's in-region data nodes, never to engines or sources. Each request is compiled with governance built in, run on your engine, and streamed back: passed straight through when client and engine both speak Arrow, otherwise encoded to the client's protocol with bounded memory. Nothing is stored, and nothing leaves the region.</p>
+        <ul>
+          <li><strong>Control nodes</strong> provide the UI for exploration and configuration management. They are identical and can be hosted anywhere; host one in-region for regional exploration.</li>
+          <li><strong>Data nodes</strong> are the client endpoint for a region. They compile requests to the IR, translate them to the engine's dialect, dispatch to the engine or directly to a source driver, and encode results. They are stateless, CPU-bound with bounded memory, and load-balanced horizontally per region.</li>
+          <li><strong>Regions</strong> are engines with a stated purpose: a jurisdiction, a department, or a processing class such as transactional or analytical. Regions operate independently under local regulation and policy, coordinating through shared configuration.</li>
+          <li><strong>Engines</strong> (Trino, ClickHouse, Postgres, DuckDB and others; each release lists the engines and versions it certifies) are replaceable execution targets. Engines never talk to each other.</li>
+          <li><strong>High availability:</strong> the control plane runs in HA mode with HA Postgres as its state store.</li>
+        </ul>
+        <p>Every region runs this same shape under one shared configuration; engines in different regions never talk to each other.</p>
+
+        <h2 id="execution">Execution and correctness</h2>
+        <h3 id="q1">1. How are cross-region jobs handled when a join spans sources assigned to different engines?</h3>
+        <p>Engines never talk to each other. All of them share one rule set, interpreted through one compiler. When a request needs data from another region, the engine reads from the source directly, or in place from the home region's replica if the table is homed, with the reader's row and column rules in the statement. An unhomed replica or materialized view is built in every region, each in that region's own store, so every region reads it locally. A homed one is built and refreshed only in its home region, by that region's coordinator; other regions read it in place and never hold a copy, and it is never cached outside its home region.</p>
+        <p>Homing governs internal handling only. Each region sets its own cross-border transfer rules under local regulation, and the requesting region's identity is carried on every connection so the receiving region can apply them.</p>
+        <h3 id="q2">2. What happens when a compiled plan uses a construct the target engine lacks?</h3>
+        <p>It is refused at compile time, never sent to fail. Clients speak Provisa's supported languages (SQL, GraphQL, Cypher), and every request compiles to one IR. The IR decomposes each request into a set of CTEs (effectively subroutines) and a final simple query; the translator chooses how each CTE executes on each engine. Functions an engine lacks are replaced by inline macros from a per-dialect polyfill library.</p>
+        <p>What an engine cannot express, even with a polyfill, is refused by name at compile time, saying which function and which engine. Which functions each engine serves, and which it refuses, is published per engine on the <a href="/docs/conformance/pgwire/">conformance pages</a>.</p>
+        <p>Provisa publishes benchmarks for a wide range of workloads across all supported engines, and ships the same benchmarking tool to customers as a sizing tool.</p>
+        <h3 id="q3">3. How is cross-engine semantic equivalence verified (nulls, decimals, collation, time zones)?</h3>
+        <p>Each supported engine is tested against PostgreSQL's own answers, for every protocol suite and every function, in CI. The results are published per engine on the <a href="/docs/conformance/overview/">conformance pages</a>: what matches exactly, what is equivalent under a stated rule, what is refused by name, and every known difference with its workaround. The polyfill list is documented.</p>
+        <h3 id="q4">4. How are long-running jobs handled: retries, partial failure, checkpointing, and cancellation?</h3>
+        <p>Execution retries, checkpointing, and fault tolerance are the engine's responsibility; Provisa does not duplicate them. Engine errors propagate to the client, and client cancellations propagate to the engine.</p>
+
+        <h2 id="state">State and freshness</h2>
+        <h3 id="q5">5. How does incremental materialization work: change detection, merge semantics, late-arriving data, backfills?</h3>
+        <p>Provisa replicates two ways.</p>
+        <ul>
+          <li><strong>Table-level replicas</strong> are whole-table copies. A refresh fills a fresh table and swaps it in atomically when complete, so a reader never sees an empty or half-filled replica and a failed refresh leaves the previous one intact. On Iceberg each append is one snapshot. When to refresh comes from change detection: CDC where the source supports it, and otherwise a combination of TTL, hashes, ETags, modification dates and size, chosen per source according to what it exposes.</li>
+          <li><strong>Row-level replication</strong> is a query-driven row cache. A row is fetched from the live source and upserted into the replica only when a query's compiled plan names concrete primary-key values, so it requires a unique primary key.</li>
+          <li>Compaction of replica and view tables stored in Iceberg is the operator's responsibility. (Provisa compacts its own telemetry tables.)</li>
+        </ul>
+        <h3 id="q6">6. How is freshness defined and enforced, and what does a consumer see when a materialized view is stale?</h3>
+        <p>Staleness is determined by the same per-source change detection used for replication. Each materialized view is configured for one of two behaviors when a query arrives and the view is stale:</p>
+        <ol>
+          <li>Force a refresh, then serve fresh results.</li>
+          <li>Serve the stale result and refresh in the background. Background refreshes are debounced.</li>
+        </ol>
+        <p>Freshness is set per source. A source with no TTL or freshness guarantee is always queried directly. A TTL of -1 marks reference data that is never refreshed.</p>
+        <p>Stale-result notification to end users is not built in. Where it matters, configure it for your use case.</p>
+        <h3 id="q7">7. How does the control plane learn job outcomes from engines that have no callback mechanism?</h3>
+        <p>The question does not apply. Every replica build and materialized-view refresh is recorded centrally and run by a node that submits it to the engine, holds that connection and receives the result or error directly. Data nodes, change signals and model changes request a rebuild (a data node does when a query finds a replica stale); the region's coordinator nodes claim and run builds and scheduled refreshes. There are no unobserved jobs.</p>
+
+        <h2 id="governance">Governance in the data plane</h2>
+        <h3 id="q8">8. Since the engine executes the plan, what stops someone with direct engine access from bypassing policy?</h3>
+        <p>Clients connect only to data nodes, and only Provisa holds engine and source credentials, so there is no path around governance. Even when client and engine both speak Arrow, the connection is mediated by the data node. Anyone who holds direct credentials outside Provisa (a DBA, a legacy application) is outside Provisa's scope by definition; that is an access management decision the organization already makes for every system.</p>
+        <p>The practical result is a security improvement in itself: analysts, applications, and AI agents no longer need standing credentials to data systems.</p>
+        <h3 id="q9">9. How do credentials flow?</h3>
+        <p>Provisa is the sole credential holder for engines and sources. Clients hold none.</p>
+        <h3 id="q10">10. How is the audit trail correlated between the compiled plan and what actually ran?</h3>
+        <p>The data node compiles each request and delivers its results, so it is a single audit point in the region where the request ran.</p>
+
+        <h2 id="scale">Scale and operations</h2>
+        <h3 id="q11">11. What are the limits of the control plane itself: model size, number of sources, concurrent compilations?</h3>
+        <p>No practical limit has been found. Testing covers several thousand tables, including a 4 TB warehouse with 54 schemas and about 1,000 tables, registered across duplicated connections to build very large, complex workloads.</p>
+        <p>Runtime cost does not grow meaningfully with model size: once the model is compiled, query compilation is almost entirely direct lookups. The cost of a very large model shows up at authoring time, because a configuration change made in the UI recompiles the model, so editing becomes less responsive.</p>
+        <p>Data nodes are stateless and scale horizontally per region. Control nodes handle only UI and configuration.</p>
+        <h3 id="q12">12. How are model changes promoted without breaking running jobs or consumers?</h3>
+        <p>Changes are promoted through environments (feature, dev, test, preprod, prod) using Provisa's environment branching and approval, with testing at each stage to catch changes that would break consumers. Patching production configuration without that path is not recommended.</p>
+        <p>Configuration is applied to a running production instance. A model change recompiles the served schema; requests arriving during that short recompile wait for it, and depending on query state an in-flight job may occasionally be interrupted. Clients should handle brief interruptions, as they would with any service.</p>
+        <h3 id="q13">13. What is the upgrade path when an engine version changes its dialect or behavior?</h3>
+        <p>Tens of thousands of test cases (unit, integration, conformance and UI end-to-end) gate every release; nothing ships without them passing. Each release publishes the list of supported engine versions. New engine versions are certified as quickly as possible, but acquiring, certifying and adjusting for them takes time. Running engine versions not on the list is at the customer's own risk.</p>
+
+        <h2 id="performance">Performance</h2>
+        <h3 id="q14">14. Does Provisa use engine statistics, or rely entirely on the engine's own optimizer?</h3>
+        <p>Cost-based optimization uses the engine's statistics and the engine's own optimizer. Provisa applies optimizations that need no statistics before the plan reaches the engine:</p>
+        <ul>
+          <li>Routing single-source queries directly to the source driver.</li>
+          <li>Transparently rewriting queries onto fresh materialized views.</li>
+          <li>Choosing how each CTE executes on each engine.</li>
+          <li>Inlining small, frequently used tables into the query, so a cross-source join becomes a single-source one.</li>
+        </ul>
+        <h3 id="q15">15. What is the compile overhead per query for interactive workloads?</h3>
+        <p>Overhead scales with query complexity and with the number of governance features applied: under 5 ms for minimal queries and under 50 ms for larger ones. Compiled plans are cached, keyed on the query's shape, the caller's role and identity, and the model version, so a plan compiled for one caller is never served to another. Results by workload are in the published benchmarks.</p>
+
+        <h2 id="streaming">Streaming</h2>
+        <h3 id="q16">16. Is there a streaming execution model, or is Kafka only used for change notification? Where does Provisa stop and Flink begin?</h3>
+        <p>Kafka and Debezium are dependencies of specific features (Kafka sources, CDC change detection, client subscriptions), not part of Provisa's execution architecture. Provisa does not perform stateful stream processing (windowing, streaming joins, continuous aggregation). That is the role of a stream processor such as Flink, whose output topics or tables can be registered in Provisa as governed sources.</p>
+        <p>Subscriptions are governed like every other path. There is no route to data that bypasses governance.</p>
+
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('nav');
+    const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+  </script>
+</body>
+</html>

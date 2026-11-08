@@ -136,13 +136,16 @@ jobs:
           EOF
 
       # A failing test is data: Gradle's own exit status is not the result (driver_suite.py's is).
+      # Autostyle stays on: with every style check skipped pgjdbc registers no `style` task, and
+      # benchmarks/build.gradle.kts, which names it, does not compile. :postgresql:test runs none
+      # of autostyle's tasks.
       - name: Run pgjdbc's suite
         continue-on-error: true
         timeout-minutes: 90
         run: |
           cd "$RUNNER_TEMP/pgjdbc"
           ./gradlew --no-daemon --no-parallel --continue :postgresql:test \
-            -PskipCheckstyle -PskipAutostyle -PskipForbiddenApis -PskipJavadoc -PskipOpenrewrite \
+            -PskipCheckstyle -PskipForbiddenApis -PskipJavadoc -PskipOpenrewrite \
             -Porg.gradle.java.installations.auto-download=false \
             "-Djunit.jupiter.execution.timeout.default=$PGJDBC_TEST_TIMEOUT" || true
           test -n "$(ls pgjdbc/build/test-results/test/*.xml)"
@@ -185,7 +188,7 @@ jobs:
   psycopg:
     name: psycopg's own suite
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       PSYCOPG_VERSION: "3.3.8"
       PSYCOPG_SHA256: a415a90582e12af5d8b9b8de5e825535e2f57a3895beb3c8b92a6f109fde8055
@@ -243,25 +246,36 @@ jobs:
           password-cost: "4"
 
       # A failing test is data: pytest's own exit status is not the result (driver_suite.py's is).
-      # pytest-randomly is off, so the order is the suite's own.
+      # pytest-randomly is off, so the order is the suite's own. The suite's virtualenv is on PATH,
+      # as in psycopg's CI: its typing tests run mypy from it. As psycopg's CI runs it
+      # (tools/ci/ci_test.sh), the tests that failed run twice more, for its timing-based tests;
+      # each attempt writes its own JUnit, and a later one's report of a test replaces an
+      # earlier one's (driver_suite.py read_attempts).
       - name: Run psycopg's suite
         continue-on-error: true
-        timeout-minutes: 90
+        timeout-minutes: 120
         env:
           PSYCOPG_TEST_DSN: host=127.0.0.1 port=${{ env.PROVISA_PGWIRE_PORT }} dbname=provisa user=${{ env.CONFORMANCE_USER }} password=${{ env.CONFORMANCE_PASSWORD }} sslmode=disable
         run: |
           cd "$RUNNER_TEMP/psycopg"
-          "$RUNNER_TEMP/psycopg-venv/bin/python" -m pytest tests -p no:randomly \
-            --timeout="$PSYCOPG_TEST_TIMEOUT_S" --junitxml="$RUNNER_TEMP/psycopg-junit.xml" -q -rN || true
-          test -s "$RUNNER_TEMP/psycopg-junit.xml"
+          export PATH="$RUNNER_TEMP/psycopg-venv/bin:$PATH"
+          mkdir -p "$RUNNER_TEMP/psycopg-junit"
+          suite=(python -m pytest tests -p no:randomly --timeout="$PSYCOPG_TEST_TIMEOUT_S" -q -rN)
+          "${suite[@]}" --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-1.xml" || true
+          for attempt in 2 3; do
+            "${suite[@]}" --last-failed --last-failed-no-failures none \
+              --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-$attempt.xml" || true
+          done
+          test -s "$RUNNER_TEMP/psycopg-junit/attempt-1.xml"
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report/junit"
-          cp "$RUNNER_TEMP/psycopg-junit.xml" "$RUNNER_TEMP/report/junit/" || true
+          cp "$RUNNER_TEMP"/psycopg-junit/attempt-*.xml "$RUNNER_TEMP/report/junit/" || true
+          attempts=$(find "$RUNNER_TEMP/report/junit" -name 'attempt-*.xml' -size +0 | sort | paste -sd';')
           .venv/bin/python scripts/conformance/driver_suite.py summarise psycopg "$PSYCOPG_VERSION" \
-            "$RUNNER_TEMP/report/junit" \
+            "$attempts" \
             "$RUNNER_TEMP/report/conformance-driver-psycopg.json" "$RUNNER_TEMP/report/conformance-driver-psycopg.md" \
             "psycopg's own tests (tests/)" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-driver-psycopg.md" >> "$GITHUB_STEP_SUMMARY"

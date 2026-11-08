@@ -87,6 +87,36 @@ async def deprovision_redis_acl(redis_url: str, org_id: str) -> None:  # REQ-701
         await r.aclose()
 
 
+async def lay_out_schema(
+    pool: "Database", schema_sql: str, org_id: str, env: str | None = None
+) -> bool:
+    """Lay the org environment's schema out -- ``schema_sql`` (init_schema), then its audit schema
+    -- unless it is stamped as laid out to this release's layout already (db.layout_digest).
+    Returns whether it ran.
+
+    The stamp is read first, in plain reads: a schema already current takes no lock beside a live
+    runtime's readers, where schema.sql's ALTER TABLEs take AccessExclusive ones and deadlock them
+    (J710). It is written only once both have succeeded, so a layout that failed part way runs
+    again. Two callers that both find it stale serialize on the schema's advisory lock, as before."""
+    from provisa.audit.query_log import AUDIT_SCHEMA_SQL, init_audit_schema
+    from provisa.core.db import (
+        init_schema,
+        layout_digest,
+        read_layout_digest,
+        write_layout_digest,
+    )
+    from provisa.core.environments import org_schema
+
+    schema_name = org_schema(org_id, env)
+    digest = layout_digest(schema_sql, AUDIT_SCHEMA_SQL)
+    if await read_layout_digest(pool, schema_name) == digest:
+        return False
+    await init_schema(pool, schema_sql, org_id=org_id, env=env)
+    await init_audit_schema(pool, org_id=org_id, env=env)
+    await write_layout_digest(pool, schema_name, digest)
+    return True
+
+
 async def provision_org(  # REQ-701
     pool: "Database",
     schema_sql: str,
@@ -109,8 +139,7 @@ async def provision_org(  # REQ-701
 
     Idempotent — safe to call on an existing org.
     """
-    from provisa.audit.query_log import init_audit_schema
-    from provisa.core.db import _validate_org_id, create_org_role, init_schema
+    from provisa.core.db import _validate_org_id, create_org_role
     from provisa.core.environments import (
         PROD,
         EnvironmentPlaneError,
@@ -138,8 +167,7 @@ async def provision_org(  # REQ-701
     provisioned_redis = False
 
     try:
-        await init_schema(pool, schema_sql, org_id=org_id, env=env)
-        await init_audit_schema(pool, org_id=org_id, env=env)
+        await lay_out_schema(pool, schema_sql, org_id, env)
         provisioned_pg = True
 
         async with pool.acquire() as conn:

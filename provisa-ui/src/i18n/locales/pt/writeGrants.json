@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Quem pode gravar nesta tabela é mostrado aos administradores que veem a governança.",
     "empty": "Nenhuma função pode gravar nesta tabela.",
+    "sourceAcceptsNone": "A origem não aceita gravações (veja a aba API); portanto, nenhuma função pode receber permissão de gravação.",
     "role": "Função",
     "operation": "Operação",
     "op_insert": "Inserir",

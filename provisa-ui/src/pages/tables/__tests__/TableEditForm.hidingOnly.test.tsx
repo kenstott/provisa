@@ -177,7 +177,7 @@ describe("TableEditForm for a governance-only editor (REQ-1944)", () => {
     // REQ-2059: the column's mask list opens under its row, and can be started there.
     fireEvent.click(screen.getByTestId("mask-toggle-email"));
     expect(screen.getByTestId("mask-list-email-start")).not.toBeDisabled();
-    expect(control(row(), "Visible To (Read)")).not.toBeDisabled();
+    expect(control(row(), "Read grants")).not.toBeDisabled();
   });
 
   it("is the whole editor for a table editor", () => {

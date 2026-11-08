@@ -156,6 +156,7 @@ class TestDeleteTable:
 
 class TestRoleInheritance:  # REQ-1677
     async def test_create_child_role_persists_parent(self, client):
+        # Reads nothing on purpose: no capability, no domain (J354).
         created = await _gql(
             client,
             """
@@ -208,6 +209,7 @@ class TestRoleInheritance:  # REQ-1677
         assert "analyst" in {r["id"] for r in listed["data"]["roles"]}
 
     async def test_unknown_parent_refused(self, client):
+        # Reads nothing on purpose: no capability, no domain (J354).
         result = await _gql(
             client,
             """
@@ -224,6 +226,7 @@ class TestRoleInheritance:  # REQ-1677
         assert res["message"] == "Parent role 'ghost' not found"
 
     async def test_self_parent_refused(self, client):
+        # Reads nothing on purpose: no capability, no domain (J354).
         result = await _gql(
             client,
             """

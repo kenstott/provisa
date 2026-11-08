@@ -104,7 +104,7 @@
       },
       "step6": {
         "title": "SQL (1 von 9 Oberflächen)",
-        "description": "SQL lebt im SQL-Explorer. Standard-SQL föderiert über alle Quellen: Postgres mit Mongo mit einer CSV in einer einzigen Anweisung verbinden. Die Metadaten des Modells selbst und jede Aktivitätsspur sind hier ebenfalls abfragbare Tabellen, sodass Sie Ihr Audit-Log oder Ihre Lineage direkt mit Live-Daten verknüpfen können.<p>🔌 Dasselbe governte SQL läuft außer diesem Explorer über mehrere Wire-Protokolle; Ihr Tool wählt das, das es bereits spricht:</p><ul><li><strong>pgwire</strong>: jeder Postgres-kompatible Client (psql, DBeaver, Tableau, Power BI) verbindet sich sofort.</li><li><strong>JDBC</strong>: passt in jede Java/JVM-App, ETL-Pipeline oder jedes JDBC-fähige BI-Tool.</li><li><strong>Arrow Flight SQL</strong>: spaltenorientiertes Streaming für ADBC-Clients, ohne Zeilen-Neukodierung, gebaut für große Ergebnismengen.</li><li><strong>DuckDB · airport</strong>: Provisa per ATTACH aus DuckDB einbinden und die governte Föderation direkt vor Ort abfragen.</li></ul>"
+        "description": "SQL lebt im SQL-Explorer. Standard-SQL föderiert über alle Quellen: Postgres mit Mongo mit einer CSV in einer einzigen Anweisung verbinden. Die Metadaten des Modells selbst und jede Aktivitätsspur sind hier ebenfalls abfragbare Tabellen, sodass Sie Ihr Audit-Log oder Ihre Lineage direkt mit Live-Daten verknüpfen können.<p>🔌 Dasselbe governte Modell wird außer in diesem Explorer über mehrere Protokolle bereitgestellt; Ihr Tool wählt das, das es bereits spricht:</p><ul><li><strong>pgwire</strong>: jeder Postgres-kompatible Client (psql, DBeaver, Tableau, Power BI) verbindet sich sofort.</li><li><strong>JDBC</strong>: passt in jede Java/JVM-App, ETL-Pipeline oder jedes JDBC-fähige BI-Tool.</li><li><strong>Arrow Flight SQL</strong>: spaltenorientiertes Streaming für ADBC-Clients, ohne Zeilen-Neukodierung, gebaut für große Ergebnismengen.</li><li><strong>DuckDB · airport</strong>: Provisa per ATTACH aus DuckDB einbinden und die governte Föderation direkt vor Ort abfragen.</li><li><strong>OData</strong>: Excel und Power BI verbinden sich über ihren integrierten OData-Feed und lesen governte Tabellen direkt.</li></ul>"
       },
       "step7": {
         "title": "GraphQL (2 von 9 Oberflächen)",
@@ -260,7 +260,7 @@
       },
       "stepObservability": {
         "title": "Traces und Debug-Tracing",
-        "description": "🔭 Das Tracing zeichnet einen Span pro Anfrage auf. Der Tab Debug-Tracing ergänzt einen Span pro Pipeline-Stufe und pro Quellaufruf, mit SQL-Text. Das erzeugt Last, schalten Sie es also für eine Organisation, Rolle oder Quelle nur für eine bestimmte Zeit ein; danach schaltet es sich selbst ab."
+        "description": "🔭 Jede Anfrage wird getraced, je ein Span. Der Trace-Feed listet Ihre letzten Traces: Sie können ihn filtern, anhalten oder einen Trace öffnen, um seine Spans zu sehen. Wo Ihre Rolle Einstellungen ändern darf, ergänzt der Tab Debug-Tracing für einen festgelegten Zeitraum einen Span pro Pipeline-Stufe und pro Quellaufruf."
       },
       "stepCache": {
         "title": "Caches und Replikate",
@@ -1704,22 +1704,6 @@
         "title": "Worum es in dieser Demo geht",
         "description": "Eine Prager Bank vergibt Kredite an Unternehmen und hält für jedes das Unternehmen fest, dem es gehört, mit dessen Legal Entity Identifier (LEI). EU-Regeln begrenzen, was sie einem Kunden oder einer von einem Eigentümer kontrollierten Unternehmensgruppe leihen darf, auf 25 % ihres Kernkapitals (Tier 1). Die Frage: Bei welchen Gruppen liegt die Bank über dieser Grenze? Ihre Bücher nennen den Eigentümer jedes Kreditnehmers, nicht, wem dieser gehört. Die Bank, ihre Kreditnehmer und ihre Kredite sind erfunden; die Konzerne, denen sie gehören, sind echt."
       },
-      "groupexposureJoin": {
-        "title": "Verknüpft über den LEI",
-        "description": "Die Eigentümertabelle der Bank und die Tabellen aus Wikidata teilen den LEI des Eigentümers, und diese Beziehungen verknüpfen sie. Die Daten der Bank bleiben in ihrer Datenbank, die von Wikidata in ihrem Replikat; die Verknüpfung geschieht in der Abfrage."
-      },
-      "groupexposureAnswer": {
-        "title": "Die Antwort in SQL",
-        "description": "Die View group_exposure ordnet jede Kreditlinie über den LEI des Eigentümers und Wikidata dem Konzern ihres Kreditnehmers zu. Die Konzerne Veolia und Vinci überschreiten jeweils 25 % des Kernkapitals, und ein Gemeinschaftsunternehmen von Veolia und EPH zählt bei beiden. Weder die Bücher der Bank noch Wikidata zeigen das allein. Die Kreditnehmer und ihre Kredite sind erfunden."
-      },
-      "groupexposureExample": {
-        "title": "Die Antwort in GraphQL",
-        "description": "Dieselbe View in GraphQL: die Konzerne, an die die Bank am meisten verleiht, ihre Kreditnehmer, der zugesagte Betrag und ob jeder über der Grenze liegt."
-      },
-      "groupexposureRecap": {
-        "title": "Was Sie gesehen haben",
-        "description": "Das Kreditbuch einer erfundenen Bank und öffentliche Linked Data aus Wikidata, per LEI in einem governten Modell verknüpft. Die Eigentümerketten aus Wikidata machen aus vielen kleinen Krediten wenige große Gruppen-Exposures, und die Antwort wird über SQL, GraphQL und REST bereitgestellt."
-      },
       "groupexposureWikidata": {
         "title": "Wem die Eigentümer gehören, aus Wikidata",
         "description": "Wikidata, der öffentliche Wissensgraph, verzeichnet den LEI jedes Unternehmens und seine übergeordnete Organisation. Diese Quelle liest ihn über den SPARQL-Abfragedienst von Wikidata. Ihre Tabellen wurden einmal beim Erstellen der Demo geladen, daher ruft die Demo Wikidata nie auf, während Sie sie nutzen."
@@ -1732,6 +1716,10 @@
         "title": "Der Konzern jedes Eigentümers",
         "description": "Für jeden Eigentümer, den die Bank festhält, das Unternehmen an der Spitze seiner Kette übergeordneter Organisationen in Wikidata, gefunden mit einem einzigen SPARQL-Eigenschaftspfad. Wikidata weiß, dass eine tschechische Holding zu Veolia oder zu E.ON gehört, auch wenn die Bücher der Bank es nicht wissen."
       },
+      "groupexposureJoin": {
+        "title": "Verknüpft über den LEI",
+        "description": "Die Eigentümertabelle der Bank und die Tabellen aus Wikidata teilen den LEI des Eigentümers, und diese Beziehungen verknüpfen sie. Die Daten der Bank bleiben in ihrer Datenbank, die von Wikidata in ihrem Replikat; die Verknüpfung geschieht in der Abfrage."
+      },
       "groupexposureTerms": {
         "title": "In einfachen Worten",
         "description": "Das Glossar erklärt die Begriffe, mit denen ein Risikomanager arbeitet: Großkredit, Kernkapital (Tier 1), Legal Entity Identifier und übergeordnete Organisation. Eine Gruppe verbundener Kunden sind Unternehmen, die ein einziges Risiko darstellen, weil eines die anderen kontrolliert."
@@ -1740,9 +1728,21 @@
         "title": "Die Bücher allein",
         "description": "Das eigene Exposure jedes Kreditnehmers, wie es die Bücher der Bank sehen. Das größte liegt unter 10 % des Kernkapitals, kein Kreditnehmer ist also auch nur in der Nähe der 25-%-Grenze."
       },
+      "groupexposureAnswer": {
+        "title": "Die Antwort in SQL",
+        "description": "Die View group_exposure ordnet jede Kreditlinie über den LEI des Eigentümers und Wikidata dem Konzern ihres Kreditnehmers zu. Die Konzerne Veolia und Vinci überschreiten jeweils 25 % des Kernkapitals, und ein Gemeinschaftsunternehmen von Veolia und EPH zählt bei beiden. Weder die Bücher der Bank noch Wikidata zeigen das allein. Die Kreditnehmer und ihre Kredite sind erfunden."
+      },
+      "groupexposureExample": {
+        "title": "Die Antwort in GraphQL",
+        "description": "Dieselbe View in GraphQL: die Konzerne, an die die Bank am meisten verleiht, ihre Kreditnehmer, der zugesagte Betrag und ob jeder über der Grenze liegt."
+      },
       "groupexposureRest": {
         "title": "Dieselbe Antwort über REST",
         "description": "Die View ist auch ein REST-Endpunkt, hier danach gruppiert, ob ein Konzern über der Grenze liegt, und auf dem Server summiert, bereit für einen Risikobericht oder eine Tabellenkalkulation."
+      },
+      "groupexposureRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Das Kreditbuch einer erfundenen Bank und öffentliche Linked Data aus Wikidata, per LEI in einem governten Modell verknüpft. Die Eigentümerketten aus Wikidata machen aus vielen kleinen Krediten wenige große Gruppen-Exposures, und die Antwort wird über SQL, GraphQL und REST bereitgestellt."
       },
       "agentdataScenario": {
         "title": "Geben Sie einem Agenten Ihre Daten",

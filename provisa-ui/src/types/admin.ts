@@ -188,7 +188,21 @@ export interface UserSummary {
 }
 
 // REQ-1373: one org-level tag registry; appliesTo scopes which object types a tag may attach to.
-export type TagObjectType = "source" | "table" | "column" | "relationship" | "command";
+// REQ-1634: a data product; REQ-2145: a glossary term; REQ-2208: a row rule, a role, a metric, a
+// reference library document, and a section of one. Mirrors provisa.core.models.TAG_OBJECT_TYPES.
+export type TagObjectType =
+  | "source"
+  | "table"
+  | "column"
+  | "relationship"
+  | "command"
+  | "product"
+  | "term"
+  | "rls_rule"
+  | "role"
+  | "metric"
+  | "document"
+  | "section";
 
 export type TagFieldPolicy = "hidden" | "optional" | "required";
 
@@ -237,8 +251,7 @@ export function tagParam(tagId: string): string | null {
 // REQ-1377: one tag on one object; exactly the fields implied by objectType are set.
 export interface TagAssignment {
   tagId: string;
-  // A glossary term's tags (REQ-2145) are assigned on its panel, not by TagControl.
-  objectType: TagObjectType | "term";
+  objectType: TagObjectType;
   sourceId?: string | null;
   tableId?: number | null;
   columnName?: string | null;
@@ -247,6 +260,17 @@ export interface TagAssignment {
   commandName?: string | null;
   // REQ-2145: the glossary term an objectType "term" assignment is on.
   termId?: number | null;
+  // REQ-1634: the data product an objectType "product" assignment is on.
+  productId?: string | null;
+  // REQ-2208: the library document a "document" assignment is on, or a "section" one is in; the
+  // section is named by its heading, or by its page when it has none (a PDF's pages).
+  documentId?: number | null;
+  sectionHeading?: string | null;
+  sectionPage?: number | null;
+  // REQ-2208: the row rule (its id), role or metric an assignment is on.
+  rlsRuleId?: number | null;
+  roleId?: string | null;
+  metricName?: string | null;
   // REQ-2145: on a column, put the tag on the column's term instead.
   alsoTerm?: boolean;
   tableRef?: string | null;

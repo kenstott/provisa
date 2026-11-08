@@ -546,13 +546,13 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/tags",
-    capability: "org_settings",
+    capability: "table_registration",
     element: '[data-testid="tags-scope-bar"]',
     key: "stepTags",
   },
   {
     route: "/admin/requests",
-    capability: "org_settings",
+    capability: "usage",
     element: '[data-testid="requests-tab-pending"]',
     key: "stepRequests",
   },
@@ -774,7 +774,10 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/observability",
     capability: "observability",
-    element: '[data-testid="observability-debug-trace-tab"]',
+    // The caller's own trace feed renders for every role holding the capability; the debug tab
+    // beside it needs the deployment-wide otel block, which a caller without platform_settings
+    // never receives (REQ-1349).
+    element: '[data-testid="trace-feed"]',
     key: "stepObservability",
   },
   {
