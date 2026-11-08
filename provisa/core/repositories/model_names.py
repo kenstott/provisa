@@ -49,8 +49,9 @@ async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
         }
         for r in rows
     ]
-    if values:
-        await conn.execute_core(insert(model_names).values(values))
+    # One statement however many names: a multi-row VALUES binds ten parameters a name, and
+    # PostgreSQL refuses a statement of more than 65535.
+    await conn.execute_core_many(insert(model_names), values)
 
 
 async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:
@@ -67,8 +68,7 @@ async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:
         }
         for c in clashes
     }
-    if values:
-        await conn.execute_core(insert(model_name_clashes).values(list(values.values())))
+    await conn.execute_core_many(insert(model_name_clashes), list(values.values()))
 
 
 async def freeze_aliases(conn: Any, frozen: Iterable[Any]) -> None:
