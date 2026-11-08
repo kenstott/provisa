@@ -215,6 +215,11 @@ export function DataProductDetailPanel({
           : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane - 1 }),
     [t],
   );
+  // One value while its parts hold: a new one redraws the DAG, its zoom and pan lost.
+  const lineageLanes = useMemo(
+    () => lineageMembers && { members: lineageMembers, title: laneTitle },
+    [lineageMembers, laneTitle],
+  );
   // REQ-2174 (amended 2026-11-07): where the product comes from, never who consumes it.
   const upstream = useMemo(
     () => (lineageGraph ? upstreamLineage(lineageGraph) : null),
@@ -955,7 +960,7 @@ export function DataProductDetailPanel({
                   relationLabel={relationLabel}
                   collapsedRelations={collapsed}
                   onToggleRelation={toggleRelation}
-                  lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                  lanes={lineageLanes}
                   onOpenModal={() => setLineageModalOpen(true)}
                   describeColumn={describeColumn}
                 />
@@ -973,7 +978,7 @@ export function DataProductDetailPanel({
                     relationLabel={relationLabel}
                     collapsedRelations={collapsed}
                     onToggleRelation={toggleRelation}
-                    lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
+                    lanes={lineageLanes}
                     describeColumn={describeColumn}
                   />
                 </Modal>

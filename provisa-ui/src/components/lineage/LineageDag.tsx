@@ -20,6 +20,7 @@ import { Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { FitScreenIcon } from "../graph/GraphIcons";
 import type { LineageGraphData } from "../../api/lineage";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import { cyCanvas } from "../graph/cyCanvas";
 import { LineageLegend } from "./LineageLegend";
 import type { DescribeColumn } from "./column-descriptions";
 import {
@@ -245,8 +246,11 @@ export function LineageDag({
     ];
 
     const boxById = new Map(model.boxes.map((b) => [b.id, b]));
+    // ELK answers after this DAG may have been redrawn (a new graph, a relation collapsed): the
+    // core draws into a canvas of its own, which outlives the DAG while a layout is pending.
+    const canvas = cyCanvas(containerRef.current);
     const cy = cytoscape({
-      container: containerRef.current,
+      container: canvas.container,
       elements,
       // No initial layout: cytoscape's default grid would scatter the rows of every box the ELK
       // pass does not touch (the isolated ones) — those are stacked by hand below.
@@ -782,8 +786,7 @@ export function LineageDag({
           "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
         },
       } as CyLayoutOptions);
-      layout.on("layoutstop", finish);
-      layout.run();
+      canvas.run(layout, finish);
     } else {
       finish();
     }
@@ -807,7 +810,7 @@ export function LineageDag({
     observer.observe(containerRef.current);
     return () => {
       observer.disconnect();
-      cy.destroy();
+      canvas.end(cy);
       cyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToggleRelation is read through toggleRef; only its presence decides whether hints are wired

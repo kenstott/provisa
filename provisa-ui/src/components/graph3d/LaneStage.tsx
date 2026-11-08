@@ -22,6 +22,7 @@ import { Check, Copy } from "lucide-react";
 import cytoscape, { type EventObject } from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import { cyCanvas } from "../graph/cyCanvas";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import type { GraphHover } from "./graphScene";
 import { GraphLegend } from "./GraphStage";
@@ -149,8 +150,11 @@ export function LaneStage({
     const hl = token(wrap, "hl");
     const g = diagram.graph;
     const hasTerms = g.nodes.some((n) => diagram.lane.get(n.id) === "term");
+    // ELK answers after this view may have moved on (a new diagram): the core draws into a canvas
+    // of its own, which outlives the view while a layout is pending (cyCanvas).
+    const canvas = cyCanvas(box);
     const cy = cytoscape({
-      container: box,
+      container: canvas.container,
       elements: [
         ...(hasTerms
           ? [{ group: "nodes" as const, data: { id: TERM_LANE, kind: "laneBox" } }]
@@ -388,31 +392,6 @@ export function LaneStage({
         });
     };
 
-    // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
-    // ELK answers after this view may have moved on (a new diagram): a cytoscape torn down while
-    // it lays out is detached at once and destroyed when the layout ends.
-    let running = true;
-    let gone = false;
-    const first = elkLayout(false);
-    first.one("layoutstop", () => {
-      if (gone) {
-        running = false;
-        cy.destroy();
-        return;
-      }
-      reorder();
-      const second = elkLayout(true);
-      second.one("layoutstop", () => {
-        running = false;
-        if (gone) {
-          cy.destroy();
-          return;
-        }
-        drawArcs();
-        labelLanes();
-      });
-      second.run();
-    });
     // The term links that are not rank edges, laid over the placed term lane: they move no node.
     const drawArcs = () =>
       cy.add(
@@ -444,7 +423,14 @@ export function LaneStage({
       }
       cy.fit(undefined, FIT_PAD);
     };
-    first.run();
+    // ELK lays out asynchronously: each lane's name goes above it, over its middle, once placed.
+    canvas.run(elkLayout(false), () => {
+      reorder();
+      canvas.run(elkLayout(true), () => {
+        drawArcs();
+        labelLanes();
+      });
+    });
 
     const observer = new ResizeObserver(() => {
       cy.resize();
@@ -454,11 +440,7 @@ export function LaneStage({
     return () => {
       observer.disconnect();
       cyRef.current = null;
-      if (!running) cy.destroy();
-      else {
-        gone = true;
-        (cy as unknown as { unmount: () => void }).unmount();
-      }
+      canvas.end(cy);
     };
   }, [diagram, scheme, t, laneTitle, bare, keepTip, dropTip]);
   // A card's pending hide ends with the view.
