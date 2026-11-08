@@ -175,7 +175,7 @@ describe("the Ontology View's query", () => {
     // REQ-2130 (amended 2026-10-29): Data names the product of each table a term reaches -- a
     // column's, and a class term's -- and reads no product, table or column apart.
     const data = squash(ontologyQuery(reader(), scope(["ontology", "data", "columns"])));
-    expect(data.match(/product \{ id name domainId \}/g)).toHaveLength(2);
+    expect(data.match(/dataProduct \{ id name domainId \}/g)).toHaveLength(2);
     expect(data).not.toContain("data_products");
     expect(data).not.toContain("glossary_ref");
     // No relationship between tables is read: those are the ERD's.
