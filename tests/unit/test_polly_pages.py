@@ -30,7 +30,9 @@ OUTSIDE_THE_ROUTES = {"/demos/:name", "/login", "/register"}
 
 def _app_routes() -> set[str]:
     routes = set(re.findall(r'path="(/[^"]*)"', APP))
-    routes |= {path for path, _cap in re.findall(r'\[\s*"(/[^"]*)"\s*,\s*"([a-z_]+)"\s*\]', APP)}
+    routes |= {
+        path for path, _cap in re.findall(r'\[\s*"(/[^"]*)"\s*,\s*"([a-z_]+)"\s*,?\s*\]', APP)
+    }
     for mapped in re.findall(r'\{\[("/[^\]]*)\]\.map', APP):
         routes |= set(re.findall(r'"(/[^"]*)"', mapped))
     return routes

@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { render } from "../test-utils/render";
-import { stepPageReady, stepRoute, walkTourStep, walkTourSteps } from "../test-utils/tourAnchor";
+import { stepPageReady, stepRoute, tourStep, walkTourStep, walkTourSteps } from "../test-utils/tourAnchor";
 
 // One value per hook across renders: a fresh array each render reruns the page's effects forever.
 const hooks = vi.hoisted(() => {
@@ -66,6 +66,8 @@ vi.mock("../api/admin", async (orig) => ({
   // The server always answers its otel block (settings_router), which the Observability page reads.
   fetchSettings: vi.fn(async () => ({
     naming: { use_domains: true },
+    // REQ-194: the org's clash policy, which the Domains tab's settings show.
+    names: { clash_policy: "refuse" },
     federation: { enabled: false, subgraph_name: "provisa", role: null },
     otel: {
       endpoint: "http://otel-collector:4317",
@@ -136,5 +138,7 @@ describe("the Deep Dives' steps on the admin pages", () => {
   it("is ready for step23", async () => {
     render(<AdminPage />, { initialEntries: [stepRoute("step23")] });
     expect(await stepPageReady("step23")).toBeInTheDocument();
+    // The anchor is the page itself: the Admin entry is in the closed user menu, not on screen.
+    expect(document.querySelector(tourStep("step23").element)).toBeInTheDocument();
   });
 });

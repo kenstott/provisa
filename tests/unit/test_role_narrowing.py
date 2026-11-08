@@ -48,6 +48,7 @@ from provisa.security.rights import (
     served_roles,
 )
 from provisa.security.row_filters import with_owner_grant
+from tests.rules import rule_of
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -543,22 +544,23 @@ def _resolved(rules, parents, role, table=10) -> str | None:
 class TestRowRules:
     def test_a_childs_rule_is_anded_with_its_parents(self):
         rules = [_rule("p", "region = 'east'", 10), _rule("c", "tier = 1", 10)]
-        assert _resolved(rules, {"p": [], "c": ["p"]}, "c") == "(tier = 1) AND (region = 'east')"
+        assert _resolved(rules, {"p": [], "c": ["p"]}, "c") == rule_of(
+            "(tier = 1) AND (region = 'east')"
+        )
 
     def test_a_role_with_no_rule_reads_under_its_parents(self):
         rules = [_rule("p", "region = 'east'", 10)]
-        assert _resolved(rules, {"p": [], "c": ["p"]}, "c") == "region = 'east'"
+        assert _resolved(rules, {"p": [], "c": ["p"]}, "c") == rule_of("region = 'east'")
 
     def test_its_parents_are_ored(self):
         rules = [_rule("p", "a = 1", 10), _rule("q", "b = 2", 10), _rule("c", "x = 3", 10)]
-        assert (
-            _resolved(rules, {"p": [], "q": [], "c": ["p", "q"]}, "c")
-            == "(x = 3) AND ((a = 1) OR (b = 2))"
+        assert _resolved(rules, {"p": [], "q": [], "c": ["p", "q"]}, "c") == rule_of(
+            "(x = 3) AND ((a = 1) OR (b = 2))"
         )
 
     def test_a_parent_with_no_rule_stands_for_every_row(self):
         rules = [_rule("p", "a = 1", 10), _rule("c", "x = 3", 10)]
-        assert _resolved(rules, {"p": [], "q": [], "c": ["p", "q"]}, "c") == "x = 3"
+        assert _resolved(rules, {"p": [], "q": [], "c": ["p", "q"]}, "c") == rule_of("x = 3")
 
     def test_no_rule_anywhere_is_every_row(self):
         assert _resolved([], {"p": [], "c": ["p"]}, "c") is None
@@ -570,18 +572,17 @@ class TestRowRules:
 
     def test_a_childs_domain_rule_is_anded_with_its_parents_table_rule(self):
         rules = [_rule("p", "a = 1", 10), _rule("c", "x = 3", domain_id="sales")]
-        assert _resolved(rules, {"p": [], "c": ["p"]}, "c") == "(x = 3) AND (a = 1)"
+        assert _resolved(rules, {"p": [], "c": ["p"]}, "c") == rule_of("(x = 3) AND (a = 1)")
 
     def test_narrowing_reaches_the_grandchild(self):
         rules = [_rule("g", "a = 1", 10), _rule("p", "b = 2", 10), _rule("c", "x = 3", 10)]
-        assert (
-            _resolved(rules, {"g": [], "p": ["g"], "c": ["p"]}, "c")
-            == "(x = 3) AND ((b = 2) AND (a = 1))"
+        assert _resolved(rules, {"g": [], "p": ["g"], "c": ["p"]}, "c") == rule_of(
+            "(x = 3) AND ((b = 2) AND (a = 1))"
         )
 
     def test_a_parents_own_rule_is_not_changed(self):
         rules = [_rule("p", "a = 1", 10), _rule("c", "x = 3", 10)]
-        assert _resolved(rules, {"p": [], "c": ["p"]}, "p") == "a = 1"
+        assert _resolved(rules, {"p": [], "c": ["p"]}, "p") == rule_of("a = 1")
 
     def test_a_cycle_is_refused(self):
         with pytest.raises(ValueError, match="cycle"):

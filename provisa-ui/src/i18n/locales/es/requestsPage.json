@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Infracción de gobierno",
     "reasonOutOfScope": "Fuera de alcance",
     "reasonEndpointUnreachable": "Endpoint inaccesible",
-    "reasonSchemaMismatch": "Discrepancia de esquema"
+    "reasonSchemaMismatch": "Discrepancia de esquema",
+    "delivery": "Notificar por",
+    "deliveryHelp": "Cómo se informa de una solicitud a los miembros de los roles a los que va dirigida. Correo electrónico: Provisa envía un aviso a cada uno. Solo eventos: Provisa no envía ningún aviso; su herramienta de flujo de trabajo se suscribe a ops.requests. Ambos: correo electrónico y eventos.",
+    "deliveryEmail": "Correo electrónico",
+    "deliveryEvents": "Solo eventos",
+    "deliveryBoth": "Ambos"
   }
 }

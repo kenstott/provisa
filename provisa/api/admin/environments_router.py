@@ -1376,7 +1376,21 @@ async def decide_merge_request(
 
     Deciding is an org_admin act and the requester is refused their own request — the two together
     are what makes the approval a second person's, which is the whole of what protection means.
+    With an ``Idempotency-Key``, a repeat is answered with the first result (REQ-2216).
     """
+    from provisa.api.admin.orgs_router import _org_model_db
+    from provisa.api.idempotency import once
+
+    return await once(
+        await _org_model_db(org_id),
+        request,
+        lambda: _decide_merge_request(request, org_id, request_id, body),
+    )
+
+
+async def _decide_merge_request(
+    request: Request, org_id: str, request_id: int, body: DecideBody
+) -> dict:
     from provisa.api.admin.orgs_router import _org_model_db
 
     actor = await _guard(request, org_id)

@@ -597,7 +597,17 @@ async def _queue(plane, kind: str, capability: str, payload: dict, by: str | Non
     from provisa.core.repositories import creation_request as cr_repo
 
     async with plane.db.acquire() as conn:
-        return await cr_repo.create(conn, kind, capability, payload, by)
+        return await cr_repo.create(
+            conn,
+            kind,
+            capability,
+            payload,
+            by,
+            environment="prod",
+            addressed_roles=[],
+            addressed_members=[],
+            unresolved_roles=[],
+        )
 
 
 async def _status(plane, rid: int) -> tuple[str, list]:

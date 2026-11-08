@@ -90,6 +90,7 @@
       "saveEdit": "Сохранить {{name}}",
       "cancelEdit": "Отменить изменение",
       "remove": "Удалить {{name}}"
-    }
+    },
+    "localUsersHeading": "Локальные пользователи"
   }
 }

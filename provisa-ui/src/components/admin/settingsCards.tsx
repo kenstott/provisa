@@ -421,6 +421,45 @@ export function ApolloSubgraphCard() {
   );
 }
 
+/**
+ * REQ-194 (CLASH POLICY): how the org's names table settles two objects that would take one name
+ * -- refused, naming both (the default), or disambiguated from what tells them apart and kept as
+ * the renamed object's alias. Org-scoped. Domains tab.
+ */
+export function NameClashPolicyCard() {
+  const { t } = useTranslation();
+  const { settings, setSettings, save, saving, msg } = useSettingsBlocks(["names"]);
+  if (!settings) return null;
+  const policies = [
+    { value: "refuse", label: t("adminPage.nameClashPolicyRefuse") },
+    { value: "disambiguate", label: t("adminPage.nameClashPolicyDisambiguate") },
+  ];
+
+  return (
+    <Card withBorder padding="md" data-testid="name-clash-policy-settings">
+      <Title order={4} mb="sm">
+        {t("adminPage.nameClashPolicyTitle")}
+      </Title>
+      <FormLayout>
+        <FormField help={t("adminPage.nameClashPolicyHint")} size="medium">
+          <Select
+            label={t("adminPage.nameClashPolicy")}
+            data={policies}
+            value={settings.names.clash_policy}
+            onChange={(v) =>
+              (v === "refuse" || v === "disambiguate") &&
+              setSettings({ ...settings, names: { clash_policy: v } })
+            }
+            allowDeselect={false}
+            data-testid="name-clash-policy"
+          />
+        </FormField>
+      </FormLayout>
+      <SaveRow save={save} saving={saving} msg={msg} />
+    </Card>
+  );
+}
+
 /** GraphQL/SQL naming conventions + the domain prefix (deployment-wide). Domains tab. */
 export function NamingConventionsCard() {
   const { t } = useTranslation();

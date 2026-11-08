@@ -18,21 +18,19 @@ and ``DROP VIEW`` takes no ``CASCADE``. Runs verbatim on PostgreSQL, SQLite, MyS
 
 from __future__ import annotations
 
-# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
-# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
-# for callers near the view definitions.
-from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
-from provisa.dq.contract import CHECKERS
-
 # REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
 # table, so the meta view unions them in from the constants — the registry a query surface sees is
 # complete. Built at import time; never hand-edit the literals.
 import json as _json
 
-from provisa.compiler.sql_literals import sql_literal
+# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
+# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
+# for callers near the view definitions.
+import sqlglot.expressions as exp
+
 from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
 from provisa.api._pg_catalog_views import (
+    COLUMNS_OF_TABLES as _COLUMNS_OF_TABLES,
     CATALOG_BASE_VIEWS,
     CATALOG_COLUMN_VIEWS,
     CATALOG_KEY_VIEWS,
@@ -41,8 +39,12 @@ from provisa.api._pg_catalog_views import (
     SERVED_COLUMN_NAMES,
     registered_column_sql_name,
 )
-from provisa.transpiler.metadata_settings import asked_sql
+from provisa.compiler.sql_literals import sql_literal
+from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
+from provisa.dq.contract import CHECKERS
+from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
 from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
+from provisa.transpiler.metadata_settings import asked_sql
 
 
 def _system_tag_rows_sql() -> str:
@@ -486,8 +488,8 @@ def _column_details_sql() -> str:
                     ELSE COALESCE(NULLIF(tc.description, '') || ' ', '') || '['
                          || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
                END AS comment
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id AND NOT rt.draft
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id AND NOT rt.draft
         LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
     """
 
@@ -510,10 +512,12 @@ def _table_keys_sql() -> str:
 
     A statement about some tables reads their keys alone, after the numbering, so a key has one
     number whatever a statement asks; each index goes by its own name as well as its table's."""
-    asked = asked_sql("t.table_name", "'pk_' || t.table_name", "k.key_name")
-    table_asked = asked_sql("t.table_name", "'pk_' || t.table_name")
-    unique_asked = asked_sql("u.key_name")
-    registration_asked = asked_sql("'uq_registered_tables_table_query_name'")
+    table_name = exp.column("table_name", table="t")
+    primary = exp.DPipe(this=exp.Literal.string("pk_"), expression=table_name, safe=True)
+    asked = asked_sql(table_name, primary, exp.column("key_name", table="k"))
+    table_asked = asked_sql(table_name, primary)
+    unique_asked = asked_sql(exp.column("key_name", table="u"))
+    registration_asked = asked_sql(exp.Literal.string("uq_registered_tables_table_query_name"))
     return f"""
         CREATE OR REPLACE VIEW table_keys AS
         WITH tables AS (
@@ -655,9 +659,9 @@ def _table_keys_sql() -> str:
         FROM all_keys k
         JOIN tables t ON t.table_id = k.table_id
         JOIN tables r ON r.table_id = k.referenced_table_id
-        LEFT JOIN table_columns c
+        LEFT JOIN {_COLUMNS_OF_TABLES} c
           ON c.table_id = k.table_id AND c.column_name = k.column_name
-        LEFT JOIN table_columns rc
+        LEFT JOIN {_COLUMNS_OF_TABLES} rc
           ON rc.table_id = k.referenced_table_id AND rc.column_name = k.referenced_column
         WHERE (c.id IS NOT NULL OR k.column_name IN {SERVED_COLUMN_NAMES})
           AND {asked}
@@ -821,6 +825,17 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
+    # version built -- one row per model object and surface, the name it has there and the
+    # naming problems found in it. A row is read where the table it is about is
+    # (META_ROW_SCOPED_VIEWS).
+    "model_names": """
+        CREATE OR REPLACE VIEW model_names_meta AS
+        SELECT object_kind || ':' || object_id || ':' || surface AS id,
+               object_kind, object_id, surface, name, physical_name, label, domain_id,
+               table_id, is_alias, warnings
+        FROM model_names
+    """,
     # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality
     # table's rules are parsed with. Its connection settings stay out of the catalog.
     "sources": """
@@ -841,21 +856,23 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
-        SELECT id, table_id, domain_id, column_name,
+        SELECT tc.id, tc.table_id, tc.domain_id, tc.column_name,
                -- the stable column identity the glossary binds to, and the join key of
                -- the registered glossary_term_refs -> table_columns edge (relationships is
                -- single-column, and table_columns.id is replaced wholesale by the table upsert).
-               CAST(table_id AS TEXT) || ':' || column_name AS column_key,
-               data_type, is_primary_key,
-               alias, description, path, scope,
-               masks,
-               native_filter_type, is_foreign_key, is_alternate_key,
-               object_fields,
-               visible_to,
-               tenant_id
-        FROM table_columns
-        -- nor are a draft table's columns.
-        WHERE table_id IN (SELECT id FROM registered_tables WHERE NOT draft)
+               CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS column_key,
+               tc.data_type, tc.is_primary_key,
+               tc.alias, tc.description, tc.path, tc.scope,
+               tc.masks,
+               tc.native_filter_type, tc.is_foreign_key, tc.is_alternate_key,
+               tc.object_fields,
+               tc.visible_to,
+               tc.tenant_id
+        -- registered_tables first: schema.sql locks it before table_columns (lock order).
+        -- A draft table's columns are not listed.
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
+        WHERE NOT rt.draft
     """,
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
@@ -874,8 +891,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT CAST(tc.table_id AS TEXT) || ':' || tc.column_name AS id,
                rt.domain_id AS listed_domain, rt.table_name, tc.column_name,
                'meta' AS domain_id
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
         WHERE tc.scope = 'listed' AND NOT rt.draft
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
@@ -943,7 +960,15 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
     "query_audit_log": "query_audit_log_ops",
     "replica_build_log": "replica_build_log_ops",
     "sla_breach_log": "sla_breach_log_ops",
+    # REQ-2216: ops.requests -- one row per request, over the creation-request queue.
+    "requests": "requests_ops",
 }
+
+# An ops log whose exposed name is not a physical table, by the base table it shows one row per
+# row of: its primary key is that table's, and that table's notify trigger (schema.sql) reports its
+# changes on the schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216:
+# ops.requests over creation_requests.
+_OPS_LOG_BASE_TABLE: dict[str, str] = {"requests": "creation_requests"}
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
@@ -972,6 +997,24 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         SELECT b.id, b.kind, b.observed, b.last_observed, b.limit_value, b.window_start,
                b.window_end, b.started_at, b.last_seen_at, b.resolved_at
         FROM sla_breach_log b
+    """,
+    # REQ-2216, REQ-2215, REQ-2217: one row per request -- what was asked, by whom, the
+    # environment it is for, the roles it is addressed to and their members as resolved when it
+    # was raised (and the roles none could be resolved for), its state, the decision, who decided
+    # and when. A workflow tool subscribes to it: a request raised is an insert, decided an update.
+    "requests": """
+        CREATE OR REPLACE VIEW requests_ops AS
+        SELECT r.id, r.request_type, r.capability, r.payload, r.requested_by,
+               rq.display_name AS requested_by_name, r.environment, r.addressed_roles,
+               r.addressed_members, r.unresolved_roles, r.status AS state, r.approvals,
+               r.required_approvals,
+               CASE r.status WHEN 'executed' THEN 'approved' WHEN 'rejected' THEN 'rejected'
+               END AS decision,
+               r.rejection_reason AS decision_reason, r.resolved_by AS decided_by,
+               rd.display_name AS decided_by_name, r.resolved_at AS decided_at, r.created_at
+        FROM creation_requests r
+        LEFT JOIN user_directory rq ON rq.user_id = r.requested_by
+        LEFT JOIN user_directory rd ON rd.user_id = r.resolved_by
     """,
 }
 
@@ -1033,7 +1076,7 @@ def _judgment_review_sql() -> str:
         FROM judgment_findings f
         LEFT JOIN tag_assignments ta
           ON f.object_type = 'tag_assignment' AND ta.base_tag_id || '@' || ta.object_key = f.object_key
-        LEFT JOIN table_columns tc
+        LEFT JOIN {_COLUMNS_OF_TABLES} tc
           ON f.object_type IN ('column', 'mask_entry')
          AND CAST(tc.table_id AS TEXT) || ':' || tc.column_name = SPLIT_PART(f.object_key, '#', 1)
         LEFT JOIN rls_rules rr
@@ -1167,8 +1210,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'column:' || CAST(tc.id AS TEXT), 'column',
                rt.table_name || '.' || tc.column_name, rt.domain_id,
                'missing_description'
-        FROM table_columns tc
-        JOIN registered_tables rt ON rt.id = tc.table_id
+        FROM registered_tables rt
+        JOIN table_columns tc ON tc.table_id = rt.id
         WHERE tc.description IS NULL OR tc.description = ''
         UNION ALL
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,
@@ -1314,6 +1357,26 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # inside and that nothing restricts -- no sensitive tag and no mask (what a profile treats as
     # restricted) -- status hinted, its hints the reason. A hint is never a classification: the
     # column is listed for a person to decide on, and nothing is applied to it.
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): every model object with its name on
+    # each surface and the naming problems found in it, and every clash the last build refused,
+    # each naming both objects. Filtered by object kind, surface and domain in the report grid.
+    "names_report": """
+        CREATE OR REPLACE VIEW names_report AS
+        SELECT mn.object_kind || ':' || mn.object_id || ':' || mn.surface AS id,
+               mn.object_kind, mn.object_id, mn.surface, mn.name, mn.physical_name, mn.label,
+               mn.domain_id, mn.table_id,
+               CASE WHEN jsonb_array_length(mn.warnings) > 0 THEN 'warning' ELSE 'ok' END
+                   AS status,
+               (SELECT STRING_AGG(w ->> 'message', '; ')
+                FROM jsonb_array_elements(mn.warnings) w) AS problems
+        FROM model_names mn
+        UNION ALL
+        SELECT 'clash:' || c.surface || ':' || c.name || ':' || c.newcomer AS id,
+               'clash' AS object_kind, c.newcomer AS object_id, c.surface, c.name,
+               c.holder AS physical_name, c.newcomer AS label, '' AS domain_id,
+               CAST(NULL AS INTEGER) AS table_id, 'refused' AS status, c.message AS problems
+        FROM model_name_clashes c
+    """,
     "sensitive_column_coverage": """
         CREATE OR REPLACE VIEW sensitive_column_coverage AS
         SELECT sc.column_key AS id, sc.table_id, sc.table_name, sc.domain_id, sc.column_name,

@@ -2,6 +2,7 @@
   "resultRedirect": {
     "landed": "O resultado ({{rows}} linhas) foi gravado no armazenamento de resultados.",
     "landedAt": "O resultado ({{rows}} linhas) foi gravado no armazenamento de resultados: {{url}}",
-    "download": "Transferir"
+    "download": "Transferir",
+    "downloadFailed": "O download falhou: {{reason}}"
   }
 }
