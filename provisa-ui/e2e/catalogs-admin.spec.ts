@@ -10,6 +10,7 @@
 
 import { test, expect, BACKEND_URL } from "./coverage";
 import type { APIRequestContext, Page } from "@playwright/test";
+import { isAssignableDomain } from "../src/lib/internalDomains";
 
 /**
  * REQ-2122: the Catalogs panel, driven in a browser against the real server.
@@ -31,9 +32,12 @@ async function domainId(request: APIRequestContext): Promise<string> {
   const answer = await request.post(`${BACKEND_URL}/admin/graphql`, {
     data: { query: "{ domains { id } }" },
   });
-  const domains = ((await answer.json()) as { data: { domains: { id: string }[] } }).data.domains;
+  // The picker offers only a domain something may be put into: never meta, ontology or ops.
+  const domains = ((await answer.json()) as { data: { domains: { id: string }[] } }).data.domains
+    .map((d) => d.id)
+    .filter(isAssignableDomain);
   expect(domains.length, "the e2e org has a domain to assign").toBeGreaterThan(0);
-  return domains[0].id;
+  return domains[0];
 }
 
 /** Remove ``id`` from the org's catalogs, keeping every other one as it is (each credential left

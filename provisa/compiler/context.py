@@ -78,15 +78,17 @@ def _lookup_column_type(
     return "varchar"
 
 
-def _visible_unique_constraints(t, si) -> list[tuple[str, list[str]]]:  # REQ-1093
+def _visible_unique_constraints(
+    t, declared: dict[int, list[dict]]
+) -> list[tuple[str, list[str]]]:  # REQ-1093
     """Declared UNIQUE constraints for table ``t``, filtered to columns visible in this projection.
 
-    Sourced from the raw table config on SchemaInput (not _TableInfo) so schema_gen stays untouched.
+    Sourced from the raw table config on SchemaInput (not _TableInfo) so schema_gen stays untouched:
+    ``declared`` is each table's, by id, read from it once per context (a search of every table
+    for each table was quadratic in the model).
     """
     visible = {col["column_name"] for col in t.visible_columns}
-    raw = next(
-        (tbl.get("unique_constraints", []) for tbl in si.tables if tbl["id"] == t.table_id), []
-    )
+    raw = declared.get(t.table_id, [])
     return [
         (uc["name"], list(uc["columns"])) for uc in raw if all(c in visible for c in uc["columns"])
     ]
@@ -97,6 +99,7 @@ def _register_table_in_ctx(
     ctx: CompilationContext,
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     physical_map: dict[str, str],
+    declared_unique: dict[int, list[dict]],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
     from provisa.compiler.naming import apply_gql_name, apply_sql_name
@@ -179,7 +182,7 @@ def _register_table_in_ctx(
     ctx.write_ops[t.table_id] = t.write_ops
 
     # REQ-1093: carry declared UNIQUE constraints (name + ordered columns) into ctx for pgwire.
-    ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, si)
+    ctx.unique_constraints[t.table_id] = _visible_unique_constraints(t, declared_unique)
 
     def _nfc_type(nfc: dict) -> str:
         if nfc.get("data_type"):
@@ -700,8 +703,12 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     table_lookup = {t.table_id: t for t in tables}
     physical_map = getattr(si, "physical_table_map", None) or {}
 
+    # REQ-1093: each table's declared UNIQUE constraints, by id (_visible_unique_constraints).
+    declared_unique: dict[int, list[dict]] = {}
+    for tbl in si.tables:
+        declared_unique.setdefault(tbl["id"], tbl.get("unique_constraints", []))
     for t in tables:
-        _register_table_in_ctx(t, ctx, si, physical_map)
+        _register_table_in_ctx(t, ctx, si, physical_map, declared_unique)
 
     ctx.row_level_tables = si.row_level_tables
     ctx.epoch_columns = _epoch_columns(si, physical_map)
